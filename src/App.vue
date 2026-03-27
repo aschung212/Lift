@@ -1,34 +1,28 @@
 <template>
-  <Header />
-  <HelloWorld 
-    msg="Hello Aaron!" 
-    :c="1"/>
-  <BasicDiv 
-    msg="Here's a basic div for you to play with" 
-    :c="17" 
-    @kaboom-button="console.log('emissions passed. Detonating in 3... 2.. 1 💣')"
-    @randomize-button="console.log('shuffling...♠️♥️♣️♦️')"
-    @increment-button="console.log('up, up, and away🚀')"
-    @decrement-button="console.log('down bad📉')"
-    />
-  <HelloWorld 
-    msg="!noraA olleH"
-    :c="-1"/>
+  <div id="appShell">
+    <div class="appContainer">
+      <!-- Theme switcher -->
+      <nav class="themeSwitcher" aria-label="Color theme">
+        <button
+          v-for="t in THEMES"
+          :key="t.id"
+          :class="['themeBtn', { active: currentTheme === t.id }]"
+          @click="currentTheme = t.id"
+          :title="t.label"
+        >
+          <span class="themeSwatchDot" :style="{ background: t.dot }"></span>
+          <span class="themeSwatchLabel">{{ t.label }}</span>
+        </button>
+      </nav>
+
+      <WorkoutTracker />
+    </div>
+  </div>
 </template>
 
-<script>
-import HelloWorld from './components/HelloWorld.vue'
-import CustomComponent from './components/CustomComponent.vue'
-import BasicDiv from './components/BasicDiv.vue';
-import Header from './components/Header.vue';
+<script setup>
+import WorkoutTracker from './components/WorkoutTracker.vue'
+import { useTheme } from './composables/useTheme'
 
-export default {
-  name: 'App',
-  components: {
-    HelloWorld,
-    CustomComponent,
-    BasicDiv,
-    Header
-  }
-}
+const { currentTheme, THEMES } = useTheme()
 </script>

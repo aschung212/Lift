@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#1a1a1a"/>
+  <!-- left weight disc -->
+  <circle cx="151" cy="256" r="97" fill="#ff6363"/>
+  <!-- right weight disc -->
+  <circle cx="361" cy="256" r="97" fill="#ff6363"/>
+  <!-- connecting bar -->
+  <rect x="151" y="223" width="210" height="66" fill="#ff6363"/>
+</svg>
