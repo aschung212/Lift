@@ -1,5 +1,21 @@
-node_modules
-.DS_Store
-dist
-dist-ssr
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-ssr/
+
+# local env files
 *.local
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# Claude Code worktree metadata (not part of the public repo)
+.claude/

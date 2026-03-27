@@ -1,15 +1,28 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png" />
-  <HelloWorld msg="Hello Vue 3.0 + Vite" />
+  <div id="appShell">
+    <div class="appContainer">
+      <!-- Theme switcher -->
+      <nav class="themeSwitcher" aria-label="Color theme">
+        <button
+          v-for="t in THEMES"
+          :key="t.id"
+          :class="['themeBtn', { active: currentTheme === t.id }]"
+          @click="currentTheme = t.id"
+          :title="t.label"
+        >
+          <span class="themeSwatchDot" :style="{ background: t.dot }"></span>
+          <span class="themeSwatchLabel">{{ t.label }}</span>
+        </button>
+      </nav>
+
+      <WorkoutTracker />
+    </div>
+  </div>
 </template>
 
-<script>
-import HelloWorld from './components/HelloWorld.vue'
+<script setup>
+import WorkoutTracker from './components/WorkoutTracker.vue'
+import { useTheme } from './composables/useTheme'
 
-export default {
-  name: 'App',
-  components: {
-    HelloWorld
-  }
-}
+const { currentTheme, THEMES } = useTheme()
 </script>

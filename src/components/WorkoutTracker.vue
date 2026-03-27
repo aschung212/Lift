@@ -1,0 +1,334 @@
+<template>
+  <!-- Main card -->
+  <div class="wtCard">
+    <div class="wtCardHeader">
+      <h2 class="wtTitle">Exercise Tracker</h2>
+      <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+    </div>
+
+    <p v-if="store.exercises.length === 0" class="wtEmpty">
+      No exercises yet. Hit "+ New Exercise" to add your first one.
+    </p>
+
+    <ul v-else class="wtExerciseList">
+      <li
+        v-for="exercise in store.exercises"
+        :key="exercise.id"
+        class="wtExerciseItem"
+      >
+        <!-- Row: expand toggle + per-exercise log button -->
+        <div class="wtExerciseHeader">
+          <button
+            class="wtExerciseRow"
+            @click="toggleExpand(exercise.id)"
+            :aria-expanded="expandedId === exercise.id"
+          >
+            <span class="wtExerciseName">{{ exercise.name }}</span>
+            <span class="wtExerciseMeta">
+              PR: {{ store.getExercisePR(exercise.id) || '—' }} lbs
+              &nbsp;·&nbsp;
+              {{ exercise.sets.length }} set{{ exercise.sets.length !== 1 ? 's' : '' }}
+            </span>
+            <span class="wtChevron">{{ expandedId === exercise.id ? '▲' : '▼' }}</span>
+          </button>
+          <button
+            class="wtExerciseLogBtn"
+            @click="openLogForExercise(exercise.id)"
+            aria-label="Log a set for {{ exercise.name }}"
+          >+ Log</button>
+        </div>
+
+        <!-- Expanded: graph → all sets → clear -->
+        <template v-if="expandedId === exercise.id">
+          <!-- Progress graph -->
+          <ExerciseGraph :exercise="exercise" />
+
+          <!-- All sets list (newest first) -->
+          <ul class="wtSetList">
+            <li v-if="exercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</li>
+            <li
+              v-for="set in [...exercise.sets].reverse()"
+              :key="set.id"
+              class="wtSetRow"
+            >
+              <span class="wtSetDate">{{ formatDate(set.date) }}</span>
+              <span class="wtSetDetail">{{ set.weight }} lbs × {{ set.reps }}</span>
+              <span class="wtSet1RM">~{{ set.estimated1RM }} lbs</span>
+              <div class="wtSetActions">
+                <button
+                  class="wtSetBtn"
+                  @click.stop="openEditModal(exercise, set)"
+                  aria-label="Edit set"
+                >Edit</button>
+                <button
+                  class="wtSetBtn wtSetBtnDel"
+                  @click.stop="store.deleteSet(exercise.id, set.id)"
+                  aria-label="Delete set"
+                >Delete</button>
+              </div>
+            </li>
+          </ul>
+
+          <!-- Clear all sets -->
+          <div v-if="exercise.sets.length > 0" class="wtClearWrap">
+            <button class="wtClearBtn" @click="confirmClearId = exercise.id">
+              Clear all sets
+            </button>
+          </div>
+        </template>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Log / Edit Set Modal -->
+  <Teleport to="body">
+    <div v-if="showModal" class="repMaxOverlay" @click.self="closeModal">
+      <div class="repMaxModal">
+        <h2>{{ modalTitle }}</h2>
+
+        <!-- New exercise mode: name input -->
+        <label v-if="!isEditMode && selectedExerciseId === '__new__'" class="repMaxLabel">
+          Exercise name
+          <div class="repMaxInputRow">
+            <input
+              v-model.trim="newExerciseName"
+              type="text"
+              placeholder="e.g. Bench Press"
+              class="repMaxInput"
+              autocomplete="off"
+            />
+          </div>
+        </label>
+
+        <!-- Log for existing exercise mode: show name as subtitle -->
+        <p v-else-if="isLogForExercise" class="wtModalSubtitle">{{ selectedExerciseName }}</p>
+
+        <!-- Date: always visible -->
+        <label class="repMaxLabel">
+          Date
+          <input
+            v-model="date"
+            type="date"
+            :max="todayISO()"
+            class="repMaxInput wtDateInput"
+          />
+        </label>
+
+        <!-- Weight + Reps -->
+        <div class="wtInputRow">
+          <label class="repMaxLabel" style="flex:1">
+            Weight
+            <div class="repMaxInputRow">
+              <input
+                v-model.number="weight"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="any"
+                placeholder="135"
+                class="repMaxInput"
+              />
+              <span class="repMaxUnit">lbs</span>
+            </div>
+          </label>
+
+          <label class="repMaxLabel" style="flex:1">
+            Reps
+            <div class="repMaxInputRow">
+              <input
+                v-model.number="reps"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                max="30"
+                placeholder="8"
+                class="repMaxInput"
+              />
+            </div>
+          </label>
+        </div>
+
+        <!-- Live 1RM estimate -->
+        <div v-if="liveEstimate" class="repMaxResult">
+          <span class="repMaxResultLabel">Estimated 1RM</span>
+          <span class="repMaxResultValue">{{ liveEstimate }} lbs</span>
+          <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
+        </div>
+
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
+            {{ isEditMode ? 'Save Changes' : 'Save' }}
+          </button>
+          <button class="repMaxBtn repMaxBtnClose" @click="closeModal">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Confirm Clear All Modal -->
+  <Teleport to="body">
+    <div v-if="confirmClearId !== null" class="repMaxOverlay" @click.self="confirmClearId = null">
+      <div class="repMaxModal wtConfirmModal">
+        <div class="wtConfirmIcon">⚠️</div>
+        <h2>Clear All Sets?</h2>
+        <p class="wtConfirmText">
+          This will permanently delete all
+          <strong>{{ confirmClearExercise?.sets.length }}</strong>
+          set{{ confirmClearExercise?.sets.length !== 1 ? 's' : '' }} for
+          <strong>{{ confirmClearExercise?.name }}</strong>.
+          This cannot be undone.
+        </p>
+        <div class="repMaxActions">
+          <button class="repMaxBtn wtConfirmBtnDanger" @click="confirmClear">Clear All</button>
+          <button class="repMaxBtn repMaxBtnClose" @click="confirmClearId = null">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { useWorkoutStore } from '../stores/workout'
+import ExerciseGraph from './ExerciseGraph.vue'
+
+const store = useWorkoutStore()
+
+// ── Card state ────────────────────────────────────────────────────
+const expandedId = ref(null)
+
+function toggleExpand(id) {
+  expandedId.value = expandedId.value === id ? null : id
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+// Converts a stored ISO string back to the local YYYY-MM-DD for a date input
+function isoToLocalDate(iso) {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+}
+
+// ── Log / Edit modal state ────────────────────────────────────────
+const showModal = ref(false)
+const editingSet = ref(null) // { exerciseId, setId } when editing, null when logging
+const selectedExerciseId = ref('')
+const newExerciseName = ref('')
+const weight = ref(null)
+const reps = ref(null)
+const date = ref(todayISO())
+
+const isEditMode = computed(() => editingSet.value !== null)
+
+// True when logging a set for a known, pre-selected exercise
+const isLogForExercise = computed(() =>
+  !isEditMode.value &&
+  selectedExerciseId.value !== '' &&
+  selectedExerciseId.value !== '__new__'
+)
+
+const selectedExerciseName = computed(() =>
+  store.exercises.find(e => e.id === selectedExerciseId.value)?.name ?? ''
+)
+
+const modalTitle = computed(() => {
+  if (isEditMode.value) return 'Edit Set'
+  if (selectedExerciseId.value === '__new__') return 'New Exercise'
+  return 'Log a Set'
+})
+
+// Open modal to log a brand-new exercise
+function openNewExerciseModal() {
+  editingSet.value = null
+  selectedExerciseId.value = '__new__'
+  showModal.value = true
+}
+
+// Open modal pre-targeted at a specific existing exercise
+function openLogForExercise(exerciseId) {
+  editingSet.value = null
+  selectedExerciseId.value = exerciseId
+  date.value = todayISO()
+  showModal.value = true
+}
+
+// Open modal to edit an existing set
+function openEditModal(exercise, set) {
+  editingSet.value = { exerciseId: exercise.id, setId: set.id }
+  selectedExerciseId.value = exercise.id
+  date.value = isoToLocalDate(set.date)
+  weight.value = set.weight
+  reps.value = set.reps
+  showModal.value = true
+}
+
+function closeModal() {
+  showModal.value = false
+  editingSet.value = null
+  selectedExerciseId.value = ''
+  newExerciseName.value = ''
+  weight.value = null
+  reps.value = null
+  date.value = todayISO()
+}
+
+const liveEstimate = computed(() => {
+  if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
+  if (reps.value === 1) return Math.round(weight.value)
+  return Math.round(weight.value * (1 + reps.value / 30))
+})
+
+const isNewPR = computed(() => {
+  if (!liveEstimate.value || isEditMode.value) return false
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return false
+  const pr = store.getExercisePR(id)
+  return pr > 0 && liveEstimate.value > pr
+})
+
+const canSave = computed(() => {
+  const hasWeight = weight.value > 0
+  const hasReps = reps.value >= 1
+  if (isEditMode.value) return hasWeight && hasReps
+  if (selectedExerciseId.value === '__new__') return newExerciseName.value.length > 0 && hasWeight && hasReps
+  return selectedExerciseId.value !== '' && hasWeight && hasReps
+})
+
+function saveSet() {
+  if (!canSave.value) return
+  if (isEditMode.value) {
+    store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, weight.value, reps.value, date.value)
+  } else {
+    let exerciseId = selectedExerciseId.value
+    if (exerciseId === '__new__') {
+      exerciseId = store.addExercise(newExerciseName.value)
+    }
+    store.logSet(exerciseId, weight.value, reps.value, date.value)
+  }
+  closeModal()
+}
+
+// ── Confirm clear state ───────────────────────────────────────────
+const confirmClearId = ref(null)
+
+const confirmClearExercise = computed(() =>
+  confirmClearId.value !== null
+    ? store.exercises.find(e => e.id === confirmClearId.value)
+    : null
+)
+
+function confirmClear() {
+  if (confirmClearId.value === null) return
+  store.clearSets(confirmClearId.value)
+  confirmClearId.value = null
+}
+</script>

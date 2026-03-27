@@ -1,8 +1,740 @@
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
+/* ─── Theme tokens ───────────────────────────────────────────────────────── */
+
+[data-theme="midnight"] {
+  --bg-primary:      #0f0f0f;
+  --bg-secondary:    #1a1a1a;
+  --bg-elevated:     #242424;
+  --bg-hover:        #2e2e2e;
+  --border:          #2a2a2a;
+  --border-strong:   #3c3c3c;
+  --text-primary:    #f2f2f2;
+  --text-secondary:  #888;
+  --text-muted:      #555;
+  --accent:          #ff6363;
+  --accent-hover:    #ff4444;
+  --accent-subtle:   rgba(255, 99, 99, 0.10);
+  --danger:          #ff5a5a;
+  --danger-subtle:   rgba(255, 90, 90, 0.12);
+  --success:         #30d158;
+  --success-subtle:  rgba(48, 209, 88, 0.12);
+  --shadow:          0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="graphite"] {
+  --bg-primary:      #111118;
+  --bg-secondary:    #1c1c28;
+  --bg-elevated:     #26263a;
+  --bg-hover:        #30304a;
+  --border:          #2c2c42;
+  --border-strong:   #42425e;
+  --text-primary:    #e4e4f4;
+  --text-secondary:  #7070a0;
+  --text-muted:      #48486a;
+  --accent:          #8b5cf6;
+  --accent-hover:    #7c3aed;
+  --accent-subtle:   rgba(139, 92, 246, 0.13);
+  --danger:          #f87171;
+  --danger-subtle:   rgba(248, 113, 113, 0.12);
+  --success:         #34d399;
+  --success-subtle:  rgba(52, 211, 153, 0.12);
+  --shadow:          0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="arctic"] {
+  --bg-primary:      #eeeef5;
+  --bg-secondary:    #ffffff;
+  --bg-elevated:     #ffffff;
+  --bg-hover:        #f4f4fa;
+  --border:          #e0e0ec;
+  --border-strong:   #c4c4d8;
+  --text-primary:    #1a1a2e;
+  --text-secondary:  #60609a;
+  --text-muted:      #aaaacc;
+  --accent:          #0066ff;
+  --accent-hover:    #0052cc;
+  --accent-subtle:   rgba(0, 102, 255, 0.08);
+  --danger:          #dc2626;
+  --danger-subtle:   rgba(220, 38, 38, 0.08);
+  --success:         #16a34a;
+  --success-subtle:  rgba(22, 163, 74, 0.08);
+  --shadow:          0 8px 32px rgba(26, 26, 46, 0.12);
+  --shadow-sm:       0 2px 8px rgba(26, 26, 46, 0.07);
+}
+
+[data-theme="forge"] {
+  --bg-primary:      #100e0b;
+  --bg-secondary:    #1c1814;
+  --bg-elevated:     #262118;
+  --bg-hover:        #302b22;
+  --border:          #2c2620;
+  --border-strong:   #3e3630;
+  --text-primary:    #f0e8d8;
+  --text-secondary:  #9a8870;
+  --text-muted:      #5c5040;
+  --accent:          #f59e0b;
+  --accent-hover:    #d97706;
+  --accent-subtle:   rgba(245, 158, 11, 0.12);
+  --danger:          #ef4444;
+  --danger-subtle:   rgba(239, 68, 68, 0.12);
+  --success:         #84cc16;
+  --success-subtle:  rgba(132, 204, 22, 0.12);
+  --shadow:          0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="garden"] {
+  --bg-primary:      #edf2ed;
+  --bg-secondary:    #ffffff;
+  --bg-elevated:     #ffffff;
+  --bg-hover:        #f0f5f0;
+  --border:          #d6e6d6;
+  --border-strong:   #aecaae;
+  --text-primary:    #152015;
+  --text-secondary:  #4a6a4a;
+  --text-muted:      #90aa90;
+  --accent:          #16803a;
+  --accent-hover:    #0f6030;
+  --accent-subtle:   rgba(22, 128, 58, 0.08);
+  --danger:          #c0392b;
+  --danger-subtle:   rgba(192, 57, 43, 0.08);
+  --success:         #16a34a;
+  --success-subtle:  rgba(22, 163, 74, 0.08);
+  --shadow:          0 8px 32px rgba(21, 32, 21, 0.10);
+  --shadow-sm:       0 2px 8px rgba(21, 32, 21, 0.06);
+}
+
+/* ─── Reset & base ───────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+               Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 15px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+input[type=number] { -moz-appearance: textfield; }
+
+/* ─── App shell ─────────────────────────────────────────────────────────── */
+
+#app {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           calc(env(safe-area-inset-bottom, 0px) + 48px) env(safe-area-inset-left, 0px);
+}
+
+.appContainer {
+  width: 100%;
+  max-width: 520px;
+  padding: 0 14px;
+}
+
+/* ─── Theme switcher ─────────────────────────────────────────────────────── */
+
+.themeSwitcher {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 18px 0 14px;
+}
+
+.themeBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.themeBtn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.themeBtn.active {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.themeSwatchDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ─── Workout tracker card ───────────────────────────────────────────────── */
+
+.wtCard {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.wtCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wtTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.wtLogBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.wtLogBtn:hover  { background: var(--accent-hover); }
+.wtLogBtn:active { opacity: 0.85; }
+
+.wtEmpty {
+  padding: 32px 16px;
   text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ─── Exercise list ─────────────────────────────────────────────────────── */
+
+.wtExerciseList {
+  list-style: none;
+}
+
+.wtExerciseItem {
+  border-bottom: 1px solid var(--border);
+}
+
+.wtExerciseItem:last-child {
+  border-bottom: none;
+}
+
+.wtExerciseHeader {
+  display: flex;
+  align-items: stretch;
+}
+
+.wtExerciseRow {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: background-color 0.12s;
+  min-width: 0;
+}
+
+.wtExerciseRow:hover { background: var(--bg-hover); }
+
+.wtExerciseName {
+  flex: 1;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtExerciseMeta {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.wtChevron {
+  font-size: 9px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.wtExerciseLogBtn {
+  flex-shrink: 0;
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  font-family: inherit;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s;
+}
+
+.wtExerciseLogBtn:hover  { background: var(--accent-subtle); }
+.wtExerciseLogBtn:active { opacity: 0.75; }
+
+/* ─── Set rows ──────────────────────────────────────────────────────────── */
+
+.wtSetList {
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.wtSetRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wtSetRow:last-child { border-bottom: none; }
+
+.wtSetDate {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 44px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.wtSetDetail {
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.wtSet1RM {
+  color: var(--success);
+  font-weight: 600;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.wtSetEmpty {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.wtSetActions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wtSetBtn {
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  min-height: 26px;
+  transition: opacity 0.12s;
+}
+
+.wtSetBtn:active { opacity: 0.7; }
+
+.wtSetBtnDel {
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+
+/* "Clear all sets" footer */
+.wtClearWrap {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.wtClearBtn {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--danger);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 2px;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+
+.wtClearBtn:hover  { opacity: 1; }
+.wtClearBtn:active { opacity: 0.6; }
+
+/* ─── Modals ─────────────────────────────────────────────────────────────── */
+
+.repMaxOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.repMaxModal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 24px 22px;
+  width: 100%;
+  max-width: 380px;
+  text-align: left;
+  box-shadow: var(--shadow);
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.repMaxModal h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 20px;
+  letter-spacing: -0.2px;
+}
+
+.repMaxLabel {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.repMaxInputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.repMaxInput {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 16px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+.repMaxInput:focus { border-color: var(--accent); }
+
+.repMaxInput::placeholder { color: var(--text-muted); }
+
+.repMaxUnit {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.repMaxResult {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-subtle);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.repMaxResultLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  opacity: 0.7;
+}
+
+.repMaxResultValue {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.repMaxActions {
+  display: flex;
+  gap: 8px;
+}
+
+.repMaxBtn {
+  flex: 1;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.repMaxBtn:active { opacity: 0.8; }
+
+.repMaxBtnCalc {
+  background: var(--accent);
+  color: #fff;
+}
+
+.repMaxBtnCalc:disabled {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.repMaxBtnClose {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+/* Misc modal elements */
+.wtInputRow {
+  display: flex;
+  gap: 12px;
+}
+
+.wtDateInput {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  color-scheme: dark light;
+}
+
+.wtModalSubtitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+  margin-top: -10px;
+  margin-bottom: 16px;
+  letter-spacing: -0.2px;
+}
+
+.wtPrBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 3px 9px;
+  background: var(--danger-subtle);
+  color: var(--danger);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+/* Confirm clear modal */
+.wtConfirmModal { text-align: center; }
+
+.wtConfirmIcon {
+  font-size: 30px;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+
+.wtConfirmModal h2 { margin-bottom: 10px; }
+
+.wtConfirmText {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 20px;
+  font-weight: 400;
+}
+
+.wtConfirmBtnDanger {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ─── Exercise graph ─────────────────────────────────────────────────────── */
+
+.wtGraphWrap {
+  padding: 12px 16px 6px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.2s;
+}
+
+.wtGraphTitle {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.wtGraphSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.wtGGrid {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.wtGArea {
+  fill: var(--accent-subtle);
+  stroke: none;
+}
+
+.wtGLine {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wtGDot {
+  fill: var(--bg-elevated);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.wtGDotPR {
+  fill: var(--danger);
+  stroke: none;
+}
+
+.wtGPRLabel {
+  font-size: 8px;
+  font-weight: 800;
+  fill: var(--danger);
+  font-family: inherit;
+  letter-spacing: 0.3px;
+}
+
+.wtGYLabel {
+  font-size: 8px;
+  fill: var(--text-muted);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.wtGDateLabel {
+  font-size: 8px;
+  fill: var(--text-muted);
+  font-family: inherit;
+}
+
+.wtGraphSingle {
+  padding: 12px 16px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .wtExerciseMeta { display: none; }
+
+  .wtInputRow {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .themeSwitcher { gap: 2px; }
+
+  .themeBtn { padding: 5px 8px; }
+}
+
+@media (max-width: 360px) {
+  .themeSwatchLabel { display: none; }
+  .themeBtn { padding: 6px; }
 }
