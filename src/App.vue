@@ -16,12 +16,14 @@
       </nav>
 
       <WorkoutTracker />
+      <BodyweightTracker />
     </div>
   </div>
 </template>
 
 <script setup>
 import WorkoutTracker from './components/WorkoutTracker.vue'
+import BodyweightTracker from './components/BodyweightTracker.vue'
 import { useTheme } from './composables/useTheme'
 
 const { currentTheme, THEMES } = useTheme()
