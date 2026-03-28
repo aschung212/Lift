@@ -50,12 +50,13 @@
               v-for="set in visibleSets(exercise)"
               :key="set.id"
               class="wtSetRow"
+              :class="{ wtSetRowPR: set.estimated1RM === store.getExercisePR(exercise.id) }"
             >
               <span class="wtSetDate">{{ formatDate(set.date) }}</span>
               <span class="wtSetDetail">{{ set.weight }} lbs × {{ set.reps }}</span>
               <span class="wtSet1RM">
                 ~{{ set.estimated1RM }} lbs
-                <span v-if="set.estimated1RM === store.getExercisePR(exercise.id)" class="wtSetPR">★</span>
+                <span v-if="set.estimated1RM === store.getExercisePR(exercise.id)" class="wtSetPR">🏆</span>
               </span>
               <div class="wtSetActions">
                 <button

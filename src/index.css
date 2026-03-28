@@ -371,8 +371,13 @@ input[type=number] { -moz-appearance: textfield; }
 }
 
 .wtSetPR {
-  color: var(--accent);
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.wtSetRowPR {
+  background: rgba(212, 175, 55, 0.08);
+  border-left: 3px solid #d4af37;
 }
 
 .wtSetEmpty {
