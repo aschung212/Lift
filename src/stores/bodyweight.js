@@ -107,6 +107,16 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (state.entries.length === 0) return null
       const sorted = [...state.entries].sort((a, b) => b.date.localeCompare(a.date))
       return sorted[0].weight
+    },
+
+    minWeight: (state) => {
+      if (state.entries.length === 0) return null
+      return Math.min(...state.entries.map(e => e.weight))
+    },
+
+    maxWeight: (state) => {
+      if (state.entries.length === 0) return null
+      return Math.max(...state.entries.map(e => e.weight))
     }
   }
 })

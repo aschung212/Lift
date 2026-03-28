@@ -112,10 +112,17 @@
       <li
         v-for="entry in [...store.entries].reverse()"
         :key="entry.id"
-        class="wtSetRow"
+        :class="['wtSetRow', {
+          bwEntryLow: entry.weight === store.minWeight,
+          bwEntryHigh: entry.weight === store.maxWeight
+        }]"
       >
         <span class="wtSetDate">{{ formatDateShort(entry.date) }}</span>
-        <span class="wtSetDetail">{{ entry.weight }} lbs</span>
+        <span class="wtSetDetail">
+          {{ entry.weight }} lbs
+          <span v-if="entry.weight === store.minWeight" class="bwEntryBadge bwEntryBadgeLow" title="All-time low">↓ Low</span>
+          <span v-else-if="entry.weight === store.maxWeight" class="bwEntryBadge bwEntryBadgeHigh" title="All-time high">↑ High</span>
+        </span>
         <div class="wtSetActions">
           <button class="wtSetBtn" @click.stop="openModal(entry)" aria-label="Edit entry">Edit</button>
           <button class="wtSetBtn wtSetBtnDel" @click.stop="store.deleteEntry(entry.id)" aria-label="Delete entry">Delete</button>
