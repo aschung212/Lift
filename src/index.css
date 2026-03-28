@@ -24,8 +24,8 @@
   --glass-shine:     rgba(255,255,255,0.13);
   --glass-bar:       rgba(10,10,10,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
-  --mesh:            radial-gradient(ellipse 70% 55% at 15% 15%, rgba(255,99,99,0.14) 0%, transparent 65%),
-                     radial-gradient(ellipse 55% 45% at 85% 80%, rgba(139,92,246,0.09) 0%, transparent 65%);
+  --mesh:            radial-gradient(ellipse 70% 55% at 15% 15%, rgba(255,99,99,0.07) 0%, transparent 65%),
+                     radial-gradient(ellipse 55% 45% at 85% 80%, rgba(139,92,246,0.05) 0%, transparent 65%);
 }
 
 [data-theme="graphite"] {
@@ -52,8 +52,8 @@
   --glass-shine:     rgba(255,255,255,0.13);
   --glass-bar:       rgba(8,8,16,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
-  --mesh:            radial-gradient(ellipse 65% 50% at 20% 20%, rgba(139,92,246,0.18) 0%, transparent 65%),
-                     radial-gradient(ellipse 50% 40% at 80% 78%, rgba(80,80,220,0.10) 0%, transparent 65%);
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 20%, rgba(139,92,246,0.09) 0%, transparent 65%),
+                     radial-gradient(ellipse 50% 40% at 80% 78%, rgba(80,80,220,0.05) 0%, transparent 65%);
 }
 
 [data-theme="arctic"] {
@@ -80,8 +80,8 @@
   --glass-shine:     rgba(255,255,255,0.95);
   --glass-bar:       rgba(240,240,248,0.78);
   --glass-overlay:   rgba(26,26,46,0.25);
-  --mesh:            radial-gradient(ellipse 65% 50% at 20% 20%, rgba(0,102,255,0.10) 0%, transparent 65%),
-                     radial-gradient(ellipse 50% 40% at 80% 78%, rgba(0,180,255,0.07) 0%, transparent 65%);
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 20%, rgba(0,102,255,0.05) 0%, transparent 65%),
+                     radial-gradient(ellipse 50% 40% at 80% 78%, rgba(0,180,255,0.04) 0%, transparent 65%);
 }
 
 [data-theme="forge"] {
@@ -108,8 +108,8 @@
   --glass-shine:     rgba(255,255,255,0.12);
   --glass-bar:       rgba(8,6,4,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
-  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(245,158,11,0.18) 0%, transparent 65%),
-                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(180,80,20,0.10) 0%, transparent 65%);
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(245,158,11,0.09) 0%, transparent 65%),
+                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(180,80,20,0.05) 0%, transparent 65%);
 }
 
 [data-theme="aaron"] {
@@ -136,8 +136,8 @@
   --glass-shine:     rgba(255,255,255,0.12);
   --glass-bar:       rgba(4,6,2,0.74);
   --glass-overlay:   rgba(0,0,0,0.58);
-  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(212,152,42,0.18) 0%, transparent 65%),
-                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(74,122,42,0.12) 0%, transparent 65%);
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(212,152,42,0.09) 0%, transparent 65%),
+                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(74,122,42,0.06) 0%, transparent 65%);
 }
 
 [data-theme="tina"] {
@@ -164,8 +164,8 @@
   --glass-shine:     rgba(255,255,255,0.95);
   --glass-bar:       rgba(244,240,252,0.78);
   --glass-overlay:   rgba(30,16,40,0.25);
-  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(236,72,153,0.14) 0%, transparent 65%),
-                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(168,85,247,0.10) 0%, transparent 65%);
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(236,72,153,0.07) 0%, transparent 65%),
+                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(168,85,247,0.05) 0%, transparent 65%);
 }
 
 /* ─── Reset & base ───────────────────────────────────────────────────────── */
