@@ -1,4 +1,9 @@
 <template>
+  <div class="landscapeBlock" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M12 19v2M8 21h8"/></svg>
+    <p>Please rotate your device</p>
+  </div>
+
   <div id="appShell">
     <!-- Loading state -->
     <div v-if="loading" class="authLoading">

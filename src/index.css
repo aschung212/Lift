@@ -183,6 +183,43 @@ html, body {
   overflow: hidden;
 }
 
+/* ─── Landscape blocker ──────────────────────────────────────────────────── */
+
+.landscapeBlock {
+  display: none;
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  .landscapeBlock {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0f0f0f;
+    color: #f2f2f2;
+  }
+
+  .landscapeBlock svg {
+    width: 48px;
+    height: 48px;
+    opacity: 0.7;
+  }
+
+  .landscapeBlock p {
+    font-size: 15px;
+    font-weight: 500;
+    opacity: 0.7;
+  }
+
+  #appShell {
+    display: none;
+  }
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
                Helvetica, Arial, sans-serif;
