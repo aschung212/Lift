@@ -50,12 +50,23 @@
       <div v-if="selectedDay && trainingMap[selectedDay]" class="calDetail">
         <p class="calDetailDate">{{ formatSelectedDay(selectedDay) }}</p>
         <div class="calDetailTags">
-          <span
-            v-for="ex in trainingMap[selectedDay]"
-            :key="ex"
-            :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
-            :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
-          >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }}</span>
+          <template v-for="ex in trainingMap[selectedDay]" :key="ex">
+            <span
+              :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
+              :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
+              @click="isPRExercise(selectedDay, ex) && togglePRDetail(selectedDay, ex)"
+            >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }}</span>
+            <div
+              v-if="isPRExercise(selectedDay, ex) && prDetailKey === `${selectedDay}::${ex}` && getPRSet(selectedDay, ex)"
+              class="calPRDetail"
+            >
+              <span>{{ getPRSet(selectedDay, ex).weight }} kg</span>
+              <span class="calPRDetailSep">×</span>
+              <span>{{ getPRSet(selectedDay, ex).reps }} reps</span>
+              <span class="calPRDetailSep">·</span>
+              <span>~{{ Math.round(getPRSet(selectedDay, ex).estimated1RM) }} kg e1RM</span>
+            </div>
+          </template>
         </div>
       </div>
     </template>
@@ -74,12 +85,23 @@
         </div>
         <div class="calWeekContent">
           <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
-          <span
-            v-for="ex in day.exercises"
-            :key="ex"
-            :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
-            :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
-          >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }}</span>
+          <template v-for="ex in day.exercises" :key="ex">
+            <span
+              :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
+              :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
+              @click="isPRExercise(day.dateStr, ex) && togglePRDetail(day.dateStr, ex)"
+            >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }}</span>
+            <div
+              v-if="isPRExercise(day.dateStr, ex) && prDetailKey === `${day.dateStr}::${ex}` && getPRSet(day.dateStr, ex)"
+              class="calPRDetail"
+            >
+              <span>{{ getPRSet(day.dateStr, ex).weight }} kg</span>
+              <span class="calPRDetailSep">×</span>
+              <span>{{ getPRSet(day.dateStr, ex).reps }} reps</span>
+              <span class="calPRDetailSep">·</span>
+              <span>~{{ Math.round(getPRSet(day.dateStr, ex).estimated1RM) }} kg e1RM</span>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -153,6 +175,24 @@ function isPRExercise(dateStr, exName) {
 
 function hasPR(dateStr) {
   return !!(prMap.value[dateStr]?.size > 0)
+}
+
+// PR detail popover: "YYYY-MM-DD::Exercise Name" or null
+const prDetailKey = ref(null)
+
+function togglePRDetail(dateStr, exName) {
+  const key = `${dateStr}::${exName}`
+  prDetailKey.value = prDetailKey.value === key ? null : key
+}
+
+function getPRSet(dateStr, exName) {
+  const exercise = store.exercises.find(e => e.name === exName)
+  if (!exercise) return null
+  const pr = store.getExercisePR(exercise.id)
+  const dayStr = dateStr.slice(0, 10)
+  return exercise.sets
+    .filter(s => s.date.slice(0, 10) === dayStr && s.estimated1RM === pr)
+    .sort((a, b) => b.estimated1RM - a.estimated1RM)[0] ?? null
 }
 
 function exerciseColor(name) {
