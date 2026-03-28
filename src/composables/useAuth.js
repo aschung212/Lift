@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { migrateLocalStorageToSupabase } from '../lib/migrate'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
+import { usePreferencesStore } from '../stores/preferences'
 
 const user = ref(null)
 const loading = ref(true)
@@ -12,10 +13,12 @@ let _initialized = false
 async function initStores(userId) {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
+  const preferencesStore = usePreferencesStore()
   await migrateLocalStorageToSupabase(userId)
   await Promise.all([
     workoutStore.init(userId),
-    bodyweightStore.init(userId)
+    bodyweightStore.init(userId),
+    preferencesStore.init(userId),
   ])
 }
 

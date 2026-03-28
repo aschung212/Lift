@@ -457,6 +457,69 @@ input[type=number] { -moz-appearance: textfield; }
   transform: translateX(16px);
 }
 
+.glassToggle:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ─── Settings dropdown ──────────────────────────────────────────────────── */
+
+.topBarRight {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.topBarRight > div {
+  position: relative;
+}
+
+.topBarIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.settingsDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  min-width: 180px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+}
+
+.settingsHeader {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 4px 8px 6px;
+}
+
+.settingsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.settingsLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 /* ─── Glass off overrides ────────────────────────────────────────────────── */
 
 [data-glass="off"] body {

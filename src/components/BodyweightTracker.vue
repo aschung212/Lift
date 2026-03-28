@@ -114,8 +114,10 @@
         :key="entry.id"
         :class="['wtSetRow', {
           bwEntryLow: entry.weight === store.minWeight,
-          bwEntryHigh: entry.weight === store.maxWeight
+          bwEntryHigh: entry.weight === store.maxWeight,
+          wtSetRowActive: activeEntryId === entry.id,
         }]"
+        @click="toggleEntryActions(entry.id)"
       >
         <span class="wtSetDate">{{ formatDateShort(entry.date) }}</span>
         <span class="wtSetDetail">
@@ -123,9 +125,9 @@
           <span v-if="entry.weight === store.minWeight" class="bwEntryBadge bwEntryBadgeLow" title="All-time low">↓ Low</span>
           <span v-else-if="entry.weight === store.maxWeight" class="bwEntryBadge bwEntryBadgeHigh" title="All-time high">↑ High</span>
         </span>
-        <div class="wtSetActions">
+        <div v-if="activeEntryId === entry.id" class="wtSetActions">
           <button class="wtSetBtn" @click.stop="openModal(entry)" aria-label="Edit entry">Edit</button>
-          <button class="wtSetBtn wtSetBtnDel" @click.stop="store.deleteEntry(entry.id)" aria-label="Delete entry">Delete</button>
+          <button class="wtSetBtn wtSetBtnDel" @click.stop="deleteEntry(entry.id)" aria-label="Delete entry">Delete</button>
         </div>
       </li>
     </ul>
@@ -177,8 +179,10 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
+import { useAnalytics } from '../composables/useAnalytics'
 
 const store = useBodyweightStore()
+const { logEvent } = useAnalytics()
 
 // ── Modal state ──────────────────────────────────────────────────
 const showModal = ref(false)
@@ -224,10 +228,25 @@ function save() {
   if (!canSave.value) return
   if (editing.value) {
     store.updateEntry(editing.value, weight.value, date.value)
+    logEvent('bodyweight_edit')
   } else {
     store.addEntry(weight.value, date.value)
+    logEvent('bodyweight_add')
   }
   closeModal()
+}
+
+// ── Entry actions (tap-to-reveal) ────────────────────────────────
+const activeEntryId = ref(null)
+
+function toggleEntryActions(id) {
+  activeEntryId.value = activeEntryId.value === id ? null : id
+}
+
+function deleteEntry(id) {
+  store.deleteEntry(id)
+  activeEntryId.value = null
+  logEvent('bodyweight_delete')
 }
 
 // ── Period ───────────────────────────────────────────────────────

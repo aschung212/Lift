@@ -119,8 +119,10 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import { useAnalytics } from '../composables/useAnalytics'
 
 const store = useWorkoutStore()
+const { logEvent } = useAnalytics()
 
 const EXERCISE_COLORS = [
   '#f87171', '#fb923c', '#fbbf24', '#4ade80',
@@ -136,6 +138,7 @@ const selectedDay = ref(null)
 function setView(v) {
   view.value = v
   selectedDay.value = null
+  logEvent('calendar_view_switch', { view: v })
 }
 
 function toLocalDateStr(d) {

@@ -91,7 +91,7 @@
                 >Edit</button>
                 <button
                   class="wtSetBtn wtSetBtnDel"
-                  @click.stop="store.deleteSet(exercise.id, set.id)"
+                  @click.stop="store.deleteSet(exercise.id, set.id); logEvent('set_delete')"
                   aria-label="Delete set"
                 >Delete</button>
               </div>
@@ -272,9 +272,11 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import { useAnalytics } from '../composables/useAnalytics'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
+const { logEvent } = useAnalytics()
 
 // ── Card state ────────────────────────────────────────────────────
 const expandedId = ref(null)
@@ -307,6 +309,7 @@ function dropAt(index) {
   }
   store.reorderExercise(reorderingIndex.value, index)
   reorderingIndex.value = null
+  logEvent('exercise_reorder')
 }
 
 // ── Set actions (tap-to-reveal) ──────────────────────────────────
@@ -433,12 +436,15 @@ function saveSet() {
   if (!canSave.value) return
   if (isEditMode.value) {
     store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, weight.value, reps.value, date.value)
+    logEvent('set_edit')
   } else {
     let exerciseId = selectedExerciseId.value
     if (exerciseId === '__new__') {
       exerciseId = store.addExercise(newExerciseName.value)
+      logEvent('exercise_add', { name: newExerciseName.value })
     }
     store.logSet(exerciseId, weight.value, reps.value, date.value)
+    logEvent('set_log')
   }
   closeModal()
 }
@@ -454,8 +460,10 @@ const confirmClearExercise = computed(() =>
 
 function confirmClear() {
   if (confirmClearId.value === null) return
+  const count = confirmClearExercise.value?.sets.length ?? 0
   store.clearSets(confirmClearId.value)
   confirmClearId.value = null
+  logEvent('sets_clear_all', { count })
 }
 
 // ── Rename exercise state ─────────────────────────────────────────
@@ -472,6 +480,7 @@ function confirmRename() {
   store.renameExercise(renameTarget.value, renameName.value)
   renameTarget.value = null
   renameName.value = ''
+  logEvent('exercise_rename')
 }
 
 // ── Delete exercise state ─────────────────────────────────────────
@@ -488,5 +497,6 @@ function confirmDelete() {
   if (expandedId.value === confirmDeleteId.value) expandedId.value = null
   store.deleteExercise(confirmDeleteId.value)
   confirmDeleteId.value = null
+  logEvent('exercise_delete')
 }
 </script>
