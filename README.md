@@ -1,89 +1,126 @@
 # Lift — Workout Tracker PWA
 
-A **zero-dependency, offline-first Progressive Web App** for tracking strength training. Built entirely with Vue 3, Pinia, and hand-rolled SVG — no UI component libraries, no external chart packages.
+A **mobile-first Progressive Web App** for tracking strength training, bodyweight, and personal records. Built with Vue 3, Pinia, Supabase, and hand-rolled SVG — no UI component libraries, no external chart packages.
 
-**[→ Live Demo](https://your-app.vercel.app)** *(update after deploying)*
+**[→ Live App](https://spa-rho-sandy.vercel.app)**
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.4-42b883?logo=vue.js&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
-![PWA](https://img.shields.io/badge/PWA-offline--first-5a0fc8)
+![Supabase](https://img.shields.io/badge/Supabase-cloud--sync-3ecf8e?logo=supabase&logoColor=white)
+![PWA](https://img.shields.io/badge/PWA-installable-5a0fc8)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
 
 ## What It Does
 
-Lift lets you track any strength exercise over time. Log a set (weight + reps + date), and the app immediately computes your estimated 1-rep max, detects whether you just hit a personal record, and plots your progress on a live SVG chart. All data lives in `localStorage` — no backend, no account required.
+Lift lets you track any strength exercise over time. Log a set (weight + reps + date), and the app immediately computes your estimated 1-rep max, detects whether you just hit a personal record, and plots your progress on a live SVG chart. Sign in with Google to sync your data across devices via Supabase — or use the app offline with local storage.
 
 ---
 
 ## Features
 
-| Feature | Details |
-|---|---|
-| **Set logging** | Record weight, reps, and date for any exercise |
-| **1RM estimation** | Epley formula (`weight × (1 + reps / 30)`) computed on every set |
-| **Progress graphs** | Per-exercise SVG line chart — best estimated 1RM per day, area fill, PR annotations |
-| **Personal records** | Automatic PR detection with highlighted dot + badge |
-| **Full CRUD** | Add, edit, and delete individual sets or clear all sets for an exercise |
-| **5 themes** | Midnight · Graphite · Arctic · Forge · Garden — persisted across sessions |
-| **Offline-first PWA** | Installable on iOS and Android; all assets pre-cached via Workbox service worker |
-| **Persistent storage** | `localStorage` — data survives app restarts and device reboots |
+### Workout Tracking
+- Log weight, reps, and date for any exercise
+- Epley 1RM estimation (`weight × (1 + reps / 30)`) computed on every set
+- Per-exercise SVG line chart — best estimated 1RM per day with area fill
+- PR detection — gold row highlight + 🏆 trophy badge on personal record sets
+- Set list capped at 10 most recent, with "Show all" toggle
+- Full CRUD: add, edit, and delete individual sets; clear all sets per exercise
+
+### Training Calendar
+- Monthly and weekly views of all training days
+- Color-coded exercise dots per day (stable color per exercise)
+- 🏆 trophy badge on days/exercises where a PR was set
+- Tap any exercise tag to expand all sets logged that day
+- PR sets highlighted in gold within the expanded detail
+
+### Body Weight Tracking
+- Log daily weigh-ins with date
+- SVG line chart filtered by period: 7d / 30d / 90d / 1y
+- Stats row per period: Change, Low, High, Avg
+- All-time low (green) and high (red) highlighted in the entry list
+
+### Auth & Sync
+- Google OAuth via Supabase — one-tap sign in
+- Optimistic local-first writes: UI updates instantly, Supabase syncs in background
+- One-time migration of existing localStorage data on first sign-in
+- Data persists in localStorage for offline use; Supabase for cross-device sync
+
+### UI & Experience
+- Bottom tab bar: Workouts · Calendar · Weight
+- 6 themes: Midnight · Graphite · Arctic · Forge · Aaron · Tina
+- Liquid Glass mode — frosted glass cards, tab bar, and modals with per-theme ambient mesh gradients; toggleable and persisted
+- Collapsible theme picker with Liquid Glass toggle
+- Tap outside theme dropdown to dismiss
+- Portrait-only: landscape blocked with a clean overlay
+- Scroll locked to each tab's content — no full-page scroll for an app-like feel
+- Safe-area insets respected for notched devices
 
 ---
 
-## Tech Stack & Design Decisions
+## Tech Stack
 
 | Layer | Choice | Why |
 |---|---|---|
-| **UI framework** | Vue 3 (`<script setup>`, Composition API) | Fine-grained reactivity; single-file components keep markup, logic, and styles co-located |
-| **State management** | Pinia | Lightweight, type-friendly alternative to Vuex; store syncs to `localStorage` on every mutation |
-| **Build tooling** | Vite 5 | Sub-second HMR, native ESM, zero config for Vue |
-| **PWA / Service worker** | `vite-plugin-pwa` + Workbox | Pre-caches all static assets at build time; runtime strategy falls back to cache for offline use |
-| **Charts** | Hand-rolled SVG | No chart library needed — the graph is a `<polyline>` + `<polygon>` computed from normalized data points in a Vue `computed` property |
-| **Styling** | CSS custom properties | All 5 themes are a single `:root` swap; no runtime JS required for theme changes |
-| **Deployment** | Vercel / Netlify | Both ship with config files (`vercel.json`, `netlify.toml`) already in the repo |
+| **UI framework** | Vue 3 (`<script setup>`) | Fine-grained reactivity; single-file components |
+| **State** | Pinia | Lightweight store; syncs to localStorage on every mutation |
+| **Backend / Auth** | Supabase | Postgres with RLS, Google OAuth, realtime-ready |
+| **Build** | Vite 5 | Sub-second HMR, native ESM |
+| **PWA** | `vite-plugin-pwa` + Workbox | Pre-caches all static assets; installable on iOS & Android |
+| **Charts** | Hand-rolled SVG | `<polyline>` + `<polygon>` computed from normalized data — no chart library |
+| **Styling** | CSS custom properties | All themes + glass tokens are a single `data-theme` attribute swap |
+| **Deployment** | Vercel | Auto-deploys on push; environment variables set in dashboard |
 
 ---
 
-## How the Graph Works
+## Architecture Notes
 
-Rather than pulling in a charting library, `ExerciseGraph.vue` builds its own SVG from scratch. A `computed` property:
+### Local-first writes
+Every action updates Pinia state and `localStorage` immediately, then fires a Supabase call in the background. The UI never waits on the network.
 
-1. Groups all sets by date and picks the best estimated 1RM per day
-2. Normalises each point to `(x, y)` pixel coordinates within fixed padding bounds
-3. Flags each point as a PR if its 1RM is the all-time max up to that date
-4. Renders a `<polyline>` for the line, a `<polygon>` for the area fill, `<circle>` dots for each data point, and a `<text>` PR label where applicable
+### PR detection
+`getExercisePR(exerciseId)` returns the all-time max `estimated1RM` across all sets for that exercise. Any set where `set.estimated1RM === PR` gets the gold treatment — in both the workout list and the calendar.
 
-This means zero external dependencies and total control over appearance — the chart inherits the active theme automatically through CSS custom properties.
+### Calendar PR map
+A `prMap` computed property (`YYYY-MM-DD → Set<exerciseName>`) is derived from the store at render time. The calendar reads this to show 🏆 badges on cells and exercise tags without any extra queries.
+
+### Glass system
+Each theme defines `--glass-fill`, `--glass-edge`, `--glass-shine`, `--glass-bar`, `--glass-overlay`, and `--mesh` tokens. When `data-glass="on"` (default), cards and chrome use `backdrop-filter: blur()` with translucent fills. `data-glass="off"` overrides fall back to solid `--bg-secondary` / `--bg-elevated` values.
 
 ---
 
 ## Getting Started
 
 ```bash
-# Clone and install
-git clone https://github.com/aschung212/spa.git
-cd spa
+git clone https://github.com/your-username/lift.git
+cd lift
 npm install
+```
 
-# Generate PWA icons (pure Node.js, no deps required)
-node scripts/generate-icons.js
+Create `.env.local` with your Supabase credentials:
 
-# Start the dev server at http://localhost:5173
-npm run dev
+```
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+Run the Supabase migration in `supabase/migration.sql` to create the required tables and RLS policies, then:
+
+```bash
+npm run dev   # http://localhost:5173
 ```
 
 ### Production build
 
 ```bash
 npm run build    # outputs to dist/
-npm run preview  # preview the production build locally
+npm run preview  # preview production build locally
 ```
 
 ### Deploy
 
-Push to GitHub and connect the repo to [Vercel](https://vercel.com) or [Netlify](https://netlify.com). Both platforms auto-detect `npm run build` and the `dist/` output directory. Config files for both are already included.
+Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard. Enable Google as an OAuth provider in Supabase and add your Vercel domain to the allowed redirect URLs.
 
 ---
 
@@ -91,50 +128,45 @@ Push to GitHub and connect the repo to [Vercel](https://vercel.com) or [Netlify]
 
 ```
 ├── public/
-│   ├── icon.svg               # Source SVG app icon
-│   ├── icon-192.png           # PWA manifest icon (192×192)
-│   ├── icon-512.png           # PWA manifest icon (512×512)
-│   └── apple-touch-icon.png   # iOS home screen icon (180×180)
+│   ├── icon.svg
+│   ├── icon-192.png
+│   ├── icon-512.png
+│   └── apple-touch-icon.png
 ├── scripts/
-│   └── generate-icons.js      # Zero-dependency icon generator
+│   └── generate-icons.js
 ├── src/
 │   ├── components/
-│   │   ├── WorkoutTracker.vue  # Main UI — exercise list, log modal, edit modal
-│   │   └── ExerciseGraph.vue   # Hand-rolled SVG progress chart
+│   │   ├── WorkoutTracker.vue   # Exercise list, log/edit modal, set list, PR badges
+│   │   ├── CalendarView.vue     # Monthly/weekly calendar, PR map, set detail expand
+│   │   ├── BodyweightTracker.vue # Weight log, period stats, SVG chart, low/high badges
+│   │   └── AuthScreen.vue       # Google sign-in screen
 │   ├── composables/
-│   │   └── useTheme.js         # Theme switching + localStorage persistence
+│   │   ├── useTheme.js          # Theme + glass toggle, localStorage persistence
+│   │   └── useAuth.js           # Supabase session, Google OAuth, store init on sign-in
 │   ├── stores/
-│   │   └── workout.js          # Pinia store — CRUD actions + Epley 1RM + getters
-│   ├── App.vue
+│   │   ├── workout.js           # Exercises + sets CRUD, Epley 1RM, PR getter, Supabase sync
+│   │   └── bodyweight.js        # Weight entries CRUD, min/max getters, Supabase sync
+│   ├── lib/
+│   │   ├── supabase.js          # Supabase client singleton
+│   │   └── migrate.js           # One-time localStorage → Supabase migration
+│   ├── App.vue                  # Tab bar, theme picker, glass toggle, auth gate
 │   ├── main.js
-│   └── index.css               # Design tokens (CSS vars) + all styles for all themes
+│   └── index.css                # All theme tokens, glass tokens, component styles
+├── supabase/
+│   └── migration.sql            # Creates exercises, sets, bodyweight_entries with RLS
 ├── index.html
 ├── vite.config.js
-├── netlify.toml
 └── vercel.json
 ```
 
 ---
 
-## PWA / Installing on Mobile
+## Installing on Mobile
 
-- **iOS (Safari):** Share → "Add to Home Screen" → launches in standalone mode (no browser chrome)
-- **Android (Chrome):** Browser prompts to install, or use the menu → "Add to Home Screen"
-- Once installed, the app works fully offline — all assets are pre-cached on first load by the Workbox service worker
-- Data is stored in `localStorage` and persists indefinitely
-
----
-
-## Regenerating Icons
-
-The icon generator is a zero-dependency Node script that programmatically renders a barbell graphic and outputs all required PWA icon sizes:
-
-```bash
-node scripts/generate-icons.js
-# → public/icon-192.png
-# → public/icon-512.png
-# → public/apple-touch-icon.png
-```
+- **iOS (Safari):** Share → "Add to Home Screen" → launches in standalone mode with portrait lock
+- **Android (Chrome):** Menu → "Add to Home Screen" or install prompt
+- Once installed, all assets are pre-cached by the Workbox service worker for offline use
+- The PWA manifest enforces portrait orientation when installed
 
 ---
 
