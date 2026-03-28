@@ -33,6 +33,7 @@
           @click="cell.inMonth && cell.exercises.length > 0 && toggleDay(cell.dateStr)"
         >
           <span class="calCellNum">{{ cell.day }}</span>
+          <span v-if="cell.inMonth && hasPR(cell.dateStr)" class="calCellPR">🏆</span>
           <div v-if="cell.exercises.length > 0 && cell.inMonth" class="calDots">
             <span
               v-for="(ex, i) in cell.exercises.slice(0, 3)"
@@ -52,9 +53,9 @@
           <span
             v-for="ex in trainingMap[selectedDay]"
             :key="ex"
-            class="calDetailTag"
+            :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
             :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
-          >{{ ex }}</span>
+          >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }}</span>
         </div>
       </div>
     </template>
@@ -76,9 +77,9 @@
           <span
             v-for="ex in day.exercises"
             :key="ex"
-            class="calWeekTag"
+            :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
             :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
-          >{{ ex }}</span>
+          >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }}</span>
         </div>
       </div>
     </div>
@@ -128,6 +129,31 @@ const trainingMap = computed(() => {
   }
   return map
 })
+
+// Map YYYY-MM-DD → Set of exercise names that achieved an all-time PR on that date
+const prMap = computed(() => {
+  const map = {}
+  for (const exercise of store.exercises) {
+    const pr = store.getExercisePR(exercise.id)
+    if (!pr) continue
+    for (const set of exercise.sets) {
+      if (set.estimated1RM === pr) {
+        const day = set.date.slice(0, 10)
+        if (!map[day]) map[day] = new Set()
+        map[day].add(exercise.name)
+      }
+    }
+  }
+  return map
+})
+
+function isPRExercise(dateStr, exName) {
+  return prMap.value[dateStr]?.has(exName) ?? false
+}
+
+function hasPR(dateStr) {
+  return !!(prMap.value[dateStr]?.size > 0)
+}
 
 function exerciseColor(name) {
   const idx = store.exercises.findIndex(e => e.name === name)

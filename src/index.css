@@ -986,6 +986,7 @@ input[type=number] { -moz-appearance: textfield; }
   flex-direction: column;
   align-items: center;
   gap: 3px;
+  position: relative;
   transition: background-color 0.12s;
 }
 
@@ -1044,6 +1045,14 @@ input[type=number] { -moz-appearance: textfield; }
   line-height: 5px;
 }
 
+.calCellPR {
+  font-size: 9px;
+  line-height: 1;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
 /* Selected day detail */
 .calDetail {
   padding: 12px 16px 14px;
@@ -1072,6 +1081,12 @@ input[type=number] { -moz-appearance: textfield; }
   border-radius: 12px;
   border: 1px solid;
   background: transparent;
+}
+
+.calDetailTagPR {
+  background: rgba(212, 175, 55, 0.10);
+  border-color: #d4af37 !important;
+  color: #d4af37 !important;
 }
 
 /* Weekly view */
@@ -1147,6 +1162,12 @@ input[type=number] { -moz-appearance: textfield; }
   border-radius: 10px;
   border: 1px solid;
   background: transparent;
+}
+
+.calWeekTagPR {
+  background: rgba(212, 175, 55, 0.10);
+  border-color: #d4af37 !important;
+  color: #d4af37 !important;
 }
 
 .calWeekRest {
