@@ -580,8 +580,11 @@ input[type=number] { -moz-appearance: textfield; }
 .wtDateInput {
   display: block;
   width: 100%;
+  max-width: 100%;
   margin-top: 6px;
   color-scheme: dark light;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .wtModalSubtitle {
@@ -799,6 +802,10 @@ input[type=number] { -moz-appearance: textfield; }
 
   .repMaxInputRow {
     min-width: 0;
+  }
+
+  .repMaxUnit {
+    display: none;
   }
 
   .themeSwitcher { gap: 2px; }
