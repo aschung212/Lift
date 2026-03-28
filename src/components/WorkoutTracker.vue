@@ -12,15 +12,25 @@
 
     <ul v-else class="wtExerciseList">
       <li
-        v-for="exercise in store.exercises"
+        v-for="(exercise, index) in store.exercises"
         :key="exercise.id"
         class="wtExerciseItem"
+        :class="{
+          'wt-picked-up': reorderingIndex === index,
+          'wt-drop-target': reorderingIndex !== null && reorderingIndex !== index,
+        }"
       >
-        <!-- Row: expand toggle + per-exercise log button -->
+        <!-- Row: grip handle + expand toggle + per-exercise log button -->
         <div class="wtExerciseHeader">
           <button
+            class="wtDragHandle"
+            :class="{ 'wt-handle-active': reorderingIndex === index }"
+            @click.stop="toggleReorder(index)"
+            aria-label="Reorder exercise"
+          >⠿</button>
+          <button
             class="wtExerciseRow"
-            @click="toggleExpand(exercise.id)"
+            @click="handleExerciseRowClick(exercise.id, index)"
             :aria-expanded="expandedId === exercise.id"
           >
             <span class="wtExerciseName">{{ exercise.name }}</span>
@@ -38,13 +48,16 @@
           >+ Log</button>
         </div>
 
+        <!-- Reorder mode banner -->
+        <div v-if="reorderingIndex !== null && reorderingIndex !== index" class="wtDropHint" @click="dropAt(index)">
+          Tap to move here
+        </div>
+
         <!-- Expanded: graph → all sets → clear -->
         <template v-if="expandedId === exercise.id">
-          <!-- Exercise actions: rename, reorder, delete -->
+          <!-- Exercise actions: rename, delete -->
           <div class="wtExerciseActions">
             <button class="wtExActBtn" @click="openRenameModal(exercise)" aria-label="Rename exercise">Rename</button>
-            <button class="wtExActBtn" :disabled="store.exercises.indexOf(exercise) === 0" @click="store.moveExercise(exercise.id, -1)" aria-label="Move up">▲</button>
-            <button class="wtExActBtn" :disabled="store.exercises.indexOf(exercise) === store.exercises.length - 1" @click="store.moveExercise(exercise.id, 1)" aria-label="Move down">▼</button>
             <button class="wtExActBtn wtExActBtnDel" @click="confirmDeleteId = exercise.id" aria-label="Delete exercise">Delete</button>
           </div>
 
@@ -58,7 +71,11 @@
               v-for="set in visibleSets(exercise)"
               :key="set.id"
               class="wtSetRow"
-              :class="{ wtSetRowPR: set.estimated1RM === store.getExercisePR(exercise.id) }"
+              :class="{
+                wtSetRowPR: set.estimated1RM === store.getExercisePR(exercise.id),
+                'wtSetRowActive': activeSetId === set.id,
+              }"
+              @click="toggleSetActions(set.id)"
             >
               <span class="wtSetDate">{{ formatDate(set.date) }}</span>
               <span class="wtSetDetail">{{ set.weight }} lbs × {{ set.reps }}</span>
@@ -66,7 +83,7 @@
                 ~{{ set.estimated1RM }} lbs
                 <span v-if="set.estimated1RM === store.getExercisePR(exercise.id)" class="wtSetPR">🏆</span>
               </span>
-              <div class="wtSetActions">
+              <div v-if="activeSetId === set.id" class="wtSetActions">
                 <button
                   class="wtSetBtn"
                   @click.stop="openEditModal(exercise, set)"
@@ -266,6 +283,37 @@ const SET_LIMIT = 10
 
 function toggleExpand(id) {
   expandedId.value = expandedId.value === id ? null : id
+}
+
+// ── Reorder (tap-to-place) ───────────────────────────────────────
+const reorderingIndex = ref(null)
+
+function toggleReorder(index) {
+  reorderingIndex.value = reorderingIndex.value === index ? null : index
+}
+
+function handleExerciseRowClick(exerciseId, index) {
+  if (reorderingIndex.value !== null) {
+    dropAt(index)
+    return
+  }
+  toggleExpand(exerciseId)
+}
+
+function dropAt(index) {
+  if (reorderingIndex.value === null || reorderingIndex.value === index) {
+    reorderingIndex.value = null
+    return
+  }
+  store.reorderExercise(reorderingIndex.value, index)
+  reorderingIndex.value = null
+}
+
+// ── Set actions (tap-to-reveal) ──────────────────────────────────
+const activeSetId = ref(null)
+
+function toggleSetActions(setId) {
+  activeSetId.value = activeSetId.value === setId ? null : setId
 }
 
 function toggleShowAll(id) {

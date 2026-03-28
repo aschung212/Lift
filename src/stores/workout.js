@@ -174,6 +174,15 @@ export const useWorkoutStore = defineStore('workout', {
       const [item] = this.exercises.splice(idx, 1)
       this.exercises.splice(newIdx, 0, item)
       this._persist()
+    },
+
+    reorderExercise(fromIndex, toIndex) {
+      if (fromIndex === toIndex) return
+      if (fromIndex < 0 || toIndex < 0) return
+      if (fromIndex >= this.exercises.length || toIndex >= this.exercises.length) return
+      const [item] = this.exercises.splice(fromIndex, 1)
+      this.exercises.splice(toIndex, 0, item)
+      this._persist()
     }
   },
 
