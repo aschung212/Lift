@@ -164,6 +164,10 @@ input[type=number] { -moz-appearance: textfield; }
            calc(env(safe-area-inset-bottom, 0px) + 64px) env(safe-area-inset-left, 0px);
 }
 
+#appShell {
+  width: 100%;
+}
+
 .appContainer {
   width: 100%;
   max-width: 520px;
