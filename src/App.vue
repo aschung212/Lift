@@ -64,7 +64,7 @@
                 </div>
               </div>
             </div>
-            <button class="topBarBtn" @click="signOut">Sign out</button>
+            <button class="topBarBtn" @click="confirmSignOut">Sign out</button>
           </div>
         </div>
 
@@ -157,6 +157,12 @@ function selectTheme(id) {
 function toggleGlass() {
   glassEnabled.value = !glassEnabled.value
   logEvent('glass_toggle', { enabled: glassEnabled.value })
+}
+
+function confirmSignOut() {
+  if (confirm('Sign out?')) {
+    signOut()
+  }
 }
 
 function toggleFeature(featureId) {

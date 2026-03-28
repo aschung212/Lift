@@ -467,7 +467,7 @@ input[type=number] { -moz-appearance: textfield; }
 .topBarRight {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
 }
 
 .topBarRight > div {
