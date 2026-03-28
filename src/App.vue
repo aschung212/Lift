@@ -13,7 +13,7 @@
       <div class="appContainer">
         <!-- Top bar -->
         <div class="topBar">
-          <div class="topBarLeft">
+          <div class="topBarLeft" ref="themeDropdownEl">
             <button class="topBarBtn" @click="themeOpen = !themeOpen" title="Change theme" :aria-expanded="themeOpen">
               <span class="themeActiveDot" :style="{ background: THEMES.find(t => t.id === currentTheme)?.dot }"></span>
               <span class="topBarBtnLabel">Theme</span>
@@ -85,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import WorkoutTracker from './components/WorkoutTracker.vue'
 import BodyweightTracker from './components/BodyweightTracker.vue'
 import CalendarView from './components/CalendarView.vue'
@@ -97,4 +97,14 @@ const { currentTheme, THEMES, glassEnabled } = useTheme()
 const { user, loading, signOut } = useAuth()
 const themeOpen = ref(false)
 const activeTab = ref('workouts')
+const themeDropdownEl = ref(null)
+
+function onClickOutside(e) {
+  if (themeOpen.value && themeDropdownEl.value && !themeDropdownEl.value.contains(e.target)) {
+    themeOpen.value = false
+  }
+}
+
+onMounted(() => document.addEventListener('pointerdown', onClickOutside, true))
+onUnmounted(() => document.removeEventListener('pointerdown', onClickOutside, true))
 </script>
