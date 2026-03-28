@@ -370,8 +370,9 @@ input[type=number] { -moz-appearance: textfield; }
   flex-shrink: 0;
 }
 
-.wtSet1RMPR {
+.wtSetPR {
   color: var(--accent);
+  font-size: 11px;
 }
 
 .wtSetEmpty {

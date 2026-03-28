@@ -53,8 +53,9 @@
             >
               <span class="wtSetDate">{{ formatDate(set.date) }}</span>
               <span class="wtSetDetail">{{ set.weight }} lbs × {{ set.reps }}</span>
-              <span class="wtSet1RM" :class="{ wtSet1RMPR: set.estimated1RM === store.getExercisePR(exercise.id) }">
+              <span class="wtSet1RM">
                 ~{{ set.estimated1RM }} lbs
+                <span v-if="set.estimated1RM === store.getExercisePR(exercise.id)" class="wtSetPR">★</span>
               </span>
               <div class="wtSetActions">
                 <button
