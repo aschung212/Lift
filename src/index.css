@@ -183,18 +183,29 @@ html, body {
   overflow: hidden;
 }
 
-/* ─── Landscape: counter-rotate to stay portrait ─────────────────────────── */
+/* ─── Landscape blocker ──────────────────────────────────────────────────── */
 
 @media (orientation: landscape) and (max-height: 600px) {
-  html {
-    width: 100svh;
-    height: 100svw;
-    transform: translateY(100svh) rotate(-90deg);
-    transform-origin: left top;
+  #appShell::before {
+    content: '';
     position: fixed;
-    top: 0;
-    left: 0;
-    overflow: hidden;
+    inset: 0;
+    background: #0f0f0f;
+    z-index: 9998;
+  }
+
+  #appShell::after {
+    content: 'Please rotate your device';
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.55);
+    z-index: 9999;
   }
 }
 
