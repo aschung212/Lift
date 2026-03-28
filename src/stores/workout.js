@@ -137,6 +137,43 @@ export const useWorkoutStore = defineStore('workout', {
       if (supabase && this._userId) {
         supabase.from('sets').delete().eq('exercise_id', exerciseId).then()
       }
+    },
+
+    renameExercise(exerciseId, newName) {
+      const trimmed = newName.trim()
+      if (!trimmed) return
+      const exercise = this.exercises.find(e => e.id === exerciseId)
+      if (!exercise) return
+      exercise.name = trimmed
+      this._persist()
+
+      if (supabase && this._userId) {
+        supabase.from('exercises').update({ name: trimmed }).eq('id', exerciseId).then()
+      }
+    },
+
+    deleteExercise(exerciseId) {
+      const idx = this.exercises.findIndex(e => e.id === exerciseId)
+      if (idx === -1) return
+      this.exercises.splice(idx, 1)
+      this._persist()
+
+      if (supabase && this._userId) {
+        Promise.all([
+          supabase.from('sets').delete().eq('exercise_id', exerciseId),
+          supabase.from('exercises').delete().eq('id', exerciseId)
+        ]).then()
+      }
+    },
+
+    moveExercise(exerciseId, direction) {
+      const idx = this.exercises.findIndex(e => e.id === exerciseId)
+      if (idx === -1) return
+      const newIdx = idx + direction
+      if (newIdx < 0 || newIdx >= this.exercises.length) return
+      const [item] = this.exercises.splice(idx, 1)
+      this.exercises.splice(newIdx, 0, item)
+      this._persist()
     }
   },
 

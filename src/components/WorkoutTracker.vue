@@ -40,6 +40,14 @@
 
         <!-- Expanded: graph → all sets → clear -->
         <template v-if="expandedId === exercise.id">
+          <!-- Exercise actions: rename, reorder, delete -->
+          <div class="wtExerciseActions">
+            <button class="wtExActBtn" @click="openRenameModal(exercise)" aria-label="Rename exercise">Rename</button>
+            <button class="wtExActBtn" :disabled="store.exercises.indexOf(exercise) === 0" @click="store.moveExercise(exercise.id, -1)" aria-label="Move up">▲</button>
+            <button class="wtExActBtn" :disabled="store.exercises.indexOf(exercise) === store.exercises.length - 1" @click="store.moveExercise(exercise.id, 1)" aria-label="Move down">▼</button>
+            <button class="wtExActBtn wtExActBtnDel" @click="confirmDeleteId = exercise.id" aria-label="Delete exercise">Delete</button>
+          </div>
+
           <!-- Progress graph -->
           <ExerciseGraph :exercise="exercise" />
 
@@ -192,6 +200,52 @@
         <div class="repMaxActions">
           <button class="repMaxBtn wtConfirmBtnDanger" @click="confirmClear">Clear All</button>
           <button class="repMaxBtn repMaxBtnClose" @click="confirmClearId = null">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Rename Exercise Modal -->
+  <Teleport to="body">
+    <div v-if="renameTarget !== null" class="repMaxOverlay" @click.self="renameTarget = null">
+      <div class="repMaxModal">
+        <h2>Rename Exercise</h2>
+        <label class="repMaxLabel">
+          Exercise name
+          <div class="repMaxInputRow">
+            <input
+              v-model.trim="renameName"
+              type="text"
+              class="repMaxInput"
+              autocomplete="off"
+              @keyup.enter="confirmRename"
+            />
+          </div>
+        </label>
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnCalc" :disabled="!renameName" @click="confirmRename">Save</button>
+          <button class="repMaxBtn repMaxBtnClose" @click="renameTarget = null">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Confirm Delete Exercise Modal -->
+  <Teleport to="body">
+    <div v-if="confirmDeleteId !== null" class="repMaxOverlay" @click.self="confirmDeleteId = null">
+      <div class="repMaxModal wtConfirmModal">
+        <div class="wtConfirmIcon">⚠️</div>
+        <h2>Delete Exercise?</h2>
+        <p class="wtConfirmText">
+          This will permanently delete
+          <strong>{{ confirmDeleteExercise?.name }}</strong>
+          and all <strong>{{ confirmDeleteExercise?.sets.length }}</strong>
+          set{{ confirmDeleteExercise?.sets.length !== 1 ? 's' : '' }}.
+          This cannot be undone.
+        </p>
+        <div class="repMaxActions">
+          <button class="repMaxBtn wtConfirmBtnDanger" @click="confirmDelete">Delete</button>
+          <button class="repMaxBtn repMaxBtnClose" @click="confirmDeleteId = null">Cancel</button>
         </div>
       </div>
     </div>
@@ -354,5 +408,37 @@ function confirmClear() {
   if (confirmClearId.value === null) return
   store.clearSets(confirmClearId.value)
   confirmClearId.value = null
+}
+
+// ── Rename exercise state ─────────────────────────────────────────
+const renameTarget = ref(null)
+const renameName = ref('')
+
+function openRenameModal(exercise) {
+  renameTarget.value = exercise.id
+  renameName.value = exercise.name
+}
+
+function confirmRename() {
+  if (!renameTarget.value || !renameName.value) return
+  store.renameExercise(renameTarget.value, renameName.value)
+  renameTarget.value = null
+  renameName.value = ''
+}
+
+// ── Delete exercise state ─────────────────────────────────────────
+const confirmDeleteId = ref(null)
+
+const confirmDeleteExercise = computed(() =>
+  confirmDeleteId.value !== null
+    ? store.exercises.find(e => e.id === confirmDeleteId.value)
+    : null
+)
+
+function confirmDelete() {
+  if (confirmDeleteId.value === null) return
+  if (expandedId.value === confirmDeleteId.value) expandedId.value = null
+  store.deleteExercise(confirmDeleteId.value)
+  confirmDeleteId.value = null
 }
 </script>

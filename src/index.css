@@ -241,6 +241,7 @@ input[type=number] { -moz-appearance: textfield; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .appContainer {
@@ -251,6 +252,7 @@ input[type=number] { -moz-appearance: textfield; }
   flex-direction: column;
   overflow: hidden;
   padding: 0 14px;
+  margin: 0 auto;
 }
 
 .tabContent {
@@ -273,6 +275,8 @@ input[type=number] { -moz-appearance: textfield; }
   -webkit-backdrop-filter: blur(28px) saturate(180%);
   border-top: 1px solid var(--glass-edge, var(--border));
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
   z-index: 90;
 }
 
@@ -628,6 +632,43 @@ input[type=number] { -moz-appearance: textfield; }
 
 .wtExerciseLogBtn:hover  { background: var(--accent-subtle); }
 .wtExerciseLogBtn:active { opacity: 0.75; }
+
+/* ─── Exercise actions (rename, reorder, delete) ───────────────────────── */
+
+.wtExerciseActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.wtExActBtn {
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  transition: opacity 0.12s;
+}
+
+.wtExActBtn:active { opacity: 0.7; }
+.wtExActBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.wtExActBtnDel {
+  margin-left: auto;
+  background: var(--danger-subtle);
+  color: var(--danger);
+  border-color: transparent;
+}
 
 /* ─── Set rows ──────────────────────────────────────────────────────────── */
 
