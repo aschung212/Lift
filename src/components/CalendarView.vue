@@ -60,11 +60,11 @@
               v-if="isPRExercise(selectedDay, ex) && prDetailKey === `${selectedDay}::${ex}` && getPRSet(selectedDay, ex)"
               class="calPRDetail"
             >
-              <span>{{ getPRSet(selectedDay, ex).weight }} kg</span>
+              <span>{{ getPRSet(selectedDay, ex).weight }} lbs</span>
               <span class="calPRDetailSep">×</span>
               <span>{{ getPRSet(selectedDay, ex).reps }} reps</span>
               <span class="calPRDetailSep">·</span>
-              <span>~{{ Math.round(getPRSet(selectedDay, ex).estimated1RM) }} kg e1RM</span>
+              <span>~{{ Math.round(getPRSet(selectedDay, ex).estimated1RM) }} lbs e1RM</span>
             </div>
           </template>
         </div>
@@ -95,11 +95,11 @@
               v-if="isPRExercise(day.dateStr, ex) && prDetailKey === `${day.dateStr}::${ex}` && getPRSet(day.dateStr, ex)"
               class="calPRDetail"
             >
-              <span>{{ getPRSet(day.dateStr, ex).weight }} kg</span>
+              <span>{{ getPRSet(day.dateStr, ex).weight }} lbs</span>
               <span class="calPRDetailSep">×</span>
               <span>{{ getPRSet(day.dateStr, ex).reps }} reps</span>
               <span class="calPRDetailSep">·</span>
-              <span>~{{ Math.round(getPRSet(day.dateStr, ex).estimated1RM) }} kg e1RM</span>
+              <span>~{{ Math.round(getPRSet(day.dateStr, ex).estimated1RM) }} lbs e1RM</span>
             </div>
           </template>
         </div>

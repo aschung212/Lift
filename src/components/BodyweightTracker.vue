@@ -11,6 +11,41 @@
       <span class="bwCurrentValue">{{ store.latestWeight }} lbs</span>
     </div>
 
+    <!-- Period selector -->
+    <div v-if="store.entries.length > 0" class="bwPeriodRow">
+      <button
+        v-for="p in PERIODS"
+        :key="p.days"
+        :class="['bwPeriodBtn', { active: period === p.days }]"
+        @click="period = p.days"
+      >{{ p.label }}</button>
+    </div>
+
+    <!-- Stats cards -->
+    <div v-if="periodStats && periodStats.count >= 2" class="bwStatsRow">
+      <div class="bwStatCard">
+        <span class="bwStatLabel">Change</span>
+        <span :class="['bwStatValue', periodStats.change < 0 ? 'bwStatDown' : periodStats.change > 0 ? 'bwStatUp' : '']">
+          {{ periodStats.change > 0 ? '+' : '' }}{{ periodStats.change.toFixed(1) }} lbs
+        </span>
+      </div>
+      <div class="bwStatCard">
+        <span class="bwStatLabel">Low</span>
+        <span class="bwStatValue">{{ periodStats.min }} lbs</span>
+      </div>
+      <div class="bwStatCard">
+        <span class="bwStatLabel">High</span>
+        <span class="bwStatValue">{{ periodStats.max }} lbs</span>
+      </div>
+      <div class="bwStatCard">
+        <span class="bwStatLabel">Avg</span>
+        <span class="bwStatValue">{{ periodStats.avg }} lbs</span>
+      </div>
+    </div>
+    <div v-else-if="periodStats && periodStats.count === 1" class="bwStatsSingle">
+      Only 1 entry in this period — log more to see trends.
+    </div>
+
     <!-- Graph -->
     <div v-if="points.length >= 2" class="wtGraphWrap">
       <p class="wtGraphTitle">Weight Over Time</p>
@@ -188,6 +223,15 @@ function save() {
   closeModal()
 }
 
+// ── Period ───────────────────────────────────────────────────────
+const PERIODS = [
+  { label: '7d',  days: 7 },
+  { label: '30d', days: 30 },
+  { label: '90d', days: 90 },
+  { label: '1y',  days: 365 },
+]
+const period = ref(30)
+
 // ── Graph ────────────────────────────────────────────────────────
 const W = 320
 const H = 118
@@ -198,33 +242,52 @@ const PAD_B = 26
 const chartW = W - PAD_L - PAD_R
 const chartH = H - PAD_T - PAD_B
 
-// Best (latest) weight per calendar date, sorted chronologically
+// Best (latest) weight per calendar date, sorted chronologically — all time
 const dailyLatest = computed(() => {
   const byDate = {}
   for (const e of store.entries) {
     const day = e.date.slice(0, 10)
-    // Keep the latest entry for each day (by id, higher = newer)
-    if (!byDate[day] || e.id > byDate[day].id) {
-      byDate[day] = e
-    }
+    if (!byDate[day] || e.id > byDate[day].id) byDate[day] = e
   }
   return Object.entries(byDate)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, e]) => ({ date, weight: e.weight }))
 })
 
+// Filtered to selected period window
+const filteredDaily = computed(() => {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - period.value)
+  const cutoffStr = cutoff.toISOString().slice(0, 10)
+  return dailyLatest.value.filter(d => d.date >= cutoffStr)
+})
+
+// Stats for the selected period
+const periodStats = computed(() => {
+  const entries = filteredDaily.value
+  if (!entries.length) return null
+  const weights = entries.map(e => e.weight)
+  const min = Math.min(...weights)
+  const max = Math.max(...weights)
+  const avg = (weights.reduce((s, w) => s + w, 0) / weights.length).toFixed(1)
+  const change = entries.length >= 2
+    ? +(entries[entries.length - 1].weight - entries[0].weight).toFixed(1)
+    : null
+  return { min, max, avg, change, count: entries.length }
+})
+
 const minVal = computed(() => {
-  const vals = dailyLatest.value.map(d => d.weight)
+  const vals = filteredDaily.value.map(d => d.weight)
   return vals.length ? Math.min(...vals) : 0
 })
 
 const maxVal = computed(() => {
-  const vals = dailyLatest.value.map(d => d.weight)
+  const vals = filteredDaily.value.map(d => d.weight)
   return vals.length ? Math.max(...vals) : 0
 })
 
 const points = computed(() => {
-  const entries = dailyLatest.value
+  const entries = filteredDaily.value
   if (entries.length < 2) return []
   const n = entries.length
   const range = maxVal.value - minVal.value
