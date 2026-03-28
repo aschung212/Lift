@@ -177,6 +177,11 @@ input[type=number] { -moz-appearance: textfield; }
   align-items: center;
   justify-content: space-between;
   padding: 14px 2px 10px;
+  position: relative;
+}
+
+.topBarLeft {
+  position: relative;
 }
 
 .topBarBtn {
@@ -212,14 +217,19 @@ input[type=number] { -moz-appearance: textfield; }
 }
 
 .themeDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px 12px;
   background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
-  margin-bottom: 10px;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
 }
 
 .themeOption {
