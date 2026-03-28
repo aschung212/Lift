@@ -5,8 +5,8 @@ export const THEMES = [
   { id: 'graphite', label: 'Graphite', dot: '#8b5cf6' },
   { id: 'arctic',   label: 'Arctic',   dot: '#0066ff' },
   { id: 'forge',    label: 'Forge',    dot: '#f59e0b' },
-  { id: 'garden',   label: 'Garden',   dot: '#16a34a' },
-  { id: 'tina',     label: 'Tina',     dot: '#f472b6' },
+  { id: 'aaron',    label: 'Aaron',    dot: '#d4af37' },
+  { id: 'tina',     label: 'Tina',     dot: '#ec4899' },
 ]
 
 const THEME_COLORS = {
@@ -14,8 +14,8 @@ const THEME_COLORS = {
   graphite: '#111118',
   arctic:   '#eeeef5',
   forge:    '#100e0b',
-  garden:   '#edf2ed',
-  tina:     '#fdf2f8',
+  aaron:    '#0c1a0c',
+  tina:     '#f4f4f8',
 }
 
 function applyTheme(id) {
@@ -27,7 +27,7 @@ function applyTheme(id) {
 
 // Apply immediately at import time to prevent flash
 const storedId = localStorage.getItem('app-theme') || 'midnight'
-const validId  = THEMES.find(t => t.id === storedId) ? storedId : 'midnight'
+const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'midnight'
 applyTheme(validId)
 
 const currentTheme = ref(validId)

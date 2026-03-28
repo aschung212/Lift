@@ -84,46 +84,46 @@
   --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
-[data-theme="garden"] {
-  --bg-primary:      #edf2ed;
-  --bg-secondary:    #ffffff;
-  --bg-elevated:     #ffffff;
-  --bg-hover:        #f0f5f0;
-  --border:          #d6e6d6;
-  --border-strong:   #aecaae;
-  --text-primary:    #152015;
-  --text-secondary:  #4a6a4a;
-  --text-muted:      #90aa90;
-  --accent:          #16803a;
-  --accent-hover:    #0f6030;
-  --accent-subtle:   rgba(22, 128, 58, 0.08);
-  --danger:          #c0392b;
-  --danger-subtle:   rgba(192, 57, 43, 0.08);
-  --success:         #16a34a;
-  --success-subtle:  rgba(22, 163, 74, 0.08);
-  --shadow:          0 8px 32px rgba(21, 32, 21, 0.10);
-  --shadow-sm:       0 2px 8px rgba(21, 32, 21, 0.06);
+[data-theme="aaron"] {
+  --bg-primary:      #0c1a0c;
+  --bg-secondary:    #132013;
+  --bg-elevated:     #1a2e1a;
+  --bg-hover:        #223a22;
+  --border:          #1e361e;
+  --border-strong:   #2e522e;
+  --text-primary:    #e4f4e0;
+  --text-secondary:  #6a9a6a;
+  --text-muted:      #3a6a3a;
+  --accent:          #d4af37;
+  --accent-hover:    #b8962e;
+  --accent-subtle:   rgba(212, 175, 55, 0.12);
+  --danger:          #ef4444;
+  --danger-subtle:   rgba(239, 68, 68, 0.12);
+  --success:         #4ade80;
+  --success-subtle:  rgba(74, 222, 128, 0.12);
+  --shadow:          0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 [data-theme="tina"] {
-  --bg-primary:      #fdf2f8;
+  --bg-primary:      #f4f4f8;
   --bg-secondary:    #ffffff;
   --bg-elevated:     #ffffff;
-  --bg-hover:        #fce7f3;
-  --border:          #f9a8d4;
-  --border-strong:   #f472b6;
-  --text-primary:    #500724;
-  --text-secondary:  #9d174d;
-  --text-muted:      #f9a8d4;
-  --accent:          #db2777;
-  --accent-hover:    #be185d;
-  --accent-subtle:   rgba(219, 39, 119, 0.08);
+  --bg-hover:        #ede8f8;
+  --border:          #e2dff0;
+  --border-strong:   #c8c0e0;
+  --text-primary:    #1e1028;
+  --text-secondary:  #7060a0;
+  --text-muted:      #c0b8d8;
+  --accent:          #ec4899;
+  --accent-hover:    #db2777;
+  --accent-subtle:   rgba(236, 72, 153, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
   --success:         #16a34a;
   --success-subtle:  rgba(22, 163, 74, 0.08);
-  --shadow:          0 8px 32px rgba(80, 7, 36, 0.10);
-  --shadow-sm:       0 2px 8px rgba(80, 7, 36, 0.06);
+  --shadow:          0 8px 32px rgba(30, 16, 40, 0.12);
+  --shadow-sm:       0 2px 8px rgba(30, 16, 40, 0.07);
 }
 
 /* ─── Reset & base ───────────────────────────────────────────────────────── */
