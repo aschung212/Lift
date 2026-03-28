@@ -35,6 +35,7 @@
 
       <WorkoutTracker />
       <BodyweightTracker />
+      <CalendarView />
     </div>
   </div>
 </template>
@@ -42,6 +43,7 @@
 <script setup>
 import WorkoutTracker from './components/WorkoutTracker.vue'
 import BodyweightTracker from './components/BodyweightTracker.vue'
+import CalendarView from './components/CalendarView.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import { ref } from 'vue'
 import { useTheme } from './composables/useTheme'
