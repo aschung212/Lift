@@ -10,22 +10,27 @@
 
     <!-- Authenticated app -->
     <div v-else class="appContainer">
-      <!-- Theme switcher + sign out -->
-      <nav class="themeSwitcher" aria-label="Color theme">
+      <!-- Top bar -->
+      <div class="topBar">
+        <button class="topBarBtn" @click="themeOpen = !themeOpen" title="Change theme" :aria-expanded="themeOpen">
+          <span class="themeActiveDot" :style="{ background: THEMES.find(t => t.id === currentTheme)?.dot }"></span>
+          <span class="topBarBtnLabel">Theme</span>
+        </button>
+        <button class="topBarBtn" @click="signOut">Sign out</button>
+      </div>
+
+      <!-- Theme picker dropdown -->
+      <div v-if="themeOpen" class="themeDropdown">
         <button
           v-for="t in THEMES"
           :key="t.id"
-          :class="['themeBtn', { active: currentTheme === t.id }]"
-          @click="currentTheme = t.id"
-          :title="t.label"
+          :class="['themeOption', { active: currentTheme === t.id }]"
+          @click="currentTheme = t.id; themeOpen = false"
         >
           <span class="themeSwatchDot" :style="{ background: t.dot }"></span>
-          <span class="themeSwatchLabel">{{ t.label }}</span>
+          {{ t.label }}
         </button>
-        <button class="themeBtn" @click="signOut" title="Sign out">
-          <span class="themeSwatchLabel">Sign out</span>
-        </button>
-      </nav>
+      </div>
 
       <WorkoutTracker />
       <BodyweightTracker />
@@ -37,9 +42,11 @@
 import WorkoutTracker from './components/WorkoutTracker.vue'
 import BodyweightTracker from './components/BodyweightTracker.vue'
 import AuthScreen from './components/AuthScreen.vue'
+import { ref } from 'vue'
 import { useTheme } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 
 const { currentTheme, THEMES } = useTheme()
 const { user, loading, signOut } = useAuth()
+const themeOpen = ref(false)
 </script>
