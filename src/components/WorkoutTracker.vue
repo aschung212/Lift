@@ -10,27 +10,28 @@
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
-    <ul v-else class="wtExerciseList">
+    <ul v-else class="wtExerciseList" ref="exerciseListEl">
       <li
         v-for="(exercise, index) in store.exercises"
         :key="exercise.id"
         class="wtExerciseItem"
         :class="{
-          'wt-picked-up': reorderingIndex === index,
-          'wt-drop-target': reorderingIndex !== null && reorderingIndex !== index,
+          'wt-dragging': dragState.dragging && dragState.fromIndex === index,
+          'wt-drag-over': dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
         }"
+        :data-index="index"
       >
         <!-- Row: grip handle + expand toggle + per-exercise log button -->
         <div class="wtExerciseHeader">
-          <button
+          <span
             class="wtDragHandle"
-            :class="{ 'wt-handle-active': reorderingIndex === index }"
-            @click.stop="toggleReorder(index)"
-            aria-label="Reorder exercise"
-          >⠿</button>
+            @touchstart.prevent="onDragStart(index, $event)"
+            @mousedown="onDragStart(index, $event)"
+            aria-label="Drag to reorder"
+          >⠿</span>
           <button
             class="wtExerciseRow"
-            @click="handleExerciseRowClick(exercise.id, index)"
+            @click="toggleExpand(exercise.id)"
             :aria-expanded="expandedId === exercise.id"
           >
             <span class="wtExerciseName">{{ exercise.name }}</span>
@@ -46,11 +47,6 @@
             @click="openLogForExercise(exercise.id)"
             aria-label="Log a set for {{ exercise.name }}"
           >+ Log</button>
-        </div>
-
-        <!-- Reorder mode banner -->
-        <div v-if="reorderingIndex !== null && reorderingIndex !== index" class="wtDropHint" @click="dropAt(index)">
-          Tap to move here
         </div>
 
         <!-- Expanded: graph → all sets → clear -->
@@ -270,7 +266,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
 import ExerciseGraph from './ExerciseGraph.vue'
@@ -287,29 +283,54 @@ function toggleExpand(id) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
-// ── Reorder (tap-to-place) ───────────────────────────────────────
-const reorderingIndex = ref(null)
+// ── Drag-to-reorder ─────────────────────────────────────────────
+const exerciseListEl = ref(null)
+const dragState = reactive({ dragging: false, fromIndex: -1, overIndex: -1 })
 
-function toggleReorder(index) {
-  reorderingIndex.value = reorderingIndex.value === index ? null : index
+function getItemIndexFromPoint(clientY) {
+  const list = exerciseListEl.value
+  if (!list) return -1
+  const items = list.querySelectorAll('.wtExerciseItem')
+  for (let i = 0; i < items.length; i++) {
+    const rect = items[i].getBoundingClientRect()
+    if (clientY >= rect.top && clientY <= rect.bottom) return i
+    // If between items, snap to closest
+    if (clientY < rect.top) return Math.max(0, i)
+  }
+  return items.length - 1
 }
 
-function handleExerciseRowClick(exerciseId, index) {
-  if (reorderingIndex.value !== null) {
-    dropAt(index)
-    return
-  }
-  toggleExpand(exerciseId)
-}
+function onDragStart(index, event) {
+  dragState.dragging = true
+  dragState.fromIndex = index
+  dragState.overIndex = index
 
-function dropAt(index) {
-  if (reorderingIndex.value === null || reorderingIndex.value === index) {
-    reorderingIndex.value = null
-    return
+  const onMove = (e) => {
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+    const idx = getItemIndexFromPoint(clientY)
+    if (idx !== -1) dragState.overIndex = idx
   }
-  store.reorderExercise(reorderingIndex.value, index)
-  reorderingIndex.value = null
-  logEvent('exercise_reorder')
+
+  const onEnd = () => {
+    document.removeEventListener('touchmove', onMove)
+    document.removeEventListener('touchend', onEnd)
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onEnd)
+
+    if (dragState.fromIndex !== dragState.overIndex) {
+      store.reorderExercise(dragState.fromIndex, dragState.overIndex)
+      logEvent('exercise_reorder')
+    }
+
+    dragState.dragging = false
+    dragState.fromIndex = -1
+    dragState.overIndex = -1
+  }
+
+  document.addEventListener('touchmove', onMove, { passive: true })
+  document.addEventListener('touchend', onEnd, { once: true })
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onEnd, { once: true })
 }
 
 // ── Set actions (tap-to-reveal) ──────────────────────────────────
