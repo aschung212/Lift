@@ -5,7 +5,7 @@ export const THEMES = [
   { id: 'graphite', label: 'Graphite', dot: '#8b5cf6' },
   { id: 'arctic',   label: 'Arctic',   dot: '#0066ff' },
   { id: 'forge',    label: 'Forge',    dot: '#f59e0b' },
-  { id: 'aaron',    label: 'Aaron',    dot: '#d4af37' },
+  { id: 'aaron',    label: 'Aaron',    dot: '#4a7a2a' },
   { id: 'tina',     label: 'Tina',     dot: '#ec4899' },
 ]
 
@@ -14,7 +14,7 @@ const THEME_COLORS = {
   graphite: '#111118',
   arctic:   '#eeeef5',
   forge:    '#100e0b',
-  aaron:    '#0c1a0c',
+  aaron:    '#0e1209',
   tina:     '#f4f4f8',
 }
 
