@@ -28,6 +28,12 @@
                 <span class="themeSwatchDot" :style="{ background: t.dot }"></span>
                 {{ t.label }}
               </button>
+              <div class="themeGlassRow">
+                <span class="themeGlassLabel">Liquid Glass</span>
+                <button :class="['glassToggle', { on: glassEnabled }]" @click="glassEnabled = !glassEnabled" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
             </div>
           </div>
           <button class="topBarBtn" @click="signOut">Sign out</button>
@@ -87,7 +93,7 @@ import AuthScreen from './components/AuthScreen.vue'
 import { useTheme } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 
-const { currentTheme, THEMES } = useTheme()
+const { currentTheme, THEMES, glassEnabled } = useTheme()
 const { user, loading, signOut } = useAuth()
 const themeOpen = ref(false)
 const activeTab = ref('workouts')

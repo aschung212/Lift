@@ -25,14 +25,24 @@ function applyTheme(id) {
   localStorage.setItem('app-theme', id)
 }
 
+function applyGlass(enabled) {
+  document.documentElement.setAttribute('data-glass', enabled ? 'on' : 'off')
+  localStorage.setItem('app-glass', enabled ? 'on' : 'off')
+}
+
 // Apply immediately at import time to prevent flash
 const storedId = localStorage.getItem('app-theme') || 'midnight'
 const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'midnight'
 applyTheme(validId)
 
+const storedGlass = localStorage.getItem('app-glass') !== 'off'
+applyGlass(storedGlass)
+
 const currentTheme = ref(validId)
+const glassEnabled = ref(storedGlass)
 watch(currentTheme, applyTheme)
+watch(glassEnabled, applyGlass)
 
 export function useTheme() {
-  return { currentTheme, THEMES }
+  return { currentTheme, THEMES, glassEnabled }
 }

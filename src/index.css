@@ -378,6 +378,89 @@ input[type=number] { -moz-appearance: textfield; }
   flex-shrink: 0;
 }
 
+.themeGlassRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
+.themeGlassLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.glassToggle {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  border: none;
+  background: var(--border-strong);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.glassToggle.on {
+  background: var(--accent);
+}
+
+.glassToggleThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.glassToggle.on .glassToggleThumb {
+  transform: translateX(16px);
+}
+
+/* ─── Glass off overrides ────────────────────────────────────────────────── */
+
+[data-glass="off"] body {
+  background: var(--bg-primary);
+}
+
+[data-glass="off"] .wtCard,
+[data-glass="off"] .calCard {
+  background: var(--bg-secondary);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-glass="off"] .tabBar {
+  background: var(--bg-secondary);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top-color: var(--border);
+}
+
+[data-glass="off"] .repMaxOverlay {
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-glass="off"] .repMaxModal {
+  background: var(--bg-elevated);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
 /* ─── Workout tracker card ───────────────────────────────────────────────── */
 
 .wtCard {
