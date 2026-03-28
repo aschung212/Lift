@@ -719,6 +719,28 @@ input[type=number] { -moz-appearance: textfield; }
   border-bottom: 1px solid var(--border);
 }
 
+/* ─── Auth loading ──────────────────────────────────────────────────────── */
+
+.authLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60svh;
+}
+
+.authLoadingDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: authPulse 1s ease-in-out infinite;
+}
+
+@keyframes authPulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.4); }
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 
 /* ─── Bodyweight tracker ────────────────────────────────────────────────── */

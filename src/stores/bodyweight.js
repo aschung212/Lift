@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { supabase } from '../lib/supabase'
 
 const STORAGE_KEY = 'bodyweight-entries'
 
@@ -13,7 +14,8 @@ function load() {
 
 export const useBodyweightStore = defineStore('bodyweight', {
   state: () => ({
-    entries: load()
+    entries: load(),
+    _userId: null
   }),
 
   actions: {
@@ -21,13 +23,43 @@ export const useBodyweightStore = defineStore('bodyweight', {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.entries))
     },
 
+    async init(userId) {
+      this._userId = userId
+      await this._fetchFromSupabase()
+    },
+
+    async _fetchFromSupabase() {
+      if (!supabase || !this._userId) return
+
+      const { data } = await supabase
+        .from('bodyweight_entries')
+        .select('*')
+        .eq('user_id', this._userId)
+        .order('created_at')
+
+      if (!data) return
+
+      this.entries = data.map(e => ({
+        id: e.id,
+        date: e.date,
+        weight: e.weight
+      }))
+      this._persist()
+    },
+
     addEntry(weight, dateStr) {
       const date = dateStr
         ? new Date(dateStr + 'T12:00:00').toISOString()
         : new Date().toISOString()
-      const id = Date.now()
+      const id = crypto.randomUUID()
       this.entries.push({ id, date, weight })
       this._persist()
+
+      if (supabase && this._userId) {
+        supabase.from('bodyweight_entries').insert({
+          id, user_id: this._userId, date, weight
+        }).then()
+      }
       return id
     },
 
@@ -39,16 +71,30 @@ export const useBodyweightStore = defineStore('bodyweight', {
         entry.date = new Date(dateStr + 'T12:00:00').toISOString()
       }
       this._persist()
+
+      if (supabase && this._userId) {
+        const update = { weight }
+        if (dateStr) update.date = entry.date
+        supabase.from('bodyweight_entries').update(update).eq('id', id).then()
+      }
     },
 
     deleteEntry(id) {
       this.entries = this.entries.filter(e => e.id !== id)
       this._persist()
+
+      if (supabase && this._userId) {
+        supabase.from('bodyweight_entries').delete().eq('id', id).then()
+      }
     },
 
     clearAll() {
       this.entries = []
       this._persist()
+
+      if (supabase && this._userId) {
+        supabase.from('bodyweight_entries').delete().eq('user_id', this._userId).then()
+      }
     }
   },
 
