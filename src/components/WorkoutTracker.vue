@@ -47,7 +47,7 @@
           <ul class="wtSetList">
             <li v-if="exercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</li>
             <li
-              v-for="set in [...exercise.sets].reverse()"
+              v-for="set in visibleSets(exercise)"
               :key="set.id"
               class="wtSetRow"
             >
@@ -68,6 +68,13 @@
               </div>
             </li>
           </ul>
+
+          <!-- Show all toggle -->
+          <div v-if="exercise.sets.length > SET_LIMIT" class="wtClearWrap">
+            <button class="wtShowAllBtn" @click="toggleShowAll(exercise.id)">
+              {{ showAllSets.has(exercise.id) ? 'Show less' : `Show all ${exercise.sets.length} sets` }}
+            </button>
+          </div>
 
           <!-- Clear all sets -->
           <div v-if="exercise.sets.length > 0" class="wtClearWrap">
@@ -196,9 +203,22 @@ const store = useWorkoutStore()
 
 // ── Card state ────────────────────────────────────────────────────
 const expandedId = ref(null)
+const showAllSets = ref(new Set())
+const SET_LIMIT = 10
 
 function toggleExpand(id) {
   expandedId.value = expandedId.value === id ? null : id
+}
+
+function toggleShowAll(id) {
+  const next = new Set(showAllSets.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  showAllSets.value = next
+}
+
+function visibleSets(exercise) {
+  const reversed = [...exercise.sets].reverse()
+  return showAllSets.value.has(exercise.id) ? reversed : reversed.slice(0, SET_LIMIT)
 }
 
 function formatDate(iso) {

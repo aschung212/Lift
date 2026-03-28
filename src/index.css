@@ -427,6 +427,22 @@ input[type=number] { -moz-appearance: textfield; }
 .wtClearBtn:hover  { opacity: 1; }
 .wtClearBtn:active { opacity: 0.6; }
 
+.wtShowAllBtn {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 2px;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+
+.wtShowAllBtn:hover  { opacity: 1; }
+.wtShowAllBtn:active { opacity: 0.6; }
+
 /* ─── Modals ─────────────────────────────────────────────────────────────── */
 
 .repMaxOverlay {
