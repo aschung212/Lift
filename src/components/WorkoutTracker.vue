@@ -42,6 +42,22 @@
             </span>
             <span class="wtChevron">{{ expandedId === exercise.id ? '▲' : '▼' }}</span>
           </button>
+          <template v-if="expandedId === exercise.id">
+            <button
+              class="wtExHeaderIconBtn"
+              @click="openRenameModal(exercise)"
+              aria-label="Rename exercise"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+            </button>
+            <button
+              class="wtExHeaderIconBtn wtExHeaderIconBtnDel"
+              @click="confirmDeleteId = exercise.id"
+              aria-label="Delete exercise"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+            </button>
+          </template>
           <button
             class="wtExerciseLogBtn"
             @click="openLogForExercise(exercise.id)"
@@ -51,12 +67,6 @@
 
         <!-- Expanded: graph → all sets → clear -->
         <template v-if="expandedId === exercise.id">
-          <!-- Exercise actions: rename, delete -->
-          <div class="wtExerciseActions">
-            <button class="wtExActBtn" @click="openRenameModal(exercise)" aria-label="Rename exercise">Rename</button>
-            <button class="wtExActBtn wtExActBtnDel" @click="confirmDeleteId = exercise.id" aria-label="Delete exercise">Delete</button>
-          </div>
-
           <!-- Progress graph -->
           <ExerciseGraph :exercise="exercise" />
 
