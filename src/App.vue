@@ -33,9 +33,9 @@
           <button class="topBarBtn" @click="signOut">Sign out</button>
         </div>
 
-        <WorkoutTracker v-show="activeTab === 'workouts'" />
-        <CalendarView v-show="activeTab === 'calendar'" />
-        <BodyweightTracker v-show="activeTab === 'weight'" />
+        <div v-show="activeTab === 'workouts'"><WorkoutTracker /></div>
+        <div v-show="activeTab === 'calendar'"><CalendarView /></div>
+        <div v-show="activeTab === 'weight'"><BodyweightTracker /></div>
       </div>
 
       <!-- Tab bar -->
