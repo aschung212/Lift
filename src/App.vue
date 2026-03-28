@@ -48,7 +48,7 @@
               <div v-if="settingsOpen" class="settingsDropdown">
                 <div class="settingsHeader">Features</div>
                 <div
-                  v-for="tab in TAB_DEFS"
+                  v-for="tab in TAB_DEFS.filter(t => t.id !== 'workouts')"
                   :key="tab.id"
                   class="settingsRow"
                 >

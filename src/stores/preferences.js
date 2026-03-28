@@ -58,6 +58,7 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     toggleFeature(featureId) {
+      if (featureId === 'workouts') return
       this.features[featureId] = !this.features[featureId]
       this._persist()
     },
