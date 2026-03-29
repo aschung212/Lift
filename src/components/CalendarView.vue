@@ -16,6 +16,21 @@
       <button class="calNavBtn" @click="next">›</button>
     </div>
 
+    <!-- Tag filter chips -->
+    <div v-if="store.allTags.length > 0" class="wtTagFilterBar">
+      <button
+        :class="['wtTagChip', { wtTagChipActive: activeTagFilters.length === 0 }]"
+        @click="activeTagFilters = []"
+      >All</button>
+      <button
+        v-for="tag in store.allTags"
+        :key="tag"
+        :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
+        :style="activeTagFilters.includes(tag) ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
+        @click="toggleTagFilter(tag)"
+      >{{ tag }}</button>
+    </div>
+
     <!-- Monthly view -->
     <template v-if="view === 'month'">
       <div class="calGrid">
@@ -186,9 +201,35 @@
 import { ref, computed, watch } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
+import { getTagColor } from '../lib/tagColors'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
+
+// ── Tag filtering ────────────────────────────────────────────────
+const activeTagFilters = ref([])
+
+function toggleTagFilter(tag) {
+  const idx = activeTagFilters.value.indexOf(tag)
+  if (idx >= 0) {
+    activeTagFilters.value = activeTagFilters.value.filter(t => t !== tag)
+  } else {
+    activeTagFilters.value = [...activeTagFilters.value, tag]
+  }
+}
+
+const filteredExercises = computed(() => {
+  if (activeTagFilters.value.length === 0) return store.exercises
+  return store.exercises.filter(e => {
+    const tags = e.tags || []
+    return activeTagFilters.value.some(t => tags.includes(t))
+  })
+})
+
+// Remove stale tags from active filters
+watch(() => store.allTags, (tags) => {
+  activeTagFilters.value = activeTagFilters.value.filter(t => tags.includes(t))
+})
 
 const EXERCISE_COLORS = [
   '#f87171', '#fb923c', '#fbbf24', '#4ade80',
@@ -216,10 +257,10 @@ function toLocalDateStr(d) {
 
 const todayStr = toLocalDateStr(new Date())
 
-// Map YYYY-MM-DD → unique exercise names
+// Map YYYY-MM-DD → unique exercise names (respects tag filter)
 const trainingMap = computed(() => {
   const map = {}
-  for (const exercise of store.exercises) {
+  for (const exercise of filteredExercises.value) {
     for (const set of exercise.sets) {
       const day = set.date.slice(0, 10)
       if (!map[day]) map[day] = []
@@ -232,7 +273,7 @@ const trainingMap = computed(() => {
 // Map YYYY-MM-DD → Set of exercise names that achieved an all-time PR on that date
 const prMap = computed(() => {
   const map = {}
-  for (const exercise of store.exercises) {
+  for (const exercise of filteredExercises.value) {
     const pr = store.getExercisePR(exercise.id)
     if (!pr) continue
     for (const set of exercise.sets) {

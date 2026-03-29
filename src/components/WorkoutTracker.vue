@@ -9,25 +9,16 @@
     <!-- Tag filter chips -->
     <div v-if="store.allTags.length > 0" class="wtTagFilterBar">
       <button
+        :class="['wtTagChip', { wtTagChipActive: activeTagFilters.length === 0 }]"
+        @click="activeTagFilters = []"
+      >All</button>
+      <button
         v-for="tag in store.allTags"
         :key="tag"
         :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
         :style="activeTagFilters.includes(tag) ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
         @click="toggleTagFilter(tag)"
       >{{ tag }}</button>
-    </div>
-    <div v-if="activeTagFilters.length >= 2" class="wtTagMatchBar">
-      <span class="wtTagMatchLabel">Match</span>
-      <div class="wtTagMatchSegment">
-        <button
-          :class="['wtTagMatchBtn', { wtTagMatchBtnActive: tagMatchMode === 'all' }]"
-          @click="tagMatchMode = 'all'"
-        >All</button>
-        <button
-          :class="['wtTagMatchBtn', { wtTagMatchBtnActive: tagMatchMode === 'any' }]"
-          @click="tagMatchMode = 'any'"
-        >Any</button>
-      </div>
     </div>
 
     <p v-if="store.exercises.length === 0" class="wtEmpty">
@@ -361,7 +352,6 @@ const { logEvent } = useAnalytics()
 
 // ── Tag filtering ────────────────────────────────────────────────
 const activeTagFilters = ref([])
-const tagMatchMode = ref('all') // 'all' or 'any'
 
 function toggleTagFilter(tag) {
   const idx = activeTagFilters.value.indexOf(tag)
@@ -376,9 +366,6 @@ const filteredExercises = computed(() => {
   if (activeTagFilters.value.length === 0) return store.exercises
   return store.exercises.filter(e => {
     const tags = e.tags || []
-    if (tagMatchMode.value === 'all') {
-      return activeTagFilters.value.every(t => tags.includes(t))
-    }
     return activeTagFilters.value.some(t => tags.includes(t))
   })
 })
