@@ -4,8 +4,42 @@
       <div class="authLogo">Lift</div>
       <p class="authTagline">Track your sets, monitor progress, hit PRs.</p>
 
+      <!-- Email/password form -->
+      <form class="authForm" @submit.prevent="handleEmailSubmit">
+        <input
+          v-model.trim="email"
+          type="email"
+          placeholder="Email"
+          class="authInput"
+          autocomplete="email"
+          required
+        />
+        <input
+          v-model="password"
+          type="password"
+          placeholder="Password"
+          class="authInput"
+          autocomplete="current-password"
+          :minlength="isSignUp ? 6 : undefined"
+          required
+        />
+        <button class="authSubmitBtn" type="submit" :disabled="submitting">
+          {{ submitting ? '...' : (isSignUp ? 'Create Account' : 'Sign In') }}
+        </button>
+      </form>
+
+      <button class="authModeSwitch" @click="toggleMode">
+        {{ isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up" }}
+      </button>
+
+      <div class="authDivider">
+        <span class="authDividerLine"></span>
+        <span class="authDividerText">or</span>
+        <span class="authDividerLine"></span>
+      </div>
+
       <div class="authProviders">
-        <button class="authProviderBtn authGoogle" @click="handleLogin('google')">
+        <button class="authProviderBtn authGoogle" @click="handleOAuth('google')">
           <svg class="authProviderIcon" viewBox="0 0 24 24" width="18" height="18">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -14,10 +48,9 @@
           </svg>
           Continue with Google
         </button>
-
       </div>
 
-      <p v-if="error" class="authError">{{ error }}</p>
+      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]">{{ message }}</p>
     </div>
   </div>
 </template>
@@ -26,13 +59,52 @@
 import { ref } from 'vue'
 import { useAuth } from '../composables/useAuth'
 
-const { signInWithProvider } = useAuth()
-const error = ref('')
+const { signInWithProvider, signInWithEmail, signUp } = useAuth()
 
-async function handleLogin(provider) {
-  error.value = ''
-  const { error: err } = await signInWithProvider(provider)
-  if (err) error.value = err.message
+const email = ref('')
+const password = ref('')
+const isSignUp = ref(false)
+const submitting = ref(false)
+const message = ref('')
+const isError = ref(false)
+
+function toggleMode() {
+  isSignUp.value = !isSignUp.value
+  message.value = ''
+}
+
+async function handleEmailSubmit() {
+  message.value = ''
+  submitting.value = true
+
+  if (isSignUp.value) {
+    const { error, needsConfirmation } = await signUp(email.value, password.value)
+    if (error) {
+      isError.value = true
+      message.value = error.message
+    } else if (needsConfirmation) {
+      isError.value = false
+      message.value = 'Check your email to confirm your account.'
+      isSignUp.value = false
+    }
+  } else {
+    const { error } = await signInWithEmail(email.value, password.value)
+    if (error) {
+      isError.value = true
+      message.value = error.message
+    }
+  }
+
+  submitting.value = false
+}
+
+async function handleOAuth(provider) {
+  message.value = ''
+  const { error } = await signInWithProvider(provider)
+  if (error) {
+    isError.value = true
+    message.value = error.message
+  }
 }
 </script>
 
@@ -64,6 +136,98 @@ async function handleLogin(provider) {
   color: var(--text-secondary);
   margin-bottom: 32px;
   line-height: 1.5;
+}
+
+.authForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.authInput {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.authInput:focus {
+  border-color: var(--accent);
+}
+
+.authInput::placeholder {
+  color: var(--text-muted);
+}
+
+.authSubmitBtn {
+  width: 100%;
+  padding: 13px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.authSubmitBtn:hover {
+  opacity: 0.9;
+}
+
+.authSubmitBtn:active {
+  opacity: 0.8;
+}
+
+.authSubmitBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.authModeSwitch {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 0.12s;
+}
+
+.authModeSwitch:hover {
+  color: var(--accent);
+}
+
+.authDivider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.authDividerLine {
+  flex: 1;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.authDividerText {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .authProviders {
@@ -103,10 +267,17 @@ async function handleLogin(provider) {
   flex-shrink: 0;
 }
 
-.authError {
+.authMessage {
   margin-top: 16px;
   font-size: 13px;
-  color: var(--danger);
   font-weight: 500;
+}
+
+.authError {
+  color: var(--danger);
+}
+
+.authSuccess {
+  color: var(--success);
 }
 </style>

@@ -58,6 +58,21 @@ async function signInWithProvider(provider) {
   return { error }
 }
 
+async function signInWithEmail(email, password) {
+  if (!supabase) return { error: { message: 'Supabase not configured' } }
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  return { error }
+}
+
+async function signUp(email, password) {
+  if (!supabase) return { error: { message: 'Supabase not configured' } }
+  const { data, error } = await supabase.auth.signUp({ email, password })
+  if (!error && data?.user?.identities?.length === 0) {
+    return { error: { message: 'An account with this email already exists.' } }
+  }
+  return { error, needsConfirmation: !error && !!data?.user && !data?.session }
+}
+
 async function signOut() {
   if (!supabase) return
   await supabase.auth.signOut()
@@ -65,5 +80,5 @@ async function signOut() {
 }
 
 export function useAuth() {
-  return { user, loading, signInWithProvider, signOut }
+  return { user, loading, signInWithProvider, signInWithEmail, signUp, signOut }
 }
