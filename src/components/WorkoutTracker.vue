@@ -156,9 +156,9 @@
           </label>
           <div class="repMaxLabel">
             Tags
-            <div class="wtTagPicker" v-if="store.allTags.length">
+            <div class="wtTagPicker" v-if="allNewExerciseTags.length">
               <button
-                v-for="tag in store.allTags"
+                v-for="tag in allNewExerciseTags"
                 :key="tag"
                 :class="['wtTagPickerChip', { wtTagPickerChipActive: newExerciseTags.includes(tag) }]"
                 :style="newExerciseTags.includes(tag)
@@ -507,6 +507,11 @@ function addNewExerciseTag() {
 function removeNewExerciseTag(tag) {
   newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
 }
+
+const allNewExerciseTags = computed(() => {
+  const all = new Set([...store.allTags, ...newExerciseTags.value])
+  return [...all]
+})
 
 function toggleNewExerciseTag(tag) {
   if (newExerciseTags.value.includes(tag)) {
