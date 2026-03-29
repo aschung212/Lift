@@ -27,13 +27,27 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - PR detection — gold row highlight + 🏆 trophy badge on personal record sets
 - Set list capped at 10 most recent, with "Show all" toggle
 - Full CRUD: add, edit, and delete individual sets; clear all sets per exercise
+- Drag-to-reorder exercises by grip handle
+- Expanded exercise panel with darker inset background for visual contrast
+
+### Exercise Tags
+- Tag exercises with custom labels (e.g. Chest, Legs, Push)
+- Add tags when creating a new exercise or editing an existing one
+- Tappable tag picker with toggle chips for existing tags + text input for new ones
+- Pending tag text is auto-saved when hitting Save (no need to tap "+" first)
+- Multi-tag filtering on both Workouts and Calendar tabs (ANY match)
+- "Clear" button appears above tag chips when a filter is active
 
 ### Training Calendar
 - Monthly and weekly views of all training days
 - Color-coded exercise dots per day (stable color per exercise)
 - 🏆 trophy badge on days/exercises where a PR was set
+- Tap any day to expand its detail panel (including empty days)
 - Tap any exercise tag to expand all sets logged that day
+- Set count badge on each exercise tag (e.g. "Bench Press 3")
 - PR sets highlighted in gold within the expanded detail
+- Log sets directly from the calendar — "+ Log" button on day detail (month) and each day row (week)
+- Tag filtering — filter calendar to show only days/exercises matching selected tags
 
 ### Body Weight Tracking
 - Log daily weigh-ins with date
@@ -48,7 +62,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Data persists in localStorage for offline use; Supabase for cross-device sync
 
 ### UI & Experience
-- Bottom tab bar: Workouts · Calendar · Weight
+- Bottom tab bar: Workouts · Calendar · Weight — each tab can be shown/hidden in settings (at least one must remain)
 - 6 themes: Midnight · Graphite · Arctic · Forge · Aaron · Tina
 - Liquid Glass mode — frosted glass cards, tab bar, and modals with per-theme ambient mesh gradients; toggleable and persisted
 - Collapsible theme picker with Liquid Glass toggle
@@ -136,20 +150,24 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   └── generate-icons.js
 ├── src/
 │   ├── components/
-│   │   ├── WorkoutTracker.vue   # Exercise list, log/edit modal, set list, PR badges
-│   │   ├── CalendarView.vue     # Monthly/weekly calendar, PR map, set detail expand
+│   │   ├── WorkoutTracker.vue   # Exercise list, log/edit modal, set list, PR badges, tag filtering
+│   │   ├── ExerciseGraph.vue    # Per-exercise SVG line chart
+│   │   ├── CalendarView.vue     # Monthly/weekly calendar, PR map, set detail, log modal, tag filtering
 │   │   ├── BodyweightTracker.vue # Weight log, period stats, SVG chart, low/high badges
 │   │   └── AuthScreen.vue       # Google sign-in screen
 │   ├── composables/
 │   │   ├── useTheme.js          # Theme + glass toggle, localStorage persistence
-│   │   └── useAuth.js           # Supabase session, Google OAuth, store init on sign-in
+│   │   ├── useAuth.js           # Supabase session, Google OAuth, store init on sign-in
+│   │   └── useAnalytics.js      # Lightweight event logging
 │   ├── stores/
-│   │   ├── workout.js           # Exercises + sets CRUD, Epley 1RM, PR getter, Supabase sync
-│   │   └── bodyweight.js        # Weight entries CRUD, min/max getters, Supabase sync
+│   │   ├── workout.js           # Exercises + sets CRUD, Epley 1RM, PR getter, tags, Supabase sync
+│   │   ├── bodyweight.js        # Weight entries CRUD, min/max getters, Supabase sync
+│   │   └── preferences.js       # Feature toggles (tab visibility), Supabase sync
 │   ├── lib/
 │   │   ├── supabase.js          # Supabase client singleton
-│   │   └── migrate.js           # One-time localStorage → Supabase migration
-│   ├── App.vue                  # Tab bar, theme picker, glass toggle, auth gate
+│   │   ├── migrate.js           # One-time localStorage → Supabase migration
+│   │   └── tagColors.js         # Deterministic color assignment for exercise tags
+│   ├── App.vue                  # Tab bar, theme picker, glass toggle, settings, auth gate
 │   ├── main.js
 │   └── index.css                # All theme tokens, glass tokens, component styles
 ├── supabase/
