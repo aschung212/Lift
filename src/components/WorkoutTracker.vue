@@ -6,24 +6,36 @@
       <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
     </div>
 
+    <!-- Tag filter chips -->
+    <div v-if="store.allTags.length > 0" class="wtTagFilterBar">
+      <button
+        v-for="tag in store.allTags"
+        :key="tag"
+        :class="['wtTagChip', { wtTagChipActive: activeTagFilter === tag }]"
+        :style="activeTagFilter === tag ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
+        @click="activeTagFilter = activeTagFilter === tag ? null : tag"
+      >{{ tag }}</button>
+    </div>
+
     <p v-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
     <ul v-else class="wtExerciseList" ref="exerciseListEl">
       <li
-        v-for="(exercise, index) in store.exercises"
+        v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
         class="wtExerciseItem"
         :class="{
-          'wt-dragging': dragState.dragging && dragState.fromIndex === index,
-          'wt-drag-over': dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
+          'wt-dragging': !activeTagFilter && dragState.dragging && dragState.fromIndex === index,
+          'wt-drag-over': !activeTagFilter && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
         }"
         :data-index="index"
       >
         <!-- Row: grip handle + expand toggle + per-exercise log button -->
         <div class="wtExerciseHeader">
           <span
+            v-if="!activeTagFilter"
             class="wtDragHandle"
             @touchstart.prevent="onDragStart(index, $event)"
             @mousedown="onDragStart(index, $event)"
@@ -45,8 +57,8 @@
           <template v-if="expandedId === exercise.id">
             <button
               class="wtExHeaderIconBtn"
-              @click="openRenameModal(exercise)"
-              aria-label="Rename exercise"
+              @click="openEditExerciseModal(exercise)"
+              aria-label="Edit exercise"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
             </button>
@@ -228,26 +240,51 @@
     </div>
   </Teleport>
 
-  <!-- Rename Exercise Modal -->
+  <!-- Edit Exercise Modal -->
   <Teleport to="body">
-    <div v-if="renameTarget !== null" class="repMaxOverlay" @click.self="renameTarget = null">
+    <div v-if="editTarget !== null" class="repMaxOverlay" @click.self="editTarget = null">
       <div class="repMaxModal">
-        <h2>Rename Exercise</h2>
+        <h2>Edit Exercise</h2>
         <label class="repMaxLabel">
-          Exercise name
+          Name
           <div class="repMaxInputRow">
             <input
-              v-model.trim="renameName"
+              v-model.trim="editName"
               type="text"
               class="repMaxInput"
               autocomplete="off"
-              @keyup.enter="confirmRename"
             />
           </div>
         </label>
+        <div>
+          <span class="repMaxLabel">Tags</span>
+          <div class="wtEditTagList">
+            <span
+              v-for="tag in editTags"
+              :key="tag"
+              class="wtEditTagPill"
+              :style="{ borderColor: getTagColor(tag).border, background: getTagColor(tag).bg, color: getTagColor(tag).border }"
+              @click="removeEditTag(tag)"
+            >{{ tag }} <span class="wtEditTagPillRemove">&times;</span></span>
+          </div>
+          <div class="wtTagAddRow">
+            <input
+              v-model.trim="newTagInput"
+              type="text"
+              placeholder="Add tag..."
+              class="repMaxInput"
+              list="existingTags"
+              @keyup.enter="addEditTag"
+            />
+            <button class="wtTagAddBtn" @click="addEditTag" :disabled="!newTagInput">+</button>
+          </div>
+          <datalist id="existingTags">
+            <option v-for="tag in store.allTags" :key="tag" :value="tag" />
+          </datalist>
+        </div>
         <div class="repMaxActions">
-          <button class="repMaxBtn repMaxBtnCalc" :disabled="!renameName" @click="confirmRename">Save</button>
-          <button class="repMaxBtn repMaxBtnClose" @click="renameTarget = null">Cancel</button>
+          <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
+          <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
         </div>
       </div>
     </div>
@@ -276,13 +313,31 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
+import { getTagColor } from '../lib/tagColors'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
+
+// ── Tag filtering ────────────────────────────────────────────────
+const activeTagFilter = ref(null)
+
+const filteredExercises = computed(() => {
+  if (!activeTagFilter.value) return store.exercises
+  return store.exercises.filter(e =>
+    (e.tags || []).includes(activeTagFilter.value)
+  )
+})
+
+// Clear filter if the active tag no longer exists
+watch(() => store.allTags, (tags) => {
+  if (activeTagFilter.value && !tags.includes(activeTagFilter.value)) {
+    activeTagFilter.value = null
+  }
+})
 
 // ── Card state ────────────────────────────────────────────────────
 const expandedId = ref(null)
@@ -497,21 +552,37 @@ function confirmClear() {
   logEvent('sets_clear_all', { count })
 }
 
-// ── Rename exercise state ─────────────────────────────────────────
-const renameTarget = ref(null)
-const renameName = ref('')
+// ── Edit exercise state (rename + tags) ──────────────────────────
+const editTarget = ref(null)
+const editName = ref('')
+const editTags = ref([])
+const newTagInput = ref('')
 
-function openRenameModal(exercise) {
-  renameTarget.value = exercise.id
-  renameName.value = exercise.name
+function openEditExerciseModal(exercise) {
+  editTarget.value = exercise.id
+  editName.value = exercise.name
+  editTags.value = [...(exercise.tags || [])]
+  newTagInput.value = ''
 }
 
-function confirmRename() {
-  if (!renameTarget.value || !renameName.value) return
-  store.renameExercise(renameTarget.value, renameName.value)
-  renameTarget.value = null
-  renameName.value = ''
-  logEvent('exercise_rename')
+function addEditTag() {
+  const tag = newTagInput.value.trim()
+  if (tag && !editTags.value.includes(tag)) {
+    editTags.value.push(tag)
+  }
+  newTagInput.value = ''
+}
+
+function removeEditTag(tag) {
+  editTags.value = editTags.value.filter(t => t !== tag)
+}
+
+function confirmEditExercise() {
+  if (!editTarget.value || !editName.value) return
+  store.renameExercise(editTarget.value, editName.value)
+  store.updateExerciseTags(editTarget.value, editTags.value)
+  editTarget.value = null
+  logEvent('exercise_edit')
 }
 
 // ── Delete exercise state ─────────────────────────────────────────

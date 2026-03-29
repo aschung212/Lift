@@ -761,6 +761,101 @@ input[type=number] { -moz-appearance: textfield; }
   background: var(--danger-subtle);
 }
 
+/* ─── Tag filter bar ───────────────────────────────────────────────────── */
+
+.wtTagFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+}
+
+.wtTagChip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.wtTagChipActive {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+}
+
+/* ─── Edit exercise modal: tag section ─────────────────────────────────── */
+
+.wtEditTagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 10px;
+  min-height: 20px;
+}
+
+.wtEditTagPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.12s;
+}
+
+.wtEditTagPill:hover {
+  opacity: 0.7;
+}
+
+.wtEditTagPillRemove {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.wtTagAddRow {
+  display: flex;
+  gap: 6px;
+}
+
+.wtTagAddRow .repMaxInput {
+  flex: 1;
+}
+
+.wtTagAddBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.wtTagAddBtn:hover {
+  background: var(--bg-hover);
+}
+
+.wtTagAddBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* ─── Set rows ──────────────────────────────────────────────────────────── */
 
 .wtSetList {

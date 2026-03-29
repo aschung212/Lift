@@ -46,6 +46,7 @@ export const useWorkoutStore = defineStore('workout', {
       this.exercises = exercises.map(ex => ({
         id: ex.id,
         name: ex.name,
+        tags: ex.tags || [],
         sets: (sets || [])
           .filter(s => s.exercise_id === ex.id)
           .map(s => ({
@@ -67,12 +68,12 @@ export const useWorkoutStore = defineStore('workout', {
       )
       if (existing) return existing.id
       const id = crypto.randomUUID()
-      this.exercises.push({ id, name: trimmed, sets: [] })
+      this.exercises.push({ id, name: trimmed, tags: [], sets: [] })
       this._persist()
 
       if (supabase && this._userId) {
         supabase.from('exercises').insert({
-          id, user_id: this._userId, name: trimmed
+          id, user_id: this._userId, name: trimmed, tags: []
         }).then()
       }
       return id
@@ -152,6 +153,17 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
+    updateExerciseTags(exerciseId, tags) {
+      const exercise = this.exercises.find(e => e.id === exerciseId)
+      if (!exercise) return
+      exercise.tags = [...tags]
+      this._persist()
+
+      if (supabase && this._userId) {
+        supabase.from('exercises').update({ tags }).eq('id', exerciseId).then()
+      }
+    },
+
     deleteExercise(exerciseId) {
       const idx = this.exercises.findIndex(e => e.id === exerciseId)
       if (idx === -1) return
@@ -187,6 +199,12 @@ export const useWorkoutStore = defineStore('workout', {
   },
 
   getters: {
+    allTags: (state) => {
+      const tagSet = new Set()
+      state.exercises.forEach(e => (e.tags || []).forEach(t => tagSet.add(t)))
+      return [...tagSet].sort()
+    },
+
     getExercisePR: (state) => (exerciseId) => {
       const exercise = state.exercises.find(e => e.id === exerciseId)
       if (!exercise || exercise.sets.length === 0) return 0
