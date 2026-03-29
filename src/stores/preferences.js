@@ -58,7 +58,8 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     toggleFeature(featureId) {
-      if (featureId === 'workouts') return
+      // Prevent disabling the last enabled tab
+      if (this.features[featureId] && this.enabledCount <= 1) return
       this.features[featureId] = !this.features[featureId]
       this._persist()
     },
