@@ -156,29 +156,27 @@
           </label>
           <div class="repMaxLabel">
             Tags
-            <div class="wtEditTagList" v-if="newExerciseTags.length">
-              <span
-                v-for="tag in newExerciseTags"
+            <div class="wtTagPicker" v-if="store.allTags.length">
+              <button
+                v-for="tag in store.allTags"
                 :key="tag"
-                class="wtEditTagPill"
-                :style="{ borderColor: getTagColor(tag).border, background: getTagColor(tag).bg, color: getTagColor(tag).border }"
-                @click="removeNewExerciseTag(tag)"
-              >{{ tag }} <span class="wtEditTagPillRemove">&times;</span></span>
+                :class="['wtTagPickerChip', { wtTagPickerChipActive: newExerciseTags.includes(tag) }]"
+                :style="newExerciseTags.includes(tag)
+                  ? { borderColor: getTagColor(tag).border, background: getTagColor(tag).bg, color: getTagColor(tag).border }
+                  : { borderColor: 'var(--border)', color: 'var(--text-secondary)' }"
+                @click="toggleNewExerciseTag(tag)"
+              >{{ tag }}</button>
             </div>
             <div class="wtTagAddRow">
               <input
                 v-model.trim="newExerciseTagInput"
                 type="text"
-                placeholder="Add tag..."
+                placeholder="New tag..."
                 class="repMaxInput"
-                list="existingTagsNew"
                 @keyup.enter="addNewExerciseTag"
               />
               <button class="wtTagAddBtn" @click="addNewExerciseTag" :disabled="!newExerciseTagInput">+</button>
             </div>
-            <datalist id="existingTagsNew">
-              <option v-for="tag in store.allTags" :key="tag" :value="tag" />
-            </datalist>
           </div>
         </template>
 
@@ -286,29 +284,27 @@
         </label>
         <div class="repMaxLabel">
           Tags
-          <div class="wtEditTagList" v-if="editTags.length">
-            <span
-              v-for="tag in editTags"
+          <div class="wtTagPicker" v-if="availableEditTags.length">
+            <button
+              v-for="tag in availableEditTags"
               :key="tag"
-              class="wtEditTagPill"
-              :style="{ borderColor: getTagColor(tag).border, background: getTagColor(tag).bg, color: getTagColor(tag).border }"
-              @click="removeEditTag(tag)"
-            >{{ tag }} <span class="wtEditTagPillRemove">&times;</span></span>
+              :class="['wtTagPickerChip', { wtTagPickerChipActive: editTags.includes(tag) }]"
+              :style="editTags.includes(tag)
+                ? { borderColor: getTagColor(tag).border, background: getTagColor(tag).bg, color: getTagColor(tag).border }
+                : { borderColor: 'var(--border)', color: 'var(--text-secondary)' }"
+              @click="toggleEditTag(tag)"
+            >{{ tag }}</button>
           </div>
           <div class="wtTagAddRow">
             <input
               v-model.trim="newTagInput"
               type="text"
-              placeholder="Add tag..."
+              placeholder="New tag..."
               class="repMaxInput"
-              list="existingTags"
               @keyup.enter="addEditTag"
             />
             <button class="wtTagAddBtn" @click="addEditTag" :disabled="!newTagInput">+</button>
           </div>
-          <datalist id="existingTags">
-            <option v-for="tag in store.allTags" :key="tag" :value="tag" />
-          </datalist>
         </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
@@ -512,6 +508,14 @@ function removeNewExerciseTag(tag) {
   newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
 }
 
+function toggleNewExerciseTag(tag) {
+  if (newExerciseTags.value.includes(tag)) {
+    newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
+  } else {
+    newExerciseTags.value.push(tag)
+  }
+}
+
 // Open modal pre-targeted at a specific existing exercise
 function openLogForExercise(exerciseId) {
   editingSet.value = null
@@ -627,6 +631,20 @@ function addEditTag() {
 function removeEditTag(tag) {
   editTags.value = editTags.value.filter(t => t !== tag)
 }
+
+function toggleEditTag(tag) {
+  if (editTags.value.includes(tag)) {
+    editTags.value = editTags.value.filter(t => t !== tag)
+  } else {
+    editTags.value.push(tag)
+  }
+}
+
+// All known tags, including any on this exercise that might not be in allTags yet
+const availableEditTags = computed(() => {
+  const all = new Set([...store.allTags, ...editTags.value])
+  return [...all]
+})
 
 function confirmEditExercise() {
   if (!editTarget.value || !editName.value) return
