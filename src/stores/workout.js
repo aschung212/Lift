@@ -60,7 +60,7 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
     },
 
-    addExercise(name) {
+    addExercise(name, tags = []) {
       const trimmed = name.trim()
       if (!trimmed) return null
       const existing = this.exercises.find(
@@ -68,12 +68,12 @@ export const useWorkoutStore = defineStore('workout', {
       )
       if (existing) return existing.id
       const id = crypto.randomUUID()
-      this.exercises.push({ id, name: trimmed, tags: [], sets: [] })
+      this.exercises.push({ id, name: trimmed, tags: [...tags], sets: [] })
       this._persist()
 
       if (supabase && this._userId) {
         supabase.from('exercises').insert({
-          id, user_id: this._userId, name: trimmed, tags: []
+          id, user_id: this._userId, name: trimmed, tags: [...tags]
         }).then()
       }
       return id

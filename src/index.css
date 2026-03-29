@@ -793,19 +793,18 @@ input[type=number] { -moz-appearance: textfield; }
 .wtEditTagList {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 6px 0 10px;
-  min-height: 20px;
+  gap: 8px;
+  margin: 10px 0 4px;
 }
 
 .wtEditTagPill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 10px;
+  padding: 5px 10px;
+  border-radius: 12px;
   border: 1px solid;
   cursor: pointer;
   font-family: inherit;
@@ -825,6 +824,8 @@ input[type=number] { -moz-appearance: textfield; }
 .wtTagAddRow {
   display: flex;
   gap: 6px;
+  margin-top: 12px;
+  margin-bottom: 4px;
 }
 
 .wtTagAddRow .repMaxInput {

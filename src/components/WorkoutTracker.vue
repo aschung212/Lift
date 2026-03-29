@@ -140,19 +140,47 @@
       <div class="repMaxModal">
         <h2>{{ modalTitle }}</h2>
 
-        <!-- New exercise mode: name input -->
-        <label v-if="!isEditMode && selectedExerciseId === '__new__'" class="repMaxLabel">
-          Exercise name
-          <div class="repMaxInputRow">
-            <input
-              v-model.trim="newExerciseName"
-              type="text"
-              placeholder="e.g. Bench Press"
-              class="repMaxInput"
-              autocomplete="off"
-            />
+        <!-- New exercise mode: name + tags input -->
+        <template v-if="!isEditMode && selectedExerciseId === '__new__'">
+          <label class="repMaxLabel">
+            Exercise name
+            <div class="repMaxInputRow">
+              <input
+                v-model.trim="newExerciseName"
+                type="text"
+                placeholder="e.g. Bench Press"
+                class="repMaxInput"
+                autocomplete="off"
+              />
+            </div>
+          </label>
+          <div class="repMaxLabel">
+            Tags
+            <div class="wtEditTagList" v-if="newExerciseTags.length">
+              <span
+                v-for="tag in newExerciseTags"
+                :key="tag"
+                class="wtEditTagPill"
+                :style="{ borderColor: getTagColor(tag).border, background: getTagColor(tag).bg, color: getTagColor(tag).border }"
+                @click="removeNewExerciseTag(tag)"
+              >{{ tag }} <span class="wtEditTagPillRemove">&times;</span></span>
+            </div>
+            <div class="wtTagAddRow">
+              <input
+                v-model.trim="newExerciseTagInput"
+                type="text"
+                placeholder="Add tag..."
+                class="repMaxInput"
+                list="existingTagsNew"
+                @keyup.enter="addNewExerciseTag"
+              />
+              <button class="wtTagAddBtn" @click="addNewExerciseTag" :disabled="!newExerciseTagInput">+</button>
+            </div>
+            <datalist id="existingTagsNew">
+              <option v-for="tag in store.allTags" :key="tag" :value="tag" />
+            </datalist>
           </div>
-        </label>
+        </template>
 
         <!-- Log for existing exercise mode: show name as subtitle -->
         <p v-else-if="isLogForExercise" class="wtModalSubtitle">{{ selectedExerciseName }}</p>
@@ -256,9 +284,9 @@
             />
           </div>
         </label>
-        <div>
-          <span class="repMaxLabel">Tags</span>
-          <div class="wtEditTagList">
+        <div class="repMaxLabel">
+          Tags
+          <div class="wtEditTagList" v-if="editTags.length">
             <span
               v-for="tag in editTags"
               :key="tag"
@@ -438,6 +466,8 @@ const showModal = ref(false)
 const editingSet = ref(null) // { exerciseId, setId } when editing, null when logging
 const selectedExerciseId = ref('')
 const newExerciseName = ref('')
+const newExerciseTags = ref([])
+const newExerciseTagInput = ref('')
 const weight = ref(null)
 const reps = ref(null)
 const date = ref(todayISO())
@@ -465,7 +495,21 @@ const modalTitle = computed(() => {
 function openNewExerciseModal() {
   editingSet.value = null
   selectedExerciseId.value = '__new__'
+  newExerciseTags.value = []
+  newExerciseTagInput.value = ''
   showModal.value = true
+}
+
+function addNewExerciseTag() {
+  const tag = newExerciseTagInput.value.trim()
+  if (tag && !newExerciseTags.value.includes(tag)) {
+    newExerciseTags.value.push(tag)
+  }
+  newExerciseTagInput.value = ''
+}
+
+function removeNewExerciseTag(tag) {
+  newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
 }
 
 // Open modal pre-targeted at a specific existing exercise
@@ -491,6 +535,8 @@ function closeModal() {
   editingSet.value = null
   selectedExerciseId.value = ''
   newExerciseName.value = ''
+  newExerciseTags.value = []
+  newExerciseTagInput.value = ''
   weight.value = null
   reps.value = null
   date.value = todayISO()
@@ -526,7 +572,7 @@ function saveSet() {
   } else {
     let exerciseId = selectedExerciseId.value
     if (exerciseId === '__new__') {
-      exerciseId = store.addExercise(newExerciseName.value)
+      exerciseId = store.addExercise(newExerciseName.value, newExerciseTags.value)
       logEvent('exercise_add', { name: newExerciseName.value })
     }
     store.logSet(exerciseId, weight.value, reps.value, date.value)
