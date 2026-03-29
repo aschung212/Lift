@@ -78,7 +78,7 @@
         </div>
 
         <!-- Expanded: graph → all sets → clear -->
-        <template v-if="expandedId === exercise.id">
+        <div v-if="expandedId === exercise.id" class="wtExpandedPanel">
           <!-- Progress graph -->
           <ExerciseGraph :exercise="exercise" />
 
@@ -129,7 +129,7 @@
               Clear all sets
             </button>
           </div>
-        </template>
+        </div>
       </li>
     </ul>
   </div>

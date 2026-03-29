@@ -882,6 +882,11 @@ input[type=number] { -moz-appearance: textfield; }
   cursor: default;
 }
 
+.wtExpandedPanel {
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-strong);
+}
+
 /* ─── Set rows ──────────────────────────────────────────────────────────── */
 
 .wtSetList {
