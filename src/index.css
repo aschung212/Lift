@@ -784,6 +784,24 @@ input[type=number] { -moz-appearance: textfield; }
   color: #fff !important;
 }
 
+.wtTagClearBtn {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 3px 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.12s;
+}
+
+.wtTagClearBtn:hover {
+  color: var(--text-primary);
+}
+
 /* ─── Edit exercise modal: tag section ─────────────────────────────────── */
 
 .wtTagPicker {
