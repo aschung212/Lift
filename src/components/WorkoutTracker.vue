@@ -15,11 +15,19 @@
         :style="activeTagFilters.includes(tag) ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
         @click="toggleTagFilter(tag)"
       >{{ tag }}</button>
-      <button
-        v-if="activeTagFilters.length >= 2"
-        class="wtTagMatchToggle"
-        @click="tagMatchMode = tagMatchMode === 'all' ? 'any' : 'all'"
-      >{{ tagMatchMode === 'all' ? 'All' : 'Any' }}</button>
+    </div>
+    <div v-if="activeTagFilters.length >= 2" class="wtTagMatchBar">
+      <span class="wtTagMatchLabel">Match</span>
+      <div class="wtTagMatchSegment">
+        <button
+          :class="['wtTagMatchBtn', { wtTagMatchBtnActive: tagMatchMode === 'all' }]"
+          @click="tagMatchMode = 'all'"
+        >All</button>
+        <button
+          :class="['wtTagMatchBtn', { wtTagMatchBtnActive: tagMatchMode === 'any' }]"
+          @click="tagMatchMode = 'any'"
+        >Any</button>
+      </div>
     </div>
 
     <p v-if="store.exercises.length === 0" class="wtEmpty">
