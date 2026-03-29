@@ -1619,6 +1619,13 @@ input[type=number] { -moz-appearance: textfield; }
   cursor: pointer;
 }
 
+.calTagCount {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+
 .calSetList {
   width: 100%;
   display: flex;

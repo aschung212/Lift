@@ -55,7 +55,7 @@
               :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
               :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
               @click="toggleDetail(selectedDay, ex)"
-            >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }}</span>
+            >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(selectedDay, ex) }}</span></span>
             <div v-if="detailKey === `${selectedDay}::${ex}`" class="calSetList">
               <div
                 v-for="s in getSetsForDay(selectedDay, ex)"
@@ -94,7 +94,7 @@
               :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
               :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
               @click="toggleDetail(day.dateStr, ex)"
-            >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }}</span>
+            >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(day.dateStr, ex) }}</span></span>
             <div v-if="detailKey === `${day.dateStr}::${ex}`" class="calSetList">
               <div
                 v-for="s in getSetsForDay(day.dateStr, ex)"
@@ -205,6 +205,13 @@ function getSetsForDay(dateStr, exName) {
     .filter(s => s.date.slice(0, 10) === dayStr)
     .sort((a, b) => b.estimated1RM - a.estimated1RM)
     .map(s => ({ ...s, isPR: s.estimated1RM === pr }))
+}
+
+function getSetCount(dateStr, exName) {
+  const exercise = store.exercises.find(e => e.name === exName)
+  if (!exercise) return 0
+  const dayStr = dateStr.slice(0, 10)
+  return exercise.sets.filter(s => s.date.slice(0, 10) === dayStr).length
 }
 
 function exerciseColor(name) {
