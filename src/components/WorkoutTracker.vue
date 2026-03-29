@@ -6,21 +6,22 @@
       <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
     </div>
 
-    <!-- Tag filter chips -->
-    <div v-if="store.allTags.length > 0" class="wtTagFilterBar">
-      <button
-        v-for="tag in store.allTags"
-        :key="tag"
-        :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
-        :style="activeTagFilters.includes(tag) ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
-        @click="toggleTagFilter(tag)"
-      >{{ tag }}</button>
-      <button
-        v-if="activeTagFilters.length > 0"
-        class="wtTagClearBtn"
-        @click="activeTagFilters = []"
-      >Clear</button>
-    </div>
+    <!-- Tag filter -->
+    <template v-if="store.allTags.length > 0">
+      <div v-if="activeTagFilters.length > 0" class="wtTagFilterHeader">
+        <span class="wtTagFilterLabel">Filtered</span>
+        <button class="wtTagClearBtn" @click="activeTagFilters = []">Clear</button>
+      </div>
+      <div class="wtTagFilterBar">
+        <button
+          v-for="tag in store.allTags"
+          :key="tag"
+          :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
+          :style="activeTagFilters.includes(tag) ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
+          @click="toggleTagFilter(tag)"
+        >{{ tag }}</button>
+      </div>
+    </template>
 
     <p v-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
