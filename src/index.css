@@ -1654,6 +1654,7 @@ input[type=number] { -moz-appearance: textfield; }
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 0.12s;
+  margin-left: auto;
 }
 
 .calWeekLogBtn:hover {
