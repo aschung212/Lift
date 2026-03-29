@@ -620,12 +620,8 @@ input[type=number] { -moz-appearance: textfield; }
   list-style: none;
 }
 
-.wtExerciseItem {
-  border-bottom: 1px solid var(--border);
-}
-
-.wtExerciseItem:last-child {
-  border-bottom: none;
+.wtExerciseItem + .wtExerciseItem {
+  border-top: 1px solid var(--border-strong);
 }
 
 .wtExerciseHeader {
