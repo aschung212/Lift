@@ -11,10 +11,15 @@
       <button
         v-for="tag in store.allTags"
         :key="tag"
-        :class="['wtTagChip', { wtTagChipActive: activeTagFilter === tag }]"
-        :style="activeTagFilter === tag ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
-        @click="activeTagFilter = activeTagFilter === tag ? null : tag"
+        :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
+        :style="activeTagFilters.includes(tag) ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
+        @click="toggleTagFilter(tag)"
       >{{ tag }}</button>
+      <button
+        v-if="activeTagFilters.length >= 2"
+        class="wtTagMatchToggle"
+        @click="tagMatchMode = tagMatchMode === 'all' ? 'any' : 'all'"
+      >{{ tagMatchMode === 'all' ? 'All' : 'Any' }}</button>
     </div>
 
     <p v-if="store.exercises.length === 0" class="wtEmpty">
@@ -27,15 +32,15 @@
         :key="exercise.id"
         class="wtExerciseItem"
         :class="{
-          'wt-dragging': !activeTagFilter && dragState.dragging && dragState.fromIndex === index,
-          'wt-drag-over': !activeTagFilter && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
+          'wt-dragging': activeTagFilters.length === 0 && dragState.dragging && dragState.fromIndex === index,
+          'wt-drag-over': activeTagFilters.length === 0 && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
         }"
         :data-index="index"
       >
         <!-- Row: grip handle + expand toggle + per-exercise log button -->
         <div class="wtExerciseHeader">
           <span
-            v-if="!activeTagFilter"
+            v-if="activeTagFilters.length === 0"
             class="wtDragHandle"
             @touchstart.prevent="onDragStart(index, $event)"
             @mousedown="onDragStart(index, $event)"
@@ -347,20 +352,32 @@ const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
 
 // ── Tag filtering ────────────────────────────────────────────────
-const activeTagFilter = ref(null)
+const activeTagFilters = ref([])
+const tagMatchMode = ref('all') // 'all' or 'any'
+
+function toggleTagFilter(tag) {
+  const idx = activeTagFilters.value.indexOf(tag)
+  if (idx >= 0) {
+    activeTagFilters.value = activeTagFilters.value.filter(t => t !== tag)
+  } else {
+    activeTagFilters.value = [...activeTagFilters.value, tag]
+  }
+}
 
 const filteredExercises = computed(() => {
-  if (!activeTagFilter.value) return store.exercises
-  return store.exercises.filter(e =>
-    (e.tags || []).includes(activeTagFilter.value)
-  )
+  if (activeTagFilters.value.length === 0) return store.exercises
+  return store.exercises.filter(e => {
+    const tags = e.tags || []
+    if (tagMatchMode.value === 'all') {
+      return activeTagFilters.value.every(t => tags.includes(t))
+    }
+    return activeTagFilters.value.some(t => tags.includes(t))
+  })
 })
 
-// Clear filter if the active tag no longer exists
+// Remove stale tags from active filters
 watch(() => store.allTags, (tags) => {
-  if (activeTagFilter.value && !tags.includes(activeTagFilter.value)) {
-    activeTagFilter.value = null
-  }
+  activeTagFilters.value = activeTagFilters.value.filter(t => tags.includes(t))
 })
 
 // ── Card state ────────────────────────────────────────────────────
