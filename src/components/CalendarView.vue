@@ -30,7 +30,7 @@
             calCellHasWork: cell.exercises.length > 0 && cell.inMonth,
             calCellSelected: selectedDay === cell.dateStr && cell.inMonth
           }"
-          @click="cell.inMonth && cell.exercises.length > 0 && toggleDay(cell.dateStr)"
+          @click="cell.inMonth && toggleDay(cell.dateStr)"
         >
           <span class="calCellNum">{{ cell.day }}</span>
           <span v-if="cell.inMonth && hasPR(cell.dateStr)" class="calCellPR">🏆</span>
@@ -47,9 +47,12 @@
       </div>
 
       <!-- Selected day detail -->
-      <div v-if="selectedDay && trainingMap[selectedDay]" class="calDetail">
-        <p class="calDetailDate">{{ formatSelectedDay(selectedDay) }}</p>
-        <div class="calDetailTags">
+      <div v-if="selectedDay" class="calDetail">
+        <div class="calDetailHeader">
+          <p class="calDetailDate">{{ formatSelectedDay(selectedDay) }}</p>
+          <button class="calLogBtn" @click="openLogModal(selectedDay)">+ Log</button>
+        </div>
+        <div v-if="trainingMap[selectedDay]" class="calDetailTags">
           <template v-for="ex in trainingMap[selectedDay]" :key="ex">
             <span
               :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
@@ -72,6 +75,7 @@
             </div>
           </template>
         </div>
+        <p v-else class="calDetailEmpty">No sets logged.</p>
       </div>
     </template>
 
@@ -90,6 +94,7 @@
         <div class="calWeekContent">
           <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
           <template v-for="ex in day.exercises" :key="ex">
+
             <span
               :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
               :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
@@ -110,10 +115,71 @@
               </div>
             </div>
           </template>
+          <button class="calWeekLogBtn" @click="openLogModal(day.dateStr)">+ Log</button>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Log Set Modal -->
+  <Teleport to="body">
+    <div v-if="logModal.open" class="repMaxOverlay" @click.self="closeLogModal">
+      <div class="repMaxModal">
+        <h2>Log a Set</h2>
+        <p class="wtModalSubtitle">{{ formatSelectedDay(logModal.date) }}</p>
+
+        <label class="repMaxLabel">
+          Exercise
+          <select v-model="logModal.exerciseId" class="repMaxInput">
+            <option value="" disabled>Select exercise...</option>
+            <option v-for="ex in store.exercises" :key="ex.id" :value="ex.id">{{ ex.name }}</option>
+          </select>
+        </label>
+
+        <div class="wtInputRow">
+          <label class="repMaxLabel" style="flex:1">
+            Weight
+            <div class="repMaxInputRow">
+              <input
+                v-model.number="logModal.weight"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="any"
+                placeholder="135"
+                class="repMaxInput"
+              />
+              <span class="repMaxUnit">lbs</span>
+            </div>
+          </label>
+          <label class="repMaxLabel" style="flex:1">
+            Reps
+            <div class="repMaxInputRow">
+              <input
+                v-model.number="logModal.reps"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                max="30"
+                placeholder="8"
+                class="repMaxInput"
+              />
+            </div>
+          </label>
+        </div>
+
+        <div v-if="logModalEstimate" class="repMaxResult">
+          <span class="repMaxResultLabel">Estimated 1RM</span>
+          <span class="repMaxResultValue">{{ logModalEstimate }} lbs</span>
+        </div>
+
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSaveLog" @click="saveLog">Save</button>
+          <button class="repMaxBtn repMaxBtnClose" @click="closeLogModal">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -308,5 +374,36 @@ function formatSelectedDay(dateStr) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
     weekday: 'long', month: 'long', day: 'numeric'
   })
+}
+
+// ── Log modal ─────────────────────────────────────────────────────
+const logModal = ref({ open: false, date: '', exerciseId: '', weight: null, reps: null })
+
+function openLogModal(dateStr) {
+  logModal.value = { open: true, date: dateStr, exerciseId: '', weight: null, reps: null }
+}
+
+function closeLogModal() {
+  logModal.value = { open: false, date: '', exerciseId: '', weight: null, reps: null }
+}
+
+const logModalEstimate = computed(() => {
+  const { weight, reps } = logModal.value
+  if (!weight || weight <= 0 || !reps || reps < 1) return null
+  if (reps === 1) return Math.round(weight)
+  return Math.round(weight * (1 + reps / 30))
+})
+
+const canSaveLog = computed(() => {
+  const { exerciseId, weight, reps } = logModal.value
+  return exerciseId && weight > 0 && reps >= 1
+})
+
+function saveLog() {
+  if (!canSaveLog.value) return
+  const { exerciseId, weight, reps, date } = logModal.value
+  store.logSet(exerciseId, weight, reps, date)
+  logEvent('set_log', { source: 'calendar' })
+  closeLogModal()
 }
 </script>
