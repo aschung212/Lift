@@ -572,6 +572,11 @@ function saveSet() {
   } else {
     let exerciseId = selectedExerciseId.value
     if (exerciseId === '__new__') {
+      // Auto-add any pending tag text
+      const pendingTag = newExerciseTagInput.value.trim()
+      if (pendingTag && !newExerciseTags.value.includes(pendingTag)) {
+        newExerciseTags.value.push(pendingTag)
+      }
       exerciseId = store.addExercise(newExerciseName.value, newExerciseTags.value)
       logEvent('exercise_add', { name: newExerciseName.value })
     }
@@ -625,6 +630,11 @@ function removeEditTag(tag) {
 
 function confirmEditExercise() {
   if (!editTarget.value || !editName.value) return
+  // Auto-add any pending tag text
+  const pendingTag = newTagInput.value.trim()
+  if (pendingTag && !editTags.value.includes(pendingTag)) {
+    editTags.value.push(pendingTag)
+  }
   store.renameExercise(editTarget.value, editName.value)
   store.updateExerciseTags(editTarget.value, editTags.value)
   editTarget.value = null
