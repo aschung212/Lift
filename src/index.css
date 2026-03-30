@@ -679,6 +679,15 @@ input[type=number] { -moz-appearance: textfield; }
   to { transform: translateY(0); }
 }
 
+.settingsSheetClosing {
+  animation: sheetSlideDown 0.15s ease-in forwards;
+}
+
+@keyframes sheetSlideDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
 .settingsGroup {
   background: var(--bg-secondary);
   border-radius: 12px;
@@ -2491,6 +2500,22 @@ input[type=number] { -moz-appearance: textfield; }
 .bwEntryBadgeHigh {
   background: rgba(248, 113, 113, 0.15);
   color: #f87171;
+}
+
+.bwDelta {
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.bwDeltaDown {
+  color: var(--success);
+}
+
+.bwDeltaUp {
+  color: var(--danger);
 }
 
 .bwPeriodRow {

@@ -35,7 +35,7 @@
         </div>
         <button
           :class="['tabBtn tabBtnSettings', { active: settingsOpen }]"
-          @click="settingsOpen = !settingsOpen"
+          @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
           title="Settings"
         >
           <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -48,8 +48,8 @@
 
       <!-- Settings bottom sheet -->
       <Teleport to="body">
-        <div v-if="settingsOpen" class="settingsOverlay" @click.self="settingsOpen = false">
-          <div class="settingsSheet">
+        <div v-if="settingsOpen" class="settingsOverlay" @click.self="closeSettings">
+          <div class="settingsSheet" ref="settingsEl">
 
             <div class="settingsGroup">
               <div class="settingsHeader">Appearance</div>
@@ -145,6 +145,17 @@ const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 
 const settingsOpen = ref(false)
+const settingsEl = ref(null)
+
+function closeSettings() {
+  if (!settingsOpen.value) return
+  const el = settingsEl.value
+  if (!el) { settingsOpen.value = false; return }
+  el.classList.add('settingsSheetClosing')
+  el.addEventListener('animationend', () => {
+    settingsOpen.value = false
+  }, { once: true })
+}
 const activeTab = ref(localStorage.getItem('active-tab') || 'workouts')
 
 // ── Tab definitions with inline SVG paths ────────────────────────
@@ -191,6 +202,7 @@ watch(() => prefs.features, () => {
 // ── Analytics ────────────────────────────────────────────────────
 function switchTab(tabId) {
   const from = activeTab.value
+  closeSettings()
   if (from === tabId) return
   activeTab.value = tabId
   localStorage.setItem('active-tab', tabId)

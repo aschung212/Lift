@@ -110,7 +110,7 @@
     <!-- Entries list (newest first) -->
     <ul v-if="store.entries.length > 0" class="wtSetList bwEntryList">
       <li
-        v-for="entry in [...store.entries].reverse()"
+        v-for="entry in sortedEntries"
         :key="entry.id"
         :class="['wtSetRow', {
           bwEntryLow: entry.weight === store.minWeight,
@@ -124,6 +124,9 @@
           {{ entry.weight }} lbs
           <span v-if="entry.weight === store.minWeight" class="bwEntryBadge bwEntryBadgeLow" title="All-time low">↓ Low</span>
           <span v-else-if="entry.weight === store.maxWeight" class="bwEntryBadge bwEntryBadgeHigh" title="All-time high">↑ High</span>
+        </span>
+        <span v-if="entryDelta(entry) != null" :class="['bwDelta', entryDelta(entry) < 0 ? 'bwDeltaDown' : entryDelta(entry) > 0 ? 'bwDeltaUp' : '']">
+          {{ entryDelta(entry) > 0 ? '+' : '' }}{{ entryDelta(entry) }}
         </span>
         <div v-if="activeEntryId === entry.id" class="wtSetActions">
           <button class="wtSetBtn" @click.stop="openModal(entry)" aria-label="Edit entry">Edit</button>
@@ -257,6 +260,17 @@ const PERIODS = [
   { label: '1y',  days: 365 },
 ]
 const period = ref(30)
+
+const sortedEntries = computed(() =>
+  [...store.entries].sort((a, b) => b.date.localeCompare(a.date))
+)
+
+function entryDelta(entry) {
+  const sorted = sortedEntries.value
+  const idx = sorted.indexOf(entry)
+  if (idx < 0 || idx >= sorted.length - 1) return null
+  return +(entry.weight - sorted[idx + 1].weight).toFixed(1)
+}
 
 // ── Graph ────────────────────────────────────────────────────────
 const W = 320
