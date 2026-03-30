@@ -9,20 +9,34 @@ export const THEMES = [
   { id: 'tina',     label: 'Tina',     dot: '#ec4899' },
 ]
 
-const THEME_COLORS = {
-  midnight: '#0f0f0f',
-  graphite: '#111118',
-  arctic:   '#eeeef5',
-  forge:    '#100e0b',
-  aaron:    '#0e1209',
-  tina:     '#f4f4f8',
+const THEME_META_COLORS = {
+  midnight: { dark: '#0f0f0f', light: '#f2eded' },
+  graphite: { dark: '#111118', light: '#ededf5' },
+  arctic:   { dark: '#0e1420', light: '#dde4f5' },
+  forge:    { dark: '#100e0b', light: '#f5ede0' },
+  aaron:    { dark: '#0b0d09', light: '#eef0e8' },
+  tina:     { dark: '#1a1020', light: '#f0dff0' },
 }
 
 function applyTheme(id) {
   document.documentElement.setAttribute('data-theme', id)
-  const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.content = THEME_COLORS[id] ?? THEME_COLORS.midnight
+  updateMetaColor()
   localStorage.setItem('app-theme', id)
+}
+
+function applyMode(mode) {
+  document.documentElement.setAttribute('data-mode', mode)
+  updateMetaColor()
+  localStorage.setItem('app-mode', mode)
+}
+
+function updateMetaColor() {
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (!meta) return
+  const themeId = document.documentElement.getAttribute('data-theme') || 'midnight'
+  const mode = document.documentElement.getAttribute('data-mode') || 'dark'
+  const colors = THEME_META_COLORS[themeId] ?? THEME_META_COLORS.midnight
+  meta.content = colors[mode] ?? colors.dark
 }
 
 function applyGlass(enabled) {
@@ -33,16 +47,21 @@ function applyGlass(enabled) {
 // Apply immediately at import time to prevent flash
 const storedId = localStorage.getItem('app-theme') || 'midnight'
 const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'midnight'
+const storedMode = localStorage.getItem('app-mode') || 'dark'
+const validMode = storedMode === 'light' ? 'light' : 'dark'
 applyTheme(validId)
+applyMode(validMode)
 
 const storedGlass = localStorage.getItem('app-glass') !== 'off'
 applyGlass(storedGlass)
 
 const currentTheme = ref(validId)
+const colorMode = ref(validMode)
 const glassEnabled = ref(storedGlass)
 watch(currentTheme, applyTheme)
+watch(colorMode, applyMode)
 watch(glassEnabled, applyGlass)
 
 export function useTheme() {
-  return { currentTheme, THEMES, glassEnabled }
+  return { currentTheme, THEMES, colorMode, glassEnabled }
 }

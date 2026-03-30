@@ -29,6 +29,12 @@
                 {{ t.label }}
               </button>
               <div class="themeGlassRow">
+                <span class="themeGlassLabel">Dark Mode</span>
+                <button :class="['glassToggle', { on: colorMode === 'dark' }]" @click="toggleMode" :aria-label="colorMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+              <div class="themeGlassRow">
                 <span class="themeGlassLabel">Liquid Glass</span>
                 <button :class="['glassToggle', { on: glassEnabled }]" @click="toggleGlass" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
                   <span class="glassToggleThumb"></span>
@@ -100,7 +106,7 @@ import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
 
-const { currentTheme, THEMES, glassEnabled } = useTheme()
+const { currentTheme, THEMES, colorMode, glassEnabled } = useTheme()
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
@@ -150,8 +156,12 @@ function switchTab(tabId) {
 
 function selectTheme(id) {
   currentTheme.value = id
-  themeOpen.value = false
   logEvent('theme_change', { theme: id })
+}
+
+function toggleMode() {
+  colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'
+  logEvent('mode_toggle', { mode: colorMode.value })
 }
 
 function toggleGlass() {

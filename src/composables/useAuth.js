@@ -23,11 +23,16 @@ async function initStores(userId) {
 }
 
 function init() {
-  if (_initialized || !supabase) {
-    loading.value = false
+  if (_initialized) return
+  _initialized = true
+
+  // Dev bypass: skip OAuth on localhost so we can test without pushing to prod
+  // Deferred so Pinia is installed by the time stores are accessed
+  if (import.meta.env.DEV) {
+    user.value = { id: 'local-dev', email: 'dev@localhost' }
+    setTimeout(() => initStores('local-dev').then(() => { loading.value = false }), 0)
     return
   }
-  _initialized = true
 
   supabase.auth.getSession().then(({ data: { session } }) => {
     user.value = session?.user ?? null
