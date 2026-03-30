@@ -79,48 +79,84 @@
 
         <div class="wtDetailBody">
           <!-- Progress graph -->
-          <ExerciseGraph :exercise="detailExercise" />
+          <ExerciseGraph :exercise="detailExercise" :mode="detailTab" />
 
-          <!-- Sets list -->
-          <ul class="wtSetList">
-            <li v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</li>
-            <li
-              v-for="set in visibleSets(detailExercise)"
-              :key="set.id"
-              class="wtSetRow"
-              :class="{
-                wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id),
-                'wtSetRowActive': activeSetId === set.id,
-              }"
-              @click="toggleSetActions(set.id)"
-            >
-              <span class="wtSetDate">{{ formatDate(set.date) }}</span>
-              <span class="wtSetDetail">{{ set.weight }} lbs × {{ set.reps }}</span>
-              <span class="wtSet1RM">
-                ~{{ set.estimated1RM }} lbs
-                <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id)" class="wtSetPR">🏆</span>
-              </span>
-              <div v-if="activeSetId === set.id" class="wtSetActions">
-                <button
-                  class="wtSetBtn"
-                  @click.stop="openEditModal(detailExercise, set)"
-                  aria-label="Edit set"
-                >Edit</button>
-                <button
-                  class="wtSetBtn wtSetBtnDel"
-                  @click.stop="store.deleteSet(detailExercise.id, set.id); logEvent('set_delete')"
-                  aria-label="Delete set"
-                >Delete</button>
-              </div>
-            </li>
-          </ul>
-
-          <!-- Show all toggle -->
-          <div v-if="detailExercise.sets.length > SET_LIMIT" class="wtClearWrap">
-            <button class="wtShowAllBtn" @click="toggleShowAll(detailExercise.id)">
-              {{ showAllSets.has(detailExercise.id) ? 'Show less' : `Show all ${detailExercise.sets.length} sets` }}
+          <!-- Detail tabs -->
+          <div class="wtDetailTabs">
+            <button :class="['wtDetailTab', { active: detailTab === 'sets' }]" @click="detailTab = 'sets'">
+              All Sets <span class="wtDetailTabCount">{{ detailExercise.sets.length }}</span>
+            </button>
+            <button :class="['wtDetailTab', { active: detailTab === 'prs' }]" @click="detailTab = 'prs'" v-if="prHistory.length > 1">
+              PRs <span class="wtDetailTabCount">{{ prHistory.length }}</span>
             </button>
           </div>
+
+          <!-- All Sets view -->
+          <template v-if="detailTab === 'sets'">
+            <ul class="wtSetList">
+              <li v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</li>
+              <template
+                v-for="(set, idx) in visibleSets(detailExercise)"
+                :key="set.id"
+              >
+                <li
+                  v-if="idx === 0 || set.date.slice(0,10) !== visibleSets(detailExercise)[idx-1].date.slice(0,10)"
+                  class="wtSetDateHeader"
+                >{{ formatDate(set.date) }}</li>
+                <li
+                  class="wtSetRow"
+                  :class="{
+                    wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id),
+                    'wtSetRowActive': activeSetId === set.id,
+                  }"
+                  @click="toggleSetActions(set.id)"
+                >
+                  <span class="wtSetDetail">{{ set.weight }} lbs × {{ set.reps }}</span>
+                  <span class="wtSet1RM">
+                    ~{{ set.estimated1RM }} lbs
+                    <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id)" class="wtSetPR">🏆</span>
+                  </span>
+                  <div v-if="activeSetId === set.id" class="wtSetActions">
+                    <button
+                      class="wtSetBtn"
+                      @click.stop="openEditModal(detailExercise, set)"
+                      aria-label="Edit set"
+                    >Edit</button>
+                    <button
+                      class="wtSetBtn wtSetBtnDel"
+                      @click.stop="store.deleteSet(detailExercise.id, set.id); logEvent('set_delete')"
+                      aria-label="Delete set"
+                    >Delete</button>
+                  </div>
+                </li>
+              </template>
+            </ul>
+            <div v-if="detailExercise.sets.length > SET_LIMIT" class="wtClearWrap">
+              <button class="wtShowAllBtn" @click="toggleShowAll(detailExercise.id)">
+                {{ showAllSets.has(detailExercise.id) ? 'Show less' : `Show all ${detailExercise.sets.length} sets` }}
+              </button>
+            </div>
+          </template>
+
+          <!-- PRs view -->
+          <template v-else-if="detailTab === 'prs'">
+            <div class="wtPRHistoryList">
+              <div v-for="(pr, i) in prHistory" :key="pr.id" :class="['wtPRCard', { wtPRCardCurrent: i === 0 }]">
+                <div class="wtPRCardTop">
+                  <span class="wtPRCardValue">{{ pr.weight }} <span class="wtPRCardUnit">lbs</span> <span class="wtPRCardReps">× {{ pr.reps }}</span></span>
+                  <span class="wtPRCardMeta">
+                    <span v-if="i === 0" class="wtPRCardBadge">Current</span>
+                    <span v-if="pr.daysSince != null" class="wtPRCardDelta">+{{ pr.daysSince }}d</span>
+                  </span>
+                </div>
+                <div class="wtPRCardBottom">
+                  <span>{{ formatDate(pr.date) }}</span>
+                  <span class="wtPRCardSep">·</span>
+                  <span>e1RM ~{{ pr.estimated1RM }} lbs</span>
+                </div>
+              </div>
+            </div>
+          </template>
 
           <!-- Clear all sets -->
           <div v-if="detailExercise.sets.length > 0" class="wtClearWrap">
@@ -536,10 +572,43 @@ const detailExercise = computed(() =>
 )
 const detailExerciseId = ref(null)
 
+const detailTab = ref('sets')
+
 function openDetailModal(id) {
   detailExerciseId.value = id
   activeSetId.value = null
+  detailTab.value = 'sets'
 }
+
+const prHistory = computed(() => {
+  if (!detailExercise.value) return []
+  const sets = [...detailExercise.value.sets].sort((a, b) => a.date.localeCompare(b.date))
+  // Collect all new maxes
+  const raw = []
+  let maxSoFar = 0
+  for (const set of sets) {
+    if (set.estimated1RM > maxSoFar) {
+      maxSoFar = set.estimated1RM
+      raw.push({ ...set })
+    }
+  }
+  // Keep only the best PR per day
+  const byDay = {}
+  for (const pr of raw) {
+    const day = pr.date.slice(0, 10)
+    if (!byDay[day] || pr.estimated1RM > byDay[day].estimated1RM) {
+      byDay[day] = pr
+    }
+  }
+  const prs = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date))
+  // Add daysSince
+  for (let i = 0; i < prs.length; i++) {
+    prs[i].daysSince = i > 0
+      ? Math.round((new Date(prs[i].date) - new Date(prs[i - 1].date)) / 86400000)
+      : null
+  }
+  return prs.reverse()
+})
 
 // ── Drag-to-reorder ─────────────────────────────────────────────
 const exerciseListEl = ref(null)

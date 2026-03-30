@@ -1,6 +1,6 @@
 <template>
   <div v-if="points.length >= 2" class="wtGraphWrap">
-    <p class="wtGraphTitle">Estimated 1RM Progress</p>
+    <p class="wtGraphTitle">{{ mode === 'prs' ? 'PR Progression' : 'Estimated 1RM Progress' }}</p>
     <svg
       :viewBox="`0 0 ${W} ${H}`"
       class="wtGraphSvg"
@@ -81,7 +81,8 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  exercise: { type: Object, required: true }
+  exercise: { type: Object, required: true },
+  mode: { type: String, default: 'sets' }
 })
 
 // SVG layout constants
@@ -106,19 +107,36 @@ const dailyBest = computed(() => {
   return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
 })
 
+const prOnly = computed(() => {
+  const entries = dailyBest.value
+  const prs = []
+  let max = 0
+  for (const [date, e1rm] of entries) {
+    if (e1rm > max) {
+      max = e1rm
+      prs.push([date, e1rm])
+    }
+  }
+  return prs
+})
+
+const graphData = computed(() =>
+  props.mode === 'prs' ? prOnly.value : dailyBest.value
+)
+
 const minVal = computed(() => {
-  const vals = dailyBest.value.map(([, v]) => v)
+  const vals = graphData.value.map(([, v]) => v)
   return vals.length ? Math.min(...vals) : 0
 })
 
 const maxVal = computed(() => {
-  const vals = dailyBest.value.map(([, v]) => v)
+  const vals = graphData.value.map(([, v]) => v)
   return vals.length ? Math.max(...vals) : 0
 })
 
 // Map each date → {x, y, date, e1rm, isPR}
 const points = computed(() => {
-  const entries = dailyBest.value
+  const entries = graphData.value
   if (entries.length < 2) return []
   const range = maxVal.value - minVal.value
   const t0 = new Date(entries[0][0] + 'T12:00:00').getTime()

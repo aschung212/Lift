@@ -25,7 +25,10 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Epley 1RM estimation (`weight × (1 + reps / 30)`) computed on every set
 - Per-exercise SVG line chart — best estimated 1RM per day with area fill, time-proportional x-axis
 - PR detection — gold row highlight + trophy badge on personal record sets
-- Tap an exercise to open a full detail modal with graph, sets, and actions
+- Tap an exercise to open a full detail modal with tabbed views: All Sets and PRs
+- Sets grouped by date headers for easy scanning
+- PR History tab — shows each PR with weight × reps, e1RM, and days since previous PR
+- Graph updates per tab: full e1RM history on All Sets, PR staircase on PRs
 - Set list capped at 10 most recent, with "Show all" toggle
 - Full CRUD: add, edit, and delete individual sets and exercises
 - Drag-to-reorder exercises by grip handle (disabled when filtering)
@@ -61,6 +64,8 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Time-proportional SVG line chart filtered by period: 7d / 30d / 90d / 1y
 - Stats row per period: Change, Low, High, Avg
 - All-time low (green) and high (red) highlighted in the entry list
+- Per-entry delta from previous weigh-in (green for down, red for up)
+- Entries sorted by date
 - Smart date label spacing to prevent overlap
 
 ### Auth & Sync
