@@ -51,7 +51,7 @@
           >
             <span class="wtExerciseName">{{ exercise.name }}</span>
             <span class="wtExerciseMeta">
-              PR: {{ store.getExercisePR(exercise.id) || '—' }} lbs
+              PR: {{ store.getExercisePR(exercise.id) ? displayWeight(store.getExercisePR(exercise.id)) : '—' }} {{ weightUnit }}
               &nbsp;·&nbsp;
               {{ exercise.sets.length }} set{{ exercise.sets.length !== 1 ? 's' : '' }}
             </span>
@@ -111,9 +111,9 @@
                   }"
                   @click="toggleSetActions(set.id)"
                 >
-                  <span class="wtSetDetail">{{ set.weight }} lbs × {{ set.reps }}</span>
+                  <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
                   <span class="wtSet1RM">
-                    ~{{ set.estimated1RM }} lbs
+                    ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
                     <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id)" class="wtSetPR">🏆</span>
                   </span>
                   <div v-if="activeSetId === set.id" class="wtSetActions">
@@ -144,18 +144,18 @@
               <template v-for="(pr, i) in prHistory" :key="pr.id">
                 <div :class="['wtPRCard', { wtPRCardCurrent: i === 0 }]">
                   <div class="wtPRCardTop">
-                    <span class="wtPRCardValue">{{ pr.weight }} <span class="wtPRCardUnit">lbs</span> <span class="wtPRCardReps">× {{ pr.reps }}</span></span>
+                    <span class="wtPRCardValue">{{ displayWeight(pr.weight) }} <span class="wtPRCardUnit">{{ weightUnit }}</span> <span class="wtPRCardReps">× {{ pr.reps }}</span></span>
                     <span v-if="i === 0" class="wtPRCardBadge">Current</span>
                   </div>
                   <div class="wtPRCardBottom">
                     <span>{{ formatDate(pr.date) }}</span>
                     <span class="wtPRCardSep">·</span>
-                    <span>e1RM ~{{ pr.estimated1RM }} lbs</span>
+                    <span>e1RM ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
                   </div>
                 </div>
                 <div v-if="pr.e1rmDelta != null" class="wtPRConnector">
                   <span class="wtPRConnectorArrow">↑</span>
-                  <span>+{{ pr.e1rmDelta }} lbs</span>
+                  <span>+{{ displayWeight(pr.e1rmDelta) }} {{ weightUnit }}</span>
                   <span class="wtPRConnectorSep">·</span>
                   <span class="wtPRConnectorDays">{{ pr.daysSince }}d</span>
                 </div>
@@ -371,7 +371,7 @@
           <!-- Weight + Reps -->
           <div class="wtInputRow">
             <label class="repMaxLabel" style="flex:1">
-              Weight
+              Weight ({{ weightUnit }})
               <div class="repMaxInputRow">
                 <input
                   v-model.number="weight"
@@ -382,7 +382,6 @@
                   placeholder="135"
                   class="repMaxInput"
                 />
-                <span class="repMaxUnit">lbs</span>
               </div>
             </label>
 
@@ -405,7 +404,7 @@
           <!-- Live 1RM estimate -->
           <div v-if="liveEstimate" class="repMaxResult">
             <span class="repMaxResultLabel">Estimated 1RM</span>
-            <span class="repMaxResultValue">{{ liveEstimate }} lbs</span>
+            <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
           </div>
 
@@ -540,7 +539,7 @@ import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
-const { restTimerEnabled } = useTheme()
+const { restTimerEnabled, weightUnit, displayWeight, toLbs } = useTheme()
 
 // ── Tag filtering ────────────────────────────────────────────────
 const activeTagFilters = ref([])
@@ -783,7 +782,7 @@ function openEditModal(exercise, set) {
   editingSet.value = { exerciseId: exercise.id, setId: set.id }
   selectedExerciseId.value = exercise.id
   date.value = isoToLocalDate(set.date)
-  weight.value = set.weight
+  weight.value = displayWeight(set.weight)
   reps.value = set.reps
   showModal.value = true
 }
@@ -1139,16 +1138,23 @@ function playGoBeep() {
 
 const liveEstimate = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
-  if (reps.value === 1) return Math.round(weight.value)
-  return Math.round(weight.value * (1 + reps.value / 30))
+  const w = toLbs(weight.value)
+  const est = reps.value === 1 ? w : w * (1 + reps.value / 30)
+  return displayWeight(Math.round(est))
+})
+
+const liveEstimateLbs = computed(() => {
+  if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
+  const w = toLbs(weight.value)
+  return reps.value === 1 ? Math.round(w) : Math.round(w * (1 + reps.value / 30))
 })
 
 const isNewPR = computed(() => {
-  if (!liveEstimate.value || isEditMode.value) return false
+  if (!liveEstimateLbs.value || isEditMode.value) return false
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return false
   const pr = store.getExercisePR(id)
-  return pr > 0 && liveEstimate.value > pr
+  return pr > 0 && liveEstimateLbs.value > pr
 })
 
 const hasSetData = computed(() => weight.value > 0 && reps.value >= 1)
@@ -1162,7 +1168,7 @@ const canSave = computed(() => {
 function saveSet() {
   if (!canSave.value) return
   if (isEditMode.value) {
-    store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, weight.value, reps.value, date.value)
+    store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, toLbs(weight.value), reps.value, date.value)
     logEvent('set_edit')
     closeModal()
   } else {
@@ -1182,7 +1188,7 @@ function saveSet() {
       logEvent('exercise_add')
     }
     if (hasSetData.value) {
-      store.logSet(exerciseId, weight.value, reps.value, date.value)
+      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log')
       if (restTimerEnabled.value) {
         startRestTimer()

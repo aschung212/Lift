@@ -8,9 +8,15 @@
     <!-- Auth screen -->
     <AuthScreen v-else-if="!user" />
 
+    <!-- Onboarding -->
+    <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" />
+
     <!-- Authenticated app -->
     <template v-else>
       <div class="appContainer">
+        <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
+          Viewing sample data — Tap to clear and start fresh
+        </button>
         <div v-show="activeTab === 'workouts'" class="tabContent"><WorkoutTracker /></div>
         <div v-show="activeTab === 'calendar'" class="tabContent"><CalendarView /></div>
         <div v-show="activeTab === 'weight'" class="tabContent"><BodyweightTracker /></div>
@@ -86,6 +92,13 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Units</span>
+                <div class="modeSegmented">
+                  <button :class="['modeSegBtn', { active: weightUnit === 'lbs' }]" @click="weightUnit = 'lbs'">lbs</button>
+                  <button :class="['modeSegBtn', { active: weightUnit === 'kg' }]" @click="weightUnit = 'kg'">kg</button>
+                </div>
+              </div>
             </div>
 
             <div class="settingsGroup">
@@ -133,18 +146,44 @@ import WorkoutTracker from './components/WorkoutTracker.vue'
 import BodyweightTracker from './components/BodyweightTracker.vue'
 import CalendarView from './components/CalendarView.vue'
 import AuthScreen from './components/AuthScreen.vue'
+import OnboardingScreen from './components/OnboardingScreen.vue'
 import { useTheme } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
+import { useWorkoutStore } from './stores/workout'
+import { useBodyweightStore } from './stores/bodyweight'
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, weightUnit } = useTheme()
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 
 const settingsOpen = ref(false)
 const settingsEl = ref(null)
+
+// ── Onboarding ──────────────────────────────────────────────────
+const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
+const showOnboarding = computed(() => !onboardingComplete.value)
+const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
+
+function onOnboardingComplete() {
+  onboardingComplete.value = true
+  hasSampleData.value = localStorage.getItem('sample-data') === 'true'
+}
+
+function clearSampleData() {
+  const workoutStore = useWorkoutStore()
+  const bwStore = useBodyweightStore()
+  // Clear all exercises and bodyweight entries
+  const exerciseIds = [...workoutStore.exercises.map(e => e.id)]
+  for (const id of exerciseIds) {
+    workoutStore.deleteExercise(id)
+  }
+  bwStore.clearAll()
+  localStorage.removeItem('sample-data')
+  hasSampleData.value = false
+}
 
 function closeSettings() {
   if (!settingsOpen.value) return

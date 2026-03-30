@@ -8,7 +8,7 @@
     <!-- Current weight summary -->
     <div v-if="store.latestWeight" class="bwSummary">
       <span class="bwCurrentLabel">Current</span>
-      <span class="bwCurrentValue">{{ store.latestWeight }} lbs</span>
+      <span class="bwCurrentValue">{{ displayWeight(store.latestWeight) }} {{ weightUnit }}</span>
     </div>
 
     <!-- Period selector -->
@@ -26,20 +26,20 @@
       <div class="bwStatCard">
         <span class="bwStatLabel">Change</span>
         <span :class="['bwStatValue', periodStats.change < 0 ? 'bwStatDown' : periodStats.change > 0 ? 'bwStatUp' : '']">
-          {{ periodStats.change > 0 ? '+' : '' }}{{ periodStats.change.toFixed(1) }} lbs
+          {{ displayWeight(periodStats.change) > 0 ? '+' : '' }}{{ displayWeight(periodStats.change) }} {{ weightUnit }}
         </span>
       </div>
       <div class="bwStatCard">
         <span class="bwStatLabel">Low</span>
-        <span class="bwStatValue">{{ periodStats.min }} lbs</span>
+        <span class="bwStatValue">{{ displayWeight(periodStats.min) }} {{ weightUnit }}</span>
       </div>
       <div class="bwStatCard">
         <span class="bwStatLabel">High</span>
-        <span class="bwStatValue">{{ periodStats.max }} lbs</span>
+        <span class="bwStatValue">{{ displayWeight(periodStats.max) }} {{ weightUnit }}</span>
       </div>
       <div class="bwStatCard">
         <span class="bwStatLabel">Avg</span>
-        <span class="bwStatValue">{{ periodStats.avg }} lbs</span>
+        <span class="bwStatValue">{{ displayWeight(+periodStats.avg) }} {{ weightUnit }}</span>
       </div>
     </div>
     <div v-else-if="periodStats && periodStats.count === 1" class="bwStatsSingle">
@@ -83,8 +83,8 @@
         />
 
         <!-- Y-axis labels -->
-        <text :x="PAD_L - 5" :y="PAD_T + 4" class="wtGYLabel" text-anchor="end">{{ maxVal }} lbs</text>
-        <text :x="PAD_L - 5" :y="PAD_T + chartH + 4" class="wtGYLabel" text-anchor="end">{{ minVal }} lbs</text>
+        <text :x="PAD_L - 5" :y="PAD_T + 4" class="wtGYLabel" text-anchor="end">{{ displayWeight(maxVal) }} {{ weightUnit }}</text>
+        <text :x="PAD_L - 5" :y="PAD_T + chartH + 4" class="wtGYLabel" text-anchor="end">{{ displayWeight(minVal) }} {{ weightUnit }}</text>
 
         <!-- X-axis date labels -->
         <text
@@ -121,12 +121,12 @@
       >
         <span class="wtSetDate">{{ formatDateShort(entry.date) }}</span>
         <span class="wtSetDetail">
-          {{ entry.weight }} lbs
+          {{ displayWeight(entry.weight) }} {{ weightUnit }}
           <span v-if="entry.weight === store.minWeight" class="bwEntryBadge bwEntryBadgeLow" title="All-time low">↓ Low</span>
           <span v-else-if="entry.weight === store.maxWeight" class="bwEntryBadge bwEntryBadgeHigh" title="All-time high">↑ High</span>
         </span>
         <span v-if="entryDelta(entry) != null" :class="['bwDelta', entryDelta(entry) < 0 ? 'bwDeltaDown' : entryDelta(entry) > 0 ? 'bwDeltaUp' : '']">
-          {{ entryDelta(entry) > 0 ? '+' : '' }}{{ entryDelta(entry) }}
+          {{ displayWeight(entryDelta(entry)) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)) }}
         </span>
         <div v-if="activeEntryId === entry.id" class="wtSetActions">
           <button class="wtSetBtn" @click.stop="openModal(entry)" aria-label="Edit entry">Edit</button>
@@ -153,7 +153,7 @@
         </label>
 
         <label class="repMaxLabel">
-          Weight
+          Weight ({{ weightUnit }})
           <div class="repMaxInputRow">
             <input
               v-model.number="weight"
@@ -164,7 +164,6 @@
               placeholder="170"
               class="repMaxInput"
             />
-            <span class="repMaxUnit">lbs</span>
           </div>
         </label>
 
@@ -183,8 +182,10 @@
 import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
+import { useTheme } from '../composables/useTheme'
 
 const store = useBodyweightStore()
+const { weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 
 // ── Modal state ──────────────────────────────────────────────────
@@ -208,7 +209,7 @@ function isoToLocalDate(iso) {
 function openModal(entry = null) {
   if (entry) {
     editing.value = entry.id
-    weight.value = entry.weight
+    weight.value = displayWeight(entry.weight)
     date.value = isoToLocalDate(entry.date)
   } else {
     editing.value = null
@@ -230,10 +231,10 @@ const canSave = computed(() => weight.value > 0)
 function save() {
   if (!canSave.value) return
   if (editing.value) {
-    store.updateEntry(editing.value, weight.value, date.value)
+    store.updateEntry(editing.value, toLbs(weight.value), date.value)
     logEvent('bodyweight_edit')
   } else {
-    store.addEntry(weight.value, date.value)
+    store.addEntry(toLbs(weight.value), date.value)
     logEvent('bodyweight_add')
   }
   closeModal()

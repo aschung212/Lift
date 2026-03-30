@@ -81,11 +81,11 @@
                 :class="['calSetRow', { calSetRowPR: s.isPR }]"
               >
                 <span v-if="s.isPR" class="calSetPR">🏆</span>
-                <span>{{ s.weight }} lbs</span>
+                <span>{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
                 <span class="calPRDetailSep">×</span>
                 <span>{{ s.reps }} reps</span>
                 <span class="calPRDetailSep">·</span>
-                <span>~{{ Math.round(s.estimated1RM) }} lbs e1RM</span>
+                <span>~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
               </div>
             </div>
           </template>
@@ -121,11 +121,11 @@
                 :class="['calSetRow', { calSetRowPR: s.isPR }]"
               >
                 <span v-if="s.isPR" class="calSetPR">🏆</span>
-                <span>{{ s.weight }} lbs</span>
+                <span>{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
                 <span class="calPRDetailSep">×</span>
                 <span>{{ s.reps }} reps</span>
                 <span class="calPRDetailSep">·</span>
-                <span>~{{ Math.round(s.estimated1RM) }} lbs e1RM</span>
+                <span>~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
               </div>
             </div>
           </template>
@@ -152,7 +152,7 @@
 
         <div class="wtInputRow">
           <label class="repMaxLabel" style="flex:1">
-            Weight
+            Weight ({{ weightUnit }})
             <div class="repMaxInputRow">
               <input
                 v-model.number="logModal.weight"
@@ -163,7 +163,6 @@
                 placeholder="135"
                 class="repMaxInput"
               />
-              <span class="repMaxUnit">lbs</span>
             </div>
           </label>
           <label class="repMaxLabel" style="flex:1">
@@ -184,7 +183,7 @@
 
         <div v-if="logModalEstimate" class="repMaxResult">
           <span class="repMaxResultLabel">Estimated 1RM</span>
-          <span class="repMaxResultValue">{{ logModalEstimate }} lbs</span>
+          <span class="repMaxResultValue">{{ logModalEstimate }} {{ weightUnit }}</span>
         </div>
 
         <div class="repMaxActions">
@@ -200,8 +199,10 @@
 import { ref, computed, watch } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
+import { useTheme } from '../composables/useTheme'
 
 const store = useWorkoutStore()
+const { weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 
 // ── Tag filtering ────────────────────────────────────────────────
@@ -421,8 +422,9 @@ function closeLogModal() {
 const logModalEstimate = computed(() => {
   const { weight, reps } = logModal.value
   if (!weight || weight <= 0 || !reps || reps < 1) return null
-  if (reps === 1) return Math.round(weight)
-  return Math.round(weight * (1 + reps / 30))
+  const w = toLbs(weight)
+  const est = reps === 1 ? w : w * (1 + reps / 30)
+  return displayWeight(Math.round(est))
 })
 
 const canSaveLog = computed(() => {
@@ -433,7 +435,7 @@ const canSaveLog = computed(() => {
 function saveLog() {
   if (!canSaveLog.value) return
   const { exerciseId, weight, reps, date } = logModal.value
-  store.logSet(exerciseId, weight, reps, date)
+  store.logSet(exerciseId, toLbs(weight), reps, date)
   logEvent('set_log', { source: 'calendar' })
   closeLogModal()
 }

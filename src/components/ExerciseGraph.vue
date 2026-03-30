@@ -51,13 +51,13 @@
         :y="PAD_T + 4"
         class="wtGYLabel"
         text-anchor="end"
-      >{{ maxVal }} lbs</text>
+      >{{ displayWeight(maxVal) }} {{ weightUnit }}</text>
       <text
         :x="PAD_L - 5"
         :y="PAD_T + chartH + 4"
         class="wtGYLabel"
         text-anchor="end"
-      >{{ minVal }} lbs</text>
+      >{{ displayWeight(minVal) }} {{ weightUnit }}</text>
 
       <!-- X-axis date labels -->
       <text
@@ -79,6 +79,9 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useTheme } from '../composables/useTheme'
+
+const { weightUnit, displayWeight } = useTheme()
 
 const props = defineProps({
   exercise: { type: Object, required: true },

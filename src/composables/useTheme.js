@@ -79,6 +79,7 @@ const resolvedMode = computed(() =>
 )
 const glassEnabled = ref(storedGlass)
 const restTimerEnabled = ref(localStorage.getItem('rest-timer') !== 'off')
+const weightUnit = ref(localStorage.getItem('weight-unit') || 'lbs')
 watch(currentTheme, applyTheme)
 watch(colorMode, applyMode)
 watch(glassEnabled, applyGlass)
@@ -91,7 +92,18 @@ mql.addEventListener('change', () => {
   }
 })
 watch(restTimerEnabled, (v) => localStorage.setItem('rest-timer', v ? 'on' : 'off'))
+watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
 
 export function useTheme() {
-  return { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled }
+  // Weight conversion helpers — data is always stored in lbs
+  function displayWeight(lbs) {
+    if (weightUnit.value === 'kg') return +(lbs * 0.453592).toFixed(1)
+    return lbs
+  }
+  function toLbs(value) {
+    if (weightUnit.value === 'kg') return +(value / 0.453592).toFixed(1)
+    return value
+  }
+
+  return { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, weightUnit, displayWeight, toLbs }
 }

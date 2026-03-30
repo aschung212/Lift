@@ -436,6 +436,22 @@ input[type=number] { -moz-appearance: textfield; }
   margin: 0 auto;
 }
 
+.sampleBanner {
+  width: 100%;
+  padding: 10px 16px;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-align: center;
+  flex-shrink: 0;
+}
+
 .tabContent {
   flex: 1;
   overflow-y: auto;
@@ -2749,8 +2765,5 @@ input[type=number] { -moz-appearance: textfield; }
     min-width: 0;
   }
 
-  .repMaxUnit {
-    display: none;
-  }
 
 }
