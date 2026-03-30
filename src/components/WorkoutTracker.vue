@@ -141,20 +141,25 @@
           <!-- PRs view -->
           <template v-else-if="detailTab === 'prs'">
             <div class="wtPRHistoryList">
-              <div v-for="(pr, i) in prHistory" :key="pr.id" :class="['wtPRCard', { wtPRCardCurrent: i === 0 }]">
-                <div class="wtPRCardTop">
-                  <span class="wtPRCardValue">{{ pr.weight }} <span class="wtPRCardUnit">lbs</span> <span class="wtPRCardReps">× {{ pr.reps }}</span></span>
-                  <span class="wtPRCardMeta">
+              <template v-for="(pr, i) in prHistory" :key="pr.id">
+                <div :class="['wtPRCard', { wtPRCardCurrent: i === 0 }]">
+                  <div class="wtPRCardTop">
+                    <span class="wtPRCardValue">{{ pr.weight }} <span class="wtPRCardUnit">lbs</span> <span class="wtPRCardReps">× {{ pr.reps }}</span></span>
                     <span v-if="i === 0" class="wtPRCardBadge">Current</span>
-                    <span v-if="pr.daysSince != null" class="wtPRCardDelta">+{{ pr.daysSince }}d</span>
-                  </span>
+                  </div>
+                  <div class="wtPRCardBottom">
+                    <span>{{ formatDate(pr.date) }}</span>
+                    <span class="wtPRCardSep">·</span>
+                    <span>e1RM ~{{ pr.estimated1RM }} lbs</span>
+                  </div>
                 </div>
-                <div class="wtPRCardBottom">
-                  <span>{{ formatDate(pr.date) }}</span>
-                  <span class="wtPRCardSep">·</span>
-                  <span>e1RM ~{{ pr.estimated1RM }} lbs</span>
+                <div v-if="pr.e1rmDelta != null" class="wtPRConnector">
+                  <span class="wtPRConnectorArrow">↑</span>
+                  <span>+{{ pr.e1rmDelta }} lbs</span>
+                  <span class="wtPRConnectorSep">·</span>
+                  <span class="wtPRConnectorDays">{{ pr.daysSince }}d</span>
                 </div>
-              </div>
+              </template>
             </div>
           </template>
 
@@ -605,6 +610,9 @@ const prHistory = computed(() => {
   for (let i = 0; i < prs.length; i++) {
     prs[i].daysSince = i > 0
       ? Math.round((new Date(prs[i].date) - new Date(prs[i - 1].date)) / 86400000)
+      : null
+    prs[i].e1rmDelta = i > 0
+      ? +(prs[i].estimated1RM - prs[i - 1].estimated1RM).toFixed(1)
       : null
   }
   return prs.reverse()
