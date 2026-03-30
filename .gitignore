@@ -17,5 +17,8 @@ dist-ssr/
 .vscode/
 .idea/
 
+# migration output
+scripts/output/
+
 # Claude Code worktree metadata (not part of the public repo)
 .claude/
