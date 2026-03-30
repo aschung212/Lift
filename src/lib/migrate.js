@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { uuid } from './uuid'
 
 const WORKOUT_KEY = 'workout-exercises'
 const BODYWEIGHT_KEY = 'bodyweight-entries'
@@ -34,7 +35,7 @@ export async function migrateLocalStorageToSupabase(userId) {
     const setRows = []
 
     for (const ex of exercises) {
-      const exerciseId = crypto.randomUUID()
+      const exerciseId = uuid()
       exerciseRows.push({
         id: exerciseId,
         user_id: userId,
@@ -42,7 +43,7 @@ export async function migrateLocalStorageToSupabase(userId) {
       })
       for (const s of (ex.sets || [])) {
         setRows.push({
-          id: crypto.randomUUID(),
+          id: uuid(),
           user_id: userId,
           exercise_id: exerciseId,
           date: s.date,
@@ -62,7 +63,7 @@ export async function migrateLocalStorageToSupabase(userId) {
   // Migrate bodyweight entries
   if (bodyweightEntries.length > 0) {
     const bwRows = bodyweightEntries.map(e => ({
-      id: crypto.randomUUID(),
+      id: uuid(),
       user_id: userId,
       date: e.date,
       weight: e.weight

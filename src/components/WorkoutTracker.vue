@@ -8,18 +8,18 @@
 
     <!-- Tag filter -->
     <template v-if="store.allTags.length > 0">
-      <div v-if="activeTagFilters.length > 0" class="wtTagFilterHeader">
-        <span class="wtTagFilterLabel">Filtered</span>
-        <button class="wtTagClearBtn" @click="activeTagFilters = []">Clear</button>
-      </div>
       <div class="wtTagFilterBar">
         <button
           v-for="tag in store.allTags"
           :key="tag"
           :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
-          :style="activeTagFilters.includes(tag) ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
           @click="toggleTagFilter(tag)"
         >{{ tag }}</button>
+        <button
+          v-if="activeTagFilters.length > 0"
+          class="wtTagChip wtTagChipClear"
+          @click="activeTagFilters = []"
+        >× Clear</button>
       </div>
     </template>
 
@@ -38,19 +38,16 @@
         }"
         :data-index="index"
       >
-        <!-- Row: grip handle + expand toggle + per-exercise log button -->
         <div class="wtExerciseHeader">
           <span
-            v-if="activeTagFilters.length === 0"
-            class="wtDragHandle"
-            @touchstart.prevent="onDragStart(index, $event)"
-            @mousedown="onDragStart(index, $event)"
+            :class="['wtDragHandle', { wtDragHandleDisabled: activeTagFilters.length > 0 }]"
+            @touchstart.prevent="activeTagFilters.length === 0 && onDragStart(index, $event)"
+            @mousedown="activeTagFilters.length === 0 && onDragStart(index, $event)"
             aria-label="Drag to reorder"
           >⠿</span>
           <button
             class="wtExerciseRow"
-            @click="toggleExpand(exercise.id)"
-            :aria-expanded="expandedId === exercise.id"
+            @click="openDetailModal(exercise.id)"
           >
             <span class="wtExerciseName">{{ exercise.name }}</span>
             <span class="wtExerciseMeta">
@@ -58,45 +55,41 @@
               &nbsp;·&nbsp;
               {{ exercise.sets.length }} set{{ exercise.sets.length !== 1 ? 's' : '' }}
             </span>
-            <span class="wtChevron">{{ expandedId === exercise.id ? '▲' : '▼' }}</span>
+            <span class="wtChevron">›</span>
           </button>
-          <template v-if="expandedId === exercise.id">
-            <button
-              class="wtExHeaderIconBtn"
-              @click="openEditExerciseModal(exercise)"
-              aria-label="Edit exercise"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-            </button>
-            <button
-              class="wtExHeaderIconBtn wtExHeaderIconBtnDel"
-              @click="confirmDeleteId = exercise.id"
-              aria-label="Delete exercise"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-            </button>
-          </template>
           <button
             class="wtExerciseLogBtn"
             @click="openLogForExercise(exercise.id)"
             aria-label="Log a set for {{ exercise.name }}"
           >+ Log</button>
         </div>
+      </li>
+    </ul>
+  </div>
 
-        <!-- Expanded: graph → all sets → clear -->
-        <div v-if="expandedId === exercise.id" class="wtExpandedPanel">
+  <!-- Exercise detail modal -->
+  <Teleport to="body">
+    <div v-if="detailExercise" class="repMaxOverlay" @click.self="detailExerciseId = null">
+      <div class="wtDetailModal">
+        <div class="wtDetailHeader">
+          <button class="wtDetailBack" @click="detailExerciseId = null">‹ Back</button>
+          <h2 class="wtDetailTitle">{{ detailExercise.name }}</h2>
+          <button class="wtDetailLogBtn" @click="openLogForExercise(detailExercise.id)">+ Log</button>
+        </div>
+
+        <div class="wtDetailBody">
           <!-- Progress graph -->
-          <ExerciseGraph :exercise="exercise" />
+          <ExerciseGraph :exercise="detailExercise" />
 
-          <!-- All sets list (newest first) -->
+          <!-- Sets list -->
           <ul class="wtSetList">
-            <li v-if="exercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</li>
+            <li v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</li>
             <li
-              v-for="set in visibleSets(exercise)"
+              v-for="set in visibleSets(detailExercise)"
               :key="set.id"
               class="wtSetRow"
               :class="{
-                wtSetRowPR: set.estimated1RM === store.getExercisePR(exercise.id),
+                wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id),
                 'wtSetRowActive': activeSetId === set.id,
               }"
               @click="toggleSetActions(set.id)"
@@ -105,17 +98,17 @@
               <span class="wtSetDetail">{{ set.weight }} lbs × {{ set.reps }}</span>
               <span class="wtSet1RM">
                 ~{{ set.estimated1RM }} lbs
-                <span v-if="set.estimated1RM === store.getExercisePR(exercise.id)" class="wtSetPR">🏆</span>
+                <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id)" class="wtSetPR">🏆</span>
               </span>
               <div v-if="activeSetId === set.id" class="wtSetActions">
                 <button
                   class="wtSetBtn"
-                  @click.stop="openEditModal(exercise, set)"
+                  @click.stop="openEditModal(detailExercise, set)"
                   aria-label="Edit set"
                 >Edit</button>
                 <button
                   class="wtSetBtn wtSetBtnDel"
-                  @click.stop="store.deleteSet(exercise.id, set.id); logEvent('set_delete')"
+                  @click.stop="store.deleteSet(detailExercise.id, set.id); logEvent('set_delete')"
                   aria-label="Delete set"
                 >Delete</button>
               </div>
@@ -123,130 +116,265 @@
           </ul>
 
           <!-- Show all toggle -->
-          <div v-if="exercise.sets.length > SET_LIMIT" class="wtClearWrap">
-            <button class="wtShowAllBtn" @click="toggleShowAll(exercise.id)">
-              {{ showAllSets.has(exercise.id) ? 'Show less' : `Show all ${exercise.sets.length} sets` }}
+          <div v-if="detailExercise.sets.length > SET_LIMIT" class="wtClearWrap">
+            <button class="wtShowAllBtn" @click="toggleShowAll(detailExercise.id)">
+              {{ showAllSets.has(detailExercise.id) ? 'Show less' : `Show all ${detailExercise.sets.length} sets` }}
             </button>
           </div>
 
           <!-- Clear all sets -->
-          <div v-if="exercise.sets.length > 0" class="wtClearWrap">
-            <button class="wtClearBtn" @click="confirmClearId = exercise.id">
+          <div v-if="detailExercise.sets.length > 0" class="wtClearWrap">
+            <button class="wtClearBtn" @click="confirmClearId = detailExercise.id">
               Clear all sets
             </button>
           </div>
+
+          <!-- Exercise actions -->
+          <div class="wtSetActions wtExActions">
+            <button
+              class="wtSetBtn"
+              @click="openEditExerciseModal(detailExercise)"
+            >Edit Exercise</button>
+            <button
+              class="wtSetBtn wtSetBtnDel"
+              @click="confirmDeleteId = detailExercise.id"
+            >Delete Exercise</button>
+          </div>
         </div>
-      </li>
-    </ul>
-  </div>
+      </div>
+    </div>
+  </Teleport>
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
-    <div v-if="showModal" class="repMaxOverlay" @click.self="closeModal">
-      <div class="repMaxModal">
-        <h2>{{ modalTitle }}</h2>
+    <div v-if="showModal" class="repMaxOverlay" @click.self="onOverlayClick">
+      <div class="repMaxModal" @click.self="editingPresets = false">
 
-        <!-- New exercise mode: name + tags input -->
-        <template v-if="!isEditMode && selectedExerciseId === '__new__'">
-          <label class="repMaxLabel">
-            Exercise name
-            <div class="repMaxInputRow">
-              <input
-                v-model.trim="newExerciseName"
-                type="text"
-                placeholder="e.g. Bench Press"
-                class="repMaxInput"
-                autocomplete="off"
-              />
+        <!-- Rest timer view -->
+        <template v-if="timerActive">
+          <div v-if="timerUrgent && !timerPaused && !editingPresets" class="wtTimerFlash"></div>
+
+          <template v-if="editingPresets">
+            <h2>Edit Times</h2>
+            <button class="wtTimerEditCountdown" @click="togglePause">
+              {{ timerDisplay }}
+              <svg v-if="!timerPaused && timerSeconds > 0" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+              <svg v-else-if="timerPaused" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </button>
+            <div class="wtTimerEditTabs">
+              <button :class="['wtTimerEditTab', { wtTimerEditTabActive: editTab === 'rest' }]" @click="editTab = 'rest'">Rest Times</button>
+              <button :class="['wtTimerEditTab', { wtTimerEditTabActive: editTab === 'alerts' }]" @click="editTab = 'alerts'">Alerts</button>
             </div>
-          </label>
-          <div class="repMaxLabel">
-            Tags
-            <div class="wtTagPicker" v-if="allNewExerciseTags.length">
-              <button
-                v-for="tag in allNewExerciseTags"
-                :key="tag"
-                :class="['wtTagPickerChip', { wtTagPickerChipActive: newExerciseTags.includes(tag) }]"
-                :style="newExerciseTags.includes(tag)
-                  ? { borderColor: getTagColor(tag).border, background: getTagColor(tag).bg, color: getTagColor(tag).border }
-                  : { borderColor: 'var(--border)', color: 'var(--text-secondary)' }"
-                @click="toggleNewExerciseTag(tag)"
-              >{{ tag }}</button>
+            <div class="wtTimerEditListScroll">
+              <template v-if="editTab === 'rest'">
+                <div v-for="s in restPresets" :key="s" class="wtTimerEditRow wtTimerEditListItem">
+                  <span class="wtTimerEditItemLabel">{{ formatDuration(s) }}</span>
+                  <button
+                    :class="['glassToggle', { on: !disabledPresets.includes(s) }]"
+                    @click="togglePresetEnabled(s)"
+                    :aria-label="disabledPresets.includes(s) ? 'Enable ' + s : 'Disable ' + s"
+                  ><span class="glassToggleThumb"></span></button>
+                  <button
+                    class="wtTimerEditDeleteBtn"
+                    :disabled="restPresets.length <= 1"
+                    @click="removePreset(s)"
+                  >&times;</button>
+                </div>
+              </template>
+              <template v-else>
+                <div v-for="s in warningOptions" :key="s" class="wtTimerEditRow wtTimerEditListItem">
+                  <span class="wtTimerEditItemLabel">{{ s }}s before</span>
+                  <button
+                    :class="['glassToggle', { on: warningTimes.includes(s) }]"
+                    @click="toggleWarningTime(s)"
+                    :aria-label="warningTimes.includes(s) ? 'Disable ' + s + 's alert' : 'Enable ' + s + 's alert'"
+                  ><span class="glassToggleThumb"></span></button>
+                  <button
+                    class="wtTimerEditDeleteBtn"
+                    :disabled="warningOptions.length <= 1"
+                    @click="removeWarningOption(s)"
+                  >&times;</button>
+                </div>
+              </template>
             </div>
-            <div class="wtTagAddRow">
-              <input
-                v-model.trim="newExerciseTagInput"
-                type="text"
-                placeholder="New tag..."
-                class="repMaxInput"
-                @keyup.enter="addNewExerciseTag"
+            <div v-if="editTab === 'rest'" class="wtTimerEditRow" style="margin-top: 8px">
+              <input class="wtTimerEditInput" type="number" inputmode="numeric" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="addPreset" ref="presetInputEl" />
+              <button class="wtTimerEditAddBtn" :disabled="!newPresetValue" @click="addPreset">Add</button>
+            </div>
+            <div v-else class="wtTimerEditRow" style="margin-top: 8px">
+              <input class="wtTimerEditInput" type="number" inputmode="numeric" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" />
+              <button class="wtTimerEditAddBtn" :disabled="!newWarningValue" @click="addWarningOption">Add</button>
+            </div>
+            <button class="wtTimerEditResetBtn" @click="resetAllDefaults">Reset to defaults</button>
+            <div class="repMaxActions">
+              <button class="repMaxBtn repMaxBtnCalc" @click="editingPresets = false">Done</button>
+            </div>
+          </template>
+
+          <template v-else>
+          <p v-if="selectedExerciseName" class="wtTimerExName">{{ selectedExerciseName }}</p>
+
+          <!-- Circular progress ring -->
+          <div class="wtTimerRingWrap">
+            <svg class="wtTimerRing" viewBox="0 0 200 200">
+              <circle class="wtTimerRingBg" cx="100" cy="100" r="88" />
+              <circle
+                class="wtTimerRingFill"
+                cx="100" cy="100" r="88"
+                :stroke-dasharray="2 * Math.PI * 88"
+                :stroke-dashoffset="2 * Math.PI * 88 * (1 - timerProgress)"
               />
-              <button class="wtTagAddBtn" @click="addNewExerciseTag" :disabled="!newExerciseTagInput">+</button>
+            </svg>
+            <div class="wtTimerRingInner">
+              <span :class="['wtTimerTime', { wtTimerTimeDone: timerSeconds === 0 }]">{{ timerDisplay }}</span>
+              <span class="wtTimerLabel">{{ timerSeconds === 0 ? 'Done' : 'remaining' }}</span>
             </div>
           </div>
+
+          <!-- Play / Pause / Restart -->
+          <div class="wtTimerControls">
+            <button v-if="timerSeconds === 0" class="wtTimerControlBtn" @click="restartTimer" aria-label="Restart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            </button>
+            <button v-else-if="timerPaused" class="wtTimerControlBtn" @click="togglePause" aria-label="Resume">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </button>
+            <button v-else class="wtTimerControlBtn" @click="togglePause" aria-label="Pause">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+            </button>
+          </div>
+
+          <!-- Duration presets -->
+          <div class="wtTimerPresets">
+            <button
+              v-for="s in visiblePresets"
+              :key="s"
+              :class="['wtTimerPreset', { wtTimerPresetActive: restDuration === s }]"
+              @click="setRestDuration(s)"
+            >{{ formatDuration(s) }}</button>
+          </div>
+
+          <!-- Actions -->
+          <div class="repMaxActions">
+            <button v-if="selectedExerciseName" class="repMaxBtn repMaxBtnCalc" @click="skipToNextSet">Log Next</button>
+            <button class="repMaxBtn repMaxBtnClose" @click="closeModal">Done</button>
+          </div>
+          <div class="wtTimerFooter">
+            <button class="wtTimerFooterLink" @click="editingPresets = true" aria-label="Timer settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+            <button class="wtTimerFooterLink wtTimerStopLink" @click="dismissTimer">Stop</button>
+          </div>
+          </template>
         </template>
 
-        <!-- Log for existing exercise mode: show name as subtitle -->
-        <p v-else-if="isLogForExercise" class="wtModalSubtitle">{{ selectedExerciseName }}</p>
+        <!-- Log / edit form -->
+        <template v-else>
+          <h2>{{ modalTitle }}</h2>
 
-        <!-- Date: always visible -->
-        <label class="repMaxLabel">
-          Date
-          <input
-            v-model="date"
-            type="date"
-            :max="todayISO()"
-            class="repMaxInput wtDateInput"
-          />
-        </label>
-
-        <!-- Weight + Reps -->
-        <div class="wtInputRow">
-          <label class="repMaxLabel" style="flex:1">
-            Weight
-            <div class="repMaxInputRow">
-              <input
-                v-model.number="weight"
-                type="number"
-                inputmode="decimal"
-                min="0"
-                step="any"
-                placeholder="135"
-                class="repMaxInput"
-              />
-              <span class="repMaxUnit">lbs</span>
+          <!-- New exercise mode: name + tags input -->
+          <template v-if="!isEditMode && selectedExerciseId === '__new__'">
+            <label class="repMaxLabel">
+              Exercise name
+              <div class="repMaxInputRow">
+                <input
+                  v-model.trim="newExerciseName"
+                  type="text"
+                  placeholder="e.g. Bench Press"
+                  class="repMaxInput"
+                  autocomplete="off"
+                />
+              </div>
+            </label>
+            <div class="repMaxLabel">
+              Tags
+              <div class="wtTagPicker" v-if="allNewExerciseTags.length">
+                <button
+                  v-for="tag in allNewExerciseTags"
+                  :key="tag"
+                  :class="['wtTagPickerChip', { wtTagPickerChipActive: newExerciseTags.includes(tag) }]"
+                  :style="!newExerciseTags.includes(tag)
+                    ? { borderColor: 'var(--border)', color: 'var(--text-secondary)' }
+                    : {}"
+                  @click="toggleNewExerciseTag(tag)"
+                >{{ tag }}</button>
+              </div>
+              <div class="wtTagAddRow">
+                <input
+                  v-model.trim="newExerciseTagInput"
+                  type="text"
+                  placeholder="New tag..."
+                  class="repMaxInput"
+                  ref="newTagInputEl"
+                  @keyup.enter="addNewExerciseTag"
+                />
+                <button class="wtTagAddBtn" @mousedown.prevent @click="addNewExerciseTag" :disabled="!newExerciseTagInput">+</button>
+              </div>
             </div>
+          </template>
+
+          <!-- Log for existing exercise mode: show name as subtitle -->
+          <p v-else-if="isLogForExercise" class="wtModalSubtitle">{{ selectedExerciseName }}</p>
+
+          <!-- Date: always visible -->
+          <label class="repMaxLabel">
+            Date
+            <input
+              v-model="date"
+              type="date"
+              :max="todayISO()"
+              class="repMaxInput wtDateInput"
+            />
           </label>
 
-          <label class="repMaxLabel" style="flex:1">
-            Reps
-            <div class="repMaxInputRow">
-              <input
-                v-model.number="reps"
-                type="number"
-                inputmode="numeric"
-                min="1"
-                max="30"
-                placeholder="8"
-                class="repMaxInput"
-              />
-            </div>
-          </label>
-        </div>
+          <!-- Weight + Reps -->
+          <div class="wtInputRow">
+            <label class="repMaxLabel" style="flex:1">
+              Weight
+              <div class="repMaxInputRow">
+                <input
+                  v-model.number="weight"
+                  type="number"
+                  inputmode="decimal"
+                  min="0"
+                  step="any"
+                  placeholder="135"
+                  class="repMaxInput"
+                />
+                <span class="repMaxUnit">lbs</span>
+              </div>
+            </label>
 
-        <!-- Live 1RM estimate -->
-        <div v-if="liveEstimate" class="repMaxResult">
-          <span class="repMaxResultLabel">Estimated 1RM</span>
-          <span class="repMaxResultValue">{{ liveEstimate }} lbs</span>
-          <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
-        </div>
+            <label class="repMaxLabel" style="flex:1">
+              Reps
+              <div class="repMaxInputRow">
+                <input
+                  v-model.number="reps"
+                  type="number"
+                  inputmode="numeric"
+                  min="1"
+                  max="30"
+                  placeholder="8"
+                  class="repMaxInput"
+                />
+              </div>
+            </label>
+          </div>
 
-        <div class="repMaxActions">
-          <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
-            {{ isEditMode ? 'Save Changes' : 'Save' }}
-          </button>
-          <button class="repMaxBtn repMaxBtnClose" @click="closeModal">Cancel</button>
-        </div>
+          <!-- Live 1RM estimate -->
+          <div v-if="liveEstimate" class="repMaxResult">
+            <span class="repMaxResultLabel">Estimated 1RM</span>
+            <span class="repMaxResultValue">{{ liveEstimate }} lbs</span>
+            <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
+          </div>
+
+          <div class="repMaxActions">
+            <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
+              {{ isEditMode ? 'Save Changes' : 'Save' }}
+            </button>
+            <button class="repMaxBtn repMaxBtnClose" @click="closeModal">Cancel</button>
+          </div>
+        </template>
       </div>
     </div>
   </Teleport>
@@ -295,9 +423,9 @@
               v-for="tag in availableEditTags"
               :key="tag"
               :class="['wtTagPickerChip', { wtTagPickerChipActive: editTags.includes(tag) }]"
-              :style="editTags.includes(tag)
-                ? { borderColor: getTagColor(tag).border, background: getTagColor(tag).bg, color: getTagColor(tag).border }
-                : { borderColor: 'var(--border)', color: 'var(--text-secondary)' }"
+              :style="!editTags.includes(tag)
+                ? { borderColor: 'var(--border)', color: 'var(--text-secondary)' }
+                : {}"
               @click="toggleEditTag(tag)"
             >{{ tag }}</button>
           </div>
@@ -307,9 +435,10 @@
               type="text"
               placeholder="New tag..."
               class="repMaxInput"
+              ref="editTagInputEl"
               @keyup.enter="addEditTag"
             />
-            <button class="wtTagAddBtn" @click="addEditTag" :disabled="!newTagInput">+</button>
+            <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput">+</button>
           </div>
         </div>
         <div class="repMaxActions">
@@ -340,17 +469,37 @@
       </div>
     </div>
   </Teleport>
+
+  <!-- Rest timer bar -->
+  <button
+    v-if="restTimerEnabled && !showModal"
+    class="wtRestBar"
+    :class="{ wtRestBarActive: timerActive && !showModal }"
+    @click="openRestTimer"
+  >
+    <template v-if="timerActive">
+      <div class="wtRestBarProgress" :style="{ width: (timerProgress * 100) + '%' }"></div>
+      <svg class="wtRestBarIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="wtRestBarTime">{{ timerDisplay }}</span>
+      <span class="wtRestBarLabel">remaining</span>
+    </template>
+    <template v-else>
+      <svg class="wtRestBarIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="wtRestBarLabel">Start Rest Timer</span>
+    </template>
+  </button>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
-import { getTagColor } from '../lib/tagColors'
+import { useTheme } from '../composables/useTheme'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
+const { restTimerEnabled } = useTheme()
 
 // ── Tag filtering ────────────────────────────────────────────────
 const activeTagFilters = ref([])
@@ -378,12 +527,18 @@ watch(() => store.allTags, (tags) => {
 })
 
 // ── Card state ────────────────────────────────────────────────────
-const expandedId = ref(null)
 const showAllSets = ref(new Set())
 const SET_LIMIT = 10
 
-function toggleExpand(id) {
-  expandedId.value = expandedId.value === id ? null : id
+// Exercise detail modal
+const detailExercise = computed(() =>
+  detailExerciseId.value ? store.exercises.find(e => e.id === detailExerciseId.value) ?? null : null
+)
+const detailExerciseId = ref(null)
+
+function openDetailModal(id) {
+  detailExerciseId.value = id
+  activeSetId.value = null
 }
 
 // ── Drag-to-reorder ─────────────────────────────────────────────
@@ -510,12 +665,15 @@ function openNewExerciseModal() {
   showModal.value = true
 }
 
+const newTagInputEl = ref(null)
+
 function addNewExerciseTag() {
   const tag = newExerciseTagInput.value.trim()
   if (tag && !newExerciseTags.value.includes(tag)) {
     newExerciseTags.value.push(tag)
   }
   newExerciseTagInput.value = ''
+  nextTick(() => newTagInputEl.value?.focus())
 }
 
 function removeNewExerciseTag(tag) {
@@ -555,6 +713,7 @@ function openEditModal(exercise, set) {
 
 function closeModal() {
   showModal.value = false
+  editingPresets.value = false
   editingSet.value = null
   selectedExerciseId.value = ''
   newExerciseName.value = ''
@@ -564,6 +723,342 @@ function closeModal() {
   reps.value = null
   date.value = todayISO()
 }
+
+// ── Rest timer ──────────────────────────────────────────────────
+const timerActive = ref(false)
+const timerPaused = ref(false)
+const timerSeconds = ref(0)
+const restDuration = ref(parseInt(localStorage.getItem('rest-duration')) || 90)
+let timerIntervalId = null
+
+const DEFAULT_WARNING_OPTIONS = [3, 5, 10, 15, 30]
+const warningOptions = ref(loadWarningOptions())
+const warningTimes = ref(loadWarningTimes())
+const newWarningValue = ref(null)
+
+function loadWarningOptions() {
+  try {
+    const raw = localStorage.getItem('rest-warning-options')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed.sort((a, b) => a - b)
+    }
+  } catch { /* ignore */ }
+  return [...DEFAULT_WARNING_OPTIONS]
+}
+
+function saveWarningOptions() {
+  localStorage.setItem('rest-warning-options', JSON.stringify(warningOptions.value))
+}
+
+function loadWarningTimes() {
+  try {
+    const raw = localStorage.getItem('rest-warnings')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch { /* ignore */ }
+  return [5]
+}
+
+function toggleWarningTime(val) {
+  if (val === 0) {
+    warningTimes.value = []
+  } else if (warningTimes.value.includes(val)) {
+    warningTimes.value = warningTimes.value.filter(v => v !== val)
+  } else {
+    warningTimes.value = [...warningTimes.value, val].sort((a, b) => a - b)
+  }
+  localStorage.setItem('rest-warnings', JSON.stringify(warningTimes.value))
+}
+
+function addWarningOption() {
+  const val = parseInt(newWarningValue.value)
+  if (val && val >= 1 && val <= 120 && !warningOptions.value.includes(val)) {
+    warningOptions.value = [...warningOptions.value, val].sort((a, b) => a - b)
+    saveWarningOptions()
+  }
+  newWarningValue.value = null
+}
+
+function removeWarningOption(val) {
+  if (warningOptions.value.length <= 1) return
+  warningOptions.value = warningOptions.value.filter(v => v !== val)
+  warningTimes.value = warningTimes.value.filter(v => v !== val)
+  saveWarningOptions()
+  localStorage.setItem('rest-warnings', JSON.stringify(warningTimes.value))
+}
+
+function startInterval() {
+  clearInterval(timerIntervalId)
+  timerIntervalId = setInterval(() => {
+    if (!timerPaused.value) {
+      timerSeconds.value--
+      if (warningTimes.value.includes(timerSeconds.value)) {
+        playWarningBeep(timerSeconds.value)
+      }
+      if (timerSeconds.value <= 0) {
+        playGoBeep()
+        clearInterval(timerIntervalId)
+        timerIntervalId = null
+        timerSeconds.value = 0
+        if (!editingPresets.value) {
+          onTimerComplete()
+        }
+      }
+    }
+  }, 1000)
+}
+
+function startRestTimer() {
+  ensureAudioCtx()
+  timerActive.value = true
+  timerPaused.value = false
+  timerSeconds.value = restDuration.value
+  startInterval()
+}
+
+function togglePause() {
+  ensureAudioCtx()
+  timerPaused.value = !timerPaused.value
+}
+
+const timerStopping = ref(false)
+
+function stopTimer() {
+  timerStopping.value = true
+  clearInterval(timerIntervalId)
+  timerIntervalId = null
+  timerActive.value = false
+  timerPaused.value = false
+  timerSeconds.value = 0
+  editingPresets.value = false
+  newPresetValue.value = null
+  setTimeout(() => { timerStopping.value = false }, 0)
+}
+
+function restartTimer() {
+  ensureAudioCtx()
+  timerSeconds.value = restDuration.value
+  timerPaused.value = false
+  startInterval()
+}
+
+function onTimerComplete() {
+  skipToNextSet()
+}
+
+function skipToNextSet() {
+  stopTimer()
+  date.value = todayISO()
+}
+
+const DEFAULT_PRESETS = [30, 60, 90, 120, 180, 300]
+const editingPresets = ref(false)
+const editTab = ref('rest')
+const newPresetValue = ref(null)
+
+const restPresets = ref(loadPresets())
+const disabledPresets = ref(loadDisabledPresets())
+
+const visiblePresets = computed(() =>
+  restPresets.value.filter(s => !disabledPresets.value.includes(s))
+)
+
+function loadDisabledPresets() {
+  try {
+    const raw = localStorage.getItem('rest-presets-disabled')
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return []
+}
+
+function saveDisabledPresets() {
+  localStorage.setItem('rest-presets-disabled', JSON.stringify(disabledPresets.value))
+}
+
+function togglePresetEnabled(val) {
+  if (disabledPresets.value.includes(val)) {
+    disabledPresets.value = disabledPresets.value.filter(v => v !== val)
+  } else {
+    // Don't disable the last visible preset
+    if (visiblePresets.value.length <= 1) return
+    disabledPresets.value = [...disabledPresets.value, val]
+  }
+  saveDisabledPresets()
+}
+
+function loadPresets() {
+  try {
+    const raw = localStorage.getItem('rest-presets')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed.sort((a, b) => a - b)
+    }
+  } catch { /* ignore */ }
+  return [...DEFAULT_PRESETS]
+}
+
+function savePresets() {
+  localStorage.setItem('rest-presets', JSON.stringify(restPresets.value))
+}
+
+function formatDuration(s) {
+  if (s < 60) return s + 's'
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  return rem ? `${m}:${rem.toString().padStart(2, '0')}` : `${m}m`
+}
+
+function setRestDuration(val) {
+  ensureAudioCtx()
+  restDuration.value = val
+  localStorage.setItem('rest-duration', val)
+  timerSeconds.value = val
+  timerPaused.value = false
+  startInterval()
+}
+
+function addPreset() {
+  const val = parseInt(newPresetValue.value)
+  if (val && val >= 5 && val <= 600 && !restPresets.value.includes(val)) {
+    restPresets.value = [...restPresets.value, val].sort((a, b) => a - b)
+    savePresets()
+  }
+  newPresetValue.value = null
+}
+
+const presetInputEl = ref(null)
+watch(editingPresets, (v) => {
+  if (v) setTimeout(() => presetInputEl.value?.focus(), 0)
+})
+
+function removePreset(val) {
+  if (restPresets.value.length <= 1) return
+  restPresets.value = restPresets.value.filter(v => v !== val)
+  savePresets()
+  if (restDuration.value === val) {
+    setRestDuration(restPresets.value[0])
+  }
+}
+
+function resetPresets() {
+  restPresets.value = [...DEFAULT_PRESETS]
+  savePresets()
+}
+
+function resetAllDefaults() {
+  restPresets.value = [...DEFAULT_PRESETS]
+  savePresets()
+  warningOptions.value = [...DEFAULT_WARNING_OPTIONS]
+  saveWarningOptions()
+  warningTimes.value = [5]
+  localStorage.setItem('rest-warnings', JSON.stringify(warningTimes.value))
+}
+
+function onOverlayClick() {
+  if (editingPresets.value) {
+    editingPresets.value = false
+  } else {
+    closeModal()
+  }
+}
+
+function dismissTimer() {
+  stopTimer()
+  closeModal()
+}
+
+function openRestTimer() {
+  showModal.value = true
+  if (!timerActive.value) {
+    startRestTimer()
+  }
+}
+
+function disableRestTimer() {
+  restTimerEnabled.value = false
+  closeModal()
+}
+
+const timerDisplay = computed(() => {
+  const m = Math.floor(timerSeconds.value / 60)
+  const s = timerSeconds.value % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+})
+
+const timerProgress = computed(() => {
+  if (restDuration.value <= 0) return 0
+  return timerSeconds.value / restDuration.value
+})
+
+const maxWarning = computed(() => warningTimes.value.length ? Math.max(...warningTimes.value) : 0)
+const timerUrgent = computed(() => maxWarning.value > 0 && timerSeconds.value <= maxWarning.value && timerSeconds.value > 0)
+
+let audioCtx = null
+
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume()
+  }
+  // Play a short quiet tick to unlock iOS audio on user gesture
+  const osc = audioCtx.createOscillator()
+  const gain = audioCtx.createGain()
+  osc.connect(gain)
+  gain.connect(audioCtx.destination)
+  osc.frequency.value = 1
+  gain.gain.setValueAtTime(0.001, audioCtx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.05)
+  osc.start(audioCtx.currentTime)
+  osc.stop(audioCtx.currentTime + 0.05)
+}
+
+// Warning tone — pitch rises as time gets closer to zero
+function playWarningBeep(secondsLeft) {
+  if (!audioCtx) return
+  if (audioCtx.state === 'suspended') audioCtx.resume()
+  try {
+    const t = audioCtx.currentTime
+    // Higher pitch for closer warnings: 30s→550Hz, 10s→700Hz, 5s→850Hz, 3s→1000Hz
+    const freq = Math.min(1100, 500 + (30 - Math.min(secondsLeft, 30)) * 20)
+    const osc = audioCtx.createOscillator()
+    const gain = audioCtx.createGain()
+    osc.connect(gain)
+    gain.connect(audioCtx.destination)
+    osc.frequency.setValueAtTime(freq, t)
+    osc.frequency.linearRampToValueAtTime(freq + 120, t + 0.2)
+    gain.gain.setValueAtTime(0.2, t)
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.25)
+    osc.start(t)
+    osc.stop(t + 0.25)
+  } catch { /* audio not available */ }
+}
+
+// Bright double chirp — "time's up, go"
+function playGoBeep() {
+  if (!audioCtx) return
+  if (audioCtx.state === 'suspended') audioCtx.resume()
+  try {
+    const t = audioCtx.currentTime
+    for (let i = 0; i < 2; i++) {
+      const offset = i * 0.18
+      const osc = audioCtx.createOscillator()
+      const gain = audioCtx.createGain()
+      osc.connect(gain)
+      gain.connect(audioCtx.destination)
+      osc.frequency.value = 1320
+      gain.gain.setValueAtTime(0.35, t + offset)
+      gain.gain.exponentialRampToValueAtTime(0.01, t + offset + 0.1)
+      osc.start(t + offset)
+      osc.stop(t + offset + 0.1)
+    }
+  } catch { /* audio not available */ }
+}
+
 
 const liveEstimate = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
@@ -579,12 +1074,12 @@ const isNewPR = computed(() => {
   return pr > 0 && liveEstimate.value > pr
 })
 
+const hasSetData = computed(() => weight.value > 0 && reps.value >= 1)
+
 const canSave = computed(() => {
-  const hasWeight = weight.value > 0
-  const hasReps = reps.value >= 1
-  if (isEditMode.value) return hasWeight && hasReps
-  if (selectedExerciseId.value === '__new__') return newExerciseName.value.length > 0 && hasWeight && hasReps
-  return selectedExerciseId.value !== '' && hasWeight && hasReps
+  if (isEditMode.value) return hasSetData.value
+  if (selectedExerciseId.value === '__new__') return newExerciseName.value.length > 0
+  return selectedExerciseId.value !== '' && hasSetData.value
 })
 
 function saveSet() {
@@ -592,21 +1087,35 @@ function saveSet() {
   if (isEditMode.value) {
     store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, weight.value, reps.value, date.value)
     logEvent('set_edit')
+    closeModal()
   } else {
     let exerciseId = selectedExerciseId.value
-    if (exerciseId === '__new__') {
+    const isNew = exerciseId === '__new__'
+    if (isNew) {
       // Auto-add any pending tag text
       const pendingTag = newExerciseTagInput.value.trim()
       if (pendingTag && !newExerciseTags.value.includes(pendingTag)) {
         newExerciseTags.value.push(pendingTag)
       }
       exerciseId = store.addExercise(newExerciseName.value, newExerciseTags.value)
-      logEvent('exercise_add', { name: newExerciseName.value })
+      selectedExerciseId.value = exerciseId
+      newExerciseName.value = ''
+      newExerciseTags.value = []
+      newExerciseTagInput.value = ''
+      logEvent('exercise_add')
     }
-    store.logSet(exerciseId, weight.value, reps.value, date.value)
-    logEvent('set_log')
+    if (hasSetData.value) {
+      store.logSet(exerciseId, weight.value, reps.value, date.value)
+      logEvent('set_log')
+      if (restTimerEnabled.value) {
+        startRestTimer()
+      } else {
+        closeModal()
+      }
+    } else {
+      closeModal()
+    }
   }
-  closeModal()
 }
 
 // ── Confirm clear state ───────────────────────────────────────────
@@ -639,12 +1148,15 @@ function openEditExerciseModal(exercise) {
   newTagInput.value = ''
 }
 
+const editTagInputEl = ref(null)
+
 function addEditTag() {
   const tag = newTagInput.value.trim()
   if (tag && !editTags.value.includes(tag)) {
     editTags.value.push(tag)
   }
   newTagInput.value = ''
+  nextTick(() => editTagInputEl.value?.focus())
 }
 
 function removeEditTag(tag) {
@@ -689,9 +1201,11 @@ const confirmDeleteExercise = computed(() =>
 
 function confirmDelete() {
   if (confirmDeleteId.value === null) return
-  if (expandedId.value === confirmDeleteId.value) expandedId.value = null
+  if (detailExerciseId.value === confirmDeleteId.value) detailExerciseId.value = null
   store.deleteExercise(confirmDeleteId.value)
   confirmDeleteId.value = null
   logEvent('exercise_delete')
 }
+
+onUnmounted(() => stopTimer())
 </script>

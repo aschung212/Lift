@@ -11,69 +11,6 @@
     <!-- Authenticated app -->
     <template v-else>
       <div class="appContainer">
-        <!-- Top bar -->
-        <div class="topBar">
-          <div class="topBarLeft" ref="themeDropdownEl">
-            <button class="topBarBtn" @click="themeOpen = !themeOpen" title="Change theme" :aria-expanded="themeOpen">
-              <span class="themeActiveDot" :style="{ background: THEMES.find(t => t.id === currentTheme)?.dot }"></span>
-              <span class="topBarBtnLabel">Theme</span>
-            </button>
-            <div v-if="themeOpen" class="themeDropdown">
-              <button
-                v-for="t in THEMES"
-                :key="t.id"
-                :class="['themeOption', { active: currentTheme === t.id }]"
-                @click="selectTheme(t.id)"
-              >
-                <span class="themeSwatchDot" :style="{ background: t.dot }"></span>
-                {{ t.label }}
-              </button>
-              <div class="themeGlassRow">
-                <span class="themeGlassLabel">Dark Mode</span>
-                <button :class="['glassToggle', { on: colorMode === 'dark' }]" @click="toggleMode" :aria-label="colorMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
-                  <span class="glassToggleThumb"></span>
-                </button>
-              </div>
-              <div class="themeGlassRow">
-                <span class="themeGlassLabel">Liquid Glass</span>
-                <button :class="['glassToggle', { on: glassEnabled }]" @click="toggleGlass" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
-                  <span class="glassToggleThumb"></span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="topBarRight">
-            <div ref="settingsDropdownEl">
-              <button class="topBarBtn" @click="settingsOpen = !settingsOpen" title="Features" :aria-expanded="settingsOpen">
-                <svg class="topBarIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-              </button>
-              <div v-if="settingsOpen" class="settingsDropdown">
-                <div class="settingsHeader">Features</div>
-                <div
-                  v-for="tab in TAB_DEFS"
-                  :key="tab.id"
-                  class="settingsRow"
-                >
-                  <span class="settingsLabel">{{ tab.label }}</span>
-                  <button
-                    :class="['glassToggle', { on: prefs.features[tab.id] }]"
-                    @click="toggleFeature(tab.id)"
-                    :disabled="prefs.features[tab.id] && prefs.enabledCount <= 1"
-                    :aria-label="(prefs.features[tab.id] ? 'Disable ' : 'Enable ') + tab.label"
-                  >
-                    <span class="glassToggleThumb"></span>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <button class="topBarBtn" @click="confirmSignOut">Sign out</button>
-          </div>
-        </div>
-
         <div v-show="activeTab === 'workouts'" class="tabContent"><WorkoutTracker /></div>
         <div v-show="activeTab === 'calendar'" class="tabContent"><CalendarView /></div>
         <div v-show="activeTab === 'weight'" class="tabContent"><BodyweightTracker /></div>
@@ -81,16 +18,112 @@
 
       <!-- Tab bar -->
       <nav class="tabBar">
+        <div class="tabBarTabs">
+          <div
+            class="tabIndicator"
+            :style="tabIndicatorStyle"
+          ></div>
+          <button
+            v-for="tab in visibleTabs"
+            :key="tab.id"
+            :class="['tabBtn', { active: activeTab === tab.id }]"
+            @click="switchTab(tab.id)"
+          >
+            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="tab.icon"></svg>
+            <span class="tabLabel">{{ tab.label }}</span>
+          </button>
+        </div>
         <button
-          v-for="tab in visibleTabs"
-          :key="tab.id"
-          :class="['tabBtn', { active: activeTab === tab.id }]"
-          @click="switchTab(tab.id)"
+          :class="['tabBtn tabBtnSettings', { active: settingsOpen }]"
+          @click="settingsOpen = !settingsOpen"
+          title="Settings"
         >
-          <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="tab.icon"></svg>
-          <span class="tabLabel">{{ tab.label }}</span>
+          <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span class="tabLabel">Settings</span>
         </button>
       </nav>
+
+      <!-- Settings bottom sheet -->
+      <Teleport to="body">
+        <div v-if="settingsOpen" class="settingsOverlay" @click.self="settingsOpen = false">
+          <div class="settingsSheet">
+
+            <div class="settingsGroup">
+              <div class="settingsHeader">Appearance</div>
+              <div class="settingsThemeGrid">
+                <button
+                  v-for="t in THEMES"
+                  :key="t.id"
+                  :class="['themePreview', { active: currentTheme === t.id }]"
+                  @click="selectTheme(t.id)"
+                >
+                  <span
+                    class="themePreviewDot"
+                    :style="{
+                      background: THEME_PREVIEWS[t.id]?.[resolvedMode]?.bg,
+                      boxShadow: 'inset 0 0 0 3px ' + THEME_PREVIEWS[t.id]?.[resolvedMode]?.accent,
+                    }"
+                  ></span>
+                  <span class="themePreviewLabel">{{ t.label }}</span>
+                </button>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Mode</span>
+                <div class="modeSegmented">
+                  <button
+                    v-for="m in ['light', 'auto', 'dark']"
+                    :key="m"
+                    :class="['modeSegBtn', { active: colorMode === m }]"
+                    @click="setMode(m)"
+                  >{{ m[0].toUpperCase() + m.slice(1) }}</button>
+                </div>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Liquid Glass</span>
+                <button :class="['glassToggle', { on: glassEnabled }]" @click="toggleGlass" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="settingsGroup">
+              <div class="settingsHeader">Features</div>
+              <div
+                v-for="tab in TAB_DEFS"
+                :key="tab.id"
+                class="settingsRow"
+              >
+                <span class="settingsLabel">{{ tab.label }}</span>
+                <button
+                  :class="['glassToggle', { on: prefs.features[tab.id] }]"
+                  @click="toggleFeature(tab.id)"
+                  :disabled="prefs.features[tab.id] && prefs.enabledCount <= 1"
+                  :aria-label="(prefs.features[tab.id] ? 'Disable ' : 'Enable ') + tab.label"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Rest Timer</span>
+                <button
+                  :class="['glassToggle', { on: restTimerEnabled }]"
+                  @click="restTimerEnabled = !restTimerEnabled"
+                  :aria-label="restTimerEnabled ? 'Disable rest timer' : 'Enable rest timer'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="settingsGroup">
+              <button class="settingsSignOut" @click="confirmSignOut">Sign Out</button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
     </template>
   </div>
 </template>
@@ -106,16 +139,13 @@ import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
 
-const { currentTheme, THEMES, colorMode, glassEnabled } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled } = useTheme()
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 
-const themeOpen = ref(false)
 const settingsOpen = ref(false)
-const activeTab = ref('workouts')
-const themeDropdownEl = ref(null)
-const settingsDropdownEl = ref(null)
+const activeTab = ref(localStorage.getItem('active-tab') || 'workouts')
 
 // ── Tab definitions with inline SVG paths ────────────────────────
 const TAB_DEFS = [
@@ -140,6 +170,17 @@ const visibleTabs = computed(() =>
   TAB_DEFS.filter(t => prefs.features[t.id])
 )
 
+const tabIndicatorStyle = computed(() => {
+  const idx = visibleTabs.value.findIndex(t => t.id === activeTab.value)
+  const count = visibleTabs.value.length
+  if (idx < 0 || count === 0) return { opacity: 0 }
+  const widthPct = 100 / count
+  return {
+    width: `calc(${widthPct}% - 8px)`,
+    left: `calc(${widthPct * idx}% + 4px)`,
+  }
+})
+
 // Fall back if active tab gets disabled
 watch(() => prefs.features, () => {
   if (!prefs.features[activeTab.value]) {
@@ -150,7 +191,9 @@ watch(() => prefs.features, () => {
 // ── Analytics ────────────────────────────────────────────────────
 function switchTab(tabId) {
   const from = activeTab.value
+  if (from === tabId) return
   activeTab.value = tabId
+  localStorage.setItem('active-tab', tabId)
   tabSwitch(from, tabId)
 }
 
@@ -159,9 +202,9 @@ function selectTheme(id) {
   logEvent('theme_change', { theme: id })
 }
 
-function toggleMode() {
-  colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'
-  logEvent('mode_toggle', { mode: colorMode.value })
+function setMode(mode) {
+  colorMode.value = mode
+  logEvent('mode_toggle', { mode })
 }
 
 function toggleGlass() {
@@ -185,23 +228,11 @@ function onBeforeUnload() {
   flushEngagement()
 }
 
-// ── Click-outside handling ───────────────────────────────────────
-function onClickOutside(e) {
-  if (themeOpen.value && themeDropdownEl.value && !themeDropdownEl.value.contains(e.target)) {
-    themeOpen.value = false
-  }
-  if (settingsOpen.value && settingsDropdownEl.value && !settingsDropdownEl.value.contains(e.target)) {
-    settingsOpen.value = false
-  }
-}
-
 onMounted(() => {
-  document.addEventListener('pointerdown', onClickOutside, true)
   window.addEventListener('beforeunload', onBeforeUnload)
   logEvent('session_start')
 })
 onUnmounted(() => {
-  document.removeEventListener('pointerdown', onClickOutside, true)
   window.removeEventListener('beforeunload', onBeforeUnload)
 })
 </script>

@@ -148,7 +148,8 @@ async function handleOAuth(provider) {
 .authInput {
   width: 100%;
   padding: 12px 14px;
-  font-size: 14px;
+  min-height: 44px;
+  font-size: 16px;
   font-family: inherit;
   color: var(--text-primary);
   background: var(--bg-primary);
@@ -170,7 +171,8 @@ async function handleOAuth(provider) {
 .authSubmitBtn {
   width: 100%;
   padding: 13px 16px;
-  font-size: 14px;
+  min-height: 44px;
+  font-size: 15px;
   font-weight: 700;
   font-family: inherit;
   color: #fff;
@@ -195,13 +197,14 @@ async function handleOAuth(provider) {
 }
 
 .authModeSwitch {
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
   color: var(--text-secondary);
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px 0;
+  padding: 12px 0;
+  min-height: 44px;
   transition: color 0.12s;
 }
 
@@ -243,7 +246,8 @@ async function handleOAuth(provider) {
   gap: 10px;
   width: 100%;
   padding: 13px 16px;
-  font-size: 14px;
+  min-height: 44px;
+  font-size: 15px;
   font-weight: 600;
   font-family: inherit;
   border: 1px solid var(--border-strong);

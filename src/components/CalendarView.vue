@@ -18,18 +18,18 @@
 
     <!-- Tag filter -->
     <template v-if="store.allTags.length > 0">
-      <div v-if="activeTagFilters.length > 0" class="wtTagFilterHeader">
-        <span class="wtTagFilterLabel">Filtered</span>
-        <button class="wtTagClearBtn" @click="activeTagFilters = []">Clear</button>
-      </div>
       <div class="wtTagFilterBar">
         <button
           v-for="tag in store.allTags"
           :key="tag"
           :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
-          :style="activeTagFilters.includes(tag) ? {} : { borderColor: getTagColor(tag).border, color: getTagColor(tag).border }"
           @click="toggleTagFilter(tag)"
         >{{ tag }}</button>
+        <button
+          v-if="activeTagFilters.length > 0"
+          class="wtTagChip wtTagChipClear"
+          @click="activeTagFilters = []"
+        >× Clear</button>
       </div>
     </template>
 
@@ -56,7 +56,6 @@
               v-for="(ex, i) in cell.exercises.slice(0, 3)"
               :key="i"
               class="calDot"
-              :style="{ background: exerciseColor(ex) }"
             ></span>
             <span v-if="cell.exercises.length > 3" class="calOverflow">+{{ cell.exercises.length - 3 }}</span>
           </div>
@@ -73,7 +72,6 @@
           <template v-for="ex in trainingMap[selectedDay]" :key="ex">
             <span
               :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
-              :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
               @click="toggleDetail(selectedDay, ex)"
             >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(selectedDay, ex) }}</span></span>
             <div v-if="detailKey === `${selectedDay}::${ex}`" class="calSetList">
@@ -114,7 +112,6 @@
 
             <span
               :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
-              :style="{ borderColor: exerciseColor(ex), color: exerciseColor(ex) }"
               @click="toggleDetail(day.dateStr, ex)"
             >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(day.dateStr, ex) }}</span></span>
             <div v-if="detailKey === `${day.dateStr}::${ex}`" class="calSetList">
@@ -203,7 +200,6 @@
 import { ref, computed, watch } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
-import { getTagColor } from '../lib/tagColors'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
@@ -233,10 +229,6 @@ watch(() => store.allTags, (tags) => {
   activeTagFilters.value = activeTagFilters.value.filter(t => tags.includes(t))
 })
 
-const EXERCISE_COLORS = [
-  '#f87171', '#fb923c', '#fbbf24', '#4ade80',
-  '#34d399', '#38bdf8', '#818cf8', '#e879f9',
-]
 
 const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
@@ -323,10 +315,6 @@ function getSetCount(dateStr, exName) {
   return exercise.sets.filter(s => s.date.slice(0, 10) === dayStr).length
 }
 
-function exerciseColor(name) {
-  const idx = store.exercises.findIndex(e => e.name === name)
-  return EXERCISE_COLORS[Math.max(0, idx) % EXERCISE_COLORS.length]
-}
 
 // Navigation label
 const navLabel = computed(() => {

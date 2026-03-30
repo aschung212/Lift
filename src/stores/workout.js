@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import { uuid } from '../lib/uuid'
 
 const STORAGE_KEY = 'workout-exercises'
 
@@ -67,7 +68,7 @@ export const useWorkoutStore = defineStore('workout', {
         e => e.name.toLowerCase() === trimmed.toLowerCase()
       )
       if (existing) return existing.id
-      const id = crypto.randomUUID()
+      const id = uuid()
       this.exercises.push({ id, name: trimmed, tags: [...tags], sets: [] })
       this._persist()
 
@@ -85,7 +86,7 @@ export const useWorkoutStore = defineStore('workout', {
       const date = dateStr
         ? new Date(dateStr + 'T12:00:00').toISOString()
         : new Date().toISOString()
-      const id = crypto.randomUUID()
+      const id = uuid()
       const estimated1RM = epley(weight, reps)
       exercise.sets.push({ id, date, weight, reps, estimated1RM })
       this._persist()

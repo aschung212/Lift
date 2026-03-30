@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import { uuid } from '../lib/uuid'
 
 const STORAGE_KEY = 'bodyweight-entries'
 
@@ -51,7 +52,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       const date = dateStr
         ? new Date(dateStr + 'T12:00:00').toISOString()
         : new Date().toISOString()
-      const id = crypto.randomUUID()
+      const id = uuid()
       this.entries.push({ id, date, weight })
       this._persist()
 

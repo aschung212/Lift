@@ -1,6 +1,6 @@
 # Lift — Workout Tracker PWA
 
-A **mobile-first Progressive Web App** for tracking strength training, bodyweight, and personal records. Built with Vue 3, Pinia, Supabase, and hand-rolled SVG — no UI component libraries, no external chart packages.
+A **mobile-first Progressive Web App** for tracking strength training, bodyweight, and personal records. Built with Vue 3, Pinia, Supabase, and hand-rolled SVG — no UI component libraries, no external chart packages. Designed to feel like a native iOS app.
 
 **[→ Live App](https://spa-rho-sandy.vercel.app)**
 
@@ -14,7 +14,7 @@ A **mobile-first Progressive Web App** for tracking strength training, bodyweigh
 
 ## What It Does
 
-Lift lets you track any strength exercise over time. Log a set (weight + reps + date), and the app immediately computes your estimated 1-rep max, detects whether you just hit a personal record, and plots your progress on a live SVG chart. Sign in with Google to sync your data across devices via Supabase — or use the app offline with local storage.
+Lift lets you track any strength exercise over time. Log a set (weight + reps + date), and the app immediately computes your estimated 1-rep max, detects whether you just hit a personal record, and plots your progress on a time-proportional SVG chart. Sign in with Google or email to sync your data across devices via Supabase.
 
 ---
 
@@ -23,52 +23,65 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 ### Workout Tracking
 - Log weight, reps, and date for any exercise
 - Epley 1RM estimation (`weight × (1 + reps / 30)`) computed on every set
-- Per-exercise SVG line chart — best estimated 1RM per day with area fill
-- PR detection — gold row highlight + 🏆 trophy badge on personal record sets
+- Per-exercise SVG line chart — best estimated 1RM per day with area fill, time-proportional x-axis
+- PR detection — gold row highlight + trophy badge on personal record sets
+- Tap an exercise to open a full detail modal with graph, sets, and actions
 - Set list capped at 10 most recent, with "Show all" toggle
-- Full CRUD: add, edit, and delete individual sets; clear all sets per exercise
-- Drag-to-reorder exercises by grip handle
-- Expanded exercise panel with darker inset background for visual contrast
+- Full CRUD: add, edit, and delete individual sets and exercises
+- Drag-to-reorder exercises by grip handle (disabled when filtering)
 
 ### Exercise Tags
 - Tag exercises with custom labels (e.g. Chest, Legs, Push)
 - Add tags when creating a new exercise or editing an existing one
-- Tappable tag picker with toggle chips for existing tags + text input for new ones
-- Pending tag text is auto-saved when hitting Save (no need to tap "+" first)
+- Tappable tag picker with toggle chips — theme-colored, no rainbow
 - Multi-tag filtering on both Workouts and Calendar tabs (ANY match)
-- "Clear" button appears above tag chips when a filter is active
+- Inline "× Clear" chip at end of tag row when filters are active — no layout shift
+
+### Rest Timer
+- Circular progress ring with countdown display — Apple Timer style
+- Dedicated play/pause/restart button below the ring
+- Configurable duration presets as tappable pills
+- Auto-starts after logging a set (when enabled)
+- Persistent bottom bar shows live countdown while browsing the app
+- Timer continues running when modal is dismissed
+- Configurable rest times and alert warnings in timer settings
 
 ### Training Calendar
 - Monthly and weekly views of all training days
-- Color-coded exercise dots per day (stable color per exercise)
-- 🏆 trophy badge on days/exercises where a PR was set
-- Tap any day to expand its detail panel (including empty days)
+- Accent-colored exercise dots per day
+- Trophy badge on days/exercises where a PR was set
+- Tap any day to expand its detail panel
 - Tap any exercise tag to expand all sets logged that day
-- Set count badge on each exercise tag (e.g. "Bench Press 3")
-- PR sets highlighted in gold within the expanded detail
-- Log sets directly from the calendar — "+ Log" button on day detail (month) and each day row (week)
-- Tag filtering — filter calendar to show only days/exercises matching selected tags
+- Set count badge on each exercise tag
+- Log sets directly from the calendar
+- Tag filtering shared with workouts tab
 
 ### Body Weight Tracking
 - Log daily weigh-ins with date
-- SVG line chart filtered by period: 7d / 30d / 90d / 1y
+- Time-proportional SVG line chart filtered by period: 7d / 30d / 90d / 1y
 - Stats row per period: Change, Low, High, Avg
 - All-time low (green) and high (red) highlighted in the entry list
+- Smart date label spacing to prevent overlap
 
 ### Auth & Sync
-- Google OAuth via Supabase — one-tap sign in
+- Google OAuth or email/password sign-in via Supabase
 - Optimistic local-first writes: UI updates instantly, Supabase syncs in background
 - One-time migration of existing localStorage data on first sign-in
 - Data persists in localStorage for offline use; Supabase for cross-device sync
 
 ### UI & Experience
-- Bottom tab bar: Workouts · Calendar · Weight — each tab can be shown/hidden in settings (at least one must remain)
-- 6 themes: Midnight · Graphite · Arctic · Forge · Aaron · Tina
-- Liquid Glass mode — frosted glass cards, tab bar, and modals with per-theme ambient mesh gradients; toggleable and persisted
-- Collapsible theme picker with Liquid Glass toggle
-- Tap outside theme dropdown to dismiss
+- Bottom tab bar with sliding liquid glass indicator (when glass mode is on)
+- Tab animation on switch
+- 6 themes with visual preview dots: Midnight, Graphite, Arctic, Forge, Aaron, Tina
+- Light / Auto / Dark mode — auto follows system `prefers-color-scheme`
+- Liquid Glass mode — frosted glass cards, tab bar, and modals with per-theme ambient mesh gradients
+- Settings bottom sheet — iOS-style grouped sections for Appearance, Features, and Account
+- Active tab persisted across sessions
+- All touch targets meet iOS 44pt minimum
+- All text meets 11pt minimum font size
+- Toggle switches sized to iOS standard (51×31pt)
+- Improved contrast ratios across all themes for accessibility
 - Portrait-only: landscape blocked with a clean overlay
-- Scroll locked to each tab's content — no full-page scroll for an app-like feel
 - Safe-area insets respected for notched devices
 
 ---
@@ -79,7 +92,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 |---|---|---|
 | **UI framework** | Vue 3 (`<script setup>`) | Fine-grained reactivity; single-file components |
 | **State** | Pinia | Lightweight store; syncs to localStorage on every mutation |
-| **Backend / Auth** | Supabase | Postgres with RLS, Google OAuth, realtime-ready |
+| **Backend / Auth** | Supabase | Postgres with RLS, Google OAuth, email auth |
 | **Build** | Vite 5 | Sub-second HMR, native ESM |
 | **PWA** | `vite-plugin-pwa` + Workbox | Pre-caches all static assets; installable on iOS & Android |
 | **Charts** | Hand-rolled SVG | `<polyline>` + `<polygon>` computed from normalized data — no chart library |
@@ -97,10 +110,13 @@ Every action updates Pinia state and `localStorage` immediately, then fires a Su
 `getExercisePR(exerciseId)` returns the all-time max `estimated1RM` across all sets for that exercise. Any set where `set.estimated1RM === PR` gets the gold treatment — in both the workout list and the calendar.
 
 ### Calendar PR map
-A `prMap` computed property (`YYYY-MM-DD → Set<exerciseName>`) is derived from the store at render time. The calendar reads this to show 🏆 badges on cells and exercise tags without any extra queries.
+A `prMap` computed property (`YYYY-MM-DD → Set<exerciseName>`) is derived from the store at render time. The calendar reads this to show trophy badges on cells and exercise tags without any extra queries.
 
 ### Glass system
-Each theme defines `--glass-fill`, `--glass-edge`, `--glass-shine`, `--glass-bar`, `--glass-overlay`, and `--mesh` tokens. When `data-glass="on"` (default), cards and chrome use `backdrop-filter: blur()` with translucent fills. `data-glass="off"` overrides fall back to solid `--bg-secondary` / `--bg-elevated` values.
+Each theme defines `--glass-fill`, `--glass-edge`, `--glass-shine`, `--glass-bar`, `--glass-overlay`, and `--mesh` tokens. When `data-glass="on"` (default), cards and chrome use `backdrop-filter: blur()` with translucent fills. `data-glass="off"` overrides fall back to solid `--bg-secondary` / `--bg-elevated` values. The tab bar indicator only renders in glass mode.
+
+### iOS HIG compliance
+All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 11pt minimum throughout. Toggle switches are 51×31pt. Text contrast ratios are tuned per-theme for WCAG AA compliance. Safe areas are respected for notched devices.
 
 ---
 
@@ -150,14 +166,14 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   └── generate-icons.js
 ├── src/
 │   ├── components/
-│   │   ├── WorkoutTracker.vue   # Exercise list, log/edit modal, set list, PR badges, tag filtering
-│   │   ├── ExerciseGraph.vue    # Per-exercise SVG line chart
-│   │   ├── CalendarView.vue     # Monthly/weekly calendar, PR map, set detail, log modal, tag filtering
+│   │   ├── WorkoutTracker.vue   # Exercise list, detail modal, log/edit modal, rest timer, tags
+│   │   ├── ExerciseGraph.vue    # Per-exercise SVG line chart (time-proportional)
+│   │   ├── CalendarView.vue     # Monthly/weekly calendar, PR map, set detail, tag filtering
 │   │   ├── BodyweightTracker.vue # Weight log, period stats, SVG chart, low/high badges
-│   │   └── AuthScreen.vue       # Google sign-in screen
+│   │   └── AuthScreen.vue       # Email/password + Google sign-in
 │   ├── composables/
-│   │   ├── useTheme.js          # Theme + glass toggle, localStorage persistence
-│   │   ├── useAuth.js           # Supabase session, Google OAuth, store init on sign-in
+│   │   ├── useTheme.js          # Themes, mode (light/auto/dark), glass toggle, rest timer toggle
+│   │   ├── useAuth.js           # Supabase session, OAuth + email auth, store init on sign-in
 │   │   └── useAnalytics.js      # Lightweight event logging
 │   ├── stores/
 │   │   ├── workout.js           # Exercises + sets CRUD, Epley 1RM, PR getter, tags, Supabase sync
@@ -165,9 +181,8 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   │   └── preferences.js       # Feature toggles (tab visibility), Supabase sync
 │   ├── lib/
 │   │   ├── supabase.js          # Supabase client singleton
-│   │   ├── migrate.js           # One-time localStorage → Supabase migration
-│   │   └── tagColors.js         # Deterministic color assignment for exercise tags
-│   ├── App.vue                  # Tab bar, theme picker, glass toggle, settings, auth gate
+│   │   └── migrate.js           # One-time localStorage → Supabase migration
+│   ├── App.vue                  # Tab bar, settings sheet, theme picker, auth gate
 │   ├── main.js
 │   └── index.css                # All theme tokens, glass tokens, component styles
 ├── supabase/

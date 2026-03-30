@@ -315,11 +315,14 @@ const maxVal = computed(() => {
 const points = computed(() => {
   const entries = filteredDaily.value
   if (entries.length < 2) return []
-  const n = entries.length
   const range = maxVal.value - minVal.value
+  const t0 = new Date(entries[0].date + 'T12:00:00').getTime()
+  const t1 = new Date(entries[entries.length - 1].date + 'T12:00:00').getTime()
+  const tRange = t1 - t0
 
-  return entries.map(({ date, weight }, i) => {
-    const x = PAD_L + (i / (n - 1)) * chartW
+  return entries.map(({ date, weight }) => {
+    const t = new Date(date + 'T12:00:00').getTime()
+    const x = tRange > 0 ? PAD_L + ((t - t0) / tRange) * chartW : PAD_L + chartW / 2
     const y = range > 0
       ? PAD_T + chartH - ((weight - minVal.value) / range) * chartH
       : PAD_T + chartH / 2
@@ -344,10 +347,27 @@ const areaPoints = computed(() => {
 
 const gridYs = computed(() => [PAD_T, PAD_T + chartH / 2, PAD_T + chartH])
 
+const visibleLabelIndices = computed(() => {
+  const pts = points.value
+  if (pts.length === 0) return []
+  const MIN_GAP = 50
+  const indices = [0]
+  for (let i = 1; i < pts.length; i++) {
+    const lastX = pts[indices[indices.length - 1]].x
+    if (pts[i].x - lastX >= MIN_GAP) {
+      indices.push(i)
+    }
+  }
+  // Always include last point if it doesn't overlap
+  const last = pts.length - 1
+  if (!indices.includes(last) && pts[last].x - pts[indices[indices.length - 1]].x >= MIN_GAP) {
+    indices.push(last)
+  }
+  return indices
+})
+
 function shouldShowLabel(i) {
-  const n = points.value.length
-  if (n <= 5) return true
-  return i === 0 || i === Math.floor((n - 1) / 2) || i === n - 1
+  return visibleLabelIndices.value.includes(i)
 }
 
 function formatDate(iso) {
