@@ -63,8 +63,7 @@
                   <span
                     class="themePreviewDot"
                     :style="{
-                      background: THEME_PREVIEWS[t.id]?.[resolvedMode]?.bg,
-                      boxShadow: 'inset 0 0 0 3px ' + THEME_PREVIEWS[t.id]?.[resolvedMode]?.accent,
+                      background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[t.id]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[t.id]?.[resolvedMode]?.bg + ')',
                     }"
                   ></span>
                   <span class="themePreviewLabel">{{ t.label }}</span>
