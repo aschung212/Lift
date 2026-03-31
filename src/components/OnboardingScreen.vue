@@ -280,7 +280,7 @@ function chooseExplore() {
 }
 
 .obTagline {
-  font-size: 16px;
+  font-size: var(--font-callout);
   color: var(--text-secondary);
   margin-bottom: 32px;
   line-height: 1.5;
@@ -329,13 +329,13 @@ function chooseExplore() {
 }
 
 .obOptionText strong {
-  font-size: 16px;
+  font-size: var(--font-callout);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .obOptionText span {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
   line-height: 1.3;
 }
