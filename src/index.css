@@ -2767,3 +2767,57 @@ input[type=number] { -moz-appearance: textfield; }
 
 
 }
+
+/* ─── Error Boundary ─────────────────────────────────────────────────────── */
+
+.errorBoundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 32px;
+  text-align: center;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.errorBoundaryIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--danger-subtle);
+  color: var(--danger);
+  font-size: 28px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.errorBoundaryTitle {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.errorBoundaryMessage {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 24px;
+  max-width: 320px;
+  word-break: break-word;
+}
+
+.errorBoundaryBtn {
+  padding: 12px 32px;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}

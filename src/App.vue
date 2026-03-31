@@ -1,4 +1,5 @@
 <template>
+  <ErrorBoundary>
   <div id="appShell">
     <!-- Loading state -->
     <div v-if="loading" class="authLoading">
@@ -145,10 +146,12 @@
       </Teleport>
     </template>
   </div>
+  </ErrorBoundary>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 import WorkoutTracker from './components/WorkoutTracker.vue'
 import BodyweightTracker from './components/BodyweightTracker.vue'
 import CalendarView from './components/CalendarView.vue'

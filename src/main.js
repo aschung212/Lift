@@ -8,6 +8,11 @@ import './index.css'
 inject()
 injectSpeedInsights()
 
-createApp(App)
-    .use(createPinia())
-    .mount('#app');
+const app = createApp(App)
+app.use(createPinia())
+
+app.config.errorHandler = (err, instance, info) => {
+  console.error(`[Vue Error] ${info}:`, err)
+}
+
+app.mount('#app');
