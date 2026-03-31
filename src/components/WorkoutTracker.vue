@@ -3,7 +3,15 @@
   <div class="wtCard">
     <div class="wtCardHeader">
       <h2 class="wtTitle">Exercise Tracker</h2>
-      <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+      <div class="wtHeaderActions">
+        <button v-if="store.exercises.length > 0" class="wtTemplateBtn" @click="openSaveTemplateModal" aria-label="Save as template">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        </button>
+        <button v-if="templateStore.templates.length > 0" class="wtTemplateBtn" @click="openLoadTemplateModal" aria-label="Load template">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </button>
+        <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+      </div>
     </div>
 
     <!-- Tag filter -->
@@ -513,6 +521,54 @@
     </div>
   </Teleport>
 
+  <!-- Save Template Modal -->
+  <Teleport to="body">
+    <div v-if="saveTemplateOpen" class="repMaxOverlay" @click.self="saveTemplateOpen = false" @keydown.escape="saveTemplateOpen = false">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="save-template-title">
+        <h2 id="save-template-title">Save as Template</h2>
+        <p class="wtModalSubtitle">Save your current {{ store.exercises.length }} exercise{{ store.exercises.length !== 1 ? 's' : '' }} as a reusable template.</p>
+        <label class="repMaxLabel">
+          Template name
+          <input
+            v-model.trim="templateName"
+            type="text"
+            placeholder="e.g. Push Day, Full Body"
+            class="repMaxInput"
+            @keyup.enter="confirmSaveTemplate"
+          />
+        </label>
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnCalc" :disabled="!templateName" @click="confirmSaveTemplate">Save</button>
+          <button class="repMaxBtn repMaxBtnClose" @click="saveTemplateOpen = false">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Load Template Modal -->
+  <Teleport to="body">
+    <div v-if="loadTemplateOpen" class="repMaxOverlay" @click.self="loadTemplateOpen = false" @keydown.escape="loadTemplateOpen = false">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="load-template-title">
+        <h2 id="load-template-title">Load Template</h2>
+        <p class="wtModalSubtitle">Add exercises from a saved template. Existing exercises won't be duplicated.</p>
+        <ul class="wtTemplateList">
+          <li v-for="tpl in templateStore.sortedTemplates" :key="tpl.id" class="wtTemplateItem">
+            <button class="wtTemplateItemBtn" @click="confirmLoadTemplate(tpl)">
+              <span class="wtTemplateName">{{ tpl.name }}</span>
+              <span class="wtTemplateMeta">{{ tpl.exercises.length }} exercise{{ tpl.exercises.length !== 1 ? 's' : '' }}</span>
+            </button>
+            <button class="wtTemplateDeleteBtn" @click.stop="deleteTemplate(tpl)" aria-label="Delete template">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </li>
+        </ul>
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnClose" @click="loadTemplateOpen = false">Done</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
   <!-- Rest timer bar -->
   <button
     v-if="restTimerEnabled && !showModal"
@@ -545,9 +601,12 @@ interface PREntry extends WorkoutSet {
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
+import { useTemplateStore } from '../stores/templates'
+import type { WorkoutTemplate } from '../stores/templates'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
+const templateStore = useTemplateStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
@@ -1350,6 +1409,48 @@ function confirmDeleteTag(tag: string) {
   )
 }
 
+
+// ── Templates ────────────────────────────────────────────────────
+const saveTemplateOpen = ref(false)
+const loadTemplateOpen = ref(false)
+const templateName = ref('')
+
+function openSaveTemplateModal() {
+  templateName.value = ''
+  saveTemplateOpen.value = true
+}
+
+function openLoadTemplateModal() {
+  loadTemplateOpen.value = true
+}
+
+function confirmSaveTemplate() {
+  if (!templateName.value) return
+  const exercises = store.exercises.map(e => ({ name: e.name, tags: [...e.tags] }))
+  templateStore.saveTemplate(templateName.value, exercises)
+  logEvent('template_save', { count: exercises.length })
+  saveTemplateOpen.value = false
+}
+
+function confirmLoadTemplate(tpl: WorkoutTemplate) {
+  let added = 0
+  for (const ex of tpl.exercises) {
+    const id = store.addExercise(ex.name, ex.tags)
+    // addExercise returns existing id if duplicate, but won't re-add
+    if (id) added++
+  }
+  logEvent('template_load', { name: tpl.name, added })
+  loadTemplateOpen.value = false
+}
+
+function deleteTemplate(tpl: WorkoutTemplate) {
+  templateStore.deleteTemplate(tpl.id)
+  showUndo(
+    `Template "${tpl.name}" deleted`,
+    () => templateStore.saveTemplate(tpl.name, tpl.exercises),
+    () => {},
+  )
+}
 
 onUnmounted(() => stopTimer())
 </script>

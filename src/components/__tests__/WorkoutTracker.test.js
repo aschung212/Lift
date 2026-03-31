@@ -111,6 +111,17 @@ vi.mock('../../stores/workout', () => ({
   })
 }))
 
+// Mock template store
+vi.mock('../../stores/templates', () => ({
+  useTemplateStore: () => ({
+    templates: [],
+    sortedTemplates: [],
+    saveTemplate: vi.fn(),
+    deleteTemplate: vi.fn(),
+    renameTemplate: vi.fn(),
+  })
+}))
+
 import WorkoutTracker from '../WorkoutTracker.vue'
 
 function mountTracker() {
