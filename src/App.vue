@@ -83,7 +83,7 @@
                 <span class="settingsLabel">Mode</span>
                 <div class="modeSegmented">
                   <button
-                    v-for="m in ['light', 'auto', 'dark']"
+                    v-for="m in (['light', 'auto', 'dark'] as const)"
                     :key="m"
                     :class="['modeSegBtn', { active: colorMode === m }]"
                     @click="setMode(m)"
@@ -149,7 +149,7 @@
   </ErrorBoundary>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
@@ -172,7 +172,7 @@ const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 
 const settingsOpen = ref(false)
-const settingsEl = ref(null)
+const settingsEl = ref<HTMLElement | null>(null)
 
 // ── Onboarding ──────────────────────────────────────────────────
 const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
@@ -250,7 +250,7 @@ watch(() => prefs.features, () => {
 }, { deep: true })
 
 // ── Analytics ────────────────────────────────────────────────────
-function switchTab(tabId) {
+function switchTab(tabId: string) {
   const from = activeTab.value
   closeSettings()
   if (from === tabId) return
@@ -259,12 +259,12 @@ function switchTab(tabId) {
   tabSwitch(from, tabId)
 }
 
-function selectTheme(id) {
+function selectTheme(id: string) {
   currentTheme.value = id
   logEvent('theme_change', { theme: id })
 }
 
-function setMode(mode) {
+function setMode(mode: 'light' | 'dark' | 'auto') {
   colorMode.value = mode
   logEvent('mode_toggle', { mode })
 }
@@ -280,7 +280,7 @@ function confirmSignOut() {
   }
 }
 
-function toggleFeature(featureId) {
+function toggleFeature(featureId: string) {
   prefs.toggleFeature(featureId)
   logEvent('feature_toggle', { feature: featureId, enabled: prefs.features[featureId] })
 }
