@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import { mergeEntities } from '../lib/conflictResolver'
 import { uuid } from '../lib/uuid'
 
 const STORAGE_KEY = 'workout-exercises'
@@ -67,21 +68,62 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (!exercises) return
 
-      this.exercises = exercises.map((ex: Record<string, unknown>) => ({
+      const remoteExercises = exercises.map((ex: Record<string, unknown>) => ({
         id: ex.id as string,
         name: ex.name as string,
         tags: (ex.tags as string[]) || [],
-        sets: (sets || [])
-          .filter((s: Record<string, unknown>) => s.exercise_id === ex.id)
-          .map((s: Record<string, unknown>) => ({
-            id: s.id as string,
-            date: s.date as string,
-            weight: s.weight as number,
-            reps: s.reps as number,
-            estimated1RM: s.estimated_1rm as number
-          }))
+        updated_at: (ex.updated_at as string) || (ex.created_at as string) || new Date().toISOString(),
+        sets: [] as WorkoutSet[]
       }))
+
+      // Build remote sets grouped by exercise
+      const remoteSetsMap = new Map<string, WorkoutSet[]>()
+      for (const s of (sets || []) as Record<string, unknown>[]) {
+        const exerciseId = s.exercise_id as string
+        if (!remoteSetsMap.has(exerciseId)) remoteSetsMap.set(exerciseId, [])
+        remoteSetsMap.get(exerciseId)!.push({
+          id: s.id as string,
+          date: s.date as string,
+          weight: s.weight as number,
+          reps: s.reps as number,
+          estimated1RM: s.estimated_1rm as number
+        })
+      }
+      remoteExercises.forEach(ex => {
+        ex.sets = remoteSetsMap.get(ex.id) || []
+      })
+
+      // Merge with local state using last-write-wins conflict resolution
+      const localWithTimestamps = this.exercises.map(ex => ({
+        ...ex,
+        updated_at: (ex as Exercise & { updated_at?: string }).updated_at || new Date(0).toISOString()
+      }))
+
+      const { merged, localOnly } = mergeEntities(localWithTimestamps, remoteExercises)
+
+      this.exercises = merged.map(({ updated_at: _ts, ...rest }) => rest as Exercise)
       this._persist()
+
+      // Push local-only exercises to remote
+      if (localOnly.length > 0) {
+        const userId = this._userId
+        for (const ex of localOnly) {
+          syncQueue.enqueue(`exercise-push:${ex.id}`, () =>
+            supabase!.from('exercises').upsert({
+              id: ex.id, user_id: userId, name: ex.name, tags: ex.tags
+            })
+          )
+          for (const set of ex.sets) {
+            syncQueue.enqueue(`set-push:${set.id}`, () =>
+              supabase!.from('sets').upsert({
+                id: set.id, user_id: userId, exercise_id: ex.id,
+                date: set.date, weight: set.weight, reps: set.reps,
+                estimated_1rm: set.estimated1RM
+              })
+            )
+          }
+        }
+      }
     },
 
     addExercise(name: string, tags: string[] = [], { sync = true }: { sync?: boolean } = {}): string | null {
