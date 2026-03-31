@@ -1109,6 +1109,39 @@ input[type=number] { -moz-appearance: textfield; }
 
 /* ─── Tag filter bar ───────────────────────────────────────────────────── */
 
+.wtSearchBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+}
+
+.wtSearchInput {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-primary, rgba(255,255,255,0.06));
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.wtSearchInput:focus {
+  border-color: var(--accent);
+}
+
+.wtSearchInput::placeholder {
+  color: var(--text-tertiary, rgba(255,255,255,0.35));
+}
+
+.wtSearchCount {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
 .wtTagFilterBar {
   display: flex;
   flex-wrap: wrap;

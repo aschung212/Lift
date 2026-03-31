@@ -36,8 +36,24 @@
       </div>
     </template>
 
+    <!-- Search bar (shown when 5+ exercises) -->
+    <div v-if="store.exercises.length >= 5" class="wtSearchBar">
+      <input
+        v-model="searchQuery"
+        type="search"
+        class="wtSearchInput"
+        placeholder="Search exercises…"
+        aria-label="Search exercises"
+      />
+      <span v-if="searchQuery" class="wtSearchCount">{{ filteredExercises.length }} result{{ filteredExercises.length !== 1 ? 's' : '' }}</span>
+    </div>
+
     <p v-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
+    </p>
+
+    <p v-else-if="filteredExercises.length === 0" class="wtEmpty">
+      No exercises match your search.
     </p>
 
     <ul v-else class="wtExerciseList" ref="exerciseListEl">
@@ -643,7 +659,8 @@ const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
 
-// ── Tag filtering ────────────────────────────────────────────────
+// ── Search & tag filtering ──────────────────────────────────────
+const searchQuery = ref('')
 const activeTagFilters = ref<string[]>([])
 
 function toggleTagFilter(tag: string) {
@@ -656,11 +673,20 @@ function toggleTagFilter(tag: string) {
 }
 
 const filteredExercises = computed(() => {
-  if (activeTagFilters.value.length === 0) return store.exercises
-  return store.exercises.filter(e => {
-    const tags = e.tags || []
-    return activeTagFilters.value.some(t => tags.includes(t))
-  })
+  let result = store.exercises
+  // Text search
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) {
+    result = result.filter(e => e.name.toLowerCase().includes(q))
+  }
+  // Tag filter
+  if (activeTagFilters.value.length > 0) {
+    result = result.filter(e => {
+      const tags = e.tags || []
+      return activeTagFilters.value.some(t => tags.includes(t))
+    })
+  }
+  return result
 })
 
 // Remove stale tags from active filters

@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { defineComponent, ref, nextTick } from 'vue'
+import { defineComponent } from 'vue'
 import { useKeyboardShortcuts, type Shortcut } from '../useKeyboardShortcuts'
 
 function fire(key: string, opts: Partial<KeyboardEventInit> = {}) {
@@ -20,14 +20,14 @@ function createWrapper(shortcuts: Shortcut[]) {
 }
 
 describe('useKeyboardShortcuts', () => {
-  let actions: Record<string, ReturnType<typeof vi.fn>>
+  let actions: Record<string, () => void>
 
   beforeEach(() => {
     actions = {
-      help: vi.fn(),
-      workouts: vi.fn(),
-      calendar: vi.fn(),
-      settings: vi.fn(),
+      help: vi.fn() as unknown as () => void,
+      workouts: vi.fn() as unknown as () => void,
+      calendar: vi.fn() as unknown as () => void,
+      settings: vi.fn() as unknown as () => void,
     }
   })
 
