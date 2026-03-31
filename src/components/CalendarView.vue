@@ -69,6 +69,29 @@
           <button class="calLogBtn" @click="openLogModal(selectedDay)">+ Log</button>
         </div>
         <div v-if="trainingMap[selectedDay]" class="calDetailTags">
+          <!-- Daily workout summary -->
+          <div class="calSummaryBar" v-if="daySummary">
+            <span class="calSumStat">
+              <span class="calSumValue">{{ daySummary.exercises }}</span>
+              <span class="calSumLabel">exercise{{ daySummary.exercises !== 1 ? 's' : '' }}</span>
+            </span>
+            <span class="calSumDivider"></span>
+            <span class="calSumStat">
+              <span class="calSumValue">{{ daySummary.sets }}</span>
+              <span class="calSumLabel">set{{ daySummary.sets !== 1 ? 's' : '' }}</span>
+            </span>
+            <span class="calSumDivider"></span>
+            <span class="calSumStat">
+              <span class="calSumValue">{{ daySummary.volumeDisplay }}</span>
+              <span class="calSumLabel">{{ weightUnit }} volume</span>
+            </span>
+            <span v-if="daySummary.prs > 0" class="calSumDivider"></span>
+            <span v-if="daySummary.prs > 0" class="calSumStat calSumPR">
+              <span class="calSumValue">🏆 {{ daySummary.prs }}</span>
+              <span class="calSumLabel">PR{{ daySummary.prs !== 1 ? 's' : '' }}</span>
+            </span>
+          </div>
+
           <template v-for="ex in trainingMap[selectedDay]" :key="ex">
             <span
               :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
@@ -289,6 +312,41 @@ function isPRExercise(dateStr: string, exName: string) {
 function hasPR(dateStr: string) {
   return !!(prMap.value[dateStr]?.size > 0)
 }
+
+// ── Daily workout summary ────────────────────────────────────────
+const daySummary = computed(() => {
+  if (!selectedDay.value || !trainingMap.value[selectedDay.value]) return null
+  const dayStr = selectedDay.value.slice(0, 10)
+  let totalSets = 0
+  let totalVolume = 0
+  let exerciseCount = 0
+  let prCount = 0
+
+  for (const exercise of filteredExercises.value) {
+    const daySets = exercise.sets.filter(s => s.date.slice(0, 10) === dayStr)
+    if (daySets.length === 0) continue
+    exerciseCount++
+    totalSets += daySets.length
+    for (const s of daySets) {
+      totalVolume += s.weight * s.reps
+    }
+    const pr = store.getExercisePR(exercise.id)
+    if (pr && daySets.some(s => s.estimated1RM === pr)) {
+      prCount++
+    }
+  }
+
+  const formatted = totalVolume >= 10000
+    ? `${(displayWeight(totalVolume) / 1000).toFixed(1)}k`
+    : String(displayWeight(totalVolume))
+
+  return {
+    exercises: exerciseCount,
+    sets: totalSets,
+    volumeDisplay: formatted,
+    prs: prCount,
+  }
+})
 
 // Exercise detail expand: "YYYY-MM-DD::Exercise Name" or null
 const detailKey = ref<string | null>(null)

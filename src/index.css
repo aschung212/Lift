@@ -2506,6 +2506,52 @@ input[type=number] { -moz-appearance: textfield; }
   background: var(--accent-subtle);
 }
 
+/* ── Daily workout summary bar ────────────────────────────────── */
+.calSummaryBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.calSumStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.calSumValue {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.calSumLabel {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.calSumDivider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-strong);
+  flex-shrink: 0;
+}
+
+.calSumPR .calSumValue {
+  color: #d4af37;
+}
+
 .calDetailTags {
   display: flex;
   flex-wrap: wrap;
