@@ -138,9 +138,9 @@
 
   <!-- Log / Edit Modal -->
   <Teleport to="body">
-    <div v-if="showModal" class="repMaxOverlay" @click.self="closeModal">
-      <div class="repMaxModal">
-        <h2>{{ editing ? 'Edit Weight' : 'Log Weight' }}</h2>
+    <div v-if="showModal" class="repMaxOverlay" @click.self="closeModal" @keydown.escape="closeModal">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="bw-modal-title">
+        <h2 id="bw-modal-title">{{ editing ? 'Edit Weight' : 'Log Weight' }}</h2>
 
         <label class="repMaxLabel">
           Date

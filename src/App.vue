@@ -13,29 +13,32 @@
 
     <!-- Authenticated app -->
     <template v-else>
-      <div class="appContainer">
+      <main class="appContainer">
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
         <div v-show="activeTab === 'workouts'" class="tabContent"><WorkoutTracker /></div>
         <div v-show="activeTab === 'calendar'" class="tabContent"><CalendarView /></div>
         <div v-show="activeTab === 'weight'" class="tabContent"><BodyweightTracker /></div>
-      </div>
+      </main>
 
       <!-- Tab bar -->
-      <nav class="tabBar">
-        <div class="tabBarTabs">
+      <nav class="tabBar" aria-label="Main navigation">
+        <div class="tabBarTabs" role="tablist">
           <div
             class="tabIndicator"
             :style="tabIndicatorStyle"
+            aria-hidden="true"
           ></div>
           <button
             v-for="tab in visibleTabs"
             :key="tab.id"
+            role="tab"
+            :aria-selected="activeTab === tab.id"
             :class="['tabBtn', { active: activeTab === tab.id }]"
             @click="switchTab(tab.id)"
           >
-            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="tab.icon"></svg>
+            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="tab.icon"></svg>
             <span class="tabLabel">{{ tab.label }}</span>
           </button>
         </div>
@@ -54,11 +57,11 @@
 
       <!-- Settings bottom sheet -->
       <Teleport to="body">
-        <div v-if="settingsOpen" class="settingsOverlay" @click.self="closeSettings">
-          <div class="settingsSheet" ref="settingsEl">
+        <div v-if="settingsOpen" class="settingsOverlay" @click.self="closeSettings" @keydown.escape="closeSettings">
+          <div class="settingsSheet" ref="settingsEl" role="dialog" aria-modal="true" aria-labelledby="settings-title">
 
             <div class="settingsGroup">
-              <div class="settingsHeader">Appearance</div>
+              <div class="settingsHeader" id="settings-title">Appearance</div>
               <div class="settingsThemeGrid">
                 <button
                   v-for="t in THEMES"
@@ -88,7 +91,7 @@
               </div>
               <div class="settingsRow">
                 <span class="settingsLabel">Liquid Glass</span>
-                <button :class="['glassToggle', { on: glassEnabled }]" @click="toggleGlass" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
+                <button :class="['glassToggle', { on: glassEnabled }]" @click="toggleGlass" role="switch" :aria-checked="glassEnabled" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
@@ -113,6 +116,8 @@
                   :class="['glassToggle', { on: prefs.features[tab.id] }]"
                   @click="toggleFeature(tab.id)"
                   :disabled="prefs.features[tab.id] && prefs.enabledCount <= 1"
+                  role="switch"
+                  :aria-checked="prefs.features[tab.id]"
                   :aria-label="(prefs.features[tab.id] ? 'Disable ' : 'Enable ') + tab.label"
                 >
                   <span class="glassToggleThumb"></span>
@@ -123,6 +128,8 @@
                 <button
                   :class="['glassToggle', { on: restTimerEnabled }]"
                   @click="restTimerEnabled = !restTimerEnabled"
+                  role="switch"
+                  :aria-checked="restTimerEnabled"
                   :aria-label="restTimerEnabled ? 'Disable rest timer' : 'Enable rest timer'"
                 >
                   <span class="glassToggleThumb"></span>

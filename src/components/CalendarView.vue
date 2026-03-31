@@ -11,9 +11,9 @@
 
     <!-- Navigation -->
     <div class="calNav">
-      <button class="calNavBtn" @click="prev">‹</button>
+      <button class="calNavBtn" @click="prev" aria-label="Previous">‹</button>
       <span class="calNavLabel">{{ navLabel }}</span>
-      <button class="calNavBtn" @click="next">›</button>
+      <button class="calNavBtn" @click="next" aria-label="Next">›</button>
     </div>
 
     <!-- Tag filter -->
@@ -137,9 +137,9 @@
 
   <!-- Log Set Modal -->
   <Teleport to="body">
-    <div v-if="logModal.open" class="repMaxOverlay" @click.self="closeLogModal">
-      <div class="repMaxModal">
-        <h2>Log a Set</h2>
+    <div v-if="logModal.open" class="repMaxOverlay" @click.self="closeLogModal" @keydown.escape="closeLogModal">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title">
+        <h2 id="cal-modal-title">Log a Set</h2>
         <p class="wtModalSubtitle">{{ formatSelectedDay(logModal.date) }}</p>
 
         <label class="repMaxLabel">

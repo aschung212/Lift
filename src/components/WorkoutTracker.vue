@@ -69,11 +69,11 @@
 
   <!-- Exercise detail modal -->
   <Teleport to="body">
-    <div v-if="detailExercise" class="repMaxOverlay" @click.self="detailExerciseId = null">
-      <div class="wtDetailModal">
+    <div v-if="detailExercise" class="repMaxOverlay" @click.self="detailExerciseId = null" @keydown.escape="detailExerciseId = null">
+      <div class="wtDetailModal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
         <div class="wtDetailHeader">
-          <button class="wtDetailBack" @click="detailExerciseId = null">‹ Back</button>
-          <h2 class="wtDetailTitle">{{ detailExercise.name }}</h2>
+          <button class="wtDetailBack" @click="detailExerciseId = null" aria-label="Back to exercise list">‹ Back</button>
+          <h2 class="wtDetailTitle" id="detail-modal-title">{{ detailExercise.name }}</h2>
           <button class="wtDetailLogBtn" @click="openLogForExercise(detailExercise.id)">+ Log</button>
         </div>
 
@@ -188,8 +188,8 @@
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
-    <div v-if="showModal" class="repMaxOverlay" @click.self="onOverlayClick">
-      <div class="repMaxModal" @click.self="editingPresets = false">
+    <div v-if="showModal" class="repMaxOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
+      <div class="repMaxModal" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
 
         <!-- Rest timer view -->
         <template v-if="timerActive">
@@ -213,6 +213,8 @@
                   <button
                     :class="['glassToggle', { on: !disabledPresets.includes(s) }]"
                     @click="togglePresetEnabled(s)"
+                    role="switch"
+                    :aria-checked="!disabledPresets.includes(s)"
                     :aria-label="disabledPresets.includes(s) ? 'Enable ' + s : 'Disable ' + s"
                   ><span class="glassToggleThumb"></span></button>
                   <button
@@ -228,6 +230,8 @@
                   <button
                     :class="['glassToggle', { on: warningTimes.includes(s) }]"
                     @click="toggleWarningTime(s)"
+                    role="switch"
+                    :aria-checked="warningTimes.includes(s)"
                     :aria-label="warningTimes.includes(s) ? 'Disable ' + s + 's alert' : 'Enable ' + s + 's alert'"
                   ><span class="glassToggleThumb"></span></button>
                   <button
@@ -257,7 +261,7 @@
 
           <!-- Circular progress ring -->
           <div class="wtTimerRingWrap">
-            <svg class="wtTimerRing" viewBox="0 0 200 200">
+            <svg class="wtTimerRing" viewBox="0 0 200 200" aria-hidden="true">
               <circle class="wtTimerRingBg" cx="100" cy="100" r="88" />
               <circle
                 class="wtTimerRingFill"
@@ -266,7 +270,7 @@
                 :stroke-dashoffset="2 * Math.PI * 88 * (1 - timerProgress)"
               />
             </svg>
-            <div class="wtTimerRingInner">
+            <div class="wtTimerRingInner" aria-live="polite" aria-atomic="true">
               <span :class="['wtTimerTime', { wtTimerTimeDone: timerSeconds === 0 }]">{{ timerDisplay }}</span>
               <span class="wtTimerLabel">{{ timerSeconds === 0 ? 'Done' : 'remaining' }}</span>
             </div>
@@ -311,7 +315,7 @@
 
         <!-- Log / edit form -->
         <template v-else>
-          <h2>{{ modalTitle }}</h2>
+          <h2 id="log-modal-title">{{ modalTitle }}</h2>
 
           <!-- New exercise mode: name + tags input -->
           <template v-if="!isEditMode && selectedExerciseId === '__new__'">
@@ -421,10 +425,10 @@
 
   <!-- Confirm Clear All Modal -->
   <Teleport to="body">
-    <div v-if="confirmClearId !== null" class="repMaxOverlay" @click.self="confirmClearId = null">
-      <div class="repMaxModal wtConfirmModal">
-        <div class="wtConfirmIcon">⚠️</div>
-        <h2>Clear All Sets?</h2>
+    <div v-if="confirmClearId !== null" class="repMaxOverlay" @click.self="confirmClearId = null" @keydown.escape="confirmClearId = null">
+      <div class="repMaxModal wtConfirmModal" role="alertdialog" aria-modal="true" aria-labelledby="clear-modal-title">
+        <div class="wtConfirmIcon" aria-hidden="true">⚠️</div>
+        <h2 id="clear-modal-title">Clear All Sets?</h2>
         <p class="wtConfirmText">
           This will permanently delete all
           <strong>{{ confirmClearExercise?.sets.length }}</strong>
@@ -442,9 +446,9 @@
 
   <!-- Edit Exercise Modal -->
   <Teleport to="body">
-    <div v-if="editTarget !== null" class="repMaxOverlay" @click.self="editTarget = null">
-      <div class="repMaxModal">
-        <h2>Edit Exercise</h2>
+    <div v-if="editTarget !== null" class="repMaxOverlay" @click.self="editTarget = null" @keydown.escape="editTarget = null">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="edit-exercise-title">
+        <h2 id="edit-exercise-title">Edit Exercise</h2>
         <label class="repMaxLabel">
           Name
           <div class="repMaxInputRow">
@@ -491,10 +495,10 @@
 
   <!-- Confirm Delete Exercise Modal -->
   <Teleport to="body">
-    <div v-if="confirmDeleteId !== null" class="repMaxOverlay" @click.self="confirmDeleteId = null">
-      <div class="repMaxModal wtConfirmModal">
-        <div class="wtConfirmIcon">⚠️</div>
-        <h2>Delete Exercise?</h2>
+    <div v-if="confirmDeleteId !== null" class="repMaxOverlay" @click.self="confirmDeleteId = null" @keydown.escape="confirmDeleteId = null">
+      <div class="repMaxModal wtConfirmModal" role="alertdialog" aria-modal="true" aria-labelledby="delete-modal-title">
+        <div class="wtConfirmIcon" aria-hidden="true">⚠️</div>
+        <h2 id="delete-modal-title">Delete Exercise?</h2>
         <p class="wtConfirmText">
           This will permanently delete
           <strong>{{ confirmDeleteExercise?.name }}</strong>

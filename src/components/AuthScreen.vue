@@ -10,6 +10,7 @@
           v-model.trim="email"
           type="email"
           placeholder="Email"
+          aria-label="Email"
           class="authInput"
           autocomplete="email"
           required
@@ -18,6 +19,7 @@
           v-model="password"
           type="password"
           placeholder="Password"
+          aria-label="Password"
           class="authInput"
           autocomplete="current-password"
           :minlength="isSignUp ? 6 : undefined"
@@ -50,7 +52,7 @@
         </button>
       </div>
 
-      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]">{{ message }}</p>
+      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" role="status" aria-live="polite">{{ message }}</p>
     </div>
   </div>
 </template>
