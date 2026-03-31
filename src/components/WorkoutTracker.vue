@@ -505,25 +505,43 @@
         <h2 id="tag-manager-title">Manage Tags</h2>
         <p v-if="store.allTags.length === 0" class="wtEmpty" style="margin: 16px 0">No tags yet. Add tags to exercises to see them here.</p>
         <ul v-else class="wtTagManagerList">
-          <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItem">
-            <template v-if="renamingTag === tag">
-              <input
-                v-model.trim="renameTagValue"
-                type="text"
-                class="repMaxInput wtTagManagerInput"
-                @keyup.enter="confirmRenameTag"
-                @keyup.escape="renamingTag = null"
-                ref="renameTagInputEl"
-              />
-              <button class="wtTagManagerSaveBtn" @click="confirmRenameTag" :disabled="!renameTagValue">✓</button>
-              <button class="wtTagManagerCancelBtn" @click="renamingTag = null">✕</button>
-            </template>
-            <template v-else>
-              <span class="wtTagManagerLabel">{{ tag }}</span>
-              <span class="wtTagManagerCount">{{ tagExerciseCount(tag) }}</span>
-              <button class="wtTagManagerEditBtn" @click="startRenameTag(tag)" aria-label="Rename tag">✎</button>
-              <button class="wtTagManagerDeleteBtn" @click="confirmDeleteTag(tag)" aria-label="Delete tag">✕</button>
-            </template>
+          <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItemWrap">
+            <div class="wtTagManagerItem">
+              <template v-if="renamingTag === tag">
+                <input
+                  v-model.trim="renameTagValue"
+                  type="text"
+                  class="repMaxInput wtTagManagerInput"
+                  @keyup.enter="confirmRenameTag"
+                  @keyup.escape="renamingTag = null"
+                  ref="renameTagInputEl"
+                />
+                <button class="wtTagManagerSaveBtn" @click="confirmRenameTag" :disabled="!renameTagValue">✓</button>
+                <button class="wtTagManagerCancelBtn" @click="renamingTag = null">✕</button>
+              </template>
+              <template v-else>
+                <button class="wtTagManagerExpandBtn" @click="toggleTagExpand(tag)" :aria-expanded="expandedTag === tag" :aria-label="'Show exercises for ' + tag">
+                  <span class="wtTagManagerExpandIcon" :class="{ expanded: expandedTag === tag }">›</span>
+                </button>
+                <span class="wtTagManagerLabel" @click="toggleTagExpand(tag)" role="button">{{ tag }}</span>
+                <span class="wtTagManagerCount">{{ tagExerciseCount(tag) }}</span>
+                <button class="wtTagManagerEditBtn" @click="startRenameTag(tag)" aria-label="Rename tag">✎</button>
+                <button class="wtTagManagerDeleteBtn" @click="confirmDeleteTag(tag)" aria-label="Delete tag">✕</button>
+              </template>
+            </div>
+            <ul v-if="expandedTag === tag" class="wtTagExerciseList">
+              <li v-for="exercise in store.exercises" :key="exercise.id" class="wtTagExerciseItem">
+                <label class="wtTagExerciseLabel">
+                  <input
+                    type="checkbox"
+                    :checked="exercise.tags.includes(tag)"
+                    @change="toggleExerciseTag(exercise.id, tag)"
+                    class="wtTagExerciseCheckbox"
+                  />
+                  <span>{{ exercise.name }}</span>
+                </label>
+              </li>
+            </ul>
           </li>
         </ul>
         <div class="repMaxActions">
@@ -1383,10 +1401,26 @@ const tagManagerOpen = ref(false)
 const renamingTag = ref<string | null>(null)
 const renameTagValue = ref('')
 const renameTagInputEl = ref<HTMLInputElement[] | null>(null)
+const expandedTag = ref<string | null>(null)
 
 function openTagManager() {
   tagManagerOpen.value = true
   renamingTag.value = null
+  expandedTag.value = null
+}
+
+function toggleTagExpand(tag: string) {
+  expandedTag.value = expandedTag.value === tag ? null : tag
+}
+
+function toggleExerciseTag(exerciseId: string, tag: string) {
+  const exercise = store.exercises.find(e => e.id === exerciseId)
+  if (!exercise) return
+  const has = exercise.tags.includes(tag)
+  const newTags = has
+    ? exercise.tags.filter(t => t !== tag)
+    : [...exercise.tags, tag]
+  store.updateExerciseTags(exerciseId, newTags)
 }
 
 function tagExerciseCount(tag: string): number {

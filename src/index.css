@@ -1148,12 +1148,60 @@ input[type=number] { -moz-appearance: textfield; }
   border-bottom: 1px solid var(--border);
 }
 
-.wtTagManagerItem:last-child { border-bottom: none; }
+.wtTagManagerItemWrap {
+  border-bottom: 1px solid var(--border);
+}
+.wtTagManagerItemWrap:last-child { border-bottom: none; }
+
+.wtTagManagerItem { border-bottom: none; }
+
+.wtTagManagerExpandBtn {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+.wtTagManagerExpandIcon {
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.wtTagManagerExpandIcon.expanded {
+  transform: rotate(90deg);
+}
+
+.wtTagExerciseList {
+  list-style: none;
+  padding: 0 0 8px 28px;
+  margin: 0;
+}
+.wtTagExerciseItem {
+  padding: 4px 0;
+}
+.wtTagExerciseLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+.wtTagExerciseCheckbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 .wtTagManagerLabel {
   flex: 1;
   font-weight: 600;
   font-size: 15px;
+  cursor: pointer;
 }
 
 .wtTagManagerCount {
