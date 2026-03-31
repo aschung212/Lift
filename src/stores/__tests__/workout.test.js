@@ -205,6 +205,52 @@ describe('useWorkoutStore', () => {
     })
   })
 
+  describe('renameTag', () => {
+    it('renames a tag across all exercises', () => {
+      store.addExercise('Bench Press', ['chest', 'push'])
+      store.addExercise('Incline DB', ['chest'])
+      store.addExercise('Squat', ['legs'])
+      store.renameTag('chest', 'upper body')
+      expect(store.exercises[0].tags).toContain('upper body')
+      expect(store.exercises[0].tags).not.toContain('chest')
+      expect(store.exercises[1].tags).toEqual(['upper body'])
+      expect(store.exercises[2].tags).toEqual(['legs'])
+    })
+
+    it('avoids duplicate tags when renaming to an existing tag on an exercise', () => {
+      store.addExercise('Bench Press', ['chest', 'push'])
+      store.renameTag('chest', 'push')
+      // 'chest' should be removed, 'push' should not be duplicated
+      expect(store.exercises[0].tags).toEqual(['push'])
+    })
+
+    it('does nothing for empty or same name', () => {
+      store.addExercise('Bench Press', ['chest'])
+      store.renameTag('chest', '')
+      expect(store.exercises[0].tags).toEqual(['chest'])
+      store.renameTag('chest', 'chest')
+      expect(store.exercises[0].tags).toEqual(['chest'])
+    })
+  })
+
+  describe('deleteTag', () => {
+    it('removes a tag from all exercises', () => {
+      store.addExercise('Bench Press', ['chest', 'push'])
+      store.addExercise('Incline DB', ['chest'])
+      store.addExercise('Squat', ['legs'])
+      store.deleteTag('chest')
+      expect(store.exercises[0].tags).toEqual(['push'])
+      expect(store.exercises[1].tags).toEqual([])
+      expect(store.exercises[2].tags).toEqual(['legs'])
+    })
+
+    it('does nothing if tag does not exist', () => {
+      store.addExercise('Bench Press', ['chest'])
+      store.deleteTag('nonexistent')
+      expect(store.exercises[0].tags).toEqual(['chest'])
+    })
+  })
+
   describe('persistence', () => {
     it('persists exercises to localStorage', () => {
       store.addExercise('Bench Press')

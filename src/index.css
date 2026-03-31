@@ -890,6 +890,16 @@ input[type=number] { -moz-appearance: textfield; }
   border-top-color: transparent;
 }
 
+.wtRestBarUrgent {
+  background: var(--danger, #ef4444);
+  animation: restBarPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes restBarPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
 .wtRestBarProgress {
   position: absolute;
   left: 0;
@@ -1109,6 +1119,71 @@ input[type=number] { -moz-appearance: textfield; }
   color: var(--danger);
 }
 
+.wtTagChipManage {
+  border-color: var(--border);
+  color: var(--text-secondary);
+  font-size: 16px;
+  padding: 8px 10px;
+}
+
+/* ─── Tag manager modal ────────────────────────────────────────────────── */
+
+.wtTagManagerList {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+
+.wtTagManagerItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.wtTagManagerItem:last-child { border-bottom: none; }
+
+.wtTagManagerLabel {
+  flex: 1;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.wtTagManagerCount {
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 20px;
+  text-align: center;
+}
+
+.wtTagManagerInput {
+  flex: 1;
+  font-size: 15px;
+}
+
+.wtTagManagerEditBtn,
+.wtTagManagerDeleteBtn,
+.wtTagManagerSaveBtn,
+.wtTagManagerCancelBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.wtTagManagerEditBtn:hover { color: var(--accent); background: var(--surface); }
+.wtTagManagerDeleteBtn:hover { color: var(--danger); background: var(--surface); }
+.wtTagManagerSaveBtn { color: var(--accent); }
+.wtTagManagerCancelBtn { color: var(--text-secondary); }
 
 /* ─── Edit exercise modal: tag section ─────────────────────────────────── */
 
@@ -1775,7 +1850,21 @@ input[type=number] { -moz-appearance: textfield; }
   stroke: var(--accent);
   stroke-width: 6;
   stroke-linecap: round;
-  transition: stroke-dashoffset 1s linear;
+  transition: stroke-dashoffset 1s linear, stroke 0.3s ease;
+}
+
+.wtTimerRingUrgent .wtTimerRingFill {
+  stroke: var(--danger, #ef4444);
+}
+
+.wtTimerRingUrgent .wtTimerTime {
+  color: var(--danger, #ef4444);
+  animation: timerPulseText 0.8s ease-in-out infinite;
+}
+
+@keyframes timerPulseText {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .wtTimerRingInner {
@@ -2045,15 +2134,15 @@ input[type=number] { -moz-appearance: textfield; }
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--accent);
-  animation: timerFlash 1s ease-in-out infinite;
+  background: var(--danger, #ef4444);
+  animation: timerFlash 0.8s ease-in-out infinite;
   pointer-events: none;
   z-index: 0;
 }
 
 @keyframes timerFlash {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 0.12; }
+  0%, 100% { opacity: 0.04; }
+  50% { opacity: 0.18; }
 }
 
 

@@ -255,6 +255,45 @@ export const useWorkoutStore = defineStore('workout', {
       const [item] = this.exercises.splice(fromIndex, 1)
       this.exercises.splice(toIndex, 0, item)
       this._persist()
+    },
+
+    renameTag(oldName: string, newName: string) {
+      const trimmed = newName.trim()
+      if (!trimmed || trimmed === oldName) return
+      this.exercises.forEach((e: Exercise) => {
+        const idx = e.tags.indexOf(oldName)
+        if (idx !== -1) {
+          // Replace old tag; avoid duplicates if newName already exists on this exercise
+          if (e.tags.includes(trimmed)) {
+            e.tags.splice(idx, 1)
+          } else {
+            e.tags[idx] = trimmed
+          }
+        }
+      })
+      this._persist()
+
+      if (supabase && this._userId) {
+        const sb = supabase
+        this.exercises.forEach((e: Exercise) => {
+          sb.from('exercises').update({ tags: e.tags }).eq('id', e.id).then()
+        })
+      }
+    },
+
+    deleteTag(tagName: string) {
+      this.exercises.forEach((e: Exercise) => {
+        const idx = e.tags.indexOf(tagName)
+        if (idx !== -1) e.tags.splice(idx, 1)
+      })
+      this._persist()
+
+      if (supabase && this._userId) {
+        const sb = supabase
+        this.exercises.forEach((e: Exercise) => {
+          sb.from('exercises').update({ tags: e.tags }).eq('id', e.id).then()
+        })
+      }
     }
   },
 

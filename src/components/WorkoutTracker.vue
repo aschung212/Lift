@@ -20,6 +20,11 @@
           class="wtTagChip wtTagChipClear"
           @click="activeTagFilters = []"
         >× Clear</button>
+        <button
+          class="wtTagChip wtTagChipManage"
+          @click="openTagManager"
+          aria-label="Manage tags"
+        >⚙</button>
       </div>
     </template>
 
@@ -260,7 +265,7 @@
           <p v-if="selectedExerciseName" class="wtTimerExName">{{ selectedExerciseName }}</p>
 
           <!-- Circular progress ring -->
-          <div class="wtTimerRingWrap">
+          <div :class="['wtTimerRingWrap', { wtTimerRingUrgent: timerUrgent }]">
             <svg class="wtTimerRing" viewBox="0 0 200 200" aria-hidden="true">
               <circle class="wtTimerRingBg" cx="100" cy="100" r="88" />
               <circle
@@ -473,12 +478,46 @@
     </div>
   </Teleport>
 
+  <!-- Tag Manager Modal -->
+  <Teleport to="body">
+    <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
+        <h2 id="tag-manager-title">Manage Tags</h2>
+        <p v-if="store.allTags.length === 0" class="wtEmpty" style="margin: 16px 0">No tags yet. Add tags to exercises to see them here.</p>
+        <ul v-else class="wtTagManagerList">
+          <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItem">
+            <template v-if="renamingTag === tag">
+              <input
+                v-model.trim="renameTagValue"
+                type="text"
+                class="repMaxInput wtTagManagerInput"
+                @keyup.enter="confirmRenameTag"
+                @keyup.escape="renamingTag = null"
+                ref="renameTagInputEl"
+              />
+              <button class="wtTagManagerSaveBtn" @click="confirmRenameTag" :disabled="!renameTagValue">✓</button>
+              <button class="wtTagManagerCancelBtn" @click="renamingTag = null">✕</button>
+            </template>
+            <template v-else>
+              <span class="wtTagManagerLabel">{{ tag }}</span>
+              <span class="wtTagManagerCount">{{ tagExerciseCount(tag) }}</span>
+              <button class="wtTagManagerEditBtn" @click="startRenameTag(tag)" aria-label="Rename tag">✎</button>
+              <button class="wtTagManagerDeleteBtn" @click="confirmDeleteTag(tag)" aria-label="Delete tag">✕</button>
+            </template>
+          </li>
+        </ul>
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnClose" @click="tagManagerOpen = false">Done</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 
   <!-- Rest timer bar -->
   <button
     v-if="restTimerEnabled && !showModal"
     class="wtRestBar"
-    :class="{ wtRestBarActive: timerActive && !showModal }"
+    :class="{ wtRestBarActive: timerActive && !showModal, wtRestBarUrgent: timerUrgent && timerActive && !showModal }"
     @click="openRestTimer"
   >
     <template v-if="timerActive">
@@ -1253,6 +1292,62 @@ function confirmEditExercise() {
   store.updateExerciseTags(editTarget.value, editTags.value)
   editTarget.value = null
   logEvent('exercise_edit')
+}
+
+// ── Tag manager ────────────────────────────────────────────────
+const tagManagerOpen = ref(false)
+const renamingTag = ref<string | null>(null)
+const renameTagValue = ref('')
+const renameTagInputEl = ref<HTMLInputElement[] | null>(null)
+
+function openTagManager() {
+  tagManagerOpen.value = true
+  renamingTag.value = null
+}
+
+function tagExerciseCount(tag: string): number {
+  return store.exercises.filter(e => (e.tags || []).includes(tag)).length
+}
+
+function startRenameTag(tag: string) {
+  renamingTag.value = tag
+  renameTagValue.value = tag
+  nextTick(() => {
+    if (renameTagInputEl.value && renameTagInputEl.value.length > 0) {
+      renameTagInputEl.value[0].focus()
+      renameTagInputEl.value[0].select()
+    }
+  })
+}
+
+function confirmRenameTag() {
+  if (!renamingTag.value || !renameTagValue.value) return
+  store.renameTag(renamingTag.value, renameTagValue.value)
+  logEvent('tag_rename')
+  renamingTag.value = null
+}
+
+function confirmDeleteTag(tag: string) {
+  const count = tagExerciseCount(tag)
+  // Track which exercises have this tag for undo
+  const affectedIds = store.exercises
+    .filter(e => (e.tags || []).includes(tag))
+    .map(e => e.id)
+  store.deleteTag(tag)
+  logEvent('tag_delete')
+  showUndo(
+    `Tag "${tag}" removed from ${count} exercise${count !== 1 ? 's' : ''}`,
+    () => {
+      // Undo: re-add tag to affected exercises
+      affectedIds.forEach(id => {
+        const exercise = store.exercises.find(e => e.id === id)
+        if (exercise && !exercise.tags.includes(tag)) {
+          store.updateExerciseTags(id, [...exercise.tags, tag])
+        }
+      })
+    },
+    () => {}
+  )
 }
 
 
