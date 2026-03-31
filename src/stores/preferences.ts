@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import { syncQueue } from '../lib/syncQueue'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -26,13 +27,16 @@ export const usePreferencesStore = defineStore('preferences', {
     _persist() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features }))
       if (supabase && this._userId) {
-        supabase
-          .from('user_preferences')
-          .upsert(
-            { user_id: this._userId, preferences: { features: this.features }, updated_at: new Date().toISOString() },
-            { onConflict: 'user_id' }
-          )
-          .then()
+        const features = { ...this.features }
+        const userId = this._userId
+        syncQueue.enqueue(`preferences:${userId}`, () =>
+          supabase!
+            .from('user_preferences')
+            .upsert(
+              { user_id: userId, preferences: { features }, updated_at: new Date().toISOString() },
+              { onConflict: 'user_id' }
+            )
+        )
       }
     },
 

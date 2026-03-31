@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import { syncQueue } from '../lib/syncQueue'
 import { uuid } from '../lib/uuid'
 
 const STORAGE_KEY = 'bodyweight-entries'
@@ -82,7 +83,10 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (supabase && this._userId) {
         const update: Record<string, unknown> = { weight }
         if (dateStr) update.date = entry.date
-        supabase.from('bodyweight_entries').update(update).eq('id', id).then()
+        const userId = this._userId
+        syncQueue.enqueue(`bodyweight-update:${id}`, () =>
+          supabase!.from('bodyweight_entries').update(update).eq('id', id).eq('user_id', userId)
+        )
       }
     },
 

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import { syncQueue } from '../lib/syncQueue'
 import { uuid } from '../lib/uuid'
 
 const STORAGE_KEY = 'workout-exercises'
@@ -137,7 +138,10 @@ export const useWorkoutStore = defineStore('workout', {
       if (supabase && this._userId) {
         const update: Record<string, unknown> = { weight, reps, estimated_1rm: set.estimated1RM }
         if (dateStr) update.date = set.date
-        supabase.from('sets').update(update).eq('id', setId).then()
+        const userId = this._userId
+        syncQueue.enqueue(`set-update:${setId}`, () =>
+          supabase!.from('sets').update(update).eq('id', setId).eq('user_id', userId)
+        )
       }
     },
 
@@ -186,7 +190,10 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (supabase && this._userId) {
-        supabase.from('exercises').update({ name: trimmed }).eq('id', exerciseId).then()
+        const userId = this._userId
+        syncQueue.enqueue(`exercise-name:${exerciseId}`, () =>
+          supabase!.from('exercises').update({ name: trimmed }).eq('id', exerciseId).eq('user_id', userId)
+        )
       }
     },
 
@@ -197,7 +204,11 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (supabase && this._userId) {
-        supabase.from('exercises').update({ tags }).eq('id', exerciseId).then()
+        const tagsCopy = [...tags]
+        const userId = this._userId
+        syncQueue.enqueue(`exercise-tags:${exerciseId}`, () =>
+          supabase!.from('exercises').update({ tags: tagsCopy }).eq('id', exerciseId).eq('user_id', userId)
+        )
       }
     },
 
@@ -280,10 +291,13 @@ export const useWorkoutStore = defineStore('workout', {
       })
       this._persist()
 
-      if (supabase && this._userId) {
-        const sb = supabase
+      if (this._userId) {
+        const userId = this._userId
         this.exercises.forEach((e: Exercise) => {
-          sb.from('exercises').update({ tags: e.tags }).eq('id', e.id).then()
+          const tags = [...e.tags]
+          syncQueue.enqueue(`exercise-tags:${e.id}`, () =>
+            supabase!.from('exercises').update({ tags }).eq('id', e.id).eq('user_id', userId)
+          )
         })
       }
     },
@@ -295,10 +309,13 @@ export const useWorkoutStore = defineStore('workout', {
       })
       this._persist()
 
-      if (supabase && this._userId) {
-        const sb = supabase
+      if (this._userId) {
+        const userId = this._userId
         this.exercises.forEach((e: Exercise) => {
-          sb.from('exercises').update({ tags: e.tags }).eq('id', e.id).then()
+          const tags = [...e.tags]
+          syncQueue.enqueue(`exercise-tags:${e.id}`, () =>
+            supabase!.from('exercises').update({ tags }).eq('id', e.id).eq('user_id', userId)
+          )
         })
       }
     }
