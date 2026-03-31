@@ -8,6 +8,7 @@ A **mobile-first Progressive Web App** for tracking strength training, bodyweigh
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-cloud--sync-3ecf8e?logo=supabase&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-installable-5a0fc8)
+![Tests](https://img.shields.io/badge/tests-139_passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
@@ -111,6 +112,9 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 ### Local-first writes
 Every action updates Pinia state and `localStorage` immediately, then fires a Supabase call in the background. The UI never waits on the network.
 
+### Code splitting
+Tab content components are lazy-loaded via `defineAsyncComponent()` with dynamic `import()`. This keeps the initial bundle small — only the auth screen and shell load upfront; heavy components like WorkoutTracker (34 KB) load on demand after sign-in.
+
 ### PR detection
 `getExercisePR(exerciseId)` returns the all-time max `estimated1RM` across all sets for that exercise. Any set where `set.estimated1RM === PR` gets the gold treatment — in both the workout list and the calendar.
 
@@ -122,6 +126,50 @@ Each theme defines `--glass-fill`, `--glass-edge`, `--glass-shine`, `--glass-bar
 
 ### iOS HIG compliance
 All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 11pt minimum throughout. Toggle switches are 51×31pt. Text contrast ratios are tuned per-theme for WCAG AA compliance. Safe areas are respected for notched devices.
+
+---
+
+## Testing & CI
+
+### Unit & Component Tests (Vitest)
+
+139 tests across 10 test files, covering stores, composables, and Vue components:
+
+| Layer | Tests | What's covered |
+|---|---|---|
+| **Stores** | 47 | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, persistence |
+| **Composables** | 25 | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection) |
+| **Components** | 67 | AuthScreen (sign-in/sign-up flows, OAuth, errors), ExerciseGraph (SVG rendering, PR detection, edge cases), OnboardingScreen (all 3 paths), ErrorBoundary, accessibility attributes |
+
+```bash
+npm test           # run all tests
+npx vitest --ui    # interactive test explorer
+```
+
+### CI Pipeline
+
+GitHub Actions runs on every push and PR to `master`:
+
+1. `npm ci` — deterministic install
+2. `npm run lint` — ESLint with Vue plugin (0 errors)
+3. `npm run build` — Vite production build
+4. `npm test` — full test suite
+
+### Code Quality
+
+- **ESLint** with `eslint-plugin-vue/recommended` — enforced via CI and pre-commit hook
+- **Husky + lint-staged** — lints staged `.js` and `.vue` files before every commit
+- **Error boundary** — global Vue error handler with graceful fallback UI
+- **Accessibility** — ARIA attributes, keyboard navigation, focus management on modals
+
+---
+
+## Performance
+
+- **Code splitting** — tab content (`WorkoutTracker`, `CalendarView`, `BodyweightTracker`) lazy-loaded via `defineAsyncComponent` with dynamic imports
+- **Local-first architecture** — UI updates instantly via Pinia + localStorage; Supabase syncs in background
+- **PWA pre-caching** — Workbox service worker pre-caches all static assets for offline use
+- **Zero external UI/chart libraries** — hand-rolled SVG charts and CSS-only components keep the bundle lean (~300 KB gzipped JS)
 
 ---
 
@@ -175,15 +223,20 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   │   ├── ExerciseGraph.vue    # Per-exercise SVG line chart (time-proportional)
 │   │   ├── CalendarView.vue     # Monthly/weekly calendar, PR map, set detail, tag filtering
 │   │   ├── BodyweightTracker.vue # Weight log, period stats, SVG chart, low/high badges
-│   │   └── AuthScreen.vue       # Email/password + Google sign-in
+│   │   ├── AuthScreen.vue       # Email/password + Google sign-in
+│   │   ├── ErrorBoundary.vue    # Global error handler with fallback UI
+│   │   ├── OnboardingScreen.vue # Welcome flow with 3 entry paths
+│   │   └── __tests__/           # Component tests (67 tests)
 │   ├── composables/
 │   │   ├── useTheme.js          # Themes, mode (light/auto/dark), glass toggle, rest timer toggle
 │   │   ├── useAuth.js           # Supabase session, OAuth + email auth, store init on sign-in
-│   │   └── useAnalytics.js      # Lightweight event logging
+│   │   ├── useAnalytics.js      # Lightweight event logging
+│   │   └── __tests__/           # Composable tests (25 tests)
 │   ├── stores/
 │   │   ├── workout.js           # Exercises + sets CRUD, Epley 1RM, PR getter, tags, Supabase sync
 │   │   ├── bodyweight.js        # Weight entries CRUD, min/max getters, Supabase sync
-│   │   └── preferences.js       # Feature toggles (tab visibility), Supabase sync
+│   │   ├── preferences.js       # Feature toggles (tab visibility), Supabase sync
+│   │   └── __tests__/           # Store tests (47 tests)
 │   ├── lib/
 │   │   ├── supabase.js          # Supabase client singleton
 │   │   └── migrate.js           # One-time localStorage → Supabase migration
@@ -192,8 +245,11 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   └── index.css                # All theme tokens, glass tokens, component styles
 ├── supabase/
 │   └── migration.sql            # Creates exercises, sets, bodyweight_entries with RLS
+├── .github/workflows/ci.yml     # GitHub Actions: lint, build, test
 ├── index.html
 ├── vite.config.js
+├── vitest.config.js
+├── eslint.config.js
 └── vercel.json
 ```
 
