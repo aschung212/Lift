@@ -9,7 +9,7 @@ A **mobile-first Progressive Web App** for tracking strength training, bodyweigh
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-cloud--sync-3ecf8e?logo=supabase&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-installable-5a0fc8)
-![Tests](https://img.shields.io/badge/tests-258_passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-299_passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
@@ -34,6 +34,10 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Set list capped at 10 most recent, with "Show all" toggle
 - Full CRUD: add, edit, and delete individual sets and exercises
 - Drag-to-reorder exercises by grip handle (disabled when filtering)
+
+### Exercise Search
+- Instant search bar for filtering exercises by name
+- Debounced input for smooth performance with large exercise lists
 
 ### Exercise Tags
 - Tag exercises with custom labels (e.g. Chest, Legs, Push)
@@ -105,6 +109,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Swipe-to-dismiss on bottom sheets and modals with velocity-based flick detection
 - Undo toast for destructive actions (delete exercise, delete set, clear data)
 - Service worker update prompt — "New version available" banner with one-tap update
+- Keyboard shortcuts for power users — press `?` to view the shortcut help dialog
 - CSV and JSON data export from settings
 - Active tab persisted across sessions
 - All touch targets meet iOS 44pt minimum
@@ -161,13 +166,14 @@ All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 
 
 ### Unit & Component Tests (Vitest)
 
-258 tests across 16 test files, covering stores, composables, and Vue components:
+299 tests across 18 test files, covering stores, composables, library modules, and Vue components:
 
 | Layer | Tests | What's covered |
 |---|---|---|
-| **Stores** | 62 | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, template save/load, persistence |
-| **Composables** | 25 | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection) |
-| **Components** | 171 | WorkoutTracker (exercise list, tag filtering, detail modal, PR history, set actions, progressive overload), BodyweightTracker (entry list, stats, SVG chart, period selection, modal), AuthScreen (sign-in/sign-up flows, OAuth, errors), ExerciseGraph (SVG rendering, PR detection, edge cases), OnboardingScreen (all 3 paths), CalendarView (month navigation, day selection, workout summary), ErrorBoundary, accessibility attributes |
+| **Stores** | 76 | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, template save/load, persistence |
+| **Composables** | 43 | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection), keyboard shortcuts, undo toast |
+| **Library** | 21 | Sync queue debouncing/coalescing, conflict resolver (last-write-wins, merge strategies) |
+| **Components** | 159 | WorkoutTracker (exercise list, tag filtering, detail modal, PR history, set actions, progressive overload), BodyweightTracker (entry list, stats, SVG chart, period selection, modal), AuthScreen (sign-in/sign-up flows, OAuth, errors), ExerciseGraph (SVG rendering, PR detection, edge cases), OnboardingScreen (all 3 paths), CalendarView (month/week navigation, day selection, workout summary, PR badges), ErrorBoundary, accessibility attributes |
 
 ```bash
 npm test           # run all tests
@@ -205,7 +211,7 @@ GitHub Actions runs on every push and PR to `master`:
 ## Getting Started
 
 ```bash
-git clone https://github.com/your-username/lift.git
+git clone https://github.com/aschung212/Lift.git
 cd lift
 npm install
 ```
@@ -255,33 +261,39 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   │   ├── AuthScreen.vue       # Email/password + Google sign-in
 │   │   ├── ErrorBoundary.vue    # Global error handler with fallback UI
 │   │   ├── OnboardingScreen.vue # Welcome flow with 3 entry paths
-│   │   └── __tests__/           # Component tests (171 tests)
+│   │   └── __tests__/           # Component tests (159 tests)
 │   ├── composables/
-│   │   ├── useTheme.ts          # Themes, mode (light/auto/dark), glass toggle, rest timer toggle
-│   │   ├── useAuth.ts           # Supabase session, OAuth + email auth, store init on sign-in
-│   │   ├── useAnalytics.ts      # Lightweight event logging
-│   │   ├── useUndoToast.ts      # Undo toast with timed rollback
-│   │   ├── useSwipeToDismiss.ts # Touch gesture dismissal for modals and sheets
-│   │   └── __tests__/           # Composable tests (25 tests)
+│   │   ├── useTheme.ts              # Themes, mode (light/auto/dark), glass toggle, rest timer toggle
+│   │   ├── useAuth.ts               # Supabase session, OAuth + email auth, store init on sign-in
+│   │   ├── useAnalytics.ts          # Lightweight event logging
+│   │   ├── useUndoToast.ts          # Undo toast with timed rollback
+│   │   ├── useSwipeToDismiss.ts     # Touch gesture dismissal for modals and sheets
+│   │   ├── useKeyboardShortcuts.ts  # Global keyboard shortcuts with help dialog
+│   │   └── __tests__/               # Composable tests (43 tests)
 │   ├── stores/
 │   │   ├── workout.ts           # Exercises + sets CRUD, Epley 1RM, PR getter, tags, Supabase sync
 │   │   ├── bodyweight.ts        # Weight entries CRUD, min/max getters, Supabase sync
 │   │   ├── preferences.ts       # Feature toggles (tab visibility), Supabase sync
 │   │   ├── templates.ts         # Workout template save/load
-│   │   └── __tests__/           # Store tests (62 tests)
+│   │   └── __tests__/           # Store tests (76 tests)
 │   ├── lib/
 │   │   ├── supabase.ts          # Supabase client singleton
 │   │   ├── migrate.ts           # One-time localStorage → Supabase migration
 │   │   ├── syncQueue.ts         # Debounced sync queue for batching Supabase writes
 │   │   ├── conflictResolver.ts  # Last-write-wins conflict resolution for multi-device sync
 │   │   ├── tagColors.ts         # Theme-aware tag color mapping
-│   │   └── uuid.ts              # UUID generation utility
+│   │   ├── uuid.ts              # UUID generation utility
+│   │   └── __tests__/           # Library tests (21 tests)
 │   ├── App.vue                  # Tab bar, settings sheet, theme picker, auth gate
 │   ├── main.ts                  # App entry point
 │   └── index.css                # All theme tokens, glass tokens, component styles
 ├── supabase/
 │   └── migration.sql            # Creates exercises, sets, bodyweight_entries with RLS
-├── .github/workflows/ci.yml     # GitHub Actions: lint, build, test
+├── .github/
+│   ├── workflows/ci.yml         # GitHub Actions: lint, build, test
+│   ├── ISSUE_TEMPLATE/          # Bug report and feature request templates
+│   └── pull_request_template.md # PR template with checklist
+├── CONTRIBUTING.md               # Contribution guide with setup, conventions, and PR process
 ├── index.html
 ├── vite.config.js
 ├── vitest.config.js
