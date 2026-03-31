@@ -39,6 +39,7 @@
             :class="['tabBtn', { active: activeTab === tab.id }]"
             @click="switchTab(tab.id)"
           >
+            <!-- eslint-disable-next-line vue/no-v-html, vue/html-self-closing -- icons are hardcoded SVG paths, not user input -->
             <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="tab.icon"></svg>
             <span class="tabLabel">{{ tab.label }}</span>
           </button>

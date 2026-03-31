@@ -1,6 +1,7 @@
 {
   "name": "lift",
   "version": "1.0.0",
+  "type": "module",
   "description": "A PWA workout tracker for logging sets, tracking progress, and hitting PRs.",
   "scripts": {
     "dev": "vite",
