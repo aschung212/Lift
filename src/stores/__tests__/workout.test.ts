@@ -21,7 +21,7 @@ vi.mock('../../lib/conflictResolver', () => ({
 }))
 
 import { useWorkoutStore } from '../workout'
-import type { Exercise, WorkoutSet } from '../workout'
+import type { Exercise } from '../workout'
 
 describe('workout store', () => {
   beforeEach(() => {
