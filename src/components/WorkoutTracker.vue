@@ -550,7 +550,7 @@ import ExerciseGraph from './ExerciseGraph.vue'
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
-const { restTimerEnabled, weightUnit, displayWeight, toLbs } = useTheme()
+const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
 
 // ── Tag filtering ────────────────────────────────────────────────
 const activeTagFilters = ref<string[]>([])
@@ -1195,7 +1195,7 @@ function saveSet() {
     if (hasSetData.value && weight.value !== null && reps.value !== null) {
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log')
-      if (restTimerEnabled.value) {
+      if (restTimerEnabled.value && restTimerAutoStart.value) {
         startRestTimer()
       } else {
         closeModal()

@@ -136,6 +136,18 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+              <div v-if="restTimerEnabled" class="settingsRow">
+                <span class="settingsLabel settingsLabelIndented">Auto-start after logging</span>
+                <button
+                  :class="['glassToggle', { on: restTimerAutoStart }]"
+                  @click="restTimerAutoStart = !restTimerAutoStart"
+                  role="switch"
+                  :aria-checked="restTimerAutoStart"
+                  :aria-label="restTimerAutoStart ? 'Disable auto-start' : 'Enable auto-start'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
             </div>
 
             <div class="settingsGroup">
@@ -199,7 +211,7 @@ import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { registerSW } from 'virtual:pwa-register'
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, weightUnit } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit } = useTheme()
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()

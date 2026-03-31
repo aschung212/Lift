@@ -733,6 +733,12 @@ input[type=number] { -moz-appearance: textfield; }
   color: var(--text-primary);
 }
 
+.settingsLabelIndented {
+  padding-left: 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
 .exportBtnGroup {
   display: flex;
   gap: 8px;

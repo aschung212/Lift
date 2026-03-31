@@ -96,6 +96,7 @@ const resolvedMode: ComputedRef<'dark' | 'light'> = computed(() =>
 )
 const glassEnabled: Ref<boolean> = ref(storedGlass)
 const restTimerEnabled: Ref<boolean> = ref(localStorage.getItem('rest-timer') !== 'off')
+const restTimerAutoStart: Ref<boolean> = ref(localStorage.getItem('rest-timer-autostart') !== 'off')
 const weightUnit: Ref<WeightUnit> = ref((localStorage.getItem('weight-unit') || 'lbs') as WeightUnit)
 watch(currentTheme, applyTheme)
 watch(colorMode, applyMode)
@@ -109,6 +110,7 @@ mql.addEventListener('change', () => {
   }
 })
 watch(restTimerEnabled, (v) => localStorage.setItem('rest-timer', v ? 'on' : 'off'))
+watch(restTimerAutoStart, (v) => localStorage.setItem('rest-timer-autostart', v ? 'on' : 'off'))
 watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
 
 export function useTheme() {
@@ -122,5 +124,5 @@ export function useTheme() {
     return value
   }
 
-  return { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, weightUnit, displayWeight, toLbs }
+  return { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs }
 }
