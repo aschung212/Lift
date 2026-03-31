@@ -275,6 +275,20 @@
         </div>
       </Transition>
     </Teleport>
+    <!-- Custom confirmation dialog (Capacitor-safe, no window.confirm) -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="confirmDialog" class="confirmOverlay" @click.self="dismissConfirm" @keydown.escape="dismissConfirm">
+          <div class="confirmSheet" role="alertdialog" aria-modal="true" aria-labelledby="confirm-msg">
+            <p id="confirm-msg" class="confirmMessage">{{ confirmDialog.message }}</p>
+            <div class="confirmActions">
+              <button class="confirmBtn confirmBtnCancel" @click="dismissConfirm">Cancel</button>
+              <button class="confirmBtn confirmBtnConfirm" @click="acceptConfirm">Confirm</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
   </ErrorBoundary>
 </template>
@@ -445,10 +459,23 @@ function toggleGlass() {
   logEvent('glass_toggle', { enabled: glassEnabled.value })
 }
 
+const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
+
+function showConfirm(message: string, onConfirm: () => void) {
+  confirmDialog.value = { message, onConfirm }
+}
+
+function dismissConfirm() {
+  confirmDialog.value = null
+}
+
+function acceptConfirm() {
+  confirmDialog.value?.onConfirm()
+  confirmDialog.value = null
+}
+
 function confirmSignOut() {
-  if (confirm('Sign out?')) {
-    signOut()
-  }
+  showConfirm('Sign out?', () => signOut())
 }
 
 function exportData(format: 'csv' | 'json') {
