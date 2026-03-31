@@ -1,8 +1,12 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 
 export default defineConfig({
+  build: {
+    sourcemap: true,
+  },
   server: {
     host: true,
   },
@@ -44,5 +48,17 @@ export default defineConfig({
         clientsClaim: true,
       },
     }),
-  ],
+    // Upload source maps to Sentry on production builds
+    // Requires SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT env vars
+    process.env.SENTRY_AUTH_TOKEN
+      ? sentryVitePlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+          sourcemaps: {
+            filesToDeleteAfterUpload: ['./dist/**/*.map'],
+          },
+        })
+      : null,
+  ].filter(Boolean),
 })

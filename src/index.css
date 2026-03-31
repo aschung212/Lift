@@ -406,6 +406,18 @@ input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
 input[type=number] { -moz-appearance: textfield; }
 
+/* ── iOS HIG touch optimizations ─────────────────────────────────────────── */
+button, [role="tab"], [role="switch"], a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Prevent text selection on interactive elements during touch */
+.tabBar, .settingsSheet, .wtTagFilterBar, .modeSegmented {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* ─── App shell ─────────────────────────────────────────────────────────── */
 
 #app {
@@ -761,7 +773,7 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .exportBtn {
   padding: 6px 14px;
-  min-height: 32px;
+  min-height: 44px;
   font-size: 13px;
   font-weight: 500;
   font-family: inherit;
@@ -1272,8 +1284,8 @@ input[type=number] { -moz-appearance: textfield; }
   background: none;
   border: 1px solid var(--border);
   border-radius: 8px;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
