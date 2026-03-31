@@ -124,7 +124,7 @@
                     >Edit</button>
                     <button
                       class="wtSetBtn wtSetBtnDel"
-                      @click.stop="store.deleteSet(detailExercise.id, set.id); logEvent('set_delete')"
+                      @click.stop="undoDeleteSet(detailExercise.id, set)"
                       aria-label="Delete set"
                     >Delete</button>
                   </div>
@@ -165,7 +165,7 @@
 
           <!-- Clear all sets -->
           <div v-if="detailExercise.sets.length > 0" class="wtClearWrap">
-            <button class="wtClearBtn" @click="confirmClearId = detailExercise.id">
+            <button class="wtClearBtn" @click="undoClearSets(detailExercise)">
               Clear all sets
             </button>
           </div>
@@ -178,7 +178,7 @@
             >Edit Exercise</button>
             <button
               class="wtSetBtn wtSetBtnDel"
-              @click="confirmDeleteId = detailExercise.id"
+              @click="undoDeleteExercise(detailExercise)"
             >Delete Exercise</button>
           </div>
         </div>
@@ -423,26 +423,6 @@
     </div>
   </Teleport>
 
-  <!-- Confirm Clear All Modal -->
-  <Teleport to="body">
-    <div v-if="confirmClearId !== null" class="repMaxOverlay" @click.self="confirmClearId = null" @keydown.escape="confirmClearId = null">
-      <div class="repMaxModal wtConfirmModal" role="alertdialog" aria-modal="true" aria-labelledby="clear-modal-title">
-        <div class="wtConfirmIcon" aria-hidden="true">⚠️</div>
-        <h2 id="clear-modal-title">Clear All Sets?</h2>
-        <p class="wtConfirmText">
-          This will permanently delete all
-          <strong>{{ confirmClearExercise?.sets.length }}</strong>
-          set{{ confirmClearExercise?.sets.length !== 1 ? 's' : '' }} for
-          <strong>{{ confirmClearExercise?.name }}</strong>.
-          This cannot be undone.
-        </p>
-        <div class="repMaxActions">
-          <button class="repMaxBtn wtConfirmBtnDanger" @click="confirmClear">Clear All</button>
-          <button class="repMaxBtn repMaxBtnClose" @click="confirmClearId = null">Cancel</button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 
   <!-- Edit Exercise Modal -->
   <Teleport to="body">
@@ -493,26 +473,6 @@
     </div>
   </Teleport>
 
-  <!-- Confirm Delete Exercise Modal -->
-  <Teleport to="body">
-    <div v-if="confirmDeleteId !== null" class="repMaxOverlay" @click.self="confirmDeleteId = null" @keydown.escape="confirmDeleteId = null">
-      <div class="repMaxModal wtConfirmModal" role="alertdialog" aria-modal="true" aria-labelledby="delete-modal-title">
-        <div class="wtConfirmIcon" aria-hidden="true">⚠️</div>
-        <h2 id="delete-modal-title">Delete Exercise?</h2>
-        <p class="wtConfirmText">
-          This will permanently delete
-          <strong>{{ confirmDeleteExercise?.name }}</strong>
-          and all <strong>{{ confirmDeleteExercise?.sets.length }}</strong>
-          set{{ confirmDeleteExercise?.sets.length !== 1 ? 's' : '' }}.
-          This cannot be undone.
-        </p>
-        <div class="repMaxActions">
-          <button class="repMaxBtn wtConfirmBtnDanger" @click="confirmDelete">Delete</button>
-          <button class="repMaxBtn repMaxBtnClose" @click="confirmDeleteId = null">Cancel</button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 
   <!-- Rest timer bar -->
   <button
@@ -545,10 +505,12 @@ interface PREntry extends WorkoutSet {
 }
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useUndoToast } from '../composables/useUndoToast'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
+const { show: showUndo } = useUndoToast()
 const { restTimerEnabled, weightUnit, displayWeight, toLbs } = useTheme()
 
 // ── Tag filtering ────────────────────────────────────────────────
@@ -1205,21 +1167,40 @@ function saveSet() {
   }
 }
 
-// ── Confirm clear state ───────────────────────────────────────────
-const confirmClearId = ref<string | null>(null)
+// ── Undo-able destructive actions ────────────────────────────────
+function undoDeleteSet(exerciseId: string, set: WorkoutSet) {
+  store.deleteSet(exerciseId, set.id, { sync: false })
+  logEvent('set_delete')
+  showUndo(
+    'Set deleted',
+    () => store.restoreSet(exerciseId, set),
+    () => store.syncDeleteSet(set.id),
+  )
+}
 
-const confirmClearExercise = computed(() =>
-  confirmClearId.value !== null
-    ? store.exercises.find(e => e.id === confirmClearId.value)
-    : null
-)
+function undoClearSets(exercise: Exercise) {
+  const savedSets = [...exercise.sets]
+  const id = exercise.id
+  store.clearSets(id, { sync: false })
+  logEvent('sets_clear_all', { count: savedSets.length })
+  showUndo(
+    `${savedSets.length} set${savedSets.length !== 1 ? 's' : ''} cleared`,
+    () => store.restoreSets(id, savedSets),
+    () => store.syncDeleteSets(id),
+  )
+}
 
-function confirmClear() {
-  if (confirmClearId.value === null) return
-  const count = confirmClearExercise.value?.sets.length ?? 0
-  store.clearSets(confirmClearId.value)
-  confirmClearId.value = null
-  logEvent('sets_clear_all', { count })
+function undoDeleteExercise(exercise: Exercise) {
+  const saved = { ...exercise, sets: [...exercise.sets] }
+  const idx = store.exercises.indexOf(exercise)
+  if (detailExerciseId.value === exercise.id) detailExerciseId.value = null
+  store.deleteExercise(exercise.id, { sync: false })
+  logEvent('exercise_delete')
+  showUndo(
+    `"${saved.name}" deleted`,
+    () => store.restoreExercise(saved, idx),
+    () => store.syncDeleteExercise(saved.id),
+  )
 }
 
 // ── Edit exercise state (rename + tags) ──────────────────────────
@@ -1274,22 +1255,6 @@ function confirmEditExercise() {
   logEvent('exercise_edit')
 }
 
-// ── Delete exercise state ─────────────────────────────────────────
-const confirmDeleteId = ref<string | null>(null)
-
-const confirmDeleteExercise = computed(() =>
-  confirmDeleteId.value !== null
-    ? store.exercises.find(e => e.id === confirmDeleteId.value)
-    : null
-)
-
-function confirmDelete() {
-  if (confirmDeleteId.value === null) return
-  if (detailExerciseId.value === confirmDeleteId.value) detailExerciseId.value = null
-  store.deleteExercise(confirmDeleteId.value)
-  confirmDeleteId.value = null
-  logEvent('exercise_delete')
-}
 
 onUnmounted(() => stopTimer())
 </script>

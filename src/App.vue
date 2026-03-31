@@ -145,6 +145,16 @@
         </div>
       </Teleport>
     </template>
+
+    <!-- Undo toast -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="undoToast" class="undoToastBar" role="status" aria-live="polite">
+          <span class="undoToastMsg">{{ undoToast.message }}</span>
+          <button class="undoToastBtn" @click="performUndo">Undo</button>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
   </ErrorBoundary>
 </template>
@@ -165,11 +175,13 @@ import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { useBodyweightStore } from './stores/bodyweight'
+import { useUndoToast } from './composables/useUndoToast'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, weightUnit } = useTheme()
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
+const { toast: undoToast, performUndo } = useUndoToast()
 
 const settingsOpen = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)

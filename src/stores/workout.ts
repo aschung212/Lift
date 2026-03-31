@@ -134,26 +134,40 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    deleteSet(exerciseId: string, setId: string) {
+    deleteSet(exerciseId: string, setId: string, { sync = true }: { sync?: boolean } = {}) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       exercise.sets = exercise.sets.filter((s: WorkoutSet) => s.id !== setId)
       this._persist()
 
-      if (supabase && this._userId) {
+      if (sync && supabase && this._userId) {
         supabase.from('sets').delete().eq('id', setId).then()
       }
     },
 
-    clearSets(exerciseId: string) {
+    restoreSet(exerciseId: string, set: WorkoutSet) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
+      if (!exercise) return
+      exercise.sets.push(set)
+      this._persist()
+    },
+
+    clearSets(exerciseId: string, { sync = true }: { sync?: boolean } = {}) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       exercise.sets = []
       this._persist()
 
-      if (supabase && this._userId) {
+      if (sync && supabase && this._userId) {
         supabase.from('sets').delete().eq('exercise_id', exerciseId).then()
       }
+    },
+
+    restoreSets(exerciseId: string, sets: WorkoutSet[]) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
+      if (!exercise) return
+      exercise.sets = [...sets]
+      this._persist()
     },
 
     renameExercise(exerciseId: string, newName: string) {
@@ -180,12 +194,42 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    deleteExercise(exerciseId: string) {
+    deleteExercise(exerciseId: string, { sync = true }: { sync?: boolean } = {}) {
       const idx = this.exercises.findIndex((e: Exercise) => e.id === exerciseId)
       if (idx === -1) return
       this.exercises.splice(idx, 1)
       this._persist()
 
+      if (sync && supabase && this._userId) {
+        Promise.all([
+          supabase.from('sets').delete().eq('exercise_id', exerciseId),
+          supabase.from('exercises').delete().eq('id', exerciseId)
+        ]).then()
+      }
+    },
+
+    restoreExercise(exercise: Exercise, atIndex?: number) {
+      if (atIndex !== undefined && atIndex >= 0 && atIndex <= this.exercises.length) {
+        this.exercises.splice(atIndex, 0, exercise)
+      } else {
+        this.exercises.push(exercise)
+      }
+      this._persist()
+    },
+
+    syncDeleteSet(setId: string) {
+      if (supabase && this._userId) {
+        supabase.from('sets').delete().eq('id', setId).then()
+      }
+    },
+
+    syncDeleteSets(exerciseId: string) {
+      if (supabase && this._userId) {
+        supabase.from('sets').delete().eq('exercise_id', exerciseId).then()
+      }
+    },
+
+    syncDeleteExercise(exerciseId: string) {
       if (supabase && this._userId) {
         Promise.all([
           supabase.from('sets').delete().eq('exercise_id', exerciseId),

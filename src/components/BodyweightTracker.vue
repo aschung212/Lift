@@ -184,10 +184,12 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useUndoToast } from '../composables/useUndoToast'
 
 const store = useBodyweightStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
+const { show: showUndo } = useUndoToast()
 
 // ── Modal state ──────────────────────────────────────────────────
 const showModal = ref(false)
@@ -249,9 +251,17 @@ function toggleEntryActions(id: string) {
 }
 
 function deleteEntry(id: string) {
-  store.deleteEntry(id)
+  const entry = store.entries.find(e => e.id === id)
+  if (!entry) return
+  const saved = { ...entry }
+  store.deleteEntry(id, { sync: false })
   activeEntryId.value = null
   logEvent('bodyweight_delete')
+  showUndo(
+    'Entry deleted',
+    () => store.restoreEntry(saved),
+    () => store.syncDeleteEntry(id),
+  )
 }
 
 // ── Period ───────────────────────────────────────────────────────

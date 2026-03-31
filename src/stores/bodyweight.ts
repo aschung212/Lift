@@ -86,10 +86,21 @@ export const useBodyweightStore = defineStore('bodyweight', {
       }
     },
 
-    deleteEntry(id: string) {
+    deleteEntry(id: string, { sync = true }: { sync?: boolean } = {}) {
       this.entries = this.entries.filter((e: BodyweightEntry) => e.id !== id)
       this._persist()
 
+      if (sync && supabase && this._userId) {
+        supabase.from('bodyweight_entries').delete().eq('id', id).then()
+      }
+    },
+
+    restoreEntry(entry: BodyweightEntry) {
+      this.entries.push(entry)
+      this._persist()
+    },
+
+    syncDeleteEntry(id: string) {
       if (supabase && this._userId) {
         supabase.from('bodyweight_entries').delete().eq('id', id).then()
       }
