@@ -634,7 +634,7 @@ function getItemIndexFromPoint(clientY) {
   return items.length - 1
 }
 
-function onDragStart(index, event) {
+function onDragStart(index, _event) {
   dragState.dragging = true
   dragState.fromIndex = index
   dragState.overIndex = index
@@ -752,9 +752,6 @@ function addNewExerciseTag() {
   nextTick(() => newTagInputEl.value?.focus())
 }
 
-function removeNewExerciseTag(tag) {
-  newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
-}
 
 const allNewExerciseTags = computed(() => {
   const all = new Set([...store.allTags, ...newExerciseTags.value])
@@ -1019,10 +1016,6 @@ function removePreset(val) {
   }
 }
 
-function resetPresets() {
-  restPresets.value = [...DEFAULT_PRESETS]
-  savePresets()
-}
 
 function resetAllDefaults() {
   restPresets.value = [...DEFAULT_PRESETS]
@@ -1053,10 +1046,6 @@ function openRestTimer() {
   }
 }
 
-function disableRestTimer() {
-  restTimerEnabled.value = false
-  closeModal()
-}
 
 const timerDisplay = computed(() => {
   const m = Math.floor(timerSeconds.value / 60)
@@ -1242,9 +1231,6 @@ function addEditTag() {
   nextTick(() => editTagInputEl.value?.focus())
 }
 
-function removeEditTag(tag) {
-  editTags.value = editTags.value.filter(t => t !== tag)
-}
 
 function toggleEditTag(tag) {
   if (editTags.value.includes(tag)) {
