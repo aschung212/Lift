@@ -9,7 +9,7 @@ A **mobile-first Progressive Web App** for tracking strength training, bodyweigh
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-cloud--sync-3ecf8e?logo=supabase&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-installable-5a0fc8)
-![Tests](https://img.shields.io/badge/tests-139_passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-200_passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
@@ -135,13 +135,13 @@ All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 
 
 ### Unit & Component Tests (Vitest)
 
-139 tests across 10 test files, covering stores, composables, and Vue components:
+200 tests across 12 test files, covering stores, composables, and Vue components:
 
 | Layer | Tests | What's covered |
 |---|---|---|
 | **Stores** | 47 | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, persistence |
 | **Composables** | 25 | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection) |
-| **Components** | 67 | AuthScreen (sign-in/sign-up flows, OAuth, errors), ExerciseGraph (SVG rendering, PR detection, edge cases), OnboardingScreen (all 3 paths), ErrorBoundary, accessibility attributes |
+| **Components** | 128 | WorkoutTracker (exercise list, tag filtering, detail modal, PR history, set actions), BodyweightTracker (entry list, stats, SVG chart, period selection, modal), AuthScreen (sign-in/sign-up flows, OAuth, errors), ExerciseGraph (SVG rendering, PR detection, edge cases), OnboardingScreen (all 3 paths), ErrorBoundary, accessibility attributes |
 
 ```bash
 npm test           # run all tests
