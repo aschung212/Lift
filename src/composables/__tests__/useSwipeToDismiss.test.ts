@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, VueWrapper } from '@vue/test-utils'
-import { defineComponent, ref, nextTick } from 'vue'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount } from '@vue/test-utils'
+import { defineComponent } from 'vue'
 import { useSwipeToDismiss } from '../useSwipeToDismiss'
 
 // Helper to create touch events
@@ -23,10 +23,10 @@ function createWrapper(options: { threshold?: number; onDismiss: () => void }) {
       })
       return { ...swipe }
     },
-    template: '<div ref="target" style="height:400px">content</div>',
     mounted() {
       this.attach(this.$refs.target as HTMLElement)
     },
+    template: '<div ref="target" style="height:400px">content</div>',
   })
   return mount(Comp, { attachTo: document.body })
 }
