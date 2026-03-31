@@ -150,13 +150,15 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
-import WorkoutTracker from './components/WorkoutTracker.vue'
-import BodyweightTracker from './components/BodyweightTracker.vue'
-import CalendarView from './components/CalendarView.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
+
+// Lazy-load tab content — split into separate chunks for faster initial load
+const WorkoutTracker = defineAsyncComponent(() => import('./components/WorkoutTracker.vue'))
+const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'))
+const BodyweightTracker = defineAsyncComponent(() => import('./components/BodyweightTracker.vue'))
 import { useTheme } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
