@@ -221,7 +221,7 @@
 
           <template v-if="editingPresets">
             <h2>Edit Times</h2>
-            <button class="wtTimerEditCountdown" @click="togglePause">
+            <button class="wtTimerEditCountdown" @click="togglePause" :aria-label="timerPaused ? 'Resume timer' : 'Pause timer'">
               {{ timerDisplay }}
               <svg v-if="!timerPaused && timerSeconds > 0" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
               <svg v-else-if="timerPaused" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -245,6 +245,7 @@
                     class="wtTimerEditDeleteBtn"
                     :disabled="restPresets.length <= 1"
                     @click="removePreset(s)"
+                    :aria-label="'Remove ' + formatDuration(s) + ' preset'"
                   >&times;</button>
                 </div>
               </template>
@@ -262,6 +263,7 @@
                     class="wtTimerEditDeleteBtn"
                     :disabled="warningOptions.length <= 1"
                     @click="removeWarningOption(s)"
+                    :aria-label="'Remove ' + s + 's warning'"
                   >&times;</button>
                 </div>
               </template>
@@ -527,8 +529,8 @@
                   @keyup.escape="renamingTag = null"
                   ref="renameTagInputEl"
                 />
-                <button class="wtTagManagerSaveBtn" @click="confirmRenameTag" :disabled="!renameTagValue">✓</button>
-                <button class="wtTagManagerCancelBtn" @click="renamingTag = null">✕</button>
+                <button class="wtTagManagerSaveBtn" @click="confirmRenameTag" :disabled="!renameTagValue" aria-label="Save tag name">✓</button>
+                <button class="wtTagManagerCancelBtn" @click="renamingTag = null" aria-label="Cancel rename">✕</button>
               </template>
               <template v-else>
                 <button class="wtTagManagerExpandBtn" @click="toggleTagExpand(tag)" :aria-expanded="expandedTag === tag" :aria-label="'Show exercises for ' + tag">
