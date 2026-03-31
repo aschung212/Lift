@@ -9,7 +9,7 @@ A **mobile-first Progressive Web App** for tracking strength training, bodyweigh
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-cloud--sync-3ecf8e?logo=supabase&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-installable-5a0fc8)
-![Tests](https://img.shields.io/badge/tests-200_passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-258_passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
@@ -42,13 +42,24 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Multi-tag filtering on both Workouts and Calendar tabs (ANY match)
 - Inline "× Clear" chip at end of tag row when filters are active — no layout shift
 
+### Progressive Overload Suggestions
+- Analyzes recent training history per exercise
+- Suggests weight or rep increases when performance plateaus
+- Based on linear periodization — tracks rolling averages across recent sessions
+
+### Workout Templates
+- Save current exercise list as a named template
+- Load templates to quickly set up a workout
+- Manage saved templates from the workout screen
+
 ### Rest Timer
 - Circular progress ring with countdown display — Apple Timer style
 - Dedicated play/pause/restart button below the ring
 - Configurable duration presets as tappable pills
-- Auto-starts after logging a set (when enabled)
+- Auto-starts after logging a set (configurable separately from enable/disable)
 - Persistent bottom bar shows live countdown while browsing the app
 - Timer continues running when modal is dismissed
+- Visual warning flash when timer completes
 - Configurable rest times and alert warnings in timer settings
 
 ### Training Calendar
@@ -70,11 +81,19 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Entries sorted by date
 - Smart date label spacing to prevent overlap
 
+### Tag Management
+- Rename and delete tags from a dedicated tag manager
+- Edit exercise-tag associations in bulk
+- Theme-colored tag chips throughout the UI
+
 ### Auth & Sync
 - Google OAuth or email/password sign-in via Supabase
 - Optimistic local-first writes: UI updates instantly, Supabase syncs in background
+- Debounced sync queue — batches rapid mutations to avoid excessive API calls
+- Multi-device conflict resolution with last-write-wins strategy
 - One-time migration of existing localStorage data on first sign-in
 - Data persists in localStorage for offline use; Supabase for cross-device sync
+- Sample/onboarding data excluded from sync to keep remote store clean
 
 ### UI & Experience
 - Bottom tab bar with sliding liquid glass indicator (when glass mode is on)
@@ -83,6 +102,10 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Light / Auto / Dark mode — auto follows system `prefers-color-scheme`
 - Liquid Glass mode — frosted glass cards, tab bar, and modals with per-theme ambient mesh gradients
 - Settings bottom sheet — iOS-style grouped sections for Appearance, Features, and Account
+- Swipe-to-dismiss on bottom sheets and modals with velocity-based flick detection
+- Undo toast for destructive actions (delete exercise, delete set, clear data)
+- Service worker update prompt — "New version available" banner with one-tap update
+- CSV and JSON data export from settings
 - Active tab persisted across sessions
 - All touch targets meet iOS 44pt minimum
 - All text meets 11pt minimum font size
@@ -126,6 +149,9 @@ A `prMap` computed property (`YYYY-MM-DD → Set<exerciseName>`) is derived from
 ### Glass system
 Each theme defines `--glass-fill`, `--glass-edge`, `--glass-shine`, `--glass-bar`, `--glass-overlay`, and `--mesh` tokens. When `data-glass="on"` (default), cards and chrome use `backdrop-filter: blur()` with translucent fills. `data-glass="off"` overrides fall back to solid `--bg-secondary` / `--bg-elevated` values. The tab bar indicator only renders in glass mode.
 
+### Sync infrastructure
+A debounced sync queue (`lib/syncQueue.ts`) batches rapid Pinia mutations into coalesced Supabase writes. A conflict resolver (`lib/conflictResolver.ts`) implements last-write-wins with `updated_at` timestamp comparison when merging remote and local state.
+
 ### iOS HIG compliance
 All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 11pt minimum throughout. Toggle switches are 51×31pt. Text contrast ratios are tuned per-theme for WCAG AA compliance. Safe areas are respected for notched devices.
 
@@ -135,13 +161,13 @@ All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 
 
 ### Unit & Component Tests (Vitest)
 
-200 tests across 12 test files, covering stores, composables, and Vue components:
+258 tests across 16 test files, covering stores, composables, and Vue components:
 
 | Layer | Tests | What's covered |
 |---|---|---|
-| **Stores** | 47 | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, persistence |
+| **Stores** | 62 | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, template save/load, persistence |
 | **Composables** | 25 | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection) |
-| **Components** | 128 | WorkoutTracker (exercise list, tag filtering, detail modal, PR history, set actions), BodyweightTracker (entry list, stats, SVG chart, period selection, modal), AuthScreen (sign-in/sign-up flows, OAuth, errors), ExerciseGraph (SVG rendering, PR detection, edge cases), OnboardingScreen (all 3 paths), ErrorBoundary, accessibility attributes |
+| **Components** | 171 | WorkoutTracker (exercise list, tag filtering, detail modal, PR history, set actions, progressive overload), BodyweightTracker (entry list, stats, SVG chart, period selection, modal), AuthScreen (sign-in/sign-up flows, OAuth, errors), ExerciseGraph (SVG rendering, PR detection, edge cases), OnboardingScreen (all 3 paths), CalendarView (month navigation, day selection, workout summary), ErrorBoundary, accessibility attributes |
 
 ```bash
 npm test           # run all tests
@@ -229,22 +255,29 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   │   ├── AuthScreen.vue       # Email/password + Google sign-in
 │   │   ├── ErrorBoundary.vue    # Global error handler with fallback UI
 │   │   ├── OnboardingScreen.vue # Welcome flow with 3 entry paths
-│   │   └── __tests__/           # Component tests (67 tests)
+│   │   └── __tests__/           # Component tests (171 tests)
 │   ├── composables/
 │   │   ├── useTheme.ts          # Themes, mode (light/auto/dark), glass toggle, rest timer toggle
 │   │   ├── useAuth.ts           # Supabase session, OAuth + email auth, store init on sign-in
 │   │   ├── useAnalytics.ts      # Lightweight event logging
+│   │   ├── useUndoToast.ts      # Undo toast with timed rollback
+│   │   ├── useSwipeToDismiss.ts # Touch gesture dismissal for modals and sheets
 │   │   └── __tests__/           # Composable tests (25 tests)
 │   ├── stores/
 │   │   ├── workout.ts           # Exercises + sets CRUD, Epley 1RM, PR getter, tags, Supabase sync
 │   │   ├── bodyweight.ts        # Weight entries CRUD, min/max getters, Supabase sync
 │   │   ├── preferences.ts       # Feature toggles (tab visibility), Supabase sync
-│   │   └── __tests__/           # Store tests (47 tests)
+│   │   ├── templates.ts         # Workout template save/load
+│   │   └── __tests__/           # Store tests (62 tests)
 │   ├── lib/
 │   │   ├── supabase.ts          # Supabase client singleton
-│   │   └── migrate.ts           # One-time localStorage → Supabase migration
+│   │   ├── migrate.ts           # One-time localStorage → Supabase migration
+│   │   ├── syncQueue.ts         # Debounced sync queue for batching Supabase writes
+│   │   ├── conflictResolver.ts  # Last-write-wins conflict resolution for multi-device sync
+│   │   ├── tagColors.ts         # Theme-aware tag color mapping
+│   │   └── uuid.ts              # UUID generation utility
 │   ├── App.vue                  # Tab bar, settings sheet, theme picker, auth gate
-│   ├── main.js
+│   ├── main.ts                  # App entry point
 │   └── index.css                # All theme tokens, glass tokens, component styles
 ├── supabase/
 │   └── migration.sql            # Creates exercises, sets, bodyweight_entries with RLS
