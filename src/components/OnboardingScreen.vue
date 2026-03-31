@@ -33,11 +33,11 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 
-const emit = defineEmits(['complete'])
+const emit = defineEmits<{ complete: [] }>()
 const workoutStore = useWorkoutStore()
 const bwStore = useBodyweightStore()
 
@@ -50,7 +50,7 @@ const STARTER_EXERCISES = [
   { name: 'Pull-ups', tags: ['Pull', 'Back'] },
 ]
 
-function daysAgo(n) {
+function daysAgo(n: number): string {
   const d = new Date()
   d.setDate(d.getDate() - n)
   return d.toISOString().slice(0, 10)
@@ -211,7 +211,7 @@ const SAMPLE_WEIGHTS = [
   { weight: 172.5, date: daysAgo(1) },
 ]
 
-function finish(sampleData) {
+function finish(sampleData: boolean) {
   localStorage.setItem('onboarding-complete', 'true')
   if (sampleData) {
     localStorage.setItem('sample-data', 'true')
@@ -235,6 +235,7 @@ function chooseExplore() {
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
     const id = workoutStore.addExercise(group.exercise, starter?.tags || [])
+    if (!id) continue
     for (const set of group.sets) {
       workoutStore.logSet(id, set.weight, set.reps, set.date)
     }

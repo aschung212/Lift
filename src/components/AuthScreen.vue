@@ -57,8 +57,9 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
+import type { Provider } from '@supabase/supabase-js'
 import { useAuth } from '../composables/useAuth'
 
 const { signInWithProvider, signInWithEmail, signUp } = useAuth()
@@ -100,7 +101,7 @@ async function handleEmailSubmit() {
   submitting.value = false
 }
 
-async function handleOAuth(provider) {
+async function handleOAuth(provider: Provider) {
   message.value = ''
   const { error } = await signInWithProvider(provider)
   if (error) {

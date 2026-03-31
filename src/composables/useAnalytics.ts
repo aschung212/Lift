@@ -1,11 +1,13 @@
 import { track } from '@vercel/analytics'
 
+type AllowedPropertyValues = string | number | boolean | null | undefined
+
 // Session-level tab engagement timing (module singleton)
 let _currentTab = 'workouts'
 let _tabStart = Date.now()
 
 export function useAnalytics() {
-  function logEvent(name: string, props: Record<string, unknown> = {}): void {
+  function logEvent(name: string, props: Record<string, AllowedPropertyValues> = {}): void {
     try { track(name, props) } catch { /* offline or blocked */ }
   }
 

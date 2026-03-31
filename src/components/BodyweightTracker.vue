@@ -25,8 +25,8 @@
     <div v-if="periodStats && periodStats.count >= 2" class="bwStatsRow">
       <div class="bwStatCard">
         <span class="bwStatLabel">Change</span>
-        <span :class="['bwStatValue', periodStats.change < 0 ? 'bwStatDown' : periodStats.change > 0 ? 'bwStatUp' : '']">
-          {{ displayWeight(periodStats.change) > 0 ? '+' : '' }}{{ displayWeight(periodStats.change) }} {{ weightUnit }}
+        <span :class="['bwStatValue', periodStats.change! < 0 ? 'bwStatDown' : periodStats.change! > 0 ? 'bwStatUp' : '']">
+          {{ displayWeight(periodStats.change!) > 0 ? '+' : '' }}{{ displayWeight(periodStats.change!) }} {{ weightUnit }}
         </span>
       </div>
       <div class="bwStatCard">
@@ -125,8 +125,8 @@
           <span v-if="entry.weight === store.minWeight" class="bwEntryBadge bwEntryBadgeLow" title="All-time low">↓ Low</span>
           <span v-else-if="entry.weight === store.maxWeight" class="bwEntryBadge bwEntryBadgeHigh" title="All-time high">↑ High</span>
         </span>
-        <span v-if="entryDelta(entry) != null" :class="['bwDelta', entryDelta(entry) < 0 ? 'bwDeltaDown' : entryDelta(entry) > 0 ? 'bwDeltaUp' : '']">
-          {{ displayWeight(entryDelta(entry)) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)) }}
+        <span v-if="entryDelta(entry) != null" :class="['bwDelta', entryDelta(entry)! < 0 ? 'bwDeltaDown' : entryDelta(entry)! > 0 ? 'bwDeltaUp' : '']">
+          {{ displayWeight(entryDelta(entry)!) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)!) }}
         </span>
         <div v-if="activeEntryId === entry.id" class="wtSetActions">
           <button class="wtSetBtn" @click.stop="openModal(entry)" aria-label="Edit entry">Edit</button>
@@ -178,9 +178,10 @@
   </Teleport>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
+import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 
@@ -190,15 +191,15 @@ const { logEvent } = useAnalytics()
 
 // ── Modal state ──────────────────────────────────────────────────
 const showModal = ref(false)
-const editing = ref(null) // entry id when editing
-const weight = ref(null)
+const editing = ref<string | null>(null) // entry id when editing
+const weight = ref<number | null>(null)
 const date = ref(todayISO())
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
 }
 
-function isoToLocalDate(iso) {
+function isoToLocalDate(iso: string): string {
   const d = new Date(iso)
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -206,7 +207,7 @@ function isoToLocalDate(iso) {
   return `${y}-${m}-${day}`
 }
 
-function openModal(entry = null) {
+function openModal(entry: BodyweightEntry | null = null) {
   if (entry) {
     editing.value = entry.id
     weight.value = displayWeight(entry.weight)
@@ -226,10 +227,10 @@ function closeModal() {
   date.value = todayISO()
 }
 
-const canSave = computed(() => weight.value > 0)
+const canSave = computed(() => weight.value !== null && weight.value > 0)
 
 function save() {
-  if (!canSave.value) return
+  if (!canSave.value || weight.value === null) return
   if (editing.value) {
     store.updateEntry(editing.value, toLbs(weight.value), date.value)
     logEvent('bodyweight_edit')
@@ -241,13 +242,13 @@ function save() {
 }
 
 // ── Entry actions (tap-to-reveal) ────────────────────────────────
-const activeEntryId = ref(null)
+const activeEntryId = ref<string | null>(null)
 
-function toggleEntryActions(id) {
+function toggleEntryActions(id: string) {
   activeEntryId.value = activeEntryId.value === id ? null : id
 }
 
-function deleteEntry(id) {
+function deleteEntry(id: string) {
   store.deleteEntry(id)
   activeEntryId.value = null
   logEvent('bodyweight_delete')
@@ -266,7 +267,7 @@ const sortedEntries = computed(() =>
   [...store.entries].sort((a, b) => b.date.localeCompare(a.date))
 )
 
-function entryDelta(entry) {
+function entryDelta(entry: BodyweightEntry): number | null {
   const sorted = sortedEntries.value
   const idx = sorted.indexOf(entry)
   if (idx < 0 || idx >= sorted.length - 1) return null
@@ -285,7 +286,7 @@ const chartH = H - PAD_T - PAD_B
 
 // Best (latest) weight per calendar date, sorted chronologically — all time
 const dailyLatest = computed(() => {
-  const byDate = {}
+  const byDate: Record<string, BodyweightEntry> = {}
   for (const e of store.entries) {
     const day = e.date.slice(0, 10)
     if (!byDate[day] || e.id > byDate[day].id) byDate[day] = e
@@ -381,18 +382,18 @@ const visibleLabelIndices = computed(() => {
   return indices
 })
 
-function shouldShowLabel(i) {
+function shouldShowLabel(i: number): boolean {
   return visibleLabelIndices.value.includes(i)
 }
 
-function formatDate(iso) {
+function formatDate(iso: string): string {
   return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric'
   })
 }
 
-function formatDateShort(iso) {
+function formatDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 </script>

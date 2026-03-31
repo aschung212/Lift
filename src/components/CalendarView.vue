@@ -195,7 +195,7 @@
   </Teleport>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
@@ -206,9 +206,9 @@ const { weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 
 // ── Tag filtering ────────────────────────────────────────────────
-const activeTagFilters = ref([])
+const activeTagFilters = ref<string[]>([])
 
-function toggleTagFilter(tag) {
+function toggleTagFilter(tag: string) {
   const idx = activeTagFilters.value.indexOf(tag)
   if (idx >= 0) {
     activeTagFilters.value = activeTagFilters.value.filter(t => t !== tag)
@@ -235,15 +235,15 @@ const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
 const view = ref('month')
 const cursor = ref(new Date())
-const selectedDay = ref(null)
+const selectedDay = ref<string | null>(null)
 
-function setView(v) {
+function setView(v: string) {
   view.value = v
   selectedDay.value = null
   logEvent('calendar_view_switch', { view: v })
 }
 
-function toLocalDateStr(d) {
+function toLocalDateStr(d: Date) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
@@ -254,7 +254,7 @@ const todayStr = toLocalDateStr(new Date())
 
 // Map YYYY-MM-DD → unique exercise names (respects tag filter)
 const trainingMap = computed(() => {
-  const map = {}
+  const map: Record<string, string[]> = {}
   for (const exercise of filteredExercises.value) {
     for (const set of exercise.sets) {
       const day = set.date.slice(0, 10)
@@ -267,7 +267,7 @@ const trainingMap = computed(() => {
 
 // Map YYYY-MM-DD → Set of exercise names that achieved an all-time PR on that date
 const prMap = computed(() => {
-  const map = {}
+  const map: Record<string, Set<string>> = {}
   for (const exercise of filteredExercises.value) {
     const pr = store.getExercisePR(exercise.id)
     if (!pr) continue
@@ -282,18 +282,18 @@ const prMap = computed(() => {
   return map
 })
 
-function isPRExercise(dateStr, exName) {
+function isPRExercise(dateStr: string, exName: string) {
   return prMap.value[dateStr]?.has(exName) ?? false
 }
 
-function hasPR(dateStr) {
+function hasPR(dateStr: string) {
   return !!(prMap.value[dateStr]?.size > 0)
 }
 
 // Exercise detail expand: "YYYY-MM-DD::Exercise Name" or null
-const detailKey = ref(null)
+const detailKey = ref<string | null>(null)
 
-function toggleDetail(dateStr, exName) {
+function toggleDetail(dateStr: string, exName: string) {
   const key = `${dateStr}::${exName}`
   detailKey.value = detailKey.value === key ? null : key
 }
