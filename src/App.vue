@@ -166,6 +166,16 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- SW update toast -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="swNeedRefresh" class="undoToastBar swUpdateBar" role="status" aria-live="polite">
+          <span class="undoToastMsg">New version available</span>
+          <button class="undoToastBtn" @click="updateSW()">Update</button>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
   </ErrorBoundary>
 </template>
@@ -187,6 +197,7 @@ import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
+import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, weightUnit } = useTheme()
 const { user, loading, signOut } = useAuth()
@@ -196,6 +207,12 @@ const { toast: undoToast, performUndo } = useUndoToast()
 
 const settingsOpen = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)
+
+// ── Service worker update prompt ────────────────────────────────
+const swNeedRefresh = ref(false)
+const updateSW = registerSW({
+  onNeedRefresh() { swNeedRefresh.value = true },
+})
 
 // ── Onboarding ──────────────────────────────────────────────────
 const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
