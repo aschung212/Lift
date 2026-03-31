@@ -259,4 +259,106 @@ describe('useWorkoutStore', () => {
       expect(stored[0].name).toBe('Bench Press')
     })
   })
+
+  describe('getOverloadSuggestion', () => {
+    function logSetOnDate(exerciseId, weight, reps, dateStr) {
+      store.logSet(exerciseId, weight, reps, dateStr)
+    }
+
+    it('returns null when exercise has fewer than 3 sets', () => {
+      const id = store.addExercise('Bench Press')
+      store.logSet(id, 135, 8, '2026-03-01')
+      store.logSet(id, 135, 8, '2026-03-02')
+      expect(store.getOverloadSuggestion(id)).toBeNull()
+    })
+
+    it('returns null when exercise does not exist', () => {
+      expect(store.getOverloadSuggestion('nonexistent')).toBeNull()
+    })
+
+    it('returns null when fewer than 2 unique sessions', () => {
+      const id = store.addExercise('Bench Press')
+      // 3 sets, but all on same day
+      store.logSet(id, 135, 8, '2026-03-01')
+      store.logSet(id, 135, 8, '2026-03-01')
+      store.logSet(id, 135, 8, '2026-03-01')
+      expect(store.getOverloadSuggestion(id)).toBeNull()
+    })
+
+    it('suggests weight increase when same weight×reps across 2+ sessions', () => {
+      const id = store.addExercise('Bench Press')
+      logSetOnDate(id, 135, 8, '2026-03-01')
+      logSetOnDate(id, 135, 8, '2026-03-03')
+      logSetOnDate(id, 135, 8, '2026-03-05')
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      expect(suggestion.type).toBe('increase_weight')
+      expect(suggestion.weight).toBe(140)
+      expect(suggestion.reps).toBe(6) // 8 - 2
+    })
+
+    it('suggests weight increase when reps are high and increasing', () => {
+      const id = store.addExercise('Squat')
+      logSetOnDate(id, 185, 7, '2026-03-01')
+      logSetOnDate(id, 185, 9, '2026-03-03')
+      logSetOnDate(id, 185, 10, '2026-03-05')
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      expect(suggestion.type).toBe('increase_weight')
+      expect(suggestion.weight).toBe(190)
+    })
+
+    it('suggests rep increase when reps are increasing but still low', () => {
+      const id = store.addExercise('OHP')
+      logSetOnDate(id, 95, 3, '2026-03-01')
+      logSetOnDate(id, 95, 3, '2026-03-03')
+      logSetOnDate(id, 95, 4, '2026-03-05')
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      expect(suggestion.type).toBe('increase_reps')
+      expect(suggestion.weight).toBe(95)
+      expect(suggestion.reps).toBe(5) // 4 + 1
+    })
+
+    it('suggests consolidation when weight was recently increased', () => {
+      const id = store.addExercise('Deadlift')
+      logSetOnDate(id, 225, 5, '2026-03-01')
+      logSetOnDate(id, 225, 5, '2026-03-03')
+      logSetOnDate(id, 235, 4, '2026-03-05')
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      expect(suggestion.type).toBe('increase_reps')
+      expect(suggestion.weight).toBe(235)
+      expect(suggestion.reps).toBe(5)
+      expect(suggestion.reason).toContain('build reps')
+    })
+
+    it('uses heaviest set from each session', () => {
+      const id = store.addExercise('Bench Press')
+      // Session 1: multiple sets, heaviest is 145×5
+      logSetOnDate(id, 135, 8, '2026-03-01')
+      logSetOnDate(id, 145, 5, '2026-03-01')
+      // Session 2: heaviest is 145×6
+      logSetOnDate(id, 135, 8, '2026-03-03')
+      logSetOnDate(id, 145, 6, '2026-03-03')
+      // Session 3: heaviest is 145×7
+      logSetOnDate(id, 135, 8, '2026-03-05')
+      logSetOnDate(id, 145, 7, '2026-03-05')
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      // 145 across all 3 sessions with ≥5 reps → increase weight
+      expect(suggestion.type).toBe('increase_weight')
+      expect(suggestion.weight).toBe(150)
+    })
+
+    it('includes a reason string', () => {
+      const id = store.addExercise('Bench Press')
+      logSetOnDate(id, 135, 8, '2026-03-01')
+      logSetOnDate(id, 135, 8, '2026-03-03')
+      logSetOnDate(id, 135, 8, '2026-03-05')
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion.reason).toBeTruthy()
+      expect(typeof suggestion.reason).toBe('string')
+    })
+  })
 })

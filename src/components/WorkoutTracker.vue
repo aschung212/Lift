@@ -374,6 +374,18 @@
           <!-- Log for existing exercise mode: show name as subtitle -->
           <p v-else-if="isLogForExercise" class="wtModalSubtitle">{{ selectedExerciseName }}</p>
 
+          <!-- Progressive overload suggestion -->
+          <div v-if="overloadSuggestion && !isEditMode" class="wtOverloadSuggestion" @click="applyOverloadSuggestion">
+            <div class="wtOverloadIcon">
+              <svg v-if="overloadSuggestion.type === 'increase_weight'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 5 5 12"/></svg>
+            </div>
+            <div class="wtOverloadContent">
+              <span class="wtOverloadTarget">Try {{ displayWeight(overloadSuggestion.weight) }} {{ weightUnit }} × {{ overloadSuggestion.reps }}</span>
+              <span class="wtOverloadReason">{{ overloadSuggestion.reason }}</span>
+            </div>
+          </div>
+
           <!-- Date: always visible -->
           <label class="repMaxLabel">
             Date
@@ -796,6 +808,19 @@ const isLogForExercise = computed(() =>
 const selectedExerciseName = computed(() =>
   store.exercises.find(e => e.id === selectedExerciseId.value)?.name ?? ''
 )
+
+// Progressive overload suggestion for current exercise
+const overloadSuggestion = computed(() => {
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  return store.getOverloadSuggestion(id)
+})
+
+function applyOverloadSuggestion() {
+  if (!overloadSuggestion.value) return
+  weight.value = displayWeight(overloadSuggestion.value.weight)
+  reps.value = overloadSuggestion.value.reps
+}
 
 const modalTitle = computed(() => {
   if (isEditMode.value) return 'Edit Set'

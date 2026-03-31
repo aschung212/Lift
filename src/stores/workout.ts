@@ -19,6 +19,13 @@ export interface Exercise {
   sets: WorkoutSet[]
 }
 
+export interface OverloadSuggestion {
+  type: 'increase_weight' | 'increase_reps'
+  weight: number
+  reps: number
+  reason: string
+}
+
 function epley(weight: number, reps: number): number {
   if (reps === 1) return Math.round(weight)
   return Math.round(weight * (1 + reps / 30))
@@ -314,6 +321,97 @@ export const useWorkoutStore = defineStore('workout', {
       const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return []
       return [...exercise.sets].reverse().slice(0, limit)
+    },
+
+    /**
+     * Progressive overload suggestion for an exercise.
+     * Analyzes recent sessions to suggest the next weight × reps.
+     *
+     * Algorithm:
+     * 1. Group sets by date into sessions (most recent first)
+     * 2. Take the top set (highest weight) from each of the last 3 sessions
+     * 3. If user lifted the same weight×reps across 2+ sessions → suggest +5 lbs
+     * 4. If user increased reps but not weight recently → suggest weight increase
+     * 5. Otherwise suggest +1 rep at same weight
+     */
+    getOverloadSuggestion: (state) => (exerciseId: string): OverloadSuggestion | null => {
+      const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
+      if (!exercise || exercise.sets.length < 3) return null
+
+      // Group sets by date (YYYY-MM-DD) → sessions
+      const sessions = new Map<string, WorkoutSet[]>()
+      for (const set of exercise.sets) {
+        const day = set.date.slice(0, 10)
+        if (!sessions.has(day)) sessions.set(day, [])
+        sessions.get(day)!.push(set)
+      }
+
+      // Sort sessions by date descending, take last 3
+      const sortedDays = [...sessions.keys()].sort().reverse()
+      if (sortedDays.length < 2) return null
+
+      const recentSessions = sortedDays.slice(0, 3)
+
+      // Get top set (heaviest weight) from each session
+      const topSets = recentSessions.map(day => {
+        const sets = sessions.get(day)!
+        return sets.reduce((best, s) => s.weight > best.weight || (s.weight === best.weight && s.reps > best.reps) ? s : best)
+      })
+
+      const latest = topSets[0]
+      const previous = topSets[1]
+
+      // Check if user has been consistent at same weight across recent sessions
+      const sameWeight = topSets.filter(s => s.weight === latest.weight)
+      const WEIGHT_INCREMENT = 5 // lbs
+
+      if (sameWeight.length >= 2 && latest.reps >= 5) {
+        // Consistent at same weight with solid reps → increase weight
+        // Suggest same reps (or slightly fewer) at higher weight
+        const suggestedReps = Math.max(latest.reps - 2, 3)
+        return {
+          type: 'increase_weight',
+          weight: latest.weight + WEIGHT_INCREMENT,
+          reps: suggestedReps,
+          reason: `You've hit ${latest.weight} lbs × ${latest.reps} in ${sameWeight.length} recent sessions — time to go heavier`
+        }
+      }
+
+      if (latest.weight === previous.weight && latest.reps > previous.reps) {
+        // Reps increasing at same weight → keep building or bump weight
+        if (latest.reps >= 8) {
+          return {
+            type: 'increase_weight',
+            weight: latest.weight + WEIGHT_INCREMENT,
+            reps: Math.max(latest.reps - 2, 3),
+            reason: `Strong rep progression at ${latest.weight} lbs — ready for a weight increase`
+          }
+        }
+        return {
+          type: 'increase_reps',
+          weight: latest.weight,
+          reps: latest.reps + 1,
+          reason: `You went from ${previous.reps} to ${latest.reps} reps — keep building`
+        }
+      }
+
+      if (latest.weight > previous.weight) {
+        // Already increased weight recently → consolidate
+        return {
+          type: 'increase_reps',
+          weight: latest.weight,
+          reps: latest.reps + 1,
+          reason: `You recently moved up to ${latest.weight} lbs — build reps before adding more weight`
+        }
+      }
+
+      // Default: suggest adding a rep
+      return {
+        type: 'increase_reps',
+        weight: latest.weight,
+        reps: latest.reps + 1,
+        reason: `Try adding one more rep at ${latest.weight} lbs`
+      }
     }
   }
 })
