@@ -266,11 +266,11 @@
                 </div>
               </template>
             </div>
-            <div v-if="editTab === 'rest'" class="wtTimerEditRow" style="margin-top: 8px">
+            <div v-if="editTab === 'rest'" class="wtTimerEditRow" style="margin-top: var(--space-2)">
               <input class="wtTimerEditInput" type="number" inputmode="numeric" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="addPreset" ref="presetInputEl" />
               <button class="wtTimerEditAddBtn" :disabled="!newPresetValue" @click="addPreset">Add</button>
             </div>
-            <div v-else class="wtTimerEditRow" style="margin-top: 8px">
+            <div v-else class="wtTimerEditRow" style="margin-top: var(--space-2)">
               <input class="wtTimerEditInput" type="number" inputmode="numeric" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" />
               <button class="wtTimerEditAddBtn" :disabled="!newWarningValue" @click="addWarningOption">Add</button>
             </div>
@@ -514,7 +514,7 @@
     <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
         <h2 id="tag-manager-title">Manage Tags</h2>
-        <p v-if="store.allTags.length === 0" class="wtEmpty" style="margin: 16px 0">No tags yet. Add tags to exercises to see them here.</p>
+        <p v-if="store.allTags.length === 0" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Add tags to exercises to see them here.</p>
         <ul v-else class="wtTagManagerList">
           <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItemWrap">
             <div class="wtTagManagerItem">

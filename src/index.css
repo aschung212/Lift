@@ -378,6 +378,11 @@
   --font-title1:     28px;  /* Title 1 */
   --font-lg-title:   34px;  /* Large Title */
 
+  /* Display sizes (beyond HIG scale — timers, modals, calculators) */
+  --font-display-sm: 30px;
+  --font-display:    36px;
+  --font-display-lg: 48px;
+
   /* Spacing scale (4pt grid) */
   --space-1:  4px;
   --space-2:  8px;
@@ -801,7 +806,7 @@ button, [role="tab"], [role="switch"], a {
 
 .settingsLabelIndented {
   padding-left: 16px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
 }
 
@@ -912,7 +917,7 @@ button, [role="tab"], [role="switch"], a {
   gap: 5px;
   padding: 12px 16px;
   min-height: 44px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
   color: var(--text-on-accent);
@@ -946,7 +951,7 @@ button, [role="tab"], [role="switch"], a {
   border-top: 1px solid var(--border);
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 500;
   border-bottom: none;
   border-left: none;
@@ -988,7 +993,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtRestBarTime {
-  font-size: 18px;
+  font-size: var(--font-body);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 1px;
@@ -1035,7 +1040,7 @@ button, [role="tab"], [role="switch"], a {
   cursor: pointer;
   text-align: left;
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   color: var(--text-primary);
   transition: background-color 0.12s;
   min-width: 0;
@@ -1046,7 +1051,7 @@ button, [role="tab"], [role="switch"], a {
 .wtExerciseName {
   flex: 1;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1169,7 +1174,7 @@ button, [role="tab"], [role="switch"], a {
 .wtSearchInput {
   flex: 1;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   color: var(--text-primary);
   background: var(--bg-primary, rgba(255,255,255,0.06));
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
@@ -1200,7 +1205,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtTagChip {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   padding: 8px 14px;
   min-height: 44px;
@@ -1260,7 +1265,7 @@ button, [role="tab"], [role="switch"], a {
   padding: 0 2px;
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: 18px;
+  font-size: var(--font-body);
   line-height: 1;
   display: flex;
   align-items: center;
@@ -1285,7 +1290,7 @@ button, [role="tab"], [role="switch"], a {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   color: var(--text);
   cursor: pointer;
 }
@@ -1358,7 +1363,7 @@ button, [role="tab"], [role="switch"], a {
 .wtTagPickerChip {
   display: inline-flex;
   align-items: center;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   padding: 8px 14px;
   color: var(--text-secondary);
@@ -1392,7 +1397,7 @@ button, [role="tab"], [role="switch"], a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   padding: 8px 14px;
   border-radius: 12px;
@@ -1409,7 +1414,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtEditTagPillRemove {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   line-height: 1;
   opacity: 0.6;
 }
@@ -1431,7 +1436,7 @@ button, [role="tab"], [role="switch"], a {
   justify-content: center;
   width: 44px;
   min-height: 44px;
-  font-size: 18px;
+  font-size: var(--font-body);
   font-weight: 700;
   font-family: inherit;
   color: var(--accent);
@@ -1498,7 +1503,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtDetailLogBtn {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
   color: var(--accent);
@@ -1570,7 +1575,7 @@ button, [role="tab"], [role="switch"], a {
 .wtSet1RM {
   color: var(--success);
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
@@ -1605,7 +1610,7 @@ button, [role="tab"], [role="switch"], a {
 
 .wtSetBtn {
   padding: 10px 14px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
   border: none;
@@ -1652,7 +1657,7 @@ button, [role="tab"], [role="switch"], a {
   gap: 6px;
   padding: 10px 0;
   min-height: 44px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
   color: var(--text-muted);
@@ -1741,7 +1746,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtPRConnectorArrow {
-  font-size: 14px;
+  font-size: var(--font-footnote);
 }
 
 .wtPRConnectorSep {
@@ -1766,7 +1771,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtClearBtn {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
   color: var(--danger);
@@ -1783,7 +1788,7 @@ button, [role="tab"], [role="switch"], a {
 .wtClearBtn:active { opacity: 0.6; }
 
 .wtShowAllBtn {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
   color: var(--accent);
@@ -1843,7 +1848,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtOverloadTarget {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.2px;
@@ -1960,7 +1965,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .repMaxResultValue {
-  font-size: 36px;
+  font-size: var(--font-display);
   font-weight: 700;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
@@ -2036,7 +2041,7 @@ button, [role="tab"], [role="switch"], a {
 /* ─── Timer: circular ring ──────────────────────────────────────────────── */
 
 .wtTimerExName {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 500;
   color: var(--text-secondary);
   text-align: center;
@@ -2094,7 +2099,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtTimerTime {
-  font-size: 48px;
+  font-size: var(--font-display-lg);
   font-weight: 200;
   font-variant-numeric: tabular-nums;
   letter-spacing: 2px;
@@ -2173,7 +2178,7 @@ button, [role="tab"], [role="switch"], a {
 .wtTimerPreset {
   padding: 8px 16px;
   min-height: 44px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
   border: 1px solid var(--border);
@@ -2225,7 +2230,7 @@ button, [role="tab"], [role="switch"], a {
   flex: 1;
   padding: 10px 0;
   min-height: 44px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
   color: var(--text-muted);
@@ -2264,7 +2269,7 @@ button, [role="tab"], [role="switch"], a {
   width: 44px;
   height: 44px;
   padding: 0;
-  font-size: 18px;
+  font-size: var(--font-body);
   line-height: 1;
   font-family: inherit;
   color: var(--text-muted);
@@ -2381,7 +2386,7 @@ button, [role="tab"], [role="switch"], a {
 .wtConfirmModal { text-align: center; }
 
 .wtConfirmIcon {
-  font-size: 30px;
+  font-size: var(--font-display-sm);
   margin-bottom: 10px;
   line-height: 1;
 }
@@ -2572,7 +2577,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .calNavLabel {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.2px;
@@ -2745,7 +2750,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .calSumLabel {
-  font-size: 10px;
+  font-size: var(--font-caption2);
   font-weight: 500;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -3158,7 +3163,7 @@ button, [role="tab"], [role="switch"], a {
   border-radius: 50%;
   background: var(--danger-subtle);
   color: var(--danger);
-  font-size: 28px;
+  font-size: var(--font-title1);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -3173,7 +3178,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .errorBoundaryMessage {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
   margin: 0 0 24px;
   max-width: 320px;
@@ -3213,7 +3218,7 @@ button, [role="tab"], [role="switch"], a {
 
 .undoToastMsg {
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -3222,7 +3227,7 @@ button, [role="tab"], [role="switch"], a {
   background: none;
   border: none;
   color: var(--accent);
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 700;
   cursor: pointer;
   padding: 4px 8px;
@@ -3331,7 +3336,7 @@ button, [role="tab"], [role="switch"], a {
 
 .kbDesc {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
 }
 
@@ -3340,7 +3345,7 @@ button, [role="tab"], [role="switch"], a {
   width: 100%;
   margin-top: 18px;
   padding: 10px;
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--bg-primary, rgba(255,255,255,0.06));
@@ -3424,7 +3429,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .legalBody {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   line-height: 1.6;
   color: var(--text-secondary);
 }
