@@ -53,7 +53,7 @@
           <span v-if="cell.inMonth && hasPR(cell.dateStr)" class="calCellPR">🏆</span>
           <div v-if="cell.exercises.length > 0 && cell.inMonth" class="calDots">
             <span
-              v-for="(ex, i) in cell.exercises.slice(0, 3)"
+              v-for="(_ex, i) in cell.exercises.slice(0, 3)"
               :key="i"
               class="calDot"
             ></span>
@@ -298,7 +298,7 @@ function toggleDetail(dateStr: string, exName: string) {
   detailKey.value = detailKey.value === key ? null : key
 }
 
-function getSetsForDay(dateStr, exName) {
+function getSetsForDay(dateStr: string, exName: string) {
   const exercise = store.exercises.find(e => e.name === exName)
   if (!exercise) return []
   const pr = store.getExercisePR(exercise.id)
@@ -309,7 +309,7 @@ function getSetsForDay(dateStr, exName) {
     .map(s => ({ ...s, isPR: s.estimated1RM === pr }))
 }
 
-function getSetCount(dateStr, exName) {
+function getSetCount(dateStr: string, exName: string) {
   const exercise = store.exercises.find(e => e.name === exName)
   if (!exercise) return 0
   const dayStr = dateStr.slice(0, 10)
@@ -325,7 +325,7 @@ const navLabel = computed(() => {
   const days = weekDays.value
   const first = new Date(days[0].dateStr + 'T12:00:00')
   const last = new Date(days[6].dateStr + 'T12:00:00')
-  const fmt = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   return `${fmt(first)} – ${fmt(last)}`
 })
 
@@ -345,7 +345,7 @@ function next() {
   selectedDay.value = null
 }
 
-function toggleDay(dateStr) {
+function toggleDay(dateStr: string) {
   selectedDay.value = selectedDay.value === dateStr ? null : dateStr
 }
 
@@ -402,16 +402,16 @@ const weekDays = computed(() => {
   })
 })
 
-function formatSelectedDay(dateStr) {
+function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
     weekday: 'long', month: 'long', day: 'numeric'
   })
 }
 
 // ── Log modal ─────────────────────────────────────────────────────
-const logModal = ref({ open: false, date: '', exerciseId: '', weight: null, reps: null })
+const logModal = ref<{ open: boolean; date: string; exerciseId: string; weight: number | null; reps: number | null }>({ open: false, date: '', exerciseId: '', weight: null, reps: null })
 
-function openLogModal(dateStr) {
+function openLogModal(dateStr: string) {
   logModal.value = { open: true, date: dateStr, exerciseId: '', weight: null, reps: null }
 }
 
@@ -429,12 +429,13 @@ const logModalEstimate = computed(() => {
 
 const canSaveLog = computed(() => {
   const { exerciseId, weight, reps } = logModal.value
-  return exerciseId && weight > 0 && reps >= 1
+  return exerciseId && weight !== null && weight > 0 && reps !== null && reps >= 1
 })
 
 function saveLog() {
   if (!canSaveLog.value) return
   const { exerciseId, weight, reps, date } = logModal.value
+  if (weight === null || reps === null) return
   store.logSet(exerciseId, toLbs(weight), reps, date)
   logEvent('set_log', { source: 'calendar' })
   closeLogModal()

@@ -534,9 +534,15 @@
   </button>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import type { Exercise, WorkoutSet } from '../stores/workout'
+
+interface PREntry extends WorkoutSet {
+  daysSince: number | null
+  e1rmDelta: number | null
+}
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import ExerciseGraph from './ExerciseGraph.vue'
@@ -546,9 +552,9 @@ const { logEvent } = useAnalytics()
 const { restTimerEnabled, weightUnit, displayWeight, toLbs } = useTheme()
 
 // ── Tag filtering ────────────────────────────────────────────────
-const activeTagFilters = ref([])
+const activeTagFilters = ref<string[]>([])
 
-function toggleTagFilter(tag) {
+function toggleTagFilter(tag: string) {
   const idx = activeTagFilters.value.indexOf(tag)
   if (idx >= 0) {
     activeTagFilters.value = activeTagFilters.value.filter(t => t !== tag)
@@ -571,28 +577,28 @@ watch(() => store.allTags, (tags) => {
 })
 
 // ── Card state ────────────────────────────────────────────────────
-const showAllSets = ref(new Set())
+const showAllSets = ref(new Set<string>())
 const SET_LIMIT = 10
 
 // Exercise detail modal
-const detailExercise = computed(() =>
+const detailExercise = computed((): Exercise | null =>
   detailExerciseId.value ? store.exercises.find(e => e.id === detailExerciseId.value) ?? null : null
 )
-const detailExerciseId = ref(null)
+const detailExerciseId = ref<string | null>(null)
 
-const detailTab = ref('sets')
+const detailTab = ref<'sets' | 'prs'>('sets')
 
-function openDetailModal(id) {
+function openDetailModal(id: string) {
   detailExerciseId.value = id
   activeSetId.value = null
   detailTab.value = 'sets'
 }
 
-const prHistory = computed(() => {
+const prHistory = computed((): PREntry[] => {
   if (!detailExercise.value) return []
   const sets = [...detailExercise.value.sets].sort((a, b) => a.date.localeCompare(b.date))
   // Collect all new maxes
-  const raw = []
+  const raw: WorkoutSet[] = []
   let maxSoFar = 0
   for (const set of sets) {
     if (set.estimated1RM > maxSoFar) {
@@ -601,31 +607,32 @@ const prHistory = computed(() => {
     }
   }
   // Keep only the best PR per day
-  const byDay = {}
+  const byDay: Record<string, WorkoutSet> = {}
   for (const pr of raw) {
     const day = pr.date.slice(0, 10)
     if (!byDay[day] || pr.estimated1RM > byDay[day].estimated1RM) {
       byDay[day] = pr
     }
   }
-  const prs = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date))
-  // Add daysSince
-  for (let i = 0; i < prs.length; i++) {
-    prs[i].daysSince = i > 0
-      ? Math.round((new Date(prs[i].date) - new Date(prs[i - 1].date)) / 86400000)
-      : null
-    prs[i].e1rmDelta = i > 0
-      ? +(prs[i].estimated1RM - prs[i - 1].estimated1RM).toFixed(1)
-      : null
-  }
+  const sorted = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date))
+  // Add daysSince and e1rmDelta
+  const prs: PREntry[] = sorted.map((pr, i) => ({
+    ...pr,
+    daysSince: i > 0
+      ? Math.round((new Date(pr.date).getTime() - new Date(sorted[i - 1].date).getTime()) / 86400000)
+      : null,
+    e1rmDelta: i > 0
+      ? +(pr.estimated1RM - sorted[i - 1].estimated1RM).toFixed(1)
+      : null,
+  }))
   return prs.reverse()
 })
 
 // ── Drag-to-reorder ─────────────────────────────────────────────
-const exerciseListEl = ref(null)
+const exerciseListEl = ref<HTMLElement | null>(null)
 const dragState = reactive({ dragging: false, fromIndex: -1, overIndex: -1 })
 
-function getItemIndexFromPoint(clientY) {
+function getItemIndexFromPoint(clientY: number): number {
   const list = exerciseListEl.value
   if (!list) return -1
   const items = list.querySelectorAll('.wtExerciseItem')
@@ -638,13 +645,13 @@ function getItemIndexFromPoint(clientY) {
   return items.length - 1
 }
 
-function onDragStart(index, _event) {
+function onDragStart(index: number, _event: MouseEvent | TouchEvent) {
   dragState.dragging = true
   dragState.fromIndex = index
   dragState.overIndex = index
 
-  const onMove = (e) => {
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+  const onMove = (e: MouseEvent | TouchEvent) => {
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
     const idx = getItemIndexFromPoint(clientY)
     if (idx !== -1) dragState.overIndex = idx
   }
@@ -672,29 +679,29 @@ function onDragStart(index, _event) {
 }
 
 // ── Set actions (tap-to-reveal) ──────────────────────────────────
-const activeSetId = ref(null)
+const activeSetId = ref<string | null>(null)
 
-function toggleSetActions(setId) {
+function toggleSetActions(setId: string) {
   activeSetId.value = activeSetId.value === setId ? null : setId
 }
 
-function toggleShowAll(id) {
+function toggleShowAll(id: string) {
   const next = new Set(showAllSets.value)
   if (next.has(id)) next.delete(id); else next.add(id)
   showAllSets.value = next
 }
 
-function visibleSets(exercise) {
+function visibleSets(exercise: Exercise): WorkoutSet[] {
   const reversed = [...exercise.sets].reverse()
   return showAllSets.value.has(exercise.id) ? reversed : reversed.slice(0, SET_LIMIT)
 }
 
-function formatDate(iso) {
+function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 // Converts a stored ISO string back to the local YYYY-MM-DD for a date input
-function isoToLocalDate(iso) {
+function isoToLocalDate(iso: string): string {
   const d = new Date(iso)
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -702,19 +709,19 @@ function isoToLocalDate(iso) {
   return `${y}-${m}-${day}`
 }
 
-function todayISO() {
+function todayISO(): string {
   return new Date().toISOString().slice(0, 10) // YYYY-MM-DD
 }
 
 // ── Log / Edit modal state ────────────────────────────────────────
 const showModal = ref(false)
-const editingSet = ref(null) // { exerciseId, setId } when editing, null when logging
+const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
 const newExerciseName = ref('')
-const newExerciseTags = ref([])
+const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
-const weight = ref(null)
-const reps = ref(null)
+const weight = ref<number | null>(null)
+const reps = ref<number | null>(null)
 const date = ref(todayISO())
 
 const isEditMode = computed(() => editingSet.value !== null)
@@ -745,7 +752,7 @@ function openNewExerciseModal() {
   showModal.value = true
 }
 
-const newTagInputEl = ref(null)
+const newTagInputEl = ref<HTMLInputElement | null>(null)
 
 function addNewExerciseTag() {
   const tag = newExerciseTagInput.value.trim()
@@ -762,7 +769,7 @@ const allNewExerciseTags = computed(() => {
   return [...all]
 })
 
-function toggleNewExerciseTag(tag) {
+function toggleNewExerciseTag(tag: string) {
   if (newExerciseTags.value.includes(tag)) {
     newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
   } else {
@@ -771,7 +778,7 @@ function toggleNewExerciseTag(tag) {
 }
 
 // Open modal pre-targeted at a specific existing exercise
-function openLogForExercise(exerciseId) {
+function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   date.value = todayISO()
@@ -779,7 +786,7 @@ function openLogForExercise(exerciseId) {
 }
 
 // Open modal to edit an existing set
-function openEditModal(exercise, set) {
+function openEditModal(exercise: Exercise, set: WorkoutSet) {
   editingSet.value = { exerciseId: exercise.id, setId: set.id }
   selectedExerciseId.value = exercise.id
   date.value = isoToLocalDate(set.date)
@@ -805,15 +812,15 @@ function closeModal() {
 const timerActive = ref(false)
 const timerPaused = ref(false)
 const timerSeconds = ref(0)
-const restDuration = ref(parseInt(localStorage.getItem('rest-duration')) || 90)
-let timerIntervalId = null
+const restDuration = ref(parseInt(localStorage.getItem('rest-duration') ?? '90') || 90)
+let timerIntervalId: ReturnType<typeof setInterval> | null = null
 
 const DEFAULT_WARNING_OPTIONS = [3, 5, 10, 15, 30]
-const warningOptions = ref(loadWarningOptions())
-const warningTimes = ref(loadWarningTimes())
-const newWarningValue = ref(null)
+const warningOptions = ref<number[]>(loadWarningOptions())
+const warningTimes = ref<number[]>(loadWarningTimes())
+const newWarningValue = ref<number | null>(null)
 
-function loadWarningOptions() {
+function loadWarningOptions(): number[] {
   try {
     const raw = localStorage.getItem('rest-warning-options')
     if (raw) {
@@ -828,7 +835,7 @@ function saveWarningOptions() {
   localStorage.setItem('rest-warning-options', JSON.stringify(warningOptions.value))
 }
 
-function loadWarningTimes() {
+function loadWarningTimes(): number[] {
   try {
     const raw = localStorage.getItem('rest-warnings')
     if (raw) {
@@ -839,7 +846,7 @@ function loadWarningTimes() {
   return [5]
 }
 
-function toggleWarningTime(val) {
+function toggleWarningTime(val: number) {
   if (val === 0) {
     warningTimes.value = []
   } else if (warningTimes.value.includes(val)) {
@@ -851,15 +858,16 @@ function toggleWarningTime(val) {
 }
 
 function addWarningOption() {
-  const val = parseInt(newWarningValue.value)
-  if (val && val >= 1 && val <= 120 && !warningOptions.value.includes(val)) {
+  if (newWarningValue.value === null) return
+  const val = newWarningValue.value
+  if (val >= 1 && val <= 120 && !warningOptions.value.includes(val)) {
     warningOptions.value = [...warningOptions.value, val].sort((a, b) => a - b)
     saveWarningOptions()
   }
   newWarningValue.value = null
 }
 
-function removeWarningOption(val) {
+function removeWarningOption(val: number) {
   if (warningOptions.value.length <= 1) return
   warningOptions.value = warningOptions.value.filter(v => v !== val)
   warningTimes.value = warningTimes.value.filter(v => v !== val)
@@ -868,7 +876,7 @@ function removeWarningOption(val) {
 }
 
 function startInterval() {
-  clearInterval(timerIntervalId)
+  if (timerIntervalId !== null) clearInterval(timerIntervalId)
   timerIntervalId = setInterval(() => {
     if (!timerPaused.value) {
       timerSeconds.value--
@@ -877,7 +885,7 @@ function startInterval() {
       }
       if (timerSeconds.value <= 0) {
         playGoBeep()
-        clearInterval(timerIntervalId)
+        if (timerIntervalId !== null) clearInterval(timerIntervalId)
         timerIntervalId = null
         timerSeconds.value = 0
         if (!editingPresets.value) {
@@ -905,7 +913,7 @@ const timerStopping = ref(false)
 
 function stopTimer() {
   timerStopping.value = true
-  clearInterval(timerIntervalId)
+  if (timerIntervalId !== null) clearInterval(timerIntervalId)
   timerIntervalId = null
   timerActive.value = false
   timerPaused.value = false
@@ -933,17 +941,17 @@ function skipToNextSet() {
 
 const DEFAULT_PRESETS = [30, 60, 90, 120, 180, 300]
 const editingPresets = ref(false)
-const editTab = ref('rest')
-const newPresetValue = ref(null)
+const editTab = ref<'rest' | 'alerts'>('rest')
+const newPresetValue = ref<number | null>(null)
 
-const restPresets = ref(loadPresets())
-const disabledPresets = ref(loadDisabledPresets())
+const restPresets = ref<number[]>(loadPresets())
+const disabledPresets = ref<number[]>(loadDisabledPresets())
 
 const visiblePresets = computed(() =>
   restPresets.value.filter(s => !disabledPresets.value.includes(s))
 )
 
-function loadDisabledPresets() {
+function loadDisabledPresets(): number[] {
   try {
     const raw = localStorage.getItem('rest-presets-disabled')
     if (raw) return JSON.parse(raw)
@@ -955,7 +963,7 @@ function saveDisabledPresets() {
   localStorage.setItem('rest-presets-disabled', JSON.stringify(disabledPresets.value))
 }
 
-function togglePresetEnabled(val) {
+function togglePresetEnabled(val: number) {
   if (disabledPresets.value.includes(val)) {
     disabledPresets.value = disabledPresets.value.filter(v => v !== val)
   } else {
@@ -966,7 +974,7 @@ function togglePresetEnabled(val) {
   saveDisabledPresets()
 }
 
-function loadPresets() {
+function loadPresets(): number[] {
   try {
     const raw = localStorage.getItem('rest-presets')
     if (raw) {
@@ -981,37 +989,38 @@ function savePresets() {
   localStorage.setItem('rest-presets', JSON.stringify(restPresets.value))
 }
 
-function formatDuration(s) {
+function formatDuration(s: number): string {
   if (s < 60) return s + 's'
   const m = Math.floor(s / 60)
   const rem = s % 60
   return rem ? `${m}:${rem.toString().padStart(2, '0')}` : `${m}m`
 }
 
-function setRestDuration(val) {
+function setRestDuration(val: number) {
   ensureAudioCtx()
   restDuration.value = val
-  localStorage.setItem('rest-duration', val)
+  localStorage.setItem('rest-duration', String(val))
   timerSeconds.value = val
   timerPaused.value = false
   startInterval()
 }
 
 function addPreset() {
-  const val = parseInt(newPresetValue.value)
-  if (val && val >= 5 && val <= 600 && !restPresets.value.includes(val)) {
+  if (newPresetValue.value === null) return
+  const val = newPresetValue.value
+  if (val >= 5 && val <= 600 && !restPresets.value.includes(val)) {
     restPresets.value = [...restPresets.value, val].sort((a, b) => a - b)
     savePresets()
   }
   newPresetValue.value = null
 }
 
-const presetInputEl = ref(null)
+const presetInputEl = ref<HTMLInputElement | null>(null)
 watch(editingPresets, (v) => {
   if (v) setTimeout(() => presetInputEl.value?.focus(), 0)
 })
 
-function removePreset(val) {
+function removePreset(val: number) {
   if (restPresets.value.length <= 1) return
   restPresets.value = restPresets.value.filter(v => v !== val)
   savePresets()
@@ -1065,11 +1074,11 @@ const timerProgress = computed(() => {
 const maxWarning = computed(() => warningTimes.value.length ? Math.max(...warningTimes.value) : 0)
 const timerUrgent = computed(() => maxWarning.value > 0 && timerSeconds.value <= maxWarning.value && timerSeconds.value > 0)
 
-let audioCtx = null
+let audioCtx: AudioContext | null = null
 
 function ensureAudioCtx() {
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    audioCtx = new AudioContext()
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume()
@@ -1087,7 +1096,7 @@ function ensureAudioCtx() {
 }
 
 // Warning tone — pitch rises as time gets closer to zero
-function playWarningBeep(secondsLeft) {
+function playWarningBeep(secondsLeft: number) {
   if (!audioCtx) return
   if (audioCtx.state === 'suspended') audioCtx.resume()
   try {
@@ -1150,7 +1159,7 @@ const isNewPR = computed(() => {
   return pr > 0 && liveEstimateLbs.value > pr
 })
 
-const hasSetData = computed(() => weight.value > 0 && reps.value >= 1)
+const hasSetData = computed(() => weight.value !== null && weight.value > 0 && reps.value !== null && reps.value >= 1)
 
 const canSave = computed(() => {
   if (isEditMode.value) return hasSetData.value
@@ -1160,12 +1169,12 @@ const canSave = computed(() => {
 
 function saveSet() {
   if (!canSave.value) return
-  if (isEditMode.value) {
+  if (isEditMode.value && editingSet.value && weight.value !== null && reps.value !== null) {
     store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, toLbs(weight.value), reps.value, date.value)
     logEvent('set_edit')
     closeModal()
   } else {
-    let exerciseId = selectedExerciseId.value
+    let exerciseId: string = selectedExerciseId.value
     const isNew = exerciseId === '__new__'
     if (isNew) {
       // Auto-add any pending tag text
@@ -1173,14 +1182,16 @@ function saveSet() {
       if (pendingTag && !newExerciseTags.value.includes(pendingTag)) {
         newExerciseTags.value.push(pendingTag)
       }
-      exerciseId = store.addExercise(newExerciseName.value, newExerciseTags.value)
+      const newId = store.addExercise(newExerciseName.value, newExerciseTags.value)
+      if (!newId) return
+      exerciseId = newId
       selectedExerciseId.value = exerciseId
       newExerciseName.value = ''
       newExerciseTags.value = []
       newExerciseTagInput.value = ''
       logEvent('exercise_add')
     }
-    if (hasSetData.value) {
+    if (hasSetData.value && weight.value !== null && reps.value !== null) {
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log')
       if (restTimerEnabled.value) {
@@ -1195,7 +1206,7 @@ function saveSet() {
 }
 
 // ── Confirm clear state ───────────────────────────────────────────
-const confirmClearId = ref(null)
+const confirmClearId = ref<string | null>(null)
 
 const confirmClearExercise = computed(() =>
   confirmClearId.value !== null
@@ -1212,19 +1223,19 @@ function confirmClear() {
 }
 
 // ── Edit exercise state (rename + tags) ──────────────────────────
-const editTarget = ref(null)
+const editTarget = ref<string | null>(null)
 const editName = ref('')
-const editTags = ref([])
+const editTags = ref<string[]>([])
 const newTagInput = ref('')
 
-function openEditExerciseModal(exercise) {
+function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
   newTagInput.value = ''
 }
 
-const editTagInputEl = ref(null)
+const editTagInputEl = ref<HTMLInputElement | null>(null)
 
 function addEditTag() {
   const tag = newTagInput.value.trim()
@@ -1236,7 +1247,7 @@ function addEditTag() {
 }
 
 
-function toggleEditTag(tag) {
+function toggleEditTag(tag: string) {
   if (editTags.value.includes(tag)) {
     editTags.value = editTags.value.filter(t => t !== tag)
   } else {
@@ -1264,7 +1275,7 @@ function confirmEditExercise() {
 }
 
 // ── Delete exercise state ─────────────────────────────────────────
-const confirmDeleteId = ref(null)
+const confirmDeleteId = ref<string | null>(null)
 
 const confirmDeleteExercise = computed(() =>
   confirmDeleteId.value !== null
