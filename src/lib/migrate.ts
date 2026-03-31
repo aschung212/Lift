@@ -4,7 +4,22 @@ import { uuid } from './uuid'
 const WORKOUT_KEY = 'workout-exercises'
 const BODYWEIGHT_KEY = 'bodyweight-entries'
 
-export async function migrateLocalStorageToSupabase(userId) {
+interface LocalExercise {
+  name: string
+  sets?: Array<{
+    date: string
+    weight: number
+    reps: number
+    estimated1RM: number
+  }>
+}
+
+interface LocalBodyweightEntry {
+  date: string
+  weight: number
+}
+
+export async function migrateLocalStorageToSupabase(userId: string): Promise<void> {
   if (!supabase) return
 
   // Check if user already has data in Supabase
@@ -13,11 +28,11 @@ export async function migrateLocalStorageToSupabase(userId) {
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
 
-  if (count > 0) return // User already has cloud data, skip
+  if (count && count > 0) return // User already has cloud data, skip
 
   // Read localStorage data
-  let exercises = []
-  let bodyweightEntries = []
+  let exercises: LocalExercise[] = []
+  let bodyweightEntries: LocalBodyweightEntry[] = []
   try {
     const rawExercises = localStorage.getItem(WORKOUT_KEY)
     if (rawExercises) exercises = JSON.parse(rawExercises)
@@ -31,8 +46,8 @@ export async function migrateLocalStorageToSupabase(userId) {
 
   // Migrate exercises and sets
   if (exercises.length > 0) {
-    const exerciseRows = []
-    const setRows = []
+    const exerciseRows: Array<{ id: string; user_id: string; name: string }> = []
+    const setRows: Array<{ id: string; user_id: string; exercise_id: string; date: string; weight: number; reps: number; estimated_1rm: number }> = []
 
     for (const ex of exercises) {
       const exerciseId = uuid()

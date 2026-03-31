@@ -1,6 +1,23 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 
-export const THEMES = [
+export type ThemeId = 'midnight' | 'graphite' | 'arctic' | 'forge' | 'aaron' | 'tina'
+export type ColorMode = 'light' | 'dark' | 'auto'
+export type WeightUnit = 'lbs' | 'kg'
+
+export interface ThemeOption {
+  id: ThemeId
+  label: string
+  dot: string
+}
+
+interface ThemePreviewColors {
+  bg: string
+  card: string
+  accent: string
+  text: string
+}
+
+export const THEMES: ThemeOption[] = [
   { id: 'midnight', label: 'Midnight', dot: '#ff6363' },
   { id: 'graphite', label: 'Graphite', dot: '#8b5cf6' },
   { id: 'arctic',   label: 'Arctic',   dot: '#0066ff' },
@@ -9,7 +26,7 @@ export const THEMES = [
   { id: 'tina',     label: 'Tina',     dot: '#ec4899' },
 ]
 
-export const THEME_PREVIEWS = {
+export const THEME_PREVIEWS: Record<ThemeId, { dark: ThemePreviewColors; light: ThemePreviewColors }> = {
   midnight: { dark: { bg: '#0f0f0f', card: '#1a1a1a', accent: '#ff6363', text: '#f2f2f2' }, light: { bg: '#f2eded', card: '#ffffff', accent: '#dc3545', text: '#1a1212' } },
   graphite: { dark: { bg: '#111118', card: '#1c1c28', accent: '#8b5cf6', text: '#e4e4f4' }, light: { bg: '#ededf5', card: '#ffffff', accent: '#7c3aed', text: '#18182a' } },
   arctic:   { dark: { bg: '#0e1420', card: '#182030', accent: '#3388ff', text: '#e0e8f8' }, light: { bg: '#dde4f5', card: '#ffffff', accent: '#0066ff', text: '#1a1a2e' } },
@@ -18,7 +35,7 @@ export const THEME_PREVIEWS = {
   tina:     { dark: { bg: '#1a1020', card: '#261830', accent: '#f472b6', text: '#f0e4f4' }, light: { bg: '#f0dff0', card: '#ffffff', accent: '#ec4899', text: '#1e1028' } },
 }
 
-const THEME_META_COLORS = {
+const THEME_META_COLORS: Record<ThemeId, { dark: string; light: string }> = {
   midnight: { dark: '#0f0f0f', light: '#f2eded' },
   graphite: { dark: '#111118', light: '#ededf5' },
   arctic:   { dark: '#0e1420', light: '#dde4f5' },
@@ -27,36 +44,36 @@ const THEME_META_COLORS = {
   tina:     { dark: '#1a1020', light: '#f0dff0' },
 }
 
-function applyTheme(id) {
+function applyTheme(id: string): void {
   document.documentElement.setAttribute('data-theme', id)
   updateMetaColor()
   localStorage.setItem('app-theme', id)
 }
 
-function getSystemMode() {
+function getSystemMode(): 'dark' | 'light' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function applyResolvedMode(resolved) {
+function applyResolvedMode(resolved: string): void {
   document.documentElement.setAttribute('data-mode', resolved)
   updateMetaColor()
 }
 
-function applyMode(preference) {
+function applyMode(preference: string): void {
   localStorage.setItem('app-mode', preference)
   applyResolvedMode(preference === 'auto' ? getSystemMode() : preference)
 }
 
-function updateMetaColor() {
+function updateMetaColor(): void {
   const meta = document.querySelector('meta[name="theme-color"]')
   if (!meta) return
-  const themeId = document.documentElement.getAttribute('data-theme') || 'midnight'
-  const mode = document.documentElement.getAttribute('data-mode') || 'dark'
+  const themeId = (document.documentElement.getAttribute('data-theme') || 'midnight') as ThemeId
+  const mode = (document.documentElement.getAttribute('data-mode') || 'dark') as 'dark' | 'light'
   const colors = THEME_META_COLORS[themeId] ?? THEME_META_COLORS.midnight
-  meta.content = colors[mode] ?? colors.dark
+  meta.setAttribute('content', colors[mode] ?? colors.dark)
 }
 
-function applyGlass(enabled) {
+function applyGlass(enabled: boolean): void {
   document.documentElement.setAttribute('data-glass', enabled ? 'on' : 'off')
   localStorage.setItem('app-glass', enabled ? 'on' : 'off')
 }
@@ -65,21 +82,21 @@ function applyGlass(enabled) {
 const storedId = localStorage.getItem('app-theme') || 'midnight'
 const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'midnight'
 const storedMode = localStorage.getItem('app-mode') || 'auto'
-const validMode = ['light', 'dark', 'auto'].includes(storedMode) ? storedMode : 'auto'
+const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
 applyTheme(validId)
 applyMode(validMode)
 
 const storedGlass = localStorage.getItem('app-glass') !== 'off'
 applyGlass(storedGlass)
 
-const currentTheme = ref(validId)
-const colorMode = ref(validMode)
-const resolvedMode = computed(() =>
+const currentTheme: Ref<string> = ref(validId)
+const colorMode: Ref<ColorMode> = ref(validMode)
+const resolvedMode: ComputedRef<'dark' | 'light'> = computed(() =>
   colorMode.value === 'auto' ? getSystemMode() : colorMode.value
 )
-const glassEnabled = ref(storedGlass)
-const restTimerEnabled = ref(localStorage.getItem('rest-timer') !== 'off')
-const weightUnit = ref(localStorage.getItem('weight-unit') || 'lbs')
+const glassEnabled: Ref<boolean> = ref(storedGlass)
+const restTimerEnabled: Ref<boolean> = ref(localStorage.getItem('rest-timer') !== 'off')
+const weightUnit: Ref<WeightUnit> = ref((localStorage.getItem('weight-unit') || 'lbs') as WeightUnit)
 watch(currentTheme, applyTheme)
 watch(colorMode, applyMode)
 watch(glassEnabled, applyGlass)
@@ -96,11 +113,11 @@ watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
 
 export function useTheme() {
   // Weight conversion helpers — data is always stored in lbs
-  function displayWeight(lbs) {
+  function displayWeight(lbs: number): number {
     if (weightUnit.value === 'kg') return +(lbs * 0.453592).toFixed(1)
     return lbs
   }
-  function toLbs(value) {
+  function toLbs(value: number): number {
     if (weightUnit.value === 'kg') return +(value / 0.453592).toFixed(1)
     return value
   }

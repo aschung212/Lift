@@ -1,12 +1,14 @@
 import js from '@eslint/js'
+import tseslint from 'typescript-eslint'
 import pluginVue from 'eslint-plugin-vue'
 import globals from 'globals'
 
 export default [
   js.configs.recommended,
+  ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
   {
-    files: ['src/**/*.{js,vue}'],
+    files: ['src/**/*.{js,ts,vue}'],
     languageOptions: {
       globals: {
         ...globals.browser,
@@ -25,8 +27,17 @@ export default [
         html: { void: 'always', normal: 'never', component: 'always' },
       }],
       // Keep meaningful code quality rules
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'vue/no-v-html': 'warn',
+    },
+  },
+  {
+    files: ['src/**/*.vue'],
+    languageOptions: {
+      parserOptions: {
+        parser: tseslint.parser,
+      },
     },
   },
   {
@@ -38,6 +49,7 @@ export default [
     },
     rules: {
       'no-undef': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
   {

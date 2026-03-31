@@ -4,12 +4,27 @@ import { uuid } from '../lib/uuid'
 
 const STORAGE_KEY = 'workout-exercises'
 
-function epley(weight, reps) {
+export interface WorkoutSet {
+  id: string
+  date: string
+  weight: number
+  reps: number
+  estimated1RM: number
+}
+
+export interface Exercise {
+  id: string
+  name: string
+  tags: string[]
+  sets: WorkoutSet[]
+}
+
+function epley(weight: number, reps: number): number {
   if (reps === 1) return Math.round(weight)
   return Math.round(weight * (1 + reps / 30))
 }
 
-function load() {
+function load(): Exercise[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     return raw ? JSON.parse(raw) : []
@@ -20,8 +35,8 @@ function load() {
 
 export const useWorkoutStore = defineStore('workout', {
   state: () => ({
-    exercises: load(),
-    _userId: null
+    exercises: load() as Exercise[],
+    _userId: null as string | null
   }),
 
   actions: {
@@ -29,7 +44,7 @@ export const useWorkoutStore = defineStore('workout', {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.exercises))
     },
 
-    async init(userId) {
+    async init(userId: string) {
       this._userId = userId
       await this._fetchFromSupabase()
     },
@@ -44,28 +59,28 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (!exercises) return
 
-      this.exercises = exercises.map(ex => ({
-        id: ex.id,
-        name: ex.name,
-        tags: ex.tags || [],
+      this.exercises = exercises.map((ex: Record<string, unknown>) => ({
+        id: ex.id as string,
+        name: ex.name as string,
+        tags: (ex.tags as string[]) || [],
         sets: (sets || [])
-          .filter(s => s.exercise_id === ex.id)
-          .map(s => ({
-            id: s.id,
-            date: s.date,
-            weight: s.weight,
-            reps: s.reps,
-            estimated1RM: s.estimated_1rm
+          .filter((s: Record<string, unknown>) => s.exercise_id === ex.id)
+          .map((s: Record<string, unknown>) => ({
+            id: s.id as string,
+            date: s.date as string,
+            weight: s.weight as number,
+            reps: s.reps as number,
+            estimated1RM: s.estimated_1rm as number
           }))
       }))
       this._persist()
     },
 
-    addExercise(name, tags = []) {
+    addExercise(name: string, tags: string[] = []): string | null {
       const trimmed = name.trim()
       if (!trimmed) return null
       const existing = this.exercises.find(
-        e => e.name.toLowerCase() === trimmed.toLowerCase()
+        (e: Exercise) => e.name.toLowerCase() === trimmed.toLowerCase()
       )
       if (existing) return existing.id
       const id = uuid()
@@ -80,8 +95,8 @@ export const useWorkoutStore = defineStore('workout', {
       return id
     },
 
-    logSet(exerciseId, weight, reps, dateStr) {
-      const exercise = this.exercises.find(e => e.id === exerciseId)
+    logSet(exerciseId: string, weight: number, reps: number, dateStr?: string) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       const date = dateStr
         ? new Date(dateStr + 'T12:00:00').toISOString()
@@ -99,10 +114,10 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    updateSet(exerciseId, setId, weight, reps, dateStr) {
-      const exercise = this.exercises.find(e => e.id === exerciseId)
+    updateSet(exerciseId: string, setId: string, weight: number, reps: number, dateStr?: string) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
-      const set = exercise.sets.find(s => s.id === setId)
+      const set = exercise.sets.find((s: WorkoutSet) => s.id === setId)
       if (!set) return
       set.weight = weight
       set.reps = reps
@@ -113,16 +128,16 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (supabase && this._userId) {
-        const update = { weight, reps, estimated_1rm: set.estimated1RM }
+        const update: Record<string, unknown> = { weight, reps, estimated_1rm: set.estimated1RM }
         if (dateStr) update.date = set.date
         supabase.from('sets').update(update).eq('id', setId).then()
       }
     },
 
-    deleteSet(exerciseId, setId) {
-      const exercise = this.exercises.find(e => e.id === exerciseId)
+    deleteSet(exerciseId: string, setId: string) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
-      exercise.sets = exercise.sets.filter(s => s.id !== setId)
+      exercise.sets = exercise.sets.filter((s: WorkoutSet) => s.id !== setId)
       this._persist()
 
       if (supabase && this._userId) {
@@ -130,8 +145,8 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    clearSets(exerciseId) {
-      const exercise = this.exercises.find(e => e.id === exerciseId)
+    clearSets(exerciseId: string) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       exercise.sets = []
       this._persist()
@@ -141,10 +156,10 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    renameExercise(exerciseId, newName) {
+    renameExercise(exerciseId: string, newName: string) {
       const trimmed = newName.trim()
       if (!trimmed) return
-      const exercise = this.exercises.find(e => e.id === exerciseId)
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       exercise.name = trimmed
       this._persist()
@@ -154,8 +169,8 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    updateExerciseTags(exerciseId, tags) {
-      const exercise = this.exercises.find(e => e.id === exerciseId)
+    updateExerciseTags(exerciseId: string, tags: string[]) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       exercise.tags = [...tags]
       this._persist()
@@ -165,8 +180,8 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    deleteExercise(exerciseId) {
-      const idx = this.exercises.findIndex(e => e.id === exerciseId)
+    deleteExercise(exerciseId: string) {
+      const idx = this.exercises.findIndex((e: Exercise) => e.id === exerciseId)
       if (idx === -1) return
       this.exercises.splice(idx, 1)
       this._persist()
@@ -179,8 +194,8 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    moveExercise(exerciseId, direction) {
-      const idx = this.exercises.findIndex(e => e.id === exerciseId)
+    moveExercise(exerciseId: string, direction: number) {
+      const idx = this.exercises.findIndex((e: Exercise) => e.id === exerciseId)
       if (idx === -1) return
       const newIdx = idx + direction
       if (newIdx < 0 || newIdx >= this.exercises.length) return
@@ -189,7 +204,7 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
     },
 
-    reorderExercise(fromIndex, toIndex) {
+    reorderExercise(fromIndex: number, toIndex: number) {
       if (fromIndex === toIndex) return
       if (fromIndex < 0 || toIndex < 0) return
       if (fromIndex >= this.exercises.length || toIndex >= this.exercises.length) return
@@ -200,20 +215,20 @@ export const useWorkoutStore = defineStore('workout', {
   },
 
   getters: {
-    allTags: (state) => {
-      const tagSet = new Set()
-      state.exercises.forEach(e => (e.tags || []).forEach(t => tagSet.add(t)))
+    allTags: (state): string[] => {
+      const tagSet = new Set<string>()
+      state.exercises.forEach((e: Exercise) => (e.tags || []).forEach((t: string) => tagSet.add(t)))
       return [...tagSet].sort()
     },
 
-    getExercisePR: (state) => (exerciseId) => {
-      const exercise = state.exercises.find(e => e.id === exerciseId)
+    getExercisePR: (state) => (exerciseId: string): number => {
+      const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise || exercise.sets.length === 0) return 0
-      return Math.max(...exercise.sets.map(s => s.estimated1RM))
+      return Math.max(...exercise.sets.map((s: WorkoutSet) => s.estimated1RM))
     },
 
-    getRecentSets: (state) => (exerciseId, limit = 5) => {
-      const exercise = state.exercises.find(e => e.id === exerciseId)
+    getRecentSets: (state) => (exerciseId: string, limit = 5): WorkoutSet[] => {
+      const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return []
       return [...exercise.sets].reverse().slice(0, limit)
     }

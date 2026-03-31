@@ -680,7 +680,7 @@ function toggleSetActions(setId) {
 
 function toggleShowAll(id) {
   const next = new Set(showAllSets.value)
-  next.has(id) ? next.delete(id) : next.add(id)
+  if (next.has(id)) next.delete(id); else next.add(id)
   showAllSets.value = next
 }
 

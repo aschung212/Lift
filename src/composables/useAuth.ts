@@ -1,16 +1,21 @@
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { supabase } from '../lib/supabase'
 import { migrateLocalStorageToSupabase } from '../lib/migrate'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
+import type { User, Provider } from '@supabase/supabase-js'
 
-const user = ref(null)
-const loading = ref(true)
+interface AuthError {
+  message: string
+}
+
+const user: Ref<User | { id: string; email: string } | null> = ref(null)
+const loading: Ref<boolean> = ref(true)
 
 let _initialized = false
 
-async function initStores(userId) {
+async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
   const preferencesStore = usePreferencesStore()
@@ -22,7 +27,7 @@ async function initStores(userId) {
   ])
 }
 
-function init() {
+function init(): void {
   if (_initialized) return
   _initialized = true
 
@@ -34,7 +39,7 @@ function init() {
     return
   }
 
-  supabase.auth.getSession().then(({ data: { session } }) => {
+  supabase!.auth.getSession().then(({ data: { session } }) => {
     user.value = session?.user ?? null
     if (session?.user) {
       initStores(session.user.id).then(() => { loading.value = false })
@@ -43,7 +48,7 @@ function init() {
     }
   })
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase!.auth.onAuthStateChange((_event, session) => {
     const prev = user.value
     user.value = session?.user ?? null
     if (session?.user && !prev) {
@@ -54,7 +59,7 @@ function init() {
 
 init()
 
-async function signInWithProvider(provider) {
+async function signInWithProvider(provider: Provider): Promise<{ error: AuthError | null }> {
   if (!supabase) return { error: { message: 'Supabase not configured' } }
   const { error } = await supabase.auth.signInWithOAuth({
     provider,
@@ -63,13 +68,13 @@ async function signInWithProvider(provider) {
   return { error }
 }
 
-async function signInWithEmail(email, password) {
+async function signInWithEmail(email: string, password: string): Promise<{ error: AuthError | null }> {
   if (!supabase) return { error: { message: 'Supabase not configured' } }
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   return { error }
 }
 
-async function signUp(email, password) {
+async function signUp(email: string, password: string): Promise<{ error: AuthError | null; needsConfirmation?: boolean }> {
   if (!supabase) return { error: { message: 'Supabase not configured' } }
   const { data, error } = await supabase.auth.signUp({ email, password })
   if (!error && data?.user?.identities?.length === 0) {
@@ -78,7 +83,7 @@ async function signUp(email, password) {
   return { error, needsConfirmation: !error && !!data?.user && !data?.session }
 }
 
-async function signOut() {
+async function signOut(): Promise<void> {
   if (!supabase) return
   await supabase.auth.signOut()
   user.value = null

@@ -1,10 +1,11 @@
 # Lift — Workout Tracker PWA
 
-A **mobile-first Progressive Web App** for tracking strength training, bodyweight, and personal records. Built with Vue 3, Pinia, Supabase, and hand-rolled SVG — no UI component libraries, no external chart packages. Designed to feel like a native iOS app.
+A **mobile-first Progressive Web App** for tracking strength training, bodyweight, and personal records. Built with Vue 3 + TypeScript, Pinia, Supabase, and hand-rolled SVG — no UI component libraries, no external chart packages. Designed to feel like a native iOS app.
 
 **[→ Live App](https://spa-rho-sandy.vercel.app)**
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.4-42b883?logo=vue.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-cloud--sync-3ecf8e?logo=supabase&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-installable-5a0fc8)
@@ -96,6 +97,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 
 | Layer | Choice | Why |
 |---|---|---|
+| **Language** | TypeScript (strict) | Type-safe stores, composables, and lib modules |
 | **UI framework** | Vue 3 (`<script setup>`) | Fine-grained reactivity; single-file components |
 | **State** | Pinia | Lightweight store; syncs to localStorage on every mutation |
 | **Backend / Auth** | Supabase | Postgres with RLS, Google OAuth, email auth |
@@ -157,7 +159,8 @@ GitHub Actions runs on every push and PR to `master`:
 
 ### Code Quality
 
-- **ESLint** with `eslint-plugin-vue/recommended` — enforced via CI and pre-commit hook
+- **TypeScript** in strict mode — typed stores, composables, and library modules with exported interfaces (`Exercise`, `WorkoutSet`, `BodyweightEntry`, `FeatureFlags`)
+- **ESLint** with `eslint-plugin-vue/recommended` + `typescript-eslint` — enforced via CI and pre-commit hook
 - **Husky + lint-staged** — lints staged `.js` and `.vue` files before every commit
 - **Error boundary** — global Vue error handler with graceful fallback UI
 - **Accessibility** — ARIA attributes, keyboard navigation, focus management on modals
@@ -228,18 +231,18 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   │   ├── OnboardingScreen.vue # Welcome flow with 3 entry paths
 │   │   └── __tests__/           # Component tests (67 tests)
 │   ├── composables/
-│   │   ├── useTheme.js          # Themes, mode (light/auto/dark), glass toggle, rest timer toggle
-│   │   ├── useAuth.js           # Supabase session, OAuth + email auth, store init on sign-in
-│   │   ├── useAnalytics.js      # Lightweight event logging
+│   │   ├── useTheme.ts          # Themes, mode (light/auto/dark), glass toggle, rest timer toggle
+│   │   ├── useAuth.ts           # Supabase session, OAuth + email auth, store init on sign-in
+│   │   ├── useAnalytics.ts      # Lightweight event logging
 │   │   └── __tests__/           # Composable tests (25 tests)
 │   ├── stores/
-│   │   ├── workout.js           # Exercises + sets CRUD, Epley 1RM, PR getter, tags, Supabase sync
-│   │   ├── bodyweight.js        # Weight entries CRUD, min/max getters, Supabase sync
-│   │   ├── preferences.js       # Feature toggles (tab visibility), Supabase sync
+│   │   ├── workout.ts           # Exercises + sets CRUD, Epley 1RM, PR getter, tags, Supabase sync
+│   │   ├── bodyweight.ts        # Weight entries CRUD, min/max getters, Supabase sync
+│   │   ├── preferences.ts       # Feature toggles (tab visibility), Supabase sync
 │   │   └── __tests__/           # Store tests (47 tests)
 │   ├── lib/
-│   │   ├── supabase.js          # Supabase client singleton
-│   │   └── migrate.js           # One-time localStorage → Supabase migration
+│   │   ├── supabase.ts          # Supabase client singleton
+│   │   └── migrate.ts           # One-time localStorage → Supabase migration
 │   ├── App.vue                  # Tab bar, settings sheet, theme picker, auth gate
 │   ├── main.js
 │   └── index.css                # All theme tokens, glass tokens, component styles

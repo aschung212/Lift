@@ -1,4 +1,9 @@
-const PALETTE = [
+export interface TagColor {
+  border: string
+  bg: string
+}
+
+const PALETTE: TagColor[] = [
   { border: '#2dd4bf', bg: 'rgba(45,212,191,0.12)' },  // teal
   { border: '#f472b6', bg: 'rgba(244,114,182,0.12)' },  // pink
   { border: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },   // sky
@@ -9,7 +14,7 @@ const PALETTE = [
   { border: '#f87171', bg: 'rgba(248,113,113,0.12)' },  // red
 ]
 
-function hash(str) {
+function hash(str: string): number {
   let h = 0
   for (let i = 0; i < str.length; i++) {
     h = ((h << 5) - h + str.charCodeAt(i)) | 0
@@ -17,6 +22,6 @@ function hash(str) {
   return Math.abs(h)
 }
 
-export function getTagColor(tagName) {
+export function getTagColor(tagName: string): TagColor {
   return PALETTE[hash(tagName) % PALETTE.length]
 }

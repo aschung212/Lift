@@ -5,11 +5,11 @@ let _currentTab = 'workouts'
 let _tabStart = Date.now()
 
 export function useAnalytics() {
-  function logEvent(name, props = {}) {
+  function logEvent(name: string, props: Record<string, unknown> = {}): void {
     try { track(name, props) } catch { /* offline or blocked */ }
   }
 
-  function tabSwitch(fromTab, toTab) {
+  function tabSwitch(fromTab: string, toTab: string): void {
     if (_currentTab && _tabStart) {
       const seconds = Math.round((Date.now() - _tabStart) / 1000)
       if (seconds > 0) logEvent('tab_engagement', { tab: _currentTab, seconds })
@@ -19,7 +19,7 @@ export function useAnalytics() {
     logEvent('tab_switch', { from: fromTab, to: toTab })
   }
 
-  function flushEngagement() {
+  function flushEngagement(): void {
     if (_currentTab && _tabStart) {
       const seconds = Math.round((Date.now() - _tabStart) / 1000)
       if (seconds > 0) logEvent('tab_engagement', { tab: _currentTab, seconds })

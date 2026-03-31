@@ -3,7 +3,14 @@ import { supabase } from '../lib/supabase'
 
 const STORAGE_KEY = 'user-preferences'
 
-const DEFAULTS = {
+export interface FeatureFlags {
+  workouts: boolean
+  calendar: boolean
+  weight: boolean
+  [key: string]: boolean
+}
+
+const DEFAULTS: FeatureFlags = {
   workouts: true,
   calendar: true,
   weight: true,
@@ -11,8 +18,8 @@ const DEFAULTS = {
 
 export const usePreferencesStore = defineStore('preferences', {
   state: () => ({
-    features: { ...DEFAULTS },
-    _userId: null,
+    features: { ...DEFAULTS } as FeatureFlags,
+    _userId: null as string | null,
   }),
 
   actions: {
@@ -29,7 +36,7 @@ export const usePreferencesStore = defineStore('preferences', {
       }
     },
 
-    async init(userId) {
+    async init(userId: string) {
       this._userId = userId
 
       // Load from localStorage first (instant)
@@ -57,20 +64,20 @@ export const usePreferencesStore = defineStore('preferences', {
       }
     },
 
-    toggleFeature(featureId) {
+    toggleFeature(featureId: string) {
       // Prevent disabling the last enabled tab
       if (this.features[featureId] && this.enabledCount <= 1) return
       this.features[featureId] = !this.features[featureId]
       this._persist()
     },
 
-    setFeature(featureId, enabled) {
+    setFeature(featureId: string, enabled: boolean) {
       this.features[featureId] = enabled
       this._persist()
     },
   },
 
   getters: {
-    enabledCount: (state) => Object.values(state.features).filter(Boolean).length,
+    enabledCount: (state): number => Object.values(state.features).filter(Boolean).length,
   },
 })

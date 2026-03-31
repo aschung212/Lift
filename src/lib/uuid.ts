@@ -1,4 +1,4 @@
-export function uuid() {
+export function uuid(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID()
   }
