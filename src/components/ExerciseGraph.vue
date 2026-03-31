@@ -77,16 +77,19 @@
   </p>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { useTheme } from '../composables/useTheme'
+import type { Exercise } from '../stores/workout'
 
 const { weightUnit, displayWeight } = useTheme()
 
-const props = defineProps({
-  exercise: { type: Object, required: true },
-  mode: { type: String, default: 'sets' }
-})
+const props = defineProps<{
+  exercise: Exercise
+  mode?: string
+}>()
+
+const mode = computed(() => props.mode ?? 'sets')
 
 // SVG layout constants
 const W = 320
@@ -99,8 +102,8 @@ const chartW = W - PAD_L - PAD_R
 const chartH = H - PAD_T - PAD_B
 
 // Best estimated1RM per calendar date, sorted chronologically
-const dailyBest = computed(() => {
-  const byDate = {}
+const dailyBest = computed((): [string, number][] => {
+  const byDate: Record<string, number> = {}
   for (const s of props.exercise.sets) {
     const day = s.date.slice(0, 10) // YYYY-MM-DD
     if (!byDate[day] || s.estimated1RM > byDate[day]) {
@@ -110,9 +113,9 @@ const dailyBest = computed(() => {
   return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
 })
 
-const prOnly = computed(() => {
+const prOnly = computed((): [string, number][] => {
   const entries = dailyBest.value
-  const prs = []
+  const prs: [string, number][] = []
   let max = 0
   for (const [date, e1rm] of entries) {
     if (e1rm > max) {
@@ -124,7 +127,7 @@ const prOnly = computed(() => {
 })
 
 const graphData = computed(() =>
-  props.mode === 'prs' ? prOnly.value : dailyBest.value
+  mode.value === 'prs' ? prOnly.value : dailyBest.value
 )
 
 const minVal = computed(() => {
@@ -198,11 +201,11 @@ const visibleLabelIndices = computed(() => {
   return indices
 })
 
-function shouldShowLabel(i) {
+function shouldShowLabel(i: number) {
   return visibleLabelIndices.value.includes(i)
 }
 
-function formatDate(iso) {
+function formatDate(iso: string) {
   // Append noon to avoid off-by-one-day from UTC midnight
   return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {
     month: 'short',

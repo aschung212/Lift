@@ -11,9 +11,9 @@
 
     <!-- Navigation -->
     <div class="calNav">
-      <button class="calNavBtn" @click="prev">‹</button>
+      <button class="calNavBtn" @click="prev" aria-label="Previous">‹</button>
       <span class="calNavLabel">{{ navLabel }}</span>
-      <button class="calNavBtn" @click="next">›</button>
+      <button class="calNavBtn" @click="next" aria-label="Next">›</button>
     </div>
 
     <!-- Tag filter -->
@@ -53,7 +53,7 @@
           <span v-if="cell.inMonth && hasPR(cell.dateStr)" class="calCellPR">🏆</span>
           <div v-if="cell.exercises.length > 0 && cell.inMonth" class="calDots">
             <span
-              v-for="(ex, i) in cell.exercises.slice(0, 3)"
+              v-for="(_ex, i) in cell.exercises.slice(0, 3)"
               :key="i"
               class="calDot"
             ></span>
@@ -69,6 +69,29 @@
           <button class="calLogBtn" @click="openLogModal(selectedDay)">+ Log</button>
         </div>
         <div v-if="trainingMap[selectedDay]" class="calDetailTags">
+          <!-- Daily workout summary -->
+          <div class="calSummaryBar" v-if="daySummary">
+            <span class="calSumStat">
+              <span class="calSumValue">{{ daySummary.exercises }}</span>
+              <span class="calSumLabel">exercise{{ daySummary.exercises !== 1 ? 's' : '' }}</span>
+            </span>
+            <span class="calSumDivider"></span>
+            <span class="calSumStat">
+              <span class="calSumValue">{{ daySummary.sets }}</span>
+              <span class="calSumLabel">set{{ daySummary.sets !== 1 ? 's' : '' }}</span>
+            </span>
+            <span class="calSumDivider"></span>
+            <span class="calSumStat">
+              <span class="calSumValue">{{ daySummary.volumeDisplay }}</span>
+              <span class="calSumLabel">{{ weightUnit }} volume</span>
+            </span>
+            <span v-if="daySummary.prs > 0" class="calSumDivider"></span>
+            <span v-if="daySummary.prs > 0" class="calSumStat calSumPR">
+              <span class="calSumValue">🏆 {{ daySummary.prs }}</span>
+              <span class="calSumLabel">PR{{ daySummary.prs !== 1 ? 's' : '' }}</span>
+            </span>
+          </div>
+
           <template v-for="ex in trainingMap[selectedDay]" :key="ex">
             <span
               :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
@@ -137,9 +160,9 @@
 
   <!-- Log Set Modal -->
   <Teleport to="body">
-    <div v-if="logModal.open" class="repMaxOverlay" @click.self="closeLogModal">
-      <div class="repMaxModal">
-        <h2>Log a Set</h2>
+    <div v-if="logModal.open" class="repMaxOverlay" @click.self="closeLogModal" @keydown.escape="closeLogModal">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title">
+        <h2 id="cal-modal-title">Log a Set</h2>
         <p class="wtModalSubtitle">{{ formatSelectedDay(logModal.date) }}</p>
 
         <label class="repMaxLabel">
@@ -195,7 +218,7 @@
   </Teleport>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
@@ -206,9 +229,9 @@ const { weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 
 // ── Tag filtering ────────────────────────────────────────────────
-const activeTagFilters = ref([])
+const activeTagFilters = ref<string[]>([])
 
-function toggleTagFilter(tag) {
+function toggleTagFilter(tag: string) {
   const idx = activeTagFilters.value.indexOf(tag)
   if (idx >= 0) {
     activeTagFilters.value = activeTagFilters.value.filter(t => t !== tag)
@@ -235,15 +258,15 @@ const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
 const view = ref('month')
 const cursor = ref(new Date())
-const selectedDay = ref(null)
+const selectedDay = ref<string | null>(null)
 
-function setView(v) {
+function setView(v: string) {
   view.value = v
   selectedDay.value = null
   logEvent('calendar_view_switch', { view: v })
 }
 
-function toLocalDateStr(d) {
+function toLocalDateStr(d: Date) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
@@ -254,7 +277,7 @@ const todayStr = toLocalDateStr(new Date())
 
 // Map YYYY-MM-DD → unique exercise names (respects tag filter)
 const trainingMap = computed(() => {
-  const map = {}
+  const map: Record<string, string[]> = {}
   for (const exercise of filteredExercises.value) {
     for (const set of exercise.sets) {
       const day = set.date.slice(0, 10)
@@ -267,7 +290,7 @@ const trainingMap = computed(() => {
 
 // Map YYYY-MM-DD → Set of exercise names that achieved an all-time PR on that date
 const prMap = computed(() => {
-  const map = {}
+  const map: Record<string, Set<string>> = {}
   for (const exercise of filteredExercises.value) {
     const pr = store.getExercisePR(exercise.id)
     if (!pr) continue
@@ -282,23 +305,58 @@ const prMap = computed(() => {
   return map
 })
 
-function isPRExercise(dateStr, exName) {
+function isPRExercise(dateStr: string, exName: string) {
   return prMap.value[dateStr]?.has(exName) ?? false
 }
 
-function hasPR(dateStr) {
+function hasPR(dateStr: string) {
   return !!(prMap.value[dateStr]?.size > 0)
 }
 
-// Exercise detail expand: "YYYY-MM-DD::Exercise Name" or null
-const detailKey = ref(null)
+// ── Daily workout summary ────────────────────────────────────────
+const daySummary = computed(() => {
+  if (!selectedDay.value || !trainingMap.value[selectedDay.value]) return null
+  const dayStr = selectedDay.value.slice(0, 10)
+  let totalSets = 0
+  let totalVolume = 0
+  let exerciseCount = 0
+  let prCount = 0
 
-function toggleDetail(dateStr, exName) {
+  for (const exercise of filteredExercises.value) {
+    const daySets = exercise.sets.filter(s => s.date.slice(0, 10) === dayStr)
+    if (daySets.length === 0) continue
+    exerciseCount++
+    totalSets += daySets.length
+    for (const s of daySets) {
+      totalVolume += s.weight * s.reps
+    }
+    const pr = store.getExercisePR(exercise.id)
+    if (pr && daySets.some(s => s.estimated1RM === pr)) {
+      prCount++
+    }
+  }
+
+  const formatted = totalVolume >= 10000
+    ? `${(displayWeight(totalVolume) / 1000).toFixed(1)}k`
+    : String(displayWeight(totalVolume))
+
+  return {
+    exercises: exerciseCount,
+    sets: totalSets,
+    volumeDisplay: formatted,
+    prs: prCount,
+  }
+})
+
+// Exercise detail expand: "YYYY-MM-DD::Exercise Name" or null
+const detailKey = ref<string | null>(null)
+
+function toggleDetail(dateStr: string, exName: string) {
   const key = `${dateStr}::${exName}`
   detailKey.value = detailKey.value === key ? null : key
 }
 
-function getSetsForDay(dateStr, exName) {
+function getSetsForDay(dateStr: string, exName: string) {
   const exercise = store.exercises.find(e => e.name === exName)
   if (!exercise) return []
   const pr = store.getExercisePR(exercise.id)
@@ -309,7 +367,7 @@ function getSetsForDay(dateStr, exName) {
     .map(s => ({ ...s, isPR: s.estimated1RM === pr }))
 }
 
-function getSetCount(dateStr, exName) {
+function getSetCount(dateStr: string, exName: string) {
   const exercise = store.exercises.find(e => e.name === exName)
   if (!exercise) return 0
   const dayStr = dateStr.slice(0, 10)
@@ -325,7 +383,7 @@ const navLabel = computed(() => {
   const days = weekDays.value
   const first = new Date(days[0].dateStr + 'T12:00:00')
   const last = new Date(days[6].dateStr + 'T12:00:00')
-  const fmt = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   return `${fmt(first)} – ${fmt(last)}`
 })
 
@@ -345,7 +403,7 @@ function next() {
   selectedDay.value = null
 }
 
-function toggleDay(dateStr) {
+function toggleDay(dateStr: string) {
   selectedDay.value = selectedDay.value === dateStr ? null : dateStr
 }
 
@@ -402,16 +460,16 @@ const weekDays = computed(() => {
   })
 })
 
-function formatSelectedDay(dateStr) {
+function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
     weekday: 'long', month: 'long', day: 'numeric'
   })
 }
 
 // ── Log modal ─────────────────────────────────────────────────────
-const logModal = ref({ open: false, date: '', exerciseId: '', weight: null, reps: null })
+const logModal = ref<{ open: boolean; date: string; exerciseId: string; weight: number | null; reps: number | null }>({ open: false, date: '', exerciseId: '', weight: null, reps: null })
 
-function openLogModal(dateStr) {
+function openLogModal(dateStr: string) {
   logModal.value = { open: true, date: dateStr, exerciseId: '', weight: null, reps: null }
 }
 
@@ -429,12 +487,13 @@ const logModalEstimate = computed(() => {
 
 const canSaveLog = computed(() => {
   const { exerciseId, weight, reps } = logModal.value
-  return exerciseId && weight > 0 && reps >= 1
+  return exerciseId && weight !== null && weight > 0 && reps !== null && reps >= 1
 })
 
 function saveLog() {
   if (!canSaveLog.value) return
   const { exerciseId, weight, reps, date } = logModal.value
+  if (weight === null || reps === null) return
   store.logSet(exerciseId, toLbs(weight), reps, date)
   logEvent('set_log', { source: 'calendar' })
   closeLogModal()

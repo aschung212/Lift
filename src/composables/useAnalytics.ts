@@ -1,0 +1,32 @@
+import { track } from '@vercel/analytics'
+
+type AllowedPropertyValues = string | number | boolean | null | undefined
+
+// Session-level tab engagement timing (module singleton)
+let _currentTab = 'workouts'
+let _tabStart = Date.now()
+
+export function useAnalytics() {
+  function logEvent(name: string, props: Record<string, AllowedPropertyValues> = {}): void {
+    try { track(name, props) } catch { /* offline or blocked */ }
+  }
+
+  function tabSwitch(fromTab: string, toTab: string): void {
+    if (_currentTab && _tabStart) {
+      const seconds = Math.round((Date.now() - _tabStart) / 1000)
+      if (seconds > 0) logEvent('tab_engagement', { tab: _currentTab, seconds })
+    }
+    _currentTab = toTab
+    _tabStart = Date.now()
+    logEvent('tab_switch', { from: fromTab, to: toTab })
+  }
+
+  function flushEngagement(): void {
+    if (_currentTab && _tabStart) {
+      const seconds = Math.round((Date.now() - _tabStart) / 1000)
+      if (seconds > 0) logEvent('tab_engagement', { tab: _currentTab, seconds })
+    }
+  }
+
+  return { logEvent, tabSwitch, flushEngagement }
+}

@@ -1,0 +1,400 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { mount } from '@vue/test-utils'
+
+// Stub localStorage before any imports
+const localStorageMock = (() => {
+  let store: Record<string, string> = {}
+  return {
+    getItem: vi.fn((key: string) => store[key] ?? null),
+    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
+    removeItem: vi.fn((key: string) => { delete store[key] }),
+    clear: vi.fn(() => { store = {} }),
+  }
+})()
+vi.stubGlobal('localStorage', localStorageMock)
+
+// Mock supabase
+vi.mock('../../lib/supabase', () => ({ supabase: null }))
+
+// Mock analytics
+vi.mock('../../composables/useAnalytics', () => ({
+  useAnalytics: () => ({
+    logEvent: vi.fn(),
+    tabSwitch: vi.fn(),
+    flushEngagement: vi.fn(),
+  })
+}))
+
+// Mock useTheme
+vi.mock('../../composables/useTheme', () => ({
+  useTheme: () => ({
+    weightUnit: { value: 'lbs' },
+    displayWeight: (w: number) => Math.round(w),
+    toLbs: (w: number) => w,
+    restTimerEnabled: { value: false },
+  })
+}))
+
+// Build reactive mock store
+interface MockSet {
+  id: string
+  date: string
+  weight: number
+  reps: number
+  estimated1RM: number
+}
+
+interface MockExercise {
+  id: string
+  name: string
+  tags: string[]
+  sets: MockSet[]
+}
+
+let exercises: MockExercise[] = []
+
+function getExercisePR(id: string): number {
+  const ex = exercises.find(e => e.id === id)
+  if (!ex || ex.sets.length === 0) return 0
+  return Math.max(...ex.sets.map(s => s.estimated1RM))
+}
+
+function getAllTags(): string[] {
+  const tags = new Set<string>()
+  exercises.forEach(e => (e.tags || []).forEach(t => tags.add(t)))
+  return [...tags].sort()
+}
+
+vi.mock('../../stores/workout', () => ({
+  useWorkoutStore: () => ({
+    get exercises() { return exercises },
+    set exercises(v: MockExercise[]) { exercises = v },
+    get allTags() { return getAllTags() },
+    getExercisePR,
+    logSet: vi.fn(),
+    addExercise: vi.fn(),
+  })
+}))
+
+import CalendarView from '../CalendarView.vue'
+
+function mountCalendar() {
+  return mount(CalendarView, {
+    global: {
+      stubs: { Teleport: true },
+    }
+  })
+}
+
+// Create exercise data with sets on specific dates
+function makeExercises(dates: string[]): MockExercise[] {
+  return [{
+    id: 'ex-1',
+    name: 'Bench Press',
+    tags: ['Chest'],
+    sets: dates.map((date, i) => ({
+      id: `s-${i}`,
+      date: `${date}T12:00:00`,
+      weight: 185 + i * 10,
+      reps: 5,
+      estimated1RM: Math.round((185 + i * 10) * (1 + 5 / 30)),
+    }))
+  }]
+}
+
+describe('CalendarView', () => {
+  beforeEach(() => {
+    exercises = []
+    localStorageMock.clear()
+  })
+
+  describe('header and navigation', () => {
+    it('renders the Training Calendar title', () => {
+      const wrapper = mountCalendar()
+      expect(wrapper.find('.calTitle').text()).toBe('Training Calendar')
+    })
+
+    it('shows Month and Week view toggle buttons', () => {
+      const wrapper = mountCalendar()
+      const btns = wrapper.findAll('.calToggleBtn')
+      expect(btns.length).toBe(2)
+      expect(btns[0].text()).toBe('Month')
+      expect(btns[1].text()).toBe('Week')
+    })
+
+    it('defaults to month view', () => {
+      const wrapper = mountCalendar()
+      expect(wrapper.find('.calToggleBtn.active').text()).toBe('Month')
+      expect(wrapper.find('.calGrid').exists()).toBe(true)
+    })
+
+    it('shows navigation arrows and month label', () => {
+      const wrapper = mountCalendar()
+      const navBtns = wrapper.findAll('.calNavBtn')
+      expect(navBtns.length).toBe(2)
+      expect(navBtns[0].text()).toBe('‹')
+      expect(navBtns[1].text()).toBe('›')
+      expect(wrapper.find('.calNavLabel').exists()).toBe(true)
+    })
+
+    it('changes month label after navigating backward', async () => {
+      const wrapper = mountCalendar()
+      // Click prev twice to ensure we move away from current month
+      await wrapper.findAll('.calNavBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.findAll('.calNavBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const label = wrapper.find('.calNavLabel').text()
+      const now = new Date()
+      const currentMonthName = now.toLocaleDateString(undefined, { month: 'long' })
+      // After going back 2 months, the label should not contain the current month
+      expect(label).not.toContain(currentMonthName)
+    })
+
+    it('changes month label after navigating forward', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calNavBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.findAll('.calNavBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const label = wrapper.find('.calNavLabel').text()
+      const now = new Date()
+      const currentMonthName = now.toLocaleDateString(undefined, { month: 'long' })
+      expect(label).not.toContain(currentMonthName)
+    })
+  })
+
+  describe('month grid', () => {
+    it('renders day headers (Su Mo Tu We Th Fr Sa)', () => {
+      const wrapper = mountCalendar()
+      const headers = wrapper.findAll('.calDayHeader')
+      expect(headers.length).toBe(7)
+      expect(headers.map(h => h.text())).toEqual(['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'])
+    })
+
+    it('renders calendar cells for the month', () => {
+      const wrapper = mountCalendar()
+      const cells = wrapper.findAll('.calCell')
+      // A month grid has between 28 and 42 cells (4-6 rows × 7 days)
+      expect(cells.length).toBeGreaterThanOrEqual(28)
+      expect(cells.length).toBeLessThanOrEqual(42)
+    })
+
+    it('marks today with calCellToday class', () => {
+      const wrapper = mountCalendar()
+      const todayCells = wrapper.findAll('.calCellToday')
+      expect(todayCells.length).toBe(1)
+    })
+
+    it('shows dots on days with workout data', () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      const dotsContainers = wrapper.findAll('.calDots')
+      expect(dotsContainers.length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('day selection', () => {
+    it('selects a day when clicked', async () => {
+      const wrapper = mountCalendar()
+      // Click on an in-month cell
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('click')
+      expect(wrapper.find('.calCellSelected').exists()).toBe(true)
+    })
+
+    it('shows detail panel when day is selected', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('click')
+      expect(wrapper.find('.calDetail').exists()).toBe(true)
+    })
+
+    it('shows "+ Log" button in day detail', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('click')
+      expect(wrapper.find('.calLogBtn').text()).toBe('+ Log')
+    })
+
+    it('shows "No sets logged" for empty days', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('click')
+      expect(wrapper.find('.calDetailEmpty').text()).toContain('No sets logged')
+    })
+
+    it('deselects day when clicked again', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('click')
+      expect(wrapper.find('.calCellSelected').exists()).toBe(true)
+
+      await inMonthCells[0].trigger('click')
+      expect(wrapper.find('.calCellSelected').exists()).toBe(false)
+    })
+  })
+
+  describe('day detail with workout data', () => {
+    it('shows exercise names for selected day', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      // Click on today's cell
+      const todayCell = wrapper.find('.calCellToday')
+      await todayCell.trigger('click')
+
+      expect(wrapper.find('.calDetailTags').exists()).toBe(true)
+      expect(wrapper.text()).toContain('Bench Press')
+    })
+
+    it('shows workout summary bar with exercise count, set count, and volume', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      await wrapper.find('.calCellToday').trigger('click')
+
+      const summary = wrapper.find('.calSummaryBar')
+      expect(summary.exists()).toBe(true)
+      expect(summary.text()).toContain('1')  // 1 exercise
+      expect(summary.text()).toContain('set') // set count
+    })
+
+    it('shows set count badge on exercise tag', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      await wrapper.find('.calCellToday').trigger('click')
+
+      expect(wrapper.find('.calTagCount').exists()).toBe(true)
+    })
+
+    it('expands set details when exercise tag is clicked', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      await wrapper.find('.calCellToday').trigger('click')
+      await wrapper.find('.calDetailTag').trigger('click')
+
+      expect(wrapper.find('.calSetList').exists()).toBe(true)
+      expect(wrapper.find('.calSetRow').exists()).toBe(true)
+    })
+
+    it('collapses set details on second click', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      await wrapper.find('.calCellToday').trigger('click')
+      await wrapper.find('.calDetailTag').trigger('click')
+      expect(wrapper.find('.calSetList').exists()).toBe(true)
+
+      await wrapper.find('.calDetailTag').trigger('click')
+      expect(wrapper.find('.calSetList').exists()).toBe(false)
+    })
+  })
+
+  describe('week view', () => {
+    it('switches to week view when Week button is clicked', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      expect(wrapper.find('.calWeek').exists()).toBe(true)
+      expect(wrapper.find('.calGrid').exists()).toBe(false)
+    })
+
+    it('renders 7 day rows in week view', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      expect(wrapper.findAll('.calWeekRow').length).toBe(7)
+    })
+
+    it('shows day names and numbers', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      expect(wrapper.findAll('.calWeekDayName').length).toBe(7)
+      expect(wrapper.findAll('.calWeekDayNum').length).toBe(7)
+    })
+
+    it('shows "Rest" for days without workouts', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      expect(wrapper.findAll('.calWeekRest').length).toBe(7)
+    })
+
+    it('marks today in week view', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      expect(wrapper.find('.calWeekRowToday').exists()).toBe(true)
+    })
+
+    it('shows "+ Log" button on each day row', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      expect(wrapper.findAll('.calWeekLogBtn').length).toBe(7)
+    })
+
+    it('navigates weeks with arrows', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      const initialLabel = wrapper.find('.calNavLabel').text()
+      await wrapper.findAll('.calNavBtn')[0].trigger('click')
+      expect(wrapper.find('.calNavLabel').text()).not.toBe(initialLabel)
+    })
+  })
+
+  describe('tag filtering', () => {
+    it('shows tag filter bar when exercises have tags', () => {
+      exercises = makeExercises(['2026-03-31'])
+      const wrapper = mountCalendar()
+      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(true)
+    })
+
+    it('does not show tag filter when no exercises have tags', () => {
+      exercises = [{ id: 'ex-1', name: 'Bench', tags: [], sets: [] }]
+      const wrapper = mountCalendar()
+      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+    })
+  })
+
+  describe('PR indicators', () => {
+    it('shows trophy on calendar cell for PR day', () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      expect(wrapper.find('.calCellPR').exists()).toBe(true)
+      expect(wrapper.find('.calCellPR').text()).toContain('🏆')
+    })
+  })
+
+  describe('accessibility', () => {
+    it('nav buttons have aria-labels', () => {
+      const wrapper = mountCalendar()
+      const navBtns = wrapper.findAll('.calNavBtn')
+      expect(navBtns[0].attributes('aria-label')).toBe('Previous')
+      expect(navBtns[1].attributes('aria-label')).toBe('Next')
+    })
+  })
+})

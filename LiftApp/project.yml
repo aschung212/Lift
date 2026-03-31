@@ -1,0 +1,29 @@
+name: LiftApp
+options:
+  bundleIdPrefix: com.lift
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    INFOPLIST_FILE: LiftApp/Info.plist
+targets:
+  LiftApp:
+    type: application
+    platform: iOS
+    sources:
+      - LiftApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aschung212.liftapp
+        INFOPLIST_FILE: LiftApp/Info.plist
+        SUPPORTED_INTERFACE_ORIENTATIONS: UIInterfaceOrientationPortrait
+        SWIFT_STRICT_CONCURRENCY: minimal
+    info:
+      path: LiftApp/Info.plist
+      properties:
+        CFBundleDisplayName: Lift
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait

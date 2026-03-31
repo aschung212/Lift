@@ -33,11 +33,11 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 
-const emit = defineEmits(['complete'])
+const emit = defineEmits<{ complete: [] }>()
 const workoutStore = useWorkoutStore()
 const bwStore = useBodyweightStore()
 
@@ -50,7 +50,7 @@ const STARTER_EXERCISES = [
   { name: 'Pull-ups', tags: ['Pull', 'Back'] },
 ]
 
-function daysAgo(n) {
+function daysAgo(n: number): string {
   const d = new Date()
   d.setDate(d.getDate() - n)
   return d.toISOString().slice(0, 10)
@@ -211,7 +211,7 @@ const SAMPLE_WEIGHTS = [
   { weight: 172.5, date: daysAgo(1) },
 ]
 
-function finish(sampleData) {
+function finish(sampleData: boolean) {
   localStorage.setItem('onboarding-complete', 'true')
   if (sampleData) {
     localStorage.setItem('sample-data', 'true')
@@ -230,24 +230,27 @@ function chooseStarter() {
   finish(false)
 }
 
+const noSync = { sync: false }
+
 function chooseExplore() {
-  // Add exercises with sample sets
+  // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
-    const id = workoutStore.addExercise(group.exercise, starter?.tags || [])
+    const id = workoutStore.addExercise(group.exercise, starter?.tags || [], noSync)
+    if (!id) continue
     for (const set of group.sets) {
-      workoutStore.logSet(id, set.weight, set.reps, set.date)
+      workoutStore.logSet(id, set.weight, set.reps, set.date, noSync)
     }
   }
   // Add remaining starter exercises without sets
   for (const ex of STARTER_EXERCISES) {
     if (!SAMPLE_SETS.find(g => g.exercise === ex.name)) {
-      workoutStore.addExercise(ex.name, ex.tags)
+      workoutStore.addExercise(ex.name, ex.tags, noSync)
     }
   }
   // Add sample bodyweight entries
   for (const entry of SAMPLE_WEIGHTS) {
-    bwStore.addEntry(entry.weight, entry.date)
+    bwStore.addEntry(entry.weight, entry.date, noSync)
   }
   finish(true)
 }
@@ -277,7 +280,7 @@ function chooseExplore() {
 }
 
 .obTagline {
-  font-size: 16px;
+  font-size: var(--font-callout);
   color: var(--text-secondary);
   margin-bottom: 32px;
   line-height: 1.5;
@@ -326,13 +329,13 @@ function chooseExplore() {
 }
 
 .obOptionText strong {
-  font-size: 16px;
+  font-size: var(--font-callout);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .obOptionText span {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
   line-height: 1.3;
 }

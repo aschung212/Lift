@@ -1,4 +1,5 @@
 <template>
+  <ErrorBoundary>
   <div id="appShell">
     <!-- Loading state -->
     <div v-if="loading" class="authLoading">
@@ -13,29 +14,33 @@
 
     <!-- Authenticated app -->
     <template v-else>
-      <div class="appContainer">
+      <main class="appContainer">
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
         <div v-show="activeTab === 'workouts'" class="tabContent"><WorkoutTracker /></div>
         <div v-show="activeTab === 'calendar'" class="tabContent"><CalendarView /></div>
         <div v-show="activeTab === 'weight'" class="tabContent"><BodyweightTracker /></div>
-      </div>
+      </main>
 
       <!-- Tab bar -->
-      <nav class="tabBar">
-        <div class="tabBarTabs">
+      <nav class="tabBar" aria-label="Main navigation">
+        <div class="tabBarTabs" role="tablist">
           <div
             class="tabIndicator"
             :style="tabIndicatorStyle"
+            aria-hidden="true"
           ></div>
           <button
             v-for="tab in visibleTabs"
             :key="tab.id"
+            role="tab"
+            :aria-selected="activeTab === tab.id"
             :class="['tabBtn', { active: activeTab === tab.id }]"
             @click="switchTab(tab.id)"
           >
-            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="tab.icon"></svg>
+            <!-- eslint-disable-next-line vue/no-v-html, vue/html-self-closing -- icons are hardcoded SVG paths, not user input -->
+            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="tab.icon"></svg>
             <span class="tabLabel">{{ tab.label }}</span>
           </button>
         </div>
@@ -54,11 +59,12 @@
 
       <!-- Settings bottom sheet -->
       <Teleport to="body">
-        <div v-if="settingsOpen" class="settingsOverlay" @click.self="closeSettings">
-          <div class="settingsSheet" ref="settingsEl">
+        <div v-if="settingsOpen" class="settingsOverlay" @click.self="closeSettings" @keydown.escape="closeSettings">
+          <div class="settingsSheet" :ref="onSettingsSheetMounted" :style="settingsSwipe.dragStyle()" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="sheetDragHandle" aria-hidden="true"><span class="sheetDragPill"></span></div>
 
             <div class="settingsGroup">
-              <div class="settingsHeader">Appearance</div>
+              <div class="settingsHeader" id="settings-title">Appearance</div>
               <div class="settingsThemeGrid">
                 <button
                   v-for="t in THEMES"
@@ -79,7 +85,7 @@
                 <span class="settingsLabel">Mode</span>
                 <div class="modeSegmented">
                   <button
-                    v-for="m in ['light', 'auto', 'dark']"
+                    v-for="m in (['light', 'auto', 'dark'] as const)"
                     :key="m"
                     :class="['modeSegBtn', { active: colorMode === m }]"
                     @click="setMode(m)"
@@ -88,7 +94,7 @@
               </div>
               <div class="settingsRow">
                 <span class="settingsLabel">Liquid Glass</span>
-                <button :class="['glassToggle', { on: glassEnabled }]" @click="toggleGlass" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
+                <button :class="['glassToggle', { on: glassEnabled }]" @click="toggleGlass" role="switch" :aria-checked="glassEnabled" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
@@ -113,6 +119,8 @@
                   :class="['glassToggle', { on: prefs.features[tab.id] }]"
                   @click="toggleFeature(tab.id)"
                   :disabled="prefs.features[tab.id] && prefs.enabledCount <= 1"
+                  role="switch"
+                  :aria-checked="prefs.features[tab.id]"
                   :aria-label="(prefs.features[tab.id] ? 'Disable ' : 'Enable ') + tab.label"
                 >
                   <span class="glassToggleThumb"></span>
@@ -123,11 +131,48 @@
                 <button
                   :class="['glassToggle', { on: restTimerEnabled }]"
                   @click="restTimerEnabled = !restTimerEnabled"
+                  role="switch"
+                  :aria-checked="restTimerEnabled"
                   :aria-label="restTimerEnabled ? 'Disable rest timer' : 'Enable rest timer'"
                 >
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+              <div v-if="restTimerEnabled" class="settingsRow">
+                <span class="settingsLabel settingsLabelIndented">Auto-start after logging</span>
+                <button
+                  :class="['glassToggle', { on: restTimerAutoStart }]"
+                  @click="restTimerAutoStart = !restTimerAutoStart"
+                  role="switch"
+                  :aria-checked="restTimerAutoStart"
+                  :aria-label="restTimerAutoStart ? 'Disable auto-start' : 'Enable auto-start'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="settingsGroup">
+              <div class="settingsHeader">Data</div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Export</span>
+                <div class="exportBtnGroup">
+                  <button class="exportBtn" @click="exportData('csv')">CSV</button>
+                  <button class="exportBtn" @click="exportData('json')">JSON</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settingsGroup">
+              <div class="settingsHeader">Legal</div>
+              <button class="settingsRow settingsRowBtn" @click="legalView = 'privacy'">
+                <span class="settingsLabel">Privacy Policy</span>
+                <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+              <button class="settingsRow settingsRowBtn" @click="legalView = 'terms'">
+                <span class="settingsLabel">Terms of Service</span>
+                <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
             </div>
 
             <div class="settingsGroup">
@@ -137,30 +182,172 @@
         </div>
       </Teleport>
     </template>
+
+    <!-- Undo toast -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="undoToast" class="undoToastBar" role="status" aria-live="polite">
+          <span class="undoToastMsg">{{ undoToast.message }}</span>
+          <button class="undoToastBtn" @click="performUndo">Undo</button>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- SW update toast -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="swNeedRefresh" class="undoToastBar swUpdateBar" role="status" aria-live="polite">
+          <span class="undoToastMsg">New version available</span>
+          <button class="undoToastBtn" @click="updateSW()">Update</button>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Keyboard shortcuts help -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="shortcutsOpen" class="kbOverlay" @click.self="closeShortcuts" @keydown.escape="closeShortcuts">
+          <div class="kbSheet" role="dialog" aria-modal="true" aria-labelledby="kb-title">
+            <h3 id="kb-title" class="kbTitle">Keyboard Shortcuts</h3>
+            <dl class="kbList">
+              <div class="kbRow"><dt class="kbKey"><kbd>?</kbd></dt><dd class="kbDesc">Show this help</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>1</kbd></dt><dd class="kbDesc">Go to Workouts</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>2</kbd></dt><dd class="kbDesc">Go to Calendar</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>3</kbd></dt><dd class="kbDesc">Go to Weight</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>,</kbd></dt><dd class="kbDesc">Open settings</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>Esc</kbd></dt><dd class="kbDesc">Close panel</dd></div>
+            </dl>
+            <button class="kbClose" @click="closeShortcuts">Close</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Legal modal (Privacy Policy / Terms of Service) -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="legalView" class="kbOverlay" @click.self="legalView = null" @keydown.escape="legalView = null">
+          <div class="legalSheet" role="dialog" aria-modal="true" :aria-labelledby="'legal-title'">
+            <div class="legalHeader">
+              <h3 id="legal-title" class="kbTitle">{{ legalView === 'privacy' ? 'Privacy Policy' : 'Terms of Service' }}</h3>
+              <button class="kbClose legalClose" @click="legalView = null">Close</button>
+            </div>
+            <div class="legalBody">
+              <!-- Privacy Policy -->
+              <template v-if="legalView === 'privacy'">
+                <p class="legalUpdated">Last updated: March 31, 2026</p>
+                <h4 class="legalH4">What We Collect</h4>
+                <p>Lift collects only the data you explicitly enter: exercises, sets, reps, weights, and bodyweight entries. If you create an account, we store your email address for authentication.</p>
+                <h4 class="legalH4">How Data Is Stored</h4>
+                <p>Your workout data is stored locally on your device using browser storage (localStorage). If you sign in, data is synced to Supabase (our cloud database) so you can access it across devices. Data is transmitted over HTTPS.</p>
+                <h4 class="legalH4">Analytics</h4>
+                <p>We use Vercel Analytics to collect anonymous, aggregated usage data (page views, feature usage). No personally identifiable information is included in analytics events.</p>
+                <h4 class="legalH4">Third-Party Services</h4>
+                <ul class="legalList">
+                  <li><strong>Supabase</strong> — authentication and cloud data sync</li>
+                  <li><strong>Vercel</strong> — hosting and anonymous analytics</li>
+                </ul>
+                <h4 class="legalH4">Data Deletion</h4>
+                <p>You can export or delete your data at any time. Use the Export feature in Settings to download your data as CSV or JSON. To delete your account and all associated data, contact us at the email below.</p>
+                <h4 class="legalH4">Contact</h4>
+                <p>For privacy questions, email <strong>aaronschung@gmail.com</strong>.</p>
+              </template>
+              <!-- Terms of Service -->
+              <template v-else>
+                <p class="legalUpdated">Last updated: March 31, 2026</p>
+                <h4 class="legalH4">Acceptance</h4>
+                <p>By using Lift, you agree to these terms. If you do not agree, please do not use the app.</p>
+                <h4 class="legalH4">Description</h4>
+                <p>Lift is a free workout tracking application provided as-is. We make no guarantees about uptime, data retention, or feature availability.</p>
+                <h4 class="legalH4">User Responsibilities</h4>
+                <p>You are responsible for maintaining the security of your account credentials. Do not share your login with others. You retain ownership of all data you enter into Lift.</p>
+                <h4 class="legalH4">Acceptable Use</h4>
+                <p>Do not attempt to exploit, reverse-engineer, or interfere with the operation of the app or its infrastructure.</p>
+                <h4 class="legalH4">Limitation of Liability</h4>
+                <p>Lift is provided "as is" without warranty of any kind. We are not liable for any data loss, injury, or damages arising from use of this app. Always consult a medical professional before starting any exercise program.</p>
+                <h4 class="legalH4">Changes</h4>
+                <p>We may update these terms at any time. Continued use of Lift after changes constitutes acceptance of the updated terms.</p>
+                <h4 class="legalH4">Contact</h4>
+                <p>For questions about these terms, email <strong>aaronschung@gmail.com</strong>.</p>
+              </template>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+    <!-- Custom confirmation dialog (Capacitor-safe, no window.confirm) -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="confirmDialog" class="confirmOverlay" @click.self="dismissConfirm" @keydown.escape="dismissConfirm">
+          <div class="confirmSheet" role="alertdialog" aria-modal="true" aria-labelledby="confirm-msg">
+            <p id="confirm-msg" class="confirmMessage">{{ confirmDialog.message }}</p>
+            <div class="confirmActions">
+              <button class="confirmBtn confirmBtnCancel" @click="dismissConfirm">Cancel</button>
+              <button class="confirmBtn confirmBtnConfirm" @click="acceptConfirm">Confirm</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
+  </ErrorBoundary>
 </template>
 
-<script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import WorkoutTracker from './components/WorkoutTracker.vue'
-import BodyweightTracker from './components/BodyweightTracker.vue'
-import CalendarView from './components/CalendarView.vue'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
+
+// Lazy-load tab content — split into separate chunks for faster initial load
+const WorkoutTracker = defineAsyncComponent(() => import('./components/WorkoutTracker.vue'))
+const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'))
+const BodyweightTracker = defineAsyncComponent(() => import('./components/BodyweightTracker.vue'))
 import { useTheme } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { useBodyweightStore } from './stores/bodyweight'
+import { useUndoToast } from './composables/useUndoToast'
+import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
+import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { registerSW } from 'virtual:pwa-register'
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, weightUnit } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit } = useTheme()
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
+const { toast: undoToast, performUndo } = useUndoToast()
 
 const settingsOpen = ref(false)
-const settingsEl = ref(null)
+const settingsEl = ref<HTMLElement | null>(null)
+const legalView = ref<'privacy' | 'terms' | null>(null)
+
+// ── Swipe-to-dismiss for settings sheet ────────────────────────
+const settingsSwipe = useSwipeToDismiss({
+  threshold: 80,
+  onDismiss: () => { settingsOpen.value = false },
+})
+
+watch(settingsOpen, (open) => {
+  if (!open) {
+    settingsSwipe.detach()
+  }
+})
+
+function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
+  if (el && el instanceof HTMLElement) {
+    settingsEl.value = el
+    settingsSwipe.attach(el)
+  }
+}
+
+// ── Service worker update prompt ────────────────────────────────
+const swNeedRefresh = ref(false)
+const updateSW = registerSW({
+  onNeedRefresh() { swNeedRefresh.value = true },
+})
 
 // ── Onboarding ──────────────────────────────────────────────────
 const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
@@ -195,6 +382,16 @@ function closeSettings() {
   }, { once: true })
 }
 const activeTab = ref(localStorage.getItem('active-tab') || 'workouts')
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────
+const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeShortcuts } = useKeyboardShortcuts(() => [
+  { key: '?', label: 'Show keyboard shortcuts', action: toggleShortcuts },
+  { key: '1', label: 'Go to Workouts', action: () => switchTab('workouts') },
+  { key: '2', label: 'Go to Calendar', action: () => switchTab('calendar') },
+  { key: '3', label: 'Go to Weight', action: () => switchTab('weight') },
+  { key: ',', label: 'Open settings', action: () => { settingsOpen.value = true } },
+  { key: 'Escape', label: 'Close panel', action: () => { closeSettings(); closeShortcuts() }, global: true },
+])
 
 // ── Tab definitions with inline SVG paths ────────────────────────
 const TAB_DEFS = [
@@ -238,7 +435,7 @@ watch(() => prefs.features, () => {
 }, { deep: true })
 
 // ── Analytics ────────────────────────────────────────────────────
-function switchTab(tabId) {
+function switchTab(tabId: string) {
   const from = activeTab.value
   closeSettings()
   if (from === tabId) return
@@ -247,12 +444,12 @@ function switchTab(tabId) {
   tabSwitch(from, tabId)
 }
 
-function selectTheme(id) {
+function selectTheme(id: string) {
   currentTheme.value = id
   logEvent('theme_change', { theme: id })
 }
 
-function setMode(mode) {
+function setMode(mode: 'light' | 'dark' | 'auto') {
   colorMode.value = mode
   logEvent('mode_toggle', { mode })
 }
@@ -262,13 +459,90 @@ function toggleGlass() {
   logEvent('glass_toggle', { enabled: glassEnabled.value })
 }
 
-function confirmSignOut() {
-  if (confirm('Sign out?')) {
-    signOut()
-  }
+const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
+
+function showConfirm(message: string, onConfirm: () => void) {
+  confirmDialog.value = { message, onConfirm }
 }
 
-function toggleFeature(featureId) {
+function dismissConfirm() {
+  confirmDialog.value = null
+}
+
+function acceptConfirm() {
+  confirmDialog.value?.onConfirm()
+  confirmDialog.value = null
+}
+
+function confirmSignOut() {
+  showConfirm('Sign out?', () => signOut())
+}
+
+function exportData(format: 'csv' | 'json') {
+  const workoutStore = useWorkoutStore()
+  const bwStore = useBodyweightStore()
+  const timestamp = new Date().toISOString().slice(0, 10)
+
+  if (format === 'json') {
+    const data = {
+      exportDate: new Date().toISOString(),
+      exercises: workoutStore.exercises.map(e => ({
+        name: e.name,
+        tags: e.tags,
+        sets: e.sets.map(s => ({
+          date: s.date,
+          weight: s.weight,
+          reps: s.reps,
+          estimated1RM: s.estimated1RM,
+        })),
+      })),
+      bodyweight: bwStore.sortedEntries.map(e => ({
+        date: e.date,
+        weight: e.weight,
+      })),
+    }
+    downloadFile(`lift-export-${timestamp}.json`, JSON.stringify(data, null, 2), 'application/json')
+  } else {
+    const lines = ['Exercise,Date,Weight,Reps,Estimated 1RM,Tags']
+    for (const ex of workoutStore.exercises) {
+      for (const s of ex.sets) {
+        const date = s.date.slice(0, 10)
+        const tags = ex.tags.join(';')
+        lines.push(`${csvEscape(ex.name)},${date},${s.weight},${s.reps},${s.estimated1RM},${csvEscape(tags)}`)
+      }
+    }
+    if (bwStore.sortedEntries.length > 0) {
+      lines.push('')
+      lines.push('Date,Body Weight')
+      for (const e of bwStore.sortedEntries) {
+        lines.push(`${e.date.slice(0, 10)},${e.weight}`)
+      }
+    }
+    downloadFile(`lift-export-${timestamp}.csv`, lines.join('\n'), 'text/csv')
+  }
+  logEvent('data_export', { format })
+}
+
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
+}
+
+function downloadFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function toggleFeature(featureId: string) {
   prefs.toggleFeature(featureId)
   logEvent('feature_toggle', { feature: featureId, enabled: prefs.features[featureId] })
 }

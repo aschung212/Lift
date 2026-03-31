@@ -3,7 +3,9 @@
   <div class="wtCard">
     <div class="wtCardHeader">
       <h2 class="wtTitle">Exercise Tracker</h2>
-      <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+      <div class="wtHeaderActions">
+        <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+      </div>
     </div>
 
     <!-- Tag filter -->
@@ -20,11 +22,32 @@
           class="wtTagChip wtTagChipClear"
           @click="activeTagFilters = []"
         >× Clear</button>
+        <button
+          class="wtTagChip wtTagChipManage"
+          @click="openTagManager"
+          aria-label="Manage tags"
+        >⚙</button>
       </div>
     </template>
 
+    <!-- Search bar (shown when 5+ exercises) -->
+    <div v-if="store.exercises.length >= 5" class="wtSearchBar">
+      <input
+        v-model="searchQuery"
+        type="search"
+        class="wtSearchInput"
+        placeholder="Search exercises…"
+        aria-label="Search exercises"
+      />
+      <span v-if="searchQuery" class="wtSearchCount">{{ filteredExercises.length }} result{{ filteredExercises.length !== 1 ? 's' : '' }}</span>
+    </div>
+
     <p v-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
+    </p>
+
+    <p v-else-if="filteredExercises.length === 0" class="wtEmpty">
+      No exercises match your search.
     </p>
 
     <ul v-else class="wtExerciseList" ref="exerciseListEl">
@@ -69,11 +92,12 @@
 
   <!-- Exercise detail modal -->
   <Teleport to="body">
-    <div v-if="detailExercise" class="repMaxOverlay" @click.self="detailExerciseId = null">
-      <div class="wtDetailModal">
+    <div v-if="detailExercise" class="repMaxOverlay" @click.self="detailExerciseId = null" @keydown.escape="detailExerciseId = null">
+      <div class="wtDetailModal" :ref="onDetailModalMounted" :style="detailSwipe.dragStyle()" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+        <div class="sheetDragHandle" aria-hidden="true"><span class="sheetDragPill"></span></div>
         <div class="wtDetailHeader">
-          <button class="wtDetailBack" @click="detailExerciseId = null">‹ Back</button>
-          <h2 class="wtDetailTitle">{{ detailExercise.name }}</h2>
+          <button class="wtDetailBack" @click="detailExerciseId = null" aria-label="Back to exercise list">‹ Back</button>
+          <h2 class="wtDetailTitle" id="detail-modal-title">{{ detailExercise.name }}</h2>
           <button class="wtDetailLogBtn" @click="openLogForExercise(detailExercise.id)">+ Log</button>
         </div>
 
@@ -124,7 +148,7 @@
                     >Edit</button>
                     <button
                       class="wtSetBtn wtSetBtnDel"
-                      @click.stop="store.deleteSet(detailExercise.id, set.id); logEvent('set_delete')"
+                      @click.stop="undoDeleteSet(detailExercise.id, set)"
                       aria-label="Delete set"
                     >Delete</button>
                   </div>
@@ -165,7 +189,7 @@
 
           <!-- Clear all sets -->
           <div v-if="detailExercise.sets.length > 0" class="wtClearWrap">
-            <button class="wtClearBtn" @click="confirmClearId = detailExercise.id">
+            <button class="wtClearBtn" @click="undoClearSets(detailExercise)">
               Clear all sets
             </button>
           </div>
@@ -178,7 +202,7 @@
             >Edit Exercise</button>
             <button
               class="wtSetBtn wtSetBtnDel"
-              @click="confirmDeleteId = detailExercise.id"
+              @click="undoDeleteExercise(detailExercise)"
             >Delete Exercise</button>
           </div>
         </div>
@@ -188,8 +212,8 @@
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
-    <div v-if="showModal" class="repMaxOverlay" @click.self="onOverlayClick">
-      <div class="repMaxModal" @click.self="editingPresets = false">
+    <div v-if="showModal" class="repMaxOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
+      <div class="repMaxModal" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
 
         <!-- Rest timer view -->
         <template v-if="timerActive">
@@ -197,7 +221,7 @@
 
           <template v-if="editingPresets">
             <h2>Edit Times</h2>
-            <button class="wtTimerEditCountdown" @click="togglePause">
+            <button class="wtTimerEditCountdown" @click="togglePause" :aria-label="timerPaused ? 'Resume timer' : 'Pause timer'">
               {{ timerDisplay }}
               <svg v-if="!timerPaused && timerSeconds > 0" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
               <svg v-else-if="timerPaused" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -213,12 +237,15 @@
                   <button
                     :class="['glassToggle', { on: !disabledPresets.includes(s) }]"
                     @click="togglePresetEnabled(s)"
+                    role="switch"
+                    :aria-checked="!disabledPresets.includes(s)"
                     :aria-label="disabledPresets.includes(s) ? 'Enable ' + s : 'Disable ' + s"
                   ><span class="glassToggleThumb"></span></button>
                   <button
                     class="wtTimerEditDeleteBtn"
                     :disabled="restPresets.length <= 1"
                     @click="removePreset(s)"
+                    :aria-label="'Remove ' + formatDuration(s) + ' preset'"
                   >&times;</button>
                 </div>
               </template>
@@ -228,21 +255,24 @@
                   <button
                     :class="['glassToggle', { on: warningTimes.includes(s) }]"
                     @click="toggleWarningTime(s)"
+                    role="switch"
+                    :aria-checked="warningTimes.includes(s)"
                     :aria-label="warningTimes.includes(s) ? 'Disable ' + s + 's alert' : 'Enable ' + s + 's alert'"
                   ><span class="glassToggleThumb"></span></button>
                   <button
                     class="wtTimerEditDeleteBtn"
                     :disabled="warningOptions.length <= 1"
                     @click="removeWarningOption(s)"
+                    :aria-label="'Remove ' + s + 's warning'"
                   >&times;</button>
                 </div>
               </template>
             </div>
-            <div v-if="editTab === 'rest'" class="wtTimerEditRow" style="margin-top: 8px">
+            <div v-if="editTab === 'rest'" class="wtTimerEditRow" style="margin-top: var(--space-2)">
               <input class="wtTimerEditInput" type="number" inputmode="numeric" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="addPreset" ref="presetInputEl" />
               <button class="wtTimerEditAddBtn" :disabled="!newPresetValue" @click="addPreset">Add</button>
             </div>
-            <div v-else class="wtTimerEditRow" style="margin-top: 8px">
+            <div v-else class="wtTimerEditRow" style="margin-top: var(--space-2)">
               <input class="wtTimerEditInput" type="number" inputmode="numeric" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" />
               <button class="wtTimerEditAddBtn" :disabled="!newWarningValue" @click="addWarningOption">Add</button>
             </div>
@@ -256,8 +286,8 @@
           <p v-if="selectedExerciseName" class="wtTimerExName">{{ selectedExerciseName }}</p>
 
           <!-- Circular progress ring -->
-          <div class="wtTimerRingWrap">
-            <svg class="wtTimerRing" viewBox="0 0 200 200">
+          <div :class="['wtTimerRingWrap', { wtTimerRingUrgent: timerUrgent }]">
+            <svg class="wtTimerRing" viewBox="0 0 200 200" aria-hidden="true">
               <circle class="wtTimerRingBg" cx="100" cy="100" r="88" />
               <circle
                 class="wtTimerRingFill"
@@ -266,7 +296,7 @@
                 :stroke-dashoffset="2 * Math.PI * 88 * (1 - timerProgress)"
               />
             </svg>
-            <div class="wtTimerRingInner">
+            <div class="wtTimerRingInner" aria-live="polite" aria-atomic="true">
               <span :class="['wtTimerTime', { wtTimerTimeDone: timerSeconds === 0 }]">{{ timerDisplay }}</span>
               <span class="wtTimerLabel">{{ timerSeconds === 0 ? 'Done' : 'remaining' }}</span>
             </div>
@@ -311,7 +341,7 @@
 
         <!-- Log / edit form -->
         <template v-else>
-          <h2>{{ modalTitle }}</h2>
+          <h2 id="log-modal-title">{{ modalTitle }}</h2>
 
           <!-- New exercise mode: name + tags input -->
           <template v-if="!isEditMode && selectedExerciseId === '__new__'">
@@ -356,6 +386,18 @@
 
           <!-- Log for existing exercise mode: show name as subtitle -->
           <p v-else-if="isLogForExercise" class="wtModalSubtitle">{{ selectedExerciseName }}</p>
+
+          <!-- Progressive overload suggestion -->
+          <div v-if="overloadSuggestion && !isEditMode" class="wtOverloadSuggestion" @click="applyOverloadSuggestion">
+            <div class="wtOverloadIcon">
+              <svg v-if="overloadSuggestion.type === 'increase_weight'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 5 5 12"/></svg>
+            </div>
+            <div class="wtOverloadContent">
+              <span class="wtOverloadTarget">Try {{ displayWeight(overloadSuggestion.weight) }} {{ weightUnit }} × {{ overloadSuggestion.reps }}</span>
+              <span class="wtOverloadReason">{{ overloadSuggestion.reason }}</span>
+            </div>
+          </div>
 
           <!-- Date: always visible -->
           <label class="repMaxLabel">
@@ -419,32 +461,12 @@
     </div>
   </Teleport>
 
-  <!-- Confirm Clear All Modal -->
-  <Teleport to="body">
-    <div v-if="confirmClearId !== null" class="repMaxOverlay" @click.self="confirmClearId = null">
-      <div class="repMaxModal wtConfirmModal">
-        <div class="wtConfirmIcon">⚠️</div>
-        <h2>Clear All Sets?</h2>
-        <p class="wtConfirmText">
-          This will permanently delete all
-          <strong>{{ confirmClearExercise?.sets.length }}</strong>
-          set{{ confirmClearExercise?.sets.length !== 1 ? 's' : '' }} for
-          <strong>{{ confirmClearExercise?.name }}</strong>.
-          This cannot be undone.
-        </p>
-        <div class="repMaxActions">
-          <button class="repMaxBtn wtConfirmBtnDanger" @click="confirmClear">Clear All</button>
-          <button class="repMaxBtn repMaxBtnClose" @click="confirmClearId = null">Cancel</button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 
   <!-- Edit Exercise Modal -->
   <Teleport to="body">
-    <div v-if="editTarget !== null" class="repMaxOverlay" @click.self="editTarget = null">
-      <div class="repMaxModal">
-        <h2>Edit Exercise</h2>
+    <div v-if="editTarget !== null" class="repMaxOverlay" @click.self="editTarget = null" @keydown.escape="editTarget = null">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="edit-exercise-title">
+        <h2 id="edit-exercise-title">Edit Exercise</h2>
         <label class="repMaxLabel">
           Name
           <div class="repMaxInputRow">
@@ -489,22 +511,54 @@
     </div>
   </Teleport>
 
-  <!-- Confirm Delete Exercise Modal -->
+  <!-- Tag Manager Modal -->
   <Teleport to="body">
-    <div v-if="confirmDeleteId !== null" class="repMaxOverlay" @click.self="confirmDeleteId = null">
-      <div class="repMaxModal wtConfirmModal">
-        <div class="wtConfirmIcon">⚠️</div>
-        <h2>Delete Exercise?</h2>
-        <p class="wtConfirmText">
-          This will permanently delete
-          <strong>{{ confirmDeleteExercise?.name }}</strong>
-          and all <strong>{{ confirmDeleteExercise?.sets.length }}</strong>
-          set{{ confirmDeleteExercise?.sets.length !== 1 ? 's' : '' }}.
-          This cannot be undone.
-        </p>
+    <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
+        <h2 id="tag-manager-title">Manage Tags</h2>
+        <p v-if="store.allTags.length === 0" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Add tags to exercises to see them here.</p>
+        <ul v-else class="wtTagManagerList">
+          <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItemWrap">
+            <div class="wtTagManagerItem">
+              <template v-if="renamingTag === tag">
+                <input
+                  v-model.trim="renameTagValue"
+                  type="text"
+                  class="repMaxInput wtTagManagerInput"
+                  @keyup.enter="confirmRenameTag"
+                  @keyup.escape="renamingTag = null"
+                  ref="renameTagInputEl"
+                />
+                <button class="wtTagManagerSaveBtn" @click="confirmRenameTag" :disabled="!renameTagValue" aria-label="Save tag name">✓</button>
+                <button class="wtTagManagerCancelBtn" @click="renamingTag = null" aria-label="Cancel rename">✕</button>
+              </template>
+              <template v-else>
+                <button class="wtTagManagerExpandBtn" @click="toggleTagExpand(tag)" :aria-expanded="expandedTag === tag" :aria-label="'Show exercises for ' + tag">
+                  <span class="wtTagManagerExpandIcon" :class="{ expanded: expandedTag === tag }">›</span>
+                </button>
+                <span class="wtTagManagerLabel" @click="toggleTagExpand(tag)" role="button">{{ tag }}</span>
+                <span class="wtTagManagerCount">{{ tagExerciseCount(tag) }}</span>
+                <button class="wtTagManagerEditBtn" @click="startRenameTag(tag)" aria-label="Rename tag">✎</button>
+                <button class="wtTagManagerDeleteBtn" @click="confirmDeleteTag(tag)" aria-label="Delete tag">✕</button>
+              </template>
+            </div>
+            <ul v-if="expandedTag === tag" class="wtTagExerciseList">
+              <li v-for="exercise in store.exercises" :key="exercise.id" class="wtTagExerciseItem">
+                <label class="wtTagExerciseLabel">
+                  <input
+                    type="checkbox"
+                    :checked="exercise.tags.includes(tag)"
+                    @change="toggleExerciseTag(exercise.id, tag)"
+                    class="wtTagExerciseCheckbox"
+                  />
+                  <span>{{ exercise.name }}</span>
+                </label>
+              </li>
+            </ul>
+          </li>
+        </ul>
         <div class="repMaxActions">
-          <button class="repMaxBtn wtConfirmBtnDanger" @click="confirmDelete">Delete</button>
-          <button class="repMaxBtn repMaxBtnClose" @click="confirmDeleteId = null">Cancel</button>
+          <button class="repMaxBtn repMaxBtnClose" @click="tagManagerOpen = false">Done</button>
         </div>
       </div>
     </div>
@@ -514,7 +568,7 @@
   <button
     v-if="restTimerEnabled && !showModal"
     class="wtRestBar"
-    :class="{ wtRestBarActive: timerActive && !showModal }"
+    :class="{ wtRestBarActive: timerActive && !showModal, wtRestBarUrgent: timerUrgent && timerActive && !showModal }"
     @click="openRestTimer"
   >
     <template v-if="timerActive">
@@ -530,21 +584,31 @@
   </button>
 </template>
 
-<script setup>
-import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
+<script setup lang="ts">
+import { ref, reactive, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import type { Exercise, WorkoutSet } from '../stores/workout'
+
+interface PREntry extends WorkoutSet {
+  daysSince: number | null
+  e1rmDelta: number | null
+}
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useUndoToast } from '../composables/useUndoToast'
+import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
-const { restTimerEnabled, weightUnit, displayWeight, toLbs } = useTheme()
+const { show: showUndo } = useUndoToast()
+const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
 
-// ── Tag filtering ────────────────────────────────────────────────
-const activeTagFilters = ref([])
+// ── Search & tag filtering ──────────────────────────────────────
+const searchQuery = ref('')
+const activeTagFilters = ref<string[]>([])
 
-function toggleTagFilter(tag) {
+function toggleTagFilter(tag: string) {
   const idx = activeTagFilters.value.indexOf(tag)
   if (idx >= 0) {
     activeTagFilters.value = activeTagFilters.value.filter(t => t !== tag)
@@ -554,11 +618,20 @@ function toggleTagFilter(tag) {
 }
 
 const filteredExercises = computed(() => {
-  if (activeTagFilters.value.length === 0) return store.exercises
-  return store.exercises.filter(e => {
-    const tags = e.tags || []
-    return activeTagFilters.value.some(t => tags.includes(t))
-  })
+  let result = store.exercises
+  // Text search
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) {
+    result = result.filter(e => e.name.toLowerCase().includes(q))
+  }
+  // Tag filter
+  if (activeTagFilters.value.length > 0) {
+    result = result.filter(e => {
+      const tags = e.tags || []
+      return activeTagFilters.value.some(t => tags.includes(t))
+    })
+  }
+  return result
 })
 
 // Remove stale tags from active filters
@@ -567,28 +640,44 @@ watch(() => store.allTags, (tags) => {
 })
 
 // ── Card state ────────────────────────────────────────────────────
-const showAllSets = ref(new Set())
+const showAllSets = ref(new Set<string>())
 const SET_LIMIT = 10
 
 // Exercise detail modal
-const detailExercise = computed(() =>
+const detailExercise = computed((): Exercise | null =>
   detailExerciseId.value ? store.exercises.find(e => e.id === detailExerciseId.value) ?? null : null
 )
-const detailExerciseId = ref(null)
+const detailExerciseId = ref<string | null>(null)
 
-const detailTab = ref('sets')
+const detailTab = ref<'sets' | 'prs'>('sets')
 
-function openDetailModal(id) {
+// ── Swipe-to-dismiss for detail modal ───────────────────────────
+const detailSwipe = useSwipeToDismiss({
+  threshold: 100,
+  onDismiss: () => { detailExerciseId.value = null },
+})
+
+watch(detailExerciseId, (id) => {
+  if (!id) detailSwipe.detach()
+})
+
+function onDetailModalMounted(el: Element | ComponentPublicInstance | null) {
+  if (el && el instanceof HTMLElement) {
+    detailSwipe.attach(el)
+  }
+}
+
+function openDetailModal(id: string) {
   detailExerciseId.value = id
   activeSetId.value = null
   detailTab.value = 'sets'
 }
 
-const prHistory = computed(() => {
+const prHistory = computed((): PREntry[] => {
   if (!detailExercise.value) return []
   const sets = [...detailExercise.value.sets].sort((a, b) => a.date.localeCompare(b.date))
   // Collect all new maxes
-  const raw = []
+  const raw: WorkoutSet[] = []
   let maxSoFar = 0
   for (const set of sets) {
     if (set.estimated1RM > maxSoFar) {
@@ -597,31 +686,32 @@ const prHistory = computed(() => {
     }
   }
   // Keep only the best PR per day
-  const byDay = {}
+  const byDay: Record<string, WorkoutSet> = {}
   for (const pr of raw) {
     const day = pr.date.slice(0, 10)
     if (!byDay[day] || pr.estimated1RM > byDay[day].estimated1RM) {
       byDay[day] = pr
     }
   }
-  const prs = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date))
-  // Add daysSince
-  for (let i = 0; i < prs.length; i++) {
-    prs[i].daysSince = i > 0
-      ? Math.round((new Date(prs[i].date) - new Date(prs[i - 1].date)) / 86400000)
-      : null
-    prs[i].e1rmDelta = i > 0
-      ? +(prs[i].estimated1RM - prs[i - 1].estimated1RM).toFixed(1)
-      : null
-  }
+  const sorted = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date))
+  // Add daysSince and e1rmDelta
+  const prs: PREntry[] = sorted.map((pr, i) => ({
+    ...pr,
+    daysSince: i > 0
+      ? Math.round((new Date(pr.date).getTime() - new Date(sorted[i - 1].date).getTime()) / 86400000)
+      : null,
+    e1rmDelta: i > 0
+      ? +(pr.estimated1RM - sorted[i - 1].estimated1RM).toFixed(1)
+      : null,
+  }))
   return prs.reverse()
 })
 
 // ── Drag-to-reorder ─────────────────────────────────────────────
-const exerciseListEl = ref(null)
+const exerciseListEl = ref<HTMLElement | null>(null)
 const dragState = reactive({ dragging: false, fromIndex: -1, overIndex: -1 })
 
-function getItemIndexFromPoint(clientY) {
+function getItemIndexFromPoint(clientY: number): number {
   const list = exerciseListEl.value
   if (!list) return -1
   const items = list.querySelectorAll('.wtExerciseItem')
@@ -634,13 +724,13 @@ function getItemIndexFromPoint(clientY) {
   return items.length - 1
 }
 
-function onDragStart(index, event) {
+function onDragStart(index: number, _event: MouseEvent | TouchEvent) {
   dragState.dragging = true
   dragState.fromIndex = index
   dragState.overIndex = index
 
-  const onMove = (e) => {
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+  const onMove = (e: MouseEvent | TouchEvent) => {
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
     const idx = getItemIndexFromPoint(clientY)
     if (idx !== -1) dragState.overIndex = idx
   }
@@ -668,29 +758,29 @@ function onDragStart(index, event) {
 }
 
 // ── Set actions (tap-to-reveal) ──────────────────────────────────
-const activeSetId = ref(null)
+const activeSetId = ref<string | null>(null)
 
-function toggleSetActions(setId) {
+function toggleSetActions(setId: string) {
   activeSetId.value = activeSetId.value === setId ? null : setId
 }
 
-function toggleShowAll(id) {
+function toggleShowAll(id: string) {
   const next = new Set(showAllSets.value)
-  next.has(id) ? next.delete(id) : next.add(id)
+  if (next.has(id)) next.delete(id); else next.add(id)
   showAllSets.value = next
 }
 
-function visibleSets(exercise) {
+function visibleSets(exercise: Exercise): WorkoutSet[] {
   const reversed = [...exercise.sets].reverse()
   return showAllSets.value.has(exercise.id) ? reversed : reversed.slice(0, SET_LIMIT)
 }
 
-function formatDate(iso) {
+function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 // Converts a stored ISO string back to the local YYYY-MM-DD for a date input
-function isoToLocalDate(iso) {
+function isoToLocalDate(iso: string): string {
   const d = new Date(iso)
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -698,19 +788,19 @@ function isoToLocalDate(iso) {
   return `${y}-${m}-${day}`
 }
 
-function todayISO() {
+function todayISO(): string {
   return new Date().toISOString().slice(0, 10) // YYYY-MM-DD
 }
 
 // ── Log / Edit modal state ────────────────────────────────────────
 const showModal = ref(false)
-const editingSet = ref(null) // { exerciseId, setId } when editing, null when logging
+const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
 const newExerciseName = ref('')
-const newExerciseTags = ref([])
+const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
-const weight = ref(null)
-const reps = ref(null)
+const weight = ref<number | null>(null)
+const reps = ref<number | null>(null)
 const date = ref(todayISO())
 
 const isEditMode = computed(() => editingSet.value !== null)
@@ -725,6 +815,19 @@ const isLogForExercise = computed(() =>
 const selectedExerciseName = computed(() =>
   store.exercises.find(e => e.id === selectedExerciseId.value)?.name ?? ''
 )
+
+// Progressive overload suggestion for current exercise
+const overloadSuggestion = computed(() => {
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  return store.getOverloadSuggestion(id)
+})
+
+function applyOverloadSuggestion() {
+  if (!overloadSuggestion.value) return
+  weight.value = displayWeight(overloadSuggestion.value.weight)
+  reps.value = overloadSuggestion.value.reps
+}
 
 const modalTitle = computed(() => {
   if (isEditMode.value) return 'Edit Set'
@@ -741,7 +844,7 @@ function openNewExerciseModal() {
   showModal.value = true
 }
 
-const newTagInputEl = ref(null)
+const newTagInputEl = ref<HTMLInputElement | null>(null)
 
 function addNewExerciseTag() {
   const tag = newExerciseTagInput.value.trim()
@@ -752,16 +855,13 @@ function addNewExerciseTag() {
   nextTick(() => newTagInputEl.value?.focus())
 }
 
-function removeNewExerciseTag(tag) {
-  newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
-}
 
 const allNewExerciseTags = computed(() => {
   const all = new Set([...store.allTags, ...newExerciseTags.value])
   return [...all]
 })
 
-function toggleNewExerciseTag(tag) {
+function toggleNewExerciseTag(tag: string) {
   if (newExerciseTags.value.includes(tag)) {
     newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
   } else {
@@ -770,7 +870,7 @@ function toggleNewExerciseTag(tag) {
 }
 
 // Open modal pre-targeted at a specific existing exercise
-function openLogForExercise(exerciseId) {
+function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   date.value = todayISO()
@@ -778,7 +878,7 @@ function openLogForExercise(exerciseId) {
 }
 
 // Open modal to edit an existing set
-function openEditModal(exercise, set) {
+function openEditModal(exercise: Exercise, set: WorkoutSet) {
   editingSet.value = { exerciseId: exercise.id, setId: set.id }
   selectedExerciseId.value = exercise.id
   date.value = isoToLocalDate(set.date)
@@ -804,15 +904,15 @@ function closeModal() {
 const timerActive = ref(false)
 const timerPaused = ref(false)
 const timerSeconds = ref(0)
-const restDuration = ref(parseInt(localStorage.getItem('rest-duration')) || 90)
-let timerIntervalId = null
+const restDuration = ref(parseInt(localStorage.getItem('rest-duration') ?? '90') || 90)
+let timerIntervalId: ReturnType<typeof setInterval> | null = null
 
 const DEFAULT_WARNING_OPTIONS = [3, 5, 10, 15, 30]
-const warningOptions = ref(loadWarningOptions())
-const warningTimes = ref(loadWarningTimes())
-const newWarningValue = ref(null)
+const warningOptions = ref<number[]>(loadWarningOptions())
+const warningTimes = ref<number[]>(loadWarningTimes())
+const newWarningValue = ref<number | null>(null)
 
-function loadWarningOptions() {
+function loadWarningOptions(): number[] {
   try {
     const raw = localStorage.getItem('rest-warning-options')
     if (raw) {
@@ -827,7 +927,7 @@ function saveWarningOptions() {
   localStorage.setItem('rest-warning-options', JSON.stringify(warningOptions.value))
 }
 
-function loadWarningTimes() {
+function loadWarningTimes(): number[] {
   try {
     const raw = localStorage.getItem('rest-warnings')
     if (raw) {
@@ -838,7 +938,7 @@ function loadWarningTimes() {
   return [5]
 }
 
-function toggleWarningTime(val) {
+function toggleWarningTime(val: number) {
   if (val === 0) {
     warningTimes.value = []
   } else if (warningTimes.value.includes(val)) {
@@ -850,15 +950,16 @@ function toggleWarningTime(val) {
 }
 
 function addWarningOption() {
-  const val = parseInt(newWarningValue.value)
-  if (val && val >= 1 && val <= 120 && !warningOptions.value.includes(val)) {
+  if (newWarningValue.value === null) return
+  const val = newWarningValue.value
+  if (val >= 1 && val <= 120 && !warningOptions.value.includes(val)) {
     warningOptions.value = [...warningOptions.value, val].sort((a, b) => a - b)
     saveWarningOptions()
   }
   newWarningValue.value = null
 }
 
-function removeWarningOption(val) {
+function removeWarningOption(val: number) {
   if (warningOptions.value.length <= 1) return
   warningOptions.value = warningOptions.value.filter(v => v !== val)
   warningTimes.value = warningTimes.value.filter(v => v !== val)
@@ -867,7 +968,7 @@ function removeWarningOption(val) {
 }
 
 function startInterval() {
-  clearInterval(timerIntervalId)
+  if (timerIntervalId !== null) clearInterval(timerIntervalId)
   timerIntervalId = setInterval(() => {
     if (!timerPaused.value) {
       timerSeconds.value--
@@ -876,7 +977,7 @@ function startInterval() {
       }
       if (timerSeconds.value <= 0) {
         playGoBeep()
-        clearInterval(timerIntervalId)
+        if (timerIntervalId !== null) clearInterval(timerIntervalId)
         timerIntervalId = null
         timerSeconds.value = 0
         if (!editingPresets.value) {
@@ -904,7 +1005,7 @@ const timerStopping = ref(false)
 
 function stopTimer() {
   timerStopping.value = true
-  clearInterval(timerIntervalId)
+  if (timerIntervalId !== null) clearInterval(timerIntervalId)
   timerIntervalId = null
   timerActive.value = false
   timerPaused.value = false
@@ -932,17 +1033,17 @@ function skipToNextSet() {
 
 const DEFAULT_PRESETS = [30, 60, 90, 120, 180, 300]
 const editingPresets = ref(false)
-const editTab = ref('rest')
-const newPresetValue = ref(null)
+const editTab = ref<'rest' | 'alerts'>('rest')
+const newPresetValue = ref<number | null>(null)
 
-const restPresets = ref(loadPresets())
-const disabledPresets = ref(loadDisabledPresets())
+const restPresets = ref<number[]>(loadPresets())
+const disabledPresets = ref<number[]>(loadDisabledPresets())
 
 const visiblePresets = computed(() =>
   restPresets.value.filter(s => !disabledPresets.value.includes(s))
 )
 
-function loadDisabledPresets() {
+function loadDisabledPresets(): number[] {
   try {
     const raw = localStorage.getItem('rest-presets-disabled')
     if (raw) return JSON.parse(raw)
@@ -954,7 +1055,7 @@ function saveDisabledPresets() {
   localStorage.setItem('rest-presets-disabled', JSON.stringify(disabledPresets.value))
 }
 
-function togglePresetEnabled(val) {
+function togglePresetEnabled(val: number) {
   if (disabledPresets.value.includes(val)) {
     disabledPresets.value = disabledPresets.value.filter(v => v !== val)
   } else {
@@ -965,7 +1066,7 @@ function togglePresetEnabled(val) {
   saveDisabledPresets()
 }
 
-function loadPresets() {
+function loadPresets(): number[] {
   try {
     const raw = localStorage.getItem('rest-presets')
     if (raw) {
@@ -980,37 +1081,38 @@ function savePresets() {
   localStorage.setItem('rest-presets', JSON.stringify(restPresets.value))
 }
 
-function formatDuration(s) {
+function formatDuration(s: number): string {
   if (s < 60) return s + 's'
   const m = Math.floor(s / 60)
   const rem = s % 60
   return rem ? `${m}:${rem.toString().padStart(2, '0')}` : `${m}m`
 }
 
-function setRestDuration(val) {
+function setRestDuration(val: number) {
   ensureAudioCtx()
   restDuration.value = val
-  localStorage.setItem('rest-duration', val)
+  localStorage.setItem('rest-duration', String(val))
   timerSeconds.value = val
   timerPaused.value = false
   startInterval()
 }
 
 function addPreset() {
-  const val = parseInt(newPresetValue.value)
-  if (val && val >= 5 && val <= 600 && !restPresets.value.includes(val)) {
+  if (newPresetValue.value === null) return
+  const val = newPresetValue.value
+  if (val >= 5 && val <= 600 && !restPresets.value.includes(val)) {
     restPresets.value = [...restPresets.value, val].sort((a, b) => a - b)
     savePresets()
   }
   newPresetValue.value = null
 }
 
-const presetInputEl = ref(null)
+const presetInputEl = ref<HTMLInputElement | null>(null)
 watch(editingPresets, (v) => {
   if (v) setTimeout(() => presetInputEl.value?.focus(), 0)
 })
 
-function removePreset(val) {
+function removePreset(val: number) {
   if (restPresets.value.length <= 1) return
   restPresets.value = restPresets.value.filter(v => v !== val)
   savePresets()
@@ -1019,10 +1121,6 @@ function removePreset(val) {
   }
 }
 
-function resetPresets() {
-  restPresets.value = [...DEFAULT_PRESETS]
-  savePresets()
-}
 
 function resetAllDefaults() {
   restPresets.value = [...DEFAULT_PRESETS]
@@ -1053,10 +1151,6 @@ function openRestTimer() {
   }
 }
 
-function disableRestTimer() {
-  restTimerEnabled.value = false
-  closeModal()
-}
 
 const timerDisplay = computed(() => {
   const m = Math.floor(timerSeconds.value / 60)
@@ -1072,11 +1166,11 @@ const timerProgress = computed(() => {
 const maxWarning = computed(() => warningTimes.value.length ? Math.max(...warningTimes.value) : 0)
 const timerUrgent = computed(() => maxWarning.value > 0 && timerSeconds.value <= maxWarning.value && timerSeconds.value > 0)
 
-let audioCtx = null
+let audioCtx: AudioContext | null = null
 
 function ensureAudioCtx() {
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    audioCtx = new AudioContext()
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume()
@@ -1094,7 +1188,7 @@ function ensureAudioCtx() {
 }
 
 // Warning tone — pitch rises as time gets closer to zero
-function playWarningBeep(secondsLeft) {
+function playWarningBeep(secondsLeft: number) {
   if (!audioCtx) return
   if (audioCtx.state === 'suspended') audioCtx.resume()
   try {
@@ -1157,7 +1251,7 @@ const isNewPR = computed(() => {
   return pr > 0 && liveEstimateLbs.value > pr
 })
 
-const hasSetData = computed(() => weight.value > 0 && reps.value >= 1)
+const hasSetData = computed(() => weight.value !== null && weight.value > 0 && reps.value !== null && reps.value >= 1)
 
 const canSave = computed(() => {
   if (isEditMode.value) return hasSetData.value
@@ -1167,12 +1261,12 @@ const canSave = computed(() => {
 
 function saveSet() {
   if (!canSave.value) return
-  if (isEditMode.value) {
+  if (isEditMode.value && editingSet.value && weight.value !== null && reps.value !== null) {
     store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, toLbs(weight.value), reps.value, date.value)
     logEvent('set_edit')
     closeModal()
   } else {
-    let exerciseId = selectedExerciseId.value
+    let exerciseId: string = selectedExerciseId.value
     const isNew = exerciseId === '__new__'
     if (isNew) {
       // Auto-add any pending tag text
@@ -1180,17 +1274,19 @@ function saveSet() {
       if (pendingTag && !newExerciseTags.value.includes(pendingTag)) {
         newExerciseTags.value.push(pendingTag)
       }
-      exerciseId = store.addExercise(newExerciseName.value, newExerciseTags.value)
+      const newId = store.addExercise(newExerciseName.value, newExerciseTags.value)
+      if (!newId) return
+      exerciseId = newId
       selectedExerciseId.value = exerciseId
       newExerciseName.value = ''
       newExerciseTags.value = []
       newExerciseTagInput.value = ''
       logEvent('exercise_add')
     }
-    if (hasSetData.value) {
+    if (hasSetData.value && weight.value !== null && reps.value !== null) {
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log')
-      if (restTimerEnabled.value) {
+      if (restTimerEnabled.value && restTimerAutoStart.value) {
         startRestTimer()
       } else {
         closeModal()
@@ -1201,37 +1297,56 @@ function saveSet() {
   }
 }
 
-// ── Confirm clear state ───────────────────────────────────────────
-const confirmClearId = ref(null)
+// ── Undo-able destructive actions ────────────────────────────────
+function undoDeleteSet(exerciseId: string, set: WorkoutSet) {
+  store.deleteSet(exerciseId, set.id, { sync: false })
+  logEvent('set_delete')
+  showUndo(
+    'Set deleted',
+    () => store.restoreSet(exerciseId, set),
+    () => store.syncDeleteSet(set.id),
+  )
+}
 
-const confirmClearExercise = computed(() =>
-  confirmClearId.value !== null
-    ? store.exercises.find(e => e.id === confirmClearId.value)
-    : null
-)
+function undoClearSets(exercise: Exercise) {
+  const savedSets = [...exercise.sets]
+  const id = exercise.id
+  store.clearSets(id, { sync: false })
+  logEvent('sets_clear_all', { count: savedSets.length })
+  showUndo(
+    `${savedSets.length} set${savedSets.length !== 1 ? 's' : ''} cleared`,
+    () => store.restoreSets(id, savedSets),
+    () => store.syncDeleteSets(id),
+  )
+}
 
-function confirmClear() {
-  if (confirmClearId.value === null) return
-  const count = confirmClearExercise.value?.sets.length ?? 0
-  store.clearSets(confirmClearId.value)
-  confirmClearId.value = null
-  logEvent('sets_clear_all', { count })
+function undoDeleteExercise(exercise: Exercise) {
+  const saved = { ...exercise, sets: [...exercise.sets] }
+  const idx = store.exercises.indexOf(exercise)
+  if (detailExerciseId.value === exercise.id) detailExerciseId.value = null
+  store.deleteExercise(exercise.id, { sync: false })
+  logEvent('exercise_delete')
+  showUndo(
+    `"${saved.name}" deleted`,
+    () => store.restoreExercise(saved, idx),
+    () => store.syncDeleteExercise(saved.id),
+  )
 }
 
 // ── Edit exercise state (rename + tags) ──────────────────────────
-const editTarget = ref(null)
+const editTarget = ref<string | null>(null)
 const editName = ref('')
-const editTags = ref([])
+const editTags = ref<string[]>([])
 const newTagInput = ref('')
 
-function openEditExerciseModal(exercise) {
+function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
   newTagInput.value = ''
 }
 
-const editTagInputEl = ref(null)
+const editTagInputEl = ref<HTMLInputElement | null>(null)
 
 function addEditTag() {
   const tag = newTagInput.value.trim()
@@ -1242,11 +1357,8 @@ function addEditTag() {
   nextTick(() => editTagInputEl.value?.focus())
 }
 
-function removeEditTag(tag) {
-  editTags.value = editTags.value.filter(t => t !== tag)
-}
 
-function toggleEditTag(tag) {
+function toggleEditTag(tag: string) {
   if (editTags.value.includes(tag)) {
     editTags.value = editTags.value.filter(t => t !== tag)
   } else {
@@ -1273,22 +1385,78 @@ function confirmEditExercise() {
   logEvent('exercise_edit')
 }
 
-// ── Delete exercise state ─────────────────────────────────────────
-const confirmDeleteId = ref(null)
+// ── Tag manager ────────────────────────────────────────────────
+const tagManagerOpen = ref(false)
+const renamingTag = ref<string | null>(null)
+const renameTagValue = ref('')
+const renameTagInputEl = ref<HTMLInputElement[] | null>(null)
+const expandedTag = ref<string | null>(null)
 
-const confirmDeleteExercise = computed(() =>
-  confirmDeleteId.value !== null
-    ? store.exercises.find(e => e.id === confirmDeleteId.value)
-    : null
-)
-
-function confirmDelete() {
-  if (confirmDeleteId.value === null) return
-  if (detailExerciseId.value === confirmDeleteId.value) detailExerciseId.value = null
-  store.deleteExercise(confirmDeleteId.value)
-  confirmDeleteId.value = null
-  logEvent('exercise_delete')
+function openTagManager() {
+  tagManagerOpen.value = true
+  renamingTag.value = null
+  expandedTag.value = null
 }
+
+function toggleTagExpand(tag: string) {
+  expandedTag.value = expandedTag.value === tag ? null : tag
+}
+
+function toggleExerciseTag(exerciseId: string, tag: string) {
+  const exercise = store.exercises.find(e => e.id === exerciseId)
+  if (!exercise) return
+  const has = exercise.tags.includes(tag)
+  const newTags = has
+    ? exercise.tags.filter(t => t !== tag)
+    : [...exercise.tags, tag]
+  store.updateExerciseTags(exerciseId, newTags)
+}
+
+function tagExerciseCount(tag: string): number {
+  return store.exercises.filter(e => (e.tags || []).includes(tag)).length
+}
+
+function startRenameTag(tag: string) {
+  renamingTag.value = tag
+  renameTagValue.value = tag
+  nextTick(() => {
+    if (renameTagInputEl.value && renameTagInputEl.value.length > 0) {
+      renameTagInputEl.value[0].focus()
+      renameTagInputEl.value[0].select()
+    }
+  })
+}
+
+function confirmRenameTag() {
+  if (!renamingTag.value || !renameTagValue.value) return
+  store.renameTag(renamingTag.value, renameTagValue.value)
+  logEvent('tag_rename')
+  renamingTag.value = null
+}
+
+function confirmDeleteTag(tag: string) {
+  const count = tagExerciseCount(tag)
+  // Track which exercises have this tag for undo
+  const affectedIds = store.exercises
+    .filter(e => (e.tags || []).includes(tag))
+    .map(e => e.id)
+  store.deleteTag(tag)
+  logEvent('tag_delete')
+  showUndo(
+    `Tag "${tag}" removed from ${count} exercise${count !== 1 ? 's' : ''}`,
+    () => {
+      // Undo: re-add tag to affected exercises
+      affectedIds.forEach(id => {
+        const exercise = store.exercises.find(e => e.id === id)
+        if (exercise && !exercise.tags.includes(tag)) {
+          store.updateExerciseTags(id, [...exercise.tags, tag])
+        }
+      })
+    },
+    () => {}
+  )
+}
+
 
 onUnmounted(() => stopTimer())
 </script>

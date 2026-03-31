@@ -10,6 +10,7 @@
           v-model.trim="email"
           type="email"
           placeholder="Email"
+          aria-label="Email"
           class="authInput"
           autocomplete="email"
           required
@@ -18,6 +19,7 @@
           v-model="password"
           type="password"
           placeholder="Password"
+          aria-label="Password"
           class="authInput"
           autocomplete="current-password"
           :minlength="isSignUp ? 6 : undefined"
@@ -50,13 +52,14 @@
         </button>
       </div>
 
-      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]">{{ message }}</p>
+      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" role="status" aria-live="polite">{{ message }}</p>
     </div>
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
+import type { Provider } from '@supabase/supabase-js'
 import { useAuth } from '../composables/useAuth'
 
 const { signInWithProvider, signInWithEmail, signUp } = useAuth()
@@ -98,7 +101,7 @@ async function handleEmailSubmit() {
   submitting.value = false
 }
 
-async function handleOAuth(provider) {
+async function handleOAuth(provider: Provider) {
   message.value = ''
   const { error } = await signInWithProvider(provider)
   if (error) {
@@ -149,7 +152,7 @@ async function handleOAuth(provider) {
   width: 100%;
   padding: 12px 14px;
   min-height: 44px;
-  font-size: 16px;
+  font-size: var(--font-callout);
   font-family: inherit;
   color: var(--text-primary);
   background: var(--bg-primary);
@@ -172,10 +175,10 @@ async function handleOAuth(provider) {
   width: 100%;
   padding: 13px 16px;
   min-height: 44px;
-  font-size: 15px;
+  font-size: var(--font-subhead);
   font-weight: 700;
   font-family: inherit;
-  color: #fff;
+  color: var(--text-on-accent);
   background: var(--accent);
   border: none;
   border-radius: 10px;
@@ -226,7 +229,7 @@ async function handleOAuth(provider) {
 }
 
 .authDividerText {
-  font-size: 12px;
+  font-size: var(--font-caption1);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -247,7 +250,7 @@ async function handleOAuth(provider) {
   width: 100%;
   padding: 13px 16px;
   min-height: 44px;
-  font-size: 15px;
+  font-size: var(--font-subhead);
   font-weight: 600;
   font-family: inherit;
   border: 1px solid var(--border-strong);
@@ -273,7 +276,7 @@ async function handleOAuth(provider) {
 
 .authMessage {
   margin-top: 16px;
-  font-size: 13px;
+  font-size: var(--font-footnote);
   font-weight: 500;
 }
 
