@@ -189,6 +189,26 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Keyboard shortcuts help -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="shortcutsOpen" class="kbOverlay" @click.self="closeShortcuts" @keydown.escape="closeShortcuts">
+          <div class="kbSheet" role="dialog" aria-modal="true" aria-labelledby="kb-title">
+            <h3 id="kb-title" class="kbTitle">Keyboard Shortcuts</h3>
+            <dl class="kbList">
+              <div class="kbRow"><dt class="kbKey"><kbd>?</kbd></dt><dd class="kbDesc">Show this help</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>1</kbd></dt><dd class="kbDesc">Go to Workouts</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>2</kbd></dt><dd class="kbDesc">Go to Calendar</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>3</kbd></dt><dd class="kbDesc">Go to Weight</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>,</kbd></dt><dd class="kbDesc">Open settings</dd></div>
+              <div class="kbRow"><dt class="kbKey"><kbd>Esc</kbd></dt><dd class="kbDesc">Close panel</dd></div>
+            </dl>
+            <button class="kbClose" @click="closeShortcuts">Close</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
   </ErrorBoundary>
 </template>
@@ -211,6 +231,7 @@ import { useWorkoutStore } from './stores/workout'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
+import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit } = useTheme()
@@ -280,6 +301,16 @@ function closeSettings() {
   }, { once: true })
 }
 const activeTab = ref(localStorage.getItem('active-tab') || 'workouts')
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────
+const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeShortcuts } = useKeyboardShortcuts(() => [
+  { key: '?', label: 'Show keyboard shortcuts', action: toggleShortcuts },
+  { key: '1', label: 'Go to Workouts', action: () => switchTab('workouts') },
+  { key: '2', label: 'Go to Calendar', action: () => switchTab('calendar') },
+  { key: '3', label: 'Go to Weight', action: () => switchTab('weight') },
+  { key: ',', label: 'Open settings', action: () => { settingsOpen.value = true } },
+  { key: 'Escape', label: 'Close panel', action: () => { closeSettings(); closeShortcuts() }, global: true },
+])
 
 // ── Tab definitions with inline SVG paths ────────────────────────
 const TAB_DEFS = [
