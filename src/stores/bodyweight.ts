@@ -54,7 +54,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this._persist()
     },
 
-    addEntry(weight: number, dateStr?: string): string {
+    addEntry(weight: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}): string {
       const date = dateStr
         ? new Date(dateStr + 'T12:00:00').toISOString()
         : new Date().toISOString()
@@ -62,7 +62,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this.entries.push({ id, date, weight })
       this._persist()
 
-      if (supabase && this._userId) {
+      if (sync && supabase && this._userId) {
         supabase.from('bodyweight_entries').insert({
           id, user_id: this._userId, date, weight
         }).then()

@@ -230,25 +230,27 @@ function chooseStarter() {
   finish(false)
 }
 
+const noSync = { sync: false }
+
 function chooseExplore() {
-  // Add exercises with sample sets
+  // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
-    const id = workoutStore.addExercise(group.exercise, starter?.tags || [])
+    const id = workoutStore.addExercise(group.exercise, starter?.tags || [], noSync)
     if (!id) continue
     for (const set of group.sets) {
-      workoutStore.logSet(id, set.weight, set.reps, set.date)
+      workoutStore.logSet(id, set.weight, set.reps, set.date, noSync)
     }
   }
   // Add remaining starter exercises without sets
   for (const ex of STARTER_EXERCISES) {
     if (!SAMPLE_SETS.find(g => g.exercise === ex.name)) {
-      workoutStore.addExercise(ex.name, ex.tags)
+      workoutStore.addExercise(ex.name, ex.tags, noSync)
     }
   }
   // Add sample bodyweight entries
   for (const entry of SAMPLE_WEIGHTS) {
-    bwStore.addEntry(entry.weight, entry.date)
+    bwStore.addEntry(entry.weight, entry.date, noSync)
   }
   finish(true)
 }

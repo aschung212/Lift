@@ -76,7 +76,7 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
     },
 
-    addExercise(name: string, tags: string[] = []): string | null {
+    addExercise(name: string, tags: string[] = [], { sync = true }: { sync?: boolean } = {}): string | null {
       const trimmed = name.trim()
       if (!trimmed) return null
       const existing = this.exercises.find(
@@ -87,7 +87,7 @@ export const useWorkoutStore = defineStore('workout', {
       this.exercises.push({ id, name: trimmed, tags: [...tags], sets: [] })
       this._persist()
 
-      if (supabase && this._userId) {
+      if (sync && supabase && this._userId) {
         supabase.from('exercises').insert({
           id, user_id: this._userId, name: trimmed, tags: [...tags]
         }).then()
@@ -95,7 +95,7 @@ export const useWorkoutStore = defineStore('workout', {
       return id
     },
 
-    logSet(exerciseId: string, weight: number, reps: number, dateStr?: string) {
+    logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       const date = dateStr
@@ -106,7 +106,7 @@ export const useWorkoutStore = defineStore('workout', {
       exercise.sets.push({ id, date, weight, reps, estimated1RM })
       this._persist()
 
-      if (supabase && this._userId) {
+      if (sync && supabase && this._userId) {
         supabase.from('sets').insert({
           id, user_id: this._userId, exercise_id: exerciseId,
           date, weight, reps, estimated_1rm: estimated1RM
