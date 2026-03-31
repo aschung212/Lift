@@ -83,7 +83,8 @@
   <!-- Exercise detail modal -->
   <Teleport to="body">
     <div v-if="detailExercise" class="repMaxOverlay" @click.self="detailExerciseId = null" @keydown.escape="detailExerciseId = null">
-      <div class="wtDetailModal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+      <div class="wtDetailModal" :ref="onDetailModalMounted" :style="detailSwipe.dragStyle()" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+        <div class="sheetDragHandle" aria-hidden="true"><span class="sheetDragPill"></span></div>
         <div class="wtDetailHeader">
           <button class="wtDetailBack" @click="detailExerciseId = null" aria-label="Back to exercise list">‹ Back</button>
           <h2 class="wtDetailTitle" id="detail-modal-title">{{ detailExercise.name }}</h2>
@@ -620,7 +621,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import type { Exercise, WorkoutSet } from '../stores/workout'
 
@@ -631,6 +632,7 @@ interface PREntry extends WorkoutSet {
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
+import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useTemplateStore } from '../stores/templates'
 import type { WorkoutTemplate } from '../stores/templates'
 import ExerciseGraph from './ExerciseGraph.vue'
@@ -677,6 +679,22 @@ const detailExercise = computed((): Exercise | null =>
 const detailExerciseId = ref<string | null>(null)
 
 const detailTab = ref<'sets' | 'prs'>('sets')
+
+// ── Swipe-to-dismiss for detail modal ───────────────────────────
+const detailSwipe = useSwipeToDismiss({
+  threshold: 100,
+  onDismiss: () => { detailExerciseId.value = null },
+})
+
+watch(detailExerciseId, (id) => {
+  if (!id) detailSwipe.detach()
+})
+
+function onDetailModalMounted(el: Element | ComponentPublicInstance | null) {
+  if (el && el instanceof HTMLElement) {
+    detailSwipe.attach(el)
+  }
+}
 
 function openDetailModal(id: string) {
   detailExerciseId.value = id

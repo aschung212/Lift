@@ -59,7 +59,8 @@
       <!-- Settings bottom sheet -->
       <Teleport to="body">
         <div v-if="settingsOpen" class="settingsOverlay" @click.self="closeSettings" @keydown.escape="closeSettings">
-          <div class="settingsSheet" ref="settingsEl" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+          <div class="settingsSheet" :ref="onSettingsSheetMounted" :style="settingsSwipe.dragStyle()" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="sheetDragHandle" aria-hidden="true"><span class="sheetDragPill"></span></div>
 
             <div class="settingsGroup">
               <div class="settingsHeader" id="settings-title">Appearance</div>
@@ -193,7 +194,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
@@ -209,6 +210,7 @@ import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
+import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit } = useTheme()
@@ -219,6 +221,25 @@ const { toast: undoToast, performUndo } = useUndoToast()
 
 const settingsOpen = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)
+
+// ── Swipe-to-dismiss for settings sheet ────────────────────────
+const settingsSwipe = useSwipeToDismiss({
+  threshold: 80,
+  onDismiss: () => { settingsOpen.value = false },
+})
+
+watch(settingsOpen, (open) => {
+  if (!open) {
+    settingsSwipe.detach()
+  }
+})
+
+function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
+  if (el && el instanceof HTMLElement) {
+    settingsEl.value = el
+    settingsSwipe.attach(el)
+  }
+}
 
 // ── Service worker update prompt ────────────────────────────────
 const swNeedRefresh = ref(false)

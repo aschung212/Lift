@@ -704,6 +704,22 @@ input[type=number] { -moz-appearance: textfield; }
   to { transform: translateY(100%); }
 }
 
+/* ── Drag handle for swipe-to-dismiss sheets ── */
+.sheetDragHandle {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+  cursor: grab;
+}
+
+.sheetDragPill {
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
 .settingsGroup {
   background: var(--bg-secondary);
   border-radius: 12px;
