@@ -733,6 +733,24 @@ input[type=number] { -moz-appearance: textfield; }
   color: var(--text-primary);
 }
 
+.exportBtnGroup {
+  display: flex;
+  gap: 8px;
+}
+.exportBtn {
+  padding: 6px 14px;
+  min-height: 32px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.exportBtn:active { opacity: 0.6; }
+
 .settingsSignOut {
   width: 100%;
   padding: 14px 16px;

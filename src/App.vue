@@ -139,6 +139,17 @@
             </div>
 
             <div class="settingsGroup">
+              <div class="settingsHeader">Data</div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Export</span>
+                <div class="exportBtnGroup">
+                  <button class="exportBtn" @click="exportData('csv')">CSV</button>
+                  <button class="exportBtn" @click="exportData('json')">JSON</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settingsGroup">
               <button class="settingsSignOut" @click="confirmSignOut">Sign Out</button>
             </div>
           </div>
@@ -290,6 +301,70 @@ function confirmSignOut() {
   if (confirm('Sign out?')) {
     signOut()
   }
+}
+
+function exportData(format: 'csv' | 'json') {
+  const workoutStore = useWorkoutStore()
+  const bwStore = useBodyweightStore()
+  const timestamp = new Date().toISOString().slice(0, 10)
+
+  if (format === 'json') {
+    const data = {
+      exportDate: new Date().toISOString(),
+      exercises: workoutStore.exercises.map(e => ({
+        name: e.name,
+        tags: e.tags,
+        sets: e.sets.map(s => ({
+          date: s.date,
+          weight: s.weight,
+          reps: s.reps,
+          estimated1RM: s.estimated1RM,
+        })),
+      })),
+      bodyweight: bwStore.sortedEntries.map(e => ({
+        date: e.date,
+        weight: e.weight,
+      })),
+    }
+    downloadFile(`lift-export-${timestamp}.json`, JSON.stringify(data, null, 2), 'application/json')
+  } else {
+    const lines = ['Exercise,Date,Weight,Reps,Estimated 1RM,Tags']
+    for (const ex of workoutStore.exercises) {
+      for (const s of ex.sets) {
+        const date = s.date.slice(0, 10)
+        const tags = ex.tags.join(';')
+        lines.push(`${csvEscape(ex.name)},${date},${s.weight},${s.reps},${s.estimated1RM},${csvEscape(tags)}`)
+      }
+    }
+    if (bwStore.sortedEntries.length > 0) {
+      lines.push('')
+      lines.push('Date,Body Weight')
+      for (const e of bwStore.sortedEntries) {
+        lines.push(`${e.date.slice(0, 10)},${e.weight}`)
+      }
+    }
+    downloadFile(`lift-export-${timestamp}.csv`, lines.join('\n'), 'text/csv')
+  }
+  logEvent('data_export', { format })
+}
+
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
+}
+
+function downloadFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 function toggleFeature(featureId: string) {
