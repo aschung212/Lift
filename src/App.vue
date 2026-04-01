@@ -351,6 +351,12 @@ const updateSW = registerSW({
 
 // ── Onboarding ──────────────────────────────────────────────────
 const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
+// Defense against localStorage loss: if user already has exercises, mark onboarding complete
+const workoutStoreForOnboarding = useWorkoutStore()
+if (!onboardingComplete.value && workoutStoreForOnboarding.exercises.length > 0) {
+  localStorage.setItem('onboarding-complete', 'true')
+  onboardingComplete.value = true
+}
 const showOnboarding = computed(() => !onboardingComplete.value)
 const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
 
