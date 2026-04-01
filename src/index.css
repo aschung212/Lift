@@ -2094,40 +2094,18 @@ button, [role="tab"], [role="switch"], a {
   gap: 12px;
 }
 
-.wtDateRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
+.wtDateBtnWrap {
   position: relative;
-}
-
-.wtDateRowLabel {
-  font-size: var(--font-caption2);
-  font-weight: 700;
-  color: var(--text-secondary);
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
+  flex: 1;
 }
 
 .wtDateBtn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 7px 12px;
-  min-height: 44px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--accent);
-  font-size: var(--font-footnote);
-  font-weight: 600;
+  justify-content: space-between;
+  color: var(--text-primary);
   cursor: pointer;
-  font-family: inherit;
-}
-
-.wtDateBtnWrap {
-  position: relative;
+  width: 100%;
 }
 
 .wtDateOverlayInput {
