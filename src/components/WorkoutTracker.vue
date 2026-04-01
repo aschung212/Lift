@@ -416,11 +416,9 @@
               Weight ({{ weightUnit }})
               <div class="repMaxInputRow">
                 <input
-                  v-model.number="weight"
-                  type="number"
+                  v-model="weightStr"
+                  type="text"
                   inputmode="decimal"
-                  min="0"
-                  step="any"
                   placeholder="135"
                   class="repMaxInput"
                 />
@@ -431,11 +429,9 @@
               Reps
               <div class="repMaxInputRow">
                 <input
-                  v-model.number="reps"
-                  type="number"
+                  v-model="repsStr"
+                  type="text"
                   inputmode="numeric"
-                  min="1"
-                  max="30"
                   placeholder="8"
                   class="repMaxInput"
                 />
@@ -825,8 +821,19 @@ const selectedExerciseId = ref('')
 const newExerciseName = ref('')
 const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
-const weight = ref<number | null>(null)
-const reps = ref<number | null>(null)
+// String-based raw inputs to avoid iOS keyboard dismissal on type="number"
+// Vue writing back the parsed number to el.value causes iOS Safari to dismiss
+// the keyboard after each keystroke. Using type="text" + inputmode avoids this.
+const weightStr = ref('')
+const repsStr = ref('')
+const weight = computed<number | null>({
+  get: () => { const n = parseFloat(weightStr.value); return isNaN(n) ? null : n },
+  set: (v) => { weightStr.value = v === null ? '' : String(v) },
+})
+const reps = computed<number | null>({
+  get: () => { const n = parseInt(repsStr.value); return isNaN(n) ? null : n },
+  set: (v) => { repsStr.value = v === null ? '' : String(v) },
+})
 const date = ref(todayISO())
 
 const isEditMode = computed(() => editingSet.value !== null)
