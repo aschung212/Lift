@@ -7,5 +7,16 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     exclude: ['e2e/**', 'node_modules/**', 'dist/**', '.claude/**', '**/node_modules/**'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,vue}'],
+      exclude: ['src/**/__tests__/**', 'src/main.ts', 'src/App.vue'],
+      thresholds: {
+        statements: 60,
+        branches: 50,
+        functions: 55,
+        lines: 60,
+      },
+    },
   },
 })
