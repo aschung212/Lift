@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getMuscleGroups, MUSCLE_GROUPS, MUSCLE_GROUP_COLORS } from '../muscleGroups'
+import { getMuscleGroups, MUSCLE_GROUPS } from '../muscleGroups'
 
 describe('muscleGroups', () => {
   describe('getMuscleGroups', () => {
@@ -71,11 +71,11 @@ describe('muscleGroups', () => {
       expect(MUSCLE_GROUPS).toHaveLength(7)
     })
 
-    it('has colors for every group', () => {
-      for (const group of MUSCLE_GROUPS) {
-        expect(MUSCLE_GROUP_COLORS[group]).toBeDefined()
-        expect(MUSCLE_GROUP_COLORS[group]).toMatch(/^#[0-9a-f]{6}$/i)
-      }
+    it('includes expected groups', () => {
+      expect(MUSCLE_GROUPS).toContain('Chest')
+      expect(MUSCLE_GROUPS).toContain('Back')
+      expect(MUSCLE_GROUPS).toContain('Legs')
+      expect(MUSCLE_GROUPS).toContain('Core')
     })
   })
 })

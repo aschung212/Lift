@@ -57,13 +57,3 @@ export function getMuscleGroups(tags: string[]): MuscleGroup[] {
   return Array.from(groups)
 }
 
-/** Color for each muscle group bar — uses theme-compatible opacity values */
-export const MUSCLE_GROUP_COLORS: Record<MuscleGroup, string> = {
-  Chest: '#ff6b6b',
-  Back: '#51cf66',
-  Shoulders: '#ffd43b',
-  Biceps: '#74c0fc',
-  Triceps: '#cc5de8',
-  Legs: '#ff922b',
-  Core: '#20c997',
-}

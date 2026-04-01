@@ -3,7 +3,7 @@
     <p class="mgTitle">Weekly Volume by Muscle Group</p>
     <div class="mgBars" role="list" :aria-label="`Weekly muscle group volume: ${totalSets} total sets across ${weeklyVolume.length} muscle groups`">
       <div
-        v-for="item in weeklyVolume"
+        v-for="(item, index) in weeklyVolume"
         :key="item.group"
         class="mgRow"
         role="listitem"
@@ -15,7 +15,7 @@
             class="mgBarFill"
             :style="{
               width: `${(item.sets / maxSets) * 100}%`,
-              backgroundColor: colors[item.group],
+              opacity: 1 - (index * 0.08),
             }"
           ></div>
         </div>
@@ -27,7 +27,6 @@
 </template>
 
 <script setup lang="ts">
-import { MUSCLE_GROUP_COLORS } from '../lib/muscleGroups'
 import type { MuscleGroupSets } from '../composables/useMuscleGroupVolume'
 
 defineProps<{
@@ -35,8 +34,6 @@ defineProps<{
   maxSets: number
   totalSets: number
 }>()
-
-const colors = MUSCLE_GROUP_COLORS
 </script>
 
 <style scoped>
@@ -88,6 +85,7 @@ const colors = MUSCLE_GROUP_COLORS
   height: 100%;
   border-radius: 8px;
   min-width: 4px;
+  background-color: var(--accent);
   transition: width 0.3s ease;
 }
 
