@@ -51,11 +51,14 @@ describe('useSwipeToDismiss', () => {
     wrapper.unmount()
   })
 
-  it('sets isDragging on touchstart', () => {
+  it('sets isDragging on first downward touchmove when at scroll top', () => {
     const wrapper = createWrapper({ onDismiss })
     const el = wrapper.element as HTMLElement
 
     el.dispatchEvent(createTouchEvent('touchstart', 100))
+    expect(wrapper.vm.isDragging).toBe(false)
+
+    el.dispatchEvent(createTouchEvent('touchmove', 150))
     expect(wrapper.vm.isDragging).toBe(true)
     wrapper.unmount()
   })
