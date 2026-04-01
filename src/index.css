@@ -830,6 +830,33 @@ button, [role="tab"], [role="switch"], a {
 }
 .exportBtn:active { opacity: 0.6; }
 
+/* ─── Privacy transparency ──────────────────────────────────────────────── */
+
+.privacyTransparency {
+  padding: 8px 16px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.privacyRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.privacyIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--success);
+}
+
+.privacyText {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
 .settingsSignOut {
   width: 100%;
   padding: 14px 16px;

@@ -166,6 +166,20 @@
                   <button class="exportBtn" @click="exportData('json')" aria-label="Export data as JSON">JSON</button>
                 </div>
               </div>
+              <div class="privacyTransparency" role="region" aria-label="Data transparency">
+                <div class="privacyRow">
+                  <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/></svg>
+                  <span class="privacyText">Your data lives on your device first</span>
+                </div>
+                <div class="privacyRow">
+                  <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <span class="privacyText">{{ user ? 'Synced over encrypted HTTPS' : 'Sign in to sync across devices' }}</span>
+                </div>
+                <div class="privacyRow">
+                  <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                  <span class="privacyText">No tracking, no ads, no data sales</span>
+                </div>
+              </div>
             </div>
 
             <div class="settingsGroup">
