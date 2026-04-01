@@ -290,17 +290,23 @@ const trainingMap = computed(() => {
 })
 
 // Map YYYY-MM-DD → Set of exercise names that achieved an all-time PR on that date
+// Only the first set to reach the PR value counts — ties on later dates are not new records
 const prMap = computed(() => {
   const map: Record<string, Set<string>> = {}
   for (const exercise of filteredExercises.value) {
     const pr = store.getExercisePR(exercise.id)
     if (!pr) continue
+    // Find the earliest date any set hit the PR value
+    let earliestDate = ''
     for (const set of exercise.sets) {
       if (set.estimated1RM === pr) {
         const day = set.date.slice(0, 10)
-        if (!map[day]) map[day] = new Set()
-        map[day].add(exercise.name)
+        if (!earliestDate || day < earliestDate) earliestDate = day
       }
+    }
+    if (earliestDate) {
+      if (!map[earliestDate]) map[earliestDate] = new Set()
+      map[earliestDate].add(exercise.name)
     }
   }
   return map
@@ -362,10 +368,12 @@ function getSetsForDay(dateStr: string, exName: string) {
   if (!exercise) return []
   const pr = store.getExercisePR(exercise.id)
   const dayStr = dateStr.slice(0, 10)
+  // Only mark as PR if this is the earliest date the PR was achieved
+  const isPRDay = prMap.value[dayStr]?.has(exName) ?? false
   return exercise.sets
     .filter(s => s.date.slice(0, 10) === dayStr)
     .sort((a, b) => b.estimated1RM - a.estimated1RM)
-    .map(s => ({ ...s, isPR: s.estimated1RM === pr }))
+    .map(s => ({ ...s, isPR: isPRDay && s.estimated1RM === pr }))
 }
 
 function getSetCount(dateStr: string, exName: string) {
