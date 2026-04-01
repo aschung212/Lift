@@ -212,9 +212,8 @@
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
-    <div v-if="showModal" class="logSheetOverlay" :style="{ bottom: keyboardHeight > 0 ? keyboardHeight + 'px' : '0' }" @click.self="onOverlayClick" @keydown.escape="closeModal">
-      <div class="logSheet" ref="logSheetEl" :style="logSheetSwipe.dragStyle()" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
-        <div class="sheetDragHandle" ref="logSheetHandleEl" aria-hidden="true"><span class="sheetDragPill"></span></div>
+    <div v-if="showModal" class="repMaxOverlay" :style="keyboardHeight > 0 ? { paddingBottom: keyboardHeight + 'px' } : undefined" @click.self="onOverlayClick" @keydown.escape="closeModal">
+      <div class="repMaxModal" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
 
         <!-- Rest timer view -->
         <template v-if="timerActive">
@@ -686,11 +685,6 @@ const detailTab = ref<'sets' | 'prs'>('sets')
 const detailSwipe = useSwipeToDismiss({
   threshold: 100,
   onDismiss: () => { detailExerciseId.value = null },
-})
-
-const logSheetSwipe = useSwipeToDismiss({
-  threshold: 80,
-  onDismiss: () => { closeModal() },
 })
 
 const detailFocus = useFocusTrap()
@@ -1545,40 +1539,15 @@ function confirmDeleteTag(tag: string) {
 
 
 // ── Focus traps for v-if modals ─────────────────────────────────
-const logSheetEl = ref<HTMLElement | null>(null)
-const logSheetHandleEl = ref<HTMLElement | null>(null)
-
 watch(showModal, async (open) => {
   if (open) {
     await nextTick()
-    if (logSheetEl.value && logSheetHandleEl.value) {
-      logSheetSwipe.attach(logSheetEl.value, logSheetHandleEl.value)
-      logModalFocus.activate(logSheetEl.value)
-      logSheetEl.value.addEventListener('focusin', onLogSheetFocusIn)
-    }
+    const el = document.querySelector<HTMLElement>('.repMaxModal')
+    if (el) logModalFocus.activate(el)
   } else {
-    logSheetEl.value?.removeEventListener('focusin', onLogSheetFocusIn)
-    logSheetSwipe.detach()
     logModalFocus.deactivate()
   }
 })
-
-function onLogSheetFocusIn(e: FocusEvent) {
-  const target = e.target
-  const sheet = logSheetEl.value
-  if (!(target instanceof HTMLElement) || !sheet) return
-
-  // Delay to let the keyboard animation settle and visualViewport update
-  setTimeout(() => {
-    const sheetRect = sheet.getBoundingClientRect()
-    const targetRect = target.getBoundingClientRect()
-    // If the focused input is below the visible area of the sheet, scroll it into view
-    const overflow = targetRect.bottom - sheetRect.bottom
-    if (overflow > 0) {
-      sheet.scrollBy({ top: overflow + 16, behavior: 'smooth' })
-    }
-  }, 300)
-}
 
 watch(editTarget, async (target) => {
   if (target) {
