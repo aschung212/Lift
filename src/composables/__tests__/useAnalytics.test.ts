@@ -95,7 +95,7 @@ describe('useAnalytics', () => {
     tabSwitch('workouts', 'calendar')
     // Only tab_switch should be logged, not tab_engagement (0 seconds)
     const engagementCalls = mockTrack.mock.calls.filter(
-      ([name]: [string]) => name === 'tab_engagement'
+      ([name]) => name === 'tab_engagement'
     )
     expect(engagementCalls).toHaveLength(0)
   })
@@ -110,7 +110,7 @@ describe('useAnalytics', () => {
     tabSwitch('calendar', 'settings')
 
     const switchCalls = mockTrack.mock.calls.filter(
-      ([name]: [string]) => name === 'tab_switch'
+      ([name]) => name === 'tab_switch'
     )
     expect(switchCalls).toHaveLength(2)
     expect(switchCalls[0][1]).toEqual({ from: 'workouts', to: 'calendar' })

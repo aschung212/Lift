@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getTagColor, type TagColor } from '../tagColors'
+import { getTagColor } from '../tagColors'
 
 describe('getTagColor', () => {
   it('returns an object with border and bg properties', () => {
