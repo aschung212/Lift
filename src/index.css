@@ -26,7 +26,7 @@
   --glass-shine:     rgba(255,255,255,0.13);
   --glass-bar:       rgba(10,10,10,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
-  --text-on-accent:  #fff;
+  --text-on-accent:  #1a0000;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 15%, rgba(255,99,99,0.07) 0%, transparent 65%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(139,92,246,0.05) 0%, transparent 65%);
 }
@@ -40,13 +40,13 @@
   --border-strong:   #c8b8b8;
   --text-primary:    #1a1212;
   --text-secondary:  #6e5858;
-  --text-muted:      #b0a0a0;
+  --text-muted:      #907878;
   --accent:          #dc3545;
   --accent-hover:    #c82333;
   --accent-subtle:   rgba(220, 53, 69, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
-  --success:         #16a34a;
+  --success:         #0d8a3a;
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(26, 18, 18, 0.14);
   --shadow-sm:       0 2px 8px rgba(26, 18, 18, 0.08);
@@ -70,10 +70,10 @@
   --border:          #2c2c42;
   --border-strong:   #42425e;
   --text-primary:    #e4e4f4;
-  --text-secondary:  #7070a0;
+  --text-secondary:  #8080b0;
   --text-muted:      #6868a0;
-  --accent:          #8b5cf6;
-  --accent-hover:    #7c3aed;
+  --accent:          #7c50e6;
+  --accent-hover:    #6c3ad8;
   --accent-subtle:   rgba(139, 92, 246, 0.13);
   --danger:          #f87171;
   --danger-subtle:   rgba(248, 113, 113, 0.12);
@@ -100,13 +100,13 @@
   --border-strong:   #b8b0d4;
   --text-primary:    #18182a;
   --text-secondary:  #5c5890;
-  --text-muted:      #908cb0;
+  --text-muted:      #7e7aa0;
   --accent:          #7c3aed;
   --accent-hover:    #6d28d9;
   --accent-subtle:   rgba(124, 58, 237, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
-  --success:         #16a34a;
+  --success:         #0d8a3a;
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(24, 24, 42, 0.14);
   --shadow-sm:       0 2px 8px rgba(24, 24, 42, 0.08);
@@ -131,13 +131,13 @@
   --border-strong:   #a8b8e0;
   --text-primary:    #1a1a2e;
   --text-secondary:  #60609a;
-  --text-muted:      #9090b8;
+  --text-muted:      #7878a0;
   --accent:          #0066ff;
   --accent-hover:    #0052cc;
   --accent-subtle:   rgba(0, 102, 255, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
-  --success:         #16a34a;
+  --success:         #0d8a3a;
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(26, 26, 46, 0.18);
   --shadow-sm:       0 2px 8px rgba(26, 26, 46, 0.10);
@@ -162,8 +162,8 @@
   --text-primary:    #e0e8f8;
   --text-secondary:  #7888b0;
   --text-muted:      #687898;
-  --accent:          #3388ff;
-  --accent-hover:    #1a75ff;
+  --accent:          #2070d8;
+  --accent-hover:    #1860c0;
   --accent-subtle:   rgba(51, 136, 255, 0.12);
   --danger:          #f87171;
   --danger-subtle:   rgba(248, 113, 113, 0.12);
@@ -207,7 +207,7 @@
   --glass-shine:     rgba(255,255,255,0.12);
   --glass-bar:       rgba(8,6,4,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
-  --text-on-accent:  #fff;
+  --text-on-accent:  #1a1400;
   --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(245,158,11,0.09) 0%, transparent 65%),
                      radial-gradient(ellipse 50% 40% at 80% 80%, rgba(180,80,20,0.05) 0%, transparent 65%);
 }
@@ -221,10 +221,10 @@
   --border-strong:   #c8b498;
   --text-primary:    #201a10;
   --text-secondary:  #7a6848;
-  --text-muted:      #a89878;
-  --accent:          #d97706;
-  --accent-hover:    #b45309;
-  --accent-subtle:   rgba(217, 119, 6, 0.08);
+  --text-muted:      #887050;
+  --accent:          #a85800;
+  --accent-hover:    #904800;
+  --accent-subtle:   rgba(168, 88, 0, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
   --success:         #4d7c0f;
@@ -267,7 +267,7 @@
   --glass-shine:     rgba(200,164,78,0.08);
   --glass-bar:       rgba(10,12,16,0.80);
   --glass-overlay:   rgba(0,0,0,0.58);
-  --text-on-accent:  #fff;
+  --text-on-accent:  #141000;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(200,164,78,0.06) 0%, transparent 65%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(120,140,80,0.05) 0%, transparent 65%);
 }
@@ -281,10 +281,10 @@
   --border-strong:   #a8b0a0;
   --text-primary:    #141820;
   --text-secondary:  #5a6048;
-  --text-muted:      #8a9078;
-  --accent:          #a08830;
-  --accent-hover:    #887020;
-  --accent-subtle:   rgba(160, 136, 48, 0.08);
+  --text-muted:      #727858;
+  --accent:          #806a18;
+  --accent-hover:    #6c5a10;
+  --accent-subtle:   rgba(128, 106, 24, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
   --success:         #5a8a40;
@@ -311,15 +311,15 @@
   --border:          #e0c8e0;
   --border-strong:   #c8a0c8;
   --text-primary:    #1e1028;
-  --text-secondary:  #7060a0;
-  --text-muted:      #a890b8;
-  --accent:          #ec4899;
-  --accent-hover:    #db2777;
-  --accent-subtle:   rgba(236, 72, 153, 0.08);
+  --text-secondary:  #625098;
+  --text-muted:      #887098;
+  --accent:          #c83080;
+  --accent-hover:    #b02068;
+  --accent-subtle:   rgba(200, 48, 128, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
-  --success:         #16a34a;
-  --success-subtle:  rgba(22, 163, 74, 0.08);
+  --success:         #0d8a3a;
+  --success-subtle:  rgba(13, 138, 58, 0.08);
   --shadow:          0 8px 32px rgba(30, 16, 40, 0.18);
   --shadow-sm:       0 2px 8px rgba(30, 16, 40, 0.10);
   --glass-fill:      rgba(255,220,240,0.52);
@@ -357,7 +357,7 @@
   --glass-shine:     rgba(255,255,255,0.13);
   --glass-bar:       rgba(20,12,28,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
-  --text-on-accent:  #fff;
+  --text-on-accent:  #1a0818;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(236,72,153,0.10) 0%, transparent 65%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(168,85,247,0.07) 0%, transparent 65%);
 }
