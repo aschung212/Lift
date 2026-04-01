@@ -178,7 +178,7 @@ describe('Accessibility', () => {
 
       const svg = wrapper.find('svg[role="img"]')
       expect(svg.exists()).toBe(true)
-      expect(svg.attributes('aria-label')).toBe('Body weight progress chart')
+      expect(svg.attributes('aria-label')).toContain('Body weight progress chart')
     })
 
     it('entry action buttons have aria-labels', () => {

@@ -53,8 +53,9 @@
         :viewBox="`0 0 ${W} ${H}`"
         class="wtGraphSvg"
         role="img"
-        aria-label="Body weight progress chart"
+        :aria-label="`Body weight progress chart showing ${points.length} entries from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit}`"
       >
+        <desc>{{ `Body weight trend from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit} across ${points.length} data points.` }}</desc>
         <!-- Horizontal grid lines -->
         <line
           v-for="gy in gridYs"

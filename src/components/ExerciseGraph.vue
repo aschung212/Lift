@@ -5,8 +5,9 @@
       :viewBox="`0 0 ${W} ${H}`"
       class="wtGraphSvg"
       role="img"
-      :aria-label="`Estimated 1RM progress chart`"
+      :aria-label="`${exercise.name} ${mode === 'prs' ? 'PR progression' : 'estimated 1RM progress'} chart with ${points.length} data points, from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit}`"
     >
+      <desc>{{ `${exercise.name} ${mode === 'prs' ? 'PR progression' : 'estimated 1RM progress'} from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit} across ${points.length} sessions.` }}</desc>
       <!-- Horizontal grid lines -->
       <line
         v-for="gy in gridYs"
