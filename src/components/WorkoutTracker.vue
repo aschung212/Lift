@@ -597,6 +597,7 @@ import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
+import { useFocusTrap } from '../composables/useFocusTrap'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
@@ -657,13 +658,22 @@ const detailSwipe = useSwipeToDismiss({
   onDismiss: () => { detailExerciseId.value = null },
 })
 
+const detailFocus = useFocusTrap()
+const logModalFocus = useFocusTrap()
+const editExerciseFocus = useFocusTrap()
+const tagManagerFocus = useFocusTrap()
+
 watch(detailExerciseId, (id) => {
-  if (!id) detailSwipe.detach()
+  if (!id) {
+    detailSwipe.detach()
+    detailFocus.deactivate()
+  }
 })
 
 function onDetailModalMounted(el: Element | ComponentPublicInstance | null) {
   if (el && el instanceof HTMLElement) {
     detailSwipe.attach(el)
+    detailFocus.activate(el)
   }
 }
 
@@ -1457,6 +1467,37 @@ function confirmDeleteTag(tag: string) {
   )
 }
 
+
+// ── Focus traps for v-if modals ─────────────────────────────────
+watch(showModal, async (open) => {
+  if (open) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('.repMaxModal')
+    if (el) logModalFocus.activate(el)
+  } else {
+    logModalFocus.deactivate()
+  }
+})
+
+watch(editTarget, async (target) => {
+  if (target) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('[aria-labelledby="edit-exercise-title"]')
+    if (el) editExerciseFocus.activate(el)
+  } else {
+    editExerciseFocus.deactivate()
+  }
+})
+
+watch(tagManagerOpen, async (open) => {
+  if (open) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('[aria-labelledby="tag-manager-title"]')
+    if (el) tagManagerFocus.activate(el)
+  } else {
+    tagManagerFocus.deactivate()
+  }
+})
 
 onUnmounted(() => stopTimer())
 </script>

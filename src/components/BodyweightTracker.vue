@@ -179,12 +179,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
+import { useFocusTrap } from '../composables/useFocusTrap'
 
 const store = useBodyweightStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
@@ -192,6 +193,7 @@ const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 
 // ── Modal state ──────────────────────────────────────────────────
+const bwModalFocus = useFocusTrap()
 const showModal = ref(false)
 const editing = ref<string | null>(null) // entry id when editing
 const weight = ref<number | null>(null)
@@ -227,7 +229,16 @@ function closeModal() {
   editing.value = null
   weight.value = null
   date.value = todayISO()
+  bwModalFocus.deactivate()
 }
+
+watch(showModal, async (open) => {
+  if (open) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('[aria-labelledby="bw-modal-title"]')
+    if (el) bwModalFocus.activate(el)
+  }
+})
 
 const canSave = computed(() => weight.value !== null && weight.value > 0)
 

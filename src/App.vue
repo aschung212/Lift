@@ -294,7 +294,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
@@ -311,6 +311,7 @@ import { useWorkoutStore } from './stores/workout'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
+import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
 
@@ -330,9 +331,16 @@ const settingsSwipe = useSwipeToDismiss({
   onDismiss: () => { settingsOpen.value = false },
 })
 
+// ── Focus traps for modals ─────────────────────────────────────
+const settingsFocus = useFocusTrap()
+const shortcutsFocus = useFocusTrap()
+const legalFocus = useFocusTrap()
+const confirmFocus = useFocusTrap()
+
 watch(settingsOpen, (open) => {
   if (!open) {
     settingsSwipe.detach()
+    settingsFocus.deactivate()
   }
 })
 
@@ -340,6 +348,7 @@ function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
   if (el && el instanceof HTMLElement) {
     settingsEl.value = el
     settingsSwipe.attach(el)
+    settingsFocus.activate(el)
   }
 }
 
@@ -392,6 +401,37 @@ const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeSh
   { key: ',', label: 'Open settings', action: () => { settingsOpen.value = true } },
   { key: 'Escape', label: 'Close panel', action: () => { closeSettings(); closeShortcuts() }, global: true },
 ])
+
+// ── Focus trap watches for v-if modals ─────────────────────────
+watch(shortcutsOpen, async (open) => {
+  if (open) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('.kbSheet')
+    if (el) shortcutsFocus.activate(el)
+  } else {
+    shortcutsFocus.deactivate()
+  }
+})
+
+watch(legalView, async (view) => {
+  if (view) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('.legalSheet')
+    if (el) legalFocus.activate(el)
+  } else {
+    legalFocus.deactivate()
+  }
+})
+
+watch(confirmDialog, async (dialog) => {
+  if (dialog) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('.confirmSheet')
+    if (el) confirmFocus.activate(el)
+  } else {
+    confirmFocus.deactivate()
+  }
+})
 
 // ── Tab definitions with inline SVG paths ────────────────────────
 const TAB_DEFS = [

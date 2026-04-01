@@ -219,10 +219,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useFocusTrap } from '../composables/useFocusTrap'
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
@@ -467,6 +468,7 @@ function formatSelectedDay(dateStr: string) {
 }
 
 // ── Log modal ─────────────────────────────────────────────────────
+const calModalFocus = useFocusTrap()
 const logModal = ref<{ open: boolean; date: string; exerciseId: string; weight: number | null; reps: number | null }>({ open: false, date: '', exerciseId: '', weight: null, reps: null })
 
 function openLogModal(dateStr: string) {
@@ -475,7 +477,16 @@ function openLogModal(dateStr: string) {
 
 function closeLogModal() {
   logModal.value = { open: false, date: '', exerciseId: '', weight: null, reps: null }
+  calModalFocus.deactivate()
 }
+
+watch(() => logModal.value.open, async (open) => {
+  if (open) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('[aria-labelledby="cal-modal-title"]')
+    if (el) calModalFocus.activate(el)
+  }
+})
 
 const logModalEstimate = computed(() => {
   const { weight, reps } = logModal.value
