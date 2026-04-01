@@ -1554,12 +1554,31 @@ watch(showModal, async (open) => {
     if (logSheetEl.value && logSheetHandleEl.value) {
       logSheetSwipe.attach(logSheetEl.value, logSheetHandleEl.value)
       logModalFocus.activate(logSheetEl.value)
+      logSheetEl.value.addEventListener('focusin', onLogSheetFocusIn)
     }
   } else {
+    logSheetEl.value?.removeEventListener('focusin', onLogSheetFocusIn)
     logSheetSwipe.detach()
     logModalFocus.deactivate()
   }
 })
+
+function onLogSheetFocusIn(e: FocusEvent) {
+  const target = e.target
+  const sheet = logSheetEl.value
+  if (!(target instanceof HTMLElement) || !sheet) return
+
+  // Delay to let the keyboard animation settle and visualViewport update
+  setTimeout(() => {
+    const sheetRect = sheet.getBoundingClientRect()
+    const targetRect = target.getBoundingClientRect()
+    // If the focused input is below the visible area of the sheet, scroll it into view
+    const overflow = targetRect.bottom - sheetRect.bottom
+    if (overflow > 0) {
+      sheet.scrollBy({ top: overflow + 16, behavior: 'smooth' })
+    }
+  }, 300)
+}
 
 watch(editTarget, async (target) => {
   if (target) {
