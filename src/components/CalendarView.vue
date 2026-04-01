@@ -155,6 +155,13 @@
           <button class="calWeekLogBtn" @click="openLogModal(day.dateStr)">+ Log</button>
         </div>
       </div>
+
+      <!-- Weekly muscle group volume chart -->
+      <MuscleGroupChart
+        :weekly-volume="weeklyVolume"
+        :max-sets="maxSets"
+        :total-sets="totalSets"
+      />
     </div>
   </div>
 
@@ -224,6 +231,8 @@ import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useMuscleGroupVolume } from '../composables/useMuscleGroupVolume'
+import MuscleGroupChart from './MuscleGroupChart.vue'
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
@@ -468,6 +477,11 @@ const weekDays = computed(() => {
     }
   })
 })
+
+// ── Weekly muscle group volume ────────────────────────────────────
+const weekDateStrings = computed(() => weekDays.value.map(d => d.dateStr))
+const exercisesRef = computed(() => filteredExercises.value)
+const { weeklyVolume, maxSets, totalSets } = useMuscleGroupVolume(exercisesRef, weekDateStrings)
 
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
