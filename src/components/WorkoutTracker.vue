@@ -212,8 +212,9 @@
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
-    <div v-if="showModal" class="repMaxOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
-      <div class="repMaxModal" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+    <div v-if="showModal" class="logSheetOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
+      <div class="logSheet" :ref="onLogSheetMounted" :style="logSheetSwipe.dragStyle()" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+        <div class="sheetDragHandle" aria-hidden="true"><span class="sheetDragPill"></span></div>
 
         <!-- Rest timer view -->
         <template v-if="timerActive">
@@ -683,6 +684,11 @@ const detailTab = ref<'sets' | 'prs'>('sets')
 const detailSwipe = useSwipeToDismiss({
   threshold: 100,
   onDismiss: () => { detailExerciseId.value = null },
+})
+
+const logSheetSwipe = useSwipeToDismiss({
+  threshold: 80,
+  onDismiss: () => { closeModal() },
 })
 
 const detailFocus = useFocusTrap()
@@ -1535,15 +1541,19 @@ function confirmDeleteTag(tag: string) {
 
 
 // ── Focus traps for v-if modals ─────────────────────────────────
-watch(showModal, async (open) => {
-  if (open) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('.repMaxModal')
-    if (el) logModalFocus.activate(el)
-  } else {
+watch(showModal, (open) => {
+  if (!open) {
+    logSheetSwipe.detach()
     logModalFocus.deactivate()
   }
 })
+
+function onLogSheetMounted(el: Element | ComponentPublicInstance | null) {
+  if (el && el instanceof HTMLElement) {
+    logSheetSwipe.attach(el)
+    logModalFocus.activate(el)
+  }
+}
 
 watch(editTarget, async (target) => {
   if (target) {
