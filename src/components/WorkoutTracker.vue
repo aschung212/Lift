@@ -93,8 +93,8 @@
   <!-- Exercise detail modal -->
   <Teleport to="body">
     <div v-if="detailExercise" class="repMaxOverlay" @click.self="detailExerciseId = null" @keydown.escape="detailExerciseId = null">
-      <div class="wtDetailModal" :ref="onDetailModalMounted" :style="detailSwipe.dragStyle()" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
-        <div class="sheetDragHandle" aria-hidden="true"><span class="sheetDragPill"></span></div>
+      <div class="wtDetailModal" ref="detailSheetEl" :style="detailSwipe.dragStyle()" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+        <div class="sheetDragHandle" ref="detailHandleEl" aria-hidden="true"><span class="sheetDragPill"></span></div>
         <div class="wtDetailHeader">
           <button class="wtDetailBack" @click="detailExerciseId = null" aria-label="Back to exercise list">‹ Back</button>
           <h2 class="wtDetailTitle" id="detail-modal-title">{{ detailExercise.name }}</h2>
@@ -597,7 +597,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import type { Exercise, WorkoutSet } from '../stores/workout'
 
@@ -696,19 +696,21 @@ const logModalFocus = useFocusTrap()
 const editExerciseFocus = useFocusTrap()
 const tagManagerFocus = useFocusTrap()
 
-watch(detailExerciseId, (id) => {
-  if (!id) {
+const detailSheetEl = ref<HTMLElement | null>(null)
+const detailHandleEl = ref<HTMLElement | null>(null)
+
+watch(detailExerciseId, async (id) => {
+  if (id) {
+    await nextTick()
+    if (detailSheetEl.value && detailHandleEl.value) {
+      detailSwipe.attach(detailSheetEl.value, detailHandleEl.value)
+      detailFocus.activate(detailSheetEl.value)
+    }
+  } else {
     detailSwipe.detach()
     detailFocus.deactivate()
   }
 })
-
-function onDetailModalMounted(el: Element | ComponentPublicInstance | null) {
-  if (el && el instanceof HTMLElement) {
-    detailSwipe.attach(el)
-    detailFocus.activate(el)
-  }
-}
 
 function openDetailModal(id: string) {
   detailExerciseId.value = id
