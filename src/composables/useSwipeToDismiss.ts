@@ -24,32 +24,43 @@ export function useSwipeToDismiss(options: SwipeToDismissOptions) {
   let startY = 0
   let startTime = 0
   let currentY = 0
+  let tracking = false // tracking touch but not yet committed to drag
 
   function onTouchStart(e: TouchEvent) {
     const target = el.value
     if (!target) return
 
-    // Only start drag if content is scrolled to top (for scrollable sheets)
-    if (target.scrollTop > 0) return
-
     startY = e.touches[0].clientY
     startTime = Date.now()
     currentY = startY
-    isDragging.value = true
-    target.style.transition = 'none'
+    isDragging.value = false
+    // Always track — we decide in onTouchMove whether this becomes a drag
+    tracking = true
   }
 
   function onTouchMove(e: TouchEvent) {
-    if (!isDragging.value) return
+    if (!tracking) return
+
+    const target = el.value
+    if (!target) return
 
     currentY = e.touches[0].clientY
     const delta = currentY - startY
 
-    if (direction === 'down') {
-      // Only allow dragging downward (positive delta)
-      offsetY.value = Math.max(0, delta)
+    if (!isDragging.value) {
+      // Not yet dragging — decide if we should start
+      if (direction === 'down' && delta > 0 && target.scrollTop <= 0) {
+        // User is pulling down and content is at the top — start drag
+        isDragging.value = true
+        target.style.transition = 'none'
+      } else {
+        // Let native scroll handle it
+        return
+      }
+    }
 
-      // Prevent page scroll while dragging the sheet
+    if (direction === 'down') {
+      offsetY.value = Math.max(0, delta)
       if (delta > 0) {
         e.preventDefault()
       }
@@ -57,6 +68,7 @@ export function useSwipeToDismiss(options: SwipeToDismissOptions) {
   }
 
   function onTouchEnd() {
+    tracking = false
     if (!isDragging.value) return
     isDragging.value = false
 
