@@ -399,23 +399,28 @@
             </div>
           </div>
 
-          <!-- Date: silent by default — shown as a tappable label, not a required step -->
+          <!-- Date: silent by default — tapping the button area opens the picker.
+               The input is an invisible overlay covering the button so the user's
+               touch lands directly on the input (iOS requires a real touch, not
+               a programmatic .focus() / .showPicker(), to open its date picker). -->
           <div class="wtDateRow">
             <span class="wtDateRowLabel">Date</span>
-            <button type="button" class="wtDateBtn" @click="openDatePicker">
-              {{ dateDisplay }}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
-            <!-- Hidden input: tabindex="-1" + pointer-events:none keep it out of the focus trap and untappable on iOS -->
-            <input
-              v-model="date"
-              type="date"
-              :max="todayISO()"
-              ref="dateInputEl"
-              tabindex="-1"
-              class="wtDateHiddenInput"
-              aria-hidden="true"
-            />
+            <div class="wtDateBtnWrap">
+              <button type="button" class="wtDateBtn" tabindex="-1" aria-hidden="true">
+                {{ dateDisplay }}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <!-- Invisible overlay: covers the button so iOS touch hits the input directly -->
+              <input
+                v-model="date"
+                type="date"
+                :max="todayISO()"
+                ref="dateInputEl"
+                tabindex="-1"
+                class="wtDateOverlayInput"
+                :aria-label="'Log date, currently ' + dateDisplay"
+              />
+            </div>
           </div>
 
           <!-- Weight + Reps -->
@@ -854,11 +859,6 @@ const date = ref(todayISO())
 const lastLogDate = ref(todayISO())
 
 const dateInputEl = ref<HTMLInputElement | null>(null)
-
-function openDatePicker() {
-  if (!dateInputEl.value) return
-  try { dateInputEl.value.showPicker() } catch { dateInputEl.value.focus() }
-}
 
 const dateDisplay = computed(() => {
   if (!date.value) return 'Today'

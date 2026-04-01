@@ -2126,13 +2126,17 @@ button, [role="tab"], [role="switch"], a {
   font-family: inherit;
 }
 
-.wtDateHiddenInput {
+.wtDateBtnWrap {
+  position: relative;
+}
+
+.wtDateOverlayInput {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  top: 0;
-  right: 0;
+  cursor: pointer;
   border: none;
   padding: 0;
 }
