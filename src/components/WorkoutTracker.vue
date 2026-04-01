@@ -399,16 +399,24 @@
             </div>
           </div>
 
-          <!-- Date: always visible -->
-          <label class="repMaxLabel">
-            Date
+          <!-- Date: silent by default — shown as a tappable label, not a required step -->
+          <div class="wtDateRow">
+            <span class="wtDateRowLabel">Date</span>
+            <button type="button" class="wtDateBtn" @click="openDatePicker">
+              {{ dateDisplay }}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <!-- Hidden input: tabindex="-1" keeps the focus trap from auto-focusing it on modal open -->
             <input
               v-model="date"
               type="date"
               :max="todayISO()"
-              class="repMaxInput wtDateInput"
+              ref="dateInputEl"
+              tabindex="-1"
+              class="wtDateHiddenInput"
+              aria-hidden="true"
             />
-          </label>
+          </div>
 
           <!-- Weight + Reps -->
           <div class="wtInputRow">
@@ -844,6 +852,24 @@ const date = ref(todayISO())
 // Remembers the last date the user manually set when logging, so the modal
 // re-opens to that date rather than always resetting to today.
 const lastLogDate = ref(todayISO())
+
+const dateInputEl = ref<HTMLInputElement | null>(null)
+
+function openDatePicker() {
+  if (!dateInputEl.value) return
+  try { dateInputEl.value.showPicker() } catch { dateInputEl.value.focus() }
+}
+
+const dateDisplay = computed(() => {
+  if (!date.value) return 'Today'
+  const today = todayISO()
+  if (date.value === today) return 'Today'
+  const prev = new Date()
+  prev.setDate(prev.getDate() - 1)
+  const yest = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`
+  if (date.value === yest) return 'Yesterday'
+  return new Date(date.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+})
 
 const isEditMode = computed(() => editingSet.value !== null)
 

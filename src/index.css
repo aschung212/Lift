@@ -2094,14 +2094,47 @@ button, [role="tab"], [role="switch"], a {
   gap: 12px;
 }
 
-.wtDateInput {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  margin-top: 6px;
-  color-scheme: dark light;
-  -webkit-appearance: none;
-  appearance: none;
+.wtDateRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  position: relative;
+}
+
+.wtDateRowLabel {
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.wtDateBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  min-height: 44px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.wtDateHiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  top: 0;
+  right: 0;
+  border: none;
+  padding: 0;
 }
 
 .wtModalSubtitle {
