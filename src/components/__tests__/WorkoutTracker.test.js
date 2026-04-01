@@ -447,7 +447,7 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.wtLogBtn').trigger('click')
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.find('.repMaxModal').exists()).toBe(true)
+      expect(wrapper.find('.logSheet').exists()).toBe(true)
     })
   })
 })

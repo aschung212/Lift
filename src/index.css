@@ -1936,6 +1936,49 @@ button, [role="tab"], [role="switch"], a {
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* ─── Log Set Bottom Sheet ────────────────────────────────────────────── */
+
+.logSheetOverlay {
+  position: fixed;
+  inset: 0;
+  background: var(--glass-overlay, rgba(0,0,0,0.55));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+  animation: overlayFadeIn 0.2s ease-out;
+}
+
+.logSheet {
+  width: 100%;
+  max-width: 520px;
+  max-height: 92svh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: var(--glass-fill, var(--bg-elevated));
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border: 1px solid var(--glass-edge, var(--border-strong));
+  border-bottom: none;
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.25), inset 0 1px 0 var(--glass-shine, rgba(255,255,255,0.1));
+  border-radius: 16px 16px 0 0;
+  padding: 0 22px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  text-align: left;
+  animation: sheetSlideUp 0.25s ease-out;
+}
+
+.logSheet h2 {
+  font-size: var(--font-body);
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 20px;
+  letter-spacing: -0.2px;
+}
+
 /* ─── Modals ─────────────────────────────────────────────────────────────── */
 
 .repMaxOverlay {
