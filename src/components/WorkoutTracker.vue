@@ -811,7 +811,13 @@ function isoToLocalDate(iso: string): string {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+  // Use local date components — toISOString() returns UTC which gives the
+  // wrong date in US timezones after ~5pm (midnight UTC comes before midnight local).
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 // ── Log / Edit modal state ────────────────────────────────────────
@@ -925,6 +931,11 @@ function openEditModal(exercise: Exercise, set: WorkoutSet) {
 }
 
 function closeModal() {
+  // Save the current date before resetting so subsequent log modals default to it.
+  // Only do this in log mode — edit mode dates shouldn't affect the default.
+  if (!isEditMode.value) {
+    lastLogDate.value = date.value
+  }
   showModal.value = false
   editingPresets.value = false
   editingSet.value = null
@@ -1494,14 +1505,6 @@ function confirmDeleteTag(tag: string) {
   )
 }
 
-
-// Persist the last manually chosen log date so subsequent modal opens
-// default to it rather than always jumping back to today.
-watch(date, (newDate) => {
-  if (showModal.value && !isEditMode.value) {
-    lastLogDate.value = newDate
-  }
-})
 
 // ── Focus traps for v-if modals ─────────────────────────────────
 watch(showModal, async (open) => {
