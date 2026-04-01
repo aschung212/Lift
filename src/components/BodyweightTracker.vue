@@ -342,8 +342,12 @@ const points = computed(() => {
   const entries = filteredDaily.value
   if (entries.length < 2) return []
   const range = maxVal.value - minVal.value
-  const t0 = new Date(entries[0].date + 'T12:00:00').getTime()
-  const t1 = new Date(entries[entries.length - 1].date + 'T12:00:00').getTime()
+  // Use the full selected period for the x-axis, not just the data range
+  const now = new Date()
+  const periodStart = new Date()
+  periodStart.setDate(now.getDate() - period.value)
+  const t0 = new Date(periodStart.toISOString().slice(0, 10) + 'T12:00:00').getTime()
+  const t1 = new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime()
   const tRange = t1 - t0
 
   return entries.map(({ date, weight }) => {
