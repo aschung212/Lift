@@ -1188,7 +1188,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtSearchInput::placeholder {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .wtSearchCount {
