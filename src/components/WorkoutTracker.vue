@@ -213,8 +213,8 @@
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
     <div v-if="showModal" class="logSheetOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
-      <div class="logSheet" :ref="onLogSheetMounted" :style="logSheetSwipe.dragStyle()" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
-        <div class="sheetDragHandle" aria-hidden="true"><span class="sheetDragPill"></span></div>
+      <div class="logSheet" ref="logSheetEl" :style="logSheetSwipe.dragStyle()" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+        <div class="sheetDragHandle" ref="logSheetHandleEl" aria-hidden="true"><span class="sheetDragPill"></span></div>
 
         <!-- Rest timer view -->
         <template v-if="timerActive">
@@ -1541,19 +1541,21 @@ function confirmDeleteTag(tag: string) {
 
 
 // ── Focus traps for v-if modals ─────────────────────────────────
-watch(showModal, (open) => {
-  if (!open) {
+const logSheetEl = ref<HTMLElement | null>(null)
+const logSheetHandleEl = ref<HTMLElement | null>(null)
+
+watch(showModal, async (open) => {
+  if (open) {
+    await nextTick()
+    if (logSheetEl.value && logSheetHandleEl.value) {
+      logSheetSwipe.attach(logSheetEl.value, logSheetHandleEl.value)
+      logModalFocus.activate(logSheetEl.value)
+    }
+  } else {
     logSheetSwipe.detach()
     logModalFocus.deactivate()
   }
 })
-
-function onLogSheetMounted(el: Element | ComponentPublicInstance | null) {
-  if (el && el instanceof HTMLElement) {
-    logSheetSwipe.attach(el)
-    logModalFocus.activate(el)
-  }
-}
 
 watch(editTarget, async (target) => {
   if (target) {
