@@ -13,6 +13,11 @@ interface SwipeToDismissOptions {
  * Adds swipe-to-dismiss touch gesture to a bottom sheet or modal.
  * Returns refs for the container element and current drag offset,
  * plus a style binding for the transform.
+ *
+ * `attach(container)` — binds touch events to the container itself.
+ * `attach(container, handle)` — binds touch events only to the handle
+ * element while using the container for scroll checks and animation.
+ * The second form avoids interfering with native scroll inside the container.
  */
 export function useSwipeToDismiss(options: SwipeToDismissOptions) {
   const { threshold = 80, onDismiss, direction = 'down' } = options
@@ -24,37 +29,33 @@ export function useSwipeToDismiss(options: SwipeToDismissOptions) {
   let startY = 0
   let startTime = 0
   let currentY = 0
-  let tracking = false // tracking touch but not yet committed to drag
+  let tracking = false
 
   function onTouchStart(e: TouchEvent) {
-    const target = el.value
-    if (!target) return
+    const container = el.value
+    if (!container) return
 
     startY = e.touches[0].clientY
     startTime = Date.now()
     currentY = startY
     isDragging.value = false
-    // Always track — we decide in onTouchMove whether this becomes a drag
     tracking = true
   }
 
   function onTouchMove(e: TouchEvent) {
     if (!tracking) return
 
-    const target = el.value
-    if (!target) return
+    const container = el.value
+    if (!container) return
 
     currentY = e.touches[0].clientY
     const delta = currentY - startY
 
     if (!isDragging.value) {
-      // Not yet dragging — decide if we should start
-      if (direction === 'down' && delta > 0 && target.scrollTop <= 0) {
-        // User is pulling down and content is at the top — start drag
+      if (direction === 'down' && delta > 0 && container.scrollTop <= 0) {
         isDragging.value = true
-        target.style.transition = 'none'
+        container.style.transition = 'none'
       } else {
-        // Let native scroll handle it
         return
       }
     }
@@ -72,8 +73,8 @@ export function useSwipeToDismiss(options: SwipeToDismissOptions) {
     if (!isDragging.value) return
     isDragging.value = false
 
-    const target = el.value
-    if (!target) return
+    const container = el.value
+    if (!container) return
 
     const delta = currentY - startY
     const elapsed = Date.now() - startTime
@@ -82,15 +83,15 @@ export function useSwipeToDismiss(options: SwipeToDismissOptions) {
     // Dismiss if dragged past threshold OR fast flick (velocity > 0.5 px/ms)
     if ((direction === 'down' && delta > threshold) || (direction === 'down' && velocity > 0.5 && delta > 20)) {
       // Animate out
-      target.style.transition = 'transform 0.15s ease-in'
-      offsetY.value = target.offsetHeight
-      target.addEventListener('transitionend', () => {
+      container.style.transition = 'transform 0.15s ease-in'
+      offsetY.value = container.offsetHeight
+      container.addEventListener('transitionend', () => {
         onDismiss()
         offsetY.value = 0
       }, { once: true })
     } else {
       // Snap back
-      target.style.transition = 'transform 0.2s ease-out'
+      container.style.transition = 'transform 0.2s ease-out'
       offsetY.value = 0
     }
   }
@@ -109,11 +110,12 @@ export function useSwipeToDismiss(options: SwipeToDismissOptions) {
 
   let boundEl: HTMLElement | null = null
 
-  function attach(element: HTMLElement) {
+  function attach(container: HTMLElement, handle?: HTMLElement) {
     if (boundEl) unbindEvents(boundEl)
-    el.value = element
-    boundEl = element
-    bindEvents(element)
+    el.value = container
+    const touchTarget = handle ?? container
+    boundEl = touchTarget
+    bindEvents(touchTarget)
   }
 
   function detach() {
