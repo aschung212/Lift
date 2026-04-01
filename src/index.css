@@ -511,6 +511,7 @@ button, [role="tab"], [role="switch"], a {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding-top: 12px;
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 110px);
 }
@@ -739,6 +740,7 @@ button, [role="tab"], [role="switch"], a {
   max-height: 85svh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: var(--bg-primary);
   border-radius: 16px 16px 0 0;
   padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
@@ -1017,6 +1019,10 @@ button, [role="tab"], [role="switch"], a {
 
 .wtExerciseList {
   list-style: none;
+}
+
+.wtExerciseItem {
+  contain: layout style paint;
 }
 
 .wtExerciseItem + .wtExerciseItem {
@@ -1521,6 +1527,7 @@ button, [role="tab"], [role="switch"], a {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   min-height: 50svh;
 }
 
@@ -1532,6 +1539,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .wtSetRow {
+  contain: layout style paint;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -2250,6 +2258,7 @@ button, [role="tab"], [role="switch"], a {
   max-height: 35vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .wtTimerEditListItem {
@@ -2603,6 +2612,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .calCell {
+  contain: layout style paint;
   background: var(--bg-secondary);
   min-height: 52px;
   padding: 5px 4px 4px;
@@ -3407,6 +3417,7 @@ button, [role="tab"], [role="switch"], a {
   max-height: 80vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .legalHeader {
