@@ -130,7 +130,7 @@
                 <li
                   class="wtSetRow"
                   :class="{
-                    wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id),
+                    wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id) && set.date.slice(0,10) === detailPRDate,
                     'wtSetRowActive': activeSetId === set.id,
                   }"
                   @click="toggleSetActions(set.id)"
@@ -138,7 +138,7 @@
                   <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
                   <span class="wtSet1RM">
                     ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
-                    <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id)" class="wtSetPR">🏆</span>
+                    <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id) && set.date.slice(0,10) === detailPRDate" class="wtSetPR">🏆</span>
                   </span>
                   <div v-if="activeSetId === set.id" class="wtSetActions">
                     <button
@@ -649,6 +649,22 @@ const detailExercise = computed((): Exercise | null =>
   detailExerciseId.value ? store.exercises.find(e => e.id === detailExerciseId.value) ?? null : null
 )
 const detailExerciseId = ref<string | null>(null)
+
+// Earliest date the detail exercise hit its PR — only that date gets trophies
+const detailPRDate = computed(() => {
+  const ex = detailExercise.value
+  if (!ex) return ''
+  const pr = store.getExercisePR(ex.id)
+  if (!pr) return ''
+  let earliest = ''
+  for (const set of ex.sets) {
+    if (set.estimated1RM === pr) {
+      const day = set.date.slice(0, 10)
+      if (!earliest || day < earliest) earliest = day
+    }
+  }
+  return earliest
+})
 
 const detailTab = ref<'sets' | 'prs'>('sets')
 
