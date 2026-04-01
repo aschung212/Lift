@@ -305,9 +305,22 @@ import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
 
 // Lazy-load tab content — split into separate chunks for faster initial load
-const WorkoutTracker = defineAsyncComponent(() => import('./components/WorkoutTracker.vue'))
-const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'))
-const BodyweightTracker = defineAsyncComponent(() => import('./components/BodyweightTracker.vue'))
+import SkeletonLoader from './components/SkeletonLoader.vue'
+const WorkoutTracker = defineAsyncComponent({
+  loader: () => import('./components/WorkoutTracker.vue'),
+  loadingComponent: SkeletonLoader,
+  delay: 100,
+})
+const CalendarView = defineAsyncComponent({
+  loader: () => import('./components/CalendarView.vue'),
+  loadingComponent: SkeletonLoader,
+  delay: 100,
+})
+const BodyweightTracker = defineAsyncComponent({
+  loader: () => import('./components/BodyweightTracker.vue'),
+  loadingComponent: SkeletonLoader,
+  delay: 100,
+})
 import { useTheme } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'

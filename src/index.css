@@ -2991,6 +2991,94 @@ button, [role="tab"], [role="switch"], a {
   50%      { opacity: 1;   transform: scale(1.4); }
 }
 
+/* ─── Skeleton loading shimmer ──────────────────────────────────────────── */
+
+.skeletonCard {
+  padding: 16px;
+}
+
+.skeletonHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.skeletonBlock {
+  background: var(--bg-hover);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeletonBlock::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--border) 50%,
+    transparent 100%
+  );
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+}
+
+.skeletonTitle {
+  width: 160px;
+  height: 24px;
+}
+
+.skeletonBtn {
+  width: 100px;
+  height: 32px;
+  border-radius: 16px;
+}
+
+.skeletonBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+}
+
+.skeletonRowLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skeletonLabel {
+  width: 120px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.skeletonSubLabel {
+  width: 80px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.skeletonBadge {
+  width: 48px;
+  height: 24px;
+  border-radius: 12px;
+}
+
+@keyframes skeletonShimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 
 /* ─── Bodyweight tracker ────────────────────────────────────────────────── */
