@@ -835,6 +835,9 @@ const reps = computed<number | null>({
   set: (v) => { repsStr.value = v === null ? '' : String(v) },
 })
 const date = ref(todayISO())
+// Remembers the last date the user manually set when logging, so the modal
+// re-opens to that date rather than always resetting to today.
+const lastLogDate = ref(todayISO())
 
 const isEditMode = computed(() => editingSet.value !== null)
 
@@ -874,6 +877,7 @@ function openNewExerciseModal() {
   selectedExerciseId.value = '__new__'
   newExerciseTags.value = []
   newExerciseTagInput.value = ''
+  date.value = lastLogDate.value
   showModal.value = true
 }
 
@@ -906,7 +910,7 @@ function toggleNewExerciseTag(tag: string) {
 function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
-  date.value = todayISO()
+  date.value = lastLogDate.value
   showModal.value = true
 }
 
@@ -1061,7 +1065,7 @@ function onTimerComplete() {
 
 function skipToNextSet() {
   stopTimer()
-  date.value = todayISO()
+  date.value = lastLogDate.value
 }
 
 const DEFAULT_PRESETS = [30, 60, 90, 120, 180, 300]
@@ -1490,6 +1494,14 @@ function confirmDeleteTag(tag: string) {
   )
 }
 
+
+// Persist the last manually chosen log date so subsequent modal opens
+// default to it rather than always jumping back to today.
+watch(date, (newDate) => {
+  if (showModal.value && !isEditMode.value) {
+    lastLogDate.value = newDate
+  }
+})
 
 // ── Focus traps for v-if modals ─────────────────────────────────
 watch(showModal, async (open) => {
