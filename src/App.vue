@@ -402,6 +402,9 @@ const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeSh
   { key: 'Escape', label: 'Close panel', action: () => { closeSettings(); closeShortcuts() }, global: true },
 ])
 
+// ── Confirm dialog state (declared before watchers that reference it) ──
+const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
+
 // ── Focus trap watches for v-if modals ─────────────────────────
 watch(shortcutsOpen, async (open) => {
   if (open) {
@@ -498,8 +501,6 @@ function toggleGlass() {
   glassEnabled.value = !glassEnabled.value
   logEvent('glass_toggle', { enabled: glassEnabled.value })
 }
-
-const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
 
 function showConfirm(message: string, onConfirm: () => void) {
   confirmDialog.value = { message, onConfirm }
