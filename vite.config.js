@@ -6,6 +6,14 @@ import { sentryVitePlugin } from '@sentry/vite-plugin'
 export default defineConfig({
   build: {
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vue-vendor': ['vue', 'pinia'],
+          'supabase': ['@supabase/supabase-js'],
+        },
+      },
+    },
   },
   server: {
     host: true,
