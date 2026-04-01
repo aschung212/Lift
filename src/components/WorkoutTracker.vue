@@ -212,7 +212,7 @@
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
-    <div v-if="showModal" class="logSheetOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
+    <div v-if="showModal" class="logSheetOverlay" :style="{ bottom: keyboardHeight > 0 ? keyboardHeight + 'px' : '0' }" @click.self="onOverlayClick" @keydown.escape="closeModal">
       <div class="logSheet" ref="logSheetEl" :style="logSheetSwipe.dragStyle()" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
         <div class="sheetDragHandle" ref="logSheetHandleEl" aria-hidden="true"><span class="sheetDragPill"></span></div>
 
@@ -610,12 +610,14 @@ import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useKeyboardOffset } from '../composables/useKeyboardOffset'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
+const { keyboardHeight } = useKeyboardOffset()
 
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
