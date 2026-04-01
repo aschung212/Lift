@@ -2135,6 +2135,7 @@ button, [role="tab"], [role="switch"], a {
   right: 0;
   border: none;
   padding: 0;
+  pointer-events: none;
 }
 
 .wtModalSubtitle {
