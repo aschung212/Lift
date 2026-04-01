@@ -53,8 +53,9 @@
         :viewBox="`0 0 ${W} ${H}`"
         class="wtGraphSvg"
         role="img"
-        aria-label="Body weight progress chart"
+        :aria-label="`Body weight progress chart showing ${points.length} entries from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit}`"
       >
+        <desc>{{ `Body weight trend from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit} across ${points.length} data points.` }}</desc>
         <!-- Horizontal grid lines -->
         <line
           v-for="gy in gridYs"
@@ -179,12 +180,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
+import { useFocusTrap } from '../composables/useFocusTrap'
 
 const store = useBodyweightStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
@@ -192,6 +194,7 @@ const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 
 // ── Modal state ──────────────────────────────────────────────────
+const bwModalFocus = useFocusTrap()
 const showModal = ref(false)
 const editing = ref<string | null>(null) // entry id when editing
 const weight = ref<number | null>(null)
@@ -227,7 +230,16 @@ function closeModal() {
   editing.value = null
   weight.value = null
   date.value = todayISO()
+  bwModalFocus.deactivate()
 }
+
+watch(showModal, async (open) => {
+  if (open) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('[aria-labelledby="bw-modal-title"]')
+    if (el) bwModalFocus.activate(el)
+  }
+})
 
 const canSave = computed(() => weight.value !== null && weight.value > 0)
 
@@ -342,8 +354,12 @@ const points = computed(() => {
   const entries = filteredDaily.value
   if (entries.length < 2) return []
   const range = maxVal.value - minVal.value
-  const t0 = new Date(entries[0].date + 'T12:00:00').getTime()
-  const t1 = new Date(entries[entries.length - 1].date + 'T12:00:00').getTime()
+  // Use the full selected period for the x-axis, not just the data range
+  const now = new Date()
+  const periodStart = new Date()
+  periodStart.setDate(now.getDate() - period.value)
+  const t0 = new Date(periodStart.toISOString().slice(0, 10) + 'T12:00:00').getTime()
+  const t1 = new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime()
   const tRange = t1 - t0
 
   return entries.map(({ date, weight }) => {

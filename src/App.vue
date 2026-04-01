@@ -48,6 +48,7 @@
           :class="['tabBtn tabBtnSettings', { active: settingsOpen }]"
           @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
           title="Settings"
+          aria-label="Settings"
         >
           <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -71,6 +72,8 @@
                   :key="t.id"
                   :class="['themePreview', { active: currentTheme === t.id }]"
                   @click="selectTheme(t.id)"
+                  :aria-label="'Select ' + t.label + ' theme'"
+                  :aria-pressed="currentTheme === t.id"
                 >
                   <span
                     class="themePreviewDot"
@@ -89,6 +92,8 @@
                     :key="m"
                     :class="['modeSegBtn', { active: colorMode === m }]"
                     @click="setMode(m)"
+                    :aria-label="m[0].toUpperCase() + m.slice(1) + ' mode'"
+                    :aria-pressed="colorMode === m"
                   >{{ m[0].toUpperCase() + m.slice(1) }}</button>
                 </div>
               </div>
@@ -101,8 +106,8 @@
               <div class="settingsRow">
                 <span class="settingsLabel">Units</span>
                 <div class="modeSegmented">
-                  <button :class="['modeSegBtn', { active: weightUnit === 'lbs' }]" @click="weightUnit = 'lbs'">lbs</button>
-                  <button :class="['modeSegBtn', { active: weightUnit === 'kg' }]" @click="weightUnit = 'kg'">kg</button>
+                  <button :class="['modeSegBtn', { active: weightUnit === 'lbs' }]" @click="weightUnit = 'lbs'" aria-label="Use pounds" :aria-pressed="weightUnit === 'lbs'">lbs</button>
+                  <button :class="['modeSegBtn', { active: weightUnit === 'kg' }]" @click="weightUnit = 'kg'" aria-label="Use kilograms" :aria-pressed="weightUnit === 'kg'">kg</button>
                 </div>
               </div>
             </div>
@@ -157,8 +162,22 @@
               <div class="settingsRow">
                 <span class="settingsLabel">Export</span>
                 <div class="exportBtnGroup">
-                  <button class="exportBtn" @click="exportData('csv')">CSV</button>
-                  <button class="exportBtn" @click="exportData('json')">JSON</button>
+                  <button class="exportBtn" @click="exportData('csv')" aria-label="Export data as CSV">CSV</button>
+                  <button class="exportBtn" @click="exportData('json')" aria-label="Export data as JSON">JSON</button>
+                </div>
+              </div>
+              <div class="privacyTransparency" role="region" aria-label="Data transparency">
+                <div class="privacyRow">
+                  <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/></svg>
+                  <span class="privacyText">Your data lives on your device first</span>
+                </div>
+                <div class="privacyRow">
+                  <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <span class="privacyText">{{ user ? 'Synced over encrypted HTTPS' : 'Sign in to sync across devices' }}</span>
+                </div>
+                <div class="privacyRow">
+                  <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                  <span class="privacyText">No tracking, no ads, no data sales</span>
                 </div>
               </div>
             </div>
@@ -294,15 +313,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
 
 // Lazy-load tab content — split into separate chunks for faster initial load
-const WorkoutTracker = defineAsyncComponent(() => import('./components/WorkoutTracker.vue'))
-const CalendarView = defineAsyncComponent(() => import('./components/CalendarView.vue'))
-const BodyweightTracker = defineAsyncComponent(() => import('./components/BodyweightTracker.vue'))
+import SkeletonLoader from './components/SkeletonLoader.vue'
+const WorkoutTracker = defineAsyncComponent({
+  loader: () => import('./components/WorkoutTracker.vue'),
+  loadingComponent: SkeletonLoader,
+  delay: 100,
+})
+const CalendarView = defineAsyncComponent({
+  loader: () => import('./components/CalendarView.vue'),
+  loadingComponent: SkeletonLoader,
+  delay: 100,
+})
+const BodyweightTracker = defineAsyncComponent({
+  loader: () => import('./components/BodyweightTracker.vue'),
+  loadingComponent: SkeletonLoader,
+  delay: 100,
+})
 import { useTheme } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
@@ -311,6 +343,7 @@ import { useWorkoutStore } from './stores/workout'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
+import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
 
@@ -330,9 +363,16 @@ const settingsSwipe = useSwipeToDismiss({
   onDismiss: () => { settingsOpen.value = false },
 })
 
+// ── Focus traps for modals ─────────────────────────────────────
+const settingsFocus = useFocusTrap()
+const shortcutsFocus = useFocusTrap()
+const legalFocus = useFocusTrap()
+const confirmFocus = useFocusTrap()
+
 watch(settingsOpen, (open) => {
   if (!open) {
     settingsSwipe.detach()
+    settingsFocus.deactivate()
   }
 })
 
@@ -340,6 +380,7 @@ function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
   if (el && el instanceof HTMLElement) {
     settingsEl.value = el
     settingsSwipe.attach(el)
+    settingsFocus.activate(el)
   }
 }
 
@@ -398,6 +439,40 @@ const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeSh
   { key: ',', label: 'Open settings', action: () => { settingsOpen.value = true } },
   { key: 'Escape', label: 'Close panel', action: () => { closeSettings(); closeShortcuts() }, global: true },
 ])
+
+// ── Confirm dialog state (declared before watchers that reference it) ──
+const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
+
+// ── Focus trap watches for v-if modals ─────────────────────────
+watch(shortcutsOpen, async (open) => {
+  if (open) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('.kbSheet')
+    if (el) shortcutsFocus.activate(el)
+  } else {
+    shortcutsFocus.deactivate()
+  }
+})
+
+watch(legalView, async (view) => {
+  if (view) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('.legalSheet')
+    if (el) legalFocus.activate(el)
+  } else {
+    legalFocus.deactivate()
+  }
+})
+
+watch(confirmDialog, async (dialog) => {
+  if (dialog) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('.confirmSheet')
+    if (el) confirmFocus.activate(el)
+  } else {
+    confirmFocus.deactivate()
+  }
+})
 
 // ── Tab definitions with inline SVG paths ────────────────────────
 const TAB_DEFS = [
@@ -464,8 +539,6 @@ function toggleGlass() {
   glassEnabled.value = !glassEnabled.value
   logEvent('glass_toggle', { enabled: glassEnabled.value })
 }
-
-const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
 
 function showConfirm(message: string, onConfirm: () => void) {
   confirmDialog.value = { message, onConfirm }

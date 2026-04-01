@@ -5,8 +5,9 @@
       :viewBox="`0 0 ${W} ${H}`"
       class="wtGraphSvg"
       role="img"
-      :aria-label="`Estimated 1RM progress chart`"
+      :aria-label="`${exercise.name} ${mode === 'prs' ? 'PR progression' : 'estimated 1RM progress'} chart with ${points.length} data points, from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit}`"
     >
+      <desc>{{ `${exercise.name} ${mode === 'prs' ? 'PR progression' : 'estimated 1RM progress'} from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit} across ${points.length} sessions.` }}</desc>
       <!-- Horizontal grid lines -->
       <line
         v-for="gy in gridYs"
@@ -141,6 +142,7 @@ const maxVal = computed(() => {
 })
 
 // Map each date → {x, y, date, e1rm, isPR}
+// Only the first date to reach the max e1RM is marked as PR
 const points = computed(() => {
   const entries = graphData.value
   if (entries.length < 2) return []
@@ -148,6 +150,8 @@ const points = computed(() => {
   const t0 = new Date(entries[0][0] + 'T12:00:00').getTime()
   const t1 = new Date(entries[entries.length - 1][0] + 'T12:00:00').getTime()
   const tRange = t1 - t0
+  // Find the earliest date that hit the max value
+  const prDate = entries.find(([, v]) => v === maxVal.value)?.[0] ?? ''
 
   return entries.map(([date, e1rm]) => {
     const t = new Date(date + 'T12:00:00').getTime()
@@ -155,7 +159,7 @@ const points = computed(() => {
     const y = range > 0
       ? PAD_T + chartH - ((e1rm - minVal.value) / range) * chartH
       : PAD_T + chartH / 2
-    return { x, y, date, e1rm, isPR: e1rm === maxVal.value }
+    return { x, y, date, e1rm, isPR: date === prDate }
   })
 })
 

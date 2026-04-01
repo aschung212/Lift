@@ -546,6 +546,91 @@ describe('workout store', () => {
     })
   })
 
+  // ── onboarding edge cases (MAS-270) ────────────────────────────
+  describe('onboarding edge cases', () => {
+    it('chooseStarter pattern does not duplicate existing exercises', () => {
+      const store = useWorkoutStore()
+      // Simulate user who already has exercises (e.g. from previous onboarding)
+      store.addExercise('Bench Press', ['Push', 'Chest'])
+      store.addExercise('Squat', ['Legs'])
+      expect(store.exercises).toHaveLength(2)
+
+      // Simulate chooseStarter calling addExercise for all 6 starter exercises
+      const starterExercises = [
+        { name: 'Bench Press', tags: ['Push', 'Chest'] },
+        { name: 'Squat', tags: ['Legs'] },
+        { name: 'Deadlift', tags: ['Pull', 'Legs'] },
+        { name: 'Overhead Press', tags: ['Push', 'Shoulders'] },
+        { name: 'Barbell Row', tags: ['Pull', 'Back'] },
+        { name: 'Pull-ups', tags: ['Pull', 'Back'] },
+      ]
+      for (const ex of starterExercises) {
+        store.addExercise(ex.name, ex.tags)
+      }
+      // Should only have 6, not 8 (duplicates returned existing IDs)
+      expect(store.exercises).toHaveLength(6)
+    })
+
+    it('addExercise returns existing id for case-insensitive duplicate during onboarding', () => {
+      const store = useWorkoutStore()
+      const id1 = store.addExercise('Bench Press', ['Push'])
+      // Simulate onboarding calling with same name
+      const id2 = store.addExercise('Bench Press', ['Push', 'Chest'])
+      expect(id1).toBe(id2)
+      expect(store.exercises).toHaveLength(1)
+      // Tags should NOT be updated by duplicate add — original tags preserved
+      expect(store.exercises[0].tags).toEqual(['Push'])
+    })
+
+    it('existing user data survives simulated localStorage loss of onboarding flag', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench Press', ['Push'])!
+      store.logSet(id, 185, 5)
+      expect(store.exercises).toHaveLength(1)
+      expect(store.exercises[0].sets).toHaveLength(1)
+
+      // Simulate localStorage clearing the onboarding flag but NOT workout data
+      // (workout data persists in store state and its own localStorage key)
+      localStorageMock.removeItem('onboarding-complete')
+      expect(localStorageMock.getItem('onboarding-complete')).toBeNull()
+
+      // Workout data should still be intact
+      expect(store.exercises).toHaveLength(1)
+      expect(store.exercises[0].sets).toHaveLength(1)
+      expect(store.exercises[0].sets[0].weight).toBe(185)
+    })
+
+    it('re-running chooseStarter on existing data does not create duplicate sets', () => {
+      const store = useWorkoutStore()
+      // User already has Bench Press with logged sets
+      const id = store.addExercise('Bench Press', ['Push'])!
+      store.logSet(id, 185, 5)
+      store.logSet(id, 200, 3)
+      expect(store.exercises[0].sets).toHaveLength(2)
+
+      // Simulate chooseStarter running again (addExercise returns existing id)
+      const id2 = store.addExercise('Bench Press', ['Push', 'Chest'])
+      expect(id2).toBe(id)
+      // Sets should be untouched — chooseStarter only calls addExercise, not logSet
+      expect(store.exercises[0].sets).toHaveLength(2)
+    })
+
+    it('store loads persisted exercises on re-initialization', () => {
+      // First "session": add exercises and log sets
+      const store1 = useWorkoutStore()
+      const id = store1.addExercise('Squat', ['Legs'])!
+      store1.logSet(id, 225, 5)
+
+      // Verify data was persisted to localStorage
+      const raw = localStorageMock.getItem('workout-exercises')
+      expect(raw).toBeTruthy()
+      const parsed = JSON.parse(raw)
+      expect(parsed).toHaveLength(1)
+      expect(parsed[0].name).toBe('Squat')
+      expect(parsed[0].sets).toHaveLength(1)
+    })
+  })
+
   // ── sync opt-out ───────────────────────────────────────────────
   describe('sync opt-out', () => {
     it('respects sync: false flag on addExercise', () => {

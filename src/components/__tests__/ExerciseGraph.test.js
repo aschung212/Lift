@@ -120,7 +120,7 @@ describe('ExerciseGraph', () => {
       const wrapper = mount(ExerciseGraph, {
         props: { exercise }
       })
-      expect(wrapper.find('svg').attributes('aria-label')).toBe('Estimated 1RM progress chart')
+      expect(wrapper.find('svg').attributes('aria-label')).toContain('estimated 1RM progress')
       expect(wrapper.find('svg').attributes('role')).toBe('img')
     })
 

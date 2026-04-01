@@ -40,7 +40,7 @@ const THEME_META_COLORS: Record<ThemeId, { dark: string; light: string }> = {
   graphite: { dark: '#111118', light: '#ededf5' },
   arctic:   { dark: '#0e1420', light: '#dde4f5' },
   forge:    { dark: '#100e0b', light: '#f5ede0' },
-  aaron:    { dark: '#060e08', light: '#e8f2ea' },
+  aaron:    { dark: '#0c0f14', light: '#eceee8' },
   tina:     { dark: '#1a1020', light: '#f0dff0' },
 }
 

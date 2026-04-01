@@ -32,7 +32,7 @@ function createWrapper(options: { threshold?: number; onDismiss: () => void }) {
 }
 
 describe('useSwipeToDismiss', () => {
-  let onDismiss: ReturnType<typeof vi.fn>
+  let onDismiss: () => void
 
   beforeEach(() => {
     onDismiss = vi.fn()

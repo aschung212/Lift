@@ -155,6 +155,13 @@
           <button class="calWeekLogBtn" @click="openLogModal(day.dateStr)">+ Log</button>
         </div>
       </div>
+
+      <!-- Weekly muscle group volume chart -->
+      <MuscleGroupChart
+        :weekly-volume="weeklyVolume"
+        :max-sets="maxSets"
+        :total-sets="totalSets"
+      />
     </div>
   </div>
 
@@ -219,10 +226,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useFocusTrap } from '../composables/useFocusTrap'
+import { useMuscleGroupVolume } from '../composables/useMuscleGroupVolume'
+import MuscleGroupChart from './MuscleGroupChart.vue'
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
@@ -289,17 +299,23 @@ const trainingMap = computed(() => {
 })
 
 // Map YYYY-MM-DD → Set of exercise names that achieved an all-time PR on that date
+// Only the first set to reach the PR value counts — ties on later dates are not new records
 const prMap = computed(() => {
   const map: Record<string, Set<string>> = {}
   for (const exercise of filteredExercises.value) {
     const pr = store.getExercisePR(exercise.id)
     if (!pr) continue
+    // Find the earliest date any set hit the PR value
+    let earliestDate = ''
     for (const set of exercise.sets) {
       if (set.estimated1RM === pr) {
         const day = set.date.slice(0, 10)
-        if (!map[day]) map[day] = new Set()
-        map[day].add(exercise.name)
+        if (!earliestDate || day < earliestDate) earliestDate = day
       }
+    }
+    if (earliestDate) {
+      if (!map[earliestDate]) map[earliestDate] = new Set()
+      map[earliestDate].add(exercise.name)
     }
   }
   return map
@@ -361,10 +377,12 @@ function getSetsForDay(dateStr: string, exName: string) {
   if (!exercise) return []
   const pr = store.getExercisePR(exercise.id)
   const dayStr = dateStr.slice(0, 10)
+  // Only mark as PR if this is the earliest date the PR was achieved
+  const isPRDay = prMap.value[dayStr]?.has(exName) ?? false
   return exercise.sets
     .filter(s => s.date.slice(0, 10) === dayStr)
     .sort((a, b) => b.estimated1RM - a.estimated1RM)
-    .map(s => ({ ...s, isPR: s.estimated1RM === pr }))
+    .map(s => ({ ...s, isPR: isPRDay && s.estimated1RM === pr }))
 }
 
 function getSetCount(dateStr: string, exName: string) {
@@ -460,6 +478,11 @@ const weekDays = computed(() => {
   })
 })
 
+// ── Weekly muscle group volume ────────────────────────────────────
+const weekDateStrings = computed(() => weekDays.value.map(d => d.dateStr))
+const exercisesRef = computed(() => filteredExercises.value)
+const { weeklyVolume, maxSets, totalSets } = useMuscleGroupVolume(exercisesRef, weekDateStrings)
+
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
     weekday: 'long', month: 'long', day: 'numeric'
@@ -467,6 +490,7 @@ function formatSelectedDay(dateStr: string) {
 }
 
 // ── Log modal ─────────────────────────────────────────────────────
+const calModalFocus = useFocusTrap()
 const logModal = ref<{ open: boolean; date: string; exerciseId: string; weight: number | null; reps: number | null }>({ open: false, date: '', exerciseId: '', weight: null, reps: null })
 
 function openLogModal(dateStr: string) {
@@ -475,7 +499,16 @@ function openLogModal(dateStr: string) {
 
 function closeLogModal() {
   logModal.value = { open: false, date: '', exerciseId: '', weight: null, reps: null }
+  calModalFocus.deactivate()
 }
+
+watch(() => logModal.value.open, async (open) => {
+  if (open) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('[aria-labelledby="cal-modal-title"]')
+    if (el) calModalFocus.activate(el)
+  }
+})
 
 const logModalEstimate = computed(() => {
   const { weight, reps } = logModal.value
