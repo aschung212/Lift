@@ -48,6 +48,7 @@
           :class="['tabBtn tabBtnSettings', { active: settingsOpen }]"
           @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
           title="Settings"
+          aria-label="Settings"
         >
           <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -71,6 +72,8 @@
                   :key="t.id"
                   :class="['themePreview', { active: currentTheme === t.id }]"
                   @click="selectTheme(t.id)"
+                  :aria-label="'Select ' + t.label + ' theme'"
+                  :aria-pressed="currentTheme === t.id"
                 >
                   <span
                     class="themePreviewDot"
@@ -89,6 +92,8 @@
                     :key="m"
                     :class="['modeSegBtn', { active: colorMode === m }]"
                     @click="setMode(m)"
+                    :aria-label="m[0].toUpperCase() + m.slice(1) + ' mode'"
+                    :aria-pressed="colorMode === m"
                   >{{ m[0].toUpperCase() + m.slice(1) }}</button>
                 </div>
               </div>
@@ -101,8 +106,8 @@
               <div class="settingsRow">
                 <span class="settingsLabel">Units</span>
                 <div class="modeSegmented">
-                  <button :class="['modeSegBtn', { active: weightUnit === 'lbs' }]" @click="weightUnit = 'lbs'">lbs</button>
-                  <button :class="['modeSegBtn', { active: weightUnit === 'kg' }]" @click="weightUnit = 'kg'">kg</button>
+                  <button :class="['modeSegBtn', { active: weightUnit === 'lbs' }]" @click="weightUnit = 'lbs'" aria-label="Use pounds" :aria-pressed="weightUnit === 'lbs'">lbs</button>
+                  <button :class="['modeSegBtn', { active: weightUnit === 'kg' }]" @click="weightUnit = 'kg'" aria-label="Use kilograms" :aria-pressed="weightUnit === 'kg'">kg</button>
                 </div>
               </div>
             </div>
@@ -157,8 +162,8 @@
               <div class="settingsRow">
                 <span class="settingsLabel">Export</span>
                 <div class="exportBtnGroup">
-                  <button class="exportBtn" @click="exportData('csv')">CSV</button>
-                  <button class="exportBtn" @click="exportData('json')">JSON</button>
+                  <button class="exportBtn" @click="exportData('csv')" aria-label="Export data as CSV">CSV</button>
+                  <button class="exportBtn" @click="exportData('json')" aria-label="Export data as JSON">JSON</button>
                 </div>
               </div>
             </div>
