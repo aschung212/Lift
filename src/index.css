@@ -431,6 +431,11 @@ html, body {
   touch-action: manipulation;
 }
 
+/* Prevent iOS auto-zoom on form focus (replaces user-scalable=no) */
+input, select, textarea {
+  font-size: 16px;
+}
+
 /* ─── Landscape blocker ──────────────────────────────────────────────────── */
 
 @media (orientation: landscape) and (max-height: 600px) {
