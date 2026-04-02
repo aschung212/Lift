@@ -525,12 +525,19 @@ watch(() => prefs.features, () => {
 }, { deep: true })
 
 // ── Analytics ────────────────────────────────────────────────────
+const TAB_TITLES: Record<string, string> = {
+  workouts: 'Workouts — Lift',
+  calendar: 'Calendar — Lift',
+  weight: 'Weight — Lift',
+}
+
 function switchTab(tabId: string) {
   const from = activeTab.value
   closeSettings()
   if (from === tabId) return
   activeTab.value = tabId
   localStorage.setItem('active-tab', tabId)
+  document.title = TAB_TITLES[tabId] || 'Lift — Workout Tracker'
   tabSwitch(from, tabId)
 }
 
@@ -647,6 +654,7 @@ function onBeforeUnload() {
 
 onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  document.title = TAB_TITLES[activeTab.value] || 'Lift — Workout Tracker'
   logEvent('session_start')
 })
 onUnmounted(() => {
