@@ -89,6 +89,8 @@ async function devSignIn(): Promise<void> {
 async function signOut(): Promise<void> {
   try {
     await supabase?.auth.signOut()
+  } catch {
+    // Network errors during sign-out should not block clearing the user
   } finally {
     user.value = null
   }
