@@ -771,7 +771,7 @@ html.modal-open .tabContent {
 .settingsSheet {
   width: 100%;
   max-width: 520px;
-  max-height: 85svh;
+  max-height: calc(85svh - env(safe-area-inset-top, 0px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
