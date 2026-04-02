@@ -1610,5 +1610,13 @@ watch(tagManagerOpen, async (open) => {
   }
 })
 
-onUnmounted(() => stopTimer())
+// ── Lock background scroll when any modal is open (iOS) ────────
+watch(
+  () => showModal.value || !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value,
+  (open) => { document.documentElement.classList.toggle('modal-open', open) },
+)
+onUnmounted(() => {
+  stopTimer()
+  document.documentElement.classList.remove('modal-open')
+})
 </script>
