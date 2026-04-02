@@ -282,4 +282,51 @@ describe('BodyweightTracker', () => {
       expect(dialog.attributes('aria-modal')).toBe('true')
     })
   })
+
+  describe('entry list accessibility', () => {
+    beforeEach(() => {
+      entries = [makeEntry('e-1', 170, '2026-03-30')]
+    })
+
+    it('entry rows have role=button and tabindex=0', () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      expect(row.attributes('role')).toBe('button')
+      expect(row.attributes('tabindex')).toBe('0')
+    })
+
+    it('entry rows have aria-expanded reflecting action visibility', async () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      expect(row.attributes('aria-expanded')).toBe('false')
+
+      await row.trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(row.attributes('aria-expanded')).toBe('true')
+    })
+
+    it('entry rows have descriptive aria-label', () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      const label = row.attributes('aria-label')
+      expect(label).toContain('170')
+      expect(label).toContain('lbs')
+    })
+
+    it('entry rows respond to Enter key', async () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      await row.trigger('keydown.enter')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtSetActions').exists()).toBe(true)
+    })
+
+    it('entry rows respond to Space key', async () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      await row.trigger('keydown.space')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtSetActions').exists()).toBe(true)
+    })
+  })
 })
