@@ -4,8 +4,8 @@
     <div class="calCardHeader">
       <h2 class="calTitle">Training Calendar</h2>
       <div class="calViewToggle">
-        <button :class="['calToggleBtn', { active: view === 'month' }]" @click="setView('month')">Month</button>
-        <button :class="['calToggleBtn', { active: view === 'week' }]" @click="setView('week')">Week</button>
+        <button :class="['calToggleBtn', { active: view === 'month' }]" :aria-pressed="view === 'month'" @click="setView('month')">Month</button>
+        <button :class="['calToggleBtn', { active: view === 'week' }]" :aria-pressed="view === 'week'" @click="setView('week')">Week</button>
       </div>
     </div>
 
@@ -93,10 +93,11 @@
           </div>
 
           <template v-for="ex in trainingMap[selectedDay]" :key="ex">
-            <span
+            <button
               :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
+              :aria-expanded="detailKey === `${selectedDay}::${ex}`"
               @click="toggleDetail(selectedDay, ex)"
-            >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(selectedDay, ex) }}</span></span>
+            >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(selectedDay, ex) }}</span></button>
             <div v-if="detailKey === `${selectedDay}::${ex}`" class="calSetList">
               <div
                 v-for="s in getSetsForDay(selectedDay, ex)"
@@ -133,10 +134,11 @@
           <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
           <template v-for="ex in day.exercises" :key="ex">
 
-            <span
+            <button
               :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
+              :aria-expanded="detailKey === `${day.dateStr}::${ex}`"
               @click="toggleDetail(day.dateStr, ex)"
-            >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(day.dateStr, ex) }}</span></span>
+            >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(day.dateStr, ex) }}</span></button>
             <div v-if="detailKey === `${day.dateStr}::${ex}`" class="calSetList">
               <div
                 v-for="s in getSetsForDay(day.dateStr, ex)"
