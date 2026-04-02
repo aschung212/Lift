@@ -1,6 +1,7 @@
 <template>
   <div class="authScreen">
     <div class="authCard">
+      <img src="/icon-512.png" alt="Lift" class="authIcon" width="96" height="96" />
       <div class="authLogo">Lift</div>
       <p class="authTagline">Track your sets, monitor progress, hit PRs.</p>
 
@@ -116,8 +117,9 @@ async function handleOAuth(provider: Provider) {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 80svh;
+  min-height: 100svh;
   padding: 20px;
+  background: #0f0f0f;
 }
 
 .authCard {
@@ -126,17 +128,24 @@ async function handleOAuth(provider: Provider) {
   text-align: center;
 }
 
+.authIcon {
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+  margin-bottom: 16px;
+}
+
 .authLogo {
   font-size: 42px;
   font-weight: 800;
-  color: var(--accent);
+  color: #c9a84c;
   letter-spacing: -1.5px;
   margin-bottom: 6px;
 }
 
 .authTagline {
   font-size: 14px;
-  color: var(--text-secondary);
+  color: #9a9a9a;
   margin-bottom: 32px;
   line-height: 1.5;
 }
@@ -154,9 +163,9 @@ async function handleOAuth(provider: Provider) {
   min-height: 44px;
   font-size: var(--font-callout);
   font-family: inherit;
-  color: var(--text-primary);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-strong);
+  color: #f0f0f0;
+  background: #1a1a1a;
+  border: 1px solid #333;
   border-radius: 10px;
   outline: none;
   transition: border-color 0.15s;
@@ -164,11 +173,11 @@ async function handleOAuth(provider: Provider) {
 }
 
 .authInput:focus {
-  border-color: var(--accent);
+  border-color: #c9a84c;
 }
 
 .authInput::placeholder {
-  color: var(--text-muted);
+  color: #666;
 }
 
 .authSubmitBtn {
@@ -178,8 +187,8 @@ async function handleOAuth(provider: Provider) {
   font-size: var(--font-subhead);
   font-weight: 700;
   font-family: inherit;
-  color: var(--text-on-accent);
-  background: var(--accent);
+  color: #0f0f0f;
+  background: #c9a84c;
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -202,7 +211,7 @@ async function handleOAuth(provider: Provider) {
 .authModeSwitch {
   font-size: 14px;
   font-family: inherit;
-  color: var(--text-secondary);
+  color: #9a9a9a;
   background: none;
   border: none;
   cursor: pointer;
@@ -212,7 +221,7 @@ async function handleOAuth(provider: Provider) {
 }
 
 .authModeSwitch:hover {
-  color: var(--accent);
+  color: #c9a84c;
 }
 
 .authDivider {
@@ -225,13 +234,13 @@ async function handleOAuth(provider: Provider) {
 .authDividerLine {
   flex: 1;
   height: 1px;
-  background: var(--border-strong);
+  background: #333;
 }
 
 .authDividerText {
   font-size: var(--font-caption1);
   font-weight: 600;
-  color: var(--text-muted);
+  color: #666;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -253,17 +262,17 @@ async function handleOAuth(provider: Provider) {
   font-size: var(--font-subhead);
   font-weight: 600;
   font-family: inherit;
-  border: 1px solid var(--border-strong);
+  border: 1px solid #333;
   border-radius: 10px;
   cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  background: #1a1a1a;
+  color: #f0f0f0;
 }
 
 .authProviderBtn:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent);
+  background: #252525;
+  border-color: #c9a84c;
 }
 
 .authProviderBtn:active {
@@ -281,10 +290,10 @@ async function handleOAuth(provider: Provider) {
 }
 
 .authError {
-  color: var(--danger);
+  color: #ff453a;
 }
 
 .authSuccess {
-  color: var(--success);
+  color: #30d158;
 }
 </style>
