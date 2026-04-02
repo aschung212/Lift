@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-// In dev mode, auth is bypassed (local-dev user).
+// In dev mode, we sign in via the dev button.
 // We skip onboarding and disable rest timer for clean test flow.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -8,6 +8,8 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem('rest-timer', 'off')
   })
   await page.goto('/')
+  // Sign in via dev mode
+  await page.locator('.authDevBtn').click({ timeout: 10000 })
   await expect(page.getByText('Exercise Tracker')).toBeVisible({ timeout: 10000 })
 })
 
@@ -30,7 +32,7 @@ test.describe('Exercise CRUD', () => {
     await expect(page.locator('.wtExerciseName')).toHaveText('Squat')
   })
 
-  test('logs additional sets and shows correct count', async ({ page }) => {
+  test('logs additional sets and shows in detail modal', async ({ page }) => {
     // Create an exercise
     await page.getByRole('button', { name: '+ New Exercise' }).click()
     await page.fill('input[placeholder="e.g. Bench Press"]', 'Deadlift')
@@ -47,8 +49,10 @@ test.describe('Exercise CRUD', () => {
     await page.locator('.repMaxBtnCalc').click()
     await expect(page.locator('.repMaxOverlay')).not.toBeVisible()
 
-    // Verify 2 sets (text may be in overflow-hidden container, check content)
-    await expect(page.locator('.wtExerciseMeta')).toContainText('2 sets')
+    // Open detail modal and verify 2 sets
+    await page.locator('.wtExerciseRow').filter({ hasText: 'Deadlift' }).click()
+    await expect(page.locator('.wtDetailTitle')).toHaveText('Deadlift')
+    await expect(page.locator('.wtSetRow')).toHaveCount(2)
   })
 
   test('opens exercise detail modal with set history', async ({ page }) => {
@@ -84,7 +88,7 @@ test.describe('Tab Navigation', () => {
 
 test.describe('Settings', () => {
   test('opens settings and shows appearance options', async ({ page }) => {
-    await page.locator('.tabBtnSettings').click()
+    await page.locator('.settingsGearBtn').click()
     await expect(page.locator('.settingsSheet')).toBeVisible()
     await expect(page.getByText('Appearance')).toBeVisible()
     await expect(page.getByText('Liquid Glass')).toBeVisible()
