@@ -464,15 +464,18 @@
             <span class="repMaxResultLabel">PR Target</span>
             <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }}</span>
             <span class="repMaxTargetHint">to beat your PR at {{ reps }} rep{{ reps === 1 ? '' : 's' }}</span>
+            <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }} × {{ reps }}</span>
           </div>
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">PR Target</span>
             <span class="repMaxResultValue">Any rep is a new PR! 🏆</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best: {{ displayWeight(toLbs(weight)) }} {{ weightUnit }} × {{ bestRepsAtWeight }}</span>
           </div>
           <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">PR Target</span>
             <span class="repMaxResultValue">{{ prTargetReps }} rep{{ prTargetReps === 1 ? '' : 's' }}</span>
             <span class="repMaxTargetHint">to beat your PR at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best: {{ displayWeight(toLbs(weight)) }} {{ weightUnit }} × {{ bestRepsAtWeight }}</span>
           </div>
 
           <div class="repMaxActions">
@@ -1370,6 +1373,36 @@ const prTargetReps = computed<number | null>(() => {
   if (wLbs >= pr + 1) return 0 // any rep beats it
   const needed = Math.ceil(30 * ((pr + 1) / wLbs - 1))
   return needed > 30 ? null : needed // >30 reps is impractical
+})
+
+// ── Personal bests from actual history ──────────────────────────
+// Best reps at the entered weight (exact match in lbs)
+const bestRepsAtWeight = computed<number | null>(() => {
+  if (!weight.value || weight.value <= 0) return null
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  const exercise = store.exercises.find(e => e.id === id)
+  if (!exercise) return null
+  const wLbs = Math.round(toLbs(weight.value))
+  let best = 0
+  for (const s of exercise.sets) {
+    if (Math.round(s.weight) === wLbs && s.reps > best) best = s.reps
+  }
+  return best > 0 ? best : null
+})
+
+// Heaviest weight at the entered rep count (exact match)
+const bestWeightAtReps = computed<number | null>(() => {
+  if (!reps.value || reps.value < 1) return null
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  const exercise = store.exercises.find(e => e.id === id)
+  if (!exercise) return null
+  let best = 0
+  for (const s of exercise.sets) {
+    if (s.reps === reps.value && s.weight > best) best = s.weight
+  }
+  return best > 0 ? best : null
 })
 
 const hasSetData = computed(() => weight.value !== null && weight.value > 0 && reps.value !== null && reps.value >= 1)
