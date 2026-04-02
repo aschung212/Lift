@@ -1,4 +1,6 @@
--- Add tags array column to exercises table
+-- Add tags array column to exercises for filtering and organization
+-- Original: migration-003-exercise-tags.sql
+
 alter table exercises add column tags text[] not null default '{}';
 
 -- GIN index for efficient tag filtering

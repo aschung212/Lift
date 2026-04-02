@@ -20,5 +20,9 @@ dist-ssr/
 # migration output
 scripts/output/
 
+# Supabase local
+supabase/.temp/
+supabase/.branches/
+
 # Claude Code worktree metadata (not part of the public repo)
 .claude/

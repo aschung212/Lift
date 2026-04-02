@@ -1,5 +1,6 @@
--- Migration 004: Add updated_at columns for conflict resolution
+-- Add updated_at columns for conflict resolution
 -- Enables last-write-wins merge when syncing across multiple devices.
+-- Original: migration-004-updated-at.sql
 
 -- Add updated_at to exercises
 alter table exercises add column if not exists updated_at timestamptz not null default now();
