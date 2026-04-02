@@ -777,6 +777,13 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtSearchInput').attributes('aria-label')).toBe('Search exercises')
     })
 
+    it('log button aria-label renders exercise name dynamically', () => {
+      exercises = [{ id: '1', name: 'Bench Press', tags: [], sets: [] }]
+      const wrapper = mountTracker()
+      const logBtn = wrapper.find('.wtExerciseLogBtn')
+      expect(logBtn.attributes('aria-label')).toBe('Log a set for Bench Press')
+    })
+
     it('detail modal has aria-modal and role dialog', async () => {
       exercises = JSON.parse(JSON.stringify(EXERCISES))
       const wrapper = mountTracker()

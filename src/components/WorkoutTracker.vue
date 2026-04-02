@@ -84,7 +84,7 @@
           <button
             class="wtExerciseLogBtn"
             @click="openLogForExercise(exercise.id)"
-            aria-label="Log a set for {{ exercise.name }}"
+            :aria-label="`Log a set for ${exercise.name}`"
           >+ Log</button>
         </div>
       </li>
