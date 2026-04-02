@@ -3,7 +3,6 @@ import { mount } from '@vue/test-utils'
 import ExerciseGraph from '../ExerciseGraph.vue'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 
-// Mock useTheme composable
 vi.mock('../../composables/useTheme', () => ({
   useTheme: () => ({
     weightUnit: { value: 'lbs' },

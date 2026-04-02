@@ -1,20 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useBodyweightStore } from '../bodyweight'
+import { getLocalStorageMock } from '../../__tests__/helpers'
 
-vi.mock('../../lib/supabase', () => ({ supabase: null }))
 vi.mock('../../lib/uuid', () => ({ uuid: () => 'bw-uuid-' + Math.random().toString(36).slice(2, 8) }))
 
-const localStorageMock = (() => {
-  let store: Record<string, string> = {}
-  return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
-    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
-    removeItem: vi.fn((key: string) => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-vi.stubGlobal('localStorage', localStorageMock)
+const localStorageMock = getLocalStorageMock()
 
 describe('useBodyweightStore', () => {
   let store: ReturnType<typeof useBodyweightStore>

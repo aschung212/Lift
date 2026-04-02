@@ -4,11 +4,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import AuthScreen from '../AuthScreen.vue'
 import BodyweightTracker from '../BodyweightTracker.vue'
 import { useBodyweightStore } from '../../stores/bodyweight'
-
-// Mock Supabase
-vi.mock('../../lib/supabase', () => ({ supabase: null }))
-
-// Mock auth composable
 vi.mock('../../composables/useAuth', () => ({
   useAuth: () => ({
     signInWithProvider: vi.fn().mockResolvedValue({ error: null }),
@@ -16,8 +11,6 @@ vi.mock('../../composables/useAuth', () => ({
     signUp: vi.fn().mockResolvedValue({ error: null }),
   })
 }))
-
-// Mock analytics composable
 vi.mock('../../composables/useAnalytics', () => ({
   useAnalytics: () => ({
     logEvent: vi.fn(),
@@ -25,8 +18,6 @@ vi.mock('../../composables/useAnalytics', () => ({
     flushEngagement: vi.fn(),
   })
 }))
-
-// Mock theme composable
 vi.mock('../../composables/useTheme', () => ({
   useTheme: () => ({
     weightUnit: { value: 'lbs' },
@@ -42,17 +33,8 @@ vi.mock('../../composables/useTheme', () => ({
   })
 }))
 
-// Mock localStorage for store persistence
-const localStorageMock = (() => {
-  let store: Record<string, string> = {}
-  return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
-    setItem: vi.fn((key: string, value: string) => { store[key] = value }),
-    removeItem: vi.fn((key: string) => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true })
+import { getLocalStorageMock } from '../../__tests__/helpers'
+const localStorageMock = getLocalStorageMock()
 
 describe('Accessibility', () => {
   beforeEach(() => {

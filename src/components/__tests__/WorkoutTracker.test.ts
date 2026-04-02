@@ -1,40 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
+import { getLocalStorageMock, mockAnalytics, mockTheme } from '../../__tests__/helpers'
 
-// Stub localStorage before any imports
-const localStorageMock = (() => {
-  let store: Record<string, string> = {}
-  return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
-    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
-    removeItem: vi.fn((key: string) => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-vi.stubGlobal('localStorage', localStorageMock)
+const localStorageMock = getLocalStorageMock()
 
-// Mock supabase
-vi.mock('../../lib/supabase', () => ({ supabase: null }))
-
-// Mock analytics
-vi.mock('../../composables/useAnalytics', () => ({
-  useAnalytics: () => ({
-    logEvent: vi.fn(),
-    tabSwitch: vi.fn(),
-    flushEngagement: vi.fn(),
-  })
-}))
-
-// Mock useTheme
-vi.mock('../../composables/useTheme', () => ({
-  useTheme: () => ({
-    weightUnit: { value: 'lbs' },
-    displayWeight: (w: number) => Math.round(w),
-    toLbs: (w: number) => w,
-    restTimerEnabled: { value: false },
-  })
-}))
+vi.mock('../../composables/useAnalytics', () => mockAnalytics())
+vi.mock('../../composables/useTheme', () => mockTheme())
 
 // Mock ExerciseGraph (heavy SVG child)
 vi.mock('../ExerciseGraph.vue', () => ({

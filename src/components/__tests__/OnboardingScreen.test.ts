@@ -21,19 +21,10 @@ vi.mock('../../stores/bodyweight', () => ({
   })
 }))
 
-vi.mock('../../lib/supabase', () => ({ supabase: null }))
 vi.mock('../../lib/uuid', () => ({ uuid: () => 'test-uuid' }))
 
-const localStorageMock = (() => {
-  let store: Record<string, string> = {}
-  return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
-    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
-    removeItem: vi.fn((key: string) => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-vi.stubGlobal('localStorage', localStorageMock)
+import { getLocalStorageMock } from '../../__tests__/helpers'
+const localStorageMock = getLocalStorageMock()
 
 describe('OnboardingScreen', () => {
   let wrapper: VueWrapper
