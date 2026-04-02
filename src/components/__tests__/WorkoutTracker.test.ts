@@ -794,5 +794,28 @@ describe('WorkoutTracker', () => {
       expect(modal.attributes('role')).toBe('dialog')
       expect(modal.attributes('aria-modal')).toBe('true')
     })
+
+    it('tag filter buttons have aria-pressed reflecting active state', () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const tagBtns = wrapper.findAll('.wtTagChip:not(.wtTagChipManage)')
+      expect(tagBtns.length).toBeGreaterThan(0)
+      // Initially none are pressed
+      tagBtns.forEach(btn => {
+        if (!btn.classes().includes('wtTagChipClear')) {
+          expect(btn.attributes('aria-pressed')).toBe('false')
+        }
+      })
+    })
+
+    it('tag add buttons have aria-label', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      // Open new exercise modal
+      await wrapper.find('.wtLogBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      const addBtn = wrapper.find('.wtTagAddBtn')
+      expect(addBtn.attributes('aria-label')).toBe('Add tag')
+    })
   })
 })
