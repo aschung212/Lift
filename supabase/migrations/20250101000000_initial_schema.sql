@@ -1,5 +1,5 @@
--- Lift: Supabase schema migration
--- Run this in the Supabase SQL Editor
+-- Initial schema: exercises, sets, and bodyweight_entries tables
+-- Original: migration.sql
 
 -- 1. exercises table
 create table exercises (

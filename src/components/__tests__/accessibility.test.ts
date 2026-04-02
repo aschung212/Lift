@@ -4,11 +4,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import AuthScreen from '../AuthScreen.vue'
 import BodyweightTracker from '../BodyweightTracker.vue'
 import { useBodyweightStore } from '../../stores/bodyweight'
-
-// Mock Supabase
-vi.mock('../../lib/supabase', () => ({ supabase: null }))
-
-// Mock auth composable
 vi.mock('../../composables/useAuth', () => ({
   useAuth: () => ({
     signInWithProvider: vi.fn().mockResolvedValue({ error: null }),
@@ -16,8 +11,6 @@ vi.mock('../../composables/useAuth', () => ({
     signUp: vi.fn().mockResolvedValue({ error: null }),
   })
 }))
-
-// Mock analytics composable
 vi.mock('../../composables/useAnalytics', () => ({
   useAnalytics: () => ({
     logEvent: vi.fn(),
@@ -25,13 +18,11 @@ vi.mock('../../composables/useAnalytics', () => ({
     flushEngagement: vi.fn(),
   })
 }))
-
-// Mock theme composable
 vi.mock('../../composables/useTheme', () => ({
   useTheme: () => ({
     weightUnit: { value: 'lbs' },
-    displayWeight: (w) => w,
-    toLbs: (w) => w,
+    displayWeight: (w: number) => w,
+    toLbs: (w: number) => w,
     restTimerEnabled: { value: false },
     currentTheme: { value: 'midnight' },
     THEMES: [],
@@ -42,17 +33,8 @@ vi.mock('../../composables/useTheme', () => ({
   })
 }))
 
-// Mock localStorage for store persistence
-const localStorageMock = (() => {
-  let store = {}
-  return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, value) => { store[key] = value }),
-    removeItem: vi.fn(key => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true })
+import { getLocalStorageMock } from '../../__tests__/helpers'
+const localStorageMock = getLocalStorageMock()
 
 describe('Accessibility', () => {
   beforeEach(() => {
@@ -61,7 +43,7 @@ describe('Accessibility', () => {
   })
 
   describe('AuthScreen', () => {
-    let wrapper
+    let wrapper: ReturnType<typeof mount>
 
     beforeEach(() => {
       wrapper = mount(AuthScreen)
@@ -89,17 +71,15 @@ describe('Accessibility', () => {
 
     it('auth message element has role=status and aria-live when shown', () => {
       // The authMessage element is v-if="message", so it only renders when there's a message.
-      // Verify the template includes the proper attributes by checking the component source.
-      // We can verify the structure by checking that when no message exists, no alert is shown.
+      // Verify the structure by checking that when no message exists, no alert is shown.
       expect(wrapper.find('.authMessage').exists()).toBe(false)
       // The template has: role="status" aria-live="polite" on the .authMessage element
-      // This is a structural test — the attributes exist in the template regardless of render state.
       expect(wrapper.find('.authCard').exists()).toBe(true)
     })
   })
 
   describe('BodyweightTracker', () => {
-    let wrapper
+    let wrapper: ReturnType<typeof mount>
 
     beforeEach(() => {
       wrapper = mount(BodyweightTracker, {
@@ -119,7 +99,7 @@ describe('Accessibility', () => {
   })
 
   describe('BodyweightTracker modal a11y', () => {
-    let wrapper
+    let wrapper: ReturnType<typeof mount>
 
     beforeEach(() => {
       wrapper = mount(BodyweightTracker, {
@@ -131,15 +111,15 @@ describe('Accessibility', () => {
       await wrapper.find('.wtLogBtn').trigger('click')
       const dialog = document.querySelector('[role="dialog"]')
       expect(dialog).toBeTruthy()
-      expect(dialog.getAttribute('aria-modal')).toBe('true')
-      expect(dialog.getAttribute('aria-labelledby')).toBe('bw-modal-title')
+      expect(dialog!.getAttribute('aria-modal')).toBe('true')
+      expect(dialog!.getAttribute('aria-labelledby')).toBe('bw-modal-title')
     })
 
     it('modal title id matches aria-labelledby', async () => {
       await wrapper.find('.wtLogBtn').trigger('click')
       const title = document.getElementById('bw-modal-title')
       expect(title).toBeTruthy()
-      expect(title.textContent).toBe('Log Weight')
+      expect(title!.textContent).toBe('Log Weight')
     })
 
     it('overlay has keydown escape handler attribute', async () => {
@@ -148,9 +128,9 @@ describe('Accessibility', () => {
       expect(overlay).toBeTruthy()
       // The @keydown.escape directive is compiled to an onKeydown handler
       // Verify the overlay element exists with the modal dialog inside it
-      const dialog = overlay.querySelector('[role="dialog"]')
+      const dialog = overlay!.querySelector('[role="dialog"]')
       expect(dialog).toBeTruthy()
-      expect(dialog.getAttribute('aria-modal')).toBe('true')
+      expect(dialog!.getAttribute('aria-modal')).toBe('true')
     })
 
     it('form inputs have proper labels', async () => {

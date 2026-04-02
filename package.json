@@ -12,7 +12,14 @@
     "test:e2e": "playwright test",
     "lint": "eslint src/",
     "typecheck": "vue-tsc --noEmit",
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:start": "npx supabase start",
+    "db:stop": "npx supabase stop",
+    "db:reset": "npx supabase db reset",
+    "db:migrate": "npx supabase migration up",
+    "db:new": "npx supabase migration new",
+    "db:status": "npx supabase migration list",
+    "db:diff": "npx supabase db diff"
   },
   "dependencies": {
     "@sentry/vue": "^10.46.0",
@@ -24,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@pinia/testing": "^0.1.7",
     "@playwright/test": "^1.58.2",
     "@sentry/vite-plugin": "^5.1.1",
     "@vitejs/plugin-vue": "^5.1.0",

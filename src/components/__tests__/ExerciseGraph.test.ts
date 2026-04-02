@@ -1,20 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ExerciseGraph from '../ExerciseGraph.vue'
+import type { Exercise, WorkoutSet } from '../../stores/workout'
 
-// Mock useTheme composable
 vi.mock('../../composables/useTheme', () => ({
   useTheme: () => ({
     weightUnit: { value: 'lbs' },
-    displayWeight: (w) => Math.round(w),
+    displayWeight: (w: number) => Math.round(w),
   })
 }))
 
-function makeExercise(sets) {
+function makeExercise(sets: WorkoutSet[]): Exercise {
   return { id: 'ex-1', name: 'Bench Press', tags: [], sets }
 }
 
-function makeSet(weight, reps, date) {
+function makeSet(weight: number, reps: number, date: string): WorkoutSet {
   const estimated1RM = weight * (1 + reps / 30)
   return { id: `s-${date}`, weight, reps, date: `${date}T10:00:00`, estimated1RM }
 }

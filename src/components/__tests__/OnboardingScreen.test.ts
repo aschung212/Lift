@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import OnboardingScreen from '../OnboardingScreen.vue'
 
@@ -21,22 +21,13 @@ vi.mock('../../stores/bodyweight', () => ({
   })
 }))
 
-vi.mock('../../lib/supabase', () => ({ supabase: null }))
 vi.mock('../../lib/uuid', () => ({ uuid: () => 'test-uuid' }))
 
-const localStorageMock = (() => {
-  let store = {}
-  return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, val) => { store[key] = String(val) }),
-    removeItem: vi.fn(key => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-vi.stubGlobal('localStorage', localStorageMock)
+import { getLocalStorageMock } from '../../__tests__/helpers'
+const localStorageMock = getLocalStorageMock()
 
 describe('OnboardingScreen', () => {
-  let wrapper
+  let wrapper: VueWrapper
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -95,7 +86,7 @@ describe('OnboardingScreen', () => {
     it('does not set sample-data flag', async () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
       const sampleDataCalls = localStorageMock.setItem.mock.calls.filter(
-        ([key]) => key === 'sample-data'
+        ([key]: [string]) => key === 'sample-data'
       )
       expect(sampleDataCalls.length).toBe(0)
     })

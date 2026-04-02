@@ -1,18 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { getLocalStorageMock } from '../../__tests__/helpers'
 
-const localStorageMock = (() => {
-  let store: Record<string, string> = {}
-  return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
-    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
-    removeItem: vi.fn((key: string) => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-vi.stubGlobal('localStorage', localStorageMock)
+const localStorageMock = getLocalStorageMock()
 
-vi.mock('../../lib/supabase', () => ({ supabase: null }))
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn() }
 }))

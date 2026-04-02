@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
@@ -24,7 +25,7 @@ function getRuleLines(selector: string): string[] {
     if (css[end] === '}') depth--
     end++
   }
-  return css.slice(start, end - 1).split('\n').map(l => l.trim()).filter(Boolean)
+  return css.slice(start, end - 1).split('\n').map((l: string) => l.trim()).filter(Boolean)
 }
 
 describe('CSS regression tests', () => {

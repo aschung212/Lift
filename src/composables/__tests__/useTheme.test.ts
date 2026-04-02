@@ -1,22 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { getLocalStorageMock } from '../../__tests__/helpers'
 
-const localStorageMock = (() => {
-  let store = {}
-  return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, val) => { store[key] = String(val) }),
-    removeItem: vi.fn(key => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-vi.stubGlobal('localStorage', localStorageMock)
+const localStorageMock = getLocalStorageMock()
 
 // Mock matchMedia before importing useTheme (it runs at import time)
-const listeners = []
+const listeners: Array<() => void> = []
 vi.stubGlobal('matchMedia', vi.fn(() => ({
   matches: false,
-  addEventListener: vi.fn((_, cb) => listeners.push(cb)),
+  addEventListener: vi.fn((_: string, cb: () => void) => listeners.push(cb)),
   removeEventListener: vi.fn(),
 })))
 
@@ -24,7 +16,7 @@ vi.stubGlobal('matchMedia', vi.fn(() => ({
 const { useTheme, THEMES, THEME_PREVIEWS } = await import('../useTheme')
 
 describe('useTheme', () => {
-  let theme
+  let theme: ReturnType<typeof useTheme>
 
   beforeEach(() => {
     localStorageMock.clear()

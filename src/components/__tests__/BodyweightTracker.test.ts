@@ -1,44 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, VueWrapper } from '@vue/test-utils'
+import type { BodyweightEntry } from '../../stores/bodyweight'
+import { getLocalStorageMock, mockAnalytics, mockTheme } from '../../__tests__/helpers'
 
-// Stub localStorage
-const localStorageMock = (() => {
-  let store = {}
-  return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, val) => { store[key] = String(val) }),
-    removeItem: vi.fn(key => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-  }
-})()
-vi.stubGlobal('localStorage', localStorageMock)
+const localStorageMock = getLocalStorageMock()
 
-// Mock supabase
-vi.mock('../../lib/supabase', () => ({ supabase: null }))
-
-// Mock analytics
-vi.mock('../../composables/useAnalytics', () => ({
-  useAnalytics: () => ({
-    logEvent: vi.fn(),
-  })
-}))
-
-// Mock useTheme
-vi.mock('../../composables/useTheme', () => ({
-  useTheme: () => ({
-    weightUnit: { value: 'lbs' },
-    displayWeight: (w) => Math.round(w),
-    toLbs: (w) => w,
-  })
-}))
+vi.mock('../../composables/useAnalytics', () => mockAnalytics())
+vi.mock('../../composables/useTheme', () => mockTheme())
 
 // Reactive mock store
-let entries = []
+let entries: BodyweightEntry[] = []
 
 vi.mock('../../stores/bodyweight', () => ({
   useBodyweightStore: () => ({
     get entries() { return entries },
-    set entries(v) { entries = v },
+    set entries(v: BodyweightEntry[]) { entries = v },
     get latestWeight() {
       if (!entries.length) return null
       const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date))
@@ -60,7 +36,7 @@ vi.mock('../../stores/bodyweight', () => ({
 
 import BodyweightTracker from '../BodyweightTracker.vue'
 
-function mountTracker() {
+function mountTracker(): VueWrapper {
   return mount(BodyweightTracker, {
     global: {
       stubs: { Teleport: true },
@@ -68,7 +44,7 @@ function mountTracker() {
   })
 }
 
-function makeEntry(id, weight, dateStr) {
+function makeEntry(id: string, weight: number, dateStr: string): BodyweightEntry {
   return { id, date: new Date(dateStr + 'T12:00:00').toISOString(), weight }
 }
 
@@ -304,6 +280,53 @@ describe('BodyweightTracker', () => {
       const dialog = wrapper.find('.repMaxModal')
       expect(dialog.attributes('role')).toBe('dialog')
       expect(dialog.attributes('aria-modal')).toBe('true')
+    })
+  })
+
+  describe('entry list accessibility', () => {
+    beforeEach(() => {
+      entries = [makeEntry('e-1', 170, '2026-03-30')]
+    })
+
+    it('entry rows have role=button and tabindex=0', () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      expect(row.attributes('role')).toBe('button')
+      expect(row.attributes('tabindex')).toBe('0')
+    })
+
+    it('entry rows have aria-expanded reflecting action visibility', async () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      expect(row.attributes('aria-expanded')).toBe('false')
+
+      await row.trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(row.attributes('aria-expanded')).toBe('true')
+    })
+
+    it('entry rows have descriptive aria-label', () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      const label = row.attributes('aria-label')
+      expect(label).toContain('170')
+      expect(label).toContain('lbs')
+    })
+
+    it('entry rows respond to Enter key', async () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      await row.trigger('keydown.enter')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtSetActions').exists()).toBe(true)
+    })
+
+    it('entry rows respond to Space key', async () => {
+      const wrapper = mountTracker()
+      const row = wrapper.find('.wtSetRow')
+      await row.trigger('keydown.space')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtSetActions').exists()).toBe(true)
     })
   })
 })

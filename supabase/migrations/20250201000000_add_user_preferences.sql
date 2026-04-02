@@ -1,3 +1,6 @@
+-- Add user_preferences table for syncing app settings
+-- Original: migration-002-preferences.sql
+
 create table user_preferences (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,

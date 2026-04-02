@@ -118,7 +118,13 @@
           bwEntryHigh: entry.weight === store.maxWeight,
           wtSetRowActive: activeEntryId === entry.id,
         }]"
+        role="button"
+        tabindex="0"
+        :aria-expanded="activeEntryId === entry.id"
+        :aria-label="`${formatDateShort(entry.date)}: ${displayWeight(entry.weight)} ${weightUnit}`"
         @click="toggleEntryActions(entry.id)"
+        @keydown.enter="toggleEntryActions(entry.id)"
+        @keydown.space.prevent="toggleEntryActions(entry.id)"
       >
         <span class="wtSetDate">{{ formatDateShort(entry.date) }}</span>
         <span class="wtSetDetail">

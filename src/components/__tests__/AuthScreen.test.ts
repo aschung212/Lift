@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
 import AuthScreen from '../AuthScreen.vue'
 
 // Mock auth composable
@@ -16,7 +16,7 @@ vi.mock('../../composables/useAuth', () => ({
 }))
 
 describe('AuthScreen', () => {
-  let wrapper
+  let wrapper: VueWrapper
 
   beforeEach(() => {
     vi.clearAllMocks()

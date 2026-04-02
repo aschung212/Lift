@@ -15,6 +15,7 @@
           v-for="tag in store.allTags"
           :key="tag"
           :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
+          :aria-pressed="activeTagFilters.includes(tag)"
           @click="toggleTagFilter(tag)"
         >{{ tag }}</button>
         <button
@@ -75,8 +76,8 @@
             <div class="wtExerciseNameBlock">
               <span class="wtExerciseName">{{ exercise.name }}</span>
               <span v-if="store.getExercisePRSet(exercise.id)" class="wtExerciseMeta">
-                Est. 1RM: {{ displayWeight(store.getExercisePRSet(exercise.id).estimated1RM) }} {{ weightUnit }}
-                ({{ displayWeight(store.getExercisePRSet(exercise.id).weight) }} × {{ store.getExercisePRSet(exercise.id).reps }})
+                Est. 1RM: {{ displayWeight(store.getExercisePRSet(exercise.id)!.estimated1RM) }} {{ weightUnit }}
+                ({{ displayWeight(store.getExercisePRSet(exercise.id)!.weight) }} × {{ store.getExercisePRSet(exercise.id)!.reps }})
               </span>
             </div>
             <span class="wtChevron">›</span>
@@ -84,7 +85,7 @@
           <button
             class="wtExerciseLogBtn"
             @click="openLogForExercise(exercise.id)"
-            aria-label="Log a set for {{ exercise.name }}"
+            :aria-label="`Log a set for ${exercise.name}`"
           >+ Log</button>
         </div>
       </li>
@@ -99,7 +100,7 @@
         <div class="wtDetailHeader">
           <button class="wtDetailBack" @click="detailExerciseId = null" aria-label="Back to exercise list">‹ Back</button>
           <h2 class="wtDetailTitle" id="detail-modal-title">{{ detailExercise.name }}</h2>
-          <button class="wtDetailLogBtn" @click="openLogForExercise(detailExercise.id)">+ Log</button>
+          <button class="wtDetailLogBtn" @click="openLogForExercise(detailExercise.id)" :aria-label="`Log a set for ${detailExercise.name}`">+ Log</button>
         </div>
 
         <div class="wtDetailBody">
@@ -190,7 +191,7 @@
 
           <!-- Clear all sets -->
           <div v-if="detailExercise.sets.length > 0" class="wtClearWrap">
-            <button class="wtClearBtn" @click="undoClearSets(detailExercise)">
+            <button class="wtClearBtn" @click="undoClearSets(detailExercise)" :aria-label="`Clear all sets for ${detailExercise.name}`">
               Clear all sets
             </button>
           </div>
@@ -200,10 +201,12 @@
             <button
               class="wtSetBtn"
               @click="openEditExerciseModal(detailExercise)"
+              :aria-label="`Edit ${detailExercise.name}`"
             >Edit Exercise</button>
             <button
               class="wtSetBtn wtSetBtnDel"
               @click="undoDeleteExercise(detailExercise)"
+              :aria-label="`Delete ${detailExercise.name}`"
             >Delete Exercise</button>
           </div>
         </div>
@@ -380,7 +383,7 @@
                   ref="newTagInputEl"
                   @keyup.enter="addNewExerciseTag"
                 />
-                <button class="wtTagAddBtn" @mousedown.prevent @click="addNewExerciseTag" :disabled="!newExerciseTagInput">+</button>
+                <button class="wtTagAddBtn" @mousedown.prevent @click="addNewExerciseTag" :disabled="!newExerciseTagInput" aria-label="Add tag">+</button>
               </div>
             </div>
           </template>
@@ -469,12 +472,12 @@
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">Any rep beats your est. 1RM! 🏆</span>
-            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
           </div>
           <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
-            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
           </div>
 
           <div class="repMaxActions">
@@ -527,7 +530,7 @@
               ref="editTagInputEl"
               @keyup.enter="addEditTag"
             />
-            <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput">+</button>
+            <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput" aria-label="Add tag">+</button>
           </div>
         </div>
         <div class="repMaxActions">
@@ -878,7 +881,7 @@ const date = ref(todayISO())
 // re-opens to that date rather than always resetting to today.
 const lastLogDate = ref(todayISO())
 
-const dateInputEl = ref<HTMLInputElement | null>(null)
+
 
 const dateDisplay = computed(() => {
   if (!date.value) return 'Today'
@@ -1347,7 +1350,7 @@ const isNewPR = computed(() => {
 
 // ── PR target suggestions (inverse Epley) ──────────────────────
 // When only one field is filled, show what's needed in the other to beat the PR
-const prTargetWeight = computed<string | null>(() => {
+const prTargetWeight = computed<number | null>(() => {
   if (isEditMode.value || !reps.value || reps.value < 1) return null
   if (weight.value && weight.value > 0) return null // both filled → show live estimate instead
   const id = selectedExerciseId.value
