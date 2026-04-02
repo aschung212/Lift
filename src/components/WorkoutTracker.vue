@@ -461,20 +461,20 @@
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
           </div>
           <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">Est. 1RM Target</span>
-            <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }}</span>
-            <span class="repMaxTargetHint">to beat your estimated 1RM at {{ reps }} rep{{ reps === 1 ? '' : 's' }}</span>
+            <span class="repMaxResultLabel">To Beat Your PR</span>
+            <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
+            <span class="repMaxTargetHint">based on estimated 1RM</span>
             <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }} × {{ reps }}</span>
           </div>
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">Est. 1RM Target</span>
+            <span class="repMaxResultLabel">To Beat Your PR</span>
             <span class="repMaxResultValue">Any rep is a new PR! 🏆</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best: {{ displayWeight(toLbs(weight)) }} {{ weightUnit }} × {{ bestRepsAtWeight }}</span>
           </div>
           <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">Est. 1RM Target</span>
-            <span class="repMaxResultValue">{{ prTargetReps }} rep{{ prTargetReps === 1 ? '' : 's' }}</span>
-            <span class="repMaxTargetHint">to beat your estimated 1RM at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}</span>
+            <span class="repMaxResultLabel">To Beat Your PR</span>
+            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
+            <span class="repMaxTargetHint">based on estimated 1RM</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best: {{ displayWeight(toLbs(weight)) }} {{ weightUnit }} × {{ bestRepsAtWeight }}</span>
           </div>
 
