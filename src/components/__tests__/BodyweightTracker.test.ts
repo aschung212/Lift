@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, VueWrapper } from '@vue/test-utils'
+import type { BodyweightEntry } from '../../stores/bodyweight'
 
 // Stub localStorage
 const localStorageMock = (() => {
-  let store = {}
+  let store: Record<string, string> = {}
   return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, val) => { store[key] = String(val) }),
-    removeItem: vi.fn(key => { delete store[key] }),
+    getItem: vi.fn((key: string) => store[key] ?? null),
+    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
+    removeItem: vi.fn((key: string) => { delete store[key] }),
     clear: vi.fn(() => { store = {} }),
   }
 })()
@@ -27,18 +28,18 @@ vi.mock('../../composables/useAnalytics', () => ({
 vi.mock('../../composables/useTheme', () => ({
   useTheme: () => ({
     weightUnit: { value: 'lbs' },
-    displayWeight: (w) => Math.round(w),
-    toLbs: (w) => w,
+    displayWeight: (w: number) => Math.round(w),
+    toLbs: (w: number) => w,
   })
 }))
 
 // Reactive mock store
-let entries = []
+let entries: BodyweightEntry[] = []
 
 vi.mock('../../stores/bodyweight', () => ({
   useBodyweightStore: () => ({
     get entries() { return entries },
-    set entries(v) { entries = v },
+    set entries(v: BodyweightEntry[]) { entries = v },
     get latestWeight() {
       if (!entries.length) return null
       const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date))
@@ -60,7 +61,7 @@ vi.mock('../../stores/bodyweight', () => ({
 
 import BodyweightTracker from '../BodyweightTracker.vue'
 
-function mountTracker() {
+function mountTracker(): VueWrapper {
   return mount(BodyweightTracker, {
     global: {
       stubs: { Teleport: true },
@@ -68,7 +69,7 @@ function mountTracker() {
   })
 }
 
-function makeEntry(id, weight, dateStr) {
+function makeEntry(id: string, weight: number, dateStr: string): BodyweightEntry {
   return { id, date: new Date(dateStr + 'T12:00:00').toISOString(), weight }
 }
 

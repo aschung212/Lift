@@ -5,18 +5,18 @@ import { usePreferencesStore } from '../preferences'
 vi.mock('../../lib/supabase', () => ({ supabase: null }))
 
 const localStorageMock = (() => {
-  let store = {}
+  let store: Record<string, string> = {}
   return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, val) => { store[key] = String(val) }),
-    removeItem: vi.fn(key => { delete store[key] }),
+    getItem: vi.fn((key: string) => store[key] ?? null),
+    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
+    removeItem: vi.fn((key: string) => { delete store[key] }),
     clear: vi.fn(() => { store = {} }),
   }
 })()
 vi.stubGlobal('localStorage', localStorageMock)
 
 describe('usePreferencesStore', () => {
-  let store
+  let store: ReturnType<typeof usePreferencesStore>
 
   beforeEach(() => {
     localStorageMock.clear()
@@ -75,7 +75,7 @@ describe('usePreferencesStore', () => {
   describe('persistence', () => {
     it('persists feature state to localStorage', () => {
       store.toggleFeature('calendar')
-      const stored = JSON.parse(localStorageMock.getItem('user-preferences'))
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
       expect(stored.features.calendar).toBe(false)
     })
 

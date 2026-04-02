@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const localStorageMock = (() => {
-  let store = {}
+  let store: Record<string, string> = {}
   return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, val) => { store[key] = String(val) }),
-    removeItem: vi.fn(key => { delete store[key] }),
+    getItem: vi.fn((key: string) => store[key] ?? null),
+    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
+    removeItem: vi.fn((key: string) => { delete store[key] }),
     clear: vi.fn(() => { store = {} }),
   }
 })()
@@ -43,19 +43,19 @@ const mockOnAuthStateChange = vi.fn().mockReturnValue({ data: { subscription: { 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     auth: {
-      signInWithOAuth: (...args) => mockSignInWithOAuth(...args),
-      signInWithPassword: (...args) => mockSignInWithPassword(...args),
-      signUp: (...args) => mockSignUp(...args),
-      signOut: (...args) => mockSignOut(...args),
-      getSession: (...args) => mockGetSession(...args),
-      onAuthStateChange: (...args) => mockOnAuthStateChange(...args),
+      signInWithOAuth: (...args: unknown[]) => mockSignInWithOAuth(...args),
+      signInWithPassword: (...args: unknown[]) => mockSignInWithPassword(...args),
+      signUp: (...args: unknown[]) => mockSignUp(...args),
+      signOut: (...args: unknown[]) => mockSignOut(...args),
+      getSession: (...args: unknown[]) => mockGetSession(...args),
+      onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
     }
   }
 }))
 
 // Need to reset modules to get fresh state for useAuth
 // since it runs init() at module level
-let useAuth
+let useAuth: typeof import('../useAuth').useAuth
 beforeEach(async () => {
   localStorageMock.clear()
   vi.resetModules()

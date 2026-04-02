@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, VueWrapper } from '@vue/test-utils'
+import type { Exercise, WorkoutSet } from '../../stores/workout'
 
 // Stub localStorage before any imports
 const localStorageMock = (() => {
-  let store = {}
+  let store: Record<string, string> = {}
   return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, val) => { store[key] = String(val) }),
-    removeItem: vi.fn(key => { delete store[key] }),
+    getItem: vi.fn((key: string) => store[key] ?? null),
+    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
+    removeItem: vi.fn((key: string) => { delete store[key] }),
     clear: vi.fn(() => { store = {} }),
   }
 })()
@@ -29,8 +30,8 @@ vi.mock('../../composables/useAnalytics', () => ({
 vi.mock('../../composables/useTheme', () => ({
   useTheme: () => ({
     weightUnit: { value: 'lbs' },
-    displayWeight: (w) => Math.round(w),
-    toLbs: (w) => w,
+    displayWeight: (w: number) => Math.round(w),
+    toLbs: (w: number) => w,
     restTimerEnabled: { value: false },
   })
 }))
@@ -40,7 +41,7 @@ vi.mock('../ExerciseGraph.vue', () => ({
   default: { name: 'ExerciseGraph', template: '<div class="mock-graph" />' }
 }))
 
-const EXERCISES = [
+const EXERCISES: Exercise[] = [
   {
     id: 'ex-1',
     name: 'Bench Press',
@@ -66,7 +67,7 @@ const EXERCISES = [
   },
 ]
 
-const PR_EXERCISES = [
+const PR_EXERCISES: Exercise[] = [
   {
     id: 'ex-1',
     name: 'Bench Press',
@@ -80,22 +81,22 @@ const PR_EXERCISES = [
 ]
 
 // Build a reactive mock store
-let exercises = []
+let exercises: Exercise[] = []
 
-function getExercisePR(id) {
+function getExercisePR(id: string): number {
   const ex = exercises.find(e => e.id === id)
   if (!ex || ex.sets.length === 0) return 0
   return Math.max(...ex.sets.map(s => s.estimated1RM))
 }
 
-function getExercisePRSet(id) {
+function getExercisePRSet(id: string): WorkoutSet | null {
   const ex = exercises.find(e => e.id === id)
   if (!ex || ex.sets.length === 0) return null
   return ex.sets.reduce((best, s) => s.estimated1RM > best.estimated1RM ? s : best)
 }
 
-function getAllTags() {
-  const tags = new Set()
+function getAllTags(): string[] {
+  const tags = new Set<string>()
   exercises.forEach(e => (e.tags || []).forEach(t => tags.add(t)))
   return [...tags].sort()
 }
@@ -103,7 +104,7 @@ function getAllTags() {
 vi.mock('../../stores/workout', () => ({
   useWorkoutStore: () => ({
     get exercises() { return exercises },
-    set exercises(v) { exercises = v },
+    set exercises(v: Exercise[]) { exercises = v },
     get allTags() { return getAllTags() },
     getExercisePR,
     getExercisePRSet,
@@ -122,7 +123,7 @@ vi.mock('../../stores/workout', () => ({
 
 import WorkoutTracker from '../WorkoutTracker.vue'
 
-function mountTracker() {
+function mountTracker(): VueWrapper {
   return mount(WorkoutTracker, {
     global: {
       stubs: { Teleport: true },
@@ -219,7 +220,7 @@ describe('WorkoutTracker', () => {
     it('filters exercises when tag is clicked', async () => {
       const wrapper = mountTracker()
       const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      const legsChip = chips.find(c => c.text() === 'Legs')
+      const legsChip = chips.find(c => c.text() === 'Legs')!
       await legsChip.trigger('click')
 
       const items = wrapper.findAll('.wtExerciseItem')
@@ -248,7 +249,7 @@ describe('WorkoutTracker', () => {
     it('shows exercises matching ANY active tag (OR logic)', async () => {
       const wrapper = mountTracker()
       const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      const pushChip = chips.find(c => c.text() === 'Push')
+      const pushChip = chips.find(c => c.text() === 'Push')!
       await pushChip.trigger('click')
 
       // Push matches Bench Press and Overhead Press
@@ -267,7 +268,7 @@ describe('WorkoutTracker', () => {
     it('deactivates tag on second click', async () => {
       const wrapper = mountTracker()
       const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      const legsChip = chips.find(c => c.text() === 'Legs')
+      const legsChip = chips.find(c => c.text() === 'Legs')!
       await legsChip.trigger('click')
       expect(wrapper.findAll('.wtExerciseItem').length).toBe(1)
 

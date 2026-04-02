@@ -6,18 +6,18 @@ vi.mock('../../lib/supabase', () => ({ supabase: null }))
 vi.mock('../../lib/uuid', () => ({ uuid: () => 'bw-uuid-' + Math.random().toString(36).slice(2, 8) }))
 
 const localStorageMock = (() => {
-  let store = {}
+  let store: Record<string, string> = {}
   return {
-    getItem: vi.fn(key => store[key] ?? null),
-    setItem: vi.fn((key, val) => { store[key] = String(val) }),
-    removeItem: vi.fn(key => { delete store[key] }),
+    getItem: vi.fn((key: string) => store[key] ?? null),
+    setItem: vi.fn((key: string, val: string) => { store[key] = String(val) }),
+    removeItem: vi.fn((key: string) => { delete store[key] }),
     clear: vi.fn(() => { store = {} }),
   }
 })()
 vi.stubGlobal('localStorage', localStorageMock)
 
 describe('useBodyweightStore', () => {
-  let store
+  let store: ReturnType<typeof useBodyweightStore>
 
   beforeEach(() => {
     localStorageMock.clear()
@@ -92,14 +92,13 @@ describe('useBodyweightStore', () => {
 
   describe('period filtering (sortedEntries with date ranges)', () => {
     beforeEach(() => {
-      // Simulate entries over a year
       const now = new Date()
       const dates = [
-        { daysAgo: 3, weight: 180 },   // within 7d
-        { daysAgo: 15, weight: 179 },  // within 30d
-        { daysAgo: 60, weight: 177 },  // within 90d
-        { daysAgo: 200, weight: 185 }, // within 1y
-        { daysAgo: 400, weight: 190 }, // outside 1y
+        { daysAgo: 3, weight: 180 },
+        { daysAgo: 15, weight: 179 },
+        { daysAgo: 60, weight: 177 },
+        { daysAgo: 200, weight: 185 },
+        { daysAgo: 400, weight: 190 },
       ]
       dates.forEach(({ daysAgo, weight }) => {
         const d = new Date(now)
@@ -157,8 +156,8 @@ describe('useBodyweightStore', () => {
       store.updateEntry(id, 175, '2024-01-02')
 
       const entry = store.entries.find(e => e.id === id)
-      expect(entry.weight).toBe(175)
-      expect(entry.date).toContain('2024-01-02')
+      expect(entry!.weight).toBe(175)
+      expect(entry!.date).toContain('2024-01-02')
     })
   })
 
@@ -174,7 +173,7 @@ describe('useBodyweightStore', () => {
   describe('persistence', () => {
     it('persists entries to localStorage', () => {
       store.addEntry(180, '2024-01-15')
-      const stored = JSON.parse(localStorage.getItem('bodyweight-entries'))
+      const stored = JSON.parse(localStorage.getItem('bodyweight-entries')!)
       expect(stored).toHaveLength(1)
       expect(stored[0].weight).toBe(180)
     })
