@@ -31,11 +31,9 @@ function init(): void {
   if (_initialized) return
   _initialized = true
 
-  // Dev bypass: skip OAuth on localhost so we can test without pushing to prod
-  // Deferred so Pinia is installed by the time stores are accessed
+  // Dev mode: show auth screen, allow instant sign-in via devSignIn()
   if (import.meta.env.DEV) {
-    user.value = { id: 'local-dev', email: 'dev@localhost' }
-    setTimeout(() => initStores('local-dev').then(() => { loading.value = false }), 0)
+    loading.value = false
     return
   }
 
@@ -83,6 +81,11 @@ async function signUp(email: string, password: string): Promise<{ error: AuthErr
   return { error, needsConfirmation: !error && !!data?.user && !data?.session }
 }
 
+async function devSignIn(): Promise<void> {
+  user.value = { id: 'local-dev', email: 'dev@localhost' }
+  await initStores('local-dev')
+}
+
 async function signOut(): Promise<void> {
   try {
     await supabase?.auth.signOut()
@@ -92,5 +95,5 @@ async function signOut(): Promise<void> {
 }
 
 export function useAuth() {
-  return { user, loading, signInWithProvider, signInWithEmail, signUp, signOut }
+  return { user, loading, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn }
 }

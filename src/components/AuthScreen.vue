@@ -53,6 +53,8 @@
         </button>
       </div>
 
+      <button v-if="isDev" class="authDevBtn" @click="devSignIn">Continue as Dev</button>
+
       <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" role="status" aria-live="polite">{{ message }}</p>
     </div>
   </div>
@@ -63,7 +65,8 @@ import { ref } from 'vue'
 import type { Provider } from '@supabase/supabase-js'
 import { useAuth } from '../composables/useAuth'
 
-const { signInWithProvider, signInWithEmail, signUp } = useAuth()
+const { signInWithProvider, signInWithEmail, signUp, devSignIn } = useAuth()
+const isDev = import.meta.env.DEV
 
 const email = ref('')
 const password = ref('')
@@ -281,6 +284,26 @@ async function handleOAuth(provider: Provider) {
 
 .authProviderIcon {
   flex-shrink: 0;
+}
+
+.authDevBtn {
+  width: 100%;
+  padding: 13px 16px;
+  min-height: 44px;
+  margin-top: 12px;
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  font-family: inherit;
+  color: #c9a84c;
+  background: transparent;
+  border: 1px dashed #c9a84c;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.authDevBtn:active {
+  opacity: 0.7;
 }
 
 .authMessage {
