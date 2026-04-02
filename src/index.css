@@ -1115,8 +1115,15 @@ html.modal-open .tabContent {
 
 .wtExerciseRow:hover { background: var(--bg-hover); }
 
-.wtExerciseName {
+.wtExerciseNameBlock {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wtExerciseName {
   font-weight: 600;
   font-size: var(--font-footnote);
   color: var(--text-primary);
@@ -1126,11 +1133,10 @@ html.modal-open .tabContent {
 }
 
 .wtExerciseMeta {
-  font-size: var(--font-caption1);
+  font-size: var(--font-caption2);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .wtChevron {
@@ -3333,7 +3339,6 @@ html.modal-open .tabContent {
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 
 @media (max-width: 480px) {
-  .wtExerciseMeta { display: none; }
 
   .wtInputRow {
     flex-direction: column;
