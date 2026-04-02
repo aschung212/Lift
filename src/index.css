@@ -517,7 +517,7 @@ button, [role="tab"], [role="switch"], a {
 
 .sampleBanner {
   width: 100%;
-  padding: 10px 16px;
+  padding: 12px 16px;
   min-height: 44px;
   font-size: var(--font-footnote);
   font-weight: 500;
@@ -598,8 +598,8 @@ html.modal-open .tabContent {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 10px 0 8px;
+  gap: 4px;
+  padding: 12px 0 8px;
   background: none;
   border: none;
   cursor: pointer;
@@ -665,7 +665,7 @@ html.modal-open .tabContent {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 0;
   border: none;
   background: none;
@@ -701,7 +701,7 @@ html.modal-open .tabContent {
 }
 
 .modeSegBtn {
-  padding: 6px 14px;
+  padding: 8px 16px;
   border: none;
   border-radius: 7px;
   background: transparent;
@@ -848,14 +848,14 @@ html.modal-open .tabContent {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
-  padding: 14px 16px 8px;
+  padding: 16px 16px 8px;
 }
 
 .settingsRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: 12px 16px;
 }
 
 .settingsLabel {
@@ -875,7 +875,7 @@ html.modal-open .tabContent {
   gap: 8px;
 }
 .exportBtn {
-  padding: 6px 14px;
+  padding: 8px 16px;
   min-height: 44px;
   font-size: var(--font-footnote);
   font-weight: 500;
@@ -898,8 +898,8 @@ html.modal-open .tabContent {
 .privacyRow {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 0;
+  gap: 12px;
+  padding: 8px 0;
 }
 
 .privacyIcon {
@@ -917,7 +917,7 @@ html.modal-open .tabContent {
 
 .settingsSignOut {
   width: 100%;
-  padding: 14px 16px;
+  padding: 16px 16px;
   min-height: 44px;
   font-size: var(--font-subhead);
   font-weight: 400;
@@ -986,7 +986,7 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 16px 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1001,7 +1001,7 @@ html.modal-open .tabContent {
 .wtLogBtn {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   padding: 12px 16px;
   min-height: 44px;
   font-size: var(--font-footnote);
@@ -1033,7 +1033,7 @@ html.modal-open .tabContent {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  padding: 10px 16px;
+  padding: 12px 16px;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   color: var(--text-secondary);
@@ -1123,7 +1123,7 @@ html.modal-open .tabContent {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 16px 16px;
   min-height: 44px;
   background: none;
@@ -1297,15 +1297,18 @@ html.modal-open .tabContent {
 .wtTagFilterBar {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 16px;
 }
 
 .wtTagChip {
   font-size: var(--font-footnote);
   font-weight: 600;
-  padding: 8px 14px;
+  padding: 8px 16px;
   min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 14px;
   border: 1px solid var(--border-strong);
   color: var(--text-secondary);
@@ -1329,7 +1332,7 @@ html.modal-open .tabContent {
 .wtTagChipManage {
   border-color: var(--border);
   color: var(--text-secondary);
-  padding: 8px 10px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1347,7 +1350,7 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1382,7 +1385,7 @@ html.modal-open .tabContent {
 
 .wtTagExerciseList {
   list-style: none;
-  padding: 0 0 8px 28px;
+  padding: 0 0 8px 32px;
   margin: 0;
 }
 .wtTagExerciseItem {
@@ -1459,7 +1462,7 @@ html.modal-open .tabContent {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 10px 0 4px;
+  margin: 12px 0 4px;
 }
 
 .wtTagPickerChip {
@@ -1467,7 +1470,7 @@ html.modal-open .tabContent {
   align-items: center;
   font-size: var(--font-footnote);
   font-weight: 600;
-  padding: 8px 14px;
+  padding: 8px 16px;
   color: var(--text-secondary);
   border-color: var(--border-strong);
   border-radius: 12px;
@@ -1492,16 +1495,16 @@ html.modal-open .tabContent {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 10px 0 4px;
+  margin: 12px 0 4px;
 }
 
 .wtEditTagPill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--font-footnote);
   font-weight: 600;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 12px;
   border: 1px solid var(--accent);
   color: var(--accent);
@@ -1523,7 +1526,7 @@ html.modal-open .tabContent {
 
 .wtTagAddRow {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   margin-top: 12px;
   margin-bottom: 4px;
 }
@@ -1577,7 +1580,7 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 16px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -1640,8 +1643,8 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 16px 16px;
   min-height: 44px;
   font-size: var(--font-subhead);
   border-bottom: 1px solid var(--border);
@@ -1652,7 +1655,7 @@ html.modal-open .tabContent {
 .wtSetRow:last-child { border-bottom: none; }
 
 .wtSetDateHeader {
-  padding: 10px 16px 4px;
+  padding: 12px 16px 4px;
   font-size: var(--font-caption1);
   font-weight: 700;
   text-transform: uppercase;
@@ -1709,12 +1712,12 @@ html.modal-open .tabContent {
   display: flex;
   gap: 4px;
   width: 100%;
-  padding-top: 6px;
+  padding-top: 8px;
   flex-shrink: 0;
 }
 
 .wtSetBtn {
-  padding: 10px 14px;
+  padding: 12px 16px;
   font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
@@ -1738,12 +1741,12 @@ html.modal-open .tabContent {
 .wtClearWrap {
   display: flex;
   justify-content: flex-end;
-  padding: 8px 16px 10px;
+  padding: 8px 16px 12px;
   border-top: 1px solid var(--border);
 }
 
 .wtExActions {
-  padding: 10px 16px 14px;
+  padding: 12px 16px 16px;
   border-top: 1px solid var(--border);
 }
 
@@ -1759,8 +1762,8 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 0;
+  gap: 8px;
+  padding: 12px 0;
   min-height: 44px;
   font-size: var(--font-footnote);
   font-weight: 600;
@@ -1788,14 +1791,14 @@ html.modal-open .tabContent {
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .wtPRCard {
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-radius: 10px;
   background: var(--bg-primary);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .wtPRCardCurrent {
@@ -1843,7 +1846,7 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   padding: 4px 0;
   font-size: var(--font-caption1);
   font-weight: 600;
@@ -1866,7 +1869,7 @@ html.modal-open .tabContent {
 .wtPRCardBottom {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--font-footnote);
   color: var(--text-secondary);
 }
@@ -1914,9 +1917,9 @@ html.modal-open .tabContent {
 .wtOverloadSuggestion {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  margin-bottom: 14px;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
   border-radius: 12px;
   background: var(--accent-alpha, rgba(99, 102, 241, 0.08));
   border: 1px solid var(--accent-border, rgba(99, 102, 241, 0.2));
@@ -1989,7 +1992,7 @@ html.modal-open .tabContent {
   align-items: center;
   justify-content: center;
   z-index: 100;
-  padding: 20px;
+  padding: 24px;
   padding-top: calc(env(safe-area-inset-top, 0px) + 20px);
   touch-action: none;
   overscroll-behavior: contain;
@@ -2006,7 +2009,7 @@ html.modal-open .tabContent {
   border: 1px solid var(--glass-edge, var(--border-strong));
   box-shadow: 0 24px 64px rgba(0,0,0,0.35), inset 0 1px 0 var(--glass-shine, rgba(255,255,255,0.1));
   border-radius: 20px;
-  padding: 24px 22px;
+  padding: 24px 24px;
   width: 100%;
   max-width: 380px;
   text-align: left;
@@ -2019,13 +2022,13 @@ html.modal-open .tabContent {
   font-weight: 700;
   color: var(--text-primary);
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   letter-spacing: -0.2px;
 }
 
 .repMaxLabel {
   display: block;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
   font-size: var(--font-caption2);
   font-weight: 700;
   color: var(--text-secondary);
@@ -2037,12 +2040,12 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .repMaxInput {
   flex: 1;
-  padding: 12px 14px;
+  padding: 12px 16px;
   min-height: 44px;
   font-size: var(--font-callout);
   font-family: inherit;
@@ -2074,7 +2077,7 @@ html.modal-open .tabContent {
   gap: 4px;
   background: var(--accent-subtle);
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: 16px 16px;
   margin-bottom: 16px;
 }
 
@@ -2187,7 +2190,7 @@ html.modal-open .tabContent {
   font-weight: 700;
   color: var(--accent);
   text-align: center;
-  margin-top: -10px;
+  margin-top: -12px;
   margin-bottom: 16px;
   letter-spacing: -0.2px;
 }
@@ -2279,7 +2282,7 @@ html.modal-open .tabContent {
 .wtTimerControls {
   display: flex;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .wtTimerControlBtn {
@@ -2305,7 +2308,7 @@ html.modal-open .tabContent {
 }
 
 .wtTimerFooterLink {
-  padding: 10px;
+  padding: 12px;
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -2328,7 +2331,7 @@ html.modal-open .tabContent {
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .wtTimerPreset {
@@ -2384,7 +2387,7 @@ html.modal-open .tabContent {
 
 .wtTimerEditTab {
   flex: 1;
-  padding: 10px 0;
+  padding: 12px 0;
   min-height: 44px;
   font-size: var(--font-footnote);
   font-weight: 600;
@@ -2410,7 +2413,7 @@ html.modal-open .tabContent {
 }
 
 .wtTimerEditListItem {
-  padding: 10px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
   align-items: center;
 }
@@ -2447,7 +2450,7 @@ html.modal-open .tabContent {
 .wtTimerEditInput {
   flex: 1;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 12px 12px;
   min-height: 44px;
   font-size: var(--font-callout);
   font-family: inherit;
@@ -2463,7 +2466,7 @@ html.modal-open .tabContent {
 .wtTimerEditInput:focus { border-color: var(--accent); }
 
 .wtTimerEditAddBtn {
-  padding: 10px 14px;
+  padding: 12px 16px;
   min-height: 44px;
   font-size: var(--font-callout);
   font-weight: 600;
@@ -2497,7 +2500,7 @@ html.modal-open .tabContent {
 
 .wtTimerEditResetBtn {
   display: block;
-  margin: 10px auto 0;
+  margin: 12px auto 0;
   padding: 4px 8px;
   font-size: var(--font-caption1);
   font-family: inherit;
@@ -2529,8 +2532,8 @@ html.modal-open .tabContent {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 6px;
-  padding: 3px 9px;
+  margin-top: 8px;
+  padding: 4px 8px;
   background: var(--danger-subtle);
   color: var(--danger);
   border-radius: 20px;
@@ -2544,17 +2547,17 @@ html.modal-open .tabContent {
 
 .wtConfirmIcon {
   font-size: var(--font-display-sm);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   line-height: 1;
 }
 
-.wtConfirmModal h2 { margin-bottom: 10px; }
+.wtConfirmModal h2 { margin-bottom: 12px; }
 
 .wtConfirmText {
   font-size: var(--font-footnote);
   color: var(--text-secondary);
   line-height: 1.6;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   font-weight: 400;
 }
 
@@ -2566,7 +2569,7 @@ html.modal-open .tabContent {
 /* ─── Exercise graph ─────────────────────────────────────────────────────── */
 
 .wtGraphWrap {
-  padding: 12px 16px 6px;
+  padding: 12px 16px 8px;
   background: var(--bg-elevated);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
@@ -2579,7 +2582,7 @@ html.modal-open .tabContent {
   text-transform: uppercase;
   letter-spacing: 0.7px;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .wtGraphSvg {
@@ -2641,7 +2644,7 @@ html.modal-open .tabContent {
 }
 
 .wtGraphSingle {
-  padding: 12px 16px 14px;
+  padding: 12px 16px 16px;
   font-size: var(--font-caption1);
   color: var(--text-muted);
   text-align: center;
@@ -2667,7 +2670,7 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 16px 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -2688,7 +2691,7 @@ html.modal-open .tabContent {
 }
 
 .calToggleBtn {
-  padding: 6px 14px;
+  padding: 8px 16px;
   font-size: var(--font-footnote);
   font-weight: 600;
   font-family: inherit;
@@ -2709,7 +2712,7 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 8px;
+  padding: 12px 8px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -2756,18 +2759,18 @@ html.modal-open .tabContent {
   font-weight: 700;
   letter-spacing: 0.5px;
   color: var(--text-muted);
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
 .calCell {
   contain: layout style paint;
   background: var(--bg-secondary);
   min-height: 52px;
-  padding: 5px 4px 4px;
+  padding: 4px 4px 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   position: relative;
   transition: background-color 0.12s;
 }
@@ -2838,7 +2841,7 @@ html.modal-open .tabContent {
 
 /* Selected day detail */
 .calDetail {
-  padding: 12px 16px 14px;
+  padding: 12px 16px 16px;
   border-top: 1px solid var(--border);
 }
 
@@ -2870,7 +2873,7 @@ html.modal-open .tabContent {
   background: transparent;
   border: 1px solid var(--accent);
   border-radius: 8px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   min-height: 44px;
   cursor: pointer;
   transition: background 0.12s;
@@ -2884,7 +2887,7 @@ html.modal-open .tabContent {
 .calSummaryBar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   padding: 8px 12px;
   margin-bottom: 8px;
@@ -2929,14 +2932,18 @@ html.modal-open .tabContent {
 .calDetailTags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .calDetailTag {
   font-family: inherit;
   font-size: var(--font-caption1);
   font-weight: 600;
-  padding: 3px 10px;
+  padding: 12px 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
   color: var(--text-secondary);
@@ -2960,7 +2967,7 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   min-height: 48px;
   transition: background-color 0.12s;
@@ -3012,7 +3019,7 @@ html.modal-open .tabContent {
   flex: 1;
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
 }
 
@@ -3020,7 +3027,7 @@ html.modal-open .tabContent {
   font-family: inherit;
   font-size: var(--font-caption2);
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: 10px;
   border: 1px solid var(--border-strong);
   color: var(--text-secondary);
@@ -3042,7 +3049,7 @@ html.modal-open .tabContent {
   color: var(--accent);
   background: transparent;
   border: none;
-  padding: 10px 12px;
+  padding: 12px 12px;
   min-height: 44px;
   cursor: pointer;
   opacity: 0.7;
@@ -3069,21 +3076,21 @@ html.modal-open .tabContent {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin-top: 3px;
+  gap: 4px;
+  margin-top: 4px;
   margin-bottom: 4px;
 }
 
 .calSetRow {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: var(--font-caption1);
   color: var(--text);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 5px 10px;
+  padding: 4px 12px;
 }
 
 .calSetRowPR {
@@ -3191,7 +3198,7 @@ html.modal-open .tabContent {
 .skeletonRowLeft {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .skeletonLabel {
@@ -3230,7 +3237,7 @@ html.modal-open .tabContent {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 14px 16px;
+  padding: 16px 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -3267,9 +3274,9 @@ html.modal-open .tabContent {
 .bwEntryBadge {
   font-size: var(--font-caption2);
   font-weight: 700;
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 5px;
-  margin-left: 6px;
+  margin-left: 8px;
   vertical-align: middle;
 }
 
@@ -3301,13 +3308,13 @@ html.modal-open .tabContent {
 
 .bwPeriodRow {
   display: flex;
-  gap: 6px;
-  padding: 10px 16px 0;
+  gap: 8px;
+  padding: 12px 16px 0;
 }
 
 .bwPeriodBtn {
   flex: 1;
-  padding: 10px 0;
+  padding: 12px 0;
   min-height: 44px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -3328,7 +3335,7 @@ html.modal-open .tabContent {
 .bwStatsRow {
   display: flex;
   gap: 8px;
-  padding: 10px 16px 2px;
+  padding: 12px 16px 2px;
 }
 
 .bwStatCard {
@@ -3363,7 +3370,7 @@ html.modal-open .tabContent {
 .bwStatsSingle {
   font-size: var(--font-caption1);
   color: var(--text-muted);
-  padding: 10px 16px 0;
+  padding: 12px 16px 0;
   text-align: center;
 }
 
@@ -3524,7 +3531,7 @@ html.modal-open .tabContent {
   justify-content: center;
   z-index: 200;
   animation: overlayFadeIn 0.2s ease-out;
-  padding: 20px;
+  padding: 24px;
 }
 
 .kbSheet {
@@ -3534,7 +3541,7 @@ html.modal-open .tabContent {
   border: 1px solid var(--glass-edge, var(--border-strong));
   box-shadow: 0 24px 64px rgba(0,0,0,0.35), inset 0 1px 0 var(--glass-shine, rgba(255,255,255,0.1));
   border-radius: 20px;
-  padding: 24px 28px;
+  padding: 24px 32px;
   width: 100%;
   max-width: 340px;
   animation: modalScaleIn 0.25s cubic-bezier(0.2, 0, 0, 1);
@@ -3545,7 +3552,7 @@ html.modal-open .tabContent {
   font-weight: 700;
   color: var(--text-primary);
   text-align: center;
-  margin: 0 0 20px;
+  margin: 0 0 24px;
   letter-spacing: -0.2px;
 }
 
@@ -3573,7 +3580,7 @@ html.modal-open .tabContent {
 .kbKey kbd {
   display: inline-block;
   min-width: 28px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   font-family: inherit;
   font-size: var(--font-caption1);
   font-weight: 600;
@@ -3594,8 +3601,8 @@ html.modal-open .tabContent {
 .kbClose {
   display: block;
   width: 100%;
-  margin-top: 18px;
-  padding: 10px;
+  margin-top: 16px;
+  padding: 12px;
   font-size: var(--font-footnote);
   font-weight: 600;
   color: var(--text-secondary);
@@ -3652,7 +3659,7 @@ html.modal-open .tabContent {
   border: 1px solid var(--glass-edge, var(--border-strong));
   box-shadow: 0 24px 64px rgba(0,0,0,0.35), inset 0 1px 0 var(--glass-shine, rgba(255,255,255,0.1));
   border-radius: 20px;
-  padding: 24px 28px;
+  padding: 24px 32px;
   width: 100%;
   max-width: 480px;
   max-height: 80vh;
@@ -3677,7 +3684,7 @@ html.modal-open .tabContent {
 .legalClose {
   width: auto;
   margin: 0;
-  padding: 6px 14px;
+  padding: 8px 16px;
   flex-shrink: 0;
 }
 
@@ -3706,7 +3713,7 @@ html.modal-open .tabContent {
 
 .legalList {
   margin: 0 0 12px;
-  padding-left: 20px;
+  padding-left: 24px;
 }
 
 .legalList li {
@@ -3730,7 +3737,7 @@ html.modal-open .tabContent {
   align-items: center;
   justify-content: center;
   z-index: 250;
-  padding: 20px;
+  padding: 24px;
   touch-action: none;
   overscroll-behavior: contain;
   animation: overlayFadeIn 0.2s ease-out;
@@ -3754,7 +3761,7 @@ html.modal-open .tabContent {
   font-size: var(--font-body);
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 20px;
+  margin: 0 0 24px;
   letter-spacing: -0.2px;
 }
 
