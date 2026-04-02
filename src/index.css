@@ -2074,6 +2074,13 @@ html.modal-open .tabContent {
   font-weight: 500;
 }
 
+.repMaxPersonalBest {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
 .repMaxActions {
   display: flex;
   gap: 8px;
