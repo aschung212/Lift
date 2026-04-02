@@ -34,6 +34,9 @@
         <div v-show="activeTab === 'weight'" class="tabContent"><BodyweightTracker /></div>
       </main>
 
+      <!-- Screen reader tab change announcements -->
+      <div class="srOnly" aria-live="polite" aria-atomic="true">{{ tabAnnouncement }}</div>
+
       <!-- Tab bar -->
       <nav class="tabBar" aria-label="Main navigation">
         <div class="tabBarTabs" role="tablist">
@@ -438,6 +441,7 @@ function closeSettings() {
   }, { once: true })
 }
 const activeTab = ref(localStorage.getItem('active-tab') || 'workouts')
+const tabAnnouncement = ref('')
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────
 const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeShortcuts } = useKeyboardShortcuts(() => [
@@ -538,6 +542,8 @@ function switchTab(tabId: string) {
   activeTab.value = tabId
   localStorage.setItem('active-tab', tabId)
   document.title = TAB_TITLES[tabId] || 'Lift — Workout Tracker'
+  const tabLabel = TAB_DEFS.find(t => t.id === tabId)?.label || tabId
+  tabAnnouncement.value = `${tabLabel} tab selected`
   tabSwitch(from, tabId)
 }
 
