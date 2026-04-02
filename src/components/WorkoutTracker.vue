@@ -76,8 +76,8 @@
             <div class="wtExerciseNameBlock">
               <span class="wtExerciseName">{{ exercise.name }}</span>
               <span v-if="store.getExercisePRSet(exercise.id)" class="wtExerciseMeta">
-                Est. 1RM: {{ displayWeight(store.getExercisePRSet(exercise.id).estimated1RM) }} {{ weightUnit }}
-                ({{ displayWeight(store.getExercisePRSet(exercise.id).weight) }} × {{ store.getExercisePRSet(exercise.id).reps }})
+                Est. 1RM: {{ displayWeight(store.getExercisePRSet(exercise.id)!.estimated1RM) }} {{ weightUnit }}
+                ({{ displayWeight(store.getExercisePRSet(exercise.id)!.weight) }} × {{ store.getExercisePRSet(exercise.id)!.reps }})
               </span>
             </div>
             <span class="wtChevron">›</span>
@@ -472,12 +472,12 @@
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">Any rep beats your est. 1RM! 🏆</span>
-            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
           </div>
           <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
-            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
           </div>
 
           <div class="repMaxActions">
@@ -881,7 +881,7 @@ const date = ref(todayISO())
 // re-opens to that date rather than always resetting to today.
 const lastLogDate = ref(todayISO())
 
-const dateInputEl = ref<HTMLInputElement | null>(null)
+
 
 const dateDisplay = computed(() => {
   if (!date.value) return 'Today'
@@ -1350,7 +1350,7 @@ const isNewPR = computed(() => {
 
 // ── PR target suggestions (inverse Epley) ──────────────────────
 // When only one field is filled, show what's needed in the other to beat the PR
-const prTargetWeight = computed<string | null>(() => {
+const prTargetWeight = computed<number | null>(() => {
   if (isEditMode.value || !reps.value || reps.value < 1) return null
   if (weight.value && weight.value > 0) return null // both filled → show live estimate instead
   const id = selectedExerciseId.value

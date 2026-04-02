@@ -12,11 +12,11 @@ import { ref } from 'vue'
 /** Type-safe access to the global localStorage mock from setup.ts */
 export function getLocalStorageMock() {
   return localStorage as unknown as {
-    getItem: ReturnType<typeof vi.fn>
-    setItem: ReturnType<typeof vi.fn>
-    removeItem: ReturnType<typeof vi.fn>
-    clear: ReturnType<typeof vi.fn>
-  }
+    getItem: (...args: unknown[]) => string | null
+    setItem: (...args: unknown[]) => void
+    removeItem: (...args: unknown[]) => void
+    clear: () => void
+  } & Record<string, ReturnType<typeof vi.fn>>
 }
 
 // ── Mock factories ───────────────────────────────────────────────
