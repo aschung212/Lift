@@ -242,7 +242,7 @@ function regionStyle(group: MuscleGroup): Record<string, string> {
 
 .heatmapTab.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .heatmapBody {
