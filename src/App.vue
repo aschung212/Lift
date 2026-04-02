@@ -564,6 +564,8 @@ function acceptConfirm() {
 function confirmSignOut() {
   showConfirm('Sign out?', () => {
     settingsOpen.value = false
+    localStorage.removeItem('onboarding-complete')
+    onboardingComplete.value = false
     signOut()
   })
 }
