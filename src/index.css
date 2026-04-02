@@ -1532,6 +1532,7 @@ button, [role="tab"], [role="switch"], a {
   background: var(--bg-secondary);
   border-radius: 16px;
   overflow: hidden;
+  touch-action: auto;
 }
 
 .wtDetailHeader {
@@ -1952,12 +1953,15 @@ button, [role="tab"], [role="switch"], a {
   z-index: 100;
   padding: 20px;
   padding-top: calc(env(safe-area-inset-top, 0px) + 20px);
+  touch-action: none;
+  overscroll-behavior: contain;
   animation: overlayFadeIn 0.2s ease-out;
 }
 
 .repMaxModal {
   position: relative;
   overflow: hidden;
+  touch-action: auto;
   background: var(--glass-fill, var(--bg-elevated));
   backdrop-filter: blur(32px) saturate(180%);
   -webkit-backdrop-filter: blur(32px) saturate(180%);
@@ -3679,6 +3683,8 @@ button, [role="tab"], [role="switch"], a {
   justify-content: center;
   z-index: 250;
   padding: 20px;
+  touch-action: none;
+  overscroll-behavior: contain;
   animation: overlayFadeIn 0.2s ease-out;
 }
 
