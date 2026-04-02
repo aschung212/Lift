@@ -26,6 +26,8 @@
   --glass-shine:     rgba(255,255,255,0.13);
   --glass-bar:       rgba(10,10,10,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
+  --pr:              #d4af37;
+  --pr-subtle:       rgba(212, 175, 55, 0.10);
   --text-on-accent:  #1a0000;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 15%, rgba(255,99,99,0.07) 0%, transparent 65%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(139,92,246,0.05) 0%, transparent 65%);
@@ -55,6 +57,8 @@
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(245,230,230,0.75);
   --glass-overlay:   rgba(26,18,18,0.25);
+  --pr:              #9a7b1c;
+  --pr-subtle:       rgba(154, 123, 28, 0.10);
   --text-on-accent:  #fff;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 15%, rgba(255,99,99,0.12) 0%, transparent 60%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(139,92,246,0.08) 0%, transparent 60%);
@@ -86,6 +90,8 @@
   --glass-shine:     rgba(255,255,255,0.13);
   --glass-bar:       rgba(8,8,16,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
+  --pr:              #d4af37;
+  --pr-subtle:       rgba(212, 175, 55, 0.10);
   --text-on-accent:  #fff;
   --mesh:            radial-gradient(ellipse 65% 50% at 20% 20%, rgba(139,92,246,0.09) 0%, transparent 65%),
                      radial-gradient(ellipse 50% 40% at 80% 78%, rgba(80,80,220,0.05) 0%, transparent 65%);
@@ -115,6 +121,8 @@
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(235,230,250,0.75);
   --glass-overlay:   rgba(24,24,42,0.25);
+  --pr:              #9a7b1c;
+  --pr-subtle:       rgba(154, 123, 28, 0.10);
   --text-on-accent:  #fff;
   --mesh:            radial-gradient(ellipse 65% 50% at 20% 20%, rgba(139,92,246,0.16) 0%, transparent 60%),
                      radial-gradient(ellipse 50% 40% at 80% 78%, rgba(80,80,220,0.10) 0%, transparent 60%);
@@ -146,6 +154,8 @@
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(210,225,255,0.75);
   --glass-overlay:   rgba(26,26,46,0.30);
+  --pr:              #9a7b1c;
+  --pr-subtle:       rgba(154, 123, 28, 0.10);
   --text-on-accent:  #fff;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(0,102,255,0.22) 0%, transparent 60%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(0,180,255,0.16) 0%, transparent 60%),
@@ -176,6 +186,8 @@
   --glass-shine:     rgba(255,255,255,0.13);
   --glass-bar:       rgba(10,16,28,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
+  --pr:              #d4af37;
+  --pr-subtle:       rgba(212, 175, 55, 0.10);
   --text-on-accent:  #fff;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(51,136,255,0.10) 0%, transparent 65%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(0,180,255,0.06) 0%, transparent 65%);
@@ -207,6 +219,8 @@
   --glass-shine:     rgba(255,255,255,0.12);
   --glass-bar:       rgba(8,6,4,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
+  --pr:              #d4af37;
+  --pr-subtle:       rgba(212, 175, 55, 0.10);
   --text-on-accent:  #1a1400;
   --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(245,158,11,0.09) 0%, transparent 65%),
                      radial-gradient(ellipse 50% 40% at 80% 80%, rgba(180,80,20,0.05) 0%, transparent 65%);
@@ -236,6 +250,8 @@
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(250,240,225,0.75);
   --glass-overlay:   rgba(32,26,16,0.25);
+  --pr:              #9a7b1c;
+  --pr-subtle:       rgba(154, 123, 28, 0.10);
   --text-on-accent:  #fff;
   --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(245,158,11,0.16) 0%, transparent 60%),
                      radial-gradient(ellipse 50% 40% at 80% 80%, rgba(180,80,20,0.10) 0%, transparent 60%);
@@ -267,6 +283,8 @@
   --glass-shine:     rgba(201,168,76,0.08);
   --glass-bar:       rgba(15,15,15,0.82);
   --glass-overlay:   rgba(0,0,0,0.58);
+  --pr:              #d4af37;
+  --pr-subtle:       rgba(212, 175, 55, 0.10);
   --text-on-accent:  #0f0f0f;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(201,168,76,0.06) 0%, transparent 65%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(180,150,60,0.04) 0%, transparent 65%);
@@ -296,6 +314,8 @@
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(242,239,232,0.82);
   --glass-overlay:   rgba(14,12,8,0.20);
+  --pr:              #9a7b1c;
+  --pr-subtle:       rgba(154, 123, 28, 0.10);
   --text-on-accent:  #fff;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(201,168,76,0.10) 0%, transparent 60%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(180,150,60,0.06) 0%, transparent 60%);
@@ -327,6 +347,8 @@
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(248,220,240,0.75);
   --glass-overlay:   rgba(30,16,40,0.30);
+  --pr:              #9a7b1c;
+  --pr-subtle:       rgba(154, 123, 28, 0.10);
   --text-on-accent:  #fff;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(236,72,153,0.24) 0%, transparent 60%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(168,85,247,0.18) 0%, transparent 60%),
@@ -357,6 +379,8 @@
   --glass-shine:     rgba(255,255,255,0.13);
   --glass-bar:       rgba(20,12,28,0.72);
   --glass-overlay:   rgba(0,0,0,0.55);
+  --pr:              #d4af37;
+  --pr-subtle:       rgba(212, 175, 55, 0.10);
   --text-on-accent:  #1a0818;
   --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(236,72,153,0.10) 0%, transparent 65%),
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(168,85,247,0.07) 0%, transparent 65%);
@@ -414,7 +438,7 @@ html, body {
     content: '';
     position: fixed;
     inset: 0;
-    background: #0f0f0f;
+    background: var(--bg-primary);
     z-index: 9998;
   }
 
@@ -1667,8 +1691,8 @@ html.modal-open .tabContent {
 }
 
 .wtSetRowPR {
-  background: rgba(212, 175, 55, 0.08);
-  border-left: 3px solid #d4af37;
+  background: var(--pr-subtle);
+  border-left: 3px solid var(--pr);
 }
 
 .wtSetEmpty {
@@ -2899,7 +2923,7 @@ html.modal-open .tabContent {
 }
 
 .calSumPR .calSumValue {
-  color: #d4af37;
+  color: var(--pr);
 }
 
 .calDetailTags {
@@ -2921,9 +2945,9 @@ html.modal-open .tabContent {
 }
 
 .calDetailTagPR {
-  background: rgba(212, 175, 55, 0.10);
-  border-color: #d4af37 !important;
-  color: #d4af37 !important;
+  background: var(--pr-subtle);
+  border-color: var(--pr) !important;
+  color: var(--pr) !important;
 }
 
 /* Weekly view */
@@ -3005,9 +3029,9 @@ html.modal-open .tabContent {
 }
 
 .calWeekTagPR {
-  background: rgba(212, 175, 55, 0.10);
-  border-color: #d4af37 !important;
-  color: #d4af37 !important;
+  background: var(--pr-subtle);
+  border-color: var(--pr) !important;
+  color: var(--pr) !important;
   cursor: pointer;
 }
 
@@ -3063,9 +3087,9 @@ html.modal-open .tabContent {
 }
 
 .calSetRowPR {
-  background: rgba(212, 175, 55, 0.08);
-  border-color: rgba(212, 175, 55, 0.35);
-  color: #d4af37;
+  background: var(--pr-subtle);
+  border-color: var(--pr);
+  color: var(--pr);
 }
 
 .calSetPR {
@@ -3231,13 +3255,13 @@ html.modal-open .tabContent {
 }
 
 .bwEntryLow {
-  background: rgba(74, 222, 128, 0.06);
-  border-left: 3px solid #4ade80;
+  background: var(--success-subtle);
+  border-left: 3px solid var(--success);
 }
 
 .bwEntryHigh {
-  background: rgba(248, 113, 113, 0.06);
-  border-left: 3px solid #f87171;
+  background: var(--danger-subtle);
+  border-left: 3px solid var(--danger);
 }
 
 .bwEntryBadge {
@@ -3250,13 +3274,13 @@ html.modal-open .tabContent {
 }
 
 .bwEntryBadgeLow {
-  background: rgba(74, 222, 128, 0.15);
-  color: #4ade80;
+  background: var(--success-subtle);
+  color: var(--success);
 }
 
 .bwEntryBadgeHigh {
-  background: rgba(248, 113, 113, 0.15);
-  color: #f87171;
+  background: var(--danger-subtle);
+  color: var(--danger);
 }
 
 .bwDelta {
@@ -3333,8 +3357,8 @@ html.modal-open .tabContent {
   letter-spacing: -0.3px;
 }
 
-.bwStatDown { color: #4ade80; }
-.bwStatUp   { color: #f87171; }
+.bwStatDown { color: var(--success); }
+.bwStatUp   { color: var(--danger); }
 
 .bwStatsSingle {
   font-size: var(--font-caption1);
