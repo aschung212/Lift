@@ -461,17 +461,17 @@
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
           </div>
           <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your 1RM Record</span>
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
             <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
           </div>
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your 1RM Record</span>
-            <span class="repMaxResultValue">Any rep is a new 1RM! 🏆</span>
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultValue">Any rep beats your est. 1RM! 🏆</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
           </div>
           <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your 1RM Record</span>
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
           </div>
