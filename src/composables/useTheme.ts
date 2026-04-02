@@ -22,7 +22,7 @@ export const THEMES: ThemeOption[] = [
   { id: 'graphite', label: 'Graphite', dot: '#8b5cf6' },
   { id: 'arctic',   label: 'Arctic',   dot: '#0066ff' },
   { id: 'forge',    label: 'Forge',    dot: '#f59e0b' },
-  { id: 'aaron',    label: 'Aaron',    dot: '#2a8a4a' },
+  { id: 'aaron',    label: 'Aaron',    dot: '#c9a84c' },
   { id: 'tina',     label: 'Tina',     dot: '#ec4899' },
 ]
 
@@ -31,7 +31,7 @@ export const THEME_PREVIEWS: Record<ThemeId, { dark: ThemePreviewColors; light: 
   graphite: { dark: { bg: '#111118', card: '#1c1c28', accent: '#8b5cf6', text: '#e4e4f4' }, light: { bg: '#ededf5', card: '#ffffff', accent: '#7c3aed', text: '#18182a' } },
   arctic:   { dark: { bg: '#0e1420', card: '#182030', accent: '#3388ff', text: '#e0e8f8' }, light: { bg: '#dde4f5', card: '#ffffff', accent: '#0066ff', text: '#1a1a2e' } },
   forge:    { dark: { bg: '#100e0b', card: '#1c1814', accent: '#f59e0b', text: '#f0e8d8' }, light: { bg: '#f5ede0', card: '#ffffff', accent: '#d97706', text: '#201a10' } },
-  aaron:    { dark: { bg: '#14261a', card: '#0c1a10', accent: '#c8a44e', text: '#e8f0ea' }, light: { bg: '#c8e0cc', card: '#f4faf5', accent: '#a0842a', text: '#0c1a10' } },
+  aaron:    { dark: { bg: '#0f0f0f', card: '#1a1816', accent: '#c9a84c', text: '#f0ece4' }, light: { bg: '#f2efe8', card: '#faf8f4', accent: '#96800e', text: '#1a1810' } },
   tina:     { dark: { bg: '#1a1020', card: '#261830', accent: '#f472b6', text: '#f0e4f4' }, light: { bg: '#f0dff0', card: '#ffffff', accent: '#ec4899', text: '#1e1028' } },
 }
 
@@ -40,7 +40,7 @@ const THEME_META_COLORS: Record<ThemeId, { dark: string; light: string }> = {
   graphite: { dark: '#111118', light: '#ededf5' },
   arctic:   { dark: '#0e1420', light: '#dde4f5' },
   forge:    { dark: '#100e0b', light: '#f5ede0' },
-  aaron:    { dark: '#0c0f14', light: '#eceee8' },
+  aaron:    { dark: '#0f0f0f', light: '#f2efe8' },
   tina:     { dark: '#1a1020', light: '#f0dff0' },
 }
 
