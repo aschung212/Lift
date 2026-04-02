@@ -1949,6 +1949,7 @@ button, [role="tab"], [role="switch"], a {
   justify-content: center;
   z-index: 100;
   padding: 20px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 20px);
   animation: overlayFadeIn 0.2s ease-out;
 }
 
