@@ -530,7 +530,7 @@ button, [role="tab"], [role="switch"], a {
 .skipLink:focus {
   position: fixed;
   left: 50%;
-  top: 12px;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
   transform: translateX(-50%);
   width: auto;
   height: auto;
@@ -3568,7 +3568,7 @@ html.modal-open .tabContent {
   justify-content: center;
   z-index: 200;
   animation: overlayFadeIn 0.2s ease-out;
-  padding: 20px;
+  padding: calc(env(safe-area-inset-top, 0px) + 20px) 20px calc(env(safe-area-inset-bottom, 0px) + 20px);
 }
 
 .kbSheet {
@@ -3774,7 +3774,7 @@ html.modal-open .tabContent {
   align-items: center;
   justify-content: center;
   z-index: 250;
-  padding: 20px;
+  padding: calc(env(safe-area-inset-top, 0px) + 20px) 20px calc(env(safe-area-inset-bottom, 0px) + 20px);
   touch-action: none;
   overscroll-behavior: contain;
   animation: overlayFadeIn 0.2s ease-out;
