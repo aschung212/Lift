@@ -86,4 +86,38 @@ describe('CSS regression tests', () => {
       expect(lines.some(l => l.includes('safe-area-inset-top'))).toBe(true)
     })
   })
+
+  describe('spacing scale compliance (4/8/12/16/24/32)', () => {
+    // Valid spacing values: 0, 1, 2, 4, 8, 12, 16, 24, 32, and multiples of 8 above 32
+    const SCALE = new Set([0, 1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128])
+    const isOnScale = (v: number) => SCALE.has(v) || (v >= 32 && v % 8 === 0)
+
+    const spacingProps = /^\s*(padding|margin|gap|padding-top|padding-bottom|padding-left|padding-right|margin-top|margin-bottom|margin-left|margin-right|row-gap|column-gap)\s*:/
+    const pxVal = /-?\d+(?=px)/g
+
+    function findViolations(): { line: number; text: string; values: number[] }[] {
+      const violations: { line: number; text: string; values: number[] }[] = []
+      css.split('\n').forEach((text, i) => {
+        if (!spacingProps.test(text)) return
+        if (text.includes('calc(') || text.includes('env(')) return
+        const offScale: number[] = []
+        let match
+        pxVal.lastIndex = 0
+        while ((match = pxVal.exec(text)) !== null) {
+          const abs = Math.abs(parseInt(match[0], 10))
+          if (abs > 2 && !isOnScale(abs)) offScale.push(abs)
+        }
+        if (offScale.length > 0) violations.push({ line: i + 1, text: text.trim(), values: offScale })
+      })
+      return violations
+    }
+
+    it('has no off-scale spacing values in index.css', () => {
+      const violations = findViolations()
+      if (violations.length > 0) {
+        const report = violations.map(v => `  L${v.line}: ${v.text} (off-scale: ${v.values.join(', ')}px)`).join('\n')
+        expect.fail(`Found ${violations.length} spacing scale violation(s):\n${report}`)
+      }
+    })
+  })
 })
