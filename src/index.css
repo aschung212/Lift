@@ -594,8 +594,8 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   background: none;
   border: none;
@@ -1344,6 +1344,9 @@ html.modal-open .tabContent {
   line-height: 1;
   display: flex;
   align-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
 }
 .wtTagManagerExpandIcon {
   display: inline-block;
@@ -2906,6 +2909,7 @@ html.modal-open .tabContent {
 }
 
 .calDetailTag {
+  font-family: inherit;
   font-size: var(--font-caption1);
   font-weight: 600;
   padding: 3px 10px;
@@ -2913,6 +2917,7 @@ html.modal-open .tabContent {
   border: 1px solid var(--border-strong);
   color: var(--text-secondary);
   background: transparent;
+  cursor: pointer;
 }
 
 .calDetailTagPR {
@@ -2988,6 +2993,7 @@ html.modal-open .tabContent {
 }
 
 .calWeekTag {
+  font-family: inherit;
   font-size: var(--font-caption2);
   font-weight: 600;
   padding: 3px 8px;
@@ -2995,6 +3001,7 @@ html.modal-open .tabContent {
   border: 1px solid var(--border-strong);
   color: var(--text-secondary);
   background: transparent;
+  cursor: pointer;
 }
 
 .calWeekTagPR {
