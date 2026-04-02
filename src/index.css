@@ -1294,8 +1294,10 @@ button, [role="tab"], [role="switch"], a {
 .wtTagChipManage {
   border-color: var(--border);
   color: var(--text-secondary);
-  font-size: var(--font-callout);
   padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ─── Tag manager modal ────────────────────────────────────────────────── */
