@@ -147,5 +147,24 @@ describe('useAuth', () => {
       await signOut()
       expect(user.value).toBeNull()
     })
+
+    // Regression: signOut must clear user even when supabase.auth.signOut() throws
+    it('clears user even when supabase signOut throws', async () => {
+      mockSignOut.mockRejectedValueOnce(new Error('Network error'))
+      const { signOut, user, devSignIn } = useAuth()
+      await devSignIn()
+      expect(user.value).not.toBeNull()
+      await signOut()
+      expect(user.value).toBeNull()
+    })
+  })
+
+  describe('devSignIn', () => {
+    it('sets user to local-dev', async () => {
+      const { devSignIn, user } = useAuth()
+      expect(user.value).toBeNull()
+      await devSignIn()
+      expect(user.value).toEqual({ id: 'local-dev', email: 'dev@localhost' })
+    })
   })
 })

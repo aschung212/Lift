@@ -176,6 +176,87 @@ describe('useSwipeToDismiss', () => {
     wrapper.unmount()
   })
 
+  // Regression: attach(container, handle) should bind touch events only to the handle
+  it('supports separate handle element for touch events', () => {
+    const Comp = defineComponent({
+      setup() {
+        const swipe = useSwipeToDismiss({
+          threshold: 80,
+          onDismiss: onDismiss,
+        })
+        return { ...swipe }
+      },
+      mounted() {
+        const container = this.$el as HTMLElement
+        const handle = container.querySelector('.handle') as HTMLElement
+        this.attach(container, handle)
+      },
+      template: '<div style="height:400px"><div class="handle" style="height:40px"></div><div class="content">scrollable</div></div>',
+    })
+    const wrapper = mount(Comp, { attachTo: document.body })
+    const container = wrapper.element as HTMLElement
+    const handle = container.querySelector('.handle') as HTMLElement
+
+    // Touch on the handle should start tracking
+    handle.dispatchEvent(createTouchEvent('touchstart', 100))
+    handle.dispatchEvent(createTouchEvent('touchmove', 160))
+    expect(wrapper.vm.offsetY).toBe(60)
+
+    handle.dispatchEvent(createTouchEvent('touchend', 160))
+
+    // Touch on the container directly should NOT start tracking
+    // (offsetY was reset by the snap-back on touchend)
+    container.dispatchEvent(createTouchEvent('touchstart', 100))
+    container.dispatchEvent(createTouchEvent('touchmove', 200))
+    expect(wrapper.vm.offsetY).toBe(0)
+
+    wrapper.unmount()
+  })
+
+  // Regression: upward swipe when scrollTop > 0 should not trigger drag
+  it('allows scroll-up without triggering drag when scrollTop > 0', () => {
+    const wrapper = createWrapper({ onDismiss })
+    const el = wrapper.element as HTMLElement
+
+    Object.defineProperty(el, 'scrollTop', { value: 100, writable: true })
+
+    el.dispatchEvent(createTouchEvent('touchstart', 200))
+    // Swipe up (negative delta)
+    el.dispatchEvent(createTouchEvent('touchmove', 150))
+    expect(wrapper.vm.isDragging).toBe(false)
+    expect(wrapper.vm.offsetY).toBe(0)
+
+    // Even a downward move shouldn't drag because scrollTop > 0
+    el.dispatchEvent(createTouchEvent('touchmove', 250))
+    expect(wrapper.vm.isDragging).toBe(false)
+    expect(wrapper.vm.offsetY).toBe(0)
+
+    wrapper.unmount()
+  })
+
+  // Regression: new touch after scroll-down-then-release should not auto-dismiss
+  it('does not carry drag state across separate touch gestures', () => {
+    const wrapper = createWrapper({ onDismiss })
+    const el = wrapper.element as HTMLElement
+
+    // First gesture: start at scrollTop=0, drag down a bit, release
+    el.dispatchEvent(createTouchEvent('touchstart', 100))
+    el.dispatchEvent(createTouchEvent('touchmove', 130))
+    expect(wrapper.vm.isDragging).toBe(true)
+    el.dispatchEvent(createTouchEvent('touchend', 130))
+    expect(wrapper.vm.isDragging).toBe(false)
+
+    // Second gesture: now scrollTop > 0 (user scrolled content)
+    Object.defineProperty(el, 'scrollTop', { value: 50, writable: true })
+    el.dispatchEvent(createTouchEvent('touchstart', 200))
+    el.dispatchEvent(createTouchEvent('touchmove', 250))
+    // Should NOT drag — scrollTop > 0
+    expect(wrapper.vm.isDragging).toBe(false)
+    expect(wrapper.vm.offsetY).toBe(0)
+
+    wrapper.unmount()
+  })
+
   it('cleans up on unmount', () => {
     const wrapper = createWrapper({ onDismiss })
     const el = wrapper.element as HTMLElement
