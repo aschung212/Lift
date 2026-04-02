@@ -400,6 +400,17 @@
             </div>
           </div>
 
+          <!-- Repeat last set quick-fill -->
+          <div v-if="lastSetForExercise && !isEditMode" class="wtRepeatLastSet" @click="repeatLastSet">
+            <div class="wtOverloadIcon wtRepeatIcon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            </div>
+            <div class="wtOverloadContent">
+              <span class="wtOverloadTarget">Repeat {{ displayWeight(lastSetForExercise.weight) }} {{ weightUnit }} × {{ lastSetForExercise.reps }}</span>
+              <span class="wtOverloadReason">Same as your last set</span>
+            </div>
+          </div>
+
           <!-- Date: silent by default — tapping the field opens the picker.
                The input is an invisible overlay covering the field so the user's
                touch lands directly on the input (iOS requires a real touch, not
@@ -915,6 +926,20 @@ function applyOverloadSuggestion() {
   if (!overloadSuggestion.value) return
   weight.value = displayWeight(overloadSuggestion.value.weight)
   reps.value = overloadSuggestion.value.reps
+}
+
+// Last set for the current exercise (for "repeat last set" quick-fill)
+const lastSetForExercise = computed(() => {
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  const recent = store.getRecentSets(id, 1)
+  return recent.length > 0 ? recent[0] : null
+})
+
+function repeatLastSet() {
+  if (!lastSetForExercise.value) return
+  weight.value = displayWeight(lastSetForExercise.value.weight)
+  reps.value = lastSetForExercise.value.reps
 }
 
 const modalTitle = computed(() => {
