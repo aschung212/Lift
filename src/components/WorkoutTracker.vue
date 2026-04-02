@@ -74,9 +74,9 @@
           >
             <div class="wtExerciseNameBlock">
               <span class="wtExerciseName">{{ exercise.name }}</span>
-              <span class="wtExerciseMeta">
-                Est. 1RM: <template v-if="store.getExercisePR(exercise.id)">{{ displayWeight(store.getExercisePR(exercise.id)) }} {{ weightUnit }}</template><template v-else>—</template>
-                · {{ exercise.sets.length }} set{{ exercise.sets.length !== 1 ? 's' : '' }}
+              <span v-if="store.getExercisePRSet(exercise.id)" class="wtExerciseMeta">
+                Est. 1RM: {{ displayWeight(store.getExercisePRSet(exercise.id).estimated1RM) }} {{ weightUnit }}
+                ({{ displayWeight(store.getExercisePRSet(exercise.id).weight) }} × {{ store.getExercisePRSet(exercise.id).reps }})
               </span>
             </div>
             <span class="wtChevron">›</span>

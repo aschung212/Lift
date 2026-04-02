@@ -376,6 +376,14 @@ export const useWorkoutStore = defineStore('workout', {
       return Math.max(...exercise.sets.map((s: WorkoutSet) => s.estimated1RM))
     },
 
+    getExercisePRSet: (state) => (exerciseId: string): WorkoutSet | null => {
+      const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
+      if (!exercise || exercise.sets.length === 0) return null
+      return exercise.sets.reduce((best: WorkoutSet, s: WorkoutSet) =>
+        s.estimated1RM > best.estimated1RM ? s : best
+      )
+    },
+
     getRecentSets: (state) => (exerciseId: string, limit = 5): WorkoutSet[] => {
       const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return []
