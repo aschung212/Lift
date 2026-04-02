@@ -84,9 +84,11 @@ async function signUp(email: string, password: string): Promise<{ error: AuthErr
 }
 
 async function signOut(): Promise<void> {
-  if (!supabase) return
-  await supabase.auth.signOut()
-  user.value = null
+  try {
+    await supabase?.auth.signOut()
+  } finally {
+    user.value = null
+  }
 }
 
 export function useAuth() {

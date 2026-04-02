@@ -553,7 +553,10 @@ function acceptConfirm() {
 }
 
 function confirmSignOut() {
-  showConfirm('Sign out?', () => signOut())
+  showConfirm('Sign out?', () => {
+    settingsOpen.value = false
+    signOut()
+  })
 }
 
 function exportData(format: 'csv' | 'json') {
