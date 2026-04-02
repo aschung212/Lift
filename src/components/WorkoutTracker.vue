@@ -454,11 +454,25 @@
             </label>
           </div>
 
-          <!-- Live 1RM estimate -->
+          <!-- Live 1RM estimate / PR target -->
           <div v-if="liveEstimate" class="repMaxResult">
             <span class="repMaxResultLabel">Estimated 1RM</span>
             <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
+          </div>
+          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
+            <span class="repMaxResultLabel">PR Target</span>
+            <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }}</span>
+            <span class="repMaxTargetHint">to beat your PR at {{ reps }} rep{{ reps === 1 ? '' : 's' }}</span>
+          </div>
+          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
+            <span class="repMaxResultLabel">PR Target</span>
+            <span class="repMaxResultValue">Any rep is a new PR! 🏆</span>
+          </div>
+          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
+            <span class="repMaxResultLabel">PR Target</span>
+            <span class="repMaxResultValue">{{ prTargetReps }} rep{{ prTargetReps === 1 ? '' : 's' }}</span>
+            <span class="repMaxTargetHint">to beat your PR at {{ displayWeight(toLbs(weight)) }} {{ weightUnit }}</span>
           </div>
 
           <div class="repMaxActions">
@@ -1329,6 +1343,33 @@ const isNewPR = computed(() => {
   if (!id || id === '__new__') return false
   const pr = store.getExercisePR(id)
   return pr > 0 && liveEstimateLbs.value > pr
+})
+
+// ── PR target suggestions (inverse Epley) ──────────────────────
+// When only one field is filled, show what's needed in the other to beat the PR
+const prTargetWeight = computed<string | null>(() => {
+  if (isEditMode.value || !reps.value || reps.value < 1) return null
+  if (weight.value && weight.value > 0) return null // both filled → show live estimate instead
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  const pr = store.getExercisePR(id)
+  if (pr <= 0) return null
+  const target = pr + 1
+  const targetLbs = reps.value === 1 ? target : Math.ceil(target / (1 + reps.value / 30))
+  return displayWeight(targetLbs)
+})
+
+const prTargetReps = computed<number | null>(() => {
+  if (isEditMode.value || !weight.value || weight.value <= 0) return null
+  if (reps.value && reps.value >= 1) return null // both filled
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  const pr = store.getExercisePR(id)
+  if (pr <= 0) return null
+  const wLbs = toLbs(weight.value)
+  if (wLbs >= pr + 1) return 0 // any rep beats it
+  const needed = Math.ceil(30 * ((pr + 1) / wLbs - 1))
+  return needed > 30 ? null : needed // >30 reps is impractical
 })
 
 const hasSetData = computed(() => weight.value !== null && weight.value > 0 && reps.value !== null && reps.value >= 1)

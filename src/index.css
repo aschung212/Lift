@@ -2054,6 +2054,17 @@ button, [role="tab"], [role="switch"], a {
   line-height: 1;
 }
 
+.repMaxResultTarget {
+  border: 1px dashed var(--accent);
+  background: transparent;
+}
+
+.repMaxTargetHint {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 .repMaxActions {
   display: flex;
   gap: 8px;
