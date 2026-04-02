@@ -72,12 +72,13 @@
             class="wtExerciseRow"
             @click="openDetailModal(exercise.id)"
           >
-            <span class="wtExerciseName">{{ exercise.name }}</span>
-            <span class="wtExerciseMeta">
-              PR: {{ store.getExercisePR(exercise.id) ? displayWeight(store.getExercisePR(exercise.id)) : '—' }} {{ weightUnit }}
-              &nbsp;·&nbsp;
-              {{ exercise.sets.length }} set{{ exercise.sets.length !== 1 ? 's' : '' }}
-            </span>
+            <div class="wtExerciseNameBlock">
+              <span class="wtExerciseName">{{ exercise.name }}</span>
+              <span class="wtExerciseMeta">
+                Est. 1RM: <template v-if="store.getExercisePR(exercise.id)">{{ displayWeight(store.getExercisePR(exercise.id)) }} {{ weightUnit }}</template><template v-else>—</template>
+                · {{ exercise.sets.length }} set{{ exercise.sets.length !== 1 ? 's' : '' }}
+              </span>
+            </div>
             <span class="wtChevron">›</span>
           </button>
           <button
