@@ -62,6 +62,34 @@ describe('usePreferencesStore', () => {
     })
   })
 
+  describe('setFeature edge cases', () => {
+    it('allows disabling the last feature (no guard like toggleFeature)', () => {
+      store.setFeature('calendar', false)
+      store.setFeature('weight', false)
+      store.setFeature('workouts', false)
+      expect(store.enabledCount).toBe(0)
+    })
+
+    it('handles unknown feature keys', () => {
+      store.setFeature('analytics', true)
+      expect(store.features.analytics).toBe(true)
+      expect(store.enabledCount).toBe(4)
+    })
+  })
+
+  describe('toggleFeature edge cases', () => {
+    it('toggling multiple features tracks enabledCount correctly', () => {
+      expect(store.enabledCount).toBe(3)
+      store.toggleFeature('calendar')
+      expect(store.enabledCount).toBe(2)
+      store.toggleFeature('weight')
+      expect(store.enabledCount).toBe(1)
+      // Can't disable the last one
+      store.toggleFeature('workouts')
+      expect(store.enabledCount).toBe(1)
+    })
+  })
+
   describe('persistence', () => {
     it('persists feature state to localStorage', () => {
       store.toggleFeature('calendar')
@@ -81,6 +109,42 @@ describe('usePreferencesStore', () => {
 
       expect(freshStore.features.calendar).toBe(false)
       expect(freshStore.features.workouts).toBe(true)
+    })
+
+    it('handles corrupt localStorage gracefully on init', async () => {
+      localStorageMock.setItem('user-preferences', 'not-valid-json')
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      // Should fall back to defaults
+      expect(freshStore.features.workouts).toBe(true)
+      expect(freshStore.features.calendar).toBe(true)
+      expect(freshStore.features.weight).toBe(true)
+    })
+
+    it('merges persisted state with defaults for missing keys', async () => {
+      // Simulate old localStorage with fewer features
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: false }
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.features.workouts).toBe(false)
+      // Missing keys should get defaults
+      expect(freshStore.features.calendar).toBe(true)
+      expect(freshStore.features.weight).toBe(true)
+    })
+
+    it('init sets userId', async () => {
+      await store.init('user-123')
+      expect(store._userId).toBe('user-123')
     })
   })
 })
