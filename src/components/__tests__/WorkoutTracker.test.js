@@ -88,6 +88,12 @@ function getExercisePR(id) {
   return Math.max(...ex.sets.map(s => s.estimated1RM))
 }
 
+function getExercisePRSet(id) {
+  const ex = exercises.find(e => e.id === id)
+  if (!ex || ex.sets.length === 0) return null
+  return ex.sets.reduce((best, s) => s.estimated1RM > best.estimated1RM ? s : best)
+}
+
 function getAllTags() {
   const tags = new Set()
   exercises.forEach(e => (e.tags || []).forEach(t => tags.add(t)))
@@ -100,6 +106,7 @@ vi.mock('../../stores/workout', () => ({
     set exercises(v) { exercises = v },
     get allTags() { return getAllTags() },
     getExercisePR,
+    getExercisePRSet,
     addExercise: vi.fn(),
     logSet: vi.fn(),
     updateSet: vi.fn(),
@@ -157,32 +164,28 @@ describe('WorkoutTracker', () => {
       expect(items.length).toBe(3)
     })
 
-    it('displays exercise name and set count', () => {
+    it('displays exercise name', () => {
       const wrapper = mountTracker()
       const rows = wrapper.findAll('.wtExerciseRow')
       expect(rows[0].text()).toContain('Bench Press')
-      expect(rows[0].text()).toContain('2 sets')
       expect(rows[1].text()).toContain('Squat')
-      expect(rows[1].text()).toContain('1 set')
     })
 
-    it('uses singular "set" for exercises with 1 set', () => {
+    it('displays est. 1RM with the PR set weight × reps', () => {
       const wrapper = mountTracker()
       const meta = wrapper.findAll('.wtExerciseMeta')
-      expect(meta[1].text()).toMatch(/1 set$/)
-    })
-
-    it('displays PR value for exercises with sets', () => {
-      const wrapper = mountTracker()
-      const meta = wrapper.findAll('.wtExerciseMeta')
+      // Bench PR set: 195 × 5 = e1RM 228
       expect(meta[0].text()).toContain('228')
-      expect(meta[0].text()).toContain('lbs')
+      expect(meta[0].text()).toContain('195')
+      expect(meta[0].text()).toContain('5')
     })
 
-    it('shows dash for PR when exercise has no sets', () => {
+    it('hides meta for exercise with no sets', () => {
       const wrapper = mountTracker()
-      const meta = wrapper.findAll('.wtExerciseMeta')
-      expect(meta[2].text()).toContain('—')
+      // ex-3 (Deadlift) has no sets — meta should not render
+      const items = wrapper.findAll('.wtExerciseItem')
+      const deadliftMeta = items[2].find('.wtExerciseMeta')
+      expect(deadliftMeta.exists()).toBe(false)
     })
 
     it('shows "+ Log" button for each exercise', () => {
