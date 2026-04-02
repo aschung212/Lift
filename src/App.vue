@@ -14,7 +14,8 @@
 
     <!-- Authenticated app -->
     <template v-else>
-      <main class="appContainer">
+      <a href="#main-content" class="skipLink">Skip to main content</a>
+      <main id="main-content" class="appContainer">
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>

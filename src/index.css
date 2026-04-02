@@ -509,6 +509,33 @@ button, [role="tab"], [role="switch"], a {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+/* ── Skip navigation link (WCAG 2.4.1) ──────────────────────────── */
+.skipLink {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 10000;
+  padding: 12px 24px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.skipLink:focus {
+  position: fixed;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  width: auto;
+  height: auto;
+}
+
 .appContainer {
   width: 100%;
   max-width: 520px;
