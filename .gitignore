@@ -24,5 +24,9 @@ scripts/output/
 supabase/.temp/
 supabase/.branches/
 
+# Capacitor native projects (generated per-machine via `npx cap add ios`)
+ios/
+android/
+
 # Claude Code worktree metadata (not part of the public repo)
 .claude/

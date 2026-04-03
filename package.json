@@ -19,9 +19,18 @@
     "db:migrate": "npx supabase migration up",
     "db:new": "npx supabase migration new",
     "db:status": "npx supabase migration list",
-    "db:diff": "npx supabase db diff"
+    "db:diff": "npx supabase db diff",
+    "cap:sync": "npx cap sync",
+    "cap:open:ios": "npx cap open ios",
+    "cap:run:ios": "npx cap run ios",
+    "cap:build": "npm run build && npx cap sync"
   },
   "dependencies": {
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/keyboard": "^8.0.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "@sentry/vue": "^10.46.0",
     "@supabase/supabase-js": "^2.49.1",
     "@vercel/analytics": "^2.0.1",
@@ -30,6 +39,7 @@
     "vue": "^3.4.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.0",
     "@eslint/js": "^10.0.1",
     "@pinia/testing": "^0.1.7",
     "@playwright/test": "^1.58.2",
