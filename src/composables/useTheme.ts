@@ -1,6 +1,6 @@
 import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 
-export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'eternal' | 'amethyst' | 'sun' | 'moon' | 'love'
+export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'eternal' | 'amethyst' | 'pearl' | 'moon' | 'love' | 'oak'
 export type ColorMode = 'light' | 'dark' | 'auto'
 export type WeightUnit = 'lbs' | 'kg'
 
@@ -24,9 +24,10 @@ export const THEMES: ThemeOption[] = [
   { id: 'air',      label: 'Air',      icon: 'air' },
   { id: 'eternal',    label: 'Eternal',     icon: 'eternal' },
   { id: 'amethyst', label: 'Amethyst', icon: 'amethyst' },
-  { id: 'sun',      label: 'Sun',      icon: 'sun' },
+  { id: 'pearl',    label: 'Pearl',    icon: 'pearl' },
   { id: 'moon',     label: 'Moon',     icon: 'moon' },
   { id: 'love',     label: 'Love',     icon: 'love' },
+  { id: 'oak',      label: 'Oak',      icon: 'oak' },
 ]
 
 export const THEME_PREVIEWS: Record<ThemeId, { dark: ThemePreviewColors; light: ThemePreviewColors }> = {
@@ -36,9 +37,10 @@ export const THEME_PREVIEWS: Record<ThemeId, { dark: ThemePreviewColors; light: 
   air:      { dark: { bg: '#2a3a48', card: '#1a2430', accent: '#a8c8e8', text: '#e8f0f8' }, light: { bg: '#88a8c0', card: '#ffffff', accent: '#e8f4ff', text: '#1a2030' } },
   eternal:     { dark: { bg: '#1a1a14', card: '#0c0c0c', accent: '#c8a84c', text: '#eeeeee' }, light: { bg: '#8a7020', card: '#ffffff', accent: '#f8f0d0', text: '#1a1810' } },
   amethyst: { dark: { bg: '#2a2050', card: '#1c1c28', accent: '#8b5cf6', text: '#e4e4f4' }, light: { bg: '#3a2870', card: '#ffffff', accent: '#a78bfa', text: '#18182a' } },
-  sun:      { dark: { bg: '#2a1808', card: '#1e1610', accent: '#e87620', text: '#f0e4d4' }, light: { bg: '#b85c00', card: '#ffffff', accent: '#f08030', text: '#201408' } },
+  pearl:    { dark: { bg: '#1a1a1a', card: '#111111', accent: '#d0d0d0', text: '#f0f0f0' }, light: { bg: '#808080', card: '#ffffff', accent: '#f5f5f0', text: '#1a1a1a' } },
   moon:     { dark: { bg: '#0a1028', card: '#141830', accent: '#8090c0', text: '#d0d8f0' }, light: { bg: '#182048', card: '#ffffff', accent: '#a0b0e0', text: '#0a1020' } },
   love:    { dark: { bg: '#3a1028', card: '#261830', accent: '#f472b6', text: '#f0e4f4' }, light: { bg: '#6a2048', card: '#ffffff', accent: '#f472b6', text: '#1e1028' } },
+  oak:      { dark: { bg: '#1c1410', card: '#141010', accent: '#906040', text: '#e8dcd0' }, light: { bg: '#6b4c38', card: '#ffffff', accent: '#c89070', text: '#1a1210' } },
 }
 
 const THEME_META_COLORS: Record<ThemeId, { dark: string; light: string }> = {
@@ -48,9 +50,10 @@ const THEME_META_COLORS: Record<ThemeId, { dark: string; light: string }> = {
   air:      { dark: '#101820', light: '#f0f6fa' },
   eternal:     { dark: '#0c0c0c', light: '#f8f6f2' },
   amethyst: { dark: '#111118', light: '#ededf5' },
-  sun:      { dark: '#16100a', light: '#faf3ea' },
+  pearl:    { dark: '#111111', light: '#f4f4f2' },
   moon:     { dark: '#080c1a', light: '#eaecf5' },
   love:    { dark: '#1a1020', light: '#f0dff0' },
+  oak:      { dark: '#141010', light: '#f5efe8' },
 }
 
 // Map old theme IDs to new ones for localStorage migration
@@ -58,13 +61,14 @@ const THEME_MIGRATION: Record<string, ThemeId> = {
   midnight: 'fire',
   graphite: 'amethyst',
   arctic:   'water',
-  forge:    'sun',
+  forge:    'pearl',
   aaron:    'luck',
   tina:     'love',
   earth:    'luck',
   bloom:    'love',
   metal:    'eternal',
   void:        'eternal',
+  sun:         'pearl',
 }
 
 function applyTheme(id: string): void {

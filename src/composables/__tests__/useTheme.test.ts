@@ -38,7 +38,7 @@ describe('useTheme', () => {
     })
 
     it('exposes all available themes', () => {
-      expect(THEMES).toHaveLength(9)
+      expect(THEMES).toHaveLength(10)
       const ids = THEMES.map(t => t.id)
       expect(ids).toContain('fire')
       expect(ids).toContain('water')
@@ -46,9 +46,10 @@ describe('useTheme', () => {
       expect(ids).toContain('air')
       expect(ids).toContain('eternal')
       expect(ids).toContain('amethyst')
-      expect(ids).toContain('sun')
+      expect(ids).toContain('pearl')
       expect(ids).toContain('moon')
       expect(ids).toContain('love')
+      expect(ids).toContain('oak')
     })
 
     it('provides theme previews with dark and light variants', () => {

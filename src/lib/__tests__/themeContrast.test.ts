@@ -115,15 +115,15 @@ const themes: Record<string, ThemeColors> = {
     textPrimary: '#18182a', textSecondary: '#5c5890', textMuted: '#7e7aa0',
     accent: '#7c3aed', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
   },
-  'sun-dark': {
-    bgPrimary: '#16100a', bgSecondary: '#1e1610', bgElevated: '#281e14',
-    textPrimary: '#f0e4d4', textSecondary: '#a08060', textMuted: '#806850',
-    accent: '#e87620', textOnAccent: '#1a0800', danger: '#ef4444', success: '#84cc16',
+  'pearl-dark': {
+    bgPrimary: '#111111', bgSecondary: '#1a1a1a', bgElevated: '#222222',
+    textPrimary: '#f0f0f0', textSecondary: '#a0a0a0', textMuted: '#707070',
+    accent: '#d0d0d0', textOnAccent: '#111111', danger: '#ef4444', success: '#4ade80',
   },
-  'sun-light': {
-    bgPrimary: '#faf3ea', bgSecondary: '#ffffff', bgElevated: '#ffffff',
-    textPrimary: '#201408', textSecondary: '#7a5830', textMuted: '#906840',
-    accent: '#b85c00', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
+  'pearl-light': {
+    bgPrimary: '#f4f4f2', bgSecondary: '#ffffff', bgElevated: '#ffffff',
+    textPrimary: '#1a1a1a', textSecondary: '#606060', textMuted: '#888888',
+    accent: '#505050', textOnAccent: '#ffffff', danger: '#dc2626', success: '#15803d',
   },
   'moon-dark': {
     bgPrimary: '#080c1a', bgSecondary: '#101428', bgElevated: '#181c34',
@@ -144,6 +144,16 @@ const themes: Record<string, ThemeColors> = {
     bgPrimary: '#1a1020', bgSecondary: '#261830', bgElevated: '#322040',
     textPrimary: '#f0e4f4', textSecondary: '#a080c0', textMuted: '#806898',
     accent: '#f472b6', textOnAccent: '#1a0818', danger: '#f87171', success: '#34d399',
+  },
+  'oak-dark': {
+    bgPrimary: '#141010', bgSecondary: '#1c1614', bgElevated: '#241c18',
+    textPrimary: '#e8dcd0', textSecondary: '#a08878', textMuted: '#7a6858',
+    accent: '#906040', textOnAccent: '#ffffff', danger: '#ef4444', success: '#84cc16',
+  },
+  'oak-light': {
+    bgPrimary: '#f5efe8', bgSecondary: '#ffffff', bgElevated: '#ffffff',
+    textPrimary: '#1a1210', textSecondary: '#6a5444', textMuted: '#8a7464',
+    accent: '#7a5438', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
   },
 }
 
