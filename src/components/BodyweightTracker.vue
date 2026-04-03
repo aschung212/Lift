@@ -9,6 +9,7 @@
     <div v-if="store.latestWeight" class="bwSummary">
       <span class="bwCurrentLabel">Current</span>
       <span class="bwCurrentValue">{{ displayWeight(store.latestWeight) }} {{ weightUnit }}</span>
+      <span v-if="goalProgressText" class="bwGoalProgressHint">{{ goalProgressText }}</span>
     </div>
 
     <!-- Period selector -->
@@ -386,6 +387,34 @@ function changeClass(change: number): string {
 }
 
 // Whether hitting all-time low/high is good depends on goal direction
+const goalProgressText = computed((): string => {
+  const current = store.latestWeight
+  if (current == null) return ''
+  const { direction, loseTarget, gainTarget, maintainMin, maintainMax } = prefs.weightGoal
+  if (direction === 'lose' && loseTarget != null) {
+    const diff = displayWeight(Math.abs(current - loseTarget))
+    if (current <= loseTarget) return `At goal weight`
+    return `${diff} ${weightUnit.value} to goal`
+  }
+  if (direction === 'gain' && gainTarget != null) {
+    const diff = displayWeight(Math.abs(gainTarget - current))
+    if (current >= gainTarget) return `At goal weight`
+    return `${diff} ${weightUnit.value} to goal`
+  }
+  if (direction === 'maintain') {
+    if (maintainMin != null && current < maintainMin) {
+      const diff = displayWeight(Math.abs(maintainMin - current))
+      return `${diff} ${weightUnit.value} below range`
+    }
+    if (maintainMax != null && current > maintainMax) {
+      const diff = displayWeight(Math.abs(current - maintainMax))
+      return `${diff} ${weightUnit.value} above range`
+    }
+    if (maintainMin != null || maintainMax != null) return 'Within range'
+  }
+  return ''
+})
+
 const isLowGood = computed(() => {
   const dir = prefs.weightGoal.direction
   return dir === 'lose' // low is good when losing, bad when gaining
