@@ -24,6 +24,18 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+
+      - name: Check bundle size budget
+        run: |
+          # Total JS bundle budget: 500 KB (currently ~410 KB)
+          TOTAL_JS=$(find dist/assets -name '*.js' ! -name 'workbox-*' ! -name 'sw.*' -exec wc -c {} + | tail -1 | awk '{print $1}')
+          BUDGET=512000
+          echo "JS bundle size: $(( TOTAL_JS / 1024 )) KB (budget: $(( BUDGET / 1024 )) KB)"
+          if [ "$TOTAL_JS" -gt "$BUDGET" ]; then
+            echo "::error::Bundle size ($((TOTAL_JS / 1024)) KB) exceeds budget ($((BUDGET / 1024)) KB)"
+            exit 1
+          fi
+
       - run: npx vitest run --coverage
 
   # Notify Slack on post-merge failure (push to master only)
