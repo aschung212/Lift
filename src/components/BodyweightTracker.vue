@@ -3,7 +3,7 @@
     <!-- Hero header: current weight + goal hint + log button -->
     <div class="bwHero">
       <span class="bwCurrentValue">{{ store.latestWeight ? `${displayWeight(store.latestWeight)} ${weightUnit}` : 'No entries' }}</span>
-      <span v-if="goalProgressText" class="bwGoalProgressHint">{{ goalProgressText }}</span>
+      <span class="bwGoalProgressHint">{{ goalProgressText }}</span>
       <button class="wtLogBtn" @click="openModal()">+ Log</button>
     </div>
 

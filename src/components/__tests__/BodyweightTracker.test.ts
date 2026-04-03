@@ -705,10 +705,10 @@ describe('BodyweightTracker', () => {
       expect(hint.text()).toContain('above range')
     })
 
-    it('no hint when no target is set', () => {
+    it('hint is empty when no target is set', () => {
       mockWeightGoal.direction = 'lose'
       const wrapper = mountTracker()
-      expect(wrapper.find('.bwGoalProgressHint').exists()).toBe(false)
+      expect(wrapper.find('.bwGoalProgressHint').text()).toBe('')
     })
   })
 
