@@ -32,6 +32,7 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
+        categories: ['health', 'fitness', 'sports'],
         icons: [
           {
             src: 'icon-192.png',
@@ -48,6 +49,22 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable',
+          },
+        ],
+        screenshots: [
+          {
+            src: 'screenshot-mobile.png',
+            sizes: '883x1920',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'Exercise tracker with set logging and estimated 1RM',
+          },
+          {
+            src: 'screenshot-desktop.png',
+            sizes: '1920x1080',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Exercise tracker desktop view with tag filters',
           },
         ],
       },
