@@ -530,8 +530,7 @@ describe('WorkoutTracker', () => {
       await wrapper.vm.$nextTick()
 
       expect(wrapper.find('.repMaxModal').exists()).toBe(true)
-      expect(wrapper.find('#log-modal-title').text()).toBe('Log a Set')
-      expect(wrapper.find('.wtModalSubtitle').text()).toBe('Bench Press')
+      expect(wrapper.find('#log-modal-title').text()).toBe('Bench Press')
     })
 
     it('calls logSet with weight and reps on save', async () => {
@@ -553,7 +552,7 @@ describe('WorkoutTracker', () => {
       expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String))
     })
 
-    it('closes modal after successful set log', async () => {
+    it('keeps modal open with cleared fields after saving a set', async () => {
       const wrapper = mountTracker()
       const logBtns = wrapper.findAll('.wtExerciseLogBtn')
       await logBtns[0].trigger('click')
@@ -568,7 +567,14 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.find('.repMaxModal').exists()).toBe(false)
+      // Modal stays open for the next set
+      expect(wrapper.find('.repMaxModal').exists()).toBe(true)
+      // Fields are cleared
+      const updatedInputs = wrapper.findAll('.repMaxModal input')
+      const updatedWeight = updatedInputs.find(i => i.attributes('inputmode') === 'decimal')!
+      const updatedReps = updatedInputs.find(i => i.attributes('inputmode') === 'numeric')!
+      expect((updatedWeight.element as HTMLInputElement).value).toBe('')
+      expect((updatedReps.element as HTMLInputElement).value).toBe('')
     })
 
     it('disables save when weight or reps missing', async () => {

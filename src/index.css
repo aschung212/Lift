@@ -1919,7 +1919,6 @@ html.modal-open .tabContent {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 16px;
-  margin-bottom: 16px;
   border-radius: 12px;
   background: var(--accent-alpha, rgba(99, 102, 241, 0.08));
   border: 1px solid var(--accent-border, rgba(99, 102, 241, 0.2));
@@ -1989,11 +1988,11 @@ html.modal-open .tabContent {
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 100;
   padding: 24px;
-  padding-top: calc(env(safe-area-inset-top, 0px) + 20px);
+  padding-top: calc(env(safe-area-inset-top, 0px) + 48px);
   touch-action: none;
   overscroll-behavior: contain;
   animation: overlayFadeIn 0.2s ease-out;
@@ -2115,6 +2114,21 @@ html.modal-open .tabContent {
   color: var(--text-secondary);
   font-weight: 600;
   margin-top: 4px;
+}
+
+.wtDateInline {
+  position: relative;
+}
+
+.wtDateInline .wtDateBtnWrap {
+  position: relative;
+}
+
+.wtDateMetaLabel {
+  font-size: var(--font-callout);
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
 }
 
 .repMaxActions {
@@ -3379,8 +3393,8 @@ html.modal-open .tabContent {
 @media (max-width: 480px) {
 
   .wtInputRow {
-    flex-direction: column;
-    gap: 0;
+    flex-direction: row;
+    gap: 12px;
   }
 
   .repMaxModal {

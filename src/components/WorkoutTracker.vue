@@ -388,53 +388,29 @@
             </div>
           </template>
 
-          <!-- Log for existing exercise mode: show name as subtitle -->
-          <p v-else-if="isLogForExercise" class="wtModalSubtitle">{{ selectedExerciseName }}</p>
+          <!-- Date as subtitle (tappable) -->
+          <p v-else-if="isLogForExercise" class="wtModalSubtitle">
+            <span class="wtDateBtnWrap">
+              <span class="wtDateMetaLabel" aria-hidden="true">{{ dateDisplay }}</span>
+              <input
+                v-model="date"
+                type="date"
+                :max="todayISO()"
+                ref="dateInputEl"
+                tabindex="-1"
+                class="wtDateOverlayInput"
+                :aria-label="'Log date, currently ' + dateDisplay"
+              />
+            </span>
+          </p>
 
-          <!-- Progressive overload suggestion -->
-          <div v-if="overloadSuggestion && !isEditMode" class="wtOverloadSuggestion" @click="applyOverloadSuggestion">
-            <div class="wtOverloadIcon">
-              <svg v-if="overloadSuggestion.type === 'increase_weight'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 5 5 12"/></svg>
-            </div>
-            <div class="wtOverloadContent">
-              <span class="wtOverloadTarget">Try {{ displayWeight(overloadSuggestion.weight) }} {{ weightUnit }} × {{ overloadSuggestion.reps }}</span>
-              <span class="wtOverloadReason">{{ overloadSuggestion.reason }}</span>
-            </div>
-          </div>
-
-          <!-- Date: silent by default — tapping the field opens the picker.
-               The input is an invisible overlay covering the field so the user's
-               touch lands directly on the input (iOS requires a real touch, not
-               a programmatic .focus() / .showPicker(), to open its date picker). -->
-          <label class="repMaxLabel">
-            Date
-            <div class="repMaxInputRow">
-              <div class="wtDateBtnWrap">
-                <div class="wtDateBtn repMaxInput" aria-hidden="true">
-                  {{ dateDisplay }}
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                </div>
-                <!-- Invisible overlay: covers the field so iOS touch hits the input directly -->
-                <input
-                  v-model="date"
-                  type="date"
-                  :max="todayISO()"
-                  ref="dateInputEl"
-                  tabindex="-1"
-                  class="wtDateOverlayInput"
-                  :aria-label="'Log date, currently ' + dateDisplay"
-                />
-              </div>
-            </div>
-          </label>
-
-          <!-- Weight + Reps -->
+          <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
           <div class="wtInputRow">
             <label class="repMaxLabel" style="flex:1">
               Weight ({{ weightUnit }})
               <div class="repMaxInputRow">
                 <input
+                  ref="weightInputEl"
                   v-model="weightStr"
                   type="text"
                   inputmode="decimal"
@@ -471,8 +447,8 @@
           </div>
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">Any rep beats your est. 1RM! 🏆</span>
-            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
+            <span class="repMaxPersonalBest">Any rep at this weight is a new PR</span>
           </div>
           <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
@@ -480,12 +456,14 @@
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
           </div>
 
+          <!-- Actions (always last) -->
           <div class="repMaxActions">
             <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
               {{ isEditMode ? 'Save Changes' : 'Save' }}
             </button>
-            <button class="repMaxBtn repMaxBtnClose" @click="closeModal">Cancel</button>
+            <button class="repMaxBtn repMaxBtnClose" @click="closeModal">{{ isEditMode ? 'Cancel' : 'Done' }}</button>
           </div>
+
         </template>
       </div>
     </div>
@@ -857,6 +835,7 @@ function todayISO(): string {
 }
 
 // ── Log / Edit modal state ────────────────────────────────────────
+const weightInputEl = ref<HTMLInputElement | null>(null)
 const showModal = ref(false)
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
@@ -923,7 +902,7 @@ function applyOverloadSuggestion() {
 const modalTitle = computed(() => {
   if (isEditMode.value) return 'Edit Set'
   if (selectedExerciseId.value === '__new__') return 'New Exercise'
-  return 'Log a Set'
+  return selectedExerciseName.value || 'Log a Set'
 })
 
 // Open modal to log a brand-new exercise
@@ -1372,7 +1351,7 @@ const prTargetReps = computed<number | null>(() => {
   const wLbs = toLbs(weight.value)
   if (wLbs >= pr + 1) return 0 // any rep beats it
   const needed = Math.ceil(30 * ((pr + 1) / wLbs - 1))
-  return needed > 30 ? null : needed // >30 reps is impractical
+  return needed
 })
 
 // ── Personal bests from actual history ──────────────────────────
@@ -1442,9 +1421,11 @@ function saveSet() {
       logEvent('set_log')
       if (restTimerEnabled.value && restTimerAutoStart.value) {
         startRestTimer()
-      } else {
-        closeModal()
       }
+      // Clear fields and stay on the modal for the next set
+      weight.value = null
+      reps.value = null
+      nextTick(() => weightInputEl.value?.focus())
     } else {
       closeModal()
     }
