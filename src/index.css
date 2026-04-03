@@ -608,6 +608,9 @@
   --space-5:  20px;
   --space-6:  24px;
   --space-8:  32px;
+
+  /* Capacitor: keyboard height injected by native plugin */
+  --keyboard-height: 0px;
 }
 
 /* ─── Reset & base ───────────────────────────────────────────────────────── */

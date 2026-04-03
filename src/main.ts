@@ -2,11 +2,13 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { inject } from '@vercel/analytics'
 import { injectSpeedInsights } from '@vercel/speed-insights'
+import { initNativePlugins } from './lib/native'
 import App from './App.vue'
 import './index.css'
 
 inject()
 injectSpeedInsights()
+initNativePlugins()
 
 const app = createApp(App)
 app.use(createPinia())
