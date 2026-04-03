@@ -80,7 +80,6 @@
                       background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[t.id]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[t.id]?.[resolvedMode]?.bg + ')',
                     }"
                   >
-                    <!-- Theme icons -->
                     <svg v-if="t.icon === 'fire'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 23c-4.97 0-8-3.03-8-7 0-2.5 1.5-5 3-6.5.5-.5 1.37-.18 1.37.54 0 1.3.6 2.46 1.63 3.2.2.14.46-.05.38-.28-.5-1.46-.63-3.1-.08-4.96C11.5 4.5 14 2 16 1c.4-.2.82.18.68.6C15.5 5.5 17 7 18 8.5c2 3 2 5 2 6.5 0 3.97-3.03 8-8 8z"/></svg>
                     <svg v-else-if="t.icon === 'water'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M2 15c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 19c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 11c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                     <svg v-else-if="t.icon === 'luck'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 12C12 12 8 9 8 6.5C8 4.5 9.5 3 11 3c.6 0 1 .3 1 .3s.4-.3 1-.3c1.5 0 3 1.5 3 3.5C16 9 12 12 12 12z"/><path d="M12 12C12 12 15 8 17.5 8C19.5 8 21 9.5 21 11c0 .6-.3 1-.3 1s.3.4.3 1c0 1.5-1.5 3-3.5 3C15 16 12 12 12 12z"/><path d="M12 12C12 12 8 15 5.5 15C3.5 15 2 13.5 2 12c0-.6.3-1 .3-1S2 10.6 2 10c0-1.5 1.5-3 3.5-3C8 7 12 12 12 12z" opacity="0.85"/><path d="M12 12C12 12 16 15 16 17.5C16 19.5 14.5 21 13 21c-.6 0-1-.3-1-.3s-.4.3-1 .3c-1.5 0-3-1.5-3-3.5C8 15 12 12 12 12z" opacity="0.85"/></svg>
@@ -90,6 +89,7 @@
                     <svg v-else-if="t.icon === 'sun'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                     <svg v-else-if="t.icon === 'moon'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                     <svg v-else-if="t.icon === 'love'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    <svg v-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </span>
                   <span class="themePreviewLabel">{{ t.label }}</span>
                 </button>
@@ -591,6 +591,7 @@ watch(confirmDialog, async (dialog) => {
     confirmFocus.deactivate()
   }
 })
+
 
 // ── Tab definitions with inline SVG paths ────────────────────────
 const WEIGHT_GOALS: { id: WeightGoalDirection; label: string }[] = [

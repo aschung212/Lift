@@ -870,6 +870,7 @@ html.modal-open .tabContent {
 }
 
 .themePreviewDot {
+  position: relative;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -889,6 +890,18 @@ html.modal-open .tabContent {
 .themePreview.active .themePreviewDot {
   border-color: var(--accent);
   transform: scale(1.1);
+}
+
+.themePreviewCheck {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-on-accent);
+  background: var(--accent);
+  border-radius: 50%;
+  padding: 2px;
 }
 
 .themePreviewLabel {
