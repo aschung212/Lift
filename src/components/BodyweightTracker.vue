@@ -187,22 +187,26 @@
     <div v-if="showModal" class="repMaxOverlay" @click.self="closeModal" @keydown.escape="closeModal">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="bw-modal-title">
         <h2 id="bw-modal-title">{{ editing ? 'Edit Weight' : 'Log Weight' }}</h2>
-
-        <label class="repMaxLabel">
-          Date
-          <input
-            v-model="date"
-            type="date"
-            autocomplete="off"
-            :max="todayISO()"
-            class="repMaxInput wtDateInput"
-          />
-        </label>
+        <p class="wtModalSubtitle">
+          <span class="wtDateBtnWrap">
+            <span class="wtDateMetaLabel" aria-hidden="true">{{ dateDisplay }}</span>
+            <input
+              v-model="date"
+              type="date"
+              autocomplete="off"
+              :max="todayISO()"
+              tabindex="-1"
+              class="wtDateOverlayInput"
+              :aria-label="'Log date, currently ' + dateDisplay"
+            />
+          </span>
+        </p>
 
         <label class="repMaxLabel">
           Weight ({{ weightUnit }})
           <div class="repMaxInputRow">
             <input
+              ref="weightInputEl"
               v-model.number="weight"
               type="number"
               inputmode="decimal"
@@ -248,6 +252,11 @@ const showModal = ref(false)
 const editing = ref<string | null>(null) // entry id when editing
 const weight = ref<number | null>(null)
 const date = ref(todayISO())
+const weightInputEl = ref<HTMLInputElement | null>(null)
+
+const dateDisplay = computed(() =>
+  new Date(date.value + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+)
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
@@ -287,6 +296,7 @@ watch(showModal, async (open) => {
     await nextTick()
     const el = document.querySelector<HTMLElement>('[aria-labelledby="bw-modal-title"]')
     if (el) bwModalFocus.activate(el)
+    weightInputEl.value?.focus()
   }
 })
 
