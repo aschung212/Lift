@@ -116,14 +116,14 @@ const themes: Record<string, ThemeColors> = {
     accent: '#7c3aed', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
   },
   'sun-dark': {
-    bgPrimary: '#141008', bgSecondary: '#1c1810', bgElevated: '#262018',
-    textPrimary: '#f0e8d8', textSecondary: '#9a8870', textMuted: '#7c7060',
-    accent: '#f0b020', textOnAccent: '#1a1400', danger: '#ef4444', success: '#84cc16',
+    bgPrimary: '#16100a', bgSecondary: '#1e1610', bgElevated: '#281e14',
+    textPrimary: '#f0e4d4', textSecondary: '#a08060', textMuted: '#806850',
+    accent: '#e87620', textOnAccent: '#1a0800', danger: '#ef4444', success: '#84cc16',
   },
   'sun-light': {
-    bgPrimary: '#faf5e8', bgSecondary: '#ffffff', bgElevated: '#ffffff',
-    textPrimary: '#201a10', textSecondary: '#7a6840', textMuted: '#907850',
-    accent: '#8a6800', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
+    bgPrimary: '#faf3ea', bgSecondary: '#ffffff', bgElevated: '#ffffff',
+    textPrimary: '#201408', textSecondary: '#7a5830', textMuted: '#906840',
+    accent: '#b85c00', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
   },
   'moon-dark': {
     bgPrimary: '#080c1a', bgSecondary: '#101428', bgElevated: '#181c34',

@@ -36,7 +36,7 @@ export const THEME_PREVIEWS: Record<ThemeId, { dark: ThemePreviewColors; light: 
   air:      { dark: { bg: '#2a3a48', card: '#1a2430', accent: '#a8c8e8', text: '#e8f0f8' }, light: { bg: '#88a8c0', card: '#ffffff', accent: '#e8f4ff', text: '#1a2030' } },
   eternal:     { dark: { bg: '#1a1a14', card: '#0c0c0c', accent: '#c8a84c', text: '#eeeeee' }, light: { bg: '#8a7020', card: '#ffffff', accent: '#f8f0d0', text: '#1a1810' } },
   amethyst: { dark: { bg: '#2a2050', card: '#1c1c28', accent: '#8b5cf6', text: '#e4e4f4' }, light: { bg: '#3a2870', card: '#ffffff', accent: '#a78bfa', text: '#18182a' } },
-  sun:      { dark: { bg: '#3a2a08', card: '#1c1814', accent: '#fbbf24', text: '#f0e8d8' }, light: { bg: '#8a6a10', card: '#ffffff', accent: '#fbbf24', text: '#201a10' } },
+  sun:      { dark: { bg: '#2a1808', card: '#1e1610', accent: '#e87620', text: '#f0e4d4' }, light: { bg: '#b85c00', card: '#ffffff', accent: '#f08030', text: '#201408' } },
   moon:     { dark: { bg: '#0a1028', card: '#141830', accent: '#8090c0', text: '#d0d8f0' }, light: { bg: '#182048', card: '#ffffff', accent: '#a0b0e0', text: '#0a1020' } },
   love:    { dark: { bg: '#3a1028', card: '#261830', accent: '#f472b6', text: '#f0e4f4' }, light: { bg: '#6a2048', card: '#ffffff', accent: '#f472b6', text: '#1e1028' } },
 }
@@ -48,7 +48,7 @@ const THEME_META_COLORS: Record<ThemeId, { dark: string; light: string }> = {
   air:      { dark: '#101820', light: '#f0f6fa' },
   eternal:     { dark: '#0c0c0c', light: '#f8f6f2' },
   amethyst: { dark: '#111118', light: '#ededf5' },
-  sun:      { dark: '#141008', light: '#faf5e8' },
+  sun:      { dark: '#16100a', light: '#faf3ea' },
   moon:     { dark: '#080c1a', light: '#eaecf5' },
   love:    { dark: '#1a1020', light: '#f0dff0' },
 }

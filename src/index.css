@@ -389,18 +389,18 @@
 /* ── Sun (new — warm gold / bright) ──────────────────────────────── */
 
 [data-theme="sun"][data-mode="dark"] {
-  --bg-primary:      #141008;
-  --bg-secondary:    #1c1810;
-  --bg-elevated:     #262018;
-  --bg-hover:        #302a20;
-  --border:          #2c2618;
-  --border-strong:   #3e3628;
-  --text-primary:    #f0e8d8;
-  --text-secondary:  #9a8870;
-  --text-muted:      #7c7060;
-  --accent:          #f0b020;
-  --accent-hover:    #d89800;
-  --accent-subtle:   rgba(240, 176, 32, 0.12);
+  --bg-primary:      #16100a;
+  --bg-secondary:    #1e1610;
+  --bg-elevated:     #281e14;
+  --bg-hover:        #32261a;
+  --border:          #2e2418;
+  --border-strong:   #40342a;
+  --text-primary:    #f0e4d4;
+  --text-secondary:  #a08060;
+  --text-muted:      #806850;
+  --accent:          #e87620;
+  --accent-hover:    #d06010;
+  --accent-subtle:   rgba(232, 118, 32, 0.12);
   --danger:          #ef4444;
   --danger-subtle:   rgba(239, 68, 68, 0.12);
   --success:         #84cc16;
@@ -410,44 +410,44 @@
   --glass-fill:      rgba(255, 255, 255, 0.05);
   --glass-edge:      rgba(255, 255, 255, 0.09);
   --glass-shine:     rgba(255, 255, 255, 0.12);
-  --glass-bar:       rgba(14, 12, 8, 0.72);
+  --glass-bar:       rgba(14, 10, 6, 0.72);
   --glass-overlay:   rgba(0, 0, 0, 0.55);
   --pr:              #d4af37;
   --pr-subtle:       rgba(212, 175, 55, 0.10);
-  --text-on-accent:  #1a1400;
-  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(240, 176, 32, 0.09) 0%, transparent 65%),
-                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(200, 120, 20, 0.05) 0%, transparent 65%);
+  --text-on-accent:  #1a0800;
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(232, 118, 32, 0.09) 0%, transparent 65%),
+                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(200, 80, 20, 0.05) 0%, transparent 65%);
 }
 
 [data-theme="sun"][data-mode="light"] {
-  --bg-primary:      #faf5e8;
+  --bg-primary:      #faf3ea;
   --bg-secondary:    #ffffff;
   --bg-elevated:     #ffffff;
-  --bg-hover:        #f5ecd8;
-  --border:          #e8dcc0;
-  --border-strong:   #d0c0a0;
-  --text-primary:    #201a10;
-  --text-secondary:  #7a6840;
-  --text-muted:      #907850;
-  --accent:          #8a6800;
-  --accent-hover:    #785800;
-  --accent-subtle:   rgba(184, 136, 0, 0.08);
+  --bg-hover:        #f5e8d4;
+  --border:          #e8d4b8;
+  --border-strong:   #d0b898;
+  --text-primary:    #201408;
+  --text-secondary:  #7a5830;
+  --text-muted:      #906840;
+  --accent:          #b85c00;
+  --accent-hover:    #a04c00;
+  --accent-subtle:   rgba(184, 92, 0, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
   --success:         #4d7c0f;
   --success-subtle:  rgba(77, 124, 15, 0.08);
-  --shadow:          0 8px 32px rgba(32, 26, 16, 0.12);
-  --shadow-sm:       0 2px 8px rgba(32, 26, 16, 0.06);
-  --glass-fill:      rgba(255, 240, 200, 0.40);
-  --glass-edge:      rgba(240, 215, 160, 0.55);
+  --shadow:          0 8px 32px rgba(32, 20, 8, 0.12);
+  --shadow-sm:       0 2px 8px rgba(32, 20, 8, 0.06);
+  --glass-fill:      rgba(255, 230, 190, 0.40);
+  --glass-edge:      rgba(240, 200, 140, 0.55);
   --glass-shine:     rgba(255, 255, 255, 0.90);
-  --glass-bar:       rgba(250, 245, 232, 0.82);
-  --glass-overlay:   rgba(32, 26, 16, 0.20);
-  --pr:              #9a7b1c;
-  --pr-subtle:       rgba(154, 123, 28, 0.10);
-  --text-on-accent:  #fff;
-  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(240, 176, 32, 0.14) 0%, transparent 60%),
-                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(200, 120, 20, 0.08) 0%, transparent 60%);
+  --glass-bar:       rgba(250, 243, 234, 0.82);
+  --glass-overlay:   rgba(32, 20, 8, 0.20);
+  --pr:              #9a6a10;
+  --pr-subtle:       rgba(154, 106, 16, 0.10);
+  --text-on-accent:  #ffffff;
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(232, 118, 32, 0.14) 0%, transparent 60%),
+                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(200, 80, 20, 0.08) 0%, transparent 60%);
 }
 
 /* ── Moon (new — silver / indigo) ────────────────────────────────── */
