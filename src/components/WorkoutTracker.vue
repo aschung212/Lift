@@ -886,18 +886,6 @@ const selectedExerciseName = computed(() =>
   store.exercises.find(e => e.id === selectedExerciseId.value)?.name ?? ''
 )
 
-// Progressive overload suggestion for current exercise
-const overloadSuggestion = computed(() => {
-  const id = selectedExerciseId.value
-  if (!id || id === '__new__') return null
-  return store.getOverloadSuggestion(id)
-})
-
-function applyOverloadSuggestion() {
-  if (!overloadSuggestion.value) return
-  weight.value = displayWeight(overloadSuggestion.value.weight)
-  reps.value = overloadSuggestion.value.reps
-}
 
 const modalTitle = computed(() => {
   if (isEditMode.value) return 'Edit Set'
