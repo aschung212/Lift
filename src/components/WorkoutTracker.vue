@@ -36,6 +36,7 @@
       <input
         v-model="searchQuery"
         type="search"
+        autocomplete="off"
         class="wtSearchInput"
         placeholder="Search exercises…"
         aria-label="Search exercises"
@@ -271,11 +272,11 @@
               </template>
             </div>
             <div v-if="editTab === 'rest'" class="wtTimerEditRow" style="margin-top: var(--space-2)">
-              <input class="wtTimerEditInput" type="number" inputmode="numeric" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="addPreset" ref="presetInputEl" />
+              <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="addPreset" ref="presetInputEl" />
               <button class="wtTimerEditAddBtn" :disabled="!newPresetValue" @click="addPreset">Add</button>
             </div>
             <div v-else class="wtTimerEditRow" style="margin-top: var(--space-2)">
-              <input class="wtTimerEditInput" type="number" inputmode="numeric" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" />
+              <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" />
               <button class="wtTimerEditAddBtn" :disabled="!newWarningValue" @click="addWarningOption">Add</button>
             </div>
             <button class="wtTimerEditResetBtn" @click="resetAllDefaults">Reset to defaults</button>
@@ -376,6 +377,7 @@
                 <input
                   v-model.trim="newExerciseTagInput"
                   type="text"
+                  autocomplete="off"
                   placeholder="New tag..."
                   class="repMaxInput"
                   ref="newTagInputEl"
@@ -393,6 +395,7 @@
               <input
                 v-model="date"
                 type="date"
+                autocomplete="off"
                 :max="todayISO()"
                 ref="dateInputEl"
                 tabindex="-1"
@@ -412,6 +415,7 @@
                   v-model="weightStr"
                   type="text"
                   inputmode="decimal"
+                  autocomplete="off"
                   placeholder="135"
                   class="repMaxInput"
                 />
@@ -425,6 +429,7 @@
                   v-model="repsStr"
                   type="text"
                   inputmode="numeric"
+                  autocomplete="off"
                   placeholder="8"
                   class="repMaxInput"
                 />
@@ -501,6 +506,7 @@
             <input
               v-model.trim="newTagInput"
               type="text"
+              autocomplete="off"
               placeholder="New tag..."
               class="repMaxInput"
               ref="editTagInputEl"
@@ -530,6 +536,7 @@
                 <input
                   v-model.trim="renameTagValue"
                   type="text"
+                  autocomplete="off"
                   class="repMaxInput wtTagManagerInput"
                   @keyup.enter="confirmRenameTag"
                   @keyup.escape="renamingTag = null"

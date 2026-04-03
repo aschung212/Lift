@@ -193,6 +193,7 @@
                     <input
                       type="number"
                       inputmode="decimal"
+                      autocomplete="off"
                       class="settingsInput"
                       placeholder=" "
                       :value="prefs.currentTarget != null ? displayWeight(prefs.currentTarget) : ''"
@@ -210,6 +211,7 @@
                       <input
                         type="number"
                         inputmode="decimal"
+                        autocomplete="off"
                         class="settingsInput"
                         placeholder="Min"
                         :value="prefs.weightGoal.maintainMin != null ? displayWeight(prefs.weightGoal.maintainMin) : ''"
@@ -222,6 +224,7 @@
                       <input
                         type="number"
                         inputmode="decimal"
+                        autocomplete="off"
                         class="settingsInput"
                         placeholder="Max"
                         :value="prefs.weightGoal.maintainMax != null ? displayWeight(prefs.weightGoal.maintainMax) : ''"

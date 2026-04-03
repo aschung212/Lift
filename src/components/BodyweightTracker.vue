@@ -193,6 +193,7 @@
           <input
             v-model="date"
             type="date"
+            autocomplete="off"
             :max="todayISO()"
             class="repMaxInput wtDateInput"
           />
@@ -205,6 +206,7 @@
               v-model.number="weight"
               type="number"
               inputmode="decimal"
+              autocomplete="off"
               min="0"
               step="any"
               placeholder="170"
