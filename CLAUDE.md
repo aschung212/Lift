@@ -4,7 +4,7 @@
 Lift is Aaron Chung's primary portfolio project — a mobile-first PWA workout tracker. Aaron is an ex-AWS SDE2 targeting SWE roles at companies like Notion, Airtable, and Linear. This app needs to demonstrate engineering rigor and product taste.
 
 **Live:** spa-rho-sandy.vercel.app (THIS IS THE ONLY VALID DEPLOYMENT DOMAIN)
-**Linear:** linear.app/masterchung → Lift project (team: MAS)
+**Issues:** github.com/aschung212/Lift/issues (migrated from Linear on 2026-04-03)
 **Deploy:** Vercel auto-deploys from master. Never push directly to master.
 
 > **SEV1 RULE — Never fabricate external identifiers.** On 2026-04-02, the overnight builder hallucinated `liftracker.app` (a competitor's domain) as our canonical URL and it shipped to production. NEVER invent, guess, or fabricate URLs, domains, API keys, or external identifiers. The deployment domain is `spa-rho-sandy.vercel.app` — if you need it, read it from this file. If you cannot find an authoritative value for something, SKIP the task.
@@ -60,7 +60,7 @@ This app will be wrapped with Capacitor for the App Store. Keep all code compati
 - **TypeScript strict mode.** All new files must be `.ts` or `.vue` with `lang="ts"`. No `any` types unless absolutely necessary.
 - **Tests required.** Every new feature or store change needs corresponding Vitest tests. Aim for meaningful coverage — no trivial "it exists" tests.
 - **ESLint clean.** Run `npm run lint` before committing. Zero errors allowed, warnings should be addressed.
-- **Conventional commits.** Format: `type: description (MAS-XXX)`. Types: feat, fix, test, chore, docs, perf, refactor.
+- **Conventional commits.** Format: `type: description (LIFT-XXX)`. Types: feat, fix, test, chore, docs, perf, refactor.
 - **No app-breaking changes.** Always run `npm test` and `npm run build` after changes. If tests fail, fix them before moving on.
 
 ## Architecture Notes
@@ -72,8 +72,8 @@ This app will be wrapped with Capacitor for the App Store. Keep all code compati
 
 ## Workflow Rules (for automated runs)
 
-- **Linear is the source of truth for what to work on.** Always check the backlog first. Prioritize real issues over generic improvements.
+- **GitHub Issues is the source of truth for what to work on.** Always check the backlog first. Prioritize real issues over generic improvements.
 - **Ship, don't perfect.** Commit working improvements and move on. Don't spend more than 10 turns fixing a single issue. If stuck, skip it.
 - **Don't repeat work.** Check what already exists before starting. If tests exist, don't rewrite them. If a feature is implemented, don't re-implement it.
-- **Track everything.** Every piece of work must map to a Linear issue. If no issue exists, create one.
+- **Track everything.** Every piece of work must map to a GitHub issue. If no issue exists, create one.
 - **Quality over quantity.** 1 excellent improvement beats 3 mediocre ones.
