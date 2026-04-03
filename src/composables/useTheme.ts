@@ -108,7 +108,7 @@ if (storedId in THEME_MIGRATION) {
   localStorage.setItem('app-theme', storedId)
 }
 const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'void'
-const storedMode = localStorage.getItem('app-mode') || 'auto'
+const storedMode = localStorage.getItem('app-mode') || 'dark'
 const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
 applyTheme(validId)
 applyMode(validMode)

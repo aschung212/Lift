@@ -62,8 +62,8 @@ describe('useTheme', () => {
   })
 
   describe('color mode toggling', () => {
-    it('defaults to auto mode', () => {
-      expect(theme.colorMode.value).toBe('auto')
+    it('defaults to dark mode', () => {
+      expect(theme.colorMode.value).toBe('dark')
     })
 
     it('switches to dark mode', () => {
