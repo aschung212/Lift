@@ -3,9 +3,11 @@
 ## About This Project
 Lift is Aaron Chung's primary portfolio project — a mobile-first PWA workout tracker. Aaron is an ex-AWS SDE2 targeting SWE roles at companies like Notion, Airtable, and Linear. This app needs to demonstrate engineering rigor and product taste.
 
-**Live:** spa-rho-sandy.vercel.app
+**Live:** spa-rho-sandy.vercel.app (THIS IS THE ONLY VALID DEPLOYMENT DOMAIN)
 **Linear:** linear.app/masterchung → Lift project (team: MAS)
 **Deploy:** Vercel auto-deploys from master. Never push directly to master.
+
+> **SEV1 RULE — Never fabricate external identifiers.** On 2026-04-02, the overnight builder hallucinated `liftracker.app` (a competitor's domain) as our canonical URL and it shipped to production. NEVER invent, guess, or fabricate URLs, domains, API keys, or external identifiers. The deployment domain is `spa-rho-sandy.vercel.app` — if you need it, read it from this file. If you cannot find an authoritative value for something, SKIP the task.
 
 ## Design Principles
 
