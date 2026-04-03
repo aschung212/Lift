@@ -35,7 +35,7 @@ Before committing any UI change, verify all of the following:
 - [ ] Spacing uses the 4/8/12/16/24/32 scale — no arbitrary pixel values
 - [ ] Modals use existing bottom-sheet or centered-modal pattern — no new modal paradigms
 - [ ] No new navigation patterns introduced — stay consistent with existing tab/modal structure
-- [ ] Component renders correctly in all 6 themes, both light and dark mode
+- [ ] Component renders correctly in all 9 themes, both light and dark mode
 - [ ] New interactive elements have appropriate aria attributes
 - [ ] Animations use CSS transitions/animations, not JavaScript timers
 - [ ] No layout shift when showing/hiding conditional elements — reserve space or position at end of row
@@ -55,18 +55,47 @@ This app will be wrapped with Capacitor for the App Store. Keep all code compati
 - Test that service worker behavior degrades gracefully when running in Capacitor (native apps handle caching differently)
 - Avoid `position: fixed` layouts that break when the iOS keyboard opens — use `visualViewport` API or bottom-sheet patterns that account for keyboard
 
+## iOS Compliance
+
+This app targets iOS App Store via Capacitor. Every UI element must meet Apple's Human Interface Guidelines:
+
+- **44pt minimum touch targets.** Buttons, toggles, tappable rows, icon buttons — all must be at least 44x44pt. Existing regression tests enforce this for known violations. When adding new interactive elements, verify and add a test.
+- **Safe area insets.** All fixed/sticky elements must use `env(safe-area-inset-*)`. The Dynamic Island on newer iPhones hides content at the top. Test in PWA standalone mode — browser mode hides this issue.
+- **WCAG 2.1 AA contrast.** All 9 themes (18 variants) are tested via `themeContrast.test.ts`. When adding or modifying theme colors, run the contrast audit. Normal text needs 4.5:1, large text needs 3:1.
+- **No hover-gated interactions.** Touch-only. Hover can enhance but must never be the only way to access functionality.
+
 ## Code Standards
 
 - **TypeScript strict mode.** All new files must be `.ts` or `.vue` with `lang="ts"`. No `any` types unless absolutely necessary.
-- **Tests required.** Every new feature or store change needs corresponding Vitest tests. Aim for meaningful coverage — no trivial "it exists" tests.
-- **ESLint clean.** Run `npm run lint` before committing. Zero errors allowed, warnings should be addressed.
 - **Conventional commits.** Format: `type: description (LIFT-XXX)`. Types: feat, fix, test, chore, docs, perf, refactor.
+- **ESLint clean.** Run `npm run lint` before committing. Zero errors allowed, warnings should be addressed.
 - **No app-breaking changes.** Always run `npm test` and `npm run build` after changes. If tests fail, fix them before moving on.
+
+## Testing Philosophy
+
+Tests are not just for coverage — they prevent specific classes of regression:
+
+- **CSS structural tests** (`cssRegression.test.ts`) — verify properties are in the correct CSS rule (not accidentally moved between base/override rules)
+- **Meta tag tests** (`metaRegression.test.ts`) — pin all URLs to the real deployment domain, block hallucinated domains
+- **WCAG contrast audit** (`themeContrast.test.ts`) — every theme variant checked against AA minimums
+- **Manifest tests** (`manifestRegression.test.ts`) — verify PWA manifest fields and screenshot assets exist
+- **Spacing scale tests** — enforce the 4/8/12/16/24/32 scale, flag off-scale values
+
+Every bug fix must include a regression test in the SAME commit. Before writing the test, ask: why didn't existing tests catch this? If it's a new class of failure, add a new test category.
+
+## Settled Patterns (do not redesign)
+
+These patterns were reached through multiple iterations of user testing. Do not refactor or "improve" them without explicit user request.
+
+- **Set logging modal layout:** Title (exercise name) → date subtitle (tappable) → weight/reps side-by-side → PR target card → Save/Done buttons. Buttons must always be last. The modal stays open after saving with fields cleared for the next set. Weight input auto-focuses after save. Modal is anchored to top of screen (`align-items: flex-start`) so inputs stay above the keyboard.
+- **Date in modals:** Shown as a subtle tappable subtitle under the exercise name — never as a form field. Defaults to today or last-used date. Rarely changed by users.
+- **Scroll lock on modals:** Toggle `overflow: hidden` on `.tabContent` via `html.modal-open` class. Do NOT use `touch-action: none` on the overlay — it doesn't work on iOS Safari.
+- **Centered modals for iOS keyboard:** Do NOT add manual `paddingBottom` offsets for the keyboard. iOS natively adjusts the viewport for centered flex modals.
 
 ## Architecture Notes
 
 - **Local-first.** Pinia + localStorage is the source of truth. Supabase syncs in the background. The UI never waits on the network.
-- **Theme system.** 9 elemental themes with CSS custom properties. Light/dark/auto modes. Glass morphism is opt-in.
+- **Theme system.** 9 elemental themes (Fire, Water, Luck, Air, Void, Amethyst, Sun, Moon, Love) with CSS custom properties, custom SVG icons, and gradient previews. Light/dark/auto modes. Glass morphism is opt-in. Void (black + gold) is the default.
 - **Hand-rolled SVGs.** No chart libraries. Polyline + polygon with computed point arrays.
 - **Debounced sync.** Rapid store mutations are batched before hitting Supabase.
 
@@ -86,6 +115,14 @@ Documentation must stay in sync with application logic. When changing features, 
 - Deployment URL changing → update the SEV1 rule and meta tags
 - Issue tracker changing → update Workflow Rules below
 - New stores, composables, or major components → update Architecture Notes
+
+## Testing Context
+
+Aaron tests on a real iPhone over the local network (`192.168.x.x:5173`). Key differences from desktop testing:
+- **PWA standalone mode** hides the URL bar and exposes Dynamic Island overlap — test both browser and PWA
+- **iOS Safari keyboard** pushes content up natively for centered modals — do not fight this with manual offsets
+- **Vite HMR on mobile** is unreliable — if the phone shows a blank screen or stale content, restart the dev server
+- **Touch events on iOS** differ from desktop — `touch-action: none` on overlays does NOT prevent background scroll; must lock the scroll container directly
 
 ## Workflow Rules (for automated runs)
 
