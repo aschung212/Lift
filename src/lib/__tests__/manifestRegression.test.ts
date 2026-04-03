@@ -22,20 +22,20 @@ describe('PWA manifest regression tests', () => {
   })
 
   describe('manifest includes screenshots for richer install UI', () => {
-    it('has a narrow (mobile) screenshot entry', () => {
+    it('has narrow (mobile) screenshot entries', () => {
       expect(viteConfig).toContain("form_factor: 'narrow'")
-    })
-
-    it('has a wide (desktop) screenshot entry', () => {
-      expect(viteConfig).toContain("form_factor: 'wide'")
     })
 
     it('mobile screenshot file exists in public/', () => {
       expect(existsSync(resolve(publicDir, 'screenshot-mobile.png'))).toBe(true)
     })
 
-    it('desktop screenshot file exists in public/', () => {
-      expect(existsSync(resolve(publicDir, 'screenshot-desktop.png'))).toBe(true)
+    it('detail screenshot file exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'screenshot-detail.png'))).toBe(true)
+    })
+
+    it('calendar screenshot file exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
     })
   })
 })
