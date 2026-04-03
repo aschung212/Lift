@@ -648,7 +648,7 @@ html, body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
     font-size: var(--font-callout);
     font-weight: 500;
-    color: rgba(255,255,255,0.55);
+    color: var(--text-secondary);
     z-index: 9999;
   }
 }
@@ -878,7 +878,7 @@ html.modal-open .tabContent {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-on-accent);
 }
 
 .themePreviewDot svg {
@@ -921,7 +921,7 @@ html.modal-open .tabContent {
 .modeSegBtn.active {
   background: var(--bg-elevated);
   color: var(--text-primary);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  box-shadow: var(--shadow-sm);
   animation: segBounce 0.2s ease-out;
 }
 
@@ -958,9 +958,9 @@ html.modal-open .tabContent {
   width: 27px;
   height: 27px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--bg-elevated);
   transition: transform 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 .glassToggle.on .glassToggleThumb {
@@ -989,7 +989,7 @@ html.modal-open .tabContent {
   right: 0;
   bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   z-index: 89;
-  background: var(--glass-overlay, rgba(0,0,0,0.55));
+  background: var(--glass-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
@@ -1181,7 +1181,7 @@ html.modal-open .tabContent {
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid var(--glass-edge, var(--border));
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18), inset 0 1px 0 var(--glass-shine, rgba(255,255,255,0.1));
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-shine);
   border-radius: 14px;
   overflow: hidden;
   transition: background-color 0.2s, border-color 0.2s;
@@ -1260,7 +1260,7 @@ html.modal-open .tabContent {
 }
 
 .wtRestBarUrgent {
-  background: var(--danger, #ef4444);
+  background: var(--danger);
   animation: restBarPulse 0.8s ease-in-out infinite;
 }
 
@@ -1274,7 +1274,7 @@ html.modal-open .tabContent {
   left: 0;
   top: 0;
   bottom: 0;
-  background: rgba(255,255,255,0.12);
+  background: var(--accent-subtle);
   transition: width 1s linear;
   pointer-events: none;
 }
@@ -1478,8 +1478,8 @@ html.modal-open .tabContent {
   padding: 8px 12px;
   font-size: var(--font-footnote);
   color: var(--text-primary);
-  background: var(--bg-primary, rgba(255,255,255,0.06));
-  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
   border-radius: 10px;
   outline: none;
   transition: border-color 0.15s;
@@ -2125,15 +2125,15 @@ html.modal-open .tabContent {
   gap: 12px;
   padding: 12px 16px;
   border-radius: 12px;
-  background: var(--accent-alpha, rgba(99, 102, 241, 0.08));
-  border: 1px solid var(--accent-border, rgba(99, 102, 241, 0.2));
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
   cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s;
 }
 
 .wtOverloadSuggestion:hover {
-  background: var(--accent-alpha-hover, rgba(99, 102, 241, 0.14));
-  border-color: var(--accent-border-hover, rgba(99, 102, 241, 0.35));
+  background: var(--bg-hover);
+  border-color: var(--accent-hover);
 }
 
 .wtOverloadSuggestion:active {
@@ -2189,7 +2189,7 @@ html.modal-open .tabContent {
 .repMaxOverlay {
   position: fixed;
   inset: 0;
-  background: var(--glass-overlay, rgba(0,0,0,0.55));
+  background: var(--glass-overlay);
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
   display: flex;
@@ -2454,11 +2454,11 @@ html.modal-open .tabContent {
 }
 
 .wtTimerRingUrgent .wtTimerRingFill {
-  stroke: var(--danger, #ef4444);
+  stroke: var(--danger);
 }
 
 .wtTimerRingUrgent .wtTimerTime {
-  color: var(--danger, #ef4444);
+  color: var(--danger);
   animation: timerPulseText 0.8s ease-in-out infinite;
 }
 
@@ -2735,7 +2735,7 @@ html.modal-open .tabContent {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--danger, #ef4444);
+  background: var(--danger);
   animation: timerFlash 0.8s ease-in-out infinite;
   pointer-events: none;
   z-index: 0;
@@ -2879,7 +2879,7 @@ html.modal-open .tabContent {
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid var(--glass-edge, var(--border));
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18), inset 0 1px 0 var(--glass-shine, rgba(255,255,255,0.1));
+  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-shine);
   border-radius: 14px;
   overflow: hidden;
   transition: background-color 0.2s, border-color 0.2s;
@@ -3742,7 +3742,7 @@ html.modal-open .tabContent {
 .kbOverlay {
   position: fixed;
   inset: 0;
-  background: var(--glass-overlay, rgba(0,0,0,0.55));
+  background: var(--glass-overlay);
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
   display: flex;
@@ -3825,8 +3825,8 @@ html.modal-open .tabContent {
   font-size: var(--font-footnote);
   font-weight: 600;
   color: var(--text-secondary);
-  background: var(--bg-primary, rgba(255,255,255,0.06));
-  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
   transition: background-color 0.15s;
@@ -3956,7 +3956,7 @@ html.modal-open .tabContent {
 .confirmOverlay {
   position: fixed;
   inset: 0;
-  background: var(--glass-overlay, rgba(0,0,0,0.55));
+  background: var(--glass-overlay);
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
   display: flex;

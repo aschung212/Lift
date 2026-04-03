@@ -121,7 +121,7 @@ async function handleOAuth(provider: Provider) {
   align-items: center;
   justify-content: center;
   min-height: 100svh;
-  padding: 20px;
+  padding: 24px;
   background: var(--bg-primary);
 }
 
@@ -139,15 +139,15 @@ async function handleOAuth(provider: Provider) {
 }
 
 .authLogo {
-  font-size: 42px;
+  font-size: var(--font-display);
   font-weight: 800;
   color: var(--accent);
   letter-spacing: -1.5px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .authTagline {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
   margin-bottom: 32px;
   line-height: 1.5;
@@ -156,7 +156,7 @@ async function handleOAuth(provider: Provider) {
 .authForm {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
@@ -185,7 +185,7 @@ async function handleOAuth(provider: Provider) {
 
 .authSubmitBtn {
   width: 100%;
-  padding: 13px 16px;
+  padding: 12px 16px;
   min-height: 44px;
   font-size: var(--font-subhead);
   font-weight: 700;
@@ -212,7 +212,7 @@ async function handleOAuth(provider: Provider) {
 }
 
 .authModeSwitch {
-  font-size: 14px;
+  font-size: var(--font-footnote);
   font-family: inherit;
   color: var(--text-secondary);
   background: none;
@@ -251,7 +251,7 @@ async function handleOAuth(provider: Provider) {
 .authProviders {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .authProviderBtn {
@@ -260,7 +260,7 @@ async function handleOAuth(provider: Provider) {
   justify-content: center;
   gap: 10px;
   width: 100%;
-  padding: 13px 16px;
+  padding: 12px 16px;
   min-height: 44px;
   font-size: var(--font-subhead);
   font-weight: 600;
@@ -288,7 +288,7 @@ async function handleOAuth(provider: Provider) {
 
 .authDevBtn {
   width: 100%;
-  padding: 13px 16px;
+  padding: 12px 16px;
   min-height: 44px;
   margin-top: 12px;
   font-size: var(--font-subhead);
