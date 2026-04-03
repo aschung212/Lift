@@ -3864,6 +3864,13 @@ html.modal-open .tabContent {
   background: var(--bg-hover, rgba(255,255,255,0.06));
 }
 
+.settingsLink {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+}
+
 .settingsChevron {
   width: 16px;
   height: 16px;
