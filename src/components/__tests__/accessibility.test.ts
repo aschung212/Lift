@@ -24,7 +24,7 @@ vi.mock('../../composables/useTheme', () => ({
     displayWeight: (w: number) => w,
     toLbs: (w: number) => w,
     restTimerEnabled: { value: false },
-    currentTheme: { value: 'midnight' },
+    currentTheme: { value: 'void' },
     THEMES: [],
     THEME_PREVIEWS: {},
     colorMode: { value: 'dark' },

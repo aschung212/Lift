@@ -1,13 +1,13 @@
 import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 
-export type ThemeId = 'midnight' | 'graphite' | 'arctic' | 'forge' | 'aaron' | 'tina'
+export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'void' | 'amethyst' | 'sun' | 'moon' | 'love'
 export type ColorMode = 'light' | 'dark' | 'auto'
 export type WeightUnit = 'lbs' | 'kg'
 
 export interface ThemeOption {
   id: ThemeId
   label: string
-  dot: string
+  icon: string
 }
 
 interface ThemePreviewColors {
@@ -18,30 +18,52 @@ interface ThemePreviewColors {
 }
 
 export const THEMES: ThemeOption[] = [
-  { id: 'midnight', label: 'Midnight', dot: '#ff6363' },
-  { id: 'graphite', label: 'Graphite', dot: '#8b5cf6' },
-  { id: 'arctic',   label: 'Arctic',   dot: '#0066ff' },
-  { id: 'forge',    label: 'Forge',    dot: '#f59e0b' },
-  { id: 'aaron',    label: 'Aaron',    dot: '#c9a84c' },
-  { id: 'tina',     label: 'Tina',     dot: '#ec4899' },
+  { id: 'fire',     label: 'Fire',     icon: 'fire' },
+  { id: 'water',    label: 'Water',    icon: 'water' },
+  { id: 'luck',     label: 'Luck',     icon: 'luck' },
+  { id: 'air',      label: 'Air',      icon: 'air' },
+  { id: 'void',    label: 'Void',     icon: 'void' },
+  { id: 'amethyst', label: 'Amethyst', icon: 'amethyst' },
+  { id: 'sun',      label: 'Sun',      icon: 'sun' },
+  { id: 'moon',     label: 'Moon',     icon: 'moon' },
+  { id: 'love',     label: 'Love',     icon: 'love' },
 ]
 
 export const THEME_PREVIEWS: Record<ThemeId, { dark: ThemePreviewColors; light: ThemePreviewColors }> = {
-  midnight: { dark: { bg: '#0f0f0f', card: '#1a1a1a', accent: '#ff6363', text: '#f2f2f2' }, light: { bg: '#f2eded', card: '#ffffff', accent: '#dc3545', text: '#1a1212' } },
-  graphite: { dark: { bg: '#111118', card: '#1c1c28', accent: '#8b5cf6', text: '#e4e4f4' }, light: { bg: '#ededf5', card: '#ffffff', accent: '#7c3aed', text: '#18182a' } },
-  arctic:   { dark: { bg: '#0e1420', card: '#182030', accent: '#3388ff', text: '#e0e8f8' }, light: { bg: '#dde4f5', card: '#ffffff', accent: '#0066ff', text: '#1a1a2e' } },
-  forge:    { dark: { bg: '#100e0b', card: '#1c1814', accent: '#f59e0b', text: '#f0e8d8' }, light: { bg: '#f5ede0', card: '#ffffff', accent: '#d97706', text: '#201a10' } },
-  aaron:    { dark: { bg: '#0f0f0f', card: '#1a1816', accent: '#c9a84c', text: '#f0ece4' }, light: { bg: '#f2efe8', card: '#faf8f4', accent: '#96800e', text: '#1a1810' } },
-  tina:     { dark: { bg: '#1a1020', card: '#261830', accent: '#f472b6', text: '#f0e4f4' }, light: { bg: '#f0dff0', card: '#ffffff', accent: '#ec4899', text: '#1e1028' } },
+  fire:     { dark: { bg: '#2a0808', card: '#1a1a1a', accent: '#ff6363', text: '#f2f2f2' }, light: { bg: '#6a1010', card: '#ffffff', accent: '#ff6363', text: '#1a1212' } },
+  water:    { dark: { bg: '#0a2848', card: '#182030', accent: '#3388ff', text: '#e0e8f8' }, light: { bg: '#103060', card: '#ffffff', accent: '#60a5fa', text: '#1a1a2e' } },
+  luck:    { dark: { bg: '#1a3a2a', card: '#14221c', accent: '#d4af37', text: '#e8f0ec' }, light: { bg: '#2a6848', card: '#f8faf9', accent: '#c0c8c4', text: '#0a1a14' } },
+  air:      { dark: { bg: '#2a3a48', card: '#1a2430', accent: '#a8c8e8', text: '#e8f0f8' }, light: { bg: '#88a8c0', card: '#ffffff', accent: '#e8f4ff', text: '#1a2030' } },
+  void:     { dark: { bg: '#1a1a14', card: '#0c0c0c', accent: '#c8a84c', text: '#eeeeee' }, light: { bg: '#8a7020', card: '#ffffff', accent: '#f8f0d0', text: '#1a1810' } },
+  amethyst: { dark: { bg: '#2a2050', card: '#1c1c28', accent: '#8b5cf6', text: '#e4e4f4' }, light: { bg: '#3a2870', card: '#ffffff', accent: '#a78bfa', text: '#18182a' } },
+  sun:      { dark: { bg: '#3a2a08', card: '#1c1814', accent: '#fbbf24', text: '#f0e8d8' }, light: { bg: '#8a6a10', card: '#ffffff', accent: '#fbbf24', text: '#201a10' } },
+  moon:     { dark: { bg: '#0a1028', card: '#141830', accent: '#8090c0', text: '#d0d8f0' }, light: { bg: '#182048', card: '#ffffff', accent: '#a0b0e0', text: '#0a1020' } },
+  love:    { dark: { bg: '#3a1028', card: '#261830', accent: '#f472b6', text: '#f0e4f4' }, light: { bg: '#6a2048', card: '#ffffff', accent: '#f472b6', text: '#1e1028' } },
 }
 
 const THEME_META_COLORS: Record<ThemeId, { dark: string; light: string }> = {
-  midnight: { dark: '#0f0f0f', light: '#f2eded' },
-  graphite: { dark: '#111118', light: '#ededf5' },
-  arctic:   { dark: '#0e1420', light: '#dde4f5' },
-  forge:    { dark: '#100e0b', light: '#f5ede0' },
-  aaron:    { dark: '#0f0f0f', light: '#f2efe8' },
-  tina:     { dark: '#1a1020', light: '#f0dff0' },
+  fire:     { dark: '#0f0f0f', light: '#f2eded' },
+  water:    { dark: '#0e1420', light: '#dde4f5' },
+  luck:    { dark: '#0a1210', light: '#f0f5f2' },
+  air:      { dark: '#101820', light: '#f0f6fa' },
+  void:     { dark: '#0c0c0c', light: '#f8f6f2' },
+  amethyst: { dark: '#111118', light: '#ededf5' },
+  sun:      { dark: '#141008', light: '#faf5e8' },
+  moon:     { dark: '#080c1a', light: '#eaecf5' },
+  love:    { dark: '#1a1020', light: '#f0dff0' },
+}
+
+// Map old theme IDs to new ones for localStorage migration
+const THEME_MIGRATION: Record<string, ThemeId> = {
+  midnight: 'fire',
+  graphite: 'amethyst',
+  arctic:   'water',
+  forge:    'sun',
+  aaron:    'luck',
+  tina:     'love',
+  earth:    'luck',
+  bloom:    'love',
+  metal:    'void',
 }
 
 function applyTheme(id: string): void {
@@ -67,9 +89,9 @@ function applyMode(preference: string): void {
 function updateMetaColor(): void {
   const meta = document.querySelector('meta[name="theme-color"]')
   if (!meta) return
-  const themeId = (document.documentElement.getAttribute('data-theme') || 'midnight') as ThemeId
+  const themeId = (document.documentElement.getAttribute('data-theme') || 'void') as ThemeId
   const mode = (document.documentElement.getAttribute('data-mode') || 'dark') as 'dark' | 'light'
-  const colors = THEME_META_COLORS[themeId] ?? THEME_META_COLORS.midnight
+  const colors = THEME_META_COLORS[themeId] ?? THEME_META_COLORS.fire
   meta.setAttribute('content', colors[mode] ?? colors.dark)
 }
 
@@ -79,8 +101,13 @@ function applyGlass(enabled: boolean): void {
 }
 
 // Apply immediately at import time to prevent flash
-const storedId = localStorage.getItem('app-theme') || 'midnight'
-const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'midnight'
+let storedId = localStorage.getItem('app-theme') || 'void'
+// Migrate old theme names
+if (storedId in THEME_MIGRATION) {
+  storedId = THEME_MIGRATION[storedId]
+  localStorage.setItem('app-theme', storedId)
+}
+const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'void'
 const storedMode = localStorage.getItem('app-mode') || 'auto'
 const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
 applyTheme(validId)

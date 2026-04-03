@@ -26,26 +26,29 @@ describe('useTheme', () => {
   })
 
   describe('theme switching', () => {
-    it('defaults to midnight theme', () => {
-      expect(theme.currentTheme.value).toBe('midnight')
+    it('defaults to metal theme', () => {
+      expect(theme.currentTheme.value).toBe('void')
     })
 
     it('switches theme when currentTheme is updated', async () => {
-      theme.currentTheme.value = 'arctic'
+      theme.currentTheme.value = 'water'
       await nextTick()
-      expect(theme.currentTheme.value).toBe('arctic')
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('app-theme', 'arctic')
+      expect(theme.currentTheme.value).toBe('water')
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('app-theme', 'water')
     })
 
     it('exposes all available themes', () => {
-      expect(THEMES).toHaveLength(6)
+      expect(THEMES).toHaveLength(9)
       const ids = THEMES.map(t => t.id)
-      expect(ids).toContain('midnight')
-      expect(ids).toContain('graphite')
-      expect(ids).toContain('arctic')
-      expect(ids).toContain('forge')
-      expect(ids).toContain('aaron')
-      expect(ids).toContain('tina')
+      expect(ids).toContain('fire')
+      expect(ids).toContain('water')
+      expect(ids).toContain('luck')
+      expect(ids).toContain('air')
+      expect(ids).toContain('void')
+      expect(ids).toContain('amethyst')
+      expect(ids).toContain('sun')
+      expect(ids).toContain('moon')
+      expect(ids).toContain('love')
     })
 
     it('provides theme previews with dark and light variants', () => {

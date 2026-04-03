@@ -1,5 +1,5 @@
 /**
- * WCAG 2.1 AA contrast ratio audit for all 6 Lift themes (12 variants).
+ * WCAG 2.1 AA contrast ratio audit for all 9 Lift themes (18 variants).
  *
  * Checks every critical text/background pair against WCAG AA thresholds:
  *   - Normal text (< 18px): 4.5:1
@@ -55,62 +55,92 @@ interface ThemeColors {
 }
 
 const themes: Record<string, ThemeColors> = {
-  'midnight-dark': {
+  'fire-dark': {
     bgPrimary: '#0f0f0f', bgSecondary: '#1a1a1a', bgElevated: '#242424',
     textPrimary: '#f2f2f2', textSecondary: '#888888', textMuted: '#777777',
     accent: '#ff6363', textOnAccent: '#1a0000', danger: '#ff5a5a', success: '#30d158',
   },
-  'midnight-light': {
+  'fire-light': {
     bgPrimary: '#f2eded', bgSecondary: '#ffffff', bgElevated: '#ffffff',
     textPrimary: '#1a1212', textSecondary: '#6e5858', textMuted: '#907878',
     accent: '#dc3545', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
   },
-  'graphite-dark': {
-    bgPrimary: '#111118', bgSecondary: '#1c1c28', bgElevated: '#26263a',
-    textPrimary: '#e4e4f4', textSecondary: '#8080b0', textMuted: '#6868a0',
-    accent: '#7c50e6', textOnAccent: '#ffffff', danger: '#f87171', success: '#34d399',
-  },
-  'graphite-light': {
-    bgPrimary: '#ededf5', bgSecondary: '#ffffff', bgElevated: '#ffffff',
-    textPrimary: '#18182a', textSecondary: '#5c5890', textMuted: '#7e7aa0',
-    accent: '#7c3aed', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
-  },
-  'arctic-light': {
-    bgPrimary: '#dde4f5', bgSecondary: '#ffffff', bgElevated: '#ffffff',
-    textPrimary: '#1a1a2e', textSecondary: '#60609a', textMuted: '#7878a0',
-    accent: '#0066ff', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
-  },
-  'arctic-dark': {
+  'water-dark': {
     bgPrimary: '#0e1420', bgSecondary: '#182030', bgElevated: '#202c40',
     textPrimary: '#e0e8f8', textSecondary: '#7888b0', textMuted: '#687898',
     accent: '#2070d8', textOnAccent: '#ffffff', danger: '#f87171', success: '#34d399',
   },
-  'forge-dark': {
-    bgPrimary: '#100e0b', bgSecondary: '#1c1814', bgElevated: '#262118',
+  'water-light': {
+    bgPrimary: '#dde4f5', bgSecondary: '#ffffff', bgElevated: '#ffffff',
+    textPrimary: '#1a1a2e', textSecondary: '#60609a', textMuted: '#7878a0',
+    accent: '#0066ff', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
+  },
+  'luck-dark': {
+    bgPrimary: '#0a1210', bgSecondary: '#0f1a16', bgElevated: '#14221c',
+    textPrimary: '#e8f0ec', textSecondary: '#88a898', textMuted: '#607868',
+    accent: '#d4af37', textOnAccent: '#0a1210', danger: '#ef4444', success: '#4ade80',
+  },
+  'luck-light': {
+    bgPrimary: '#f0f5f2', bgSecondary: '#f8faf9', bgElevated: '#ffffff',
+    textPrimary: '#0a1a14', textSecondary: '#3a5a48', textMuted: '#5a7868',
+    accent: '#4a6058', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0a7a35',
+  },
+  'air-dark': {
+    bgPrimary: '#101820', bgSecondary: '#182028', bgElevated: '#202830',
+    textPrimary: '#e8f0f8', textSecondary: '#8898b0', textMuted: '#687888',
+    accent: '#88b8e0', textOnAccent: '#101820', danger: '#f87171', success: '#34d399',
+  },
+  'air-light': {
+    bgPrimary: '#f0f6fa', bgSecondary: '#ffffff', bgElevated: '#ffffff',
+    textPrimary: '#1a2030', textSecondary: '#506878', textMuted: '#708090',
+    accent: '#2870a0', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
+  },
+  'void-dark': {
+    bgPrimary: '#0c0c0c', bgSecondary: '#161614', bgElevated: '#1e1e1a',
+    textPrimary: '#eeeeee', textSecondary: '#a09878', textMuted: '#807860',
+    accent: '#c8a84c', textOnAccent: '#0c0c0c', danger: '#f87171', success: '#34d399',
+  },
+  'void-light': {
+    bgPrimary: '#f8f6f2', bgSecondary: '#ffffff', bgElevated: '#ffffff',
+    textPrimary: '#1a1810', textSecondary: '#6a6050', textMuted: '#8a8070',
+    accent: '#8a7020', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
+  },
+  'amethyst-dark': {
+    bgPrimary: '#111118', bgSecondary: '#1c1c28', bgElevated: '#26263a',
+    textPrimary: '#e4e4f4', textSecondary: '#8080b0', textMuted: '#6868a0',
+    accent: '#7c50e6', textOnAccent: '#ffffff', danger: '#f87171', success: '#34d399',
+  },
+  'amethyst-light': {
+    bgPrimary: '#ededf5', bgSecondary: '#ffffff', bgElevated: '#ffffff',
+    textPrimary: '#18182a', textSecondary: '#5c5890', textMuted: '#7e7aa0',
+    accent: '#7c3aed', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
+  },
+  'sun-dark': {
+    bgPrimary: '#141008', bgSecondary: '#1c1810', bgElevated: '#262018',
     textPrimary: '#f0e8d8', textSecondary: '#9a8870', textMuted: '#7c7060',
-    accent: '#f59e0b', textOnAccent: '#1a1400', danger: '#ef4444', success: '#84cc16',
+    accent: '#f0b020', textOnAccent: '#1a1400', danger: '#ef4444', success: '#84cc16',
   },
-  'forge-light': {
-    bgPrimary: '#f5ede0', bgSecondary: '#ffffff', bgElevated: '#ffffff',
-    textPrimary: '#201a10', textSecondary: '#7a6848', textMuted: '#887050',
-    accent: '#a85800', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
+  'sun-light': {
+    bgPrimary: '#faf5e8', bgSecondary: '#ffffff', bgElevated: '#ffffff',
+    textPrimary: '#201a10', textSecondary: '#7a6840', textMuted: '#907850',
+    accent: '#8a6800', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
   },
-  'aaron-dark': {
-    bgPrimary: '#0c0f14', bgSecondary: '#141820', bgElevated: '#1c212a',
-    textPrimary: '#e8eaee', textSecondary: '#8a9070', textMuted: '#6a7058',
-    accent: '#c8a44e', textOnAccent: '#141000', danger: '#ef4444', success: '#7aaa60',
+  'moon-dark': {
+    bgPrimary: '#080c1a', bgSecondary: '#101428', bgElevated: '#181c34',
+    textPrimary: '#d8ddf0', textSecondary: '#8088b0', textMuted: '#606888',
+    accent: '#8898d0', textOnAccent: '#080c1a', danger: '#f87171', success: '#34d399',
   },
-  'aaron-light': {
-    bgPrimary: '#eceee8', bgSecondary: '#f6f7f4', bgElevated: '#ffffff',
-    textPrimary: '#141820', textSecondary: '#5a6048', textMuted: '#727858',
-    accent: '#806a18', textOnAccent: '#ffffff', danger: '#dc2626', success: '#5a8a40',
+  'moon-light': {
+    bgPrimary: '#eaecf5', bgSecondary: '#f5f6fc', bgElevated: '#ffffff',
+    textPrimary: '#0a1020', textSecondary: '#484870', textMuted: '#686888',
+    accent: '#5060a0', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
   },
-  'tina-light': {
+  'love-light': {
     bgPrimary: '#f0dff0', bgSecondary: '#ffffff', bgElevated: '#ffffff',
     textPrimary: '#1e1028', textSecondary: '#625098', textMuted: '#887098',
     accent: '#c83080', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
   },
-  'tina-dark': {
+  'love-dark': {
     bgPrimary: '#1a1020', bgSecondary: '#261830', bgElevated: '#322040',
     textPrimary: '#f0e4f4', textSecondary: '#a080c0', textMuted: '#806898',
     accent: '#f472b6', textOnAccent: '#1a0818', danger: '#f87171', success: '#34d399',
