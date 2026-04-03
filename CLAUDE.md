@@ -66,9 +66,26 @@ This app will be wrapped with Capacitor for the App Store. Keep all code compati
 ## Architecture Notes
 
 - **Local-first.** Pinia + localStorage is the source of truth. Supabase syncs in the background. The UI never waits on the network.
-- **Theme system.** 6 themes with CSS custom properties. Light/dark/auto modes. Glass morphism is opt-in.
+- **Theme system.** 9 elemental themes with CSS custom properties. Light/dark/auto modes. Glass morphism is opt-in.
 - **Hand-rolled SVGs.** No chart libraries. Polyline + polygon with computed point arrays.
 - **Debounced sync.** Rapid store mutations are batched before hitting Supabase.
+
+## Documentation Mandate
+
+Documentation must stay in sync with application logic. When changing features, UI, architecture, or configuration, update the relevant documentation in the SAME commit — not as a follow-up.
+
+**What counts as documentation:**
+- `CLAUDE.md` — this file (update when architecture, standards, or workflow change)
+- `README.md` — project overview (update when features or setup change)
+- `index.html` meta tags — must reflect actual deployment URL and app description
+- Test descriptions — should describe current behavior, not stale assumptions
+- CSS comments — theme names, section headers
+
+**Specifically watch for:**
+- Theme count or names changing → update Architecture Notes above
+- Deployment URL changing → update the SEV1 rule and meta tags
+- Issue tracker changing → update Workflow Rules below
+- New stores, composables, or major components → update Architecture Notes
 
 ## Workflow Rules (for automated runs)
 
