@@ -125,8 +125,8 @@ describe('OnboardingScreen', () => {
     it('adds bodyweight entries', async () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
       expect(mockAddEntry).toHaveBeenCalled()
-      // Should have 35 sample weight entries
-      expect(mockAddEntry.mock.calls.length).toBe(35)
+      // Should have 95 sample weight entries (365 days of data)
+      expect(mockAddEntry.mock.calls.length).toBe(95)
     })
 
     it('sets sample-data flag in localStorage', async () => {
@@ -141,8 +141,8 @@ describe('OnboardingScreen', () => {
 
     it('logs sets for 5 exercises with sample data', async () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
-      // Bench (31) + Squat (22) + Deadlift (16) + OHP (15) + Barbell Row (14) = 98 sets
-      expect(mockLogSet.mock.calls.length).toBe(98)
+      // Extended sample data: ~365 days across 5 exercises
+      expect(mockLogSet.mock.calls.length).toBe(221)
     })
   })
 
