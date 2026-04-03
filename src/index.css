@@ -1001,13 +1001,20 @@ html.modal-open .tabContent {
   width: 100%;
   max-width: 520px;
   max-height: calc(85svh - env(safe-area-inset-top, 0px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+  border-radius: 16px 16px 0 0;
+  animation: sheetSlideUp 0.25s ease-out;
+}
+
+.settingsScrollBody {
+  flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  background: var(--bg-primary);
-  border-radius: 16px 16px 0 0;
-  padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
-  animation: sheetSlideUp 0.25s ease-out;
+  padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
 }
 
 @keyframes sheetSlideUp {
@@ -1028,7 +1035,7 @@ html.modal-open .tabContent {
 .sheetDragHandle {
   display: flex;
   justify-content: center;
-  padding: 8px 0 4px;
+  padding: 12px 0 8px;
   cursor: grab;
 }
 
@@ -1069,10 +1076,130 @@ html.modal-open .tabContent {
   color: var(--text-primary);
 }
 
+.settingsLabelSecondary {
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+}
+
 .settingsLabelIndented {
   padding-left: 16px;
   font-size: var(--font-footnote);
   color: var(--text-secondary);
+}
+
+.settingsSegment {
+  display: flex;
+  width: 100%;
+  padding: 2px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.settingsSegmentBtn {
+  flex: 1;
+  padding: 8px 4px;
+  min-height: 44px;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.settingsSegmentBtn.active {
+  color: var(--text-on-accent);
+  background: var(--accent);
+  font-weight: 600;
+}
+
+.settingsInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingsRevealBtn {
+  padding: 0;
+  min-height: 44px;
+  font-size: var(--font-subhead);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: opacity 0.12s;
+}
+
+.settingsRevealBtn:active {
+  opacity: 0.6;
+}
+
+.settingsInputClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  font-size: 20px;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.settingsInputClear:active {
+  color: var(--danger);
+}
+
+.settingsInput {
+  width: 96px;
+  padding: 8px 12px;
+  min-height: 44px;
+  font-size: var(--font-subhead);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  text-align: center;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.settingsInput:focus {
+  border-color: var(--accent);
+}
+
+.settingsInput::placeholder {
+  color: var(--text-muted);
+}
+
+.settingsInputUnit {
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.settingsRangeWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingsRangeSep {
+  font-size: var(--font-subhead);
+  color: var(--text-muted);
 }
 
 .exportBtnGroup {
@@ -1839,8 +1966,14 @@ html.modal-open .tabContent {
 /* ─── Set rows ──────────────────────────────────────────────────────────── */
 
 .wtSetList {
-  list-style: none;
-  border-top: 1px solid var(--border);
+  padding: 0 16px;
+}
+
+.wtSetCard {
+  background: var(--bg-elevated);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
 }
 
 .wtSetRow {
@@ -1849,7 +1982,7 @@ html.modal-open .tabContent {
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 16px 16px;
+  padding: 12px 16px;
   min-height: 44px;
   font-size: var(--font-subhead);
   border-bottom: 1px solid var(--border);
@@ -1857,17 +1990,19 @@ html.modal-open .tabContent {
   transition: background-color 0.12s;
 }
 
-.wtSetRow:last-child { border-bottom: none; }
+.wtSetCard > .wtSetRow:last-child { border-bottom: none; }
 
 .wtSetDateHeader {
-  padding: 12px 16px 4px;
+  padding: 16px 0 8px;
   font-size: var(--font-caption1);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   color: var(--text-muted);
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border);
+}
+
+.wtSetDateHeader:first-child {
+  padding-top: 8px;
 }
 
 .wtSetDate {
@@ -1888,7 +2023,7 @@ html.modal-open .tabContent {
 .wtSet1RM {
   color: var(--success);
   font-weight: 600;
-  font-size: var(--font-footnote);
+  font-size: var(--font-subhead);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
@@ -1900,7 +2035,6 @@ html.modal-open .tabContent {
 
 .wtSetRowPR {
   background: var(--pr-subtle);
-  border-left: 3px solid var(--pr);
 }
 
 .wtSetEmpty {
@@ -1915,31 +2049,32 @@ html.modal-open .tabContent {
 
 .wtSetActions {
   display: flex;
-  gap: 4px;
+  gap: 8px;
   width: 100%;
   padding-top: 8px;
   flex-shrink: 0;
 }
 
 .wtSetBtn {
-  padding: 12px 16px;
+  flex: 1;
+  padding: 8px 16px;
   font-size: var(--font-footnote);
-  font-weight: 600;
+  font-weight: 500;
   font-family: inherit;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
-  background: var(--bg-elevated);
+  background: var(--bg-secondary);
   color: var(--text-secondary);
   min-height: 44px;
   transition: opacity 0.12s;
 }
 
-.wtSetBtn:active { opacity: 0.7; }
+.wtSetBtn:active { opacity: 0.6; }
 
 .wtSetBtnDel {
-  background: var(--danger-subtle);
   color: var(--danger);
+  border-color: var(--danger-subtle);
 }
 
 /* "Clear all sets" footer */
@@ -1947,7 +2082,6 @@ html.modal-open .tabContent {
   display: flex;
   justify-content: flex-end;
   padding: 8px 16px 12px;
-  border-top: 1px solid var(--border);
 }
 
 .wtExActions {
@@ -1959,7 +2093,10 @@ html.modal-open .tabContent {
 
 .wtDetailTabs {
   display: flex;
-  border-bottom: 1px solid var(--border);
+  margin: 12px 16px;
+  padding: 2px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
 }
 
 .wtDetailTab {
@@ -1968,28 +2105,27 @@ html.modal-open .tabContent {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 0;
+  padding: 8px 0;
   min-height: 44px;
-  font-size: var(--font-footnote);
+  font-size: var(--font-subhead);
   font-weight: 600;
   font-family: inherit;
   color: var(--text-muted);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 8px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, background-color 0.15s;
 }
 
 .wtDetailTab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--text-primary);
+  background: var(--accent);
+  color: var(--text-on-accent);
 }
 
 .wtDetailTabCount {
-  font-size: var(--font-caption1);
   font-weight: 500;
-  opacity: 0.6;
 }
 
 .wtPRHistoryList {
@@ -2789,9 +2925,10 @@ html.modal-open .tabContent {
 
 .wtGraphWrap {
   padding: 12px 16px 8px;
+  margin: 0 16px;
   background: var(--bg-elevated);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-radius: 12px;
+  border: 1px solid var(--border);
   transition: background-color 0.2s;
 }
 
@@ -2830,10 +2967,40 @@ html.modal-open .tabContent {
   stroke-linejoin: round;
 }
 
+.bwGraphHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.bwGraphHeader .wtGraphTitle {
+  margin-bottom: 0;
+}
+
+.bwGoalTag {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--success);
+  letter-spacing: 0.3px;
+}
+
+.bwGoalLine {
+  stroke: var(--success);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+
 .wtGDot {
   fill: var(--bg-elevated);
   stroke: var(--accent);
   stroke-width: 2;
+}
+
+.bwEndpointDot {
+  fill: var(--accent);
+  stroke: none;
 }
 
 .wtGDotPR {
@@ -3480,12 +3647,12 @@ html.modal-open .tabContent {
   border-top: 1px solid var(--border);
 }
 
-.bwEntryLow {
+.bwEntryGood {
   background: var(--success-subtle);
   border-left: 3px solid var(--success);
 }
 
-.bwEntryHigh {
+.bwEntryBad {
   background: var(--danger-subtle);
   border-left: 3px solid var(--danger);
 }
@@ -3499,12 +3666,12 @@ html.modal-open .tabContent {
   vertical-align: middle;
 }
 
-.bwEntryBadgeLow {
+.bwEntryBadgeGood {
   background: var(--success-subtle);
   color: var(--success);
 }
 
-.bwEntryBadgeHigh {
+.bwEntryBadgeBad {
   background: var(--danger-subtle);
   color: var(--danger);
 }
@@ -3517,11 +3684,15 @@ html.modal-open .tabContent {
   flex-shrink: 0;
 }
 
-.bwDeltaDown {
+.bwDeltaGood {
   color: var(--success);
 }
 
-.bwDeltaUp {
+.bwDeltaBad {
+  color: var(--danger);
+}
+
+.bwWeightOutOfRange {
   color: var(--danger);
 }
 
@@ -3583,8 +3754,8 @@ html.modal-open .tabContent {
   letter-spacing: -0.3px;
 }
 
-.bwStatDown { color: var(--success); }
-.bwStatUp   { color: var(--danger); }
+.bwStatGood { color: var(--success); }
+.bwStatBad  { color: var(--danger); }
 
 .bwStatsSingle {
   font-size: var(--font-caption1);

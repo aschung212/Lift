@@ -119,44 +119,42 @@
 
           <!-- All Sets view -->
           <template v-if="detailTab === 'sets'">
-            <ul class="wtSetList">
-              <li v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</li>
-              <template
-                v-for="(set, idx) in visibleSets(detailExercise)"
-                :key="set.id"
-              >
-                <li
-                  v-if="idx === 0 || set.date.slice(0,10) !== visibleSets(detailExercise)[idx-1].date.slice(0,10)"
-                  class="wtSetDateHeader"
-                >{{ formatDate(set.date) }}</li>
-                <li
-                  class="wtSetRow"
-                  :class="{
-                    wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id) && set.date.slice(0,10) === detailPRDate,
-                    'wtSetRowActive': activeSetId === set.id,
-                  }"
-                  @click="toggleSetActions(set.id)"
-                >
-                  <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
-                  <span class="wtSet1RM">
-                    ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
-                    <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id) && set.date.slice(0,10) === detailPRDate" class="wtSetPR">🏆</span>
-                  </span>
-                  <div v-if="activeSetId === set.id" class="wtSetActions">
-                    <button
-                      class="wtSetBtn"
-                      @click.stop="openEditModal(detailExercise, set)"
-                      aria-label="Edit set"
-                    >Edit</button>
-                    <button
-                      class="wtSetBtn wtSetBtnDel"
-                      @click.stop="undoDeleteSet(detailExercise.id, set)"
-                      aria-label="Delete set"
-                    >Delete</button>
+            <div class="wtSetList">
+              <p v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</p>
+              <template v-for="group in groupedSets" :key="group.key">
+                <p class="wtSetDateHeader">{{ formatDate(group.date) }}</p>
+                <div class="wtSetCard">
+                  <div
+                    v-for="set in group.sets"
+                    :key="set.id"
+                    class="wtSetRow"
+                    :class="{
+                      wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id) && set.date.slice(0,10) === detailPRDate,
+                      'wtSetRowActive': activeSetId === set.id,
+                    }"
+                    @click="toggleSetActions(set.id)"
+                  >
+                    <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
+                    <span class="wtSet1RM">
+                      ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
+                      <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id) && set.date.slice(0,10) === detailPRDate" class="wtSetPR">🏆</span>
+                    </span>
+                    <div v-if="activeSetId === set.id" class="wtSetActions">
+                      <button
+                        class="wtSetBtn"
+                        @click.stop="openEditModal(detailExercise, set)"
+                        aria-label="Edit set"
+                      >Edit</button>
+                      <button
+                        class="wtSetBtn wtSetBtnDel"
+                        @click.stop="undoDeleteSet(detailExercise.id, set)"
+                        aria-label="Delete set"
+                      >Delete</button>
+                    </div>
                   </div>
-                </li>
+                </div>
               </template>
-            </ul>
+            </div>
             <div v-if="detailExercise.sets.length > SET_LIMIT" class="wtClearWrap">
               <button class="wtShowAllBtn" @click="toggleShowAll(detailExercise.id)">
                 {{ showAllSets.has(detailExercise.id) ? 'Show less' : `Show all ${detailExercise.sets.length} sets` }}
@@ -389,7 +387,7 @@
           </template>
 
           <!-- Date as subtitle (tappable) -->
-          <p v-else-if="isLogForExercise" class="wtModalSubtitle">
+          <p v-else-if="isLogForExercise || isEditMode" class="wtModalSubtitle">
             <span class="wtDateBtnWrap">
               <span class="wtDateMetaLabel" aria-hidden="true">{{ dateDisplay }}</span>
               <input
@@ -812,6 +810,27 @@ function visibleSets(exercise: Exercise): WorkoutSet[] {
   const reversed = [...exercise.sets].reverse()
   return showAllSets.value.has(exercise.id) ? reversed : reversed.slice(0, SET_LIMIT)
 }
+
+function toLocalDateKey(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const groupedSets = computed(() => {
+  if (!detailExercise.value) return []
+  const sets = visibleSets(detailExercise.value)
+  const groups: { date: string; key: string; sets: WorkoutSet[] }[] = []
+  for (const set of sets) {
+    const k = toLocalDateKey(set.date)
+    const last = groups[groups.length - 1]
+    if (last && last.key === k) {
+      last.sets.push(set)
+    } else {
+      groups.push({ date: set.date, key: k, sets: [set] })
+    }
+  }
+  return groups
+})
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })

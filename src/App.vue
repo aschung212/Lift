@@ -60,7 +60,8 @@
       <Teleport to="body">
         <div v-if="settingsOpen" class="settingsOverlay" @click.self="closeSettings" @keydown.escape="closeSettings">
           <div class="settingsSheet" :ref="onSettingsSheetMounted" :style="settingsSwipe.dragStyle()" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-            <div class="sheetDragHandle" aria-hidden="true"><span class="sheetDragPill"></span></div>
+            <div class="sheetDragHandle" ref="settingsHandleEl" aria-hidden="true"><span class="sheetDragPill"></span></div>
+            <div class="settingsScrollBody">
 
             <div class="settingsGroup">
               <div class="settingsHeader" id="settings-title">Appearance</div>
@@ -152,7 +153,7 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
-              <div v-if="restTimerEnabled" class="settingsRow">
+              <div v-show="restTimerEnabled" class="settingsRow">
                 <span class="settingsLabel settingsLabelIndented">Auto-start after logging</span>
                 <button
                   :class="['glassToggle', { on: restTimerAutoStart }]"
@@ -164,6 +165,75 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+            </div>
+
+            <div class="settingsGroup">
+              <div class="settingsHeader">Weight Goal</div>
+              <div class="settingsRow">
+                <div class="settingsSegment">
+                  <button
+                    v-for="goal in WEIGHT_GOALS"
+                    :key="goal.id"
+                    :class="['settingsSegmentBtn', { active: prefs.weightGoal.direction === goal.id }]"
+                    @click="setGoalDirection(goal.id)"
+                    :aria-pressed="prefs.weightGoal.direction === goal.id"
+                  >{{ goal.label }}</button>
+                </div>
+              </div>
+              <div v-if="!showGoalInput && !prefs.hasAnyGoalValue" class="settingsRow">
+                <button
+                  class="settingsRevealBtn"
+                  @click="showGoalInput = true"
+                >+ Set target weight</button>
+              </div>
+              <template v-else>
+                <div v-show="prefs.weightGoal.direction !== 'maintain'" class="settingsRow">
+                  <span class="settingsLabel settingsLabelSecondary">Target</span>
+                  <div class="settingsInputWrap">
+                    <input
+                      type="number"
+                      inputmode="decimal"
+                      class="settingsInput"
+                      placeholder=" "
+                      :value="prefs.currentTarget != null ? displayWeight(prefs.currentTarget) : ''"
+                      @change="onTargetWeightInput(($event.target as HTMLInputElement).value)"
+                      :aria-label="`Target weight in ${weightUnit}`"
+                    />
+                    <span class="settingsInputUnit">{{ weightUnit }}</span>
+                    <button class="settingsInputClear" @click="clearGoalValues" aria-label="Clear target">×</button>
+                  </div>
+                </div>
+                <div v-show="prefs.weightGoal.direction === 'maintain'" class="settingsRow">
+                  <span class="settingsLabel settingsLabelSecondary">Range</span>
+                  <div class="settingsRangeWrap">
+                    <div class="settingsInputWrap">
+                      <input
+                        type="number"
+                        inputmode="decimal"
+                        class="settingsInput"
+                        placeholder="Min"
+                        :value="prefs.weightGoal.maintainMin != null ? displayWeight(prefs.weightGoal.maintainMin) : ''"
+                        @change="onMaintainMinInput(($event.target as HTMLInputElement).value)"
+                        :aria-label="`Minimum weight in ${weightUnit}`"
+                      />
+                    </div>
+                    <span class="settingsRangeSep">–</span>
+                    <div class="settingsInputWrap">
+                      <input
+                        type="number"
+                        inputmode="decimal"
+                        class="settingsInput"
+                        placeholder="Max"
+                        :value="prefs.weightGoal.maintainMax != null ? displayWeight(prefs.weightGoal.maintainMax) : ''"
+                        @change="onMaintainMaxInput(($event.target as HTMLInputElement).value)"
+                        :aria-label="`Maximum weight in ${weightUnit}`"
+                      />
+                    </div>
+                    <span class="settingsInputUnit">{{ weightUnit }}</span>
+                    <button class="settingsInputClear" @click="clearGoalValues" aria-label="Clear range">×</button>
+                  </div>
+                </div>
+              </template>
             </div>
 
             <div class="settingsGroup">
@@ -223,6 +293,7 @@
 
             <div class="settingsGroup">
               <button class="settingsSignOut" @click="confirmSignOut">Sign Out</button>
+            </div>
             </div>
           </div>
         </div>
@@ -366,6 +437,7 @@ import { useTheme } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
+import type { WeightGoalDirection } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
@@ -374,7 +446,7 @@ import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
@@ -382,6 +454,7 @@ const { toast: undoToast, performUndo } = useUndoToast()
 
 const settingsOpen = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)
+const settingsHandleEl = ref<HTMLElement | null>(null)
 const legalView = ref<'privacy' | 'terms' | null>(null)
 
 
@@ -405,9 +478,14 @@ watch(settingsOpen, (open) => {
 })
 
 function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
-  if (el && el instanceof HTMLElement) {
+  if (el && el instanceof HTMLElement && el !== settingsEl.value) {
     settingsEl.value = el
-    settingsSwipe.attach(el)
+    // Bind swipe-to-dismiss only on the drag handle, not the whole sheet,
+    // so it doesn't interfere with scrolling the settings body
+    nextTick(() => {
+      const handle = settingsHandleEl.value
+      if (handle) settingsSwipe.attach(el, handle)
+    })
     settingsFocus.activate(el)
   }
 }
@@ -512,6 +590,12 @@ watch(confirmDialog, async (dialog) => {
 })
 
 // ── Tab definitions with inline SVG paths ────────────────────────
+const WEIGHT_GOALS: { id: WeightGoalDirection; label: string }[] = [
+  { id: 'lose', label: 'Losing' },
+  { id: 'maintain', label: 'Maintaining' },
+  { id: 'gain', label: 'Gaining' },
+]
+
 const TAB_DEFS = [
   {
     id: 'workouts',
@@ -666,6 +750,56 @@ function downloadFile(filename: string, content: string, mimeType: string) {
 function toggleFeature(featureId: string) {
   prefs.toggleFeature(featureId)
   logEvent('feature_toggle', { feature: featureId, enabled: prefs.features[featureId] })
+}
+
+// ── Weight Goal helpers ─────────────────────────────────────────
+const bwStore = useBodyweightStore()
+const showGoalInput = ref(false)
+
+function setGoalDirection(dir: WeightGoalDirection) {
+  prefs.setWeightGoalDirection(dir)
+}
+
+function onTargetWeightInput(val: string) {
+  if (prefs.weightGoal.direction === 'maintain') return
+  if (!val || val.trim() === '') return
+  const num = parseFloat(val)
+  if (isNaN(num) || num <= 0) return
+  const lbs = toLbs(num)
+  prefs.setTargetForDirection(lbs)
+  // Auto-switch direction based on target vs current
+  const current = bwStore.latestWeight
+  if (current != null) {
+    if (lbs < current && prefs.weightGoal.direction === 'gain') {
+      prefs.setWeightGoalDirection('lose')
+      // Move the value to the correct direction
+      prefs.weightGoal.loseTarget = lbs
+      prefs.weightGoal.gainTarget = null
+    } else if (lbs > current && prefs.weightGoal.direction === 'lose') {
+      prefs.setWeightGoalDirection('gain')
+      prefs.weightGoal.gainTarget = lbs
+      prefs.weightGoal.loseTarget = null
+    }
+  }
+}
+
+function onMaintainMinInput(val: string) {
+  if (prefs.weightGoal.direction !== 'maintain') return
+  const num = val.trim() === '' ? null : parseFloat(val)
+  const lbs = num != null && !isNaN(num) && num > 0 ? toLbs(num) : null
+  prefs.setMaintainRange(lbs, prefs.weightGoal.maintainMax)
+}
+
+function onMaintainMaxInput(val: string) {
+  if (prefs.weightGoal.direction !== 'maintain') return
+  const num = val.trim() === '' ? null : parseFloat(val)
+  const lbs = num != null && !isNaN(num) && num > 0 ? toLbs(num) : null
+  prefs.setMaintainRange(prefs.weightGoal.maintainMin, lbs)
+}
+
+function clearGoalValues() {
+  prefs.clearAllGoalValues()
+  showGoalInput.value = false
 }
 
 // Flush engagement timing on page unload

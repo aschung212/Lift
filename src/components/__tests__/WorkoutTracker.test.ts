@@ -335,6 +335,47 @@ describe('WorkoutTracker', () => {
       expect(wrapper.findAll('.wtSetDateHeader').length).toBeGreaterThan(0)
     })
 
+    it('wraps each date group in a card', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const cards = wrapper.findAll('.wtSetCard')
+      expect(cards.length).toBe(2) // two different dates
+    })
+
+    it('groups same-date sets into one card', async () => {
+      // Add a second set on the same date as the latest (Jan 20)
+      exercises[0].sets.push(
+        { id: 's-extra', date: '2026-01-20T14:00:00', weight: 190, reps: 3, estimated1RM: 210 }
+      )
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const cards = wrapper.findAll('.wtSetCard')
+      expect(cards.length).toBe(2) // still two dates: Jan 15 and Jan 20
+      // The Jan 20 card (first in reversed order) should have 2 set rows
+      expect(cards[0].findAll('.wtSetRow').length).toBe(2)
+    })
+
+    it('groups sets by local date, not UTC date', async () => {
+      // Two sets with the same UTC date prefix but at different times
+      // Both should group under the same local date
+      exercises[0].sets = [
+        { id: 's-a', date: '2026-03-16T10:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+        { id: 's-b', date: '2026-03-16T14:30:00', weight: 195, reps: 5, estimated1RM: 228 },
+      ]
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Both sets are on the same local date → 1 card
+      const cards = wrapper.findAll('.wtSetCard')
+      expect(cards.length).toBe(1)
+      expect(cards[0].findAll('.wtSetRow').length).toBe(2)
+    })
+
     it('closes modal via back button', async () => {
       const wrapper = mountTracker()
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
@@ -756,6 +797,24 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
 
       expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String))
+    })
+
+    it('shows date picker in edit mode', async () => {
+      const wrapper = mountTracker()
+      // Open detail modal
+      await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Tap set, click Edit
+      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      const editBtn = wrapper.findAll('.wtSetBtn').find(b => b.text() === 'Edit')!
+      await editBtn.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Date picker should be visible in edit mode
+      const dateInput = wrapper.find('.repMaxModal input[type="date"]')
+      expect(dateInput.exists()).toBe(true)
     })
   })
 

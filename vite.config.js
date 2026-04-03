@@ -5,6 +5,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin'
 
 export default defineConfig({
   build: {
+    target: 'es2022',
     sourcemap: true,
     rollupOptions: {
       output: {

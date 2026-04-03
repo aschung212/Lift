@@ -11,29 +11,65 @@ export interface FeatureFlags {
   [key: string]: boolean
 }
 
+export type WeightGoalDirection = 'lose' | 'gain' | 'maintain'
+
+export interface WeightGoalConfig {
+  direction: WeightGoalDirection
+  loseTarget: number | null     // remembered target for lose mode
+  gainTarget: number | null     // remembered target for gain mode
+  maintainMin: number | null    // optional floor for maintain
+  maintainMax: number | null    // optional ceiling for maintain
+}
+
+const DEFAULT_WEIGHT_GOAL: WeightGoalConfig = {
+  direction: 'lose',
+  loseTarget: null,
+  gainTarget: null,
+  maintainMin: null,
+  maintainMax: null,
+}
+
 const DEFAULTS: FeatureFlags = {
   workouts: true,
   calendar: true,
   weight: true,
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function _migrateWeightGoal(raw: any): WeightGoalConfig {
+  // v1: string ('lose' | 'gain' | 'maintain')
+  if (typeof raw === 'string') {
+    return { ...DEFAULT_WEIGHT_GOAL, direction: raw as WeightGoalDirection }
+  }
+  const goal = { ...DEFAULT_WEIGHT_GOAL, ...raw }
+  // v2: had single targetWeight field — migrate to direction-specific
+  if ('targetWeight' in raw && raw.targetWeight != null) {
+    if (goal.direction === 'gain') goal.gainTarget = raw.targetWeight
+    else goal.loseTarget = raw.targetWeight
+    delete (goal as Record<string, unknown>).targetWeight
+  }
+  return goal
+}
+
 export const usePreferencesStore = defineStore('preferences', {
   state: () => ({
     features: { ...DEFAULTS } as FeatureFlags,
+    weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
     _userId: null as string | null,
   }),
 
   actions: {
     _persist() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features }))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
       if (supabase && this._userId) {
         const features = { ...this.features }
+        const weightGoal = this.weightGoal
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
           supabase!
             .from('user_preferences')
             .upsert(
-              { user_id: userId, preferences: { features }, updated_at: new Date().toISOString() },
+              { user_id: userId, preferences: { features, weightGoal }, updated_at: new Date().toISOString() },
               { onConflict: 'user_id' }
             )
         )
@@ -49,6 +85,9 @@ export const usePreferencesStore = defineStore('preferences', {
         try {
           const parsed = JSON.parse(raw)
           if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
+          if (parsed.weightGoal) {
+            this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
+          }
         } catch { /* ignore corrupt data */ }
       }
 
@@ -62,7 +101,10 @@ export const usePreferencesStore = defineStore('preferences', {
             .single()
           if (data?.preferences?.features) {
             this.features = { ...DEFAULTS, ...data.preferences.features }
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features }))
+            if (data.preferences.weightGoal) {
+              this.weightGoal = _migrateWeightGoal(data.preferences.weightGoal)
+            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
           }
         } catch { /* table may not exist yet or no row */ }
       }
@@ -79,9 +121,46 @@ export const usePreferencesStore = defineStore('preferences', {
       this.features[featureId] = enabled
       this._persist()
     },
+
+    setWeightGoalDirection(direction: WeightGoalDirection) {
+      this.weightGoal.direction = direction
+      this._persist()
+    },
+
+    setTargetForDirection(target: number | null) {
+      const dir = this.weightGoal.direction
+      if (dir === 'lose') this.weightGoal.loseTarget = target
+      else if (dir === 'gain') this.weightGoal.gainTarget = target
+      this._persist()
+    },
+
+    setMaintainRange(min: number | null, max: number | null) {
+      this.weightGoal.maintainMin = min
+      this.weightGoal.maintainMax = max
+      this._persist()
+    },
+
+    clearAllGoalValues() {
+      this.weightGoal.loseTarget = null
+      this.weightGoal.gainTarget = null
+      this.weightGoal.maintainMin = null
+      this.weightGoal.maintainMax = null
+      this._persist()
+    },
   },
 
   getters: {
     enabledCount: (state): number => Object.values(state.features).filter(Boolean).length,
+    currentTarget: (state): number | null => {
+      const dir = state.weightGoal.direction
+      if (dir === 'lose') return state.weightGoal.loseTarget
+      if (dir === 'gain') return state.weightGoal.gainTarget
+      return null
+    },
+    hasAnyGoalValue: (state): boolean =>
+      state.weightGoal.loseTarget != null ||
+      state.weightGoal.gainTarget != null ||
+      state.weightGoal.maintainMin != null ||
+      state.weightGoal.maintainMax != null,
   },
 })

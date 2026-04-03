@@ -25,7 +25,7 @@
     <div v-if="periodStats && periodStats.count >= 2" class="bwStatsRow">
       <div class="bwStatCard">
         <span class="bwStatLabel">Change</span>
-        <span :class="['bwStatValue', periodStats.change! < 0 ? 'bwStatDown' : periodStats.change! > 0 ? 'bwStatUp' : '']">
+        <span :class="['bwStatValue', changeClass(periodStats.change!)]">
           {{ displayWeight(periodStats.change!) > 0 ? '+' : '' }}{{ displayWeight(periodStats.change!) }} {{ weightUnit }}
         </span>
       </div>
@@ -48,7 +48,11 @@
 
     <!-- Graph -->
     <div v-if="points.length >= 2" class="wtGraphWrap">
-      <p class="wtGraphTitle">Weight Over Time</p>
+      <div class="bwGraphHeader">
+        <p class="wtGraphTitle">Weight Over Time</p>
+        <span v-if="goalLine" class="bwGoalTag">{{ goalLine.direction === 'above' ? '↑' : goalLine.direction === 'below' ? '↓' : '→' }} Goal: {{ goalLine.label }} {{ weightUnit }}</span>
+        <span v-else-if="rangeBand" class="bwGoalTag">Range: {{ prefs.weightGoal.maintainMin != null ? displayWeight(prefs.weightGoal.maintainMin) : '–' }}–{{ prefs.weightGoal.maintainMax != null ? displayWeight(prefs.weightGoal.maintainMax) : '–' }} {{ weightUnit }}</span>
+      </div>
       <svg
         :viewBox="`0 0 ${W} ${H}`"
         class="wtGraphSvg"
@@ -67,21 +71,58 @@
           class="wtGGrid"
         />
 
-        <!-- Area fill under line -->
-        <polygon :points="areaPoints" class="wtGArea" />
+        <!-- Maintain range boundary lines -->
+        <line
+          v-if="rangeBand && rangeBand.topVisible"
+          :x1="PAD_L" :y1="rangeBand.y1"
+          :x2="W - PAD_R" :y2="rangeBand.y1"
+          class="bwGoalLine"
+        />
+        <line
+          v-if="rangeBand && rangeBand.bottomVisible"
+          :x1="PAD_L" :y1="rangeBand.y2"
+          :x2="W - PAD_R" :y2="rangeBand.y2"
+          class="bwGoalLine"
+        />
+
+        <!-- Goal line (lose/gain target) — only drawn when within chart range -->
+        <line
+          v-if="goalLine && goalLine.direction === 'in'"
+          :x1="PAD_L"
+          :y1="goalLine.y"
+          :x2="W - PAD_R"
+          :y2="goalLine.y"
+          class="bwGoalLine"
+        />
 
         <!-- Line -->
         <polyline :points="linePoints" class="wtGLine" />
 
-        <!-- Dots -->
-        <circle
-          v-for="p in points"
-          :key="'dot-' + p.date"
-          :cx="p.x"
-          :cy="p.y"
-          r="3.5"
-          class="wtGDot"
-        />
+        <!-- Dots: all dots on short periods, endpoints only on long -->
+        <template v-if="period <= 30">
+          <circle
+            v-for="p in points"
+            :key="'dot-' + p.date"
+            :cx="p.x"
+            :cy="p.y"
+            r="3"
+            class="bwEndpointDot"
+          />
+        </template>
+        <template v-else>
+          <circle
+            :cx="points[0].x"
+            :cy="points[0].y"
+            r="3"
+            class="bwEndpointDot"
+          />
+          <circle
+            :cx="points[points.length - 1].x"
+            :cy="points[points.length - 1].y"
+            r="3"
+            class="bwEndpointDot"
+          />
+        </template>
 
         <!-- Y-axis labels -->
         <text :x="PAD_L - 5" :y="PAD_T + 4" class="wtGYLabel" text-anchor="end">{{ displayWeight(maxVal) }} {{ weightUnit }}</text>
@@ -113,9 +154,7 @@
       <li
         v-for="entry in sortedEntries"
         :key="entry.id"
-        :class="['wtSetRow', {
-          bwEntryLow: entry.weight === store.minWeight,
-          bwEntryHigh: entry.weight === store.maxWeight,
+        :class="['wtSetRow', entryRowClass(entry), {
           wtSetRowActive: activeEntryId === entry.id,
         }]"
         role="button"
@@ -127,12 +166,12 @@
         @keydown.space.prevent="toggleEntryActions(entry.id)"
       >
         <span class="wtSetDate">{{ formatDateShort(entry.date) }}</span>
-        <span class="wtSetDetail">
+        <span :class="['wtSetDetail', weightClass(entry.weight)]">
           {{ displayWeight(entry.weight) }} {{ weightUnit }}
-          <span v-if="entry.weight === store.minWeight" class="bwEntryBadge bwEntryBadgeLow" title="All-time low">↓ Low</span>
-          <span v-else-if="entry.weight === store.maxWeight" class="bwEntryBadge bwEntryBadgeHigh" title="All-time high">↑ High</span>
+          <span v-if="entry.weight === store.minWeight" :class="['bwEntryBadge', isLowGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time low">↓ Low</span>
+          <span v-else-if="entry.weight === store.maxWeight" :class="['bwEntryBadge', isHighGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time high">↑ High</span>
         </span>
-        <span v-if="entryDelta(entry) != null" :class="['bwDelta', entryDelta(entry)! < 0 ? 'bwDeltaDown' : entryDelta(entry)! > 0 ? 'bwDeltaUp' : '']">
+        <span v-if="entryDelta(entry) != null" :class="['bwDelta', deltaClass(entry)]">
           {{ displayWeight(entryDelta(entry)!) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)!) }}
         </span>
         <div v-if="activeEntryId === entry.id" class="wtSetActions">
@@ -193,8 +232,10 @@ import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { usePreferencesStore } from '../stores/preferences'
 
 const store = useBodyweightStore()
+const prefs = usePreferencesStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
@@ -302,6 +343,69 @@ function entryDelta(entry: BodyweightEntry): number | null {
   return +(entry.weight - sorted[idx + 1].weight).toFixed(1)
 }
 
+function isWeightGood(currentWeight: number, delta: number): boolean | null {
+  const { direction, maintainMin, maintainMax } = prefs.weightGoal
+  if (direction === 'maintain') {
+    // Check against range bounds
+    if (maintainMin != null && currentWeight < maintainMin) return delta > 0 // below floor, gaining is good
+    if (maintainMax != null && currentWeight > maintainMax) return delta < 0 // above ceiling, losing is good
+    if (maintainMin == null && maintainMax == null) return null // no range set, neutral
+    return null // within range, neutral
+  }
+  if (delta === 0) return null
+  return direction === 'lose' ? delta < 0 : delta > 0
+}
+
+function deltaClass(entry: BodyweightEntry): string {
+  const delta = entryDelta(entry)
+  if (delta == null || delta === 0) return ''
+  const good = isWeightGood(entry.weight, delta)
+  if (good == null) return ''
+  return good ? 'bwDeltaGood' : 'bwDeltaBad'
+}
+
+function changeClass(change: number): string {
+  if (change === 0) return ''
+  const current = store.latestWeight
+  if (current == null) return ''
+  const good = isWeightGood(current, change)
+  if (good == null) return ''
+  return good ? 'bwStatGood' : 'bwStatBad'
+}
+
+// Whether hitting all-time low/high is good depends on goal direction
+const isLowGood = computed(() => {
+  const dir = prefs.weightGoal.direction
+  return dir === 'lose' // low is good when losing, bad when gaining
+})
+const isHighGood = computed(() => {
+  const dir = prefs.weightGoal.direction
+  return dir === 'gain' // high is good when gaining, bad when losing
+})
+
+function entryRowClass(entry: BodyweightEntry): string {
+  const dir = prefs.weightGoal.direction
+  if (entry.weight === store.minWeight) {
+    if (dir === 'maintain') return ''
+    return dir === 'lose' ? 'bwEntryGood' : 'bwEntryBad'
+  }
+  if (entry.weight === store.maxWeight) {
+    if (dir === 'maintain') return ''
+    return dir === 'gain' ? 'bwEntryGood' : 'bwEntryBad'
+  }
+  return ''
+}
+
+function weightClass(weight: number): string {
+  const { direction, maintainMin, maintainMax } = prefs.weightGoal
+  if (direction !== 'maintain') return ''
+  if (maintainMin == null && maintainMax == null) return ''
+  const belowMin = maintainMin != null && weight < maintainMin
+  const aboveMax = maintainMax != null && weight > maintainMax
+  if (belowMin || aboveMax) return 'bwWeightOutOfRange'
+  return ''
+}
+
 // ── Graph ────────────────────────────────────────────────────────
 const W = 320
 const H = 118
@@ -346,14 +450,44 @@ const periodStats = computed(() => {
   return { min, max, avg, change, count: entries.length }
 })
 
+// Collect all goal values that should be considered for chart range
+const goalValues = computed((): number[] => {
+  const { direction, loseTarget, gainTarget, maintainMin, maintainMax } = prefs.weightGoal
+  const vals: number[] = []
+  if (direction === 'lose' && loseTarget != null) vals.push(loseTarget)
+  if (direction === 'gain' && gainTarget != null) vals.push(gainTarget)
+  if (direction === 'maintain') {
+    if (maintainMin != null) vals.push(maintainMin)
+    if (maintainMax != null) vals.push(maintainMax)
+  }
+  return vals
+})
+
 const minVal = computed(() => {
   const vals = filteredDaily.value.map(d => d.weight)
-  return vals.length ? Math.min(...vals) : 0
+  if (!vals.length) return 0
+  const dataMin = Math.min(...vals)
+  const dataMax = Math.max(...vals)
+  const dataRange = dataMax - dataMin || 1
+  // Expand to include goals, but cap expansion to 1x the data range
+  let min = dataMin
+  for (const g of goalValues.value) {
+    if (g < dataMin) min = Math.max(g, dataMin - dataRange)
+  }
+  return min
 })
 
 const maxVal = computed(() => {
   const vals = filteredDaily.value.map(d => d.weight)
-  return vals.length ? Math.max(...vals) : 0
+  if (!vals.length) return 0
+  const dataMin = Math.min(...vals)
+  const dataMax = Math.max(...vals)
+  const dataRange = dataMax - dataMin || 1
+  let max = dataMax
+  for (const g of goalValues.value) {
+    if (g > dataMax) max = Math.min(g, dataMax + dataRange)
+  }
+  return max
 })
 
 const points = computed(() => {
@@ -382,18 +516,44 @@ const linePoints = computed(() =>
   points.value.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 )
 
-const areaPoints = computed(() => {
-  const pts = points.value
-  if (!pts.length) return ''
-  const bottom = PAD_T + chartH
-  return [
-    `${pts[0].x.toFixed(1)},${bottom}`,
-    ...pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`),
-    `${pts[pts.length - 1].x.toFixed(1)},${bottom}`
-  ].join(' ')
+const gridYs = computed(() => [PAD_T, PAD_T + chartH / 2, PAD_T + chartH])
+
+// Convert a weight value to a Y coordinate on the chart
+function weightToY(weight: number): number {
+  const range = maxVal.value - minVal.value
+  if (range <= 0) return PAD_T + chartH / 2
+  return PAD_T + chartH - ((weight - minVal.value) / range) * chartH
+}
+
+// Goal line for lose/gain modes — clamped to chart bounds
+const goalLine = computed((): { y: number; label: string; direction: 'above' | 'below' | 'in' } | null => {
+  const { direction, loseTarget, gainTarget } = prefs.weightGoal
+  const target = direction === 'lose' ? loseTarget : direction === 'gain' ? gainTarget : null
+  if (target == null) return null
+  const rawY = weightToY(target)
+  const label = `${displayWeight(target)}`
+  if (rawY < PAD_T) return { y: PAD_T, label, direction: 'above' }
+  if (rawY > PAD_T + chartH) return { y: PAD_T + chartH, label, direction: 'below' }
+  return { y: rawY, label, direction: 'in' }
 })
 
-const gridYs = computed(() => [PAD_T, PAD_T + chartH / 2, PAD_T + chartH])
+// Range boundary lines for maintain mode
+const rangeBand = computed((): { y1: number; y2: number; topVisible: boolean; bottomVisible: boolean } | null => {
+  const { direction, maintainMin, maintainMax } = prefs.weightGoal
+  if (direction !== 'maintain') return null
+  if (maintainMin == null && maintainMax == null) return null
+  const rawTop = maintainMax != null ? weightToY(maintainMax) : null
+  const rawBottom = maintainMin != null ? weightToY(maintainMin) : null
+  const topVisible = rawTop != null && rawTop >= PAD_T && rawTop <= PAD_T + chartH
+  const bottomVisible = rawBottom != null && rawBottom >= PAD_T && rawBottom <= PAD_T + chartH
+  if (!topVisible && !bottomVisible) return null
+  return {
+    y1: rawTop ?? PAD_T,
+    y2: rawBottom ?? PAD_T + chartH,
+    topVisible,
+    bottomVisible,
+  }
+})
 
 const visibleLabelIndices = computed(() => {
   const pts = points.value

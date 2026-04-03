@@ -87,6 +87,86 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.wtDetailTabs segmented control', () => {
+    const lines = getRuleLines('.wtDetailTabs')
+
+    it('has border-radius for pill shape', () => {
+      expect(lines.some(l => l.includes('border-radius'))).toBe(true)
+    })
+
+    it('uses bg-secondary background', () => {
+      expect(lines.some(l => l.includes('--bg-secondary'))).toBe(true)
+    })
+  })
+
+  describe('.wtSetCard date-grouped card', () => {
+    const lines = getRuleLines('.wtSetCard')
+
+    it('has border-radius for rounded corners', () => {
+      expect(lines.some(l => l.includes('border-radius'))).toBe(true)
+    })
+
+    it('has border for visibility in light themes', () => {
+      expect(lines.some(l => l.includes('border') && l.includes('--border'))).toBe(true)
+    })
+
+    it('uses bg-elevated background', () => {
+      expect(lines.some(l => l.includes('--bg-elevated'))).toBe(true)
+    })
+  })
+
+  describe('.wtGraphWrap chart card', () => {
+    const lines = getRuleLines('.wtGraphWrap')
+
+    it('has border-radius for rounded corners', () => {
+      expect(lines.some(l => l.includes('border-radius'))).toBe(true)
+    })
+
+    it('has border for visibility in light themes', () => {
+      expect(lines.some(l => l.includes('border') && l.includes('--border'))).toBe(true)
+    })
+  })
+
+  describe('.settingsScrollBody', () => {
+    const lines = getRuleLines('.settingsScrollBody')
+
+    it('exists as separate scroll container from settingsSheet', () => {
+      expect(lines.length).toBeGreaterThan(0)
+    })
+
+    it('has overflow-y: auto', () => {
+      expect(lines.some(l => l.includes('overflow-y') && l.includes('auto'))).toBe(true)
+    })
+  })
+
+  describe('.settingsSegment weight goal control', () => {
+    const lines = getRuleLines('.settingsSegment')
+
+    it('has border-radius for pill shape', () => {
+      expect(lines.some(l => l.includes('border-radius'))).toBe(true)
+    })
+  })
+
+  describe('.settingsInput', () => {
+    const lines = getRuleLines('.settingsInput')
+
+    it('has min-height for touch targets', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtSetBtn equal-width action buttons', () => {
+    const lines = getRuleLines('.wtSetBtn')
+
+    it('uses flex: 1 for equal widths', () => {
+      expect(lines.some(l => l.includes('flex') && l.includes('1'))).toBe(true)
+    })
+
+    it('has min-height for touch targets', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {
     // Valid spacing values: 0, 1, 2, 4, 8, 12, 16, 24, 32, and multiples of 8 above 32
     const SCALE = new Set([0, 1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128])

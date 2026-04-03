@@ -7,6 +7,22 @@ const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+import { reactive } from 'vue'
+import type { WeightGoalConfig } from '../../stores/preferences'
+
+const mockWeightGoal = reactive<WeightGoalConfig>({
+  direction: 'lose',
+  loseTarget: null,
+  gainTarget: null,
+  maintainMin: null,
+  maintainMax: null,
+})
+
+vi.mock('../../stores/preferences', () => ({
+  usePreferencesStore: () => ({
+    weightGoal: mockWeightGoal,
+  }),
+}))
 
 // Reactive mock store
 let entries: BodyweightEntry[] = []
@@ -52,6 +68,11 @@ describe('BodyweightTracker', () => {
   beforeEach(() => {
     entries = []
     localStorageMock.clear()
+    mockWeightGoal.direction = 'lose'
+    mockWeightGoal.loseTarget = null
+    mockWeightGoal.gainTarget = null
+    mockWeightGoal.maintainMin = null
+    mockWeightGoal.maintainMax = null
   })
 
   describe('empty state', () => {
@@ -151,24 +172,50 @@ describe('BodyweightTracker', () => {
       expect(dots.length).toBeGreaterThanOrEqual(2)
     })
 
-    it('renders polyline and polygon for chart line and area', () => {
+    it('renders polyline for chart line', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('polyline').exists()).toBe(true)
-      expect(wrapper.find('polygon').exists()).toBe(true)
     })
 
     it('highlights all-time low with badge', () => {
       const wrapper = mountTracker()
-      const lowBadge = wrapper.find('.bwEntryBadgeLow')
+      const lowBadge = wrapper.find('.bwEntryBadge')
       expect(lowBadge.exists()).toBe(true)
       expect(lowBadge.text()).toContain('Low')
     })
 
     it('highlights all-time high with badge', () => {
       const wrapper = mountTracker()
-      const highBadge = wrapper.find('.bwEntryBadgeHigh')
-      expect(highBadge.exists()).toBe(true)
-      expect(highBadge.text()).toContain('High')
+      const badges = wrapper.findAll('.bwEntryBadge')
+      const highBadge = badges.find(b => b.text().includes('High'))
+      expect(highBadge).toBeDefined()
+    })
+
+    it('low badge is green when losing, red when gaining', () => {
+      mockWeightGoal.direction = 'lose'
+      let wrapper = mountTracker()
+      expect(wrapper.find('.bwEntryBadgeGood').text()).toContain('Low')
+
+      mockWeightGoal.direction = 'gain'
+      wrapper = mountTracker()
+      expect(wrapper.find('.bwEntryBadgeBad').text()).toContain('Low')
+    })
+
+    it('high badge is red when losing, green when gaining', () => {
+      mockWeightGoal.direction = 'lose'
+      let wrapper = mountTracker()
+      expect(wrapper.find('.bwEntryBadgeBad').text()).toContain('High')
+
+      mockWeightGoal.direction = 'gain'
+      wrapper = mountTracker()
+      expect(wrapper.find('.bwEntryBadgeGood').text()).toContain('High')
+    })
+
+    it('no row highlighting in maintain mode', () => {
+      mockWeightGoal.direction = 'maintain'
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwEntryGood').exists()).toBe(false)
+      expect(wrapper.find('.bwEntryBad').exists()).toBe(false)
     })
 
     it('shows delta from previous entry', () => {
@@ -327,6 +374,263 @@ describe('BodyweightTracker', () => {
       await row.trigger('keydown.space')
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.wtSetActions').exists()).toBe(true)
+    })
+  })
+
+  describe('weight goal delta coloring', () => {
+    beforeEach(() => {
+      // Three entries: 175 → 173 → 170 (losing trend)
+      entries = [
+        makeEntry('e-1', 175, '2026-03-01'),
+        makeEntry('e-2', 173, '2026-03-15'),
+        makeEntry('e-3', 170, '2026-03-30'),
+      ]
+    })
+
+    it('losing goal: weight drop is green (bwDeltaGood)', () => {
+      mockWeightGoal.direction = 'lose'
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      // Latest entry (170) is -3 from previous (173) → good for losing
+      const latestDelta = deltas[0]
+      expect(latestDelta.classes()).toContain('bwDeltaGood')
+    })
+
+    it('gaining goal: weight drop is red (bwDeltaBad)', () => {
+      mockWeightGoal.direction = 'gain'
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      const latestDelta = deltas[0]
+      expect(latestDelta.classes()).toContain('bwDeltaBad')
+    })
+
+    it('gaining goal: weight increase is green', () => {
+      // Reverse the trend: 170 → 173 → 175 (gaining)
+      entries = [
+        makeEntry('e-1', 170, '2026-03-01'),
+        makeEntry('e-2', 173, '2026-03-15'),
+        makeEntry('e-3', 175, '2026-03-30'),
+      ]
+      mockWeightGoal.direction = 'gain'
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      expect(deltas[0].classes()).toContain('bwDeltaGood')
+    })
+
+    it('maintain with no range: deltas are neutral', () => {
+      mockWeightGoal.direction = 'maintain'
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      expect(deltas[0].classes()).not.toContain('bwDeltaGood')
+      expect(deltas[0].classes()).not.toContain('bwDeltaBad')
+    })
+
+    it('maintain with max only: under max is neutral', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMax = 180
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      // 170 is under 180 max, delta is neutral
+      expect(deltas[0].classes()).not.toContain('bwDeltaBad')
+    })
+
+    it('maintain with max only: over max, losing is good', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMax = 165 // all entries are above this
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      // 170 is above 165 max, and delta is -3 (losing) → good
+      expect(deltas[0].classes()).toContain('bwDeltaGood')
+    })
+
+    it('maintain with min only: above min is neutral', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 160
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      // 170 is above 160 min, delta is neutral
+      expect(deltas[0].classes()).not.toContain('bwDeltaBad')
+    })
+
+    it('maintain with min only: below min, gaining is good', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 180 // all entries below this
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      // 170 is below 180 min, and delta is -3 (losing) → bad
+      expect(deltas[0].classes()).toContain('bwDeltaBad')
+    })
+
+    it('maintain with both bounds: within range is neutral', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 160
+      mockWeightGoal.maintainMax = 180
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      // 170 is within 160-180, neutral
+      expect(deltas[0].classes()).not.toContain('bwDeltaGood')
+      expect(deltas[0].classes()).not.toContain('bwDeltaBad')
+    })
+  })
+
+  describe('maintain mode weight highlighting', () => {
+    beforeEach(() => {
+      entries = [
+        makeEntry('e-1', 175, '2026-03-01'),
+        makeEntry('e-2', 173, '2026-03-15'),
+        makeEntry('e-3', 170, '2026-03-30'),
+      ]
+    })
+
+    it('marks weight as out of range when above max', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMax = 172
+      const wrapper = mountTracker()
+      const outOfRange = wrapper.findAll('.bwWeightOutOfRange')
+      // 175 and 173 are above 172 max
+      expect(outOfRange.length).toBe(2)
+    })
+
+    it('marks weight as out of range when below min', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 172
+      const wrapper = mountTracker()
+      const outOfRange = wrapper.findAll('.bwWeightOutOfRange')
+      // 170 is below 172 min
+      expect(outOfRange.length).toBe(1)
+    })
+
+    it('no out-of-range marking when within bounds', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 160
+      mockWeightGoal.maintainMax = 180
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwWeightOutOfRange').exists()).toBe(false)
+    })
+
+    it('no weight highlighting outside maintain mode', () => {
+      mockWeightGoal.direction = 'lose'
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwWeightOutOfRange').exists()).toBe(false)
+    })
+  })
+
+  describe('entry row highlighting', () => {
+    beforeEach(() => {
+      entries = [
+        makeEntry('e-1', 175, '2026-03-01'),
+        makeEntry('e-2', 173, '2026-03-15'),
+        makeEntry('e-3', 170, '2026-03-30'),
+      ]
+    })
+
+    it('losing: low entry gets good row class, high gets bad', () => {
+      mockWeightGoal.direction = 'lose'
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwEntryGood').exists()).toBe(true)
+      expect(wrapper.find('.bwEntryBad').exists()).toBe(true)
+    })
+
+    it('gaining: high entry gets good row class, low gets bad', () => {
+      mockWeightGoal.direction = 'gain'
+      const wrapper = mountTracker()
+      const goodRow = wrapper.find('.bwEntryGood')
+      const badRow = wrapper.find('.bwEntryBad')
+      expect(goodRow.exists()).toBe(true)
+      expect(badRow.exists()).toBe(true)
+    })
+  })
+
+  describe('chart goal indicators', () => {
+    beforeEach(() => {
+      entries = [
+        makeEntry('e-1', 175, '2026-03-01'),
+        makeEntry('e-2', 173, '2026-03-15'),
+        makeEntry('e-3', 170, '2026-03-30'),
+      ]
+    })
+
+    it('shows goal tag when lose target is set', () => {
+      mockWeightGoal.direction = 'lose'
+      mockWeightGoal.loseTarget = 165
+      const wrapper = mountTracker()
+      const tag = wrapper.find('.bwGoalTag')
+      expect(tag.exists()).toBe(true)
+      expect(tag.text()).toContain('Goal')
+    })
+
+    it('shows goal tag when gain target is set', () => {
+      mockWeightGoal.direction = 'gain'
+      mockWeightGoal.gainTarget = 185
+      const wrapper = mountTracker()
+      const tag = wrapper.find('.bwGoalTag')
+      expect(tag.exists()).toBe(true)
+      expect(tag.text()).toContain('Goal')
+    })
+
+    it('shows range tag in maintain mode', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 168
+      mockWeightGoal.maintainMax = 175
+      const wrapper = mountTracker()
+      const tag = wrapper.find('.bwGoalTag')
+      expect(tag.exists()).toBe(true)
+      expect(tag.text()).toContain('Range')
+    })
+
+    it('no goal tag when no target is set', () => {
+      mockWeightGoal.direction = 'lose'
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwGoalTag').exists()).toBe(false)
+    })
+
+    it('draws goal line on chart when target is within data range', () => {
+      mockWeightGoal.direction = 'lose'
+      mockWeightGoal.loseTarget = 172 // within 170-175 data range
+      const wrapper = mountTracker()
+      const goalLines = wrapper.findAll('.bwGoalLine')
+      expect(goalLines.length).toBe(1)
+    })
+
+    it('draws range boundary lines in maintain mode', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 168
+      mockWeightGoal.maintainMax = 176
+      const wrapper = mountTracker()
+      const goalLines = wrapper.findAll('.bwGoalLine')
+      expect(goalLines.length).toBe(2)
+    })
+  })
+
+  describe('chart dot rendering', () => {
+    it('shows dots for each data point on 30d view', () => {
+      // Use dates within 30d of "now" so they're all visible
+      const now = new Date()
+      entries = [
+        makeEntry('e-1', 175, new Date(now.getTime() - 20 * 86400000).toISOString().slice(0, 10)),
+        makeEntry('e-2', 173, new Date(now.getTime() - 10 * 86400000).toISOString().slice(0, 10)),
+        makeEntry('e-3', 170, new Date(now.getTime() - 2 * 86400000).toISOString().slice(0, 10)),
+      ]
+      const wrapper = mountTracker()
+      const dots = wrapper.findAll('.bwEndpointDot')
+      expect(dots.length).toBe(3)
+    })
+
+    it('shows only 2 endpoint dots on 90d view', async () => {
+      const now = new Date()
+      entries = [
+        makeEntry('e-1', 175, new Date(now.getTime() - 80 * 86400000).toISOString().slice(0, 10)),
+        makeEntry('e-2', 173, new Date(now.getTime() - 40 * 86400000).toISOString().slice(0, 10)),
+        makeEntry('e-3', 170, new Date(now.getTime() - 2 * 86400000).toISOString().slice(0, 10)),
+      ]
+      const wrapper = mountTracker()
+      // Switch to 90d
+      const btns = wrapper.findAll('.bwPeriodBtn')
+      const btn90 = btns.find(b => b.text() === '90d')!
+      await btn90.trigger('click')
+      await wrapper.vm.$nextTick()
+      const dots = wrapper.findAll('.bwEndpointDot')
+      expect(dots.length).toBe(2)
     })
   })
 })
