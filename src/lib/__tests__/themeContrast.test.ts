@@ -125,12 +125,12 @@ const themes: Record<string, ThemeColors> = {
     textPrimary: '#1a1a1a', textSecondary: '#606060', textMuted: '#888888',
     accent: '#505050', textOnAccent: '#ffffff', danger: '#dc2626', success: '#15803d',
   },
-  'moon-dark': {
+  'midnight-dark': {
     bgPrimary: '#080c1a', bgSecondary: '#101428', bgElevated: '#181c34',
     textPrimary: '#d8ddf0', textSecondary: '#8088b0', textMuted: '#606888',
     accent: '#8898d0', textOnAccent: '#080c1a', danger: '#f87171', success: '#34d399',
   },
-  'moon-light': {
+  'midnight-light': {
     bgPrimary: '#eaecf5', bgSecondary: '#f5f6fc', bgElevated: '#ffffff',
     textPrimary: '#0a1020', textSecondary: '#484870', textMuted: '#686888',
     accent: '#5060a0', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
@@ -145,12 +145,12 @@ const themes: Record<string, ThemeColors> = {
     textPrimary: '#f0e4f4', textSecondary: '#a080c0', textMuted: '#806898',
     accent: '#f472b6', textOnAccent: '#1a0818', danger: '#f87171', success: '#34d399',
   },
-  'oak-dark': {
+  'earth-dark': {
     bgPrimary: '#141010', bgSecondary: '#1c1614', bgElevated: '#241c18',
     textPrimary: '#e8dcd0', textSecondary: '#a08878', textMuted: '#7a6858',
     accent: '#906040', textOnAccent: '#ffffff', danger: '#ef4444', success: '#84cc16',
   },
-  'oak-light': {
+  'earth-light': {
     bgPrimary: '#f5efe8', bgSecondary: '#ffffff', bgElevated: '#ffffff',
     textPrimary: '#1a1210', textSecondary: '#6a5444', textMuted: '#8a7464',
     accent: '#7a5438', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',

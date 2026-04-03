@@ -64,8 +64,29 @@
             <div class="settingsScrollBody">
 
             <div class="settingsGroup">
-              <div class="settingsHeader" id="settings-title">Appearance</div>
-              <div class="settingsThemeGrid">
+              <div class="settingsHeader" id="settings-title">
+                Appearance
+                <button v-if="isDev" class="settingsDevToggle" @click="useCollapsedPicker = !useCollapsedPicker">
+                  {{ useCollapsedPicker ? 'collapsed' : 'grid' }}
+                </button>
+              </div>
+
+              <!-- Collapsed picker: single dot that expands -->
+              <div v-if="useCollapsedPicker && !themeGridExpanded" class="settingsRow">
+                <span class="settingsLabel">Theme</span>
+                <button class="themeCollapsedBtn" @click="themeGridExpanded = true" aria-label="Change theme">
+                  <span
+                    class="themePreviewDot themeCollapsedDot"
+                    :style="{
+                      background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[currentTheme as ThemeId]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[currentTheme as ThemeId]?.[resolvedMode]?.bg + ')',
+                    }"
+                  ></span>
+                  <span class="themeCollapsedLabel">{{ THEMES.find(t => t.id === currentTheme)?.label }}</span>
+                  <span class="themeCollapsedChevron">›</span>
+                </button>
+              </div>
+
+              <div v-if="!useCollapsedPicker || themeGridExpanded" class="settingsThemeGrid">
                 <button
                   v-for="t in THEMES"
                   :key="t.id"
@@ -87,10 +108,10 @@
                     <svg v-else-if="t.icon === 'eternal'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z"/></svg>
                     <svg v-else-if="t.icon === 'amethyst'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2L4 9l8 13 8-13-8-7zm0 3.5L7.5 9.5 12 17l4.5-7.5L12 5.5z"/></svg>
                     <svg v-else-if="t.icon === 'sun'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                    <svg v-else-if="t.icon === 'moon'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    <svg v-else-if="t.icon === 'midnight'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                     <svg v-else-if="t.icon === 'love'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                     <svg v-else-if="t.icon === 'pearl'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><circle cx="12" cy="12" r="8" opacity="0.3"/><circle cx="12" cy="12" r="6"/><circle cx="9.5" cy="9.5" r="2" opacity="0.4" fill="white"/></svg>
-                    <svg v-else-if="t.icon === 'oak'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2C9 2 6.5 4 5.5 7c-1.5.5-2.5 2-2.5 3.5C3 12.5 4.5 14 6 14.5c.5 2 2 3.5 4 4v2.5c0 .6.4 1 1 1h2c.6 0 1-.4 1-1v-2.5c2-.5 3.5-2 4-4 1.5-.5 3-2 3-3.5 0-1.5-1-3-2.5-3.5C17.5 4 15 2 12 2z"/></svg>
+                    <svg v-else-if="t.icon === 'earth'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2C9 2 6.5 4 5.5 7c-1.5.5-2.5 2-2.5 3.5C3 12.5 4.5 14 6 14.5c.5 2 2 3.5 4 4v2.5c0 .6.4 1 1 1h2c.6 0 1-.4 1-1v-2.5c2-.5 3.5-2 4-4 1.5-.5 3-2 3-3.5 0-1.5-1-3-2.5-3.5C17.5 4 15 2 12 2z"/></svg>
                     <svg v-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </span>
                   <span class="themePreviewLabel">{{ t.label }}</span>
@@ -439,6 +460,7 @@ const BodyweightTracker = defineAsyncComponent({
   delay: 100,
 })
 import { useTheme } from './composables/useTheme'
+import type { ThemeId } from './composables/useTheme'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
@@ -458,6 +480,9 @@ const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
 
 const settingsOpen = ref(false)
+const isDev = import.meta.env.DEV
+const useCollapsedPicker = ref(false)
+const themeGridExpanded = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)
 const settingsHandleEl = ref<HTMLElement | null>(null)
 const legalView = ref<'privacy' | 'terms' | null>(null)
@@ -655,6 +680,7 @@ function switchTab(tabId: string) {
 function selectTheme(id: string) {
   currentTheme.value = id
   logEvent('theme_change', { theme: id })
+  if (useCollapsedPicker.value) themeGridExpanded.value = false
 }
 
 function setMode(mode: 'light' | 'dark' | 'auto') {

@@ -47,9 +47,9 @@ describe('useTheme', () => {
       expect(ids).toContain('eternal')
       expect(ids).toContain('amethyst')
       expect(ids).toContain('pearl')
-      expect(ids).toContain('moon')
+      expect(ids).toContain('midnight')
       expect(ids).toContain('love')
-      expect(ids).toContain('oak')
+      expect(ids).toContain('earth')
     })
 
     it('provides theme previews with dark and light variants', () => {

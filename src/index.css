@@ -453,7 +453,7 @@
 
 /* ── Moon (new — silver / indigo) ────────────────────────────────── */
 
-[data-theme="moon"][data-mode="dark"] {
+[data-theme="midnight"][data-mode="dark"] {
   --bg-primary:      #080c1a;
   --bg-secondary:    #101428;
   --bg-elevated:     #181c34;
@@ -484,7 +484,7 @@
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(140, 150, 220, 0.05) 0%, transparent 65%);
 }
 
-[data-theme="moon"][data-mode="light"] {
+[data-theme="midnight"][data-mode="light"] {
   --bg-primary:      #eaecf5;
   --bg-secondary:    #f5f6fc;
   --bg-elevated:     #ffffff;
@@ -581,7 +581,7 @@
 }
 
 /* Oak — warm espresso brown, leather tones */
-[data-theme="oak"][data-mode="dark"] {
+[data-theme="earth"][data-mode="dark"] {
   --bg-primary:      #141010;
   --bg-secondary:    #1c1614;
   --bg-elevated:     #241c18;
@@ -612,7 +612,7 @@
                      radial-gradient(ellipse 50% 40% at 80% 80%, rgba(120, 80, 50, 0.05) 0%, transparent 65%);
 }
 
-[data-theme="oak"][data-mode="light"] {
+[data-theme="earth"][data-mode="light"] {
   --bg-primary:      #f5efe8;
   --bg-secondary:    #ffffff;
   --bg-elevated:     #ffffff;
@@ -916,7 +916,7 @@ html.modal-open .tabContent {
 
 .settingsThemeGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   padding: 4px 16px 12px;
 }
@@ -954,6 +954,48 @@ html.modal-open .tabContent {
 .themePreview.active .themePreviewDot {
   border-color: var(--accent);
   transform: scale(1.1);
+}
+
+.themeCollapsedBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  min-height: 44px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.themeCollapsedDot {
+  width: 36px;
+  height: 36px;
+}
+
+.themeCollapsedLabel {
+  font-size: var(--font-subhead);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.themeCollapsedChevron {
+  font-size: var(--font-title3);
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.settingsDevToggle {
+  font-size: var(--font-caption2);
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--accent);
+  background: none;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  margin-left: 8px;
 }
 
 .themePreviewCheck {
