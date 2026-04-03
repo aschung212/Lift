@@ -259,7 +259,7 @@
 
 /* ── Void (black / silver) ───────────────────────────────────────── */
 
-[data-theme="void"][data-mode="dark"] {
+[data-theme="eternal"][data-mode="dark"] {
   --bg-primary:      #0c0c0c;
   --bg-secondary:    #161614;
   --bg-elevated:     #1e1e1a;
@@ -291,7 +291,7 @@
                      radial-gradient(ellipse 55% 45% at 85% 80%, rgba(200, 200, 200, 0.03) 0%, transparent 65%);
 }
 
-[data-theme="void"][data-mode="light"] {
+[data-theme="eternal"][data-mode="light"] {
   --bg-primary:      #f8f6f2;
   --bg-secondary:    #ffffff;
   --bg-elevated:     #ffffff;

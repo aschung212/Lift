@@ -1,6 +1,6 @@
 import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 
-export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'void' | 'amethyst' | 'sun' | 'moon' | 'love'
+export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'eternal' | 'amethyst' | 'sun' | 'moon' | 'love'
 export type ColorMode = 'light' | 'dark' | 'auto'
 export type WeightUnit = 'lbs' | 'kg'
 
@@ -22,7 +22,7 @@ export const THEMES: ThemeOption[] = [
   { id: 'water',    label: 'Water',    icon: 'water' },
   { id: 'luck',     label: 'Luck',     icon: 'luck' },
   { id: 'air',      label: 'Air',      icon: 'air' },
-  { id: 'void',    label: 'Void',     icon: 'void' },
+  { id: 'eternal',    label: 'Eternal',     icon: 'eternal' },
   { id: 'amethyst', label: 'Amethyst', icon: 'amethyst' },
   { id: 'sun',      label: 'Sun',      icon: 'sun' },
   { id: 'moon',     label: 'Moon',     icon: 'moon' },
@@ -34,7 +34,7 @@ export const THEME_PREVIEWS: Record<ThemeId, { dark: ThemePreviewColors; light: 
   water:    { dark: { bg: '#0a2848', card: '#182030', accent: '#3388ff', text: '#e0e8f8' }, light: { bg: '#103060', card: '#ffffff', accent: '#60a5fa', text: '#1a1a2e' } },
   luck:    { dark: { bg: '#1a3a2a', card: '#14221c', accent: '#d4af37', text: '#e8f0ec' }, light: { bg: '#2a6848', card: '#f8faf9', accent: '#c0c8c4', text: '#0a1a14' } },
   air:      { dark: { bg: '#2a3a48', card: '#1a2430', accent: '#a8c8e8', text: '#e8f0f8' }, light: { bg: '#88a8c0', card: '#ffffff', accent: '#e8f4ff', text: '#1a2030' } },
-  void:     { dark: { bg: '#1a1a14', card: '#0c0c0c', accent: '#c8a84c', text: '#eeeeee' }, light: { bg: '#8a7020', card: '#ffffff', accent: '#f8f0d0', text: '#1a1810' } },
+  eternal:     { dark: { bg: '#1a1a14', card: '#0c0c0c', accent: '#c8a84c', text: '#eeeeee' }, light: { bg: '#8a7020', card: '#ffffff', accent: '#f8f0d0', text: '#1a1810' } },
   amethyst: { dark: { bg: '#2a2050', card: '#1c1c28', accent: '#8b5cf6', text: '#e4e4f4' }, light: { bg: '#3a2870', card: '#ffffff', accent: '#a78bfa', text: '#18182a' } },
   sun:      { dark: { bg: '#3a2a08', card: '#1c1814', accent: '#fbbf24', text: '#f0e8d8' }, light: { bg: '#8a6a10', card: '#ffffff', accent: '#fbbf24', text: '#201a10' } },
   moon:     { dark: { bg: '#0a1028', card: '#141830', accent: '#8090c0', text: '#d0d8f0' }, light: { bg: '#182048', card: '#ffffff', accent: '#a0b0e0', text: '#0a1020' } },
@@ -46,7 +46,7 @@ const THEME_META_COLORS: Record<ThemeId, { dark: string; light: string }> = {
   water:    { dark: '#0e1420', light: '#dde4f5' },
   luck:    { dark: '#0a1210', light: '#f0f5f2' },
   air:      { dark: '#101820', light: '#f0f6fa' },
-  void:     { dark: '#0c0c0c', light: '#f8f6f2' },
+  eternal:     { dark: '#0c0c0c', light: '#f8f6f2' },
   amethyst: { dark: '#111118', light: '#ededf5' },
   sun:      { dark: '#141008', light: '#faf5e8' },
   moon:     { dark: '#080c1a', light: '#eaecf5' },
@@ -63,7 +63,8 @@ const THEME_MIGRATION: Record<string, ThemeId> = {
   tina:     'love',
   earth:    'luck',
   bloom:    'love',
-  metal:    'void',
+  metal:    'eternal',
+  void:        'eternal',
 }
 
 function applyTheme(id: string): void {
@@ -89,7 +90,7 @@ function applyMode(preference: string): void {
 function updateMetaColor(): void {
   const meta = document.querySelector('meta[name="theme-color"]')
   if (!meta) return
-  const themeId = (document.documentElement.getAttribute('data-theme') || 'void') as ThemeId
+  const themeId = (document.documentElement.getAttribute('data-theme') || 'eternal') as ThemeId
   const mode = (document.documentElement.getAttribute('data-mode') || 'dark') as 'dark' | 'light'
   const colors = THEME_META_COLORS[themeId] ?? THEME_META_COLORS.fire
   meta.setAttribute('content', colors[mode] ?? colors.dark)
@@ -101,13 +102,13 @@ function applyGlass(enabled: boolean): void {
 }
 
 // Apply immediately at import time to prevent flash
-let storedId = localStorage.getItem('app-theme') || 'void'
+let storedId = localStorage.getItem('app-theme') || 'eternal'
 // Migrate old theme names
 if (storedId in THEME_MIGRATION) {
   storedId = THEME_MIGRATION[storedId]
   localStorage.setItem('app-theme', storedId)
 }
-const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'void'
+const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'eternal'
 const storedMode = localStorage.getItem('app-mode') || 'dark'
 const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
 applyTheme(validId)

@@ -27,7 +27,7 @@ describe('useTheme', () => {
 
   describe('theme switching', () => {
     it('defaults to metal theme', () => {
-      expect(theme.currentTheme.value).toBe('void')
+      expect(theme.currentTheme.value).toBe('eternal')
     })
 
     it('switches theme when currentTheme is updated', async () => {
@@ -44,7 +44,7 @@ describe('useTheme', () => {
       expect(ids).toContain('water')
       expect(ids).toContain('luck')
       expect(ids).toContain('air')
-      expect(ids).toContain('void')
+      expect(ids).toContain('eternal')
       expect(ids).toContain('amethyst')
       expect(ids).toContain('sun')
       expect(ids).toContain('moon')

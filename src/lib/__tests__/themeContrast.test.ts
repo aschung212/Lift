@@ -95,12 +95,12 @@ const themes: Record<string, ThemeColors> = {
     textPrimary: '#1a2030', textSecondary: '#506878', textMuted: '#708090',
     accent: '#2870a0', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
   },
-  'void-dark': {
+  'eternal-dark': {
     bgPrimary: '#0c0c0c', bgSecondary: '#161614', bgElevated: '#1e1e1a',
     textPrimary: '#eeeeee', textSecondary: '#a09878', textMuted: '#807860',
     accent: '#c8a84c', textOnAccent: '#0c0c0c', danger: '#f87171', success: '#34d399',
   },
-  'void-light': {
+  'eternal-light': {
     bgPrimary: '#f8f6f2', bgSecondary: '#ffffff', bgElevated: '#ffffff',
     textPrimary: '#1a1810', textSecondary: '#6a6050', textMuted: '#8a8070',
     accent: '#8a7020', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',

@@ -40,7 +40,7 @@ export function mockTheme(overrides: Record<string, unknown> = {}) {
       displayWeight: (w: number) => Math.round(w),
       toLbs: (w: number) => w,
       restTimerEnabled: ref(false),
-      currentTheme: ref('void'),
+      currentTheme: ref('eternal'),
       THEMES: [],
       THEME_PREVIEWS: {},
       colorMode: ref('dark'),
