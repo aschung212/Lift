@@ -1,15 +1,10 @@
 <template>
   <div class="wtCard bwCard">
-    <div class="wtCardHeader">
-      <h2 class="wtTitle">Body Weight</h2>
-      <button class="wtLogBtn" @click="openModal()">+ Log</button>
-    </div>
-
-    <!-- Current weight summary -->
-    <div v-if="store.latestWeight" class="bwSummary">
-      <span class="bwCurrentLabel">Current</span>
-      <span class="bwCurrentValue">{{ displayWeight(store.latestWeight) }} {{ weightUnit }}</span>
+    <!-- Hero header: current weight + goal hint + log button -->
+    <div class="bwHero">
+      <span class="bwCurrentValue">{{ store.latestWeight ? `${displayWeight(store.latestWeight)} ${weightUnit}` : 'No entries' }}</span>
       <span v-if="goalProgressText" class="bwGoalProgressHint">{{ goalProgressText }}</span>
+      <button class="wtLogBtn" @click="openModal()">+ Log</button>
     </div>
 
     <!-- Period selector -->
@@ -147,7 +142,7 @@
     </p>
 
     <p v-else-if="store.entries.length === 0" class="wtEmpty">
-      No entries yet. Hit "+ Log" to record your body weight.
+      Hit "+ Log" to record your first weigh-in.
     </p>
 
     <!-- Entries list (newest first) -->
@@ -393,13 +388,13 @@ const goalProgressText = computed((): string => {
   const { direction, loseTarget, gainTarget, maintainMin, maintainMax } = prefs.weightGoal
   if (direction === 'lose' && loseTarget != null) {
     const diff = displayWeight(Math.abs(current - loseTarget))
-    if (current <= loseTarget) return `At goal weight`
-    return `${diff} ${weightUnit.value} to goal`
+    if (current <= loseTarget) return `✓ At goal`
+    return `↓ ${diff} ${weightUnit.value} to goal`
   }
   if (direction === 'gain' && gainTarget != null) {
     const diff = displayWeight(Math.abs(gainTarget - current))
-    if (current >= gainTarget) return `At goal weight`
-    return `${diff} ${weightUnit.value} to goal`
+    if (current >= gainTarget) return `✓ At goal`
+    return `↑ ${diff} ${weightUnit.value} to goal`
   }
   if (direction === 'maintain') {
     if (maintainMin != null && current < maintainMin) {

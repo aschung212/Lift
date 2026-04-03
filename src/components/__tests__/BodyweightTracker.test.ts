@@ -78,7 +78,7 @@ describe('BodyweightTracker', () => {
   describe('empty state', () => {
     it('shows empty message when no entries', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtEmpty').text()).toContain('No entries yet')
+      expect(wrapper.find('.wtEmpty').text()).toContain('Log')
     })
 
     it('renders "+ Log" button', () => {
@@ -631,6 +631,101 @@ describe('BodyweightTracker', () => {
       await wrapper.vm.$nextTick()
       const dots = wrapper.findAll('.bwEndpointDot')
       expect(dots.length).toBe(2)
+    })
+  })
+
+  describe('goal progress hint', () => {
+    beforeEach(() => {
+      entries = [
+        makeEntry('e-1', 175, '2026-03-01'),
+        makeEntry('e-2', 173, '2026-03-15'),
+        makeEntry('e-3', 170, '2026-03-30'),
+      ]
+    })
+
+    it('shows down arrow and distance when losing', () => {
+      mockWeightGoal.direction = 'lose'
+      mockWeightGoal.loseTarget = 165
+      const wrapper = mountTracker()
+      const hint = wrapper.find('.bwGoalProgressHint')
+      expect(hint.exists()).toBe(true)
+      expect(hint.text()).toContain('↓')
+      expect(hint.text()).toContain('to goal')
+    })
+
+    it('shows up arrow and distance when gaining', () => {
+      mockWeightGoal.direction = 'gain'
+      mockWeightGoal.gainTarget = 185
+      const wrapper = mountTracker()
+      const hint = wrapper.find('.bwGoalProgressHint')
+      expect(hint.text()).toContain('↑')
+      expect(hint.text()).toContain('to goal')
+    })
+
+    it('shows checkmark when at or past goal (losing)', () => {
+      mockWeightGoal.direction = 'lose'
+      mockWeightGoal.loseTarget = 175 // latest is 170, already past goal
+      const wrapper = mountTracker()
+      const hint = wrapper.find('.bwGoalProgressHint')
+      expect(hint.text()).toContain('✓')
+      expect(hint.text()).toContain('At goal')
+    })
+
+    it('shows checkmark when at or past goal (gaining)', () => {
+      mockWeightGoal.direction = 'gain'
+      mockWeightGoal.gainTarget = 165 // latest is 170, already past goal
+      const wrapper = mountTracker()
+      const hint = wrapper.find('.bwGoalProgressHint')
+      expect(hint.text()).toContain('✓')
+      expect(hint.text()).toContain('At goal')
+    })
+
+    it('shows within range for maintain mode', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 160
+      mockWeightGoal.maintainMax = 180
+      const wrapper = mountTracker()
+      const hint = wrapper.find('.bwGoalProgressHint')
+      expect(hint.text()).toContain('Within range')
+    })
+
+    it('shows below range for maintain mode', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 175 // latest 170 is below
+      const wrapper = mountTracker()
+      const hint = wrapper.find('.bwGoalProgressHint')
+      expect(hint.text()).toContain('below range')
+    })
+
+    it('shows above range for maintain mode', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMax = 165 // latest 170 is above
+      const wrapper = mountTracker()
+      const hint = wrapper.find('.bwGoalProgressHint')
+      expect(hint.text()).toContain('above range')
+    })
+
+    it('no hint when no target is set', () => {
+      mockWeightGoal.direction = 'lose'
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwGoalProgressHint').exists()).toBe(false)
+    })
+  })
+
+  describe('hero layout', () => {
+    it('shows current weight as hero without title row', () => {
+      entries = [makeEntry('e-1', 172, '2026-03-30')]
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwCurrentValue').text()).toContain('172')
+      // No "Body Weight" title — the weight IS the identity
+      expect(wrapper.find('.wtTitle').exists()).toBe(false)
+    })
+
+    it('shows log button in hero row', () => {
+      entries = [makeEntry('e-1', 172, '2026-03-30')]
+      const wrapper = mountTracker()
+      const hero = wrapper.find('.bwHero')
+      expect(hero.find('.wtLogBtn').exists()).toBe(true)
     })
   })
 })
