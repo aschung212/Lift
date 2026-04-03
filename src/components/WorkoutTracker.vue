@@ -606,12 +606,14 @@ import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useHaptics } from '../composables/useHaptics'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
+const { impactLight, notifySuccess } = useHaptics()
 
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
@@ -1405,8 +1407,15 @@ function saveSet() {
       logEvent('exercise_add')
     }
     if (hasSetData.value && weight.value !== null && reps.value !== null) {
+      const wasPR = isNewPR.value
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log')
+      // Haptic feedback — stronger for PRs
+      if (wasPR) {
+        notifySuccess()
+      } else {
+        impactLight()
+      }
       if (restTimerEnabled.value && restTimerAutoStart.value) {
         startRestTimer()
       }
