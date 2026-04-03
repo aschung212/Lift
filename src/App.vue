@@ -680,7 +680,7 @@ function switchTab(tabId: string) {
 function selectTheme(id: string) {
   currentTheme.value = id
   logEvent('theme_change', { theme: id })
-  if (useCollapsedPicker.value) themeGridExpanded.value = false
+  themeGridExpanded.value = false
 }
 
 function setMode(mode: 'light' | 'dark' | 'auto') {
