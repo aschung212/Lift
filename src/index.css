@@ -1115,25 +1115,18 @@ html.modal-open .tabContent {
 
 /* ─── Badge case enable prompt ───────────────────────────────────── */
 
-.badgeEnablePrompt {
-  display: block;
-  width: 100%;
+.badgeEnableHint {
   text-align: center;
-  font-size: var(--font-caption1);
-  font-weight: 500;
-  color: var(--accent);
-  background: none;
-  border: 1px dashed var(--accent);
-  border-radius: 8px;
-  padding: 8px 16px;
-  margin: 4px 16px 12px;
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  padding: 4px 16px 12px;
   cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s;
+  line-height: 1.4;
 }
 
-.badgeEnablePrompt:active {
-  background: var(--accent-subtle);
+.badgeEnableLink {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* ─── Settings row highlight (scroll-to animation) ───────────────── */

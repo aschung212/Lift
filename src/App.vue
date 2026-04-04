@@ -120,9 +120,9 @@
                 Enable Progression to unlock
               </div>
               <!-- Prompt to enable progression when off and locked themes visible -->
-              <button v-if="!progressionActive && !previewingThemeId" class="badgeEnablePrompt" @click="scrollToProgressionToggle">
-                Enable Progression to start unlocking themes
-              </button>
+              <p v-if="!progressionActive && !previewingThemeId" class="badgeEnableHint" @click="scrollToProgressionToggle">
+                Unlock more themes by enabling <span class="badgeEnableLink">Progression</span> below.
+              </p>
               <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
               <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
                 <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>

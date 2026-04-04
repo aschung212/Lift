@@ -104,12 +104,13 @@
                 :key="s.id"
                 :class="['calSetRow', { calSetRowPR: s.isPR }]"
               >
-                <span v-if="s.isPR" class="calSetPR">🏆</span>
-                <span>{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
-                <span class="calPRDetailSep">×</span>
-                <span>{{ s.reps }} reps</span>
-                <span class="calPRDetailSep">·</span>
-                <span>~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                <span class="calSetMain">
+                  <span v-if="s.isPR" class="calSetPR">🏆</span>
+                  <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
+                  <span class="calSetSep">×</span>
+                  <span class="calSetReps">{{ s.reps }} reps</span>
+                </span>
+                <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
               </div>
             </div>
           </template>
@@ -145,12 +146,13 @@
                 :key="s.id"
                 :class="['calSetRow', { calSetRowPR: s.isPR }]"
               >
-                <span v-if="s.isPR" class="calSetPR">🏆</span>
-                <span>{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
-                <span class="calPRDetailSep">×</span>
-                <span>{{ s.reps }} reps</span>
-                <span class="calPRDetailSep">·</span>
-                <span>~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                <span class="calSetMain">
+                  <span v-if="s.isPR" class="calSetPR">🏆</span>
+                  <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
+                  <span class="calSetSep">×</span>
+                  <span class="calSetReps">{{ s.reps }} reps</span>
+                </span>
+                <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
               </div>
             </div>
           </template>
