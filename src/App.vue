@@ -975,7 +975,7 @@ function toggleProgression() {
       // No starter chosen — show the picker
       starterPickerSelection.value = null
       starterPickerStep.value = 'explainer'
-  starterPickerVisible.value = true
+      starterPickerVisible.value = true
     }
   }
 }
