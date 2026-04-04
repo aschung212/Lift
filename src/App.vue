@@ -210,6 +210,9 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+              <div v-show="progressionActive" class="settingsRow">
+                <button class="settingsResetBtn" @click="confirmResetProgress">Reset Progress</button>
+              </div>
             </div>
 
             <!-- Dev tools — only on localhost/LAN -->
@@ -483,6 +486,69 @@
       </div>
     </transition>
   </Teleport>
+
+  <!-- Starter picker modal (after reset) -->
+  <Teleport to="body">
+    <transition name="unlockFade">
+      <div v-if="starterPickerVisible" class="unlockOverlay">
+        <div class="unlockModal">
+          <div class="unlockTitle" style="color: var(--text-primary)">Pick Your Starter</div>
+          <div class="resetConfirmText">Choose a theme to unlock as you train.</div>
+          <div class="obStarterGridInline">
+            <button
+              v-for="s in STARTER_THEMES"
+              :key="s.id"
+              :class="['obStarterCardInline', { selected: starterPickerSelection === s.id }]"
+              @click="starterPickerSelection = s.id"
+            >
+              <span
+                class="obStarterDotInline"
+                :style="{ background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.bg + ')' }"
+              ></span>
+              <span class="obStarterLabelInline">{{ s.label }}</span>
+            </button>
+          </div>
+          <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Choose' }}</button>
+          <button class="resetConfirmCancel" @click="skipStarterPick">Skip</button>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
+  <!-- Reset progress confirmation -->
+  <Teleport to="body">
+    <transition name="unlockFade">
+      <div v-if="resetConfirmVisible" class="unlockOverlay" @click.self="resetConfirmVisible = false">
+        <div class="unlockModal">
+          <div class="unlockTitle" style="color: var(--text-primary)">Reset Progress?</div>
+          <div class="resetConfirmText">This will reset your XP to 0, lock all themes, and let you pick a new starter. Your workout data is not affected.</div>
+          <button class="unlockDismiss resetConfirmDanger" @click="executeResetProgress">Reset &amp; Re-pick Starter</button>
+          <button class="resetConfirmCancel" @click="resetConfirmVisible = false">Cancel</button>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
+  <!-- Theme unlock celebration -->
+  <Teleport to="body">
+    <transition name="unlockFade">
+      <div v-if="unlockCelebration.visible" class="unlockOverlay" @click.self="dismissUnlockCelebration">
+        <div class="unlockModal">
+          <div class="unlockIcon">
+            <span
+              class="unlockDot"
+              :style="unlockCelebration.themeId ? {
+                background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[unlockCelebration.themeId]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[unlockCelebration.themeId]?.[resolvedMode]?.bg + ')',
+              } : {}"
+            ></span>
+          </div>
+          <div class="unlockTitle">{{ progressionStore.showProgression ? 'Theme Unlocked!' : 'New Theme Available!' }}</div>
+          <div class="unlockThemeName">{{ unlockCelebration.themeName }}</div>
+          <button class="unlockDismiss" @click="dismissUnlockCelebration">Nice!</button>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -509,7 +575,7 @@ const BodyweightTracker = defineAsyncComponent({
   delay: 100,
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
-import { useProgressionStore, UNLOCK_TIERS, xpToast } from './stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration } from './stores/progression'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
@@ -796,6 +862,55 @@ function devResetOnboarding() {
   localStorage.removeItem('onboarding-complete')
   localStorage.removeItem('user-progression')
   location.reload()
+}
+
+const resetConfirmVisible = ref(false)
+
+function confirmResetProgress() {
+  resetConfirmVisible.value = true
+}
+
+const starterPickerVisible = ref(false)
+const starterPickerSelection = ref<ThemeId | null>(null)
+
+const STARTER_THEMES: { id: ThemeId; label: string }[] = [
+  { id: 'fire', label: 'Fire' },
+  { id: 'water', label: 'Water' },
+  { id: 'luck', label: 'Luck' },
+]
+
+function executeResetProgress() {
+  resetConfirmVisible.value = false
+  progressionStore.totalXP = 0
+  progressionStore.streakWeeks = 0
+  progressionStore.streakHistory = []
+  progressionStore.xpPerSet = {}
+  progressionStore.bodyweightXPDates = []
+  progressionStore.unlockedThemes = ['pearl']
+  progressionStore.starterTheme = null
+  progressionStore.progressionEnabled = false
+  progressionStore._persist()
+  clearMigrationFlag()
+  // Show starter picker
+  starterPickerSelection.value = null
+  starterPickerVisible.value = true
+}
+
+function confirmStarterPick() {
+  if (!starterPickerSelection.value) return
+  starterPickerVisible.value = false
+  progressionStore.setStarterTheme(starterPickerSelection.value)
+  currentTheme.value = starterPickerSelection.value
+}
+
+function skipStarterPick() {
+  starterPickerVisible.value = false
+  // Enable with pearl as default
+  progressionStore.progressionEnabled = true
+  if (!progressionStore.starterTheme) {
+    progressionStore.starterTheme = 'pearl'
+  }
+  progressionStore._persist()
 }
 
 function toggleProgression() {

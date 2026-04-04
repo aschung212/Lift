@@ -36,6 +36,23 @@ export function showXPToast(text: string, progressPercent: number, totalXP: numb
   xpToast._timer = setTimeout(() => { xpToast.visible = false }, 4000)
 }
 
+// Unlock celebration state (not persisted, reactive)
+export const unlockCelebration = reactive({
+  visible: false,
+  themeId: null as ThemeId | null,
+  themeName: '',
+})
+
+export function showUnlockCelebration(themeId: ThemeId, themeName: string) {
+  unlockCelebration.themeId = themeId
+  unlockCelebration.themeName = themeName
+  unlockCelebration.visible = true
+}
+
+export function dismissUnlockCelebration() {
+  unlockCelebration.visible = false
+}
+
 export interface ProgressionState {
   totalXP: number
   streakWeeks: number
@@ -327,42 +344,39 @@ export const useProgressionStore = defineStore('progression', {
 
     // --- Theme Actions ---
 
-    checkUnlocks() {
+    checkUnlocks(): ThemeId[] {
       const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
-      let newUnlocks = false
+      const newlyUnlocked: ThemeId[] = []
 
       for (const tier of UNLOCK_TIERS) {
         if (this.totalXP < tier.xpRequired) break
 
         if (tier.themeId) {
-          // Named theme tier
           if (!this.unlockedThemes.includes(tier.themeId)) {
             this.unlockedThemes.push(tier.themeId)
-            newUnlocks = true
+            newlyUnlocked.push(tier.themeId)
           }
         } else if (tier.level === 1) {
-          // Starter pick slot
           if (this.starterTheme && !this.unlockedThemes.includes(this.starterTheme)) {
             this.unlockedThemes.push(this.starterTheme)
-            newUnlocks = true
+            newlyUnlocked.push(this.starterTheme)
           }
         } else {
-          // Unchosen starter slot (level 7) — unlock all starters not yet unlocked
           for (const sid of STARTER_IDS) {
             if (!this.unlockedThemes.includes(sid)) {
               this.unlockedThemes.push(sid)
-              newUnlocks = true
+              newlyUnlocked.push(sid)
             }
           }
         }
       }
 
-      if (newUnlocks) {
+      if (newlyUnlocked.length > 0) {
         this._persist()
         this._syncToSupabase()
       }
 
-      return newUnlocks
+      return newlyUnlocked
     },
 
     setStarterTheme(themeId: ThemeId) {

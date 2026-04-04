@@ -614,7 +614,8 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
-import { useProgressionStore, showXPToast } from '../stores/progression'
+import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
 import ExerciseGraph from './ExerciseGraph.vue'
@@ -651,7 +652,16 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
   const mult = progressionStore.currentMultiplier
   const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
   progressionStore.logSetXP(setId, xp)
-  progressionStore.checkUnlocks()
+  const newUnlocks = progressionStore.checkUnlocks()
+  if (newUnlocks.length > 0) {
+    const theme = THEMES.find(t => t.id === newUnlocks[0])
+    if (theme) {
+      setTimeout(() => {
+        showUnlockCelebration(theme.id, theme.label)
+        notifySuccess()
+      }, progressionStore.showProgression ? 1500 : 500)
+    }
+  }
 
   // Determine zone for instrumentation and display
   let zone: 'warmup' | 'working' | 'pr' | 'tie' | 'new_exercise'

@@ -235,7 +235,8 @@ import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
-import { useProgressionStore, showXPToast } from '../stores/progression'
+import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { THEMES } from '../composables/useTheme'
 import { XP_CONFIG } from '../lib/xp'
 import { logBodyweightXPEvent } from '../lib/xpInstrumentation'
 
@@ -315,7 +316,13 @@ function save() {
       const dateKey = date.value.slice(0, 10)
       const alreadyCredited = progressionStore.bodyweightXPDates.includes(dateKey)
       progressionStore.logBodyweightXP(date.value)
-      progressionStore.checkUnlocks()
+      const newUnlocks = progressionStore.checkUnlocks()
+      if (newUnlocks.length > 0) {
+        const theme = THEMES.find(t => t.id === newUnlocks[0])
+        if (theme) {
+          setTimeout(() => showUnlockCelebration(theme.id, theme.label), progressionStore.showProgression ? 1500 : 500)
+        }
+      }
       if (!alreadyCredited) {
         logBodyweightXPEvent(progressionStore._userId, date.value, XP_CONFIG.bodyweightXP)
         if (progressionStore.showProgression) {

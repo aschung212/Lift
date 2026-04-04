@@ -265,7 +265,7 @@ describe('progression store', () => {
       store.totalXP = 15_000
       store.starterTheme = 'fire'
       const unlocked = store.checkUnlocks()
-      expect(unlocked).toBe(true)
+      expect(unlocked.length).toBeGreaterThan(0)
       expect(store.unlockedThemes).toContain('fire') // level 1 starter
       expect(store.unlockedThemes).toContain('air')  // level 2
     })
@@ -278,10 +278,10 @@ describe('progression store', () => {
       expect(store.unlockedThemes).toEqual(['pearl']) // only default
     })
 
-    it('returns false when no new unlocks', () => {
+    it('returns empty array when no new unlocks', () => {
       const store = useProgressionStore()
       store.totalXP = 0
-      expect(store.checkUnlocks()).toBe(false)
+      expect(store.checkUnlocks()).toEqual([])
     })
 
     it('skips starter slot if no starter theme chosen', () => {

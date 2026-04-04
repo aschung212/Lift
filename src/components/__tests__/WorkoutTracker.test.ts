@@ -16,7 +16,7 @@ vi.mock('../../stores/progression', () => ({
     logSetXP: vi.fn(),
     recalcSetXP: vi.fn(),
     removeSetXP: vi.fn(),
-    checkUnlocks: vi.fn(),
+    checkUnlocks: vi.fn().mockReturnValue([]),
   }),
 }))
 vi.mock('../../lib/xp', () => ({
