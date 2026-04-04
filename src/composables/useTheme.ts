@@ -158,10 +158,10 @@ watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
  * Progression store accessor — set lazily after Pinia is initialized.
  * Uses a getter function so it always reads current Pinia state.
  */
-let _getProgressionStore: (() => { progressionEnabled: boolean; unlockedThemes: ThemeId[] }) | null = null
+let _getProgressionStore: (() => { progressionEnabled: boolean; unlockedThemes: { id: ThemeId }[] }) | null = null
 
 /** Connect the progression store. Call once after Pinia is ready. */
-export function connectProgressionStore(getter: () => { progressionEnabled: boolean; unlockedThemes: ThemeId[] }): void {
+export function connectProgressionStore(getter: () => { progressionEnabled: boolean; unlockedThemes: { id: ThemeId }[] }): void {
   _getProgressionStore = getter
 }
 
@@ -177,7 +177,7 @@ function isThemeUnlocked(id: ThemeId): boolean {
   // If progression isn't enabled, all themes are unlocked
   if (!store.progressionEnabled) return true
 
-  return store.unlockedThemes.includes(id)
+  return store.unlockedThemes.some(t => t.id === id)
 }
 
 export function useTheme() {

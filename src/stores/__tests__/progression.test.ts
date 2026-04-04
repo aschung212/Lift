@@ -8,8 +8,13 @@ vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn() }
 }))
 
-import { useProgressionStore, getTrainingDaysInWeek } from '../progression'
+import { useProgressionStore, getTrainingDaysInWeek, getUnlockedThemeIds } from '../progression'
 import type { WorkoutSet } from '../workout'
+
+/** Helper: get theme IDs from store's unlocked themes */
+function unlockedIds(store: ReturnType<typeof useProgressionStore>): string[] {
+  return getUnlockedThemeIds(store.unlockedThemes)
+}
 
 describe('progression store', () => {
   beforeEach(() => {
@@ -27,7 +32,7 @@ describe('progression store', () => {
       expect(store.weeklyTarget).toBe(3)
       expect(store.pendingTargetChange).toBeNull()
       expect(store.showProgression).toBe(true)
-      expect(store.unlockedThemes).toEqual(['pearl'])
+      expect(unlockedIds(store)).toEqual(['pearl'])
       expect(store.starterTheme).toBeNull()
       expect(store.streakHistory).toEqual([])
       expect(store.xpPerSet).toEqual({})
@@ -266,8 +271,8 @@ describe('progression store', () => {
       store.starterTheme = 'fire'
       const unlocked = store.checkUnlocks()
       expect(unlocked.length).toBeGreaterThan(0)
-      expect(store.unlockedThemes).toContain('fire') // level 1 starter
-      expect(store.unlockedThemes).toContain('air')  // level 2
+      expect(unlockedIds(store)).toContain('fire') // level 1 starter
+      expect(unlockedIds(store)).toContain('air')  // level 2
     })
 
     it('does not unlock themes below XP threshold', () => {
@@ -275,7 +280,7 @@ describe('progression store', () => {
       store.totalXP = 3_000
       store.starterTheme = 'fire'
       store.checkUnlocks()
-      expect(store.unlockedThemes).toEqual(['pearl']) // only default
+      expect(unlockedIds(store)).toEqual(['pearl']) // only default
     })
 
     it('returns empty array when no new unlocks', () => {
@@ -290,7 +295,7 @@ describe('progression store', () => {
       store.starterTheme = null
       store.checkUnlocks()
       // Level 1 has null themeId and no starter chosen — skipped
-      expect(store.unlockedThemes).toEqual(['pearl'])
+      expect(unlockedIds(store)).toEqual(['pearl'])
     })
 
     it('is idempotent — calling twice does not duplicate unlocks', () => {
@@ -299,7 +304,7 @@ describe('progression store', () => {
       store.starterTheme = 'fire'
       store.checkUnlocks()
       store.checkUnlocks()
-      const fireCount = store.unlockedThemes.filter(t => t === 'fire').length
+      const fireCount = unlockedIds(store).filter(t => t === 'fire').length
       expect(fireCount).toBe(1)
     })
   })
@@ -311,7 +316,7 @@ describe('progression store', () => {
       const store = useProgressionStore()
       store.setStarterTheme('water')
       expect(store.starterTheme).toBe('water')
-      expect(store.unlockedThemes).toContain('water')
+      expect(unlockedIds(store)).toContain('water')
     })
 
     it('is one-time only — ignores subsequent calls', () => {

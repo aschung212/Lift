@@ -53,6 +53,11 @@ export function dismissUnlockCelebration() {
   unlockCelebration.visible = false
 }
 
+export interface ThemeUnlock {
+  id: ThemeId
+  unlockedAt: string  // ISO timestamp
+}
+
 export interface ProgressionState {
   totalXP: number
   streakWeeks: number
@@ -60,10 +65,11 @@ export interface ProgressionState {
   pendingTargetChange: number | null   // staged change, takes effect next Monday
   showProgression: boolean             // verbose vs quiet mode
   progressionEnabled: boolean          // explicit flag: has user activated progression?
-  unlockedThemes: ThemeId[]
+  epoch: number                        // progression epoch (increments on reset, enables prestige)
+  unlockedThemes: ThemeUnlock[]        // themes with unlock timestamps
   starterTheme: ThemeId | null
   streakHistory: StreakWeekEntry[]     // append-only
-  xpPerSet: Record<string, number>    // setId → XP earned
+  xpPerSet: Record<string, number>    // setId → XP earned (current epoch)
   bodyweightXPDates: string[]         // dates that earned bodyweight XP
 }
 
@@ -97,7 +103,8 @@ function defaultState(): ProgressionState {
     pendingTargetChange: null,
     showProgression: true,
     progressionEnabled: false,
-    unlockedThemes: ['pearl'],
+    epoch: 1,
+    unlockedThemes: [{ id: 'pearl', unlockedAt: new Date().toISOString() }],
     starterTheme: null,
     streakHistory: [],
     xpPerSet: {},
@@ -105,11 +112,43 @@ function defaultState(): ProgressionState {
   }
 }
 
+/** Check if a theme is in the unlocked list. */
+function hasTheme(themes: ThemeUnlock[], id: ThemeId): boolean {
+  return themes.some(t => t.id === id)
+}
+
+/** Add a theme to the unlocked list with current timestamp. */
+function addTheme(themes: ThemeUnlock[], id: ThemeId): void {
+  if (!hasTheme(themes, id)) {
+    themes.push({ id, unlockedAt: new Date().toISOString() })
+  }
+}
+
+/** Get just the theme IDs from the unlock list. */
+export function getUnlockedThemeIds(themes: ThemeUnlock[]): ThemeId[] {
+  return themes.map(t => t.id)
+}
+
+/** Migration: convert old ThemeId[] format to ThemeUnlock[] */
+function migrateUnlockedThemes(themes: unknown): ThemeUnlock[] {
+  if (!Array.isArray(themes)) return [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
+  if (themes.length === 0) return [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
+  // Check if already new format
+  if (typeof themes[0] === 'object' && themes[0] !== null && 'id' in themes[0]) {
+    return themes as ThemeUnlock[]
+  }
+  // Old format: string array → convert
+  return (themes as string[]).map(id => ({ id: id as ThemeId, unlockedAt: new Date().toISOString() }))
+}
+
 function load(): ProgressionState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return defaultState()
-    return { ...defaultState(), ...JSON.parse(raw) }
+    const parsed = { ...defaultState(), ...JSON.parse(raw) }
+    parsed.unlockedThemes = migrateUnlockedThemes(parsed.unlockedThemes)
+    if (!parsed.epoch) parsed.epoch = 1
+    return parsed
   } catch {
     return defaultState()
   }
@@ -152,7 +191,7 @@ export const useProgressionStore = defineStore('progression', {
       this.weeklyTarget = (data.weekly_target as number) ?? this.weeklyTarget
       this.pendingTargetChange = (data.pending_target_change as number | null) ?? this.pendingTargetChange
       this.showProgression = (data.show_progression as boolean) ?? this.showProgression
-      this.unlockedThemes = (data.unlocked_themes as ThemeId[]) ?? this.unlockedThemes
+      this.unlockedThemes = migrateUnlockedThemes((data.unlocked_themes as unknown) ?? this.unlockedThemes)
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
       this.streakHistory = (data.streak_history as StreakWeekEntry[]) ?? this.streakHistory
       this.xpPerSet = (data.xp_per_set as Record<string, number>) ?? this.xpPerSet
@@ -352,19 +391,19 @@ export const useProgressionStore = defineStore('progression', {
         if (this.totalXP < tier.xpRequired) break
 
         if (tier.themeId) {
-          if (!this.unlockedThemes.includes(tier.themeId)) {
-            this.unlockedThemes.push(tier.themeId)
+          if (!hasTheme(this.unlockedThemes, tier.themeId)) {
+            addTheme(this.unlockedThemes, tier.themeId)
             newlyUnlocked.push(tier.themeId)
           }
         } else if (tier.level === 1) {
-          if (this.starterTheme && !this.unlockedThemes.includes(this.starterTheme)) {
-            this.unlockedThemes.push(this.starterTheme)
+          if (this.starterTheme && !hasTheme(this.unlockedThemes, this.starterTheme)) {
+            addTheme(this.unlockedThemes, this.starterTheme)
             newlyUnlocked.push(this.starterTheme)
           }
         } else {
           for (const sid of STARTER_IDS) {
-            if (!this.unlockedThemes.includes(sid)) {
-              this.unlockedThemes.push(sid)
+            if (!hasTheme(this.unlockedThemes, sid)) {
+              addTheme(this.unlockedThemes, sid)
               newlyUnlocked.push(sid)
             }
           }
@@ -383,8 +422,8 @@ export const useProgressionStore = defineStore('progression', {
       if (this.starterTheme !== null) return // one-time only
       this.starterTheme = themeId
       this.progressionEnabled = true
-      if (!this.unlockedThemes.includes(themeId)) {
-        this.unlockedThemes.push(themeId)
+      if (!hasTheme(this.unlockedThemes, themeId)) {
+        addTheme(this.unlockedThemes, themeId)
       }
       this._persist()
       this._syncToSupabase()

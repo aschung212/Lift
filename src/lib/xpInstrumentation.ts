@@ -22,6 +22,8 @@ export interface XPEventData {
   isTie: boolean
   isRepPR: boolean
   zone: 'warmup' | 'working' | 'pr' | 'tie' | 'new_exercise' | 'bodyweight'
+  activeTheme: string
+  epoch: number
 }
 
 export interface WeeklySnapshotData {
@@ -52,12 +54,14 @@ export function logXPEvent(data: XPEventData): void {
       is_tie: data.isTie,
       is_rep_pr: data.isRepPR,
       zone: data.zone,
+      active_theme: data.activeTheme,
+      epoch: data.epoch,
     })
   )
 }
 
 /** Log a bodyweight XP event to Supabase. */
-export function logBodyweightXPEvent(userId: string | null, date: string, xp: number): void {
+export function logBodyweightXPEvent(userId: string | null, date: string, xp: number, activeTheme: string, epoch: number): void {
   if (!supabase || !userId) return
 
   syncQueue.enqueue(`xp-event:bw:${date}`, () =>
@@ -72,6 +76,8 @@ export function logBodyweightXPEvent(userId: string | null, date: string, xp: nu
       is_tie: false,
       is_rep_pr: false,
       zone: 'bodyweight',
+      active_theme: activeTheme,
+      epoch,
     })
   )
 }

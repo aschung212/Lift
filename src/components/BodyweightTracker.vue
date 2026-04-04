@@ -243,7 +243,7 @@ import { logBodyweightXPEvent } from '../lib/xpInstrumentation'
 const store = useBodyweightStore()
 const prefs = usePreferencesStore()
 const progressionStore = useProgressionStore()
-const { weightUnit, displayWeight, toLbs } = useTheme()
+const { currentTheme, weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 
@@ -324,7 +324,7 @@ function save() {
         }
       }
       if (!alreadyCredited) {
-        logBodyweightXPEvent(progressionStore._userId, date.value, XP_CONFIG.bodyweightXP)
+        logBodyweightXPEvent(progressionStore._userId, date.value, XP_CONFIG.bodyweightXP, currentTheme.value, progressionStore.epoch)
         if (progressionStore.showProgression) {
           showXPToast(`+${XP_CONFIG.bodyweightXP} XP`, progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
         }

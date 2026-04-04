@@ -24,7 +24,7 @@ vi.mock('../lib/xpInstrumentation', () => ({
   logWeeklySnapshot: vi.fn(),
 }))
 
-import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, getUnlockedThemeIds } from '../stores/progression'
 import {
   calculateSetXP,
   calculateBest1RM,
@@ -69,8 +69,8 @@ describe('Progression Integration', () => {
       const store = useProgressionStore()
       store.setStarterTheme('fire')
       expect(store.progressionEnabled).toBe(true)
-      expect(store.unlockedThemes).toContain('fire')
-      expect(store.unlockedThemes).toContain('pearl')
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('fire')
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('pearl')
       expect(store.totalXP).toBe(0)
     })
 
@@ -85,8 +85,8 @@ describe('Progression Integration', () => {
       store.checkUnlocks()
 
       expect(store.totalXP).toBe(15100)
-      expect(store.unlockedThemes).toContain('fire') // starter (level 1)
-      expect(store.unlockedThemes).toContain('air')  // level 2 at 15,000
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('fire') // starter (level 1)
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('air')  // level 2 at 15,000
     })
 
     it('full journey from 0 to all themes unlocked', () => {
@@ -100,11 +100,11 @@ describe('Progression Integration', () => {
       // All themes should be unlocked
       const allThemeIds = UNLOCK_TIERS.filter(t => t.themeId).map(t => t.themeId!)
       for (const themeId of allThemeIds) {
-        expect(store.unlockedThemes).toContain(themeId)
+        expect(getUnlockedThemeIds(store.unlockedThemes)).toContain(themeId)
       }
       // Starter themes (unchosen) should also be unlocked at level 7
-      expect(store.unlockedThemes).toContain('fire')
-      expect(store.unlockedThemes).toContain('luck')
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('fire')
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('luck')
 
       expect(store.nextUnlockThreshold).toBeNull()
       expect(store.progressPercent).toBe(100)
@@ -349,7 +349,7 @@ describe('Progression Integration', () => {
         store.totalXP = xp
         store.checkUnlocks()
         for (const theme of expected) {
-          expect(store.unlockedThemes).toContain(theme)
+          expect(getUnlockedThemeIds(store.unlockedThemes)).toContain(theme)
         }
       }
     })
@@ -360,9 +360,9 @@ describe('Progression Integration', () => {
       store.totalXP = 500_000
       store.checkUnlocks()
 
-      expect(store.unlockedThemes).toContain('fire')
-      expect(store.unlockedThemes).toContain('water')
-      expect(store.unlockedThemes).toContain('luck')
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('fire')
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('water')
+      expect(getUnlockedThemeIds(store.unlockedThemes)).toContain('luck')
     })
 
     it('checkUnlocks is idempotent', () => {

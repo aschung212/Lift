@@ -881,12 +881,13 @@ const STARTER_THEMES: { id: ThemeId; label: string }[] = [
 
 function executeResetProgress() {
   resetConfirmVisible.value = false
+  progressionStore.epoch += 1
   progressionStore.totalXP = 0
   progressionStore.streakWeeks = 0
   progressionStore.streakHistory = []
   progressionStore.xpPerSet = {}
   progressionStore.bodyweightXPDates = []
-  progressionStore.unlockedThemes = ['pearl']
+  progressionStore.unlockedThemes = [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
   progressionStore.starterTheme = null
   progressionStore.progressionEnabled = false
   progressionStore._persist()
@@ -924,11 +925,11 @@ function toggleProgression() {
     }
     // Ensure starter theme is unlocked
     const starter = progressionStore.starterTheme
-    if (starter && !progressionStore.unlockedThemes.includes(starter)) {
-      progressionStore.unlockedThemes.push(starter)
+    if (starter && !progressionStore.unlockedThemes.some(t => t.id === starter)) {
+      progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
     }
-    if (!progressionStore.unlockedThemes.includes('pearl')) {
-      progressionStore.unlockedThemes.push('pearl')
+    if (!progressionStore.unlockedThemes.some(t => t.id === 'pearl')) {
+      progressionStore.unlockedThemes.push({ id: 'pearl', unlockedAt: new Date().toISOString() })
     }
     progressionStore._persist()
   }
@@ -946,9 +947,9 @@ function devSeedProgression(xp: number) {
   }
   progressionStore.streakHistory = [{ weekStart: '2026-03-30', streakCount: 8, weeklyTarget: 4, combinedMultiplier: 1.8 }]
   // Reset unlocks to just pearl + starter, then let checkUnlocks compute the rest
-  progressionStore.unlockedThemes = ['pearl']
-  if (!progressionStore.unlockedThemes.includes(starter)) {
-    progressionStore.unlockedThemes.push(starter)
+  progressionStore.unlockedThemes = [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
+  if (!progressionStore.unlockedThemes.some(t => t.id === starter)) {
+    progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
   }
   progressionStore.checkUnlocks()
   progressionStore._persist()

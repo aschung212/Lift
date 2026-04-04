@@ -624,7 +624,7 @@ const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
-const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
+const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
 
 function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
@@ -685,6 +685,8 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     isTie,
     isRepPR,
     zone,
+    activeTheme: currentTheme.value,
+    epoch: progressionStore.epoch,
   })
 
   if (progressionStore.showProgression) {

@@ -163,14 +163,14 @@ describe('useTheme', () => {
     it('pearl is always unlocked when progression is enabled', () => {
       const store = useProgressionStore()
       store.progressionEnabled = true
-      store.unlockedThemes = ['pearl']
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }]
       expect(theme.isThemeUnlocked('pearl')).toBe(true)
     })
 
     it('locked theme returns false when progression is enabled', () => {
       const store = useProgressionStore()
       store.progressionEnabled = true
-      store.unlockedThemes = ['pearl', 'fire']
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }, { id: 'fire', unlockedAt: '2026-01-01' }]
       expect(theme.isThemeUnlocked('fire')).toBe(true)
       expect(theme.isThemeUnlocked('water')).toBe(false)
     })
@@ -178,7 +178,7 @@ describe('useTheme', () => {
     it('selectTheme persists an unlocked theme', () => {
       const store = useProgressionStore()
       store.progressionEnabled = true
-      store.unlockedThemes = ['pearl', 'fire']
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }, { id: 'fire', unlockedAt: '2026-01-01' }]
 
       const result = theme.selectTheme('fire')
       expect(result).toBe(true)
@@ -188,7 +188,7 @@ describe('useTheme', () => {
     it('selectTheme rejects a locked theme', () => {
       const store = useProgressionStore()
       store.progressionEnabled = true
-      store.unlockedThemes = ['pearl']
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }]
 
       const prev = theme.currentTheme.value
       const result = theme.selectTheme('eternal')
