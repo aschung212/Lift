@@ -146,22 +146,23 @@ describe('useTheme', () => {
       connectProgressionStore(() => useProgressionStore())
     })
 
-    it('only free themes unlocked when progression is not enabled', () => {
+    it('only Pearl unlocked when progression is not enabled', () => {
       expect(theme.isThemeUnlocked('pearl')).toBe(true)
-      expect(theme.isThemeUnlocked('fire')).toBe(true)
-      expect(theme.isThemeUnlocked('water')).toBe(true)
-      expect(theme.isThemeUnlocked('luck')).toBe(true)
+      expect(theme.isThemeUnlocked('fire')).toBe(false)
       expect(theme.isThemeUnlocked('eternal')).toBe(false)
-      expect(theme.isThemeUnlocked('amethyst')).toBe(false)
     })
 
-    it('choosing a starter activates progression (locks other themes)', () => {
+    it('choosing a starter activates progression with trial period', () => {
       const store = useProgressionStore()
       store.setStarterTheme('fire')
       expect(store.progressionEnabled).toBe(true)
       expect(theme.isThemeUnlocked('pearl')).toBe(true)
+      // Trial period: all starters unlocked
       expect(theme.isThemeUnlocked('fire')).toBe(true)
-      expect(theme.isThemeUnlocked('water')).toBe(false)
+      expect(theme.isThemeUnlocked('water')).toBe(true)
+      expect(theme.isThemeUnlocked('luck')).toBe(true)
+      // Non-starters still locked
+      expect(theme.isThemeUnlocked('eternal')).toBe(false)
     })
 
     it('pearl is always unlocked when progression is enabled', () => {
@@ -171,12 +172,14 @@ describe('useTheme', () => {
       expect(theme.isThemeUnlocked('pearl')).toBe(true)
     })
 
-    it('locked theme returns false when progression is enabled', () => {
+    it('locked theme returns false when starter is confirmed', () => {
       const store = useProgressionStore()
       store.progressionEnabled = true
+      store.starterConfirmed = true
       store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }, { id: 'fire', unlockedAt: '2026-01-01' }]
       expect(theme.isThemeUnlocked('fire')).toBe(true)
-      expect(theme.isThemeUnlocked('water')).toBe(false)
+      expect(theme.isThemeUnlocked('water')).toBe(false) // no longer in trial
+      expect(theme.isThemeUnlocked('eternal')).toBe(false)
     })
 
     it('selectTheme persists an unlocked theme', () => {

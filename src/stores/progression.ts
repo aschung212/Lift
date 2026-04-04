@@ -79,6 +79,7 @@ export interface ProgressionState {
   epoch: number                        // progression epoch (increments on reset, enables prestige)
   unlockedThemes: ThemeUnlock[]        // themes with unlock timestamps
   starterTheme: ThemeId | null
+  starterConfirmed: boolean            // false = trial period, all starters unlocked
   streakHistory: StreakWeekEntry[]     // append-only
   xpPerSet: Record<string, SetXPEntry | number>  // setId → XP data (number = legacy format)
   bodyweightXPDates: string[]         // dates that earned bodyweight XP
@@ -98,8 +99,8 @@ export const UNLOCK_TIERS: UnlockTier[] = [
   { level: 2, xpRequired: 15_000, themeId: 'air' },
   { level: 3, xpRequired: 40_000, themeId: 'amethyst' },
   { level: 4, xpRequired: 80_000, themeId: 'midnight' },
-  { level: 5, xpRequired: 150_000, themeId: 'love' },
-  { level: 6, xpRequired: 300_000, themeId: 'earth' },
+  { level: 5, xpRequired: 150_000, themeId: 'earth' },
+  { level: 6, xpRequired: 300_000, themeId: 'love' },
   { level: 7, xpRequired: 500_000, themeId: null },    // remaining starter themes fill these
   { level: 8, xpRequired: 1_000_000, themeId: 'eternal' },
 ]
@@ -117,6 +118,7 @@ function defaultState(): ProgressionState {
     epoch: 1,
     unlockedThemes: [{ id: 'pearl', unlockedAt: new Date().toISOString() }],
     starterTheme: null,
+    starterConfirmed: false,
     streakHistory: [],
     xpPerSet: {},
     bodyweightXPDates: [],
@@ -243,6 +245,10 @@ export const useProgressionStore = defineStore('progression', {
         ? { xp, theme: meta.theme, epoch: meta.epoch, zone: meta.zone, isPR: meta.isPR, isRepPR: meta.isRepPR }
         : xp
       this.totalXP += xp
+      // Confirm starter on first set logged
+      if (!this.starterConfirmed && this.starterTheme) {
+        this.starterConfirmed = true
+      }
       this._persist()
       this._syncToSupabase()
     },
