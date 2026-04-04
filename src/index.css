@@ -1019,6 +1019,26 @@ html.modal-open .tabContent {
   padding: 4px;
 }
 
+/* ─── Trial badge and banner ─────────────────────────────────────── */
+
+.themeTrialBadge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+.trialBanner {
+  text-align: center;
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 4px 16px 8px;
+  font-style: italic;
+}
+
 /* ─── Badge preview overlay ──────────────────────────────────────── */
 
 .badgePreviewOverlay {

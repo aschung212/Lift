@@ -105,7 +105,12 @@
                     <svg v-else-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </span>
                   <span class="themePreviewLabel">{{ t.label }}</span>
+                  <span v-if="progressionActive && !progressionStore.starterConfirmed && isStarterTheme(t.id) && isThemeUnlocked(t.id)" class="themeTrialBadge">Trial</span>
                 </button>
+              </div>
+              <!-- Trial period banner -->
+              <div v-if="progressionActive && !progressionStore.starterConfirmed" class="trialBanner">
+                Trying starters — log a set to lock in your choice
               </div>
               <!-- XP to unlock overlay for previewed locked theme -->
               <div v-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && progressionActive" class="badgePreviewOverlay">
@@ -902,6 +907,11 @@ const STARTER_THEMES: { id: ThemeId; label: string }[] = [
   { id: 'water', label: 'Flow' },
   { id: 'luck', label: 'Luck' },
 ]
+
+const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
+function isStarterTheme(id: ThemeId): boolean {
+  return STARTER_IDS.includes(id)
+}
 
 function executeResetProgress() {
   resetConfirmVisible.value = false
