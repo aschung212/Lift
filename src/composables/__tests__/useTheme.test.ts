@@ -182,6 +182,16 @@ describe('useTheme', () => {
       expect(theme.isThemeUnlocked('eternal')).toBe(false)
     })
 
+    it('previously unlocked themes stay available when progression is disabled', () => {
+      const store = useProgressionStore()
+      store.progressionEnabled = false
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }, { id: 'fire', unlockedAt: '2026-01-01' }]
+
+      expect(theme.isThemeUnlocked('pearl')).toBe(true)
+      expect(theme.isThemeUnlocked('fire')).toBe(true)
+      expect(theme.isThemeUnlocked('eternal')).toBe(false)
+    })
+
     it('selectTheme persists an unlocked theme', () => {
       const store = useProgressionStore()
       store.progressionEnabled = true
