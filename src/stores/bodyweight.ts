@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { uuid } from '../lib/uuid'
+import { backupToIDB } from '../lib/durableStorage'
 
 const STORAGE_KEY = 'bodyweight-entries'
 
@@ -28,7 +29,9 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
   actions: {
     _persist() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.entries))
+      const data = JSON.stringify(this.entries)
+      localStorage.setItem(STORAGE_KEY, data)
+      backupToIDB(STORAGE_KEY, data)
     },
 
     async init(userId: string) {

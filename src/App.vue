@@ -683,6 +683,7 @@ import { useTheme, connectProgressionStore, type ThemeId } from './composables/u
 import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration, showXPToast } from './stores/progression'
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
+import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
@@ -1402,9 +1403,24 @@ function onBeforeUnload() {
   flushEngagement()
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
   logEvent('session_start')
+
+  // Request persistent storage to prevent browser eviction
+  requestPersistentStorage()
+
+  // Restore from IndexedDB if localStorage was cleared
+  const restored = await Promise.all([
+    ensureLocalStorage('workout-exercises'),
+    ensureLocalStorage('bodyweight-entries'),
+    ensureLocalStorage('user-progression'),
+  ])
+  if (restored.some(r => r)) {
+    // Data was restored from backup — reload stores
+    location.reload()
+    return
+  }
 
   runMigrationIfNeeded()
   enforceThemeLock()

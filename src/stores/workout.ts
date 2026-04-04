@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid } from '../lib/uuid'
 
@@ -50,7 +51,9 @@ export const useWorkoutStore = defineStore('workout', {
 
   actions: {
     _persist() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.exercises))
+      const data = JSON.stringify(this.exercises)
+      localStorage.setItem(STORAGE_KEY, data)
+      backupToIDB(STORAGE_KEY, data)
     },
 
     async init(userId: string) {

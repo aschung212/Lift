@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
+import { backupToIDB } from '../lib/durableStorage'
 import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
 import type { WorkoutSet } from './workout'
@@ -184,7 +185,9 @@ export const useProgressionStore = defineStore('progression', {
     _persist() {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { _userId: _omit, ...state } = this.$state
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      const data = JSON.stringify(state)
+      localStorage.setItem(STORAGE_KEY, data)
+      backupToIDB(STORAGE_KEY, data)
     },
 
     async init(userId: string) {
