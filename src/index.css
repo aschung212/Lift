@@ -1113,6 +1113,72 @@ html.modal-open .tabContent {
   padding: 32px 0;
 }
 
+/* ─── Badge case enable prompt ───────────────────────────────────── */
+
+.badgeEnablePrompt {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: var(--font-caption1);
+  font-weight: 500;
+  color: var(--accent);
+  background: none;
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  padding: 8px 16px;
+  margin: 4px 16px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.badgeEnablePrompt:active {
+  background: var(--accent-subtle);
+}
+
+/* ─── Settings row highlight (scroll-to animation) ───────────────── */
+
+.settingsRowHighlight {
+  animation: rowPulse 2s ease;
+}
+
+@keyframes rowPulse {
+  0%, 100% { background: transparent; }
+  20%, 60% { background: var(--accent-subtle); }
+}
+
+/* ─── Progression disable disclosure ─────────────────────────────── */
+
+.progressionDisclosure {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.disclosureRow {
+  font-size: var(--font-footnote);
+  line-height: 1.4;
+  padding-left: 8px;
+}
+
+.disclosureOk {
+  color: var(--text-secondary);
+  border-left: 3px solid var(--success);
+}
+
+.disclosureWarn {
+  color: var(--text-secondary);
+  border-left: 3px solid var(--danger);
+}
+
+.disclosureHint {
+  color: var(--text-muted);
+  border-left: 3px solid var(--accent);
+  font-style: italic;
+}
+
 /* ─── Theme preview fade transition ──────────────────────────────── */
 
 html.theme-fading,

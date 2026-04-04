@@ -119,6 +119,10 @@
               <div v-else-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && !progressionActive" class="badgePreviewOverlay">
                 Enable Progression to unlock
               </div>
+              <!-- Prompt to enable progression when off and locked themes visible -->
+              <button v-if="!progressionActive && !previewingThemeId" class="badgeEnablePrompt" @click="scrollToProgressionToggle">
+                Enable Progression to start unlocking themes
+              </button>
               <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
               <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
                 <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>
@@ -194,7 +198,7 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
-              <div class="settingsRow">
+              <div ref="progressionToggleEl" class="settingsRow">
                 <span class="settingsLabel">Progression</span>
                 <button
                   :class="['glassToggle', { on: progressionActive }]"
@@ -538,6 +542,25 @@
             <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Choose' }}</button>
             <button class="resetConfirmCancel" @click="skipStarterPick">Skip</button>
           </template>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
+  <!-- Disable progression disclosure -->
+  <Teleport to="body">
+    <transition name="unlockFade">
+      <div v-if="disableProgressionVisible" class="unlockOverlay" @click.self="disableProgressionVisible = false">
+        <div class="unlockModal">
+          <div class="unlockTitle" style="color: var(--text-primary)">Disable Progression?</div>
+          <div class="progressionDisclosure">
+            <div class="disclosureRow disclosureOk">Your workouts and exercises will still be tracked normally.</div>
+            <div class="disclosureRow disclosureWarn">You will not earn XP for sets logged while progression is off.</div>
+            <div class="disclosureRow disclosureOk">Your existing XP and unlocked themes are preserved.</div>
+            <div class="disclosureRow disclosureHint">To hide XP info without losing progress, use "Show XP &amp; streaks" instead.</div>
+          </div>
+          <button class="unlockDismiss resetConfirmDanger" @click="confirmDisableProgression">Disable Progression</button>
+          <button class="resetConfirmCancel" @click="disableProgressionVisible = false">Cancel</button>
         </div>
       </div>
     </transition>
@@ -970,6 +993,16 @@ const STARTER_THEMES: { id: ThemeId; label: string }[] = [
 ]
 
 const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
+const progressionToggleEl = ref<HTMLElement | null>(null)
+
+function scrollToProgressionToggle() {
+  const el = progressionToggleEl.value
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('settingsRowHighlight')
+  setTimeout(() => el.classList.remove('settingsRowHighlight'), 2000)
+}
+
 function isStarterTheme(id: ThemeId): boolean {
   return STARTER_IDS.includes(id)
 }
@@ -1062,12 +1095,20 @@ function runMigrationIfNeeded() {
   }
 }
 
+const disableProgressionVisible = ref(false)
+
+function confirmDisableProgression() {
+  disableProgressionVisible.value = false
+  progressionStore.progressionEnabled = false
+  progressionStore._persist()
+  currentTheme.value = 'pearl'
+}
+
 function toggleProgression() {
   if (progressionActive.value) {
-    progressionStore.progressionEnabled = false
-    progressionStore._persist()
-    // Force switch to Origin — only free theme without progression
-    currentTheme.value = 'pearl'
+    // Show disclosure before disabling
+    disableProgressionVisible.value = true
+    return
   } else {
     const realStarters: ThemeId[] = ['fire', 'water', 'luck']
     const hasRealStarter = progressionStore.starterTheme && realStarters.includes(progressionStore.starterTheme)
