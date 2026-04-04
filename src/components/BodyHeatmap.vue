@@ -70,6 +70,8 @@
             d="M142,82 Q148,78 152,84 L156,96 L148,100 L142,98 Z"
             :style="regionStyle('Shoulders')"
             class="muscleRegion"
+            role="img"
+            :aria-label="`Right shoulder: ${getSetCount('Shoulders')} sets`"
           />
           <!-- Left Bicep -->
           <path
@@ -77,13 +79,15 @@
             :style="regionStyle('Biceps')"
             class="muscleRegion"
             role="img"
-            :aria-label="`Biceps: ${getSetCount('Biceps')} sets`"
+            :aria-label="`Left bicep: ${getSetCount('Biceps')} sets`"
           />
           <!-- Right Bicep -->
           <path
             d="M152,100 L156,96 L162,136 Q162,142 158,144 L152,144 Q148,142 148,136 L146,108 Z"
             :style="regionStyle('Biceps')"
             class="muscleRegion"
+            role="img"
+            :aria-label="`Right bicep: ${getSetCount('Biceps')} sets`"
           />
           <!-- Core / Abs -->
           <path
@@ -99,13 +103,15 @@
             :style="regionStyle('Legs')"
             class="muscleRegion"
             role="img"
-            :aria-label="`Legs: ${getSetCount('Legs')} sets`"
+            :aria-label="`Left quad: ${getSetCount('Legs')} sets`"
           />
           <!-- Right Quad -->
           <path
             d="M132,200 Q134,204 136,216 L142,290 Q140,296 134,296 L118,296 Q114,290 114,280 L112,240 Q110,220 110,210 Z"
             :style="regionStyle('Legs')"
             class="muscleRegion"
+            role="img"
+            :aria-label="`Right quad: ${getSetCount('Legs')} sets`"
           />
         </g>
 
@@ -123,6 +129,8 @@
             d="M78,132 Q76,134 74,142 L72,164 Q70,178 76,190 L80,198 Q88,206 100,208 Q112,206 120,198 L124,190 Q130,178 128,164 L126,142 Q124,134 122,132 Z"
             :style="regionStyle('Back')"
             class="muscleRegion"
+            role="img"
+            :aria-label="`Lower back: ${getSetCount('Back')} sets`"
           />
           <!-- Left Rear Shoulder -->
           <path
@@ -130,13 +138,15 @@
             :style="regionStyle('Shoulders')"
             class="muscleRegion"
             role="img"
-            :aria-label="`Shoulders: ${getSetCount('Shoulders')} sets`"
+            :aria-label="`Left shoulder: ${getSetCount('Shoulders')} sets`"
           />
           <!-- Right Rear Shoulder -->
           <path
             d="M142,82 Q148,78 152,84 L156,96 L148,100 L142,98 Z"
             :style="regionStyle('Shoulders')"
             class="muscleRegion"
+            role="img"
+            :aria-label="`Right shoulder: ${getSetCount('Shoulders')} sets`"
           />
           <!-- Left Tricep -->
           <path
@@ -144,13 +154,15 @@
             :style="regionStyle('Triceps')"
             class="muscleRegion"
             role="img"
-            :aria-label="`Triceps: ${getSetCount('Triceps')} sets`"
+            :aria-label="`Left tricep: ${getSetCount('Triceps')} sets`"
           />
           <!-- Right Tricep -->
           <path
             d="M152,100 L156,96 L162,136 Q162,142 158,144 L152,144 Q148,142 148,136 L146,108 Z"
             :style="regionStyle('Triceps')"
             class="muscleRegion"
+            role="img"
+            :aria-label="`Right tricep: ${getSetCount('Triceps')} sets`"
           />
           <!-- Left Hamstring / Glute -->
           <path
@@ -158,13 +170,15 @@
             :style="regionStyle('Legs')"
             class="muscleRegion"
             role="img"
-            :aria-label="`Legs: ${getSetCount('Legs')} sets`"
+            :aria-label="`Left hamstring: ${getSetCount('Legs')} sets`"
           />
           <!-- Right Hamstring / Glute -->
           <path
             d="M132,200 Q134,204 136,216 L142,290 Q140,296 134,296 L118,296 Q114,290 114,280 L112,240 Q110,220 110,210 Z"
             :style="regionStyle('Legs')"
             class="muscleRegion"
+            role="img"
+            :aria-label="`Right hamstring: ${getSetCount('Legs')} sets`"
           />
         </g>
       </svg>
