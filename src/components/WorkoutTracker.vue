@@ -467,6 +467,11 @@
             <button class="repMaxBtn repMaxBtnClose" @click="closeModal">{{ isEditMode ? 'Cancel' : 'Done' }}</button>
           </div>
 
+          <!-- XP toast -->
+          <transition name="xpToastFade">
+            <div v-if="xpToastVisible" class="xpToast">{{ xpToastText }}</div>
+          </transition>
+
         </template>
       </div>
     </div>
@@ -612,13 +617,61 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
+import { useProgressionStore } from '../stores/progression'
+import { calculateSetXP, calculateBest1RM, applyStreakMultiplier } from '../lib/xp'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
+const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
+
+// ── XP toast state ──────────────────────────────────────────────
+const xpToastVisible = ref(false)
+const xpToastText = ref('')
+let xpToastTimer: ReturnType<typeof setTimeout> | null = null
+
+function showXPToast(text: string) {
+  xpToastText.value = text
+  xpToastVisible.value = true
+  if (xpToastTimer) clearTimeout(xpToastTimer)
+  xpToastTimer = setTimeout(() => { xpToastVisible.value = false }, 2000)
+}
+
+function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number) {
+  if (!progressionStore.progressionEnabled) return
+
+  const exercise = store.exercises.find(e => e.id === exerciseId)
+  if (!exercise) return
+
+  // Best 1RM from existing sets (before this set was added, it's already in the array)
+  const otherSets = exercise.sets.filter(s => s.id !== setId)
+  const best1RM = calculateBest1RM(otherSets)
+
+  const setIndex = exercise.sets.length - 1
+  const baseXP = calculateSetXP({
+    setEstimated1RM: estimated1RM,
+    exerciseBest1RM: best1RM,
+    setIndex: best1RM === null ? setIndex : 0,
+  })
+
+  const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+  progressionStore.logSetXP(setId, xp)
+  progressionStore.checkUnlocks()
+
+  if (progressionStore.showProgression) {
+    const isPR = best1RM !== null && estimated1RM > best1RM
+    const isTie = best1RM !== null && estimated1RM === best1RM
+    const mult = progressionStore.currentMultiplier
+    let text = `+${xp} XP`
+    if (isPR) text += ' PR!'
+    else if (isTie) text += ' Tied PR!'
+    if (mult > 1) text += ` (×${mult})`
+    showXPToast(text)
+  }
+}
 
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
@@ -1411,8 +1464,26 @@ const canSave = computed(() => {
 function saveSet() {
   if (!canSave.value) return
   if (isEditMode.value && editingSet.value && weight.value !== null && reps.value !== null) {
-    store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, toLbs(weight.value), reps.value, date.value)
+    const editExId = editingSet.value.exerciseId
+    const editSetId = editingSet.value.setId
+    store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value)
     logEvent('set_edit')
+    // Recalc XP for the edited set
+    if (progressionStore.progressionEnabled) {
+      const ex = store.exercises.find(e => e.id === editExId)
+      const set = ex?.sets.find(s => s.id === editSetId)
+      if (ex && set) {
+        const otherSets = ex.sets.filter(s => s.id !== editSetId)
+        const best = calculateBest1RM(otherSets)
+        const newXP = calculateSetXP({
+          setEstimated1RM: set.estimated1RM,
+          exerciseBest1RM: best,
+          setIndex: best === null ? ex.sets.indexOf(set) : 0,
+        })
+        const xp = applyStreakMultiplier(newXP, progressionStore.streakHistory, set.date)
+        progressionStore.recalcSetXP(editSetId, xp)
+      }
+    }
     closeModal()
   } else {
     let exerciseId: string = selectedExerciseId.value
@@ -1436,6 +1507,12 @@ function saveSet() {
       const wasPR = isNewPR.value
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log')
+      // XP: get the just-logged set (last in array) and compute XP
+      const exercise = store.exercises.find(e => e.id === exerciseId)
+      if (exercise && exercise.sets.length > 0) {
+        const newSet = exercise.sets[exercise.sets.length - 1]
+        computeAndLogXP(exerciseId, newSet.id, newSet.estimated1RM)
+      }
       // Haptic feedback — stronger for PRs
       if (wasPR) {
         notifySuccess()
@@ -1462,7 +1539,10 @@ function undoDeleteSet(exerciseId: string, set: WorkoutSet) {
   showUndo(
     'Set deleted',
     () => store.restoreSet(exerciseId, set),
-    () => store.syncDeleteSet(set.id),
+    () => {
+      store.syncDeleteSet(set.id)
+      progressionStore.removeSetXP(set.id)
+    },
   )
 }
 

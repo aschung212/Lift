@@ -1003,7 +1003,8 @@ html.modal-open .tabContent {
 }
 
 .themePreview.locked .themePreviewLabel {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
+  opacity: 0.5;
 }
 
 .themePreviewLock {
@@ -2652,6 +2653,21 @@ html.modal-open .tabContent {
   display: flex;
   gap: 8px;
 }
+
+/* ─── XP toast ───────────────────────────────────────────────────── */
+
+.xpToast {
+  text-align: center;
+  font-size: var(--font-caption1);
+  font-weight: 700;
+  color: var(--accent);
+  padding: 8px 0 0;
+}
+
+.xpToastFade-enter-active { transition: opacity 0.2s; }
+.xpToastFade-leave-active { transition: opacity 0.5s; }
+.xpToastFade-enter-from,
+.xpToastFade-leave-to { opacity: 0; }
 
 .repMaxBtn {
   flex: 1;

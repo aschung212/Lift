@@ -235,9 +235,11 @@ import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
+import { useProgressionStore } from '../stores/progression'
 
 const store = useBodyweightStore()
 const prefs = usePreferencesStore()
+const progressionStore = useProgressionStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
@@ -306,6 +308,11 @@ function save() {
   } else {
     store.addEntry(toLbs(weight.value), date.value)
     logEvent('bodyweight_add')
+    // Award bodyweight logging XP
+    if (progressionStore.progressionEnabled) {
+      progressionStore.logBodyweightXP(date.value)
+      progressionStore.checkUnlocks()
+    }
   }
   closeModal()
 }

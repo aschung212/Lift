@@ -198,6 +198,18 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+              <div v-show="progressionActive" class="settingsRow">
+                <span class="settingsLabel settingsLabelIndented">Show XP &amp; streaks</span>
+                <button
+                  :class="['glassToggle', { on: progressionStore.showProgression }]"
+                  @click="progressionStore.setShowProgression(!progressionStore.showProgression)"
+                  role="switch"
+                  :aria-checked="progressionStore.showProgression"
+                  :aria-label="progressionStore.showProgression ? 'Hide progression info' : 'Show progression info'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
             </div>
 
             <!-- Dev tools — only on localhost/LAN -->
@@ -208,6 +220,7 @@
                 <button class="devBtn" @click="devSeedProgression(12400)">Seed 12k XP</button>
                 <button class="devBtn" @click="devSeedProgression(80000)">Seed 80k XP</button>
                 <button class="devBtn" @click="devAddXP(5000)">+5,000 XP</button>
+                <button class="devBtn" @click="devRunMigration">Run Migration</button>
                 <button class="devBtn devBtnDanger" @click="devClearAll">Clear All Data</button>
               </div>
             </div>
@@ -484,6 +497,7 @@ const BodyweightTracker = defineAsyncComponent({
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
 import { useProgressionStore, UNLOCK_TIERS } from './stores/progression'
+import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
@@ -600,11 +614,14 @@ const workoutStoreForOnboarding = useWorkoutStore()
 const bodyweightStoreForOnboarding = useBodyweightStore()
 
 // Skip onboarding if user already has any data (exercises or bodyweight entries)
-// Reactive so it catches data that loads asynchronously after auth
+// Reactive so it catches data that loads asynchronously after auth.
+// onboardingInProgress prevents the watcher from firing when the onboarding
+// screen itself adds exercises (e.g. Popular Exercises option).
+const onboardingInProgress = ref(!onboardingComplete.value)
 watch(
   () => workoutStoreForOnboarding.exercises.length + bodyweightStoreForOnboarding.entries.length,
   (total) => {
-    if (!onboardingComplete.value && total > 0) {
+    if (!onboardingComplete.value && !onboardingInProgress.value && total > 0) {
       localStorage.setItem('onboarding-complete', 'true')
       onboardingComplete.value = true
     }
@@ -615,6 +632,7 @@ const showOnboarding = computed(() => !onboardingComplete.value)
 const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
 
 function onOnboardingComplete() {
+  onboardingInProgress.value = false
   onboardingComplete.value = true
   hasSampleData.value = localStorage.getItem('sample-data') === 'true'
 }
@@ -775,9 +793,14 @@ function toggleProgression() {
     progressionStore.progressionEnabled = true
     if (!progressionStore.starterTheme) {
       progressionStore.starterTheme = 'pearl'
-      if (!progressionStore.unlockedThemes.includes('pearl')) {
-        progressionStore.unlockedThemes.push('pearl')
-      }
+    }
+    // Ensure starter theme is unlocked
+    const starter = progressionStore.starterTheme
+    if (starter && !progressionStore.unlockedThemes.includes(starter)) {
+      progressionStore.unlockedThemes.push(starter)
+    }
+    if (!progressionStore.unlockedThemes.includes('pearl')) {
+      progressionStore.unlockedThemes.push('pearl')
     }
     progressionStore._persist()
   }
@@ -807,6 +830,17 @@ function devAddXP(amount: number) {
   progressionStore.totalXP += amount
   progressionStore.checkUnlocks()
   progressionStore._persist()
+}
+
+function devRunMigration() {
+  clearMigrationFlag()
+  const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
+  progressionStore.totalXP = result.totalXP
+  progressionStore.xpPerSet = result.xpPerSet
+  progressionStore.bodyweightXPDates = result.bodyweightXPDates
+  progressionStore.checkUnlocks()
+  progressionStore._persist()
+  markMigrated()
 }
 
 function devClearAll() {
@@ -1008,6 +1042,19 @@ function onBeforeUnload() {
 onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload)
   logEvent('session_start')
+
+  // One-time retroactive XP migration for existing users
+  if (progressionStore.progressionEnabled && !isMigrated()) {
+    const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
+    if (result.totalXP > 0) {
+      progressionStore.totalXP = result.totalXP
+      progressionStore.xpPerSet = result.xpPerSet
+      progressionStore.bodyweightXPDates = result.bodyweightXPDates
+      progressionStore.checkUnlocks()
+      progressionStore._persist()
+    }
+    markMigrated()
+  }
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)

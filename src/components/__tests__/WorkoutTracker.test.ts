@@ -7,6 +7,23 @@ const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../stores/progression', () => ({
+  useProgressionStore: () => ({
+    progressionEnabled: false,
+    showProgression: false,
+    streakHistory: [],
+    currentMultiplier: 1,
+    logSetXP: vi.fn(),
+    recalcSetXP: vi.fn(),
+    removeSetXP: vi.fn(),
+    checkUnlocks: vi.fn(),
+  }),
+}))
+vi.mock('../../lib/xp', () => ({
+  calculateSetXP: () => 50,
+  calculateBest1RM: () => null,
+  applyStreakMultiplier: (_xp: number) => _xp,
+}))
 
 // Mock ExerciseGraph (heavy SVG child)
 vi.mock('../ExerciseGraph.vue', () => ({
