@@ -33,6 +33,53 @@ function epley(weight: number, reps: number): number {
   return Math.round(weight * (1 + reps / 30))
 }
 
+/**
+ * Deduplicate exercises by name (case-insensitive).
+ * For each group of exercises with the same name, keeps the one with
+ * the most sets as primary and merges all other sets into it.
+ */
+function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; removed: Exercise[] } {
+  const groups = new Map<string, Exercise[]>()
+  for (const ex of exercises) {
+    const key = ex.name.toLowerCase()
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(ex)
+  }
+
+  const result: Exercise[] = []
+  const removed: Exercise[] = []
+
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      result.push(group[0])
+      continue
+    }
+    // Pick the one with the most sets as primary
+    group.sort((a, b) => b.sets.length - a.sets.length)
+    const primary = group[0]
+    // Merge sets from duplicates, deduplicating by set ID
+    const setIds = new Set(primary.sets.map(s => s.id))
+    for (let i = 1; i < group.length; i++) {
+      for (const set of group[i].sets) {
+        if (!setIds.has(set.id)) {
+          primary.sets.push(set)
+          setIds.add(set.id)
+        }
+      }
+      removed.push(group[i])
+    }
+    // Merge tags from duplicates
+    const tagSet = new Set(primary.tags)
+    for (let i = 1; i < group.length; i++) {
+      for (const tag of group[i].tags) tagSet.add(tag)
+    }
+    primary.tags = [...tagSet]
+    result.push(primary)
+  }
+
+  return { exercises: result, removed }
+}
+
 function load(): Exercise[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -101,7 +148,35 @@ export const useWorkoutStore = defineStore('workout', {
 
       const { merged, localOnly } = mergeEntities(localWithTimestamps, remoteExercises)
 
-      this.exercises = merged.map(({ updated_at: _ts, ...rest }) => rest as Exercise)
+      // Deduplicate exercises by name (case-insensitive).
+      // Supabase can end up with multiple exercises of the same name from
+      // different sessions/devices with different UUIDs. Merge their sets
+      // into the primary (the one with the most sets) and delete the dupes.
+      const deduped = deduplicateByName(merged.map(({ updated_at: _ts, ...rest }) => rest as Exercise))
+
+      // Clean up duplicate exercises from Supabase
+      if (supabase && this._userId && deduped.removed.length > 0) {
+        const userId = this._userId
+        for (const dupe of deduped.removed) {
+          // Reassign sets to the primary exercise
+          for (const set of dupe.sets) {
+            const primary = deduped.exercises.find(e =>
+              e.name.toLowerCase() === dupe.name.toLowerCase()
+            )
+            if (primary) {
+              syncQueue.enqueue(`set-reassign:${set.id}`, () =>
+                supabase!.from('sets').update({ exercise_id: primary.id }).eq('id', set.id).eq('user_id', userId)
+              )
+            }
+          }
+          // Delete the duplicate exercise
+          syncQueue.enqueue(`exercise-dedup-delete:${dupe.id}`, () =>
+            supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
+          )
+        }
+      }
+
+      this.exercises = deduped.exercises
       this._persist()
 
       // Push local-only exercises to remote
