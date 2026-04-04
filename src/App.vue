@@ -116,7 +116,7 @@
               <div v-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && progressionActive" class="badgePreviewOverlay">
                 {{ xpToUnlockPreview.toLocaleString() }} XP to unlock
               </div>
-              <div v-else-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && !progressionActive" class="badgePreviewOverlay">
+              <div v-else-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && !progressionActive" class="badgePreviewOverlay" style="cursor:pointer" @click="scrollToProgressionToggle">
                 Enable Progression to unlock
               </div>
               <!-- Prompt to enable progression when off and locked themes visible -->
