@@ -861,7 +861,7 @@ function devClearAll() {
   location.reload()
 }
 
-const previewingThemeId = ref<string | null>(null)
+const previewingThemeId = ref<ThemeId | null>(null)
 
 // Map every theme to its XP requirement, accounting for starter slots
 const themeXPRequired = computed(() => {
@@ -887,11 +887,11 @@ const themeXPRequired = computed(() => {
 
 const xpToUnlockPreview = computed(() => {
   if (!previewingThemeId.value) return 0
-  const required = themeXPRequired.value[previewingThemeId.value as ThemeId] ?? 0
+  const required = themeXPRequired.value[previewingThemeId.value] ?? 0
   return Math.max(0, required - progressionStore.totalXP)
 })
 
-function handleThemePreview(id: string) {
+function handleThemePreview(id: ThemeId) {
   previewingThemeId.value = id
   previewTheme(id as import('./composables/useTheme').ThemeId)
 }
