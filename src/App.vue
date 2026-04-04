@@ -78,12 +78,12 @@
                   v-for="t in sortedThemes"
                   :key="t.id"
                   :class="['themePreview', { active: currentTheme === t.id, locked: !isThemeUnlocked(t.id), mystery: isEternalLocked(t.id) }]"
-                  @click="currentTheme === t.id ? openThemeStats(t.id) : isThemeUnlocked(t.id) ? selectTheme(t.id) : isEternalLocked(t.id) ? null : handleThemePreview(t.id)"
+                  @click="currentTheme === t.id ? openThemeStats(t.id) : isThemeUnlocked(t.id) ? selectTheme(t.id) : isEternalLocked(t.id) ? showEternalHint() : handleThemePreview(t.id)"
                   :aria-label="isEternalLocked(t.id) ? 'Mystery theme — 1,000,000 XP' : isThemeUnlocked(t.id) ? 'Select ' + t.label + ' theme' : t.label + ' theme — locked'"
                   :aria-pressed="currentTheme === t.id"
                 >
                   <span
-                    :class="['themePreviewDot', { mysteryDot: isEternalLocked(t.id) }]"
+                    :class="['themePreviewDot', { mysteryDot: isEternalLocked(t.id), trialDot: progressionActive && !progressionStore.starterConfirmed && isStarterTheme(t.id) && isThemeUnlocked(t.id) }]"
                     :style="isEternalLocked(t.id) ? {} : {
                       background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[t.id]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[t.id]?.[resolvedMode]?.bg + ')',
                     }"
@@ -106,7 +106,6 @@
                     <svg v-else-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </span>
                   <span class="themePreviewLabel">{{ isEternalLocked(t.id) ? '???' : t.label }}</span>
-                  <span v-if="progressionActive && !progressionStore.starterConfirmed && isStarterTheme(t.id) && isThemeUnlocked(t.id)" class="themeTrialBadge">Trial</span>
                 </button>
               </div>
               <!-- Trial period banner -->
@@ -681,7 +680,7 @@ const BodyweightTracker = defineAsyncComponent({
   delay: 100,
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
-import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration } from './stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration, showXPToast } from './stores/progression'
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { useAuth } from './composables/useAuth'
@@ -1010,6 +1009,18 @@ function isStarterTheme(id: ThemeId): boolean {
 
 function isEternalLocked(id: ThemeId): boolean {
   return id === 'eternal' && !isThemeUnlocked('eternal')
+}
+
+function showEternalHint() {
+  const remaining = progressionStore.progressionEnabled
+    ? Math.max(0, 1_000_000 - progressionStore.totalXP)
+    : 1_000_000
+  showXPToast(
+    `${remaining.toLocaleString()} XP to discover this theme`,
+    progressionStore.progressionEnabled ? progressionStore.progressPercent : 0,
+    progressionStore.totalXP,
+    1_000_000
+  )
 }
 
 // ── Theme stats sheet ────────────────────────────────────────────

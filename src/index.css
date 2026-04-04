@@ -1207,13 +1207,9 @@ html.theme-fading .settingsSheet {
 
 /* ─── Trial badge and banner ─────────────────────────────────────── */
 
-.themeTrialBadge {
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--accent);
-  opacity: 0.7;
+.trialDot {
+  border: 2px dashed var(--accent) !important;
+  opacity: 0.85;
 }
 
 .trialBanner {
