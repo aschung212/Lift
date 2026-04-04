@@ -55,7 +55,18 @@ export function dismissUnlockCelebration() {
 
 export interface ThemeUnlock {
   id: ThemeId
-  unlockedAt: string  // ISO timestamp
+  unlockedAt: string            // ISO timestamp
+  totalXPAtUnlock?: number      // snapshot for share cards
+  totalSetsAtUnlock?: number    // snapshot for share cards
+}
+
+export interface SetXPEntry {
+  xp: number
+  theme: string
+  epoch: number
+  zone: string
+  isPR: boolean
+  isRepPR: boolean
 }
 
 export interface ProgressionState {
@@ -69,7 +80,7 @@ export interface ProgressionState {
   unlockedThemes: ThemeUnlock[]        // themes with unlock timestamps
   starterTheme: ThemeId | null
   streakHistory: StreakWeekEntry[]     // append-only
-  xpPerSet: Record<string, number>    // setId → XP earned (current epoch)
+  xpPerSet: Record<string, SetXPEntry | number>  // setId → XP data (number = legacy format)
   bodyweightXPDates: string[]         // dates that earned bodyweight XP
 }
 
@@ -112,15 +123,20 @@ function defaultState(): ProgressionState {
   }
 }
 
+/** Get the XP value from a set entry (handles legacy number format). */
+export function getSetXP(entry: SetXPEntry | number): number {
+  return typeof entry === 'number' ? entry : entry.xp
+}
+
 /** Check if a theme is in the unlocked list. */
 function hasTheme(themes: ThemeUnlock[], id: ThemeId): boolean {
   return themes.some(t => t.id === id)
 }
 
-/** Add a theme to the unlocked list with current timestamp. */
-function addTheme(themes: ThemeUnlock[], id: ThemeId): void {
+/** Add a theme to the unlocked list with current timestamp and stats snapshot. */
+function addTheme(themes: ThemeUnlock[], id: ThemeId, totalXP = 0, totalSets = 0): void {
   if (!hasTheme(themes, id)) {
-    themes.push({ id, unlockedAt: new Date().toISOString() })
+    themes.push({ id, unlockedAt: new Date().toISOString(), totalXPAtUnlock: totalXP, totalSetsAtUnlock: totalSets })
   }
 }
 
@@ -222,8 +238,10 @@ export const useProgressionStore = defineStore('progression', {
 
     // --- XP Actions ---
 
-    logSetXP(setId: string, xp: number) {
-      this.xpPerSet[setId] = xp
+    logSetXP(setId: string, xp: number, meta?: { theme: string; epoch: number; zone: string; isPR: boolean; isRepPR: boolean }) {
+      this.xpPerSet[setId] = meta
+        ? { xp, theme: meta.theme, epoch: meta.epoch, zone: meta.zone, isPR: meta.isPR, isRepPR: meta.isRepPR }
+        : xp
       this.totalXP += xp
       this._persist()
       this._syncToSupabase()
@@ -237,14 +255,17 @@ export const useProgressionStore = defineStore('progression', {
       this._syncToSupabase()
     },
 
-    recalcSetXP(setId: string, newXP: number) {
-      const oldXP = this.xpPerSet[setId] ?? 0
+    recalcSetXP(setId: string, newXP: number, meta?: { theme: string; epoch: number; zone: string; isPR: boolean; isRepPR: boolean }) {
+      const oldEntry = this.xpPerSet[setId]
+      const oldXP = oldEntry ? getSetXP(oldEntry) : 0
       const diff = newXP - oldXP
       // XP is permanent: only increase, never decrease total
       if (diff > 0) {
         this.totalXP += diff
       }
-      this.xpPerSet[setId] = newXP
+      this.xpPerSet[setId] = meta
+        ? { xp: newXP, theme: meta.theme, epoch: meta.epoch, zone: meta.zone, isPR: meta.isPR, isRepPR: meta.isRepPR }
+        : newXP
       this._persist()
       this._syncToSupabase()
     },
@@ -386,24 +407,25 @@ export const useProgressionStore = defineStore('progression', {
     checkUnlocks(): ThemeId[] {
       const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
       const newlyUnlocked: ThemeId[] = []
+      const setCount = Object.keys(this.xpPerSet).length
 
       for (const tier of UNLOCK_TIERS) {
         if (this.totalXP < tier.xpRequired) break
 
         if (tier.themeId) {
           if (!hasTheme(this.unlockedThemes, tier.themeId)) {
-            addTheme(this.unlockedThemes, tier.themeId)
+            addTheme(this.unlockedThemes, tier.themeId, this.totalXP, setCount)
             newlyUnlocked.push(tier.themeId)
           }
         } else if (tier.level === 1) {
           if (this.starterTheme && !hasTheme(this.unlockedThemes, this.starterTheme)) {
-            addTheme(this.unlockedThemes, this.starterTheme)
+            addTheme(this.unlockedThemes, this.starterTheme, this.totalXP, setCount)
             newlyUnlocked.push(this.starterTheme)
           }
         } else {
           for (const sid of STARTER_IDS) {
             if (!hasTheme(this.unlockedThemes, sid)) {
-              addTheme(this.unlockedThemes, sid)
+              addTheme(this.unlockedThemes, sid, this.totalXP, setCount)
               newlyUnlocked.push(sid)
             }
           }

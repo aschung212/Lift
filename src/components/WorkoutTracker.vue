@@ -649,9 +649,20 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     isRepPR,
   })
 
+  // Determine zone for storage, instrumentation, and display
+  let zone: 'warmup' | 'working' | 'pr' | 'tie' | 'new_exercise'
+  const isPR = best1RM !== null && estimated1RM > best1RM
+  const isTie = best1RM !== null && estimated1RM === best1RM
+  if (best1RM === null) zone = 'new_exercise'
+  else if (isPR) zone = 'pr'
+  else if (isTie) zone = 'tie'
+  else if (estimated1RM / best1RM < XP_CONFIG.warmupThreshold) zone = 'warmup'
+  else zone = 'working'
+
   const mult = progressionStore.currentMultiplier
   const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
-  progressionStore.logSetXP(setId, xp)
+  const setMeta = { theme: currentTheme.value, epoch: progressionStore.epoch, zone, isPR, isRepPR }
+  progressionStore.logSetXP(setId, xp, setMeta)
   const newUnlocks = progressionStore.checkUnlocks()
   if (newUnlocks.length > 0) {
     const theme = THEMES.find(t => t.id === newUnlocks[0])
@@ -662,16 +673,6 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
       }, progressionStore.showProgression ? 1500 : 500)
     }
   }
-
-  // Determine zone for instrumentation and display
-  let zone: 'warmup' | 'working' | 'pr' | 'tie' | 'new_exercise'
-  const isPR = best1RM !== null && estimated1RM > best1RM
-  const isTie = best1RM !== null && estimated1RM === best1RM
-  if (best1RM === null) zone = 'new_exercise'
-  else if (isPR) zone = 'pr'
-  else if (isTie) zone = 'tie'
-  else if (estimated1RM / best1RM < XP_CONFIG.warmupThreshold) zone = 'warmup'
-  else zone = 'working'
 
   logXPEvent({
     userId: progressionStore._userId,
@@ -1568,7 +1569,17 @@ function saveSet() {
           setIndex: best === null ? ex.sets.indexOf(set) : 0,
         })
         const xp = applyStreakMultiplier(newXP, progressionStore.streakHistory, set.date)
-        progressionStore.recalcSetXP(editSetId, xp)
+        const editIsPR = best !== null && set.estimated1RM > best
+        const editIsTie = best !== null && set.estimated1RM === best
+        const editIsPRZone = editIsPR || editIsTie
+        const editIsRepPR = !editIsPRZone && checkRepPR(set.weight, set.reps, otherSets)
+        let editZone: string
+        if (best === null) editZone = 'new_exercise'
+        else if (editIsPR) editZone = 'pr'
+        else if (editIsTie) editZone = 'tie'
+        else if (set.estimated1RM / best < XP_CONFIG.warmupThreshold) editZone = 'warmup'
+        else editZone = 'working'
+        progressionStore.recalcSetXP(editSetId, xp, { theme: currentTheme.value, epoch: progressionStore.epoch, zone: editZone, isPR: editIsPR, isRepPR: editIsRepPR })
       }
     }
     closeModal()
