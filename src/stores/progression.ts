@@ -240,12 +240,31 @@ export const useProgressionStore = defineStore('progression', {
 
     // --- XP Actions ---
 
-    logSetXP(setId: string, xp: number, meta?: { theme: string; epoch: number; zone: string; isPR: boolean; isRepPR: boolean }) {
-      this.xpPerSet[setId] = meta
-        ? { xp, theme: meta.theme, epoch: meta.epoch, zone: meta.zone, isPR: meta.isPR, isRepPR: meta.isRepPR }
-        : xp
+    /** Record XP metadata for a set (always — even without progression). */
+    recordSetXP(setId: string, xp: number, meta: { theme: string; epoch: number; zone: string; isPR: boolean; isRepPR: boolean }) {
+      this.xpPerSet[setId] = { xp, theme: meta.theme, epoch: meta.epoch, zone: meta.zone, isPR: meta.isPR, isRepPR: meta.isRepPR }
+      this._persist()
+    },
+
+    /** Credit XP to totalXP and trigger progression effects (only when enabled). */
+    creditSetXP(_setId: string, xp: number) {
       this.totalXP += xp
       // Confirm starter on first set logged
+      if (!this.starterConfirmed && this.starterTheme) {
+        this.starterConfirmed = true
+      }
+      this._persist()
+      this._syncToSupabase()
+    },
+
+    /** Legacy compat — record + credit in one call. */
+    logSetXP(setId: string, xp: number, meta?: { theme: string; epoch: number; zone: string; isPR: boolean; isRepPR: boolean }) {
+      if (meta) {
+        this.recordSetXP(setId, xp, meta)
+      } else {
+        this.xpPerSet[setId] = xp
+      }
+      this.totalXP += xp
       if (!this.starterConfirmed && this.starterTheme) {
         this.starterConfirmed = true
       }

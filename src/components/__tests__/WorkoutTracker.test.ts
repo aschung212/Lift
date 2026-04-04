@@ -14,15 +14,26 @@ vi.mock('../../stores/progression', () => ({
     streakHistory: [],
     currentMultiplier: 1,
     logSetXP: vi.fn(),
+    recordSetXP: vi.fn(),
+    creditSetXP: vi.fn(),
     recalcSetXP: vi.fn(),
     removeSetXP: vi.fn(),
     checkUnlocks: vi.fn().mockReturnValue([]),
+    starterConfirmed: true,
+    starterTheme: 'fire',
+    epoch: 1,
+    xpPerSet: {},
+    progressPercent: 0,
+    totalXP: 0,
+    nextUnlockThreshold: 5000,
   }),
 }))
 vi.mock('../../lib/xp', () => ({
   calculateSetXP: () => 50,
   calculateBest1RM: () => null,
   applyStreakMultiplier: (_xp: number) => _xp,
+  checkRepPR: () => false,
+  XP_CONFIG: { warmupThreshold: 0.5, prMultiplier: 3, tieMultiplier: 2, repPRMultiplier: 1.25 },
 }))
 
 // Mock ExerciseGraph (heavy SVG child)

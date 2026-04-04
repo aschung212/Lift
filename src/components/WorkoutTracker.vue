@@ -628,8 +628,6 @@ const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayW
 const { impactLight, notifySuccess } = useHaptics()
 
 function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
-  if (!progressionStore.progressionEnabled) return
-
   const exercise = store.exercises.find(e => e.id === exerciseId)
   if (!exercise) return
 
@@ -661,30 +659,37 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
 
   const mult = progressionStore.currentMultiplier
   const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
-  const wasTrialPeriod = !progressionStore.starterConfirmed
   const setMeta = { theme: currentTheme.value, epoch: progressionStore.epoch, zone, isPR, isRepPR }
-  progressionStore.logSetXP(setId, xp, setMeta)
 
-  // Notify when starter locks in on first set
-  if (wasTrialPeriod && progressionStore.starterConfirmed) {
-    const starterLabel = THEMES.find(t => t.id === progressionStore.starterTheme)?.label
-    if (starterLabel) {
-      setTimeout(() => showXPToast(
-        `${starterLabel} locked in as your starter`,
-        progressionStore.progressPercent,
-        progressionStore.totalXP,
-        progressionStore.nextUnlockThreshold
-      ), 4500) // after the XP toast fades
+  // Always record metadata (shadow ledger — enables per-theme stats even without progression)
+  progressionStore.recordSetXP(setId, xp, setMeta)
+
+  // Only credit XP and trigger progression effects when enabled
+  if (progressionStore.progressionEnabled) {
+    const wasTrialPeriod = !progressionStore.starterConfirmed
+    progressionStore.creditSetXP(setId, xp)
+
+    // Notify when starter locks in on first set
+    if (wasTrialPeriod && progressionStore.starterConfirmed) {
+      const starterLabel = THEMES.find(t => t.id === progressionStore.starterTheme)?.label
+      if (starterLabel) {
+        setTimeout(() => showXPToast(
+          `${starterLabel} locked in as your starter`,
+          progressionStore.progressPercent,
+          progressionStore.totalXP,
+          progressionStore.nextUnlockThreshold
+        ), 4500)
+      }
     }
-  }
-  const newUnlocks = progressionStore.checkUnlocks()
-  if (newUnlocks.length > 0) {
-    const theme = THEMES.find(t => t.id === newUnlocks[0])
-    if (theme) {
-      setTimeout(() => {
-        showUnlockCelebration(theme.id, theme.label)
-        notifySuccess()
-      }, progressionStore.showProgression ? 1500 : 500)
+    const newUnlocks = progressionStore.checkUnlocks()
+    if (newUnlocks.length > 0) {
+      const theme = THEMES.find(t => t.id === newUnlocks[0])
+      if (theme) {
+        setTimeout(() => {
+          showUnlockCelebration(theme.id, theme.label)
+          notifySuccess()
+        }, progressionStore.showProgression ? 1500 : 500)
+      }
     }
   }
 
@@ -704,7 +709,7 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     epoch: progressionStore.epoch,
   })
 
-  if (progressionStore.showProgression) {
+  if (progressionStore.progressionEnabled && progressionStore.showProgression) {
     const parts: string[] = []
 
     if (best1RM === null) {

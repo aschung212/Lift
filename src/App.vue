@@ -78,7 +78,7 @@
                   v-for="t in sortedThemes"
                   :key="t.id"
                   :class="['themePreview', { active: currentTheme === t.id, locked: !isThemeUnlocked(t.id) }]"
-                  @click="isThemeUnlocked(t.id) ? selectTheme(t.id) : handleThemePreview(t.id)"
+                  @click="currentTheme === t.id ? openThemeStats(t.id) : isThemeUnlocked(t.id) ? selectTheme(t.id) : handleThemePreview(t.id)"
                   :aria-label="isThemeUnlocked(t.id) ? 'Select ' + t.label + ' theme' : t.label + ' theme — locked'"
                   :aria-pressed="currentTheme === t.id"
                 >
@@ -557,6 +557,60 @@
     </transition>
   </Teleport>
 
+  <!-- Theme stats bottom sheet -->
+  <Teleport to="body">
+    <transition name="unlockFade">
+      <div v-if="themeStatsVisible" class="unlockOverlay" @click.self="closeThemeStats">
+        <div class="themeStatsSheet">
+          <div class="themeStatsHeader">
+            <span class="themeStatsTitle">{{ themeStatsLabel }}</span>
+            <button class="themeStatsClose" @click="closeThemeStats" aria-label="Close">&times;</button>
+          </div>
+          <template v-if="themeStatsData && themeStatsData.totalSets > 0">
+            <div class="themeStatsGrid">
+              <div class="themeStatItem">
+                <span class="themeStatValue">{{ themeStatsData.totalSets }}</span>
+                <span class="themeStatLabel">Sets</span>
+              </div>
+              <div class="themeStatItem">
+                <span class="themeStatValue">{{ themeStatsData.totalReps.toLocaleString() }}</span>
+                <span class="themeStatLabel">Reps</span>
+              </div>
+              <div class="themeStatItem">
+                <span class="themeStatValue">{{ Math.round(themeStatsData.totalVolume).toLocaleString() }}</span>
+                <span class="themeStatLabel">Volume (lbs)</span>
+              </div>
+              <div class="themeStatItem">
+                <span class="themeStatValue">{{ themeStatsData.totalXP.toLocaleString() }}</span>
+                <span class="themeStatLabel">XP Earned</span>
+              </div>
+              <div class="themeStatItem">
+                <span class="themeStatValue">{{ themeStatsData.prCount }}</span>
+                <span class="themeStatLabel">PRs</span>
+              </div>
+              <div class="themeStatItem">
+                <span class="themeStatValue">{{ themeStatsData.daysUsed }}</span>
+                <span class="themeStatLabel">Days</span>
+              </div>
+            </div>
+            <div v-if="themeStatsData.favoriteExercise" class="themeStatRow">
+              Favorite: <strong>{{ themeStatsData.favoriteExercise.name }}</strong> ({{ themeStatsData.favoriteExercise.sets }} sets)
+            </div>
+            <div class="themeStatRow">
+              Avg XP per set: <strong>{{ themeStatsData.avgXPPerSet }}</strong>
+            </div>
+            <div v-if="themeStatsData.firstSetDate" class="themeStatRow themeStatMuted">
+              {{ themeStatsData.firstSetDate.slice(0, 10) }} — {{ themeStatsData.lastSetDate?.slice(0, 10) }}
+            </div>
+          </template>
+          <div v-else class="themeStatsEmpty">
+            No training data with this theme yet. Log sets to build your stats.
+          </div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
   <!-- Theme unlock celebration -->
   <Teleport to="body">
     <transition name="unlockFade">
@@ -604,6 +658,7 @@ const BodyweightTracker = defineAsyncComponent({
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
 import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration } from './stores/progression'
+import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
@@ -654,7 +709,11 @@ const sortedThemes = computed(() => {
     }
   }
 
+  const inTrialPeriod = progressionActive.value && !progressionStore.starterConfirmed
+
   const orderIndex = (id: ThemeId) => {
+    // During trial, keep all starters grouped right after Pearl
+    if (inTrialPeriod && STARTER_IDS.includes(id)) return 1
     const idx = displayOrder.indexOf(id)
     return idx === -1 ? 999 : idx
   }
@@ -915,6 +974,23 @@ function isStarterTheme(id: ThemeId): boolean {
   return STARTER_IDS.includes(id)
 }
 
+// ── Theme stats sheet ────────────────────────────────────────────
+const themeStatsVisible = ref(false)
+const themeStatsData = ref<ThemeStats | null>(null)
+const themeStatsLabel = ref('')
+
+function openThemeStats(id: ThemeId) {
+  const stats = computeThemeStats(id, progressionStore.xpPerSet, workoutStoreForOnboarding.exercises)
+  const theme = THEMES.find(t => t.id === id)
+  themeStatsData.value = stats
+  themeStatsLabel.value = theme?.label || id
+  themeStatsVisible.value = true
+}
+
+function closeThemeStats() {
+  themeStatsVisible.value = false
+}
+
 function executeResetProgress() {
   resetConfirmVisible.value = false
   progressionStore.epoch += 1
@@ -925,9 +1001,11 @@ function executeResetProgress() {
   progressionStore.bodyweightXPDates = []
   progressionStore.unlockedThemes = [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
   progressionStore.starterTheme = null
+  progressionStore.starterConfirmed = false
   progressionStore.progressionEnabled = false
   progressionStore._persist()
-  clearMigrationFlag()
+  // Note: do NOT clear migration flag — reset means fresh start, not re-migrate historical data
+  markMigrated()
   // Show starter picker
   starterPickerSelection.value = null
   starterPickerStep.value = 'explainer'
@@ -970,12 +1048,14 @@ function runMigrationIfNeeded() {
       progressionStore.bodyweightXPDates = result.bodyweightXPDates
       const newUnlocks = progressionStore.checkUnlocks()
       progressionStore._persist()
-      // Show celebration for the highest unlocked theme
+      // Show celebration for each unlocked theme sequentially
       if (newUnlocks.length > 0) {
-        const theme = THEMES.find(t => t.id === newUnlocks[newUnlocks.length - 1])
-        if (theme) {
-          setTimeout(() => showUnlockCelebration(theme.id, theme.label), 500)
-        }
+        newUnlocks.forEach((themeId, i) => {
+          const theme = THEMES.find(t => t.id === themeId)
+          if (theme) {
+            setTimeout(() => showUnlockCelebration(theme.id, theme.label), 500 + i * 2500)
+          }
+        })
       }
     }
     markMigrated()

@@ -1019,6 +1019,100 @@ html.modal-open .tabContent {
   padding: 4px;
 }
 
+/* ─── Theme stats sheet ──────────────────────────────────────────── */
+
+.themeStatsSheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  padding: 24px 24px calc(24px + env(safe-area-inset-bottom, 0px));
+  max-height: 70vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: statsSlideUp 0.3s ease;
+}
+
+@keyframes statsSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.themeStatsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.themeStatsTitle {
+  font-size: var(--font-title3);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.themeStatsClose {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.themeStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.themeStatItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.themeStatValue {
+  font-size: var(--font-title2);
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.themeStatLabel {
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.themeStatRow {
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.themeStatMuted {
+  color: var(--text-muted);
+  font-size: var(--font-caption2);
+}
+
+.themeStatsEmpty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-footnote);
+  padding: 32px 0;
+}
+
 /* ─── Theme preview fade transition ──────────────────────────────── */
 
 html.theme-fading,
