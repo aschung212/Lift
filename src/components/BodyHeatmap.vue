@@ -232,7 +232,7 @@ function regionStyle(group: MuscleGroup): Record<string, string> {
   background: transparent;
   border: none;
   border-radius: 6px;
-  padding: 6px 16px;
+  padding: 8px 16px;
   min-height: 32px;
   min-width: 64px;
   cursor: pointer;
@@ -275,7 +275,7 @@ function regionStyle(group: MuscleGroup): Record<string, string> {
 .heatmapLegend {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .legendLabel {

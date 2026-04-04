@@ -391,7 +391,7 @@ function chooseExplore() {
   align-items: center;
   justify-content: center;
   min-height: 80svh;
-  padding: 20px;
+  padding: 24px;
 }
 
 .obCard {
@@ -424,7 +424,7 @@ function chooseExplore() {
 .obOption {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
   padding: 16px;
   min-height: 44px;
