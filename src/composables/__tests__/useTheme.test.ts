@@ -146,9 +146,13 @@ describe('useTheme', () => {
       connectProgressionStore(() => useProgressionStore())
     })
 
-    it('all themes unlocked when progression is not enabled', () => {
+    it('only free themes unlocked when progression is not enabled', () => {
+      expect(theme.isThemeUnlocked('pearl')).toBe(true)
       expect(theme.isThemeUnlocked('fire')).toBe(true)
-      expect(theme.isThemeUnlocked('eternal')).toBe(true)
+      expect(theme.isThemeUnlocked('water')).toBe(true)
+      expect(theme.isThemeUnlocked('luck')).toBe(true)
+      expect(theme.isThemeUnlocked('eternal')).toBe(false)
+      expect(theme.isThemeUnlocked('amethyst')).toBe(false)
     })
 
     it('choosing a starter activates progression (locks other themes)', () => {
