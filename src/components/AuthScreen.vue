@@ -162,7 +162,7 @@ async function handleOAuth(provider: Provider) {
 
 .authInput {
   width: 100%;
-  padding: 12px 14px;
+  padding: 12px 16px;
   min-height: 44px;
   font-size: var(--font-callout);
   font-family: inherit;
@@ -231,7 +231,7 @@ async function handleOAuth(provider: Provider) {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 20px 0;
+  margin: 24px 0;
 }
 
 .authDividerLine {
@@ -258,7 +258,7 @@ async function handleOAuth(provider: Provider) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   padding: 12px 16px;
   min-height: 44px;

@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
+import { readFileSync, readdirSync } from 'fs'
 import { resolve } from 'path'
 
 const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf-8')
@@ -197,6 +197,37 @@ describe('CSS regression tests', () => {
       if (violations.length > 0) {
         const report = violations.map(v => `  L${v.line}: ${v.text} (off-scale: ${v.values.join(', ')}px)`).join('\n')
         expect.fail(`Found ${violations.length} spacing scale violation(s):\n${report}`)
+      }
+    })
+
+    it('has no off-scale spacing values in Vue component style blocks', () => {
+      const componentsDir = resolve(__dirname, '../../components')
+      const vueFiles = readdirSync(componentsDir).filter((f: string) => f.endsWith('.vue'))
+      const allViolations: { file: string; line: number; text: string; values: number[] }[] = []
+
+      for (const file of vueFiles) {
+        const content = readFileSync(resolve(componentsDir, file), 'utf-8')
+        const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/)
+        if (!styleMatch) continue
+        const styleBlock = styleMatch[1]
+        const styleStartLine = content.slice(0, content.indexOf(styleMatch[0])).split('\n').length
+        styleBlock.split('\n').forEach((text, i) => {
+          if (!spacingProps.test(text)) return
+          if (text.includes('calc(') || text.includes('env(')) return
+          const offScale: number[] = []
+          let match
+          pxVal.lastIndex = 0
+          while ((match = pxVal.exec(text)) !== null) {
+            const abs = Math.abs(parseInt(match[0], 10))
+            if (abs > 2 && !isOnScale(abs)) offScale.push(abs)
+          }
+          if (offScale.length > 0) allViolations.push({ file, line: styleStartLine + i, text: text.trim(), values: offScale })
+        })
+      }
+
+      if (allViolations.length > 0) {
+        const report = allViolations.map(v => `  ${v.file}:${v.line}: ${v.text} (off-scale: ${v.values.join(', ')}px)`).join('\n')
+        expect.fail(`Found ${allViolations.length} spacing scale violation(s) in Vue components:\n${report}`)
       }
     })
   })

@@ -116,7 +116,7 @@ const showHeatmap = ref(false)
 .mgBars {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .mgRow {
