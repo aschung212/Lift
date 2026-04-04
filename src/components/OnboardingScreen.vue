@@ -74,6 +74,7 @@
           </button>
         </div>
 
+        <p class="obStarterWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</p>
         <button class="obStarterConfirm" :disabled="!selectedStarter" @click="confirmStarter">Choose {{ selectedStarter ? STARTER_THEMES.find(s => s.id === selectedStarter)?.label : '' }}</button>
         <button class="obStarterSkip" @click="skipStarter">Skip — I'll just use the default</button>
       </template>
@@ -614,6 +615,14 @@ function chooseExplore() {
 
 .obStarterCard.selected .obStarterLabel {
   color: var(--text-primary);
+}
+
+.obStarterWarning {
+  font-size: var(--font-caption2);
+  color: var(--text-tertiary);
+  text-align: center;
+  margin-bottom: 16px;
+  line-height: 1.4;
 }
 
 .obStarterConfirm {

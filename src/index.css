@@ -2733,6 +2733,14 @@ html.modal-open .tabContent {
   border-left: 3px solid var(--accent);
 }
 
+.starterWarning {
+  font-size: var(--font-caption2);
+  color: var(--text-tertiary);
+  text-align: center;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
 /* ─── Inline starter picker (reset modal) ────────────────────────── */
 
 .obStarterGridInline {
@@ -2760,6 +2768,15 @@ html.modal-open .tabContent {
   border-radius: 50%;
   border: 3px solid transparent;
   transition: border-color 0.2s, transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-on-accent);
+}
+
+.obStarterDotInline svg {
+  width: 24px;
+  height: 24px;
 }
 
 .obStarterCardInline.selected .obStarterDotInline {

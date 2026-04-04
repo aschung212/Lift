@@ -499,10 +499,10 @@
           <template v-if="starterPickerStep === 'explainer'">
             <div class="unlockTitle" style="color: var(--text-primary)">Theme Progression</div>
             <div class="progressionExplainer">
-              <div class="explainerRow"><span class="explainerIcon">&#xe2;</span> Every set you log earns XP</div>
-              <div class="explainerRow"><span class="explainerIcon">&#x1F3C6;</span> Hit PRs for bonus multipliers</div>
-              <div class="explainerRow"><span class="explainerIcon">&#x1F513;</span> Earn enough XP to unlock new themes</div>
-              <div class="explainerRow"><span class="explainerIcon">&#x1F525;</span> Build streaks for even more XP</div>
+              <div class="explainerRow">Every set you log earns XP</div>
+              <div class="explainerRow">Hit PRs for bonus multipliers</div>
+              <div class="explainerRow">Earn enough XP to unlock new themes</div>
+              <div class="explainerRow">Build streaks for even more XP</div>
             </div>
             <button class="unlockDismiss" @click="starterPickerStep = 'pick'">Pick a Starter Theme</button>
           </template>
@@ -521,10 +521,15 @@
                 <span
                   class="obStarterDotInline"
                   :style="{ background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.bg + ')' }"
-                ></span>
+                >
+                  <svg v-if="s.id === 'fire'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 23c-4.97 0-8-3.03-8-7 0-2.5 1.5-5 3-6.5.5-.5 1.37-.18 1.37.54 0 1.3.6 2.46 1.63 3.2.2.14.46-.05.38-.28-.5-1.46-.63-3.1-.08-4.96C11.5 4.5 14 2 16 1c.4-.2.82.18.68.6C15.5 5.5 17 7 18 8.5c2 3 2 5 2 6.5 0 3.97-3.03 8-8 8z"/></svg>
+                  <svg v-else-if="s.id === 'water'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2 15c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 19c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 11c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <svg v-else-if="s.id === 'luck'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 3C12 3 9 6 9 8.5c0 1.4.7 2.6 1.8 3.2L12 12l1.2-.3C14.3 11.1 15 9.9 15 8.5 15 6 12 3 12 3z"/><path d="M21 12c0 0-3-3-5.5-3-1.4 0-2.6.7-3.2 1.8L12 12l.3 1.2c.6 1.1 1.8 1.8 3.2 1.8C18 15 21 12 21 12z"/><path d="M12 21c0 0 3-3 3-5.5 0-1.4-.7-2.6-1.8-3.2L12 12l-1.2.3C9.7 12.9 9 14.1 9 15.5 9 18 12 21 12 21z"/><path d="M3 12c0 0 3 3 5.5 3 1.4 0 2.6-.7 3.2-1.8L12 12l-.3-1.2C11.1 9.7 9.9 9 8.5 9 6 9 3 12 3 12z"/></svg>
+                </span>
                 <span class="obStarterLabelInline">{{ s.label }}</span>
               </button>
             </div>
+            <div class="starterWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</div>
             <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Choose' }}</button>
             <button class="resetConfirmCancel" @click="skipStarterPick">Skip</button>
           </template>
