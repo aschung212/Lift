@@ -923,6 +923,7 @@ function confirmStarterPick() {
   progressionStore.setStarterTheme(starterPickerSelection.value)
   currentTheme.value = starterPickerSelection.value
   runMigrationIfNeeded()
+  enforceThemeLock()
 }
 
 function skipStarterPick() {
@@ -934,6 +935,14 @@ function skipStarterPick() {
   }
   progressionStore._persist()
   runMigrationIfNeeded()
+}
+
+/** If current theme is locked, switch to starter or pearl. */
+function enforceThemeLock() {
+  if (!isThemeUnlocked(currentTheme.value as ThemeId)) {
+    const fallback = progressionStore.starterTheme || 'pearl'
+    currentTheme.value = fallback
+  }
 }
 
 function runMigrationIfNeeded() {
@@ -962,17 +971,21 @@ function toggleProgression() {
     progressionStore.progressionEnabled = false
     progressionStore._persist()
   } else {
-    if (progressionStore.starterTheme) {
-      // Re-enable with existing starter
+    const realStarters: ThemeId[] = ['fire', 'water', 'luck']
+    const hasRealStarter = progressionStore.starterTheme && realStarters.includes(progressionStore.starterTheme)
+    if (hasRealStarter) {
+      // Re-enable with existing real starter
       progressionStore.progressionEnabled = true
-      const starter = progressionStore.starterTheme
+      const starter = progressionStore.starterTheme!
       if (!progressionStore.unlockedThemes.some(t => t.id === starter)) {
         progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
       }
       progressionStore._persist()
+      enforceThemeLock()
       runMigrationIfNeeded()
     } else {
-      // No starter chosen — show the picker
+      // No real starter chosen — clear pearl default, show explainer + picker
+      progressionStore.starterTheme = null
       starterPickerSelection.value = null
       starterPickerStep.value = 'explainer'
       starterPickerVisible.value = true
@@ -1227,6 +1240,7 @@ onMounted(() => {
   logEvent('session_start')
 
   runMigrationIfNeeded()
+  enforceThemeLock()
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
