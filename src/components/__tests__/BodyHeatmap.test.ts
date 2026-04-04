@@ -70,6 +70,33 @@ describe('BodyHeatmap', () => {
       const coreRegion = wrapper.find('[aria-label="Core: 4 sets"]')
       expect(coreRegion.exists()).toBe(true)
     })
+
+    it('all front regions have role="img" and aria-label', () => {
+      const wrapper = mountHeatmap()
+      const regions = wrapper.findAll('.muscleRegion')
+      for (const region of regions) {
+        expect(region.attributes('role')).toBe('img')
+        expect(region.attributes('aria-label')).toBeTruthy()
+      }
+    })
+
+    it('shows left/right shoulder aria labels', () => {
+      const wrapper = mountHeatmap()
+      expect(wrapper.find('[aria-label="Left shoulder: 6 sets"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Right shoulder: 6 sets"]').exists()).toBe(true)
+    })
+
+    it('shows left/right bicep aria labels', () => {
+      const wrapper = mountHeatmap()
+      expect(wrapper.find('[aria-label="Left bicep: 3 sets"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Right bicep: 3 sets"]').exists()).toBe(true)
+    })
+
+    it('shows left/right quad aria labels', () => {
+      const wrapper = mountHeatmap()
+      expect(wrapper.find('[aria-label="Left quad: 10 sets"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Right quad: 10 sets"]').exists()).toBe(true)
+    })
   })
 
   describe('back view muscle regions', () => {
@@ -88,11 +115,41 @@ describe('BodyHeatmap', () => {
       expect(backRegion.exists()).toBe(true)
     })
 
-    it('shows triceps aria label with correct set count', async () => {
+    it('shows lower back aria label', async () => {
       const wrapper = mountHeatmap()
       await wrapper.findAll('[role="tab"]')[1].trigger('click')
-      const tricepRegion = wrapper.find('[aria-label="Triceps: 5 sets"]')
-      expect(tricepRegion.exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Lower back: 8 sets"]').exists()).toBe(true)
+    })
+
+    it('shows left/right tricep aria labels', async () => {
+      const wrapper = mountHeatmap()
+      await wrapper.findAll('[role="tab"]')[1].trigger('click')
+      expect(wrapper.find('[aria-label="Left tricep: 5 sets"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Right tricep: 5 sets"]').exists()).toBe(true)
+    })
+
+    it('shows left/right shoulder aria labels', async () => {
+      const wrapper = mountHeatmap()
+      await wrapper.findAll('[role="tab"]')[1].trigger('click')
+      expect(wrapper.find('[aria-label="Left shoulder: 6 sets"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Right shoulder: 6 sets"]').exists()).toBe(true)
+    })
+
+    it('shows left/right hamstring aria labels', async () => {
+      const wrapper = mountHeatmap()
+      await wrapper.findAll('[role="tab"]')[1].trigger('click')
+      expect(wrapper.find('[aria-label="Left hamstring: 10 sets"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Right hamstring: 10 sets"]').exists()).toBe(true)
+    })
+
+    it('all back regions have role="img" and aria-label', async () => {
+      const wrapper = mountHeatmap()
+      await wrapper.findAll('[role="tab"]')[1].trigger('click')
+      const regions = wrapper.findAll('.muscleRegion')
+      for (const region of regions) {
+        expect(region.attributes('role')).toBe('img')
+        expect(region.attributes('aria-label')).toBeTruthy()
+      }
     })
   })
 
@@ -107,7 +164,7 @@ describe('BodyHeatmap', () => {
     it('applies scaled opacity for partial-volume group', () => {
       const wrapper = mountHeatmap()
       // Core has 4 sets, maxSets 12 → ratio = 4/12 ≈ 0.333, opacity ≈ 0.15 + 0.333 * 0.70 ≈ 0.383
-      const coreRegion = wrapper.find('[aria-label="Core: 4 sets"]')
+      const coreRegion = wrapper.find('[aria-label*="Core: 4 sets"]')
       const style = coreRegion.attributes('style') || ''
       const match = style.match(/fill-opacity:\s*([\d.]+)/)
       expect(match).toBeTruthy()
