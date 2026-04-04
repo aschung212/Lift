@@ -1019,6 +1019,13 @@ html.modal-open .tabContent {
   padding: 4px;
 }
 
+/* ─── Theme preview fade transition ──────────────────────────────── */
+
+html.theme-fading,
+html.theme-fading .settingsSheet {
+  transition: background-color 0.8s ease, color 0.8s ease, border-color 0.8s ease;
+}
+
 /* ─── Trial badge and banner ─────────────────────────────────────── */
 
 .themeTrialBadge {

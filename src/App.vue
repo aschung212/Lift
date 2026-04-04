@@ -957,8 +957,7 @@ function skipStarterPick() {
 /** If current theme is locked, switch to starter or pearl. */
 function enforceThemeLock() {
   if (!isThemeUnlocked(currentTheme.value as ThemeId)) {
-    const fallback = progressionStore.starterTheme || 'pearl'
-    currentTheme.value = fallback
+    currentTheme.value = 'pearl'
   }
 }
 
@@ -987,6 +986,8 @@ function toggleProgression() {
   if (progressionActive.value) {
     progressionStore.progressionEnabled = false
     progressionStore._persist()
+    // Force switch to Origin — only free theme without progression
+    currentTheme.value = 'pearl'
   } else {
     const realStarters: ThemeId[] = ['fire', 'water', 'luck']
     const hasRealStarter = progressionStore.starterTheme && realStarters.includes(progressionStore.starterTheme)
@@ -1086,11 +1087,16 @@ let previewTimer: ReturnType<typeof setTimeout> | null = null
 
 function handleThemePreview(id: ThemeId) {
   if (previewTimer) clearTimeout(previewTimer)
+  document.documentElement.classList.remove('theme-fading')
   previewingThemeId.value = id
   previewTheme(id)
   previewTimer = setTimeout(() => {
+    // Add fading class for smooth transition back
+    document.documentElement.classList.add('theme-fading')
     previewingThemeId.value = null
     revertPreview()
+    // Remove fading class after transition completes
+    setTimeout(() => document.documentElement.classList.remove('theme-fading'), 900)
   }, 3000)
 }
 
