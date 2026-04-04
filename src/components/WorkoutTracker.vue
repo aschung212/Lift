@@ -956,7 +956,24 @@ function todayISO(): string {
 // ── Log / Edit modal state ────────────────────────────────────────
 const weightInputEl = ref<HTMLInputElement | null>(null)
 const showModal = ref(false)
-const currentSessionId = ref<string>(uuid())
+
+// Session ID: persists across modal open/close and app restarts within a time window.
+// A new session starts after 2+ hours of inactivity.
+const SESSION_GAP_MS = 2 * 60 * 60 * 1000 // 2 hours
+const currentSessionId = ref<string>(localStorage.getItem('current-session-id') || uuid())
+const lastSetTimestamp = ref<number>(Number(localStorage.getItem('last-set-timestamp')) || 0)
+
+function getSessionId(): string {
+  const now = Date.now()
+  if (now - lastSetTimestamp.value > SESSION_GAP_MS) {
+    // Start a new session after gap
+    currentSessionId.value = uuid()
+    localStorage.setItem('current-session-id', currentSessionId.value)
+  }
+  lastSetTimestamp.value = now
+  localStorage.setItem('last-set-timestamp', String(now))
+  return currentSessionId.value
+}
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
 const newExerciseName = ref('')
@@ -1020,7 +1037,6 @@ function openNewExerciseModal() {
   newExerciseTags.value = []
   newExerciseTagInput.value = ''
   date.value = lastLogDate.value
-  currentSessionId.value = uuid()
   showModal.value = true
 }
 
@@ -1054,7 +1070,6 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   date.value = lastLogDate.value
-  currentSessionId.value = uuid()
   showModal.value = true
 }
 
@@ -1607,7 +1622,7 @@ function saveSet() {
     }
     if (hasSetData.value && weight.value !== null && reps.value !== null) {
       const wasPR = isNewPR.value
-      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value, { sessionId: currentSessionId.value })
+      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value, { sessionId: getSessionId() })
       logEvent('set_log')
       // XP: get the just-logged set (last in array) and compute XP
       const exercise = store.exercises.find(e => e.id === exerciseId)
