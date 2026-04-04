@@ -575,7 +575,7 @@ const BodyweightTracker = defineAsyncComponent({
   delay: 100,
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
-import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration } from './stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration } from './stores/progression'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
@@ -902,6 +902,7 @@ function confirmStarterPick() {
   starterPickerVisible.value = false
   progressionStore.setStarterTheme(starterPickerSelection.value)
   currentTheme.value = starterPickerSelection.value
+  runMigrationIfNeeded()
 }
 
 function skipStarterPick() {
@@ -912,6 +913,28 @@ function skipStarterPick() {
     progressionStore.starterTheme = 'pearl'
   }
   progressionStore._persist()
+  runMigrationIfNeeded()
+}
+
+function runMigrationIfNeeded() {
+  if (progressionStore.progressionEnabled && !isMigrated()) {
+    const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
+    if (result.totalXP > 0) {
+      progressionStore.totalXP = result.totalXP
+      progressionStore.xpPerSet = result.xpPerSet
+      progressionStore.bodyweightXPDates = result.bodyweightXPDates
+      const newUnlocks = progressionStore.checkUnlocks()
+      progressionStore._persist()
+      // Show celebration for the highest unlocked theme
+      if (newUnlocks.length > 0) {
+        const theme = THEMES.find(t => t.id === newUnlocks[newUnlocks.length - 1])
+        if (theme) {
+          setTimeout(() => showUnlockCelebration(theme.id, theme.label), 500)
+        }
+      }
+    }
+    markMigrated()
+  }
 }
 
 function toggleProgression() {
@@ -919,19 +942,20 @@ function toggleProgression() {
     progressionStore.progressionEnabled = false
     progressionStore._persist()
   } else {
-    progressionStore.progressionEnabled = true
-    if (!progressionStore.starterTheme) {
-      progressionStore.starterTheme = 'pearl'
+    if (progressionStore.starterTheme) {
+      // Re-enable with existing starter
+      progressionStore.progressionEnabled = true
+      const starter = progressionStore.starterTheme
+      if (!progressionStore.unlockedThemes.some(t => t.id === starter)) {
+        progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
+      }
+      progressionStore._persist()
+      runMigrationIfNeeded()
+    } else {
+      // No starter chosen — show the picker
+      starterPickerSelection.value = null
+      starterPickerVisible.value = true
     }
-    // Ensure starter theme is unlocked
-    const starter = progressionStore.starterTheme
-    if (starter && !progressionStore.unlockedThemes.some(t => t.id === starter)) {
-      progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
-    }
-    if (!progressionStore.unlockedThemes.some(t => t.id === 'pearl')) {
-      progressionStore.unlockedThemes.push({ id: 'pearl', unlockedAt: new Date().toISOString() })
-    }
-    progressionStore._persist()
   }
 }
 
@@ -1181,18 +1205,7 @@ onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload)
   logEvent('session_start')
 
-  // One-time retroactive XP migration for existing users
-  if (progressionStore.progressionEnabled && !isMigrated()) {
-    const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
-    if (result.totalXP > 0) {
-      progressionStore.totalXP = result.totalXP
-      progressionStore.xpPerSet = result.xpPerSet
-      progressionStore.bodyweightXPDates = result.bodyweightXPDates
-      progressionStore.checkUnlocks()
-      progressionStore._persist()
-    }
-    markMigrated()
-  }
+  runMigrationIfNeeded()
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
