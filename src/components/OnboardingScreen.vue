@@ -34,9 +34,26 @@
       </template>
 
       <!-- Step 2: Starter theme pick -->
+      <!-- Step 2: Progression explainer -->
+      <template v-else-if="step === 'explainer'">
+        <div class="obLogo">Lift</div>
+        <p class="obTagline">Lift has a theme progression system.</p>
+
+        <div class="obExplainer">
+          <div class="obExplainerRow">Every set you log earns XP</div>
+          <div class="obExplainerRow">Hit PRs for bonus multipliers</div>
+          <div class="obExplainerRow">Earn enough XP to unlock new themes</div>
+          <div class="obExplainerRow">Build streaks for even more XP</div>
+        </div>
+
+        <button class="obStarterConfirm" @click="step = 'starter'">Pick a Starter Theme</button>
+        <button class="obStarterSkip" @click="skipStarter">Skip — I'll use the defaults</button>
+      </template>
+
+      <!-- Step 3: Starter pick -->
       <template v-else-if="step === 'starter'">
         <div class="obLogo">Lift</div>
-        <p class="obTagline">One more thing — pick a starter theme to unlock as you train.</p>
+        <p class="obTagline">This theme unlocks immediately. Earn XP to unlock the rest.</p>
 
         <div class="obStarterGrid">
           <button
@@ -76,7 +93,7 @@ const workoutStore = useWorkoutStore()
 const bwStore = useBodyweightStore()
 const progressionStore = useProgressionStore()
 
-const step = ref<'setup' | 'starter'>('setup')
+const step = ref<'setup' | 'explainer' | 'starter'>('setup')
 const selectedStarter = ref<ThemeId | null>(null)
 let pendingSampleData = false
 
@@ -395,7 +412,7 @@ function finish(sampleData: boolean) {
 
 function goToStarter(sampleData: boolean) {
   pendingSampleData = sampleData
-  step.value = 'starter'
+  step.value = 'explainer'
 }
 
 const { currentTheme } = useTheme()
@@ -531,6 +548,23 @@ function chooseExplore() {
   font-size: var(--font-footnote);
   color: var(--text-secondary);
   line-height: 1.3;
+}
+
+/* ─── Progression explainer ──────────────────────────────────────── */
+
+.obExplainer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 32px;
+  text-align: left;
+}
+
+.obExplainerRow {
+  font-size: var(--font-callout);
+  color: var(--text-secondary);
+  padding-left: 8px;
+  border-left: 3px solid var(--accent);
 }
 
 /* ─── Starter theme picker ───────────────────────────────────────── */

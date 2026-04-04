@@ -80,9 +80,10 @@ describe('OnboardingScreen', () => {
       await wrapper.find('.obStarterSkip').trigger('click')
     }
 
-    it('advances to starter picker step', async () => {
+    it('advances to progression explainer step', async () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
-      expect(wrapper.find('.obStarterGrid').exists()).toBe(true)
+      expect(wrapper.text()).toContain('theme progression system')
+      expect(wrapper.find('.obExplainer').exists()).toBe(true)
     })
 
     it('emits complete event after skipping starter', async () => {
@@ -216,8 +217,19 @@ describe('OnboardingScreen', () => {
   })
 
   describe('starter theme picker', () => {
-    it('shows three starter theme options', async () => {
+    async function goToStarterPicker() {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.find('.obStarterConfirm').trigger('click') // → starter picker
+    }
+
+    it('shows explainer before starter picker', async () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
+      expect(wrapper.text()).toContain('theme progression system')
+      expect(wrapper.text()).toContain('Every set you log earns XP')
+    })
+
+    it('shows three starter theme options after explainer', async () => {
+      await goToStarterPicker()
       expect(wrapper.findAll('.obStarterCard')).toHaveLength(3)
       expect(wrapper.text()).toContain('Fire')
       expect(wrapper.text()).toContain('Water')
@@ -225,29 +237,29 @@ describe('OnboardingScreen', () => {
     })
 
     it('confirm button is disabled until a theme is selected', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await goToStarterPicker()
       const confirm = wrapper.find('.obStarterConfirm')
       expect((confirm.element as HTMLButtonElement).disabled).toBe(true)
     })
 
     it('selecting a theme enables the confirm button', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await goToStarterPicker()
       await wrapper.findAll('.obStarterCard')[0].trigger('click')
       const confirm = wrapper.find('.obStarterConfirm')
       expect((confirm.element as HTMLButtonElement).disabled).toBe(false)
     })
 
     it('confirming a starter calls setStarterTheme', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await goToStarterPicker()
       await wrapper.findAll('.obStarterCard')[0].trigger('click') // Fire
       await wrapper.find('.obStarterConfirm').trigger('click')
       expect(mockSetStarterTheme).toHaveBeenCalledWith('fire')
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
-    it('skipping does not call setStarterTheme', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
-      await wrapper.find('.obStarterSkip').trigger('click')
+    it('skipping from explainer does not call setStarterTheme', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.find('.obStarterSkip').trigger('click') // skip
       expect(mockSetStarterTheme).not.toHaveBeenCalled()
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
