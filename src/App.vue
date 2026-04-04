@@ -111,6 +111,9 @@
               <div v-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && progressionActive" class="badgePreviewOverlay">
                 {{ xpToUnlockPreview.toLocaleString() }} XP to unlock
               </div>
+              <div v-else-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && !progressionActive" class="badgePreviewOverlay">
+                Enable Progression to unlock
+              </div>
               <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
               <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
                 <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>
@@ -487,29 +490,44 @@
     </transition>
   </Teleport>
 
-  <!-- Starter picker modal (after reset) -->
+  <!-- Progression explainer + starter picker modal -->
   <Teleport to="body">
     <transition name="unlockFade">
       <div v-if="starterPickerVisible" class="unlockOverlay">
         <div class="unlockModal">
-          <div class="unlockTitle" style="color: var(--text-primary)">Pick Your Starter</div>
-          <div class="resetConfirmText">Choose a theme to unlock as you train.</div>
-          <div class="obStarterGridInline">
-            <button
-              v-for="s in STARTER_THEMES"
-              :key="s.id"
-              :class="['obStarterCardInline', { selected: starterPickerSelection === s.id }]"
-              @click="starterPickerSelection = s.id"
-            >
-              <span
-                class="obStarterDotInline"
-                :style="{ background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.bg + ')' }"
-              ></span>
-              <span class="obStarterLabelInline">{{ s.label }}</span>
-            </button>
-          </div>
-          <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Choose' }}</button>
-          <button class="resetConfirmCancel" @click="skipStarterPick">Skip</button>
+          <!-- Step 1: Explainer -->
+          <template v-if="starterPickerStep === 'explainer'">
+            <div class="unlockTitle" style="color: var(--text-primary)">Theme Progression</div>
+            <div class="progressionExplainer">
+              <div class="explainerRow"><span class="explainerIcon">&#xe2;</span> Every set you log earns XP</div>
+              <div class="explainerRow"><span class="explainerIcon">&#x1F3C6;</span> Hit PRs for bonus multipliers</div>
+              <div class="explainerRow"><span class="explainerIcon">&#x1F513;</span> Earn enough XP to unlock new themes</div>
+              <div class="explainerRow"><span class="explainerIcon">&#x1F525;</span> Build streaks for even more XP</div>
+            </div>
+            <button class="unlockDismiss" @click="starterPickerStep = 'pick'">Pick a Starter Theme</button>
+          </template>
+
+          <!-- Step 2: Starter pick -->
+          <template v-else>
+            <div class="unlockTitle" style="color: var(--text-primary)">Pick Your Starter</div>
+            <div class="resetConfirmText">This theme unlocks immediately. Earn XP to unlock the rest.</div>
+            <div class="obStarterGridInline">
+              <button
+                v-for="s in STARTER_THEMES"
+                :key="s.id"
+                :class="['obStarterCardInline', { selected: starterPickerSelection === s.id }]"
+                @click="starterPickerSelection = s.id"
+              >
+                <span
+                  class="obStarterDotInline"
+                  :style="{ background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.bg + ')' }"
+                ></span>
+                <span class="obStarterLabelInline">{{ s.label }}</span>
+              </button>
+            </div>
+            <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Choose' }}</button>
+            <button class="resetConfirmCancel" @click="skipStarterPick">Skip</button>
+          </template>
         </div>
       </div>
     </transition>
@@ -871,6 +889,7 @@ function confirmResetProgress() {
 }
 
 const starterPickerVisible = ref(false)
+const starterPickerStep = ref<'explainer' | 'pick'>('explainer')
 const starterPickerSelection = ref<ThemeId | null>(null)
 
 const STARTER_THEMES: { id: ThemeId; label: string }[] = [
@@ -894,6 +913,7 @@ function executeResetProgress() {
   clearMigrationFlag()
   // Show starter picker
   starterPickerSelection.value = null
+  starterPickerStep.value = 'explainer'
   starterPickerVisible.value = true
 }
 
@@ -954,7 +974,8 @@ function toggleProgression() {
     } else {
       // No starter chosen — show the picker
       starterPickerSelection.value = null
-      starterPickerVisible.value = true
+      starterPickerStep.value = 'explainer'
+  starterPickerVisible.value = true
     }
   }
 }

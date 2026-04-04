@@ -165,17 +165,20 @@ export function connectProgressionStore(getter: () => { progressionEnabled: bool
   _getProgressionStore = getter
 }
 
+/** Themes available without progression enabled */
+const FREE_THEMES: ThemeId[] = ['pearl', 'fire', 'water', 'luck']
+
 /**
  * Check if a theme is unlocked.
- * Returns true if progression store isn't connected yet (backward compat).
+ * Without progression: only Pearl + starter trio (Fire/Water/Luck) are available.
+ * With progression: based on XP unlocks.
  */
 function isThemeUnlocked(id: ThemeId): boolean {
-  if (!_getProgressionStore) return true
+  if (!_getProgressionStore) return FREE_THEMES.includes(id)
 
   const store = _getProgressionStore()
 
-  // If progression isn't enabled, all themes are unlocked
-  if (!store.progressionEnabled) return true
+  if (!store.progressionEnabled) return FREE_THEMES.includes(id)
 
   return store.unlockedThemes.some(t => t.id === id)
 }
