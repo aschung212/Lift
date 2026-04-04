@@ -33,3 +33,4 @@ android/
 
 # Claude Code worktree metadata (not part of the public repo)
 .claude/
+.vercel

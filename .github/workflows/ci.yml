@@ -38,6 +38,22 @@ jobs:
 
       - run: npx vitest run --coverage
 
+  # Notify Slack on post-merge success (push to master only)
+  notify-deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          COMMIT_MSG=$(echo '${{ github.event.head_commit.message }}' | head -1)
+          COMMIT_URL="${{ github.event.head_commit.url }}"
+          MSG="✅ *Deployed to production*\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
+          payload=$(printf '{"text": %s}' "$(echo "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
+          curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$payload"
+
   # Notify Slack on post-merge failure (push to master only)
   notify-failure:
     runs-on: ubuntu-latest
