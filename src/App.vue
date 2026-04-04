@@ -760,6 +760,7 @@ function clearSampleData() {
 function closeSettings() {
   if (!settingsOpen.value) return
   // Revert any active theme preview
+  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
   if (previewingThemeId.value) {
     previewingThemeId.value = null
     revertPreview()
@@ -876,6 +877,7 @@ function switchTab(tabId: string) {
 }
 
 function selectTheme(id: string) {
+  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
   previewingThemeId.value = null
   revertPreview()
   if (themeSelectFn(id as import('./composables/useTheme').ThemeId)) {
@@ -1080,9 +1082,16 @@ const xpToUnlockPreview = computed(() => {
   return Math.max(0, required - progressionStore.totalXP)
 })
 
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
 function handleThemePreview(id: ThemeId) {
+  if (previewTimer) clearTimeout(previewTimer)
   previewingThemeId.value = id
-  previewTheme(id as import('./composables/useTheme').ThemeId)
+  previewTheme(id)
+  previewTimer = setTimeout(() => {
+    previewingThemeId.value = null
+    revertPreview()
+  }, 3000)
 }
 
 function setMode(mode: 'light' | 'dark' | 'auto') {
