@@ -71,10 +71,19 @@ const THEME_MIGRATION: Record<string, ThemeId> = {
   oak:      'earth',
 }
 
+/** Track whether we're in a preview (non-persisted) state */
+let previewing = false
+
 function applyTheme(id: string): void {
   document.documentElement.setAttribute('data-theme', id)
   updateMetaColor()
   localStorage.setItem('app-theme', id)
+}
+
+/** Apply theme visually without persisting to localStorage. */
+function applyPreview(id: string): void {
+  document.documentElement.setAttribute('data-theme', id)
+  updateMetaColor()
 }
 
 function getSystemMode(): 'dark' | 'light' {
@@ -145,6 +154,42 @@ watch(restTimerEnabled, (v) => localStorage.setItem('rest-timer', v ? 'on' : 'of
 watch(restTimerAutoStart, (v) => localStorage.setItem('rest-timer-autostart', v ? 'on' : 'off'))
 watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
 
+/**
+ * Progression store accessor — set lazily after Pinia is initialized.
+ * Uses a getter function so it always reads current Pinia state.
+ */
+let _getProgressionStore: (() => { progressionEnabled: boolean; unlockedThemes: ThemeId[] }) | null = null
+
+/** Connect the progression store. Call once after Pinia is ready. */
+export function connectProgressionStore(getter?: () => { progressionEnabled: boolean; unlockedThemes: ThemeId[] }): void {
+  if (getter) {
+    _getProgressionStore = getter
+    return
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useProgressionStore } = require('../stores/progression')
+    _getProgressionStore = () => useProgressionStore()
+  } catch {
+    // Store not available yet
+  }
+}
+
+/**
+ * Check if a theme is unlocked.
+ * Returns true if progression store isn't connected yet (backward compat).
+ */
+function isThemeUnlocked(id: ThemeId): boolean {
+  if (!_getProgressionStore) return true
+
+  const store = _getProgressionStore()
+
+  // If progression isn't enabled, all themes are unlocked
+  if (!store.progressionEnabled) return true
+
+  return store.unlockedThemes.includes(id)
+}
+
 export function useTheme() {
   // Weight conversion helpers — data is always stored in lbs
   function displayWeight(lbs: number): number {
@@ -156,5 +201,36 @@ export function useTheme() {
     return value
   }
 
-  return { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs }
+  /**
+   * Select a theme — persists only if unlocked.
+   * Returns true if the theme was applied and persisted.
+   */
+  function selectTheme(id: ThemeId): boolean {
+    if (!isThemeUnlocked(id)) return false
+    currentTheme.value = id
+    return true
+  }
+
+  /**
+   * Preview a locked theme — applies visually but doesn't persist.
+   * Call revertPreview() to restore the real theme.
+   */
+  function previewTheme(id: ThemeId): void {
+    previewing = true
+    applyPreview(id)
+  }
+
+  /** Revert to the persisted theme after previewing. */
+  function revertPreview(): void {
+    if (!previewing) return
+    previewing = false
+    applyPreview(currentTheme.value)
+  }
+
+  return {
+    currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode,
+    glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit,
+    displayWeight, toLbs, selectTheme, previewTheme, revertPreview,
+    isThemeUnlocked,
+  }
 }

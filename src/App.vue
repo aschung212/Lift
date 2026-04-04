@@ -65,13 +65,21 @@
 
             <div class="settingsGroup">
               <div class="settingsHeader" id="settings-title">Appearance</div>
+              <!-- Badge case: verbose mode header (only when progression is active) -->
+              <div v-if="progressionActive && progressionStore.showProgression" class="badgeCaseHeader">
+                <template v-if="progressionStore.nextUnlockThreshold !== null">
+                  <span class="badgeCaseXP">{{ progressionStore.totalXP.toLocaleString() }} / {{ progressionStore.nextUnlockThreshold.toLocaleString() }} XP</span>
+                  <span v-if="progressionStore.streakWeeks > 0" class="badgeCaseStreak">{{ progressionStore.streakWeeks }}w streak · {{ progressionStore.currentMultiplier }}x</span>
+                </template>
+                <span v-else class="badgeCaseXP">Lifetime: {{ progressionStore.totalXP.toLocaleString() }} XP</span>
+              </div>
               <div class="settingsThemeGrid">
                 <button
-                  v-for="t in THEMES"
+                  v-for="t in sortedThemes"
                   :key="t.id"
-                  :class="['themePreview', { active: currentTheme === t.id }]"
-                  @click="selectTheme(t.id)"
-                  :aria-label="'Select ' + t.label + ' theme'"
+                  :class="['themePreview', { active: currentTheme === t.id, locked: !isThemeUnlocked(t.id) }]"
+                  @click="isThemeUnlocked(t.id) ? selectTheme(t.id) : handleThemePreview(t.id)"
+                  :aria-label="isThemeUnlocked(t.id) ? 'Select ' + t.label + ' theme' : t.label + ' theme — locked'"
                   :aria-pressed="currentTheme === t.id"
                 >
                   <span
@@ -91,10 +99,21 @@
                     <svg v-else-if="t.icon === 'love'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                     <svg v-else-if="t.icon === 'pearl'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><circle cx="12" cy="12" r="8" opacity="0.3"/><circle cx="12" cy="12" r="6"/><circle cx="9.5" cy="9.5" r="2" opacity="0.4" fill="white"/></svg>
                     <svg v-else-if="t.icon === 'earth'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M2 20L8 8l4 6 3-4 5 10" fill="currentColor" opacity="0.25"/><path d="M2 20L8 8l4 6 3-4 5 10"/></svg>
-                    <svg v-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    <!-- Lock icon for locked themes -->
+                    <svg v-if="!isThemeUnlocked(t.id)" class="themePreviewLock" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    <!-- Checkmark for active unlocked theme -->
+                    <svg v-else-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </span>
                   <span class="themePreviewLabel">{{ t.label }}</span>
                 </button>
+              </div>
+              <!-- XP to unlock overlay for previewed locked theme -->
+              <div v-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && progressionActive" class="badgePreviewOverlay">
+                {{ xpToUnlockPreview.toLocaleString() }} XP to unlock
+              </div>
+              <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
+              <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
+                <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>
               </div>
               <div class="settingsRow">
                 <span class="settingsLabel">Mode</span>
@@ -166,6 +185,30 @@
                 >
                   <span class="glassToggleThumb"></span>
                 </button>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Progression</span>
+                <button
+                  :class="['glassToggle', { on: progressionActive }]"
+                  @click="toggleProgression"
+                  role="switch"
+                  :aria-checked="progressionActive"
+                  :aria-label="progressionActive ? 'Disable progression' : 'Enable progression'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Dev tools — only on localhost/LAN -->
+            <div v-if="isDev" class="settingsGroup">
+              <div class="settingsHeader">Dev Tools</div>
+              <div class="devToolsGrid">
+                <button class="devBtn" @click="devResetOnboarding">Reset Onboarding</button>
+                <button class="devBtn" @click="devSeedProgression(12400)">Seed 12k XP</button>
+                <button class="devBtn" @click="devSeedProgression(80000)">Seed 80k XP</button>
+                <button class="devBtn" @click="devAddXP(5000)">+5,000 XP</button>
+                <button class="devBtn devBtnDanger" @click="devClearAll">Clear All Data</button>
               </div>
             </div>
 
@@ -265,6 +308,7 @@
                 </div>
               </div>
             </div>
+
 
             <div class="settingsGroup">
               <div class="settingsHeader">Support</div>
@@ -438,7 +482,8 @@ const BodyweightTracker = defineAsyncComponent({
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
-import { useTheme } from './composables/useTheme'
+import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
+import { useProgressionStore, UNLOCK_TIERS } from './stores/progression'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
@@ -451,7 +496,55 @@ import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const progressionStore = useProgressionStore()
+connectProgressionStore(() => progressionStore)
+
+const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+// Sort themes: unlocked first, then locked — both groups follow unlock-tier order.
+// Themes not in UNLOCK_TIERS (unchosen starters) slot in before Eternal.
+const sortedThemes = computed(() => {
+  // Build a full display order from UNLOCK_TIERS, expanding null slots
+  const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
+  const displayOrder: ThemeId[] = []
+  for (const tier of UNLOCK_TIERS) {
+    if (tier.themeId) {
+      displayOrder.push(tier.themeId)
+    } else if (tier.level === 1) {
+      // Starter pick slot — insert the chosen starter, or all three if none chosen
+      const chosen = progressionStore.starterTheme
+      if (chosen) {
+        displayOrder.push(chosen)
+      } else {
+        displayOrder.push(...STARTER_IDS)
+      }
+    }
+  }
+  // Append any remaining starter themes not yet in the list (unchosen ones) before Eternal
+  for (const sid of STARTER_IDS) {
+    if (!displayOrder.includes(sid)) {
+      const eternalIdx = displayOrder.indexOf('eternal')
+      if (eternalIdx !== -1) {
+        displayOrder.splice(eternalIdx, 0, sid)
+      } else {
+        displayOrder.push(sid)
+      }
+    }
+  }
+
+  const orderIndex = (id: ThemeId) => {
+    const idx = displayOrder.indexOf(id)
+    return idx === -1 ? 999 : idx
+  }
+
+  const unlocked = THEMES.filter(t => isThemeUnlocked(t.id))
+  const locked = THEMES.filter(t => !isThemeUnlocked(t.id))
+  unlocked.sort((a, b) => orderIndex(a.id) - orderIndex(b.id))
+  locked.sort((a, b) => orderIndex(a.id) - orderIndex(b.id))
+  return [...unlocked, ...locked]
+})
+
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
@@ -541,6 +634,11 @@ function clearSampleData() {
 
 function closeSettings() {
   if (!settingsOpen.value) return
+  // Revert any active theme preview
+  if (previewingThemeId.value) {
+    previewingThemeId.value = null
+    revertPreview()
+  }
   const el = settingsEl.value
   if (!el) { settingsOpen.value = false; return }
   el.classList.add('settingsSheetClosing')
@@ -653,8 +751,102 @@ function switchTab(tabId: string) {
 }
 
 function selectTheme(id: string) {
-  currentTheme.value = id
-  logEvent('theme_change', { theme: id })
+  previewingThemeId.value = null
+  revertPreview()
+  if (themeSelectFn(id as import('./composables/useTheme').ThemeId)) {
+    logEvent('theme_change', { theme: id })
+  }
+}
+
+// ── Dev tools (localhost/LAN only) ────────────────────────────────
+const isDev = /^(localhost|127\.|192\.168\.|10\.)/.test(window.location.hostname)
+
+function devResetOnboarding() {
+  localStorage.removeItem('onboarding-complete')
+  localStorage.removeItem('user-progression')
+  location.reload()
+}
+
+function toggleProgression() {
+  if (progressionActive.value) {
+    progressionStore.progressionEnabled = false
+    progressionStore._persist()
+  } else {
+    progressionStore.progressionEnabled = true
+    if (!progressionStore.starterTheme) {
+      progressionStore.starterTheme = 'pearl'
+      if (!progressionStore.unlockedThemes.includes('pearl')) {
+        progressionStore.unlockedThemes.push('pearl')
+      }
+    }
+    progressionStore._persist()
+  }
+}
+
+function devSeedProgression(xp: number) {
+  const starter = progressionStore.starterTheme || 'fire' as ThemeId
+  progressionStore.totalXP = xp
+  progressionStore.streakWeeks = 8
+  progressionStore.weeklyTarget = 4
+  progressionStore.showProgression = true
+  progressionStore.progressionEnabled = true
+  if (!progressionStore.starterTheme) {
+    progressionStore.starterTheme = starter
+  }
+  progressionStore.streakHistory = [{ weekStart: '2026-03-30', streakCount: 8, weeklyTarget: 4, combinedMultiplier: 1.8 }]
+  // Reset unlocks to just pearl + starter, then let checkUnlocks compute the rest
+  progressionStore.unlockedThemes = ['pearl']
+  if (!progressionStore.unlockedThemes.includes(starter)) {
+    progressionStore.unlockedThemes.push(starter)
+  }
+  progressionStore.checkUnlocks()
+  progressionStore._persist()
+}
+
+function devAddXP(amount: number) {
+  progressionStore.totalXP += amount
+  progressionStore.checkUnlocks()
+  progressionStore._persist()
+}
+
+function devClearAll() {
+  localStorage.clear()
+  location.reload()
+}
+
+const previewingThemeId = ref<string | null>(null)
+
+// Map every theme to its XP requirement, accounting for starter slots
+const themeXPRequired = computed(() => {
+  const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
+  const chosen = progressionStore.starterTheme
+  const unchosen = STARTER_IDS.filter(id => id !== chosen)
+  const map: Partial<Record<ThemeId, number>> = {}
+
+  for (const tier of UNLOCK_TIERS) {
+    if (tier.themeId) {
+      map[tier.themeId] = tier.xpRequired
+    } else if (tier.level === 1 && chosen) {
+      map[chosen] = tier.xpRequired
+    } else if (tier.level === 7) {
+      // Remaining unchosen starters share this tier
+      for (const id of unchosen) {
+        map[id] = tier.xpRequired
+      }
+    }
+  }
+  return map
+})
+
+const xpToUnlockPreview = computed(() => {
+  if (!previewingThemeId.value) return 0
+  const required = themeXPRequired.value[previewingThemeId.value as ThemeId] ?? 0
+  return Math.max(0, required - progressionStore.totalXP)
+})
+
+function handleThemePreview(id: string) {
+  previewingThemeId.value = id
+  previewTheme(id as import('./composables/useTheme').ThemeId)
 }
 
 function setMode(mode: 'light' | 'dark' | 'auto') {

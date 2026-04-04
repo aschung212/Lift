@@ -8,6 +8,8 @@ const mockAddExercise = vi.fn().mockReturnValue('mock-id')
 const mockLogSet = vi.fn()
 const mockAddEntry = vi.fn()
 
+const mockSetStarterTheme = vi.fn()
+
 vi.mock('../../stores/workout', () => ({
   useWorkoutStore: () => ({
     addExercise: mockAddExercise,
@@ -18,6 +20,12 @@ vi.mock('../../stores/workout', () => ({
 vi.mock('../../stores/bodyweight', () => ({
   useBodyweightStore: () => ({
     addEntry: mockAddEntry,
+  })
+}))
+
+vi.mock('../../stores/progression', () => ({
+  useProgressionStore: () => ({
+    setStarterTheme: mockSetStarterTheme,
   })
 }))
 
@@ -67,24 +75,33 @@ describe('OnboardingScreen', () => {
   })
 
   describe('Start Empty', () => {
-    it('emits complete event', async () => {
-      const options = wrapper.findAll('.obOption')
-      await options[0].trigger('click')
+    async function chooseEmptyAndSkip() {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.find('.obStarterSkip').trigger('click')
+    }
+
+    it('advances to starter picker step', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      expect(wrapper.find('.obStarterGrid').exists()).toBe(true)
+    })
+
+    it('emits complete event after skipping starter', async () => {
+      await chooseEmptyAndSkip()
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
     it('sets onboarding-complete in localStorage', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await chooseEmptyAndSkip()
       expect(localStorageMock.setItem).toHaveBeenCalledWith('onboarding-complete', 'true')
     })
 
     it('does not add any exercises', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await chooseEmptyAndSkip()
       expect(mockAddExercise).not.toHaveBeenCalled()
     })
 
     it('does not set sample-data flag', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await chooseEmptyAndSkip()
       const sampleDataCalls = localStorageMock.setItem.mock.calls.filter(
         ([key]: [string]) => key === 'sample-data'
       )
@@ -104,8 +121,9 @@ describe('OnboardingScreen', () => {
       expect(mockAddExercise).toHaveBeenCalledWith('Pull-ups', ['Pull', 'Back'])
     })
 
-    it('emits complete event', async () => {
+    it('emits complete event after skipping starter', async () => {
       await wrapper.findAll('.obOption')[1].trigger('click')
+      await wrapper.find('.obStarterSkip').trigger('click')
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
@@ -129,13 +147,15 @@ describe('OnboardingScreen', () => {
       expect(mockAddEntry.mock.calls.length).toBe(78)
     })
 
-    it('sets sample-data flag in localStorage', async () => {
+    it('sets sample-data flag in localStorage after skipping starter', async () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
+      await wrapper.find('.obStarterSkip').trigger('click')
       expect(localStorageMock.setItem).toHaveBeenCalledWith('sample-data', 'true')
     })
 
-    it('emits complete event', async () => {
+    it('emits complete event after skipping starter', async () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
+      await wrapper.find('.obStarterSkip').trigger('click')
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
@@ -187,10 +207,49 @@ describe('OnboardingScreen', () => {
     })
 
     it('sets onboarding-complete even if no exercises are added', async () => {
-      // Start Empty path
+      // Start Empty path → skip starter
       await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.find('.obStarterSkip').trigger('click')
       expect(localStorageMock.setItem).toHaveBeenCalledWith('onboarding-complete', 'true')
       expect(mockAddExercise).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('starter theme picker', () => {
+    it('shows three starter theme options', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      expect(wrapper.findAll('.obStarterCard')).toHaveLength(3)
+      expect(wrapper.text()).toContain('Fire')
+      expect(wrapper.text()).toContain('Water')
+      expect(wrapper.text()).toContain('Luck')
+    })
+
+    it('confirm button is disabled until a theme is selected', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      const confirm = wrapper.find('.obStarterConfirm')
+      expect((confirm.element as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it('selecting a theme enables the confirm button', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.findAll('.obStarterCard')[0].trigger('click')
+      const confirm = wrapper.find('.obStarterConfirm')
+      expect((confirm.element as HTMLButtonElement).disabled).toBe(false)
+    })
+
+    it('confirming a starter calls setStarterTheme', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.findAll('.obStarterCard')[0].trigger('click') // Fire
+      await wrapper.find('.obStarterConfirm').trigger('click')
+      expect(mockSetStarterTheme).toHaveBeenCalledWith('fire')
+      expect(wrapper.emitted('complete')).toHaveLength(1)
+    })
+
+    it('skipping does not call setStarterTheme', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.find('.obStarterSkip').trigger('click')
+      expect(mockSetStarterTheme).not.toHaveBeenCalled()
+      expect(wrapper.emitted('complete')).toHaveLength(1)
     })
   })
 })

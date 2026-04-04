@@ -974,6 +974,77 @@ html.modal-open .tabContent {
   color: var(--text-secondary);
 }
 
+/* ─── Badge case header ──────────────────────────────────────────── */
+
+.badgeCaseHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 16px 8px;
+}
+
+.badgeCaseXP {
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.badgeCaseStreak {
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  color: var(--accent);
+}
+
+/* ─── Locked theme state ─────────────────────────────────────────── */
+
+.themePreview.locked .themePreviewDot {
+  filter: grayscale(0.8) brightness(0.6);
+  opacity: 0.6;
+}
+
+.themePreview.locked .themePreviewLabel {
+  color: var(--text-tertiary);
+}
+
+.themePreviewLock {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 50%;
+  padding: 4px;
+}
+
+/* ─── Badge preview overlay ──────────────────────────────────────── */
+
+.badgePreviewOverlay {
+  text-align: center;
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  padding: 4px 16px 8px;
+}
+
+/* ─── Badge progress bar ─────────────────────────────────────────── */
+
+.badgeProgressBar {
+  height: 3px;
+  margin: 0 16px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.badgeProgressFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
 
 .modeSegmented {
   display: flex;
@@ -1296,6 +1367,35 @@ html.modal-open .tabContent {
   cursor: pointer;
 }
 .exportBtn:active { opacity: 0.6; }
+
+/* ─── Dev tools ──────────────────────────────────────────────────────────── */
+
+.devToolsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+
+.devBtn {
+  padding: 8px 12px;
+  min-height: 44px;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.devBtn:active { opacity: 0.6; }
+
+.devBtnDanger {
+  color: #ff6b6b;
+  border-color: #ff6b6b33;
+}
 
 /* ─── Privacy transparency ──────────────────────────────────────────────── */
 
