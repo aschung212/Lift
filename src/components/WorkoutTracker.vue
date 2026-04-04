@@ -1619,7 +1619,7 @@ function saveSet() {
     if (hasSetData.value && weight.value !== null && reps.value !== null) {
       const wasPR = isNewPR.value
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
-      logEvent('set_log')
+      logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       // XP: get the just-logged set (last in array) and compute XP
       const exercise = store.exercises.find(e => e.id === exerciseId)
       if (exercise && exercise.sets.length > 0) {
