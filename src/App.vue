@@ -510,7 +510,7 @@
           <!-- Step 2: Starter pick -->
           <template v-else>
             <div class="unlockTitle" style="color: var(--text-primary)">Pick Your Starter</div>
-            <div class="resetConfirmText">This theme unlocks immediately. Earn XP to unlock the rest.</div>
+            <div class="resetConfirmText">Try all three freely until you log your first set. Then your choice locks in.</div>
             <div class="obStarterGridInline">
               <button
                 v-for="s in STARTER_THEMES"
@@ -893,8 +893,8 @@ const starterPickerStep = ref<'explainer' | 'pick'>('explainer')
 const starterPickerSelection = ref<ThemeId | null>(null)
 
 const STARTER_THEMES: { id: ThemeId; label: string }[] = [
-  { id: 'fire', label: 'Fire' },
-  { id: 'water', label: 'Water' },
+  { id: 'fire', label: 'Intensity' },
+  { id: 'water', label: 'Flow' },
   { id: 'luck', label: 'Luck' },
 ]
 

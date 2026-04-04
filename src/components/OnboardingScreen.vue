@@ -53,7 +53,7 @@
       <!-- Step 3: Starter pick -->
       <template v-else-if="step === 'starter'">
         <div class="obLogo">Lift</div>
-        <p class="obTagline">This theme unlocks immediately. Earn XP to unlock the rest.</p>
+        <p class="obTagline">Try all three freely until you log your first set. Then your choice locks in.</p>
 
         <div class="obStarterGrid">
           <button
@@ -98,8 +98,8 @@ const selectedStarter = ref<ThemeId | null>(null)
 let pendingSampleData = false
 
 const STARTER_THEMES = [
-  { id: 'fire' as ThemeId, label: 'Fire', accent: THEME_PREVIEWS.fire.dark.accent, bg: THEME_PREVIEWS.fire.dark.bg },
-  { id: 'water' as ThemeId, label: 'Water', accent: THEME_PREVIEWS.water.dark.accent, bg: THEME_PREVIEWS.water.dark.bg },
+  { id: 'fire' as ThemeId, label: 'Intensity', accent: THEME_PREVIEWS.fire.dark.accent, bg: THEME_PREVIEWS.fire.dark.bg },
+  { id: 'water' as ThemeId, label: 'Flow', accent: THEME_PREVIEWS.water.dark.accent, bg: THEME_PREVIEWS.water.dark.bg },
   { id: 'luck' as ThemeId, label: 'Luck', accent: THEME_PREVIEWS.luck.dark.accent, bg: THEME_PREVIEWS.luck.dark.bg },
 ]
 

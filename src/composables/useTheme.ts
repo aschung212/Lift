@@ -18,16 +18,16 @@ interface ThemePreviewColors {
 }
 
 export const THEMES: ThemeOption[] = [
-  { id: 'eternal',  label: 'Eternal',  icon: 'eternal' },
-  { id: 'pearl',    label: 'Pearl',    icon: 'pearl' },
-  { id: 'midnight', label: 'Midnight', icon: 'midnight' },
-  { id: 'fire',     label: 'Fire',     icon: 'fire' },
-  { id: 'water',    label: 'Water',    icon: 'water' },
-  { id: 'earth',    label: 'Earth',    icon: 'earth' },
-  { id: 'luck',     label: 'Luck',     icon: 'luck' },
-  { id: 'amethyst', label: 'Amethyst', icon: 'amethyst' },
-  { id: 'air',      label: 'Air',      icon: 'air' },
-  { id: 'love',     label: 'Love',     icon: 'love' },
+  { id: 'eternal',  label: 'Eternal',    icon: 'eternal' },
+  { id: 'pearl',    label: 'Origin',     icon: 'pearl' },
+  { id: 'midnight', label: 'Fortitude',  icon: 'midnight' },
+  { id: 'fire',     label: 'Intensity',  icon: 'fire' },
+  { id: 'water',    label: 'Flow',       icon: 'water' },
+  { id: 'earth',    label: 'Stability',  icon: 'earth' },
+  { id: 'luck',     label: 'Luck',       icon: 'luck' },
+  { id: 'amethyst', label: 'Focus',      icon: 'amethyst' },
+  { id: 'air',      label: 'Spirit',     icon: 'air' },
+  { id: 'love',     label: 'Love',       icon: 'love' },
 ]
 
 export const THEME_PREVIEWS: Record<ThemeId, { dark: ThemePreviewColors; light: ThemePreviewColors }> = {
@@ -158,20 +158,24 @@ watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
  * Progression store accessor — set lazily after Pinia is initialized.
  * Uses a getter function so it always reads current Pinia state.
  */
-let _getProgressionStore: (() => { progressionEnabled: boolean; unlockedThemes: { id: ThemeId }[] }) | null = null
+let _getProgressionStore: (() => { progressionEnabled: boolean; starterConfirmed: boolean; unlockedThemes: { id: ThemeId }[] }) | null = null
 
 /** Connect the progression store. Call once after Pinia is ready. */
-export function connectProgressionStore(getter: () => { progressionEnabled: boolean; unlockedThemes: { id: ThemeId }[] }): void {
+export function connectProgressionStore(getter: () => { progressionEnabled: boolean; starterConfirmed: boolean; unlockedThemes: { id: ThemeId }[] }): void {
   _getProgressionStore = getter
 }
 
 /** Themes available without progression enabled */
-const FREE_THEMES: ThemeId[] = ['pearl', 'fire', 'water', 'luck']
+const FREE_THEMES: ThemeId[] = ['pearl']
+
+/** Starter themes available during trial period */
+const STARTER_THEME_IDS: ThemeId[] = ['fire', 'water', 'luck']
 
 /**
  * Check if a theme is unlocked.
- * Without progression: only Pearl + starter trio (Fire/Water/Luck) are available.
- * With progression: based on XP unlocks.
+ * Without progression: Pearl only.
+ * With progression (trial): Pearl + all starters.
+ * With progression (confirmed): based on XP unlocks.
  */
 function isThemeUnlocked(id: ThemeId): boolean {
   if (!_getProgressionStore) return FREE_THEMES.includes(id)
@@ -179,6 +183,9 @@ function isThemeUnlocked(id: ThemeId): boolean {
   const store = _getProgressionStore()
 
   if (!store.progressionEnabled) return FREE_THEMES.includes(id)
+
+  // Trial period: all starters unlocked until confirmed
+  if (!store.starterConfirmed && STARTER_THEME_IDS.includes(id)) return true
 
   return store.unlockedThemes.some(t => t.id === id)
 }

@@ -231,8 +231,8 @@ describe('OnboardingScreen', () => {
     it('shows three starter theme options after explainer', async () => {
       await goToStarterPicker()
       expect(wrapper.findAll('.obStarterCard')).toHaveLength(3)
-      expect(wrapper.text()).toContain('Fire')
-      expect(wrapper.text()).toContain('Water')
+      expect(wrapper.text()).toContain('Intensity')
+      expect(wrapper.text()).toContain('Flow')
       expect(wrapper.text()).toContain('Luck')
     })
 
