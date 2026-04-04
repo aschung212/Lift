@@ -173,7 +173,7 @@ const STARTER_THEME_IDS: ThemeId[] = ['fire', 'water', 'luck']
 
 /**
  * Check if a theme is unlocked.
- * Without progression: Pearl only.
+ * Without progression: Pearl + any previously unlocked themes.
  * With progression (trial): Pearl + all starters.
  * With progression (confirmed): based on XP unlocks.
  */
@@ -182,7 +182,9 @@ function isThemeUnlocked(id: ThemeId): boolean {
 
   const store = _getProgressionStore()
 
-  if (!store.progressionEnabled) return FREE_THEMES.includes(id)
+  if (!store.progressionEnabled) {
+    return FREE_THEMES.includes(id) || store.unlockedThemes.some(t => t.id === id)
+  }
 
   // Trial period: all starters unlocked until confirmed
   if (!store.starterConfirmed && STARTER_THEME_IDS.includes(id)) return true

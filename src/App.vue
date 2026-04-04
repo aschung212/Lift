@@ -556,7 +556,7 @@
           <div class="progressionDisclosure">
             <div class="disclosureRow disclosureOk">Your workouts and exercises will still be tracked normally.</div>
             <div class="disclosureRow disclosureWarn">You will not earn XP for sets logged while progression is off.</div>
-            <div class="disclosureRow disclosureOk">Your existing XP and unlocked themes are preserved.</div>
+            <div class="disclosureRow disclosureOk">Your existing XP and unlocked themes are preserved — unlocked themes stay usable.</div>
             <div class="disclosureRow disclosureHint">To hide XP info without losing progress, use "Show XP &amp; streaks" instead.</div>
           </div>
           <button class="unlockDismiss resetConfirmDanger" @click="confirmDisableProgression">Disable Progression</button>
@@ -1101,7 +1101,7 @@ function confirmDisableProgression() {
   disableProgressionVisible.value = false
   progressionStore.progressionEnabled = false
   progressionStore._persist()
-  currentTheme.value = 'pearl'
+  enforceThemeLock()
 }
 
 function toggleProgression() {
