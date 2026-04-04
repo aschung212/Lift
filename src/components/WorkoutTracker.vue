@@ -442,7 +442,7 @@
             <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
             <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
-            <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (+${XP_CONFIG.repPRBonus})` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
+            <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
           </div>
           <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
@@ -616,6 +616,7 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast } from '../stores/progression'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
+import { logXPEvent } from '../lib/xpInstrumentation'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
@@ -647,12 +648,36 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     isRepPR,
   })
 
+  const mult = progressionStore.currentMultiplier
   const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
   progressionStore.logSetXP(setId, xp)
   progressionStore.checkUnlocks()
 
+  // Determine zone for instrumentation and display
+  let zone: 'warmup' | 'working' | 'pr' | 'tie' | 'new_exercise'
+  const isPR = best1RM !== null && estimated1RM > best1RM
+  const isTie = best1RM !== null && estimated1RM === best1RM
+  if (best1RM === null) zone = 'new_exercise'
+  else if (isPR) zone = 'pr'
+  else if (isTie) zone = 'tie'
+  else if (estimated1RM / best1RM < XP_CONFIG.warmupThreshold) zone = 'warmup'
+  else zone = 'working'
+
+  logXPEvent({
+    userId: progressionStore._userId,
+    setId,
+    exerciseId,
+    setDate: new Date().toISOString(),
+    baseXP,
+    streakMultiplier: mult,
+    finalXP: xp,
+    isPR,
+    isTie,
+    isRepPR,
+    zone,
+  })
+
   if (progressionStore.showProgression) {
-    const mult = progressionStore.currentMultiplier
     const parts: string[] = []
 
     if (best1RM === null) {
@@ -664,7 +689,7 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
       else if (ratio < XP_CONFIG.warmupThreshold) parts.push('Warmup')
       else parts.push(`${Math.round(ratio * 100)}% of best`)
     }
-    if (isRepPR) parts.push('Rep PR')
+    if (isRepPR) parts.push(`Rep PR (${XP_CONFIG.repPRMultiplier}x)`)
     if (mult > 1) parts.push(`${mult}x streak`)
     parts.push(`${xp} XP`)
 

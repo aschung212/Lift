@@ -44,8 +44,8 @@ export const XP_CONFIG = {
   /** Multiplier when beating all-time best (ratio > 1.0) */
   prMultiplier: 3,
 
-  /** Bonus XP for setting a rep record at a given weight */
-  repPRBonus: 25,
+  /** Multiplier for setting a rep record at a given weight (applied to zone XP) */
+  repPRMultiplier: 1.25,
 
   /** Absolute minimum XP per set */
   minXP: 10,
@@ -125,9 +125,9 @@ export function calculateSetXP(params: {
 
   xp = Math.max(cfg.minXP, xp)
 
-  // Rep PR bonus stacks on top
+  // Rep PR multiplier applied to zone XP
   if (isRepPR) {
-    xp += cfg.repPRBonus
+    xp = Math.round(xp * cfg.repPRMultiplier)
   }
 
   return xp

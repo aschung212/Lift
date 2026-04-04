@@ -126,26 +126,26 @@ describe('calculateSetXP', () => {
     })
   })
 
-  describe('rep PR bonus', () => {
-    it('adds repPRBonus on top of working zone XP', () => {
-      // Working: 54 + repPRBonus: 25 = 79
+  describe('rep PR multiplier', () => {
+    it('applies repPRMultiplier to working zone XP', () => {
+      // Working: 54 * 1.25 = 67.5 → 68
       expect(calculateSetXP({
         setEstimated1RM: 75, exerciseBest1RM: 100, setIndex: 0, isRepPR: true,
-      })).toBe(79)
+      })).toBe(68)
     })
 
-    it('adds repPRBonus on top of warmup XP', () => {
-      // Warmup: 10 + 25 = 35
+    it('applies repPRMultiplier to warmup XP', () => {
+      // Warmup: 10 * 1.25 = 12.5 → 13
       expect(calculateSetXP({
         setEstimated1RM: 30, exerciseBest1RM: 100, setIndex: 0, isRepPR: true,
-      })).toBe(35)
+      })).toBe(13)
     })
 
-    it('adds repPRBonus on top of PR XP', () => {
-      // PR: 315 + 25 = 340
+    it('applies repPRMultiplier to PR XP', () => {
+      // PR: 315 * 1.25 = 393.75 → 394
       expect(calculateSetXP({
         setEstimated1RM: 105, exerciseBest1RM: 100, setIndex: 0, isRepPR: true,
-      })).toBe(340)
+      })).toBe(394)
     })
 
     it('does not add bonus when isRepPR is false', () => {
@@ -229,12 +229,12 @@ describe('calculateSetXP', () => {
       })
     })
 
-    it('respects a changed repPRBonus', () => {
-      withConfig({ repPRBonus: 100 }, () => {
-        // Working: 54 + 100 = 154
+    it('respects a changed repPRMultiplier', () => {
+      withConfig({ repPRMultiplier: 1.5 }, () => {
+        // Working: 54 * 1.5 = 81
         expect(calculateSetXP({
           setEstimated1RM: 75, exerciseBest1RM: 100, setIndex: 0, isRepPR: true,
-        })).toBe(154)
+        })).toBe(81)
       })
     })
   })

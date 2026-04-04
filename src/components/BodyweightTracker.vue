@@ -237,6 +237,7 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore, showXPToast } from '../stores/progression'
 import { XP_CONFIG } from '../lib/xp'
+import { logBodyweightXPEvent } from '../lib/xpInstrumentation'
 
 const store = useBodyweightStore()
 const prefs = usePreferencesStore()
@@ -315,8 +316,11 @@ function save() {
       const alreadyCredited = progressionStore.bodyweightXPDates.includes(dateKey)
       progressionStore.logBodyweightXP(date.value)
       progressionStore.checkUnlocks()
-      if (!alreadyCredited && progressionStore.showProgression) {
-        showXPToast(`+${XP_CONFIG.bodyweightXP} XP`, progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
+      if (!alreadyCredited) {
+        logBodyweightXPEvent(progressionStore._userId, date.value, XP_CONFIG.bodyweightXP)
+        if (progressionStore.showProgression) {
+          showXPToast(`+${XP_CONFIG.bodyweightXP} XP`, progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
+        }
       }
     }
   }

@@ -10,7 +10,7 @@
 
 import type { Exercise } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
-import { calculateSetXP, calculateBest1RM, XP_CONFIG } from './xp'
+import { calculateSetXP, XP_CONFIG } from './xp'
 
 const MIGRATION_KEY = 'progression_migrated'
 

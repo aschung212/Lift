@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
 import type { WorkoutSet } from './workout'
@@ -266,6 +267,18 @@ export const useProgressionStore = defineStore('progression', {
 
       this._persist()
       this._syncToSupabase()
+
+      // Log weekly snapshot for analytics
+      logWeeklySnapshot({
+        userId: this._userId,
+        weekStart: weekStart.slice(0, 10),
+        totalXP: this.totalXP,
+        weekXP: 0, // TODO: compute from xpPerSet entries in this week
+        streakWeeks: this.streakWeeks,
+        trainingDays: daysTrainedThisWeek,
+        weeklyTarget: this.weeklyTarget,
+        themesUnlocked: this.unlockedThemes.length,
+      })
     },
 
     // --- Streak Catch-up ---
@@ -387,17 +400,22 @@ export const useProgressionStore = defineStore('progression', {
       return null // all unlocked
     },
 
-    xpToNextUnlock(): number {
-      const threshold = this.nextUnlockThreshold
+    xpToNextUnlock: (state): number => {
+      let threshold: number | null = null
+      for (const tier of UNLOCK_TIERS) {
+        if (state.totalXP < tier.xpRequired) { threshold = tier.xpRequired; break }
+      }
       if (threshold === null) return 0
-      return threshold - this.$state.totalXP
+      return threshold - state.totalXP
     },
 
-    progressPercent(): number {
-      const threshold = this.nextUnlockThreshold
+    progressPercent: (state): number => {
+      let threshold: number | null = null
+      for (const tier of UNLOCK_TIERS) {
+        if (state.totalXP < tier.xpRequired) { threshold = tier.xpRequired; break }
+      }
       if (threshold === null) return 100
 
-      // Find previous tier's XP
       let prevXP = 0
       for (const tier of UNLOCK_TIERS) {
         if (tier.xpRequired >= threshold) break
@@ -406,7 +424,7 @@ export const useProgressionStore = defineStore('progression', {
 
       const range = threshold - prevXP
       if (range <= 0) return 100
-      const progress = this.$state.totalXP - prevXP
+      const progress = state.totalXP - prevXP
       return Math.min(100, Math.round((progress / range) * 100))
     },
 

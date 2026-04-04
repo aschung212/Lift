@@ -161,18 +161,8 @@ watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
 let _getProgressionStore: (() => { progressionEnabled: boolean; unlockedThemes: ThemeId[] }) | null = null
 
 /** Connect the progression store. Call once after Pinia is ready. */
-export function connectProgressionStore(getter?: () => { progressionEnabled: boolean; unlockedThemes: ThemeId[] }): void {
-  if (getter) {
-    _getProgressionStore = getter
-    return
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { useProgressionStore } = require('../stores/progression')
-    _getProgressionStore = () => useProgressionStore()
-  } catch {
-    // Store not available yet
-  }
+export function connectProgressionStore(getter: () => { progressionEnabled: boolean; unlockedThemes: ThemeId[] }): void {
+  _getProgressionStore = getter
 }
 
 /**
