@@ -4,6 +4,7 @@ import {
   calculateBest1RM,
   calculateBodyweightXP,
   applyStreakMultiplier,
+  checkRepPR,
   XP_CONFIG,
   type StreakHistoryEntry,
 } from '../xp'
@@ -127,24 +128,24 @@ describe('calculateSetXP', () => {
 
   describe('rep PR bonus', () => {
     it('adds repPRBonus on top of working zone XP', () => {
-      // Working: 54 + repPRBonus: 50 = 104
+      // Working: 54 + repPRBonus: 25 = 79
       expect(calculateSetXP({
         setEstimated1RM: 75, exerciseBest1RM: 100, setIndex: 0, isRepPR: true,
-      })).toBe(104)
+      })).toBe(79)
     })
 
     it('adds repPRBonus on top of warmup XP', () => {
-      // Warmup: 10 + 50 = 60
+      // Warmup: 10 + 25 = 35
       expect(calculateSetXP({
         setEstimated1RM: 30, exerciseBest1RM: 100, setIndex: 0, isRepPR: true,
-      })).toBe(60)
+      })).toBe(35)
     })
 
     it('adds repPRBonus on top of PR XP', () => {
-      // PR: 315 + 50 = 365
+      // PR: 315 + 25 = 340
       expect(calculateSetXP({
         setEstimated1RM: 105, exerciseBest1RM: 100, setIndex: 0, isRepPR: true,
-      })).toBe(365)
+      })).toBe(340)
     })
 
     it('does not add bonus when isRepPR is false', () => {
@@ -400,5 +401,53 @@ describe('applyStreakMultiplier', () => {
       { weekStart: '2026-03-30', streakCount: 2, weeklyTarget: 4 },
     ]
     expect(applyStreakMultiplier(baseXP, history, '2026-03-30')).toBe(132)
+  })
+})
+
+// --- checkRepPR ---
+
+describe('checkRepPR', () => {
+  it('returns true when reps exceed best at same weight', () => {
+    const prior = [
+      makeSet({ weight: 135, reps: 5, estimated1RM: 158 }),
+      makeSet({ weight: 135, reps: 7, estimated1RM: 167 }),
+    ]
+    expect(checkRepPR(135, 8, prior)).toBe(true)
+  })
+
+  it('returns false when reps equal best at same weight', () => {
+    const prior = [
+      makeSet({ weight: 135, reps: 7, estimated1RM: 167 }),
+    ]
+    expect(checkRepPR(135, 7, prior)).toBe(false)
+  })
+
+  it('returns false when reps are below best at same weight', () => {
+    const prior = [
+      makeSet({ weight: 135, reps: 7, estimated1RM: 167 }),
+    ]
+    expect(checkRepPR(135, 5, prior)).toBe(false)
+  })
+
+  it('returns false when no prior sets at same weight', () => {
+    const prior = [
+      makeSet({ weight: 185, reps: 5, estimated1RM: 216 }),
+    ]
+    expect(checkRepPR(135, 8, prior)).toBe(false)
+  })
+
+  it('returns false with empty prior sets', () => {
+    expect(checkRepPR(135, 8, [])).toBe(false)
+  })
+
+  it('only considers sets at the exact same weight', () => {
+    const prior = [
+      makeSet({ weight: 135, reps: 10, estimated1RM: 180 }),
+      makeSet({ weight: 140, reps: 3, estimated1RM: 154 }),
+    ]
+    // 140 x 5 — only prior at 140 is 3 reps → rep PR
+    expect(checkRepPR(140, 5, prior)).toBe(true)
+    // 135 x 8 — prior at 135 is 10 reps → not a rep PR
+    expect(checkRepPR(135, 8, prior)).toBe(false)
   })
 })

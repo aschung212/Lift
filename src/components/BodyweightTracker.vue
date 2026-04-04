@@ -235,7 +235,8 @@ import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
-import { useProgressionStore } from '../stores/progression'
+import { useProgressionStore, showXPToast } from '../stores/progression'
+import { XP_CONFIG } from '../lib/xp'
 
 const store = useBodyweightStore()
 const prefs = usePreferencesStore()
@@ -310,8 +311,13 @@ function save() {
     logEvent('bodyweight_add')
     // Award bodyweight logging XP
     if (progressionStore.progressionEnabled) {
+      const dateKey = date.value.slice(0, 10)
+      const alreadyCredited = progressionStore.bodyweightXPDates.includes(dateKey)
       progressionStore.logBodyweightXP(date.value)
       progressionStore.checkUnlocks()
+      if (!alreadyCredited && progressionStore.showProgression) {
+        showXPToast(`+${XP_CONFIG.bodyweightXP} XP`, progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
+      }
     }
   }
   closeModal()

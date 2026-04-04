@@ -470,6 +470,19 @@
     </Teleport>
   </div>
   </ErrorBoundary>
+
+  <!-- Global XP toast -->
+  <Teleport to="body">
+    <transition name="xpGlobalFade">
+      <div v-if="xpToast.visible" class="xpGlobalToast">
+        <div class="xpToastEarned">{{ xpToast.text }}</div>
+        <div class="xpToastTotal">{{ xpToast.nextThresholdXP ? `${xpToast.totalXP.toLocaleString()} / ${xpToast.nextThresholdXP.toLocaleString()} XP` : `${xpToast.totalXP.toLocaleString()} XP` }}</div>
+        <div v-if="xpToast.nextThresholdXP" class="xpToastProgress">
+          <div class="xpToastProgressFill" :style="{ width: xpToast.progressPercent + '%' }"></div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -496,7 +509,7 @@ const BodyweightTracker = defineAsyncComponent({
   delay: 100,
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
-import { useProgressionStore, UNLOCK_TIERS } from './stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, xpToast } from './stores/progression'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'

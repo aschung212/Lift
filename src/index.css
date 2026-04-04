@@ -2664,10 +2664,57 @@ html.modal-open .tabContent {
   padding: 8px 0 0;
 }
 
-.xpToastFade-enter-active { transition: opacity 0.2s; }
-.xpToastFade-leave-active { transition: opacity 0.5s; }
-.xpToastFade-enter-from,
-.xpToastFade-leave-to { opacity: 0; }
+/* ─── Global XP toast (floating snackbar) ────────────────────────── */
+
+.xpGlobalToast {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: var(--font-footnote);
+  font-weight: 700;
+  padding: 8px 24px 8px;
+  border-radius: 16px;
+  z-index: 10000;
+  pointer-events: none;
+  white-space: nowrap;
+  min-width: 180px;
+  text-align: center;
+}
+
+.xpToastEarned {
+  font-size: var(--font-footnote);
+}
+
+.xpToastTotal {
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+.xpToastProgress {
+  height: 3px;
+  margin-top: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.xpToastProgressFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.xpGlobalFade-enter-active { transition: opacity 0.2s, transform 0.2s; }
+.xpGlobalFade-leave-active { transition: opacity 0.5s, transform 0.5s; }
+.xpGlobalFade-enter-from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+.xpGlobalFade-leave-to { opacity: 0; transform: translateX(-50%) translateY(-8px); }
 
 .repMaxBtn {
   flex: 1;
@@ -3087,6 +3134,15 @@ html.modal-open .tabContent {
   font-size: var(--font-caption2);
   font-weight: 700;
   letter-spacing: 0.3px;
+}
+
+.wtXPPreview {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  opacity: 0.8;
 }
 
 /* Confirm clear modal */

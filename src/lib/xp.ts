@@ -45,7 +45,7 @@ export const XP_CONFIG = {
   prMultiplier: 3,
 
   /** Bonus XP for setting a rep record at a given weight */
-  repPRBonus: 50,
+  repPRBonus: 25,
 
   /** Absolute minimum XP per set */
   minXP: 10,
@@ -131,6 +131,25 @@ export function calculateSetXP(params: {
   }
 
   return xp
+}
+
+/**
+ * Check if a set is a rep PR — more reps than ever before at the same weight.
+ * Used by both XP calculation and UI hints.
+ *
+ * @param weight - the weight of the current set
+ * @param reps - the reps of the current set
+ * @param priorSets - all other sets for this exercise (excluding the current set)
+ */
+export function checkRepPR(
+  weight: number,
+  reps: number,
+  priorSets: WorkoutSet[]
+): boolean {
+  const bestReps = priorSets
+    .filter(s => s.weight === weight)
+    .reduce((max, s) => Math.max(max, s.reps), 0)
+  return bestReps > 0 && reps > bestReps
 }
 
 /**

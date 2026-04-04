@@ -439,9 +439,10 @@
 
           <!-- Live 1RM estimate / PR target -->
           <div v-if="liveEstimate" class="repMaxResult">
-            <span class="repMaxResultLabel">Estimated 1RM</span>
+            <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
             <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
+            <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (+${XP_CONFIG.repPRBonus})` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
           </div>
           <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
@@ -457,6 +458,7 @@
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
           </div>
 
           <!-- Actions (always last) -->
@@ -466,11 +468,6 @@
             </button>
             <button class="repMaxBtn repMaxBtnClose" @click="closeModal">{{ isEditMode ? 'Cancel' : 'Done' }}</button>
           </div>
-
-          <!-- XP toast -->
-          <transition name="xpToastFade">
-            <div v-if="xpToastVisible" class="xpToast">{{ xpToastText }}</div>
-          </transition>
 
         </template>
       </div>
@@ -617,8 +614,8 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
-import { useProgressionStore } from '../stores/progression'
-import { calculateSetXP, calculateBest1RM, applyStreakMultiplier } from '../lib/xp'
+import { useProgressionStore, showXPToast } from '../stores/progression'
+import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
@@ -628,19 +625,7 @@ const { show: showUndo } = useUndoToast()
 const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
 
-// ── XP toast state ──────────────────────────────────────────────
-const xpToastVisible = ref(false)
-const xpToastText = ref('')
-let xpToastTimer: ReturnType<typeof setTimeout> | null = null
-
-function showXPToast(text: string) {
-  xpToastText.value = text
-  xpToastVisible.value = true
-  if (xpToastTimer) clearTimeout(xpToastTimer)
-  xpToastTimer = setTimeout(() => { xpToastVisible.value = false }, 2000)
-}
-
-function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number) {
+function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
   if (!progressionStore.progressionEnabled) return
 
   const exercise = store.exercises.find(e => e.id === exerciseId)
@@ -650,11 +635,16 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
   const otherSets = exercise.sets.filter(s => s.id !== setId)
   const best1RM = calculateBest1RM(otherSets)
 
+  // Rep PR only awards bonus when NOT already in PR/Tied PR zone
+  const isPRZone = best1RM !== null && estimated1RM >= best1RM
+  const isRepPR = !isPRZone && checkRepPR(weight, reps, otherSets)
+
   const setIndex = exercise.sets.length - 1
   const baseXP = calculateSetXP({
     setEstimated1RM: estimated1RM,
     exerciseBest1RM: best1RM,
     setIndex: best1RM === null ? setIndex : 0,
+    isRepPR,
   })
 
   const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
@@ -662,14 +652,23 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
   progressionStore.checkUnlocks()
 
   if (progressionStore.showProgression) {
-    const isPR = best1RM !== null && estimated1RM > best1RM
-    const isTie = best1RM !== null && estimated1RM === best1RM
     const mult = progressionStore.currentMultiplier
-    let text = `+${xp} XP`
-    if (isPR) text += ' PR!'
-    else if (isTie) text += ' Tied PR!'
-    if (mult > 1) text += ` (×${mult})`
-    showXPToast(text)
+    const parts: string[] = []
+
+    if (best1RM === null) {
+      parts.push('New Exercise')
+    } else {
+      const ratio = estimated1RM / best1RM
+      if (ratio > 1.0) parts.push(`PR! (${XP_CONFIG.prMultiplier}x)`)
+      else if (ratio === 1.0) parts.push(`Tied PR (${XP_CONFIG.tieMultiplier}x)`)
+      else if (ratio < XP_CONFIG.warmupThreshold) parts.push('Warmup')
+      else parts.push(`${Math.round(ratio * 100)}% of best`)
+    }
+    if (isRepPR) parts.push('Rep PR')
+    if (mult > 1) parts.push(`${mult}x streak`)
+    parts.push(`${xp} XP`)
+
+    showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
   }
 }
 
@@ -1405,9 +1404,59 @@ const prTargetWeight = computed<number | null>(() => {
   if (!id || id === '__new__') return null
   const pr = store.getExercisePR(id)
   if (pr <= 0) return null
-  const target = pr + 1
-  const targetLbs = reps.value === 1 ? target : Math.ceil(target / (1 + reps.value / 30))
+  // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
+  const target = pr + 0.5
+  const targetLbs = reps.value === 1 ? Math.ceil(target) : Math.ceil(target / (1 + reps.value / 30))
   return displayWeight(targetLbs)
+})
+
+// ── Live XP preview (shown when both weight and reps are filled) ──
+const liveXPPreview = computed(() => {
+  if (!progressionStore.progressionEnabled || !progressionStore.showProgression) return null
+  if (!liveEstimateLbs.value || isEditMode.value) return null
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+
+  const exercise = store.exercises.find(e => e.id === id)
+  if (!exercise) return null
+
+  const best1RM = calculateBest1RM(exercise.sets)
+  const estimated1RM = liveEstimateLbs.value
+  const w = toLbs(weight.value!)
+  const r = reps.value!
+
+  const isPRZone = best1RM !== null && estimated1RM >= best1RM
+  const hasSetAtWeight = exercise.sets.some(s => s.weight === w)
+  const isRepPR = !isPRZone && checkRepPR(w, r, exercise.sets)
+  const isNewWeight = !isPRZone && !isRepPR && !hasSetAtWeight && best1RM !== null
+
+  const setIndex = exercise.sets.length
+  const baseXP = calculateSetXP({
+    setEstimated1RM: estimated1RM,
+    exerciseBest1RM: best1RM,
+    setIndex: best1RM === null ? setIndex : 0,
+    isRepPR,
+  })
+  const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+
+  let zone: string
+  if (best1RM === null) {
+    zone = 'New Exercise'
+  } else {
+    const ratio = estimated1RM / best1RM
+    if (ratio > 1.0) zone = `PR! (${XP_CONFIG.prMultiplier}x)`
+    else if (ratio === 1.0) zone = `Tied PR (${XP_CONFIG.tieMultiplier}x)`
+    else if (ratio < XP_CONFIG.warmupThreshold) zone = 'Warmup'
+    else zone = `${Math.round(ratio * 100)}% of best`
+  }
+
+  return {
+    xp,
+    zone,
+    best1RM: best1RM ? displayWeight(best1RM) : null,
+    isRepPR,
+    isNewWeight,
+  }
 })
 
 const prTargetReps = computed<number | null>(() => {
@@ -1418,8 +1467,9 @@ const prTargetReps = computed<number | null>(() => {
   const pr = store.getExercisePR(id)
   if (pr <= 0) return null
   const wLbs = toLbs(weight.value)
-  if (wLbs >= pr + 1) return 0 // any rep beats it
-  const needed = Math.ceil(30 * ((pr + 1) / wLbs - 1))
+  // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
+  if (Math.round(wLbs) > pr) return 0 // any rep beats it (1RM at this weight already exceeds PR)
+  const needed = Math.ceil(30 * ((pr + 0.5) / wLbs - 1))
   return needed
 })
 
@@ -1511,7 +1561,7 @@ function saveSet() {
       const exercise = store.exercises.find(e => e.id === exerciseId)
       if (exercise && exercise.sets.length > 0) {
         const newSet = exercise.sets[exercise.sets.length - 1]
-        computeAndLogXP(exerciseId, newSet.id, newSet.estimated1RM)
+        computeAndLogXP(exerciseId, newSet.id, newSet.estimated1RM, newSet.weight, newSet.reps)
       }
       // Haptic feedback — stronger for PRs
       if (wasPR) {
