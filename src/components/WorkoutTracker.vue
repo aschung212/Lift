@@ -661,8 +661,22 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
 
   const mult = progressionStore.currentMultiplier
   const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+  const wasTrialPeriod = !progressionStore.starterConfirmed
   const setMeta = { theme: currentTheme.value, epoch: progressionStore.epoch, zone, isPR, isRepPR }
   progressionStore.logSetXP(setId, xp, setMeta)
+
+  // Notify when starter locks in on first set
+  if (wasTrialPeriod && progressionStore.starterConfirmed) {
+    const starterLabel = THEMES.find(t => t.id === progressionStore.starterTheme)?.label
+    if (starterLabel) {
+      setTimeout(() => showXPToast(
+        `${starterLabel} locked in as your starter`,
+        progressionStore.progressPercent,
+        progressionStore.totalXP,
+        progressionStore.nextUnlockThreshold
+      ), 4500) // after the XP toast fades
+    }
+  }
   const newUnlocks = progressionStore.checkUnlocks()
   if (newUnlocks.length > 0) {
     const theme = THEMES.find(t => t.id === newUnlocks[0])

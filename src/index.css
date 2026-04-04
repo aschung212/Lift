@@ -196,65 +196,65 @@
 /* ── Air (new — cool white / pale blue) ──────────────────────────── */
 
 [data-theme="air"][data-mode="dark"] {
-  --bg-primary:      #101820;
-  --bg-secondary:    #182028;
-  --bg-elevated:     #202830;
-  --bg-hover:        #283038;
-  --border:          #243040;
-  --border-strong:   #384858;
-  --text-primary:    #e8f0f8;
-  --text-secondary:  #8898b0;
-  --text-muted:      #687888;
-  --accent:          #88b8e0;
-  --accent-hover:    #a0d0f0;
-  --accent-subtle:   rgba(136, 184, 224, 0.10);
+  --bg-primary:      #0c0a00;
+  --bg-secondary:    #141200;
+  --bg-elevated:     #1c1a08;
+  --bg-hover:        #242010;
+  --border:          #2a2610;
+  --border-strong:   #3a3420;
+  --text-primary:    #f8f4e0;
+  --text-secondary:  #b0a870;
+  --text-muted:      #887840;
+  --accent:          #ffd700;
+  --accent-hover:    #ffe640;
+  --accent-subtle:   rgba(255, 215, 0, 0.10);
   --danger:          #f87171;
   --danger-subtle:   rgba(248, 113, 113, 0.12);
   --success:         #34d399;
   --success-subtle:  rgba(52, 211, 153, 0.12);
-  --shadow:          0 16px 48px rgba(0, 0, 0, 0.7);
-  --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.4);
-  --glass-fill:      rgba(200, 220, 240, 0.06);
-  --glass-edge:      rgba(200, 220, 240, 0.10);
-  --glass-shine:     rgba(255, 255, 255, 0.10);
-  --glass-bar:       rgba(16, 24, 32, 0.75);
-  --glass-overlay:   rgba(0, 0, 0, 0.55);
-  --pr:              #d4af37;
-  --pr-subtle:       rgba(212, 175, 55, 0.10);
-  --text-on-accent:  #101820;
-  --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(136, 184, 224, 0.08) 0%, transparent 65%),
-                     radial-gradient(ellipse 55% 45% at 85% 80%, rgba(180, 210, 240, 0.05) 0%, transparent 65%);
+  --shadow:          0 16px 48px rgba(0, 0, 0, 0.8);
+  --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.5);
+  --glass-fill:      rgba(255, 215, 0, 0.04);
+  --glass-edge:      rgba(255, 215, 0, 0.08);
+  --glass-shine:     rgba(255, 255, 200, 0.08);
+  --glass-bar:       rgba(12, 10, 0, 0.80);
+  --glass-overlay:   rgba(0, 0, 0, 0.60);
+  --pr:              #ffd700;
+  --pr-subtle:       rgba(255, 215, 0, 0.12);
+  --text-on-accent:  #0c0a00;
+  --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(255, 215, 0, 0.06) 0%, transparent 65%),
+                     radial-gradient(ellipse 55% 45% at 85% 80%, rgba(255, 230, 50, 0.04) 0%, transparent 65%);
 }
 
 [data-theme="air"][data-mode="light"] {
-  --bg-primary:      #f0f6fa;
+  --bg-primary:      #f8f6e8;
   --bg-secondary:    #ffffff;
   --bg-elevated:     #ffffff;
-  --bg-hover:        #e8f0f8;
-  --border:          #d0dce8;
-  --border-strong:   #b0c4d8;
-  --text-primary:    #1a2030;
-  --text-secondary:  #506878;
-  --text-muted:      #708090;
-  --accent:          #2870a0;
-  --accent-hover:    #1e6090;
-  --accent-subtle:   rgba(64, 136, 184, 0.08);
+  --bg-hover:        #f0ecd8;
+  --border:          #e0d8b8;
+  --border-strong:   #c8be98;
+  --text-primary:    #1a1800;
+  --text-secondary:  #6a6030;
+  --text-muted:      #8a8050;
+  --accent:          #a08800;
+  --accent-hover:    #8a7600;
+  --accent-subtle:   rgba(160, 136, 0, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
   --success:         #0d8a3a;
   --success-subtle:  rgba(22, 163, 74, 0.08);
-  --shadow:          0 8px 32px rgba(20, 30, 40, 0.10);
-  --shadow-sm:       0 2px 8px rgba(20, 30, 40, 0.06);
-  --glass-fill:      rgba(220, 235, 250, 0.40);
-  --glass-edge:      rgba(190, 215, 240, 0.50);
+  --shadow:          0 8px 32px rgba(20, 18, 0, 0.10);
+  --shadow-sm:       0 2px 8px rgba(20, 18, 0, 0.06);
+  --glass-fill:      rgba(255, 240, 180, 0.30);
+  --glass-edge:      rgba(255, 230, 140, 0.40);
   --glass-shine:     rgba(255, 255, 255, 0.90);
-  --glass-bar:       rgba(240, 246, 250, 0.82);
-  --glass-overlay:   rgba(20, 30, 40, 0.20);
-  --pr:              #9a7b1c;
-  --pr-subtle:       rgba(154, 123, 28, 0.10);
+  --glass-bar:       rgba(248, 246, 232, 0.82);
+  --glass-overlay:   rgba(20, 18, 0, 0.20);
+  --pr:              #8a7600;
+  --pr-subtle:       rgba(138, 118, 0, 0.10);
   --text-on-accent:  #fff;
-  --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(100, 180, 240, 0.10) 0%, transparent 60%),
-                     radial-gradient(ellipse 55% 45% at 85% 80%, rgba(160, 200, 240, 0.06) 0%, transparent 60%);
+  --mesh:            radial-gradient(ellipse 70% 55% at 15% 10%, rgba(255, 215, 0, 0.08) 0%, transparent 60%),
+                     radial-gradient(ellipse 55% 45% at 85% 80%, rgba(255, 230, 50, 0.05) 0%, transparent 60%);
 }
 
 /* ── Void (black / silver) ───────────────────────────────────────── */
@@ -1017,6 +1017,33 @@ html.modal-open .tabContent {
   background: var(--bg-secondary);
   border-radius: 50%;
   padding: 4px;
+}
+
+/* ─── Theme preview fade transition ──────────────────────────────── */
+
+html.theme-fading,
+html.theme-fading .settingsSheet {
+  transition: background-color 0.8s ease, color 0.8s ease, border-color 0.8s ease;
+}
+
+/* ─── Trial badge and banner ─────────────────────────────────────── */
+
+.themeTrialBadge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+.trialBanner {
+  text-align: center;
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 4px 16px 8px;
+  font-style: italic;
 }
 
 /* ─── Badge preview overlay ──────────────────────────────────────── */

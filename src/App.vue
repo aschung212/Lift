@@ -91,7 +91,7 @@
                     <svg v-if="t.icon === 'fire'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 23c-4.97 0-8-3.03-8-7 0-2.5 1.5-5 3-6.5.5-.5 1.37-.18 1.37.54 0 1.3.6 2.46 1.63 3.2.2.14.46-.05.38-.28-.5-1.46-.63-3.1-.08-4.96C11.5 4.5 14 2 16 1c.4-.2.82.18.68.6C15.5 5.5 17 7 18 8.5c2 3 2 5 2 6.5 0 3.97-3.03 8-8 8z"/></svg>
                     <svg v-else-if="t.icon === 'water'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M2 15c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 19c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 11c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                     <svg v-else-if="t.icon === 'luck'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 3C12 3 9 6 9 8.5c0 1.4.7 2.6 1.8 3.2L12 12l1.2-.3C14.3 11.1 15 9.9 15 8.5 15 6 12 3 12 3z"/><path d="M21 12c0 0-3-3-5.5-3-1.4 0-2.6.7-3.2 1.8L12 12l.3 1.2c.6 1.1 1.8 1.8 3.2 1.8C18 15 21 12 21 12z"/><path d="M12 21c0 0 3-3 3-5.5 0-1.4-.7-2.6-1.8-3.2L12 12l-1.2.3C9.7 12.9 9 14.1 9 15.5 9 18 12 21 12 21z"/><path d="M3 12c0 0 3 3 5.5 3 1.4 0 2.6-.7 3.2-1.8L12 12l-.3-1.2C11.1 9.7 9.9 9 8.5 9 6 9 3 12 3 12z"/></svg>
-                    <svg v-else-if="t.icon === 'air'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="20" height="20"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>
+                    <svg v-else-if="t.icon === 'air'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                     <svg v-else-if="t.icon === 'eternal'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z"/></svg>
                     <svg v-else-if="t.icon === 'amethyst'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2L4 9l8 13 8-13-8-7zm0 3.5L7.5 9.5 12 17l4.5-7.5L12 5.5z"/></svg>
                     <svg v-else-if="t.icon === 'sun'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -105,7 +105,12 @@
                     <svg v-else-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </span>
                   <span class="themePreviewLabel">{{ t.label }}</span>
+                  <span v-if="progressionActive && !progressionStore.starterConfirmed && isStarterTheme(t.id) && isThemeUnlocked(t.id)" class="themeTrialBadge">Trial</span>
                 </button>
+              </div>
+              <!-- Trial period banner -->
+              <div v-if="progressionActive && !progressionStore.starterConfirmed" class="trialBanner">
+                Trying starters — log a set to lock in your choice
               </div>
               <!-- XP to unlock overlay for previewed locked theme -->
               <div v-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && progressionActive" class="badgePreviewOverlay">
@@ -755,6 +760,7 @@ function clearSampleData() {
 function closeSettings() {
   if (!settingsOpen.value) return
   // Revert any active theme preview
+  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
   if (previewingThemeId.value) {
     previewingThemeId.value = null
     revertPreview()
@@ -871,6 +877,7 @@ function switchTab(tabId: string) {
 }
 
 function selectTheme(id: string) {
+  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
   previewingThemeId.value = null
   revertPreview()
   if (themeSelectFn(id as import('./composables/useTheme').ThemeId)) {
@@ -902,6 +909,11 @@ const STARTER_THEMES: { id: ThemeId; label: string }[] = [
   { id: 'water', label: 'Flow' },
   { id: 'luck', label: 'Luck' },
 ]
+
+const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
+function isStarterTheme(id: ThemeId): boolean {
+  return STARTER_IDS.includes(id)
+}
 
 function executeResetProgress() {
   resetConfirmVisible.value = false
@@ -945,8 +957,7 @@ function skipStarterPick() {
 /** If current theme is locked, switch to starter or pearl. */
 function enforceThemeLock() {
   if (!isThemeUnlocked(currentTheme.value as ThemeId)) {
-    const fallback = progressionStore.starterTheme || 'pearl'
-    currentTheme.value = fallback
+    currentTheme.value = 'pearl'
   }
 }
 
@@ -975,6 +986,8 @@ function toggleProgression() {
   if (progressionActive.value) {
     progressionStore.progressionEnabled = false
     progressionStore._persist()
+    // Force switch to Origin — only free theme without progression
+    currentTheme.value = 'pearl'
   } else {
     const realStarters: ThemeId[] = ['fire', 'water', 'luck']
     const hasRealStarter = progressionStore.starterTheme && realStarters.includes(progressionStore.starterTheme)
@@ -1070,9 +1083,21 @@ const xpToUnlockPreview = computed(() => {
   return Math.max(0, required - progressionStore.totalXP)
 })
 
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
 function handleThemePreview(id: ThemeId) {
+  if (previewTimer) clearTimeout(previewTimer)
+  document.documentElement.classList.remove('theme-fading')
   previewingThemeId.value = id
-  previewTheme(id as import('./composables/useTheme').ThemeId)
+  previewTheme(id)
+  previewTimer = setTimeout(() => {
+    // Add fading class for smooth transition back
+    document.documentElement.classList.add('theme-fading')
+    previewingThemeId.value = null
+    revertPreview()
+    // Remove fading class after transition completes
+    setTimeout(() => document.documentElement.classList.remove('theme-fading'), 900)
+  }, 3000)
 }
 
 function setMode(mode: 'light' | 'dark' | 'auto') {
