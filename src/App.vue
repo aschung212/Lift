@@ -1060,12 +1060,22 @@ function exportData(format: 'csv' | 'json') {
           weight: s.weight,
           reps: s.reps,
           estimated1RM: s.estimated1RM,
+          ...(s.sessionId ? { sessionId: s.sessionId } : {}),
         })),
       })),
       bodyweight: bwStore.sortedEntries.map(e => ({
         date: e.date,
         weight: e.weight,
       })),
+      progression: {
+        totalXP: progressionStore.totalXP,
+        epoch: progressionStore.epoch,
+        streakWeeks: progressionStore.streakWeeks,
+        weeklyTarget: progressionStore.weeklyTarget,
+        starterTheme: progressionStore.starterTheme,
+        unlockedThemes: progressionStore.unlockedThemes,
+        xpPerSet: progressionStore.xpPerSet,
+      },
     }
     downloadFile(`lift-export-${timestamp}.json`, JSON.stringify(data, null, 2), 'application/json')
   } else {

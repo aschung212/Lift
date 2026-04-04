@@ -12,6 +12,7 @@ export interface WorkoutSet {
   weight: number
   reps: number
   estimated1RM: number
+  sessionId?: string  // groups sets logged in the same sitting
 }
 
 export interface Exercise {
@@ -81,13 +82,15 @@ export const useWorkoutStore = defineStore('workout', {
       for (const s of (sets || []) as Record<string, unknown>[]) {
         const exerciseId = s.exercise_id as string
         if (!remoteSetsMap.has(exerciseId)) remoteSetsMap.set(exerciseId, [])
-        remoteSetsMap.get(exerciseId)!.push({
+        const set: WorkoutSet = {
           id: s.id as string,
           date: s.date as string,
           weight: s.weight as number,
           reps: s.reps as number,
-          estimated1RM: s.estimated_1rm as number
-        })
+          estimated1RM: s.estimated_1rm as number,
+        }
+        if (s.session_id) set.sessionId = s.session_id as string
+        remoteSetsMap.get(exerciseId)!.push(set)
       }
       remoteExercises.forEach(ex => {
         ex.sets = remoteSetsMap.get(ex.id) || []
@@ -145,7 +148,7 @@ export const useWorkoutStore = defineStore('workout', {
       return id
     },
 
-    logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
+    logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true, sessionId }: { sync?: boolean; sessionId?: string } = {}) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       const date = dateStr
@@ -153,13 +156,16 @@ export const useWorkoutStore = defineStore('workout', {
         : new Date().toISOString()
       const id = uuid()
       const estimated1RM = epley(weight, reps)
-      exercise.sets.push({ id, date, weight, reps, estimated1RM })
+      const set: WorkoutSet = { id, date, weight, reps, estimated1RM }
+      if (sessionId) set.sessionId = sessionId
+      exercise.sets.push(set)
       this._persist()
 
       if (sync && supabase && this._userId) {
         supabase.from('sets').insert({
           id, user_id: this._userId, exercise_id: exerciseId,
-          date, weight, reps, estimated_1rm: estimated1RM
+          date, weight, reps, estimated_1rm: estimated1RM,
+          session_id: sessionId || null,
         }).then()
       }
     },

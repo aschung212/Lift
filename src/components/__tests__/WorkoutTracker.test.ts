@@ -607,7 +607,7 @@ describe('WorkoutTracker', () => {
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       await saveBtn.trigger('click')
 
-      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String))
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String), expect.objectContaining({ sessionId: expect.any(String) }))
     })
 
     it('keeps modal open with cleared fields after saving a set', async () => {

@@ -615,6 +615,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { uuid } from '../lib/uuid'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
@@ -955,6 +956,7 @@ function todayISO(): string {
 // ── Log / Edit modal state ────────────────────────────────────────
 const weightInputEl = ref<HTMLInputElement | null>(null)
 const showModal = ref(false)
+const currentSessionId = ref<string>(uuid())
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
 const newExerciseName = ref('')
@@ -1018,6 +1020,7 @@ function openNewExerciseModal() {
   newExerciseTags.value = []
   newExerciseTagInput.value = ''
   date.value = lastLogDate.value
+  currentSessionId.value = uuid()
   showModal.value = true
 }
 
@@ -1051,6 +1054,7 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   date.value = lastLogDate.value
+  currentSessionId.value = uuid()
   showModal.value = true
 }
 
@@ -1603,7 +1607,7 @@ function saveSet() {
     }
     if (hasSetData.value && weight.value !== null && reps.value !== null) {
       const wasPR = isNewPR.value
-      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
+      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value, { sessionId: currentSessionId.value })
       logEvent('set_log')
       // XP: get the just-logged set (last in array) and compute XP
       const exercise = store.exercises.find(e => e.id === exerciseId)
