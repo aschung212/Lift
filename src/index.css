@@ -1216,6 +1216,10 @@ html.theme-fading .settingsSheet {
   padding: 4px 16px 8px;
 }
 
+.badgePreviewTappable {
+  cursor: pointer;
+}
+
 /* ─── Badge progress bar ─────────────────────────────────────────── */
 
 .badgeProgressBar {
