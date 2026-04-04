@@ -615,7 +615,6 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
-import { uuid } from '../lib/uuid'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
@@ -957,23 +956,6 @@ function todayISO(): string {
 const weightInputEl = ref<HTMLInputElement | null>(null)
 const showModal = ref(false)
 
-// Session ID: persists across modal open/close and app restarts within a time window.
-// A new session starts after 2+ hours of inactivity.
-const SESSION_GAP_MS = 2 * 60 * 60 * 1000 // 2 hours
-const currentSessionId = ref<string>(localStorage.getItem('current-session-id') || uuid())
-const lastSetTimestamp = ref<number>(Number(localStorage.getItem('last-set-timestamp')) || 0)
-
-function getSessionId(): string {
-  const now = Date.now()
-  if (now - lastSetTimestamp.value > SESSION_GAP_MS) {
-    // Start a new session after gap
-    currentSessionId.value = uuid()
-    localStorage.setItem('current-session-id', currentSessionId.value)
-  }
-  lastSetTimestamp.value = now
-  localStorage.setItem('last-set-timestamp', String(now))
-  return currentSessionId.value
-}
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
 const newExerciseName = ref('')
@@ -1622,7 +1604,7 @@ function saveSet() {
     }
     if (hasSetData.value && weight.value !== null && reps.value !== null) {
       const wasPR = isNewPR.value
-      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value, { sessionId: getSessionId() })
+      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log')
       // XP: get the just-logged set (last in array) and compute XP
       const exercise = store.exercises.find(e => e.id === exerciseId)

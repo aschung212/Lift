@@ -1060,7 +1060,6 @@ function exportData(format: 'csv' | 'json') {
           weight: s.weight,
           reps: s.reps,
           estimated1RM: s.estimated1RM,
-          ...(s.sessionId ? { sessionId: s.sessionId } : {}),
         })),
       })),
       bodyweight: bwStore.sortedEntries.map(e => ({
