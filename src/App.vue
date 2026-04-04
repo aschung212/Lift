@@ -65,13 +65,21 @@
 
             <div class="settingsGroup">
               <div class="settingsHeader" id="settings-title">Appearance</div>
+              <!-- Badge case: verbose mode header (only when progression is active) -->
+              <div v-if="progressionActive && progressionStore.showProgression" class="badgeCaseHeader">
+                <template v-if="progressionStore.nextUnlockThreshold !== null">
+                  <span class="badgeCaseXP">{{ progressionStore.totalXP.toLocaleString() }} / {{ progressionStore.nextUnlockThreshold.toLocaleString() }} XP</span>
+                  <span v-if="progressionStore.streakWeeks > 0" class="badgeCaseStreak">{{ progressionStore.streakWeeks }}w streak · {{ progressionStore.currentMultiplier }}x</span>
+                </template>
+                <span v-else class="badgeCaseXP">Lifetime: {{ progressionStore.totalXP.toLocaleString() }} XP</span>
+              </div>
               <div class="settingsThemeGrid">
                 <button
-                  v-for="t in THEMES"
+                  v-for="t in sortedThemes"
                   :key="t.id"
-                  :class="['themePreview', { active: currentTheme === t.id }]"
-                  @click="selectTheme(t.id)"
-                  :aria-label="'Select ' + t.label + ' theme'"
+                  :class="['themePreview', { active: currentTheme === t.id, locked: !isThemeUnlocked(t.id) }]"
+                  @click="isThemeUnlocked(t.id) ? selectTheme(t.id) : handleThemePreview(t.id)"
+                  :aria-label="isThemeUnlocked(t.id) ? 'Select ' + t.label + ' theme' : t.label + ' theme — locked'"
                   :aria-pressed="currentTheme === t.id"
                 >
                   <span
@@ -91,10 +99,21 @@
                     <svg v-else-if="t.icon === 'love'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                     <svg v-else-if="t.icon === 'pearl'" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><circle cx="12" cy="12" r="8" opacity="0.3"/><circle cx="12" cy="12" r="6"/><circle cx="9.5" cy="9.5" r="2" opacity="0.4" fill="white"/></svg>
                     <svg v-else-if="t.icon === 'earth'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M2 20L8 8l4 6 3-4 5 10" fill="currentColor" opacity="0.25"/><path d="M2 20L8 8l4 6 3-4 5 10"/></svg>
-                    <svg v-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    <!-- Lock icon for locked themes -->
+                    <svg v-if="!isThemeUnlocked(t.id)" class="themePreviewLock" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    <!-- Checkmark for active unlocked theme -->
+                    <svg v-else-if="currentTheme === t.id" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </span>
                   <span class="themePreviewLabel">{{ t.label }}</span>
                 </button>
+              </div>
+              <!-- XP to unlock overlay for previewed locked theme -->
+              <div v-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && progressionActive" class="badgePreviewOverlay">
+                {{ xpToUnlockPreview.toLocaleString() }} XP to unlock
+              </div>
+              <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
+              <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
+                <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>
               </div>
               <div class="settingsRow">
                 <span class="settingsLabel">Mode</span>
@@ -166,6 +185,46 @@
                 >
                   <span class="glassToggleThumb"></span>
                 </button>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Progression</span>
+                <button
+                  :class="['glassToggle', { on: progressionActive }]"
+                  @click="toggleProgression"
+                  role="switch"
+                  :aria-checked="progressionActive"
+                  :aria-label="progressionActive ? 'Disable progression' : 'Enable progression'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+              <div v-show="progressionActive" class="settingsRow">
+                <span class="settingsLabel settingsLabelIndented">Show XP &amp; streaks</span>
+                <button
+                  :class="['glassToggle', { on: progressionStore.showProgression }]"
+                  @click="progressionStore.setShowProgression(!progressionStore.showProgression)"
+                  role="switch"
+                  :aria-checked="progressionStore.showProgression"
+                  :aria-label="progressionStore.showProgression ? 'Hide progression info' : 'Show progression info'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+              <div v-show="progressionActive" class="settingsRow">
+                <button class="settingsResetBtn" @click="confirmResetProgress">Reset Progress</button>
+              </div>
+            </div>
+
+            <!-- Dev tools — only on localhost/LAN -->
+            <div v-if="isDev" class="settingsGroup">
+              <div class="settingsHeader">Dev Tools</div>
+              <div class="devToolsGrid">
+                <button class="devBtn" @click="devResetOnboarding">Reset Onboarding</button>
+                <button class="devBtn" @click="devSeedProgression(12400)">Seed 12k XP</button>
+                <button class="devBtn" @click="devSeedProgression(80000)">Seed 80k XP</button>
+                <button class="devBtn" @click="devAddXP(5000)">+5,000 XP</button>
+                <button class="devBtn" @click="devRunMigration">Run Migration</button>
+                <button class="devBtn devBtnDanger" @click="devClearAll">Clear All Data</button>
               </div>
             </div>
 
@@ -265,6 +324,7 @@
                 </div>
               </div>
             </div>
+
 
             <div class="settingsGroup">
               <div class="settingsHeader">Support</div>
@@ -413,6 +473,82 @@
     </Teleport>
   </div>
   </ErrorBoundary>
+
+  <!-- Global XP toast -->
+  <Teleport to="body">
+    <transition name="xpGlobalFade">
+      <div v-if="xpToast.visible" class="xpGlobalToast">
+        <div class="xpToastEarned">{{ xpToast.text }}</div>
+        <div class="xpToastTotal">{{ xpToast.nextThresholdXP ? `${xpToast.totalXP.toLocaleString()} / ${xpToast.nextThresholdXP.toLocaleString()} XP` : `${xpToast.totalXP.toLocaleString()} XP` }}</div>
+        <div v-if="xpToast.nextThresholdXP" class="xpToastProgress">
+          <div class="xpToastProgressFill" :style="{ width: xpToast.progressPercent + '%' }"></div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
+  <!-- Starter picker modal (after reset) -->
+  <Teleport to="body">
+    <transition name="unlockFade">
+      <div v-if="starterPickerVisible" class="unlockOverlay">
+        <div class="unlockModal">
+          <div class="unlockTitle" style="color: var(--text-primary)">Pick Your Starter</div>
+          <div class="resetConfirmText">Choose a theme to unlock as you train.</div>
+          <div class="obStarterGridInline">
+            <button
+              v-for="s in STARTER_THEMES"
+              :key="s.id"
+              :class="['obStarterCardInline', { selected: starterPickerSelection === s.id }]"
+              @click="starterPickerSelection = s.id"
+            >
+              <span
+                class="obStarterDotInline"
+                :style="{ background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[s.id]?.[resolvedMode]?.bg + ')' }"
+              ></span>
+              <span class="obStarterLabelInline">{{ s.label }}</span>
+            </button>
+          </div>
+          <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Choose' }}</button>
+          <button class="resetConfirmCancel" @click="skipStarterPick">Skip</button>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
+  <!-- Reset progress confirmation -->
+  <Teleport to="body">
+    <transition name="unlockFade">
+      <div v-if="resetConfirmVisible" class="unlockOverlay" @click.self="resetConfirmVisible = false">
+        <div class="unlockModal">
+          <div class="unlockTitle" style="color: var(--text-primary)">Reset Progress?</div>
+          <div class="resetConfirmText">This will reset your XP to 0, lock all themes, and let you pick a new starter. Your workout data is not affected.</div>
+          <button class="unlockDismiss resetConfirmDanger" @click="executeResetProgress">Reset &amp; Re-pick Starter</button>
+          <button class="resetConfirmCancel" @click="resetConfirmVisible = false">Cancel</button>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
+  <!-- Theme unlock celebration -->
+  <Teleport to="body">
+    <transition name="unlockFade">
+      <div v-if="unlockCelebration.visible" class="unlockOverlay" @click.self="dismissUnlockCelebration">
+        <div class="unlockModal">
+          <div class="unlockIcon">
+            <span
+              class="unlockDot"
+              :style="unlockCelebration.themeId ? {
+                background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[unlockCelebration.themeId]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[unlockCelebration.themeId]?.[resolvedMode]?.bg + ')',
+              } : {}"
+            ></span>
+          </div>
+          <div class="unlockTitle">{{ progressionStore.showProgression ? 'Theme Unlocked!' : 'New Theme Available!' }}</div>
+          <div class="unlockThemeName">{{ unlockCelebration.themeName }}</div>
+          <button class="unlockDismiss" @click="dismissUnlockCelebration">Nice!</button>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -438,7 +574,9 @@ const BodyweightTracker = defineAsyncComponent({
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
-import { useTheme } from './composables/useTheme'
+import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
+import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration } from './stores/progression'
+import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
@@ -451,7 +589,55 @@ import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const progressionStore = useProgressionStore()
+connectProgressionStore(() => progressionStore)
+
+const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+// Sort themes: unlocked first, then locked — both groups follow unlock-tier order.
+// Themes not in UNLOCK_TIERS (unchosen starters) slot in before Eternal.
+const sortedThemes = computed(() => {
+  // Build a full display order from UNLOCK_TIERS, expanding null slots
+  const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
+  const displayOrder: ThemeId[] = []
+  for (const tier of UNLOCK_TIERS) {
+    if (tier.themeId) {
+      displayOrder.push(tier.themeId)
+    } else if (tier.level === 1) {
+      // Starter pick slot — insert the chosen starter, or all three if none chosen
+      const chosen = progressionStore.starterTheme
+      if (chosen) {
+        displayOrder.push(chosen)
+      } else {
+        displayOrder.push(...STARTER_IDS)
+      }
+    }
+  }
+  // Append any remaining starter themes not yet in the list (unchosen ones) before Eternal
+  for (const sid of STARTER_IDS) {
+    if (!displayOrder.includes(sid)) {
+      const eternalIdx = displayOrder.indexOf('eternal')
+      if (eternalIdx !== -1) {
+        displayOrder.splice(eternalIdx, 0, sid)
+      } else {
+        displayOrder.push(sid)
+      }
+    }
+  }
+
+  const orderIndex = (id: ThemeId) => {
+    const idx = displayOrder.indexOf(id)
+    return idx === -1 ? 999 : idx
+  }
+
+  const unlocked = THEMES.filter(t => isThemeUnlocked(t.id))
+  const locked = THEMES.filter(t => !isThemeUnlocked(t.id))
+  unlocked.sort((a, b) => orderIndex(a.id) - orderIndex(b.id))
+  locked.sort((a, b) => orderIndex(a.id) - orderIndex(b.id))
+  return [...unlocked, ...locked]
+})
+
 const { user, loading, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
@@ -507,11 +693,14 @@ const workoutStoreForOnboarding = useWorkoutStore()
 const bodyweightStoreForOnboarding = useBodyweightStore()
 
 // Skip onboarding if user already has any data (exercises or bodyweight entries)
-// Reactive so it catches data that loads asynchronously after auth
+// Reactive so it catches data that loads asynchronously after auth.
+// onboardingInProgress prevents the watcher from firing when the onboarding
+// screen itself adds exercises (e.g. Popular Exercises option).
+const onboardingInProgress = ref(!onboardingComplete.value)
 watch(
   () => workoutStoreForOnboarding.exercises.length + bodyweightStoreForOnboarding.entries.length,
   (total) => {
-    if (!onboardingComplete.value && total > 0) {
+    if (!onboardingComplete.value && !onboardingInProgress.value && total > 0) {
       localStorage.setItem('onboarding-complete', 'true')
       onboardingComplete.value = true
     }
@@ -522,6 +711,7 @@ const showOnboarding = computed(() => !onboardingComplete.value)
 const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
 
 function onOnboardingComplete() {
+  onboardingInProgress.value = false
   onboardingComplete.value = true
   hasSampleData.value = localStorage.getItem('sample-data') === 'true'
 }
@@ -541,6 +731,11 @@ function clearSampleData() {
 
 function closeSettings() {
   if (!settingsOpen.value) return
+  // Revert any active theme preview
+  if (previewingThemeId.value) {
+    previewingThemeId.value = null
+    revertPreview()
+  }
   const el = settingsEl.value
   if (!el) { settingsOpen.value = false; return }
   el.classList.add('settingsSheetClosing')
@@ -653,8 +848,168 @@ function switchTab(tabId: string) {
 }
 
 function selectTheme(id: string) {
-  currentTheme.value = id
-  logEvent('theme_change', { theme: id })
+  previewingThemeId.value = null
+  revertPreview()
+  if (themeSelectFn(id as import('./composables/useTheme').ThemeId)) {
+    logEvent('theme_change', { theme: id })
+  }
+}
+
+// ── Dev tools (localhost/LAN only) ────────────────────────────────
+const isDev = /^(localhost|127\.|192\.168\.|10\.)/.test(window.location.hostname)
+
+function devResetOnboarding() {
+  localStorage.removeItem('onboarding-complete')
+  localStorage.removeItem('user-progression')
+  location.reload()
+}
+
+const resetConfirmVisible = ref(false)
+
+function confirmResetProgress() {
+  resetConfirmVisible.value = true
+}
+
+const starterPickerVisible = ref(false)
+const starterPickerSelection = ref<ThemeId | null>(null)
+
+const STARTER_THEMES: { id: ThemeId; label: string }[] = [
+  { id: 'fire', label: 'Fire' },
+  { id: 'water', label: 'Water' },
+  { id: 'luck', label: 'Luck' },
+]
+
+function executeResetProgress() {
+  resetConfirmVisible.value = false
+  progressionStore.epoch += 1
+  progressionStore.totalXP = 0
+  progressionStore.streakWeeks = 0
+  progressionStore.streakHistory = []
+  progressionStore.xpPerSet = {}
+  progressionStore.bodyweightXPDates = []
+  progressionStore.unlockedThemes = [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
+  progressionStore.starterTheme = null
+  progressionStore.progressionEnabled = false
+  progressionStore._persist()
+  clearMigrationFlag()
+  // Show starter picker
+  starterPickerSelection.value = null
+  starterPickerVisible.value = true
+}
+
+function confirmStarterPick() {
+  if (!starterPickerSelection.value) return
+  starterPickerVisible.value = false
+  progressionStore.setStarterTheme(starterPickerSelection.value)
+  currentTheme.value = starterPickerSelection.value
+}
+
+function skipStarterPick() {
+  starterPickerVisible.value = false
+  // Enable with pearl as default
+  progressionStore.progressionEnabled = true
+  if (!progressionStore.starterTheme) {
+    progressionStore.starterTheme = 'pearl'
+  }
+  progressionStore._persist()
+}
+
+function toggleProgression() {
+  if (progressionActive.value) {
+    progressionStore.progressionEnabled = false
+    progressionStore._persist()
+  } else {
+    progressionStore.progressionEnabled = true
+    if (!progressionStore.starterTheme) {
+      progressionStore.starterTheme = 'pearl'
+    }
+    // Ensure starter theme is unlocked
+    const starter = progressionStore.starterTheme
+    if (starter && !progressionStore.unlockedThemes.some(t => t.id === starter)) {
+      progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
+    }
+    if (!progressionStore.unlockedThemes.some(t => t.id === 'pearl')) {
+      progressionStore.unlockedThemes.push({ id: 'pearl', unlockedAt: new Date().toISOString() })
+    }
+    progressionStore._persist()
+  }
+}
+
+function devSeedProgression(xp: number) {
+  const starter = progressionStore.starterTheme || 'fire' as ThemeId
+  progressionStore.totalXP = xp
+  progressionStore.streakWeeks = 8
+  progressionStore.weeklyTarget = 4
+  progressionStore.showProgression = true
+  progressionStore.progressionEnabled = true
+  if (!progressionStore.starterTheme) {
+    progressionStore.starterTheme = starter
+  }
+  progressionStore.streakHistory = [{ weekStart: '2026-03-30', streakCount: 8, weeklyTarget: 4, combinedMultiplier: 1.8 }]
+  // Reset unlocks to just pearl + starter, then let checkUnlocks compute the rest
+  progressionStore.unlockedThemes = [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
+  if (!progressionStore.unlockedThemes.some(t => t.id === starter)) {
+    progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
+  }
+  progressionStore.checkUnlocks()
+  progressionStore._persist()
+}
+
+function devAddXP(amount: number) {
+  progressionStore.totalXP += amount
+  progressionStore.checkUnlocks()
+  progressionStore._persist()
+}
+
+function devRunMigration() {
+  clearMigrationFlag()
+  const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
+  progressionStore.totalXP = result.totalXP
+  progressionStore.xpPerSet = result.xpPerSet
+  progressionStore.bodyweightXPDates = result.bodyweightXPDates
+  progressionStore.checkUnlocks()
+  progressionStore._persist()
+  markMigrated()
+}
+
+function devClearAll() {
+  localStorage.clear()
+  location.reload()
+}
+
+const previewingThemeId = ref<ThemeId | null>(null)
+
+// Map every theme to its XP requirement, accounting for starter slots
+const themeXPRequired = computed(() => {
+  const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
+  const chosen = progressionStore.starterTheme
+  const unchosen = STARTER_IDS.filter(id => id !== chosen)
+  const map: Partial<Record<ThemeId, number>> = {}
+
+  for (const tier of UNLOCK_TIERS) {
+    if (tier.themeId) {
+      map[tier.themeId] = tier.xpRequired
+    } else if (tier.level === 1 && chosen) {
+      map[chosen] = tier.xpRequired
+    } else if (tier.level === 7) {
+      // Remaining unchosen starters share this tier
+      for (const id of unchosen) {
+        map[id] = tier.xpRequired
+      }
+    }
+  }
+  return map
+})
+
+const xpToUnlockPreview = computed(() => {
+  if (!previewingThemeId.value) return 0
+  const required = themeXPRequired.value[previewingThemeId.value] ?? 0
+  return Math.max(0, required - progressionStore.totalXP)
+})
+
+function handleThemePreview(id: ThemeId) {
+  previewingThemeId.value = id
+  previewTheme(id as import('./composables/useTheme').ThemeId)
 }
 
 function setMode(mode: 'light' | 'dark' | 'auto') {
@@ -711,6 +1066,15 @@ function exportData(format: 'csv' | 'json') {
         date: e.date,
         weight: e.weight,
       })),
+      progression: {
+        totalXP: progressionStore.totalXP,
+        epoch: progressionStore.epoch,
+        streakWeeks: progressionStore.streakWeeks,
+        weeklyTarget: progressionStore.weeklyTarget,
+        starterTheme: progressionStore.starterTheme,
+        unlockedThemes: progressionStore.unlockedThemes,
+        xpPerSet: progressionStore.xpPerSet,
+      },
     }
     downloadFile(`lift-export-${timestamp}.json`, JSON.stringify(data, null, 2), 'application/json')
   } else {
@@ -816,6 +1180,19 @@ function onBeforeUnload() {
 onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload)
   logEvent('session_start')
+
+  // One-time retroactive XP migration for existing users
+  if (progressionStore.progressionEnabled && !isMigrated()) {
+    const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
+    if (result.totalXP > 0) {
+      progressionStore.totalXP = result.totalXP
+      progressionStore.xpPerSet = result.xpPerSet
+      progressionStore.bodyweightXPDates = result.bodyweightXPDates
+      progressionStore.checkUnlocks()
+      progressionStore._persist()
+    }
+    markMigrated()
+  }
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)

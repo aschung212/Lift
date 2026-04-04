@@ -439,9 +439,10 @@
 
           <!-- Live 1RM estimate / PR target -->
           <div v-if="liveEstimate" class="repMaxResult">
-            <span class="repMaxResultLabel">Estimated 1RM</span>
+            <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
             <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
+            <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
           </div>
           <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
@@ -457,6 +458,7 @@
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
           </div>
 
           <!-- Actions (always last) -->
@@ -612,13 +614,101 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
+import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { THEMES } from '../composables/useTheme'
+import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
+import { logXPEvent } from '../lib/xpInstrumentation'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
+const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
-const { restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
+const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
+
+function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
+  if (!progressionStore.progressionEnabled) return
+
+  const exercise = store.exercises.find(e => e.id === exerciseId)
+  if (!exercise) return
+
+  // Best 1RM from existing sets (before this set was added, it's already in the array)
+  const otherSets = exercise.sets.filter(s => s.id !== setId)
+  const best1RM = calculateBest1RM(otherSets)
+
+  // Rep PR only awards bonus when NOT already in PR/Tied PR zone
+  const isPRZone = best1RM !== null && estimated1RM >= best1RM
+  const isRepPR = !isPRZone && checkRepPR(weight, reps, otherSets)
+
+  const setIndex = exercise.sets.length - 1
+  const baseXP = calculateSetXP({
+    setEstimated1RM: estimated1RM,
+    exerciseBest1RM: best1RM,
+    setIndex: best1RM === null ? setIndex : 0,
+    isRepPR,
+  })
+
+  // Determine zone for storage, instrumentation, and display
+  let zone: 'warmup' | 'working' | 'pr' | 'tie' | 'new_exercise'
+  const isPR = best1RM !== null && estimated1RM > best1RM
+  const isTie = best1RM !== null && estimated1RM === best1RM
+  if (best1RM === null) zone = 'new_exercise'
+  else if (isPR) zone = 'pr'
+  else if (isTie) zone = 'tie'
+  else if (estimated1RM / best1RM < XP_CONFIG.warmupThreshold) zone = 'warmup'
+  else zone = 'working'
+
+  const mult = progressionStore.currentMultiplier
+  const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+  const setMeta = { theme: currentTheme.value, epoch: progressionStore.epoch, zone, isPR, isRepPR }
+  progressionStore.logSetXP(setId, xp, setMeta)
+  const newUnlocks = progressionStore.checkUnlocks()
+  if (newUnlocks.length > 0) {
+    const theme = THEMES.find(t => t.id === newUnlocks[0])
+    if (theme) {
+      setTimeout(() => {
+        showUnlockCelebration(theme.id, theme.label)
+        notifySuccess()
+      }, progressionStore.showProgression ? 1500 : 500)
+    }
+  }
+
+  logXPEvent({
+    userId: progressionStore._userId,
+    setId,
+    exerciseId,
+    setDate: new Date().toISOString(),
+    baseXP,
+    streakMultiplier: mult,
+    finalXP: xp,
+    isPR,
+    isTie,
+    isRepPR,
+    zone,
+    activeTheme: currentTheme.value,
+    epoch: progressionStore.epoch,
+  })
+
+  if (progressionStore.showProgression) {
+    const parts: string[] = []
+
+    if (best1RM === null) {
+      parts.push('New Exercise')
+    } else {
+      const ratio = estimated1RM / best1RM
+      if (ratio > 1.0) parts.push(`PR! (${XP_CONFIG.prMultiplier}x)`)
+      else if (ratio === 1.0) parts.push(`Tied PR (${XP_CONFIG.tieMultiplier}x)`)
+      else if (ratio < XP_CONFIG.warmupThreshold) parts.push('Warmup')
+      else parts.push(`${Math.round(ratio * 100)}% of best`)
+    }
+    if (isRepPR) parts.push(`Rep PR (${XP_CONFIG.repPRMultiplier}x)`)
+    if (mult > 1) parts.push(`${mult}x streak`)
+    parts.push(`${xp} XP`)
+
+    showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
+  }
+}
 
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
@@ -865,6 +955,7 @@ function todayISO(): string {
 // ── Log / Edit modal state ────────────────────────────────────────
 const weightInputEl = ref<HTMLInputElement | null>(null)
 const showModal = ref(false)
+
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
 const newExerciseName = ref('')
@@ -1352,9 +1443,59 @@ const prTargetWeight = computed<number | null>(() => {
   if (!id || id === '__new__') return null
   const pr = store.getExercisePR(id)
   if (pr <= 0) return null
-  const target = pr + 1
-  const targetLbs = reps.value === 1 ? target : Math.ceil(target / (1 + reps.value / 30))
+  // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
+  const target = pr + 0.5
+  const targetLbs = reps.value === 1 ? Math.ceil(target) : Math.ceil(target / (1 + reps.value / 30))
   return displayWeight(targetLbs)
+})
+
+// ── Live XP preview (shown when both weight and reps are filled) ──
+const liveXPPreview = computed(() => {
+  if (!progressionStore.progressionEnabled || !progressionStore.showProgression) return null
+  if (!liveEstimateLbs.value || isEditMode.value) return null
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+
+  const exercise = store.exercises.find(e => e.id === id)
+  if (!exercise) return null
+
+  const best1RM = calculateBest1RM(exercise.sets)
+  const estimated1RM = liveEstimateLbs.value
+  const w = toLbs(weight.value!)
+  const r = reps.value!
+
+  const isPRZone = best1RM !== null && estimated1RM >= best1RM
+  const hasSetAtWeight = exercise.sets.some(s => s.weight === w)
+  const isRepPR = !isPRZone && checkRepPR(w, r, exercise.sets)
+  const isNewWeight = !isPRZone && !isRepPR && !hasSetAtWeight && best1RM !== null
+
+  const setIndex = exercise.sets.length
+  const baseXP = calculateSetXP({
+    setEstimated1RM: estimated1RM,
+    exerciseBest1RM: best1RM,
+    setIndex: best1RM === null ? setIndex : 0,
+    isRepPR,
+  })
+  const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+
+  let zone: string
+  if (best1RM === null) {
+    zone = 'New Exercise'
+  } else {
+    const ratio = estimated1RM / best1RM
+    if (ratio > 1.0) zone = `PR! (${XP_CONFIG.prMultiplier}x)`
+    else if (ratio === 1.0) zone = `Tied PR (${XP_CONFIG.tieMultiplier}x)`
+    else if (ratio < XP_CONFIG.warmupThreshold) zone = 'Warmup'
+    else zone = `${Math.round(ratio * 100)}% of best`
+  }
+
+  return {
+    xp,
+    zone,
+    best1RM: best1RM ? displayWeight(best1RM) : null,
+    isRepPR,
+    isNewWeight,
+  }
 })
 
 const prTargetReps = computed<number | null>(() => {
@@ -1365,8 +1506,9 @@ const prTargetReps = computed<number | null>(() => {
   const pr = store.getExercisePR(id)
   if (pr <= 0) return null
   const wLbs = toLbs(weight.value)
-  if (wLbs >= pr + 1) return 0 // any rep beats it
-  const needed = Math.ceil(30 * ((pr + 1) / wLbs - 1))
+  // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
+  if (Math.round(wLbs) > pr) return 0 // any rep beats it (1RM at this weight already exceeds PR)
+  const needed = Math.ceil(30 * ((pr + 0.5) / wLbs - 1))
   return needed
 })
 
@@ -1411,8 +1553,36 @@ const canSave = computed(() => {
 function saveSet() {
   if (!canSave.value) return
   if (isEditMode.value && editingSet.value && weight.value !== null && reps.value !== null) {
-    store.updateSet(editingSet.value.exerciseId, editingSet.value.setId, toLbs(weight.value), reps.value, date.value)
+    const editExId = editingSet.value.exerciseId
+    const editSetId = editingSet.value.setId
+    store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value)
     logEvent('set_edit')
+    // Recalc XP for the edited set
+    if (progressionStore.progressionEnabled) {
+      const ex = store.exercises.find(e => e.id === editExId)
+      const set = ex?.sets.find(s => s.id === editSetId)
+      if (ex && set) {
+        const otherSets = ex.sets.filter(s => s.id !== editSetId)
+        const best = calculateBest1RM(otherSets)
+        const newXP = calculateSetXP({
+          setEstimated1RM: set.estimated1RM,
+          exerciseBest1RM: best,
+          setIndex: best === null ? ex.sets.indexOf(set) : 0,
+        })
+        const xp = applyStreakMultiplier(newXP, progressionStore.streakHistory, set.date)
+        const editIsPR = best !== null && set.estimated1RM > best
+        const editIsTie = best !== null && set.estimated1RM === best
+        const editIsPRZone = editIsPR || editIsTie
+        const editIsRepPR = !editIsPRZone && checkRepPR(set.weight, set.reps, otherSets)
+        let editZone: string
+        if (best === null) editZone = 'new_exercise'
+        else if (editIsPR) editZone = 'pr'
+        else if (editIsTie) editZone = 'tie'
+        else if (set.estimated1RM / best < XP_CONFIG.warmupThreshold) editZone = 'warmup'
+        else editZone = 'working'
+        progressionStore.recalcSetXP(editSetId, xp, { theme: currentTheme.value, epoch: progressionStore.epoch, zone: editZone, isPR: editIsPR, isRepPR: editIsRepPR })
+      }
+    }
     closeModal()
   } else {
     let exerciseId: string = selectedExerciseId.value
@@ -1436,6 +1606,12 @@ function saveSet() {
       const wasPR = isNewPR.value
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log')
+      // XP: get the just-logged set (last in array) and compute XP
+      const exercise = store.exercises.find(e => e.id === exerciseId)
+      if (exercise && exercise.sets.length > 0) {
+        const newSet = exercise.sets[exercise.sets.length - 1]
+        computeAndLogXP(exerciseId, newSet.id, newSet.estimated1RM, newSet.weight, newSet.reps)
+      }
       // Haptic feedback — stronger for PRs
       if (wasPR) {
         notifySuccess()
@@ -1462,7 +1638,10 @@ function undoDeleteSet(exerciseId: string, set: WorkoutSet) {
   showUndo(
     'Set deleted',
     () => store.restoreSet(exerciseId, set),
-    () => store.syncDeleteSet(set.id),
+    () => {
+      store.syncDeleteSet(set.id)
+      progressionStore.removeSetXP(set.id)
+    },
   )
 }
 

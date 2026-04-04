@@ -1,45 +1,90 @@
 <template>
   <div class="obScreen">
     <div class="obCard">
-      <div class="obLogo">Lift</div>
-      <p class="obTagline">How would you like to get started?</p>
+      <!-- Step 1: Setup path -->
+      <template v-if="step === 'setup'">
+        <div class="obLogo">Lift</div>
+        <p class="obTagline">How would you like to get started?</p>
 
-      <div class="obOptions">
-        <button class="obOption" @click="chooseEmpty">
-          <span class="obOptionIcon">🚀</span>
-          <span class="obOptionText">
-            <strong>Start Empty</strong>
-            <span>Add your own exercises from scratch</span>
-          </span>
-        </button>
+        <div class="obOptions">
+          <button class="obOption" @click="chooseEmpty">
+            <span class="obOptionIcon">🚀</span>
+            <span class="obOptionText">
+              <strong>Start Empty</strong>
+              <span>Add your own exercises from scratch</span>
+            </span>
+          </button>
 
-        <button class="obOption" @click="chooseStarter">
-          <span class="obOptionIcon">💪</span>
-          <span class="obOptionText">
-            <strong>Popular Exercises</strong>
-            <span>Pre-load 6 common lifts with tags</span>
-          </span>
-        </button>
+          <button class="obOption" @click="chooseStarter">
+            <span class="obOptionIcon">💪</span>
+            <span class="obOptionText">
+              <strong>Popular Exercises</strong>
+              <span>Pre-load 6 common lifts with tags</span>
+            </span>
+          </button>
 
-        <button class="obOption" @click="chooseExplore">
-          <span class="obOptionIcon">👀</span>
-          <span class="obOptionText">
-            <strong>Explore First</strong>
-            <span>See the app with sample data, clear it when ready</span>
-          </span>
-        </button>
-      </div>
+          <button class="obOption" @click="chooseExplore">
+            <span class="obOptionIcon">👀</span>
+            <span class="obOptionText">
+              <strong>Explore First</strong>
+              <span>See the app with sample data, clear it when ready</span>
+            </span>
+          </button>
+        </div>
+      </template>
+
+      <!-- Step 2: Starter theme pick -->
+      <template v-else-if="step === 'starter'">
+        <div class="obLogo">Lift</div>
+        <p class="obTagline">One more thing — pick a starter theme to unlock as you train.</p>
+
+        <div class="obStarterGrid">
+          <button
+            v-for="s in STARTER_THEMES"
+            :key="s.id"
+            :class="['obStarterCard', { selected: selectedStarter === s.id }]"
+            @click="selectedStarter = s.id"
+          >
+            <span
+              class="obStarterDot"
+              :style="{ background: 'linear-gradient(135deg, ' + s.accent + ', ' + s.bg + ')' }"
+            >
+              <svg v-if="s.id === 'fire'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 23c-4.97 0-8-3.03-8-7 0-2.5 1.5-5 3-6.5.5-.5 1.37-.18 1.37.54 0 1.3.6 2.46 1.63 3.2.2.14.46-.05.38-.28-.5-1.46-.63-3.1-.08-4.96C11.5 4.5 14 2 16 1c.4-.2.82.18.68.6C15.5 5.5 17 7 18 8.5c2 3 2 5 2 6.5 0 3.97-3.03 8-8 8z"/></svg>
+              <svg v-else-if="s.id === 'water'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2 15c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 19c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 11c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <svg v-else-if="s.id === 'luck'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 3C12 3 9 6 9 8.5c0 1.4.7 2.6 1.8 3.2L12 12l1.2-.3C14.3 11.1 15 9.9 15 8.5 15 6 12 3 12 3z"/><path d="M21 12c0 0-3-3-5.5-3-1.4 0-2.6.7-3.2 1.8L12 12l.3 1.2c.6 1.1 1.8 1.8 3.2 1.8C18 15 21 12 21 12z"/><path d="M12 21c0 0 3-3 3-5.5 0-1.4-.7-2.6-1.8-3.2L12 12l-1.2.3C9.7 12.9 9 14.1 9 15.5 9 18 12 21 12 21z"/><path d="M3 12c0 0 3 3 5.5 3 1.4 0 2.6-.7 3.2-1.8L12 12l-.3-1.2C11.1 9.7 9.9 9 8.5 9 6 9 3 12 3 12z"/></svg>
+            </span>
+            <span class="obStarterLabel">{{ s.label }}</span>
+          </button>
+        </div>
+
+        <button class="obStarterConfirm" :disabled="!selectedStarter" @click="confirmStarter">Choose {{ selectedStarter ? STARTER_THEMES.find(s => s.id === selectedStarter)?.label : '' }}</button>
+        <button class="obStarterSkip" @click="skipStarter">Skip — I'll just use the default</button>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
+import { useProgressionStore } from '../stores/progression'
+import { useTheme, THEME_PREVIEWS, type ThemeId } from '../composables/useTheme'
 
 const emit = defineEmits<{ complete: [] }>()
 const workoutStore = useWorkoutStore()
 const bwStore = useBodyweightStore()
+const progressionStore = useProgressionStore()
+
+const step = ref<'setup' | 'starter'>('setup')
+const selectedStarter = ref<ThemeId | null>(null)
+let pendingSampleData = false
+
+const STARTER_THEMES = [
+  { id: 'fire' as ThemeId, label: 'Fire', accent: THEME_PREVIEWS.fire.dark.accent, bg: THEME_PREVIEWS.fire.dark.bg },
+  { id: 'water' as ThemeId, label: 'Water', accent: THEME_PREVIEWS.water.dark.accent, bg: THEME_PREVIEWS.water.dark.bg },
+  { id: 'luck' as ThemeId, label: 'Luck', accent: THEME_PREVIEWS.luck.dark.accent, bg: THEME_PREVIEWS.luck.dark.bg },
+]
 
 const STARTER_EXERCISES = [
   { name: 'Bench Press', tags: ['Push', 'Chest'] },
@@ -348,15 +393,34 @@ function finish(sampleData: boolean) {
   emit('complete')
 }
 
+function goToStarter(sampleData: boolean) {
+  pendingSampleData = sampleData
+  step.value = 'starter'
+}
+
+const { currentTheme } = useTheme()
+
+function confirmStarter() {
+  if (selectedStarter.value) {
+    progressionStore.setStarterTheme(selectedStarter.value)
+    currentTheme.value = selectedStarter.value
+  }
+  finish(pendingSampleData)
+}
+
+function skipStarter() {
+  finish(pendingSampleData)
+}
+
 function chooseEmpty() {
-  finish(false)
+  goToStarter(false)
 }
 
 function chooseStarter() {
   for (const ex of STARTER_EXERCISES) {
     workoutStore.addExercise(ex.name, ex.tags)
   }
-  finish(false)
+  goToStarter(false)
 }
 
 const noSync = { sync: false }
@@ -381,7 +445,7 @@ function chooseExplore() {
   for (const entry of SAMPLE_WEIGHTS) {
     bwStore.addEntry(entry.weight, entry.date, noSync)
   }
-  finish(true)
+  goToStarter(true)
 }
 </script>
 
@@ -467,5 +531,88 @@ function chooseExplore() {
   font-size: var(--font-footnote);
   color: var(--text-secondary);
   line-height: 1.3;
+}
+
+/* ─── Starter theme picker ───────────────────────────────────────── */
+
+.obStarterGrid {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.obStarterCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.obStarterDot {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-on-accent);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.obStarterCard.selected .obStarterDot {
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+
+.obStarterLabel {
+  font-size: var(--font-callout);
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: color 0.15s;
+}
+
+.obStarterCard.selected .obStarterLabel {
+  color: var(--text-primary);
+}
+
+.obStarterConfirm {
+  width: 100%;
+  padding: 16px;
+  min-height: 44px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 12px;
+  font-size: var(--font-callout);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  margin-bottom: 12px;
+}
+
+.obStarterConfirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.obStarterSkip {
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
 }
 </style>

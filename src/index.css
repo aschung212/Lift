@@ -974,6 +974,78 @@ html.modal-open .tabContent {
   color: var(--text-secondary);
 }
 
+/* ─── Badge case header ──────────────────────────────────────────── */
+
+.badgeCaseHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 16px 8px;
+}
+
+.badgeCaseXP {
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.badgeCaseStreak {
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  color: var(--accent);
+}
+
+/* ─── Locked theme state ─────────────────────────────────────────── */
+
+.themePreview.locked .themePreviewDot {
+  filter: grayscale(0.8) brightness(0.6);
+  opacity: 0.6;
+}
+
+.themePreview.locked .themePreviewLabel {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.themePreviewLock {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 50%;
+  padding: 4px;
+}
+
+/* ─── Badge preview overlay ──────────────────────────────────────── */
+
+.badgePreviewOverlay {
+  text-align: center;
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  padding: 4px 16px 8px;
+}
+
+/* ─── Badge progress bar ─────────────────────────────────────────── */
+
+.badgeProgressBar {
+  height: 3px;
+  margin: 0 16px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.badgeProgressFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
 
 .modeSegmented {
   display: flex;
@@ -1296,6 +1368,35 @@ html.modal-open .tabContent {
   cursor: pointer;
 }
 .exportBtn:active { opacity: 0.6; }
+
+/* ─── Dev tools ──────────────────────────────────────────────────────────── */
+
+.devToolsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+
+.devBtn {
+  padding: 8px 12px;
+  min-height: 44px;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.devBtn:active { opacity: 0.6; }
+
+.devBtnDanger {
+  color: #ff6b6b;
+  border-color: #ff6b6b33;
+}
 
 /* ─── Privacy transparency ──────────────────────────────────────────────── */
 
@@ -2553,6 +2654,228 @@ html.modal-open .tabContent {
   gap: 8px;
 }
 
+/* ─── XP toast ───────────────────────────────────────────────────── */
+
+.xpToast {
+  text-align: center;
+  font-size: var(--font-caption1);
+  font-weight: 700;
+  color: var(--accent);
+  padding: 8px 0 0;
+}
+
+/* ─── Global XP toast (floating snackbar) ────────────────────────── */
+
+.xpGlobalToast {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: var(--font-footnote);
+  font-weight: 700;
+  padding: 8px 24px 8px;
+  border-radius: 16px;
+  z-index: 10000;
+  pointer-events: none;
+  white-space: nowrap;
+  min-width: 180px;
+  text-align: center;
+}
+
+.xpToastEarned {
+  font-size: var(--font-footnote);
+}
+
+.xpToastTotal {
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+.xpToastProgress {
+  height: 3px;
+  margin-top: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.xpToastProgressFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.xpGlobalFade-enter-active { transition: opacity 0.2s, transform 0.2s; }
+.xpGlobalFade-leave-active { transition: opacity 0.5s, transform 0.5s; }
+.xpGlobalFade-enter-from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+.xpGlobalFade-leave-to { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+
+/* ─── Inline starter picker (reset modal) ────────────────────────── */
+
+.obStarterGridInline {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.obStarterCardInline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.obStarterDotInline {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.obStarterCardInline.selected .obStarterDotInline {
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+
+.obStarterLabelInline {
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.obStarterCardInline.selected .obStarterLabelInline {
+  color: var(--text-primary);
+}
+
+/* ─── Reset progress button ──────────────────────────────────────── */
+
+.settingsResetBtn {
+  width: 100%;
+  padding: 8px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.resetConfirmText {
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.resetConfirmDanger {
+  background: #ff4444 !important;
+}
+
+.resetConfirmCancel {
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--font-callout);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* ─── Unlock celebration modal ───────────────────────────────────── */
+
+.unlockOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  padding: 24px;
+}
+
+.unlockModal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: 24px;
+  padding: 32px 24px;
+  text-align: center;
+  max-width: 300px;
+  width: 100%;
+  animation: unlockBounce 0.4s ease;
+}
+
+@keyframes unlockBounce {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.unlockIcon {
+  margin-bottom: 16px;
+}
+
+.unlockDot {
+  display: inline-block;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+}
+
+.unlockTitle {
+  font-size: var(--font-title3);
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.unlockThemeName {
+  font-size: var(--font-headline);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 24px;
+}
+
+.unlockDismiss {
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 12px;
+  font-size: var(--font-callout);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.unlockFade-enter-active { transition: opacity 0.3s; }
+.unlockFade-leave-active { transition: opacity 0.2s; }
+.unlockFade-enter-from,
+.unlockFade-leave-to { opacity: 0; }
+
 .repMaxBtn {
   flex: 1;
   padding: 12px;
@@ -2971,6 +3294,15 @@ html.modal-open .tabContent {
   font-size: var(--font-caption2);
   font-weight: 700;
   letter-spacing: 0.3px;
+}
+
+.wtXPPreview {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  opacity: 0.8;
 }
 
 /* Confirm clear modal */

@@ -7,6 +7,13 @@ const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../stores/progression', () => ({
+  useProgressionStore: () => ({
+    progressionEnabled: false,
+    logBodyweightXP: vi.fn(),
+    checkUnlocks: vi.fn().mockReturnValue([]),
+  }),
+}))
 import { reactive } from 'vue'
 import type { WeightGoalConfig } from '../../stores/preferences'
 

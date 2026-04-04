@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { setActivePinia, createPinia } from 'pinia'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
@@ -12,8 +13,13 @@ vi.stubGlobal('matchMedia', vi.fn(() => ({
   removeEventListener: vi.fn(),
 })))
 
+vi.mock('../../lib/syncQueue', () => ({
+  syncQueue: { enqueue: vi.fn() }
+}))
+
 // Must import after mocks are set up (module runs side effects at import)
-const { useTheme, THEMES, THEME_PREVIEWS } = await import('../useTheme')
+const { useTheme, THEMES, THEME_PREVIEWS, connectProgressionStore } = await import('../useTheme')
+const { useProgressionStore } = await import('../../stores/progression')
 
 describe('useTheme', () => {
   let theme: ReturnType<typeof useTheme>
@@ -131,6 +137,94 @@ describe('useTheme', () => {
       theme.restTimerEnabled.value = true
       await nextTick()
       expect(localStorageMock.setItem).toHaveBeenCalledWith('rest-timer', 'on')
+    })
+  })
+
+  describe('theme lock/unlock', () => {
+    beforeEach(() => {
+      setActivePinia(createPinia())
+      connectProgressionStore(() => useProgressionStore())
+    })
+
+    it('all themes unlocked when progression is not enabled', () => {
+      expect(theme.isThemeUnlocked('fire')).toBe(true)
+      expect(theme.isThemeUnlocked('eternal')).toBe(true)
+    })
+
+    it('choosing a starter activates progression (locks other themes)', () => {
+      const store = useProgressionStore()
+      store.setStarterTheme('fire')
+      expect(store.progressionEnabled).toBe(true)
+      expect(theme.isThemeUnlocked('pearl')).toBe(true)
+      expect(theme.isThemeUnlocked('fire')).toBe(true)
+      expect(theme.isThemeUnlocked('water')).toBe(false)
+    })
+
+    it('pearl is always unlocked when progression is enabled', () => {
+      const store = useProgressionStore()
+      store.progressionEnabled = true
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }]
+      expect(theme.isThemeUnlocked('pearl')).toBe(true)
+    })
+
+    it('locked theme returns false when progression is enabled', () => {
+      const store = useProgressionStore()
+      store.progressionEnabled = true
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }, { id: 'fire', unlockedAt: '2026-01-01' }]
+      expect(theme.isThemeUnlocked('fire')).toBe(true)
+      expect(theme.isThemeUnlocked('water')).toBe(false)
+    })
+
+    it('selectTheme persists an unlocked theme', () => {
+      const store = useProgressionStore()
+      store.progressionEnabled = true
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }, { id: 'fire', unlockedAt: '2026-01-01' }]
+
+      const result = theme.selectTheme('fire')
+      expect(result).toBe(true)
+      expect(theme.currentTheme.value).toBe('fire')
+    })
+
+    it('selectTheme rejects a locked theme', () => {
+      const store = useProgressionStore()
+      store.progressionEnabled = true
+      store.unlockedThemes = [{ id: 'pearl', unlockedAt: '2026-01-01' }]
+
+      const prev = theme.currentTheme.value
+      const result = theme.selectTheme('eternal')
+      expect(result).toBe(false)
+      expect(theme.currentTheme.value).toBe(prev)
+    })
+
+    it('previewTheme applies CSS without persisting', async () => {
+      theme.currentTheme.value = 'pearl'
+      await nextTick()
+      localStorageMock.setItem.mockClear()
+
+      theme.previewTheme('fire')
+      expect(document.documentElement.getAttribute('data-theme')).toBe('fire')
+      // Should NOT have persisted 'fire' to localStorage after the preview
+      const themeCalls = localStorageMock.setItem.mock.calls.filter(
+        (c: unknown[]) => c[0] === 'app-theme'
+      )
+      expect(themeCalls.every((c: unknown[]) => c[1] !== 'fire')).toBe(true)
+    })
+
+    it('revertPreview restores the persisted theme', async () => {
+      theme.currentTheme.value = 'pearl'
+      await nextTick()
+
+      theme.previewTheme('fire')
+      expect(document.documentElement.getAttribute('data-theme')).toBe('fire')
+
+      theme.revertPreview()
+      expect(document.documentElement.getAttribute('data-theme')).toBe('pearl')
+    })
+
+    it('revertPreview is a no-op when not previewing', () => {
+      theme.currentTheme.value = 'pearl'
+      theme.revertPreview() // should not throw or change anything
+      expect(theme.currentTheme.value).toBe('pearl')
     })
   })
 })
