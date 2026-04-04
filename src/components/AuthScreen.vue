@@ -64,8 +64,10 @@
 import { ref } from 'vue'
 import type { Provider } from '@supabase/supabase-js'
 import { useAuth } from '../composables/useAuth'
+import { useAnalytics } from '../composables/useAnalytics'
 
 const { signInWithProvider, signInWithEmail, signUp, devSignIn } = useAuth()
+const { logEvent } = useAnalytics()
 const isDev = import.meta.env.DEV
 
 const email = ref('')
@@ -83,22 +85,29 @@ function toggleMode() {
 async function handleEmailSubmit() {
   message.value = ''
   submitting.value = true
+  const method = isSignUp.value ? 'sign_up' : 'sign_in'
+  logEvent(`auth_${method}_start`, { provider: 'email' })
 
   if (isSignUp.value) {
     const { error, needsConfirmation } = await signUp(email.value, password.value)
     if (error) {
       isError.value = true
       message.value = error.message
+      logEvent('auth_sign_up_error')
     } else if (needsConfirmation) {
       isError.value = false
       message.value = 'Check your email to confirm your account.'
       isSignUp.value = false
+      logEvent('auth_sign_up_success')
     }
   } else {
     const { error } = await signInWithEmail(email.value, password.value)
     if (error) {
       isError.value = true
       message.value = error.message
+      logEvent('auth_sign_in_error')
+    } else {
+      logEvent('auth_sign_in_success', { provider: 'email' })
     }
   }
 
@@ -107,10 +116,12 @@ async function handleEmailSubmit() {
 
 async function handleOAuth(provider: Provider) {
   message.value = ''
+  logEvent('auth_sign_in_start', { provider })
   const { error } = await signInWithProvider(provider)
   if (error) {
     isError.value = true
     message.value = error.message
+    logEvent('auth_sign_in_error', { provider })
   }
 }
 </script>

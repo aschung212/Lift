@@ -7,7 +7,7 @@
         <p class="obTagline">How would you like to get started?</p>
 
         <div class="obOptions">
-          <button class="obOption" @click="chooseEmpty">
+          <button class="obOption" @click="chooseEmpty" aria-label="Start Empty — Add your own exercises from scratch">
             <span class="obOptionIcon">🚀</span>
             <span class="obOptionText">
               <strong>Start Empty</strong>
@@ -15,7 +15,7 @@
             </span>
           </button>
 
-          <button class="obOption" @click="chooseStarter">
+          <button class="obOption" @click="chooseStarter" aria-label="Popular Exercises — Pre-load 6 common lifts with tags">
             <span class="obOptionIcon">💪</span>
             <span class="obOptionText">
               <strong>Popular Exercises</strong>
@@ -23,7 +23,7 @@
             </span>
           </button>
 
-          <button class="obOption" @click="chooseExplore">
+          <button class="obOption" @click="chooseExplore" aria-label="Explore First — See the app with sample data, clear it when ready">
             <span class="obOptionIcon">👀</span>
             <span class="obOptionText">
               <strong>Explore First</strong>
@@ -88,11 +88,13 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
 import { useTheme, THEME_PREVIEWS, type ThemeId } from '../composables/useTheme'
+import { useAnalytics } from '../composables/useAnalytics'
 
 const emit = defineEmits<{ complete: [] }>()
 const workoutStore = useWorkoutStore()
 const bwStore = useBodyweightStore()
 const progressionStore = useProgressionStore()
+const { logEvent } = useAnalytics()
 
 const step = ref<'setup' | 'explainer' | 'starter'>('setup')
 const selectedStarter = ref<ThemeId | null>(null)
@@ -431,10 +433,12 @@ function skipStarter() {
 }
 
 function chooseEmpty() {
+  logEvent('onboarding_choice', { choice: 'empty' })
   goToStarter(false)
 }
 
 function chooseStarter() {
+  logEvent('onboarding_choice', { choice: 'starter' })
   for (const ex of STARTER_EXERCISES) {
     workoutStore.addExercise(ex.name, ex.tags)
   }
@@ -444,6 +448,7 @@ function chooseStarter() {
 const noSync = { sync: false }
 
 function chooseExplore() {
+  logEvent('onboarding_choice', { choice: 'explore' })
   // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
