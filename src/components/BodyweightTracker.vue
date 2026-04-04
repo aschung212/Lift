@@ -13,6 +13,8 @@
         v-for="p in PERIODS"
         :key="p.days"
         :class="['bwPeriodBtn', { active: period === p.days }]"
+        :aria-label="`Show last ${p.label === '1y' ? '1 year' : p.label.replace('d', ' days')}`"
+        :aria-pressed="period === p.days ? 'true' : 'false'"
         @click="period = p.days"
       >{{ p.label }}</button>
     </div>

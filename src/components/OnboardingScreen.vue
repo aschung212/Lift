@@ -7,7 +7,7 @@
         <p class="obTagline">How would you like to get started?</p>
 
         <div class="obOptions">
-          <button class="obOption" @click="chooseEmpty">
+          <button class="obOption" @click="chooseEmpty" aria-label="Start Empty — Add your own exercises from scratch">
             <span class="obOptionIcon">🚀</span>
             <span class="obOptionText">
               <strong>Start Empty</strong>
@@ -15,7 +15,7 @@
             </span>
           </button>
 
-          <button class="obOption" @click="chooseStarter">
+          <button class="obOption" @click="chooseStarter" aria-label="Popular Exercises — Pre-load 6 common lifts with tags">
             <span class="obOptionIcon">💪</span>
             <span class="obOptionText">
               <strong>Popular Exercises</strong>
@@ -23,7 +23,7 @@
             </span>
           </button>
 
-          <button class="obOption" @click="chooseExplore">
+          <button class="obOption" @click="chooseExplore" aria-label="Explore First — See the app with sample data, clear it when ready">
             <span class="obOptionIcon">👀</span>
             <span class="obOptionText">
               <strong>Explore First</strong>

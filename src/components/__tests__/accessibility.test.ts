@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import AuthScreen from '../AuthScreen.vue'
 import BodyweightTracker from '../BodyweightTracker.vue'
+import OnboardingScreen from '../OnboardingScreen.vue'
 import { useBodyweightStore } from '../../stores/bodyweight'
 vi.mock('../../composables/useAuth', () => ({
   useAuth: () => ({
@@ -26,11 +27,15 @@ vi.mock('../../composables/useTheme', () => ({
     restTimerEnabled: { value: false },
     currentTheme: { value: 'void' },
     THEMES: [],
-    THEME_PREVIEWS: {},
     colorMode: { value: 'dark' },
     resolvedMode: { value: 'dark' },
     glassEnabled: { value: true },
-  })
+  }),
+  THEME_PREVIEWS: {
+    fire: { dark: { accent: '#ff4500', bg: '#1a0000' }, light: { accent: '#ff4500', bg: '#fff5f0' } },
+    water: { dark: { accent: '#0077be', bg: '#001a33' }, light: { accent: '#0077be', bg: '#f0f8ff' } },
+    luck: { dark: { accent: '#2ecc71', bg: '#002200' }, light: { accent: '#2ecc71', bg: '#f0fff0' } },
+  },
 }))
 
 import { getLocalStorageMock } from '../../__tests__/helpers'
@@ -171,6 +176,67 @@ describe('Accessibility', () => {
 
       const entryRow = wrapper.find('.wtSetRow')
       expect(entryRow.exists()).toBe(true)
+    })
+  })
+
+  describe('BodyweightTracker period selector a11y', () => {
+    it('period buttons have aria-label attributes', () => {
+      const store = useBodyweightStore()
+      const today = new Date()
+      const d1 = new Date(today)
+      d1.setDate(d1.getDate() - 7)
+      store.addEntry(170, d1.toISOString().slice(0, 10))
+
+      const wrapper = mount(BodyweightTracker, {
+        global: { stubs: { Teleport: true } }
+      })
+
+      const buttons = wrapper.findAll('.bwPeriodBtn')
+      expect(buttons.length).toBe(4)
+      expect(buttons[0].attributes('aria-label')).toBe('Show last 7 days')
+      expect(buttons[1].attributes('aria-label')).toBe('Show last 30 days')
+      expect(buttons[2].attributes('aria-label')).toBe('Show last 90 days')
+      expect(buttons[3].attributes('aria-label')).toBe('Show last 1 year')
+    })
+
+    it('active period button has aria-pressed=true', () => {
+      const store = useBodyweightStore()
+      const today = new Date()
+      const d1 = new Date(today)
+      d1.setDate(d1.getDate() - 7)
+      store.addEntry(170, d1.toISOString().slice(0, 10))
+
+      const wrapper = mount(BodyweightTracker, {
+        global: { stubs: { Teleport: true } }
+      })
+
+      const buttons = wrapper.findAll('.bwPeriodBtn')
+      // Default period is 30d
+      expect(buttons[0].attributes('aria-pressed')).toBe('false')
+      expect(buttons[1].attributes('aria-pressed')).toBe('true')
+      expect(buttons[2].attributes('aria-pressed')).toBe('false')
+      expect(buttons[3].attributes('aria-pressed')).toBe('false')
+    })
+  })
+
+  describe('OnboardingScreen option buttons a11y', () => {
+    it('option buttons have aria-label attributes', () => {
+      const wrapper = mount(OnboardingScreen)
+
+      const buttons = wrapper.findAll('.obOption')
+      expect(buttons.length).toBe(3)
+      expect(buttons[0].attributes('aria-label')).toContain('Start Empty')
+      expect(buttons[1].attributes('aria-label')).toContain('Popular Exercises')
+      expect(buttons[2].attributes('aria-label')).toContain('Explore First')
+    })
+
+    it('option button aria-labels include descriptions', () => {
+      const wrapper = mount(OnboardingScreen)
+
+      const buttons = wrapper.findAll('.obOption')
+      expect(buttons[0].attributes('aria-label')).toContain('Add your own exercises from scratch')
+      expect(buttons[1].attributes('aria-label')).toContain('Pre-load 6 common lifts with tags')
+      expect(buttons[2].attributes('aria-label')).toContain('See the app with sample data')
     })
   })
 })
