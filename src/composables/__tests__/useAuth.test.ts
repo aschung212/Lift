@@ -211,5 +211,56 @@ describe('useAuth', () => {
       const auth = useAuth()
       expect(typeof auth.deleteAccount).toBe('function')
     })
+
+    it('throws when Supabase deletion returns rejected promises', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      // Make supabase.from().delete().eq() reject (network error)
+      mockDelete.mockReturnValueOnce({
+        eq: vi.fn().mockRejectedValue(new Error('Network failure'))
+      })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+    })
+
+    it('deletes all IndexedDB databases via indexedDB.databases() when available', async () => {
+      const mockDeleteDatabase = vi.fn()
+      const mockDatabases = vi.fn().mockResolvedValue([
+        { name: 'lift-backup' },
+        { name: 'other-db' },
+      ])
+      vi.stubGlobal('indexedDB', {
+        databases: mockDatabases,
+        deleteDatabase: mockDeleteDatabase,
+      })
+
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      await deleteAccount()
+
+      expect(mockDatabases).toHaveBeenCalled()
+      expect(mockDeleteDatabase).toHaveBeenCalledWith('lift-backup')
+      expect(mockDeleteDatabase).toHaveBeenCalledWith('other-db')
+
+      // Restore indexedDB to default (undefined in test env)
+      vi.stubGlobal('indexedDB', undefined)
+    })
+
+    it('falls back to deleting lift-backup when indexedDB.databases() is not supported', async () => {
+      const mockDeleteDatabase = vi.fn()
+      vi.stubGlobal('indexedDB', {
+        databases: vi.fn().mockRejectedValue(new Error('not supported')),
+        deleteDatabase: mockDeleteDatabase,
+      })
+
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      await deleteAccount()
+
+      expect(mockDeleteDatabase).toHaveBeenCalledWith('lift-backup')
+
+      vi.stubGlobal('indexedDB', undefined)
+    })
   })
 })
