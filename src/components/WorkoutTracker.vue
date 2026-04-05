@@ -460,11 +460,12 @@
                   ref="weightInputEl"
                   v-model="weightStr"
                   type="text"
-                  :inputmode="plateMode ? 'none' : 'decimal'"
-                  :readonly="plateMode"
+                  :inputmode="(plateMode && !plateNumpadOverride) ? 'none' : 'decimal'"
+                  :readonly="plateMode && !plateNumpadOverride"
                   autocomplete="off"
                   placeholder="135"
-                  :class="['repMaxInput', { repMaxInputReadonly: plateMode }]"
+                  :class="['repMaxInput', { repMaxInputReadonly: plateMode && !plateNumpadOverride }]"
+                  @click="onWeightInputClick"
                 />
               </div>
             </label>
@@ -1099,7 +1100,16 @@ const plateMode = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   return ex?.inputMode === 'plates'
 })
+const plateNumpadOverride = ref(false)
 
+function onWeightInputClick() {
+  if (plateMode.value && !plateNumpadOverride.value) {
+    plateNumpadOverride.value = true
+    nextTick(() => {
+      weightInputEl.value?.focus()
+    })
+  }
+}
 
 const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
@@ -1299,6 +1309,7 @@ function closeModal() {
   weight.value = null
   reps.value = null
   date.value = todayISO()
+  plateNumpadOverride.value = false
 }
 
 // ── Rest timer ──────────────────────────────────────────────────
@@ -1849,6 +1860,7 @@ function saveSet() {
         startRestTimer()
       }
       // Clear fields and stay on the modal for the next set
+      plateNumpadOverride.value = false
       if (plateMode.value) {
         // Keep plate config for next set (user adjusts, not reloads)
         previousPlates.value = [...currentPlates.value]
