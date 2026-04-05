@@ -344,7 +344,12 @@
 
         <!-- Log / edit form -->
         <template v-else>
-          <h2 id="log-modal-title">{{ modalTitle }}</h2>
+          <div class="wtModalHeader">
+            <h2 id="log-modal-title">{{ modalTitle }}</h2>
+            <button v-if="isLogForExercise" class="wtPlateSettingsBtn" @click="openEditExerciseModal(store.exercises.find(e => e.id === selectedExerciseId)!)" aria-label="Exercise settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+          </div>
 
           <!-- New exercise mode: name + tags input -->
           <template v-if="!isEditMode && selectedExerciseId === '__new__'">
@@ -362,7 +367,7 @@
             </label>
             <div class="repMaxLabel">
               Tags
-              <div class="wtTagPicker" v-if="allNewExerciseTags.length">
+              <div class="wtTagPicker">
                 <button
                   v-for="tag in allNewExerciseTags"
                   :key="tag"
@@ -372,18 +377,60 @@
                     : {}"
                   @click="toggleNewExerciseTag(tag)"
                 >{{ tag }}</button>
+                <span v-if="newTagAdding" class="wtTagInlineAdd">
+                  <input
+                    v-model.trim="newExerciseTagInput"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Tag name"
+                    class="wtTagInlineInput"
+                    ref="newTagInputEl"
+                    @keyup.enter="addNewExerciseTag"
+                    @blur="finishNewTagAdd"
+                  />
+                </span>
+                <button v-else class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startNewTagAdd" aria-label="Add tag">+</button>
               </div>
-              <div class="wtTagAddRow">
-                <input
-                  v-model.trim="newExerciseTagInput"
-                  type="text"
-                  autocomplete="off"
-                  placeholder="New tag..."
-                  class="repMaxInput"
-                  ref="newTagInputEl"
-                  @keyup.enter="addNewExerciseTag"
-                />
-                <button class="wtTagAddBtn" @mousedown.prevent @click="addNewExerciseTag" :disabled="!newExerciseTagInput" aria-label="Add tag">+</button>
+            </div>
+            <!-- Plate calculator settings for new exercise -->
+            <div class="iosSettingsSection">
+              <span class="iosSettingsHeader">Input Mode</span>
+              <div class="iosSettingsGroup">
+                <div class="iosSettingsRow">
+                  <span class="iosSettingsRowLabel">Plate calculator</span>
+                  <button
+                    class="iosToggle"
+                    :class="{ iosToggleOn: newExercisePlateMode }"
+                    role="switch"
+                    :aria-checked="newExercisePlateMode"
+                    @click="newExercisePlateMode = !newExercisePlateMode"
+                  >
+                    <span class="iosToggleKnob" />
+                  </button>
+                </div>
+                <template v-if="newExercisePlateMode">
+                  <div class="iosSettingsRow">
+                    <span class="iosSettingsRowLabel">Counting</span>
+                    <div class="iosSegmentedControl">
+                      <button
+                        :class="['iosSegment', { iosSegmentActive: newExercisePlateCountMode === 'per-side' }]"
+                        @click="newExercisePlateCountMode = 'per-side'"
+                      >Per side</button>
+                      <button
+                        :class="['iosSegment', { iosSegmentActive: newExercisePlateCountMode === 'total' }]"
+                        @click="newExercisePlateCountMode = 'total'"
+                      >Total</button>
+                    </div>
+                  </div>
+                  <div class="iosSettingsRow">
+                    <span class="iosSettingsRowLabel">Starting weight</span>
+                    <div class="iosStepper">
+                      <button class="iosStepperBtn" @click="newExerciseBarWeight = Math.max(0, newExerciseBarWeight - 5)" aria-label="Decrease weight">−</button>
+                      <span class="iosStepperValue">{{ newExerciseBarWeight }} {{ weightUnit }}</span>
+                      <button class="iosStepperBtn" @click="newExerciseBarWeight += 5" aria-label="Increase weight">+</button>
+                    </div>
+                  </div>
+                </template>
               </div>
             </div>
           </template>
@@ -406,6 +453,11 @@
           </p>
 
           <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
+          <div v-if="selectedExerciseId === '__new__'" class="wtSectionDivider">
+            <span class="wtSectionDividerLine" />
+            <span class="wtSectionDividerText">Log a set (optional)</span>
+            <span class="wtSectionDividerLine" />
+          </div>
           <div class="wtInputRow">
             <label class="repMaxLabel" style="flex:1">
               Weight ({{ weightUnit }})
@@ -414,10 +466,12 @@
                   ref="weightInputEl"
                   v-model="weightStr"
                   type="text"
-                  inputmode="decimal"
+                  :inputmode="(plateMode && !plateNumpadOverride) ? 'none' : 'decimal'"
+                  :readonly="plateMode && !plateNumpadOverride"
                   autocomplete="off"
                   placeholder="135"
-                  class="repMaxInput"
+                  :class="['repMaxInput', { repMaxInputReadonly: plateMode && !plateNumpadOverride }]"
+                  @click="onWeightInputClick"
                 />
               </div>
             </label>
@@ -437,7 +491,7 @@
             </label>
           </div>
 
-          <!-- Live 1RM estimate / PR target -->
+          <!-- Live 1RM estimate / PR target — shown between inputs and plate calc -->
           <div v-if="liveEstimate" class="repMaxResult">
             <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
             <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
@@ -460,11 +514,35 @@
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
             <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
           </div>
+          <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
+            <span class="repMaxResultLabel">Estimated 1RM</span>
+            <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
+          </div>
+
+          <!-- Plate calculator (shown when exercise is in plates mode) -->
+          <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
+            <div class="wtPlateDisplay">
+              <span class="wtPlateTotal">{{ displayWeight(plateWeightLbs) }} {{ weightUnit }}</span>
+              <span class="wtPlateBreakdown">
+                {{ currentPlates.length > 0 ? `${currentBarWeight > 0 ? 'Bar + ' : ''}${formatPlates(currentPlates)}${isPerSide ? ' per side' : ''}` : currentBarWeight > 0 ? 'Bar only' : 'No plates' }}
+              </span>
+            </div>
+            <div class="wtPlateButtons">
+              <div v-for="denom in activeDenominations" :key="denom" class="wtPlateGroup">
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)">+</button>
+                <div class="wtPlateDenomWrap">
+                  <span class="wtPlateDenom">{{ denom }}</span>
+                  <span class="wtPlateCount">{{ plateCounts.get(denom) ? `×${plateCounts.get(denom)}` : '' }}</span>
+                </div>
+                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
+              </div>
+            </div>
+          </div>
 
           <!-- Actions (always last) -->
           <div class="repMaxActions">
             <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
-              {{ isEditMode ? 'Save Changes' : 'Save' }}
+              {{ isEditMode ? 'Save Changes' : (selectedExerciseId === '__new__' && !hasSetData ? 'Add Exercise' : 'Save') }}
             </button>
             <button class="repMaxBtn repMaxBtnClose" @click="closeModal">{{ isEditMode ? 'Cancel' : 'Done' }}</button>
           </div>
@@ -493,7 +571,7 @@
         </label>
         <div class="repMaxLabel">
           Tags
-          <div class="wtTagPicker" v-if="availableEditTags.length">
+          <div class="wtTagPicker">
             <button
               v-for="tag in availableEditTags"
               :key="tag"
@@ -503,18 +581,60 @@
                 : {}"
               @click="toggleEditTag(tag)"
             >{{ tag }}</button>
+            <span v-if="editTagAdding" class="wtTagInlineAdd">
+              <input
+                v-model.trim="newTagInput"
+                type="text"
+                autocomplete="off"
+                placeholder="Tag name"
+                class="wtTagInlineInput"
+                ref="editTagInputEl"
+                @keyup.enter="addEditTag"
+                @blur="finishEditTagAdd"
+              />
+            </span>
+            <button v-else class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startEditTagAdd" aria-label="Add tag">+</button>
           </div>
-          <div class="wtTagAddRow">
-            <input
-              v-model.trim="newTagInput"
-              type="text"
-              autocomplete="off"
-              placeholder="New tag..."
-              class="repMaxInput"
-              ref="editTagInputEl"
-              @keyup.enter="addEditTag"
-            />
-            <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput" aria-label="Add tag">+</button>
+        </div>
+        <!-- Plate calculator settings (iOS grouped style) -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Input Mode</span>
+          <div class="iosSettingsGroup">
+            <div class="iosSettingsRow">
+              <span class="iosSettingsRowLabel">Plate calculator</span>
+              <button
+                class="iosToggle"
+                :class="{ iosToggleOn: editPlateMode }"
+                role="switch"
+                :aria-checked="editPlateMode"
+                @click="editPlateMode = !editPlateMode"
+              >
+                <span class="iosToggleKnob" />
+              </button>
+            </div>
+            <template v-if="editPlateMode">
+              <div class="iosSettingsRow">
+                <span class="iosSettingsRowLabel">Counting</span>
+                <div class="iosSegmentedControl">
+                  <button
+                    :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'per-side' }]"
+                    @click="editPlateCountMode = 'per-side'"
+                  >Per side</button>
+                  <button
+                    :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'total' }]"
+                    @click="editPlateCountMode = 'total'"
+                  >Total</button>
+                </div>
+              </div>
+              <div class="iosSettingsRow">
+                <span class="iosSettingsRowLabel">Starting weight</span>
+                <div class="iosStepper">
+                  <button class="iosStepperBtn" @click="editBarWeight = Math.max(0, editBarWeight - 5)" aria-label="Decrease weight">−</button>
+                  <span class="iosStepperValue">{{ editBarWeight }} {{ weightUnit }}</span>
+                  <button class="iosStepperBtn" @click="editBarWeight += 5" aria-label="Increase weight">+</button>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
         <div class="repMaxActions">
@@ -530,9 +650,9 @@
     <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
         <h2 id="tag-manager-title">Manage Tags</h2>
-        <p v-if="store.allTags.length === 0" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Add tags to exercises to see them here.</p>
-        <ul v-else class="wtTagManagerList">
-          <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItemWrap">
+        <p v-if="tagManagerTags.length === 0 && !tagManagerAdding" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Tap + to create one.</p>
+        <ul class="wtTagManagerList">
+          <li v-for="tag in tagManagerTags" :key="tag" class="wtTagManagerItemWrap">
             <div class="wtTagManagerItem">
               <template v-if="renamingTag === tag">
                 <input
@@ -558,21 +678,30 @@
               </template>
             </div>
             <ul v-if="expandedTag === tag" class="wtTagExerciseList">
-              <li v-for="exercise in store.exercises" :key="exercise.id" class="wtTagExerciseItem">
-                <label class="wtTagExerciseLabel">
-                  <input
-                    type="checkbox"
-                    :checked="exercise.tags.includes(tag)"
-                    @change="toggleExerciseTag(exercise.id, tag)"
-                    class="wtTagExerciseCheckbox"
-                  />
-                  <span>{{ exercise.name }}</span>
-                </label>
+              <li v-for="exercise in store.exercises" :key="exercise.id">
+                <button class="wtTagExerciseRow" @click="toggleExerciseTag(exercise.id, tag)">
+                  <span class="wtTagExerciseRowName">{{ exercise.name }}</span>
+                  <svg v-if="exercise.tags.includes(tag)" class="wtTagExerciseCheck" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
               </li>
             </ul>
           </li>
         </ul>
+        <div v-if="tagManagerAdding" class="wtTagManagerAddRow">
+          <input
+            v-model.trim="tagManagerNewName"
+            type="text"
+            autocomplete="off"
+            placeholder="Tag name"
+            class="repMaxInput"
+            ref="tagManagerInputEl"
+            @keyup.enter="confirmTagManagerAdd"
+            @keyup.escape="cancelTagManagerAdd"
+          />
+          <button class="wtTagAddBtn" @mousedown.prevent @click="confirmTagManagerAdd" :disabled="!tagManagerNewName" aria-label="Create tag">✓</button>
+        </div>
         <div class="repMaxActions">
+          <button v-if="!tagManagerAdding" class="repMaxBtn repMaxBtnCalc" @click="startTagManagerAdd">+ New Tag</button>
           <button class="repMaxBtn repMaxBtnClose" @click="tagManagerOpen = false">Done</button>
         </div>
       </div>
@@ -602,7 +731,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
-import type { Exercise, WorkoutSet } from '../stores/workout'
+import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {
   daysSince: number | null
@@ -615,6 +744,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
@@ -977,9 +1107,83 @@ const showModal = ref(false)
 
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
+
+// ── Plate calculator state ──────────────────────────────────────
+const currentPlates = ref<number[]>([])
+const previousPlates = ref<number[]>([])
+
+const plateMode = computed(() => {
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  return ex?.inputMode === 'plates'
+})
+const plateNumpadOverride = ref(false)
+
+function onWeightInputClick() {
+  if (plateMode.value && !plateNumpadOverride.value) {
+    plateNumpadOverride.value = true
+    nextTick(() => {
+      weightInputEl.value?.focus()
+    })
+  }
+}
+
+const currentBarWeight = computed(() => {
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  if (ex?.barWeight !== undefined) return ex.barWeight
+  // Default: 45 for per-side (barbell), 0 for total (machine)
+  return isPerSide.value ? 45 : 0
+})
+
+const isPerSide = computed(() => {
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  return (ex?.plateCountMode ?? 'per-side') === 'per-side'
+})
+
+
+const activeDenominations = computed(() =>
+  weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+)
+
+
+
+
+const plateCounts = computed(() => {
+  const counts = new Map<number, number>()
+  for (const p of currentPlates.value) counts.set(p, (counts.get(p) || 0) + 1)
+  return counts
+})
+
+const plateWeightLbs = computed(() => {
+  if (isPerSide.value) {
+    return platesToWeight(currentPlates.value, currentBarWeight.value)
+  }
+  const plateSum = currentPlates.value.reduce((s, p) => s + p, 0)
+  return currentBarWeight.value + plateSum
+})
+
+function syncPlateWeight() {
+  weight.value = displayWeight(plateWeightLbs.value)
+}
+
+function addPlate(denom: number) {
+  currentPlates.value = [...currentPlates.value, denom].sort((a, b) => b - a)
+  syncPlateWeight()
+}
+
+function removePlate(denom: number) {
+  const idx = currentPlates.value.indexOf(denom)
+  if (idx === -1) return
+  const updated = [...currentPlates.value]
+  updated.splice(idx, 1)
+  currentPlates.value = updated
+  syncPlateWeight()
+}
 const newExerciseName = ref('')
 const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
+const newExercisePlateMode = ref(false)
+const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
+const newExerciseBarWeight = ref(45)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
 // Vue writing back the parsed number to el.value causes iOS Safari to dismiss
 // the keyboard after each keystroke. Using type="text" + inputmode avoids this.
@@ -1036,25 +1240,48 @@ function openNewExerciseModal() {
   editingSet.value = null
   selectedExerciseId.value = '__new__'
   newExerciseTags.value = []
+  newExerciseSessionTags.value = []
   newExerciseTagInput.value = ''
+  newExercisePlateMode.value = false
+  newExercisePlateCountMode.value = 'per-side'
+  newExerciseBarWeight.value = 45
   date.value = lastLogDate.value
   showModal.value = true
 }
 
 const newTagInputEl = ref<HTMLInputElement | null>(null)
+const newTagAdding = ref(false)
+
+function startNewTagAdd() {
+  newTagAdding.value = true
+  nextTick(() => newTagInputEl.value?.focus())
+}
 
 function addNewExerciseTag() {
   const tag = newExerciseTagInput.value.trim()
-  if (tag && !newExerciseTags.value.includes(tag)) {
-    newExerciseTags.value.push(tag)
+  if (tag) {
+    if (!newExerciseSessionTags.value.includes(tag)) newExerciseSessionTags.value.push(tag)
+    if (!newExerciseTags.value.includes(tag)) newExerciseTags.value.push(tag)
   }
   newExerciseTagInput.value = ''
   nextTick(() => newTagInputEl.value?.focus())
 }
 
+function finishNewTagAdd() {
+  const tag = newExerciseTagInput.value.trim()
+  if (tag) {
+    if (!newExerciseSessionTags.value.includes(tag)) newExerciseSessionTags.value.push(tag)
+    if (!newExerciseTags.value.includes(tag)) newExerciseTags.value.push(tag)
+  }
+  newExerciseTagInput.value = ''
+  newTagAdding.value = false
+}
+
+
+const newExerciseSessionTags = ref<string[]>([])
 
 const allNewExerciseTags = computed(() => {
-  const all = new Set([...store.allTags, ...newExerciseTags.value])
+  const all = new Set([...store.allTags, ...newExerciseTags.value, ...newExerciseSessionTags.value])
   return [...all]
 })
 
@@ -1071,6 +1298,24 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   date.value = lastLogDate.value
+  // Initialize plate calculator from last set if plate-loaded
+  const exercise = store.exercises.find(e => e.id === exerciseId)
+  if (exercise?.inputMode === 'plates') {
+    const lastSet = exercise.sets.length > 0 ? exercise.sets[exercise.sets.length - 1] : null
+    if (lastSet) {
+      const barWt = exercise.barWeight ?? 45
+      const plates = weightToPlates(lastSet.weight, barWt, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+      currentPlates.value = plates || []
+      previousPlates.value = plates || []
+      weight.value = displayWeight(lastSet.weight)
+    } else {
+      currentPlates.value = []
+      previousPlates.value = []
+    }
+  } else {
+    currentPlates.value = []
+    previousPlates.value = []
+  }
   showModal.value = true
 }
 
@@ -1096,10 +1341,12 @@ function closeModal() {
   selectedExerciseId.value = ''
   newExerciseName.value = ''
   newExerciseTags.value = []
+  newExerciseSessionTags.value = []
   newExerciseTagInput.value = ''
   weight.value = null
   reps.value = null
   date.value = todayISO()
+  plateNumpadOverride.value = false
 }
 
 // ── Rest timer ──────────────────────────────────────────────────
@@ -1616,9 +1863,19 @@ function saveSet() {
       if (!newId) return
       exerciseId = newId
       selectedExerciseId.value = exerciseId
+      if (newExercisePlateMode.value) {
+        store.setExerciseInputMode(newId, 'plates')
+        store.setExercisePlateCountMode(newId, newExercisePlateCountMode.value)
+        const ex = store.exercises.find(e => e.id === newId)
+        if (ex) ex.barWeight = newExerciseBarWeight.value
+      }
       newExerciseName.value = ''
       newExerciseTags.value = []
+      newExerciseSessionTags.value = []
       newExerciseTagInput.value = ''
+      newExercisePlateMode.value = false
+      newExercisePlateCountMode.value = 'per-side'
+      newExerciseBarWeight.value = 45
       logEvent('exercise_add')
     }
     if (hasSetData.value && weight.value !== null && reps.value !== null) {
@@ -1641,8 +1898,15 @@ function saveSet() {
         startRestTimer()
       }
       // Clear fields and stay on the modal for the next set
-      weight.value = null
-      reps.value = null
+      plateNumpadOverride.value = false
+      if (plateMode.value) {
+        // Keep plate config for next set (user adjusts, not reloads)
+        previousPlates.value = [...currentPlates.value]
+        reps.value = null
+      } else {
+        weight.value = null
+        reps.value = null
+      }
       nextTick(() => weightInputEl.value?.focus())
     } else {
       closeModal()
@@ -1694,15 +1958,28 @@ const editTarget = ref<string | null>(null)
 const editName = ref('')
 const editTags = ref<string[]>([])
 const newTagInput = ref('')
+const editPlateMode = ref(false)
+const editPlateCountMode = ref<'per-side' | 'total'>('per-side')
+const editBarWeight = ref<number>(45)
+
 
 function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
+  editPlateMode.value = exercise.inputMode === 'plates'
+  editPlateCountMode.value = exercise.plateCountMode || 'per-side'
+  editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
   newTagInput.value = ''
 }
 
 const editTagInputEl = ref<HTMLInputElement | null>(null)
+const editTagAdding = ref(false)
+
+function startEditTagAdd() {
+  editTagAdding.value = true
+  nextTick(() => editTagInputEl.value?.focus())
+}
 
 function addEditTag() {
   const tag = newTagInput.value.trim()
@@ -1711,6 +1988,15 @@ function addEditTag() {
   }
   newTagInput.value = ''
   nextTick(() => editTagInputEl.value?.focus())
+}
+
+function finishEditTagAdd() {
+  const tag = newTagInput.value.trim()
+  if (tag && !editTags.value.includes(tag)) {
+    editTags.value.push(tag)
+  }
+  newTagInput.value = ''
+  editTagAdding.value = false
 }
 
 
@@ -1737,7 +2023,18 @@ function confirmEditExercise() {
   }
   store.renameExercise(editTarget.value, editName.value)
   store.updateExerciseTags(editTarget.value, editTags.value)
+  // Save input mode and plate settings
+  store.setExerciseInputMode(editTarget.value, editPlateMode.value ? 'plates' : 'numpad')
+  if (editPlateMode.value) {
+    store.setExercisePlateCountMode(editTarget.value, editPlateCountMode.value)
+    const ex = store.exercises.find(e => e.id === editTarget.value)
+    if (ex) {
+      ex.barWeight = editBarWeight.value
+      store._persist()
+    }
+  }
   editTarget.value = null
+  syncPlateWeight()
   logEvent('exercise_edit')
 }
 
@@ -1747,11 +2044,42 @@ const renamingTag = ref<string | null>(null)
 const renameTagValue = ref('')
 const renameTagInputEl = ref<HTMLInputElement[] | null>(null)
 const expandedTag = ref<string | null>(null)
+const tagManagerAdding = ref(false)
+const tagManagerNewName = ref('')
+const tagManagerInputEl = ref<HTMLInputElement | null>(null)
+const standaloneTags = ref<string[]>([])
+
+const tagManagerTags = computed(() => {
+  const all = new Set([...store.allTags, ...standaloneTags.value])
+  return [...all].sort()
+})
 
 function openTagManager() {
   tagManagerOpen.value = true
   renamingTag.value = null
   expandedTag.value = null
+  tagManagerAdding.value = false
+  tagManagerNewName.value = ''
+}
+
+function startTagManagerAdd() {
+  tagManagerAdding.value = true
+  nextTick(() => tagManagerInputEl.value?.focus())
+}
+
+function confirmTagManagerAdd() {
+  const tag = tagManagerNewName.value.trim()
+  if (tag && !tagManagerTags.value.includes(tag)) {
+    standaloneTags.value.push(tag)
+    expandedTag.value = tag
+  }
+  tagManagerNewName.value = ''
+  tagManagerAdding.value = false
+}
+
+function cancelTagManagerAdd() {
+  tagManagerNewName.value = ''
+  tagManagerAdding.value = false
 }
 
 function toggleTagExpand(tag: string) {
@@ -1829,7 +2157,11 @@ watch(editTarget, async (target) => {
   if (target) {
     await nextTick()
     const el = document.querySelector<HTMLElement>('[aria-labelledby="edit-exercise-title"]')
-    if (el) editExerciseFocus.activate(el)
+    if (el) {
+      editExerciseFocus.activate(el)
+      // Don't auto-focus the name input — user usually isn't renaming
+      ;(document.activeElement as HTMLElement)?.blur()
+    }
   } else {
     editExerciseFocus.deactivate()
   }

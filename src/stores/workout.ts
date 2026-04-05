@@ -15,11 +15,18 @@ export interface WorkoutSet {
   estimated1RM: number
 }
 
+export type ExerciseInputMode = 'numpad' | 'plates'
+
+export type PlateCountMode = 'per-side' | 'total'
+
 export interface Exercise {
   id: string
   name: string
   tags: string[]
   sets: WorkoutSet[]
+  inputMode?: ExerciseInputMode    // remembered per exercise, default 'numpad'
+  barWeight?: number               // bar weight in lbs, default 45
+  plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
 }
 
 export interface OverloadSuggestion {
@@ -118,13 +125,19 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (!exercises) return
 
-      const remoteExercises = exercises.map((ex: Record<string, unknown>) => ({
-        id: ex.id as string,
-        name: ex.name as string,
-        tags: (ex.tags as string[]) || [],
-        updated_at: (ex.updated_at as string) || (ex.created_at as string) || new Date().toISOString(),
-        sets: [] as WorkoutSet[]
-      }))
+      const remoteExercises = exercises.map((ex: Record<string, unknown>) => {
+        const exercise: Exercise & { updated_at: string } = {
+          id: ex.id as string,
+          name: ex.name as string,
+          tags: (ex.tags as string[]) || [],
+          updated_at: (ex.updated_at as string) || (ex.created_at as string) || new Date().toISOString(),
+          sets: [] as WorkoutSet[],
+        }
+        if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
+        if (ex.plate_loaded) exercise.inputMode = 'plates' // migrate old field
+        if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight as number
+        return exercise
+      })
 
       // Build remote sets grouped by exercise
       const remoteSetsMap = new Map<string, WorkoutSet[]>()
@@ -212,7 +225,8 @@ export const useWorkoutStore = defineStore('workout', {
       )
       if (existing) return existing.id
       const id = uuid()
-      this.exercises.push({ id, name: trimmed, tags: [...tags], sets: [] })
+      const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [] }
+      this.exercises.push(exercise)
       this._persist()
 
       if (sync && supabase && this._userId) {
@@ -221,6 +235,27 @@ export const useWorkoutStore = defineStore('workout', {
         }).then()
       }
       return id
+    },
+
+    setExercisePlateCountMode(exerciseId: string, mode: PlateCountMode) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
+      if (!exercise) return
+      exercise.plateCountMode = mode
+      this._persist()
+    },
+
+    setExerciseInputMode(exerciseId: string, mode: ExerciseInputMode) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
+      if (!exercise) return
+      exercise.inputMode = mode
+      this._persist()
+
+      if (supabase && this._userId) {
+        const userId = this._userId
+        syncQueue.enqueue(`exercise-input-mode:${exerciseId}`, () =>
+          supabase!.from('exercises').update({ input_mode: mode }).eq('id', exerciseId).eq('user_id', userId)
+        )
+      }
     },
 
     logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
