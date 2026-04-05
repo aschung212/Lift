@@ -3033,6 +3033,15 @@ html.theme-fading .settingsSheet {
   padding: 2px 4px;
 }
 
+.repMaxResultPlaceholder {
+  opacity: 0.4;
+}
+
+.repMaxResultPlaceholderText {
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+}
+
 .repMaxInputReadonly {
   opacity: 0.6;
   cursor: default;
