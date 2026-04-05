@@ -452,7 +452,11 @@
           </p>
 
           <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
-          <p v-if="selectedExerciseId === '__new__'" class="wtOptionalHint">Log a set (optional)</p>
+          <div v-if="selectedExerciseId === '__new__'" class="wtSectionDivider">
+            <span class="wtSectionDividerLine" />
+            <span class="wtSectionDividerText">Log a set (optional)</span>
+            <span class="wtSectionDividerLine" />
+          </div>
           <div class="wtInputRow">
             <label class="repMaxLabel" style="flex:1">
               Weight ({{ weightUnit }})
