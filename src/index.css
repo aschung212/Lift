@@ -2266,6 +2266,16 @@ html.theme-fading .settingsSheet {
   margin-bottom: 4px;
 }
 
+.wtTagManagerAddRow {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+
+.wtTagManagerAddRow .repMaxInput {
+  flex: 1;
+}
+
 .wtTagAddRow .repMaxInput {
   flex: 1;
 }

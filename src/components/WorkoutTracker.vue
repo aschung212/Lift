@@ -650,9 +650,9 @@
     <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
         <h2 id="tag-manager-title">Manage Tags</h2>
-        <p v-if="store.allTags.length === 0" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Add tags to exercises to see them here.</p>
-        <ul v-else class="wtTagManagerList">
-          <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItemWrap">
+        <p v-if="tagManagerTags.length === 0 && !tagManagerAdding" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Tap + to create one.</p>
+        <ul class="wtTagManagerList">
+          <li v-for="tag in tagManagerTags" :key="tag" class="wtTagManagerItemWrap">
             <div class="wtTagManagerItem">
               <template v-if="renamingTag === tag">
                 <input
@@ -692,7 +692,21 @@
             </ul>
           </li>
         </ul>
+        <div v-if="tagManagerAdding" class="wtTagManagerAddRow">
+          <input
+            v-model.trim="tagManagerNewName"
+            type="text"
+            autocomplete="off"
+            placeholder="Tag name"
+            class="repMaxInput"
+            ref="tagManagerInputEl"
+            @keyup.enter="confirmTagManagerAdd"
+            @keyup.escape="cancelTagManagerAdd"
+          />
+          <button class="wtTagAddBtn" @mousedown.prevent @click="confirmTagManagerAdd" :disabled="!tagManagerNewName" aria-label="Create tag">✓</button>
+        </div>
         <div class="repMaxActions">
+          <button v-if="!tagManagerAdding" class="repMaxBtn repMaxBtnCalc" @click="startTagManagerAdd">+ New Tag</button>
           <button class="repMaxBtn repMaxBtnClose" @click="tagManagerOpen = false">Done</button>
         </div>
       </div>
@@ -2035,11 +2049,42 @@ const renamingTag = ref<string | null>(null)
 const renameTagValue = ref('')
 const renameTagInputEl = ref<HTMLInputElement[] | null>(null)
 const expandedTag = ref<string | null>(null)
+const tagManagerAdding = ref(false)
+const tagManagerNewName = ref('')
+const tagManagerInputEl = ref<HTMLInputElement | null>(null)
+const standaloneTags = ref<string[]>([])
+
+const tagManagerTags = computed(() => {
+  const all = new Set([...store.allTags, ...standaloneTags.value])
+  return [...all].sort()
+})
 
 function openTagManager() {
   tagManagerOpen.value = true
   renamingTag.value = null
   expandedTag.value = null
+  tagManagerAdding.value = false
+  tagManagerNewName.value = ''
+}
+
+function startTagManagerAdd() {
+  tagManagerAdding.value = true
+  nextTick(() => tagManagerInputEl.value?.focus())
+}
+
+function confirmTagManagerAdd() {
+  const tag = tagManagerNewName.value.trim()
+  if (tag && !tagManagerTags.value.includes(tag)) {
+    standaloneTags.value.push(tag)
+    expandedTag.value = tag
+  }
+  tagManagerNewName.value = ''
+  tagManagerAdding.value = false
+}
+
+function cancelTagManagerAdd() {
+  tagManagerNewName.value = ''
+  tagManagerAdding.value = false
 }
 
 function toggleTagExpand(tag: string) {
