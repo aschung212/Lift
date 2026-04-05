@@ -2973,23 +2973,6 @@ html.theme-fading .settingsSheet {
   font-style: italic;
 }
 
-.wtModeSwitcher {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-size: var(--font-caption1);
-  font-weight: 500;
-  font-family: inherit;
-  padding: 8px 12px;
-  min-height: 44px;
-  cursor: pointer;
-}
-
-.wtModeSwitcherNumpad {
-  display: block;
-  width: 100%;
-  text-align: center;
-}
 
 .wtPlateCountToggle {
   display: flex;
@@ -3028,18 +3011,6 @@ html.theme-fading .settingsSheet {
 .wtModalHeader h2 {
   flex: 1;
   text-align: center;
-}
-
-.wtPlateToggleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-}
-
-.wtPlateToggleLabel {
-  font-size: var(--font-callout);
-  color: var(--text-secondary);
 }
 
 .wtPlateSettingsBtn {

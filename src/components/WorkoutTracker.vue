@@ -512,19 +512,7 @@
             <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
           </div>
 
-          <!-- Plate calculator toggle + calculator -->
-          <div v-if="!isEditMode && isLogForExercise" class="wtPlateToggleRow">
-            <span class="wtPlateToggleLabel">Plate calculator</span>
-            <button
-              class="iosToggle"
-              :class="{ iosToggleOn: plateMode }"
-              role="switch"
-              :aria-checked="plateMode"
-              @click="toggleInputMode"
-            >
-              <span class="iosToggleKnob" />
-            </button>
-          </div>
+          <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplay">
               <span class="wtPlateTotal">{{ displayWeight(plateWeightLbs) }} {{ weightUnit }}</span>
@@ -1112,29 +1100,6 @@ const plateMode = computed(() => {
   return ex?.inputMode === 'plates'
 })
 
-function toggleInputMode() {
-  const id = selectedExerciseId.value
-  if (!id || id === '__new__') return
-  const ex = store.exercises.find(e => e.id === id)
-  if (!ex) return
-  const newMode = ex.inputMode === 'plates' ? 'numpad' : 'plates'
-  store.setExerciseInputMode(id, newMode)
-  if (newMode === 'plates') {
-    const barWt = ex.barWeight ?? 45
-    const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-    // Try to initialize from current weight value, then fall back to last set
-    const targetWeight = weight.value ? toLbs(weight.value) : (ex.sets.length > 0 ? ex.sets[ex.sets.length - 1].weight : null)
-    if (targetWeight) {
-      const plates = weightToPlates(targetWeight, barWt, denoms)
-      currentPlates.value = plates || []
-      previousPlates.value = plates || []
-      if (!weight.value) weight.value = displayWeight(targetWeight)
-    } else {
-      currentPlates.value = []
-      previousPlates.value = []
-    }
-  }
-}
 
 const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
