@@ -228,13 +228,16 @@
                   <span class="settingsHint">{{ weeklyGoalBonusLabel }}</span>
                 </div>
                 <div class="iosStepper">
-                  <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(effectiveWeeklyTarget - 1)" :disabled="effectiveWeeklyTarget <= 1" aria-label="Decrease weekly goal">−</button>
+                  <button class="iosStepperBtn" @click="adjustWeeklyTarget(-1)" :disabled="effectiveWeeklyTarget <= 1" aria-label="Decrease weekly goal">−</button>
                   <span class="iosStepperValue">{{ effectiveWeeklyTarget }} day{{ effectiveWeeklyTarget !== 1 ? 's' : '' }}</span>
-                  <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(effectiveWeeklyTarget + 1)" :disabled="effectiveWeeklyTarget >= 7" aria-label="Increase weekly goal">+</button>
+                  <button class="iosStepperBtn" @click="adjustWeeklyTarget(1)" :disabled="effectiveWeeklyTarget >= 7" aria-label="Increase weekly goal">+</button>
                 </div>
               </div>
               <div v-show="progressionActive && progressionStore.pendingTargetChange !== null" class="settingsRow">
-                <span class="settingsHint settingsLabelIndented">Takes effect next Monday</span>
+                <span class="settingsHint settingsLabelIndented">Currently {{ progressionStore.weeklyTarget }} day{{ progressionStore.weeklyTarget !== 1 ? 's' : '' }} · changes next Monday</span>
+              </div>
+              <div v-show="progressionActive && effectiveWeeklyTarget >= 7" class="settingsRow">
+                <span class="settingsHint settingsLabelIndented">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</span>
               </div>
               <div v-show="progressionActive" class="settingsRow">
                 <button class="settingsResetBtn" @click="confirmResetProgress">Reset Progress</button>
@@ -720,9 +723,14 @@ const effectiveWeeklyTarget = computed(() =>
   progressionStore.pendingTargetChange ?? progressionStore.weeklyTarget
 )
 
+function adjustWeeklyTarget(delta: number) {
+  const next = Math.max(1, Math.min(7, effectiveWeeklyTarget.value + delta))
+  progressionStore.setWeeklyTarget(next)
+}
+
 const weeklyGoalBonusLabel = computed(() => {
   const target = effectiveWeeklyTarget.value
-  if (target >= 6) return 'Streak bonus: 1.5×'
+  if (target >= 6) return 'Streak bonus: 1.5× (max)'
   if (target >= 5) return 'Streak bonus: 1.3×'
   if (target >= 4) return 'Streak bonus: 1.2×'
   if (target >= 3) return 'Streak bonus: 1.1×'
