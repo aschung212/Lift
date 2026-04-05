@@ -458,7 +458,10 @@
             </div>
             <div v-if="plateDeltaText" class="wtPlateDelta">{{ plateDeltaText }}</div>
             <div class="wtPlateFooter">
-              <button class="wtPlateCountToggle" @click="togglePlateCountMode">{{ isPerSide ? 'per side' : 'total' }}</button>
+              <div class="wtPlateCountToggle">
+                <button :class="['wtCountOption', { wtCountActive: isPerSide }]" @click="!isPerSide && togglePlateCountMode()">Per side</button>
+                <button :class="['wtCountOption', { wtCountActive: !isPerSide }]" @click="isPerSide && togglePlateCountMode()">Total</button>
+              </div>
               <button class="wtModeSwitcher" @click="toggleInputMode">Use numpad</button>
             </div>
           </div>
@@ -1021,14 +1024,20 @@ function toggleInputMode() {
   if (!ex) return
   const newMode = ex.inputMode === 'plates' ? 'numpad' : 'plates'
   store.setExerciseInputMode(id, newMode)
-  if (newMode === 'plates' && ex.sets.length > 0) {
-    // Initialize plates from last set
-    const lastSet = ex.sets[ex.sets.length - 1]
+  if (newMode === 'plates') {
     const barWt = ex.barWeight ?? 45
-    const plates = weightToPlates(lastSet.weight, barWt, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
-    currentPlates.value = plates || []
-    previousPlates.value = plates || []
-    weight.value = displayWeight(lastSet.weight)
+    const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+    // Try to initialize from current weight value, then fall back to last set
+    const targetWeight = weight.value ? toLbs(weight.value) : (ex.sets.length > 0 ? ex.sets[ex.sets.length - 1].weight : null)
+    if (targetWeight) {
+      const plates = weightToPlates(targetWeight, barWt, denoms)
+      currentPlates.value = plates || []
+      previousPlates.value = plates || []
+      if (!weight.value) weight.value = displayWeight(targetWeight)
+    } else {
+      currentPlates.value = []
+      previousPlates.value = []
+    }
   }
 }
 

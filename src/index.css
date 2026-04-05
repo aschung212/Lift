@@ -2987,17 +2987,30 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPlateCountToggle {
+  display: flex;
   background: var(--bg-tertiary);
+  border-radius: 8px;
+  overflow: hidden;
   border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: var(--font-caption1);
+}
+
+.wtCountOption {
+  padding: 4px 12px;
+  min-height: 32px;
+  font-size: var(--font-caption2);
   font-weight: 500;
   font-family: inherit;
-  font-style: italic;
-  padding: 4px 12px;
-  min-height: 44px;
-  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.wtCountActive {
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .repMaxInputReadonly {
