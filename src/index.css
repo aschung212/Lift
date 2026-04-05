@@ -2856,6 +2856,7 @@ html.theme-fading .settingsSheet {
 .repMaxActions {
   display: flex;
   gap: 8px;
+  margin-top: 8px;
 }
 
 /* ─── Plate calculator ────────────────────────────────────────────── */
@@ -3043,12 +3044,140 @@ html.theme-fading .settingsSheet {
   justify-content: center;
 }
 
-.wtEditPlateSettings {
+/* ─── iOS-style grouped settings ─────────────────────────────────── */
+
+.iosSettingsSection {
+  margin-top: 16px;
+  margin-bottom: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.iosSettingsHeader {
+  display: block;
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 0 16px 8px;
+}
+
+.iosSettingsGroup {
+  background: var(--bg-hover);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.iosSettingsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 8px 16px;
+}
+
+.iosSettingsRow + .iosSettingsRow {
+  border-top: 1px solid var(--border);
+  margin-left: 16px;
+  padding-left: 0;
+}
+
+.iosSettingsRowLabelGroup {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 12px 0 0;
-  border-top: 1px solid var(--border);
+  gap: 2px;
+}
+
+.iosSettingsRowLabel {
+  font-size: var(--font-callout);
+  color: var(--text-primary);
+}
+
+.iosSettingsRowSub {
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+}
+
+.iosSegmentedControl {
+  display: flex;
+  background: var(--bg-base);
+  border-radius: 8px;
+  padding: 2px;
+  width: 176px;
+}
+
+.iosSegment {
+  flex: 1 1 0;
+  padding: 8px 12px;
+  font-size: var(--font-subhead);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  min-height: 32px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.iosSegmentActive {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+}
+
+.iosStepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--bg-base);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.iosStepperBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 36px;
+  font-size: var(--font-title3);
+  font-family: inherit;
+  font-weight: 400;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.iosStepperBtn:active {
+  background: var(--bg-hover);
+}
+
+.iosStepperValue {
+  min-width: 56px;
+  text-align: center;
+  font-size: var(--font-callout);
+  font-weight: 500;
+  color: var(--text-primary);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0 8px;
+  line-height: 36px;
+}
+
+.iosSettingsFooter {
+  display: block;
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  padding: 8px 16px 0;
+  line-height: 1.4;
 }
 
 .wtTagRow {

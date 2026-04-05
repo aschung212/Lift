@@ -552,44 +552,32 @@
             <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput" aria-label="Add tag">+</button>
           </div>
         </div>
-        <!-- Plate calculator settings -->
-        <div v-if="editExerciseObj?.inputMode === 'plates'" class="wtEditPlateSettings">
-          <label class="repMaxLabel">
-            Plate loading
-            <div class="wtTagRow">
-              <button
-                :class="['wtTagPickerChip', { wtTagPickerChipActive: editPlateCountMode === 'per-side' }]"
-                @click="editPlateCountMode = 'per-side'"
-              >Per side</button>
-              <button
-                :class="['wtTagPickerChip', { wtTagPickerChipActive: editPlateCountMode === 'total' }]"
-                @click="editPlateCountMode = 'total'"
-              >Total</button>
-            </div>
-          </label>
-          <label class="repMaxLabel">
-            Starting weight ({{ weightUnit }})
-            <div class="wtTagRow">
-              <button
-                :class="['wtTagPickerChip', { wtTagPickerChipActive: editBarWeight === 0 }]"
-                @click="editBarWeight = 0"
-              >None (0)</button>
-              <button
-                :class="['wtTagPickerChip', { wtTagPickerChipActive: editBarWeight === 45 }]"
-                @click="editBarWeight = 45"
-              >Bar (45)</button>
-              <div class="repMaxInputRow" style="flex:0 0 auto">
-                <input
-                  v-model.number="editBarWeight"
-                  type="text"
-                  inputmode="decimal"
-                  class="repMaxInput"
-                  style="width: 64px"
-                  placeholder="Custom"
-                />
+        <!-- Plate calculator settings (iOS grouped style) -->
+        <div v-if="editExerciseObj?.inputMode === 'plates'" class="iosSettingsSection">
+          <span class="iosSettingsHeader">Plate Calculator</span>
+          <div class="iosSettingsGroup">
+            <div class="iosSettingsRow">
+              <span class="iosSettingsRowLabel">Counting</span>
+              <div class="iosSegmentedControl">
+                <button
+                  :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'per-side' }]"
+                  @click="editPlateCountMode = 'per-side'"
+                >Per side</button>
+                <button
+                  :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'total' }]"
+                  @click="editPlateCountMode = 'total'"
+                >Total</button>
               </div>
             </div>
-          </label>
+            <div class="iosSettingsRow">
+              <span class="iosSettingsRowLabel">Starting weight</span>
+              <div class="iosStepper">
+                <button class="iosStepperBtn" @click="editBarWeight = Math.max(0, editBarWeight - 5)" aria-label="Decrease weight">−</button>
+                <span class="iosStepperValue">{{ editBarWeight }} {{ weightUnit }}</span>
+                <button class="iosStepperBtn" @click="editBarWeight += 5" aria-label="Increase weight">+</button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
