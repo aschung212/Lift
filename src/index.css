@@ -2766,7 +2766,10 @@ html.theme-fading .settingsSheet {
 
 .repMaxModal {
   position: relative;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 96px);
   touch-action: auto;
   background: var(--glass-fill, var(--bg-elevated));
   backdrop-filter: blur(32px) saturate(180%);
