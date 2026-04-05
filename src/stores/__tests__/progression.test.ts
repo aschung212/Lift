@@ -9,7 +9,6 @@ vi.mock('../../lib/syncQueue', () => ({
 }))
 
 import { useProgressionStore, getTrainingDaysInWeek, getUnlockedThemeIds } from '../progression'
-import type { WorkoutSet } from '../workout'
 
 /** Helper: get theme IDs from store's unlocked themes */
 function unlockedIds(store: ReturnType<typeof useProgressionStore>): string[] {
@@ -430,56 +429,45 @@ describe('progression store', () => {
   // ── getTrainingDaysInWeek ─────────────────────────────────────
 
   describe('getTrainingDaysInWeek', () => {
-    function makeSet(date: string): WorkoutSet {
-      return { id: 'x', date, weight: 100, reps: 5, estimated1RM: 117 }
-    }
-
     it('counts unique training days within a Mon-Sun window', () => {
-      const sets = [
-        makeSet('2026-03-30T10:00:00Z'), // Monday
-        makeSet('2026-03-30T18:00:00Z'), // Monday again (same day)
-        makeSet('2026-04-01T10:00:00Z'), // Wednesday
-        makeSet('2026-04-03T10:00:00Z'), // Friday
+      const dates = [
+        '2026-03-30T10:00:00Z', // Monday
+        '2026-03-30T18:00:00Z', // Monday again (same day)
+        '2026-04-01T10:00:00Z', // Wednesday
+        '2026-04-03T10:00:00Z', // Friday
       ]
-      expect(getTrainingDaysInWeek(sets, '2026-03-30', '2026-04-05')).toBe(3)
+      expect(getTrainingDaysInWeek(dates, '2026-03-30', '2026-04-05')).toBe(3)
     })
 
     it('excludes sets outside the week window', () => {
-      const sets = [
-        makeSet('2026-03-29T10:00:00Z'), // Sunday before
-        makeSet('2026-03-30T10:00:00Z'), // Monday (in)
-        makeSet('2026-04-06T10:00:00Z'), // Monday after
+      const dates = [
+        '2026-03-29T10:00:00Z', // Sunday before
+        '2026-03-30T10:00:00Z', // Monday (in)
+        '2026-04-06T10:00:00Z', // Monday after
       ]
-      expect(getTrainingDaysInWeek(sets, '2026-03-30', '2026-04-05')).toBe(1)
+      expect(getTrainingDaysInWeek(dates, '2026-03-30', '2026-04-05')).toBe(1)
     })
 
-    it('returns 0 for empty sets', () => {
+    it('returns 0 for empty dates', () => {
       expect(getTrainingDaysInWeek([], '2026-03-30', '2026-04-05')).toBe(0)
     })
 
     it('includes Sunday as the last day of the week', () => {
-      const sets = [makeSet('2026-04-05T23:59:00Z')] // Sunday
-      expect(getTrainingDaysInWeek(sets, '2026-03-30', '2026-04-05')).toBe(1)
+      expect(getTrainingDaysInWeek(['2026-04-05T23:59:00Z'], '2026-03-30', '2026-04-05')).toBe(1)
     })
   })
 
   // ── evaluatePendingWeeks ──────────────────────────────────────
 
   describe('evaluatePendingWeeks', () => {
-    function makeSet(date: string): WorkoutSet {
-      return { id: 'x', date, weight: 100, reps: 5, estimated1RM: 117 }
-    }
-
     it('evaluates one missed week', () => {
       const store = useProgressionStore()
-      // Sets in the week of Mar 23-29
-      const sets = [
-        makeSet('2026-03-23T10:00:00Z'), // Mon
-        makeSet('2026-03-25T10:00:00Z'), // Wed
-        makeSet('2026-03-27T10:00:00Z'), // Fri
+      const dates = [
+        '2026-03-23T10:00:00Z', // Mon
+        '2026-03-25T10:00:00Z', // Wed
+        '2026-03-27T10:00:00Z', // Fri
       ]
-      // "Now" is the following Monday
-      store.evaluatePendingWeeks(sets, new Date('2026-03-30T10:00:00Z'))
+      store.evaluatePendingWeeks(dates, new Date('2026-03-30T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(1)
       expect(store.streakHistory[0].weekStart).toBe('2026-03-23')
       expect(store.streakWeeks).toBe(1) // met target of 3
@@ -487,38 +475,36 @@ describe('progression store', () => {
 
     it('evaluates multiple missed weeks', () => {
       const store = useProgressionStore()
-      const sets = [
+      const dates = [
         // Week of Mar 16: 3 days → met
-        makeSet('2026-03-16T10:00:00Z'),
-        makeSet('2026-03-18T10:00:00Z'),
-        makeSet('2026-03-20T10:00:00Z'),
+        '2026-03-16T10:00:00Z',
+        '2026-03-18T10:00:00Z',
+        '2026-03-20T10:00:00Z',
         // Week of Mar 23: 1 day → missed
-        makeSet('2026-03-24T10:00:00Z'),
+        '2026-03-24T10:00:00Z',
         // Week of Mar 30: 4 days → met
-        makeSet('2026-03-30T10:00:00Z'),
-        makeSet('2026-04-01T10:00:00Z'),
-        makeSet('2026-04-03T10:00:00Z'),
-        makeSet('2026-04-04T10:00:00Z'),
+        '2026-03-30T10:00:00Z',
+        '2026-04-01T10:00:00Z',
+        '2026-04-03T10:00:00Z',
+        '2026-04-04T10:00:00Z',
       ]
-      store.evaluatePendingWeeks(sets, new Date('2026-04-06T10:00:00Z'))
+      store.evaluatePendingWeeks(dates, new Date('2026-04-06T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(3)
       expect(store.streakWeeks).toBe(1) // reset after miss, then 1 for last week
     })
 
     it('does not evaluate the current (incomplete) week', () => {
       const store = useProgressionStore()
-      const sets = [
-        makeSet('2026-03-30T10:00:00Z'), // Mon of current week
-        makeSet('2026-04-01T10:00:00Z'), // Wed of current week
+      const dates = [
+        '2026-03-30T10:00:00Z', // Mon of current week
+        '2026-04-01T10:00:00Z', // Wed of current week
       ]
-      // "Now" is Wednesday of the same week — don't evaluate yet
-      store.evaluatePendingWeeks(sets, new Date('2026-04-01T10:00:00Z'))
+      store.evaluatePendingWeeks(dates, new Date('2026-04-01T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(0)
     })
 
     it('skips weeks already in history', () => {
       const store = useProgressionStore()
-      // Pre-populate history for Mar 23 week
       store.streakHistory.push({
         weekStart: '2026-03-23',
         streakCount: 1,
@@ -527,19 +513,17 @@ describe('progression store', () => {
       })
       store.streakWeeks = 1
 
-      const sets = [
-        // Week of Mar 30: 3 days
-        makeSet('2026-03-30T10:00:00Z'),
-        makeSet('2026-04-01T10:00:00Z'),
-        makeSet('2026-04-03T10:00:00Z'),
+      const dates = [
+        '2026-03-30T10:00:00Z',
+        '2026-04-01T10:00:00Z',
+        '2026-04-03T10:00:00Z',
       ]
-      store.evaluatePendingWeeks(sets, new Date('2026-04-06T10:00:00Z'))
-      // Should only evaluate Mar 30, not re-evaluate Mar 23
+      store.evaluatePendingWeeks(dates, new Date('2026-04-06T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(2)
       expect(store.streakWeeks).toBe(2)
     })
 
-    it('is a no-op with no sets and no history', () => {
+    it('is a no-op with no dates and no history', () => {
       const store = useProgressionStore()
       store.evaluatePendingWeeks([], new Date('2026-04-06T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(0)
@@ -547,15 +531,14 @@ describe('progression store', () => {
 
     it('handles weeks with zero training days (streak breaks)', () => {
       const store = useProgressionStore()
-      const sets = [
-        // Only week 1 has sets
-        makeSet('2026-03-16T10:00:00Z'),
-        makeSet('2026-03-18T10:00:00Z'),
-        makeSet('2026-03-20T10:00:00Z'),
+      const dates = [
+        '2026-03-16T10:00:00Z',
+        '2026-03-18T10:00:00Z',
+        '2026-03-20T10:00:00Z',
         // Week 2 (Mar 23): nothing
         // Week 3 (Mar 30): nothing
       ]
-      store.evaluatePendingWeeks(sets, new Date('2026-04-06T10:00:00Z'))
+      store.evaluatePendingWeeks(dates, new Date('2026-04-06T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(3)
       expect(store.streakWeeks).toBe(0) // broken by empty weeks
     })

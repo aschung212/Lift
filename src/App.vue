@@ -223,6 +223,26 @@
                 </button>
               </div>
               <div v-show="progressionActive" class="settingsRow">
+                <div class="settingsLabelGroup settingsLabelIndented">
+                  <span class="settingsLabel">Weekly goal</span>
+                  <span class="settingsHint">{{ weeklyGoalBonusLabel }}</span>
+                </div>
+                <div class="iosStepper">
+                  <button class="iosStepperBtn" @click="adjustWeeklyTarget(-1)" :disabled="effectiveWeeklyTarget <= 1" aria-label="Decrease weekly goal">−</button>
+                  <span class="iosStepperValue">{{ effectiveWeeklyTarget }} day{{ effectiveWeeklyTarget !== 1 ? 's' : '' }}</span>
+                  <button class="iosStepperBtn" @click="adjustWeeklyTarget(1)" :disabled="effectiveWeeklyTarget >= 7" aria-label="Increase weekly goal">+</button>
+                </div>
+              </div>
+              <div v-show="progressionActive && progressionStore.pendingTargetChange !== null" class="settingsRow">
+                <span class="settingsHint settingsLabelIndented">Currently {{ progressionStore.weeklyTarget }} day{{ progressionStore.weeklyTarget !== 1 ? 's' : '' }} · changes next Monday</span>
+              </div>
+              <div v-show="progressionActive && progressionStore.pendingTargetChange !== null && progressionStore.pendingTargetChange < progressionStore.weeklyTarget && progressionStore.streakWeeks > 0" class="settingsRow">
+                <span class="settingsHint settingsLabelIndented settingsWarning">Your {{ progressionStore.streakWeeks }}-week streak will reset when this change takes effect</span>
+              </div>
+              <div v-show="progressionActive && effectiveWeeklyTarget >= 7" class="settingsRow">
+                <span class="settingsHint settingsLabelIndented">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</span>
+              </div>
+              <div v-show="progressionActive" class="settingsRow">
                 <button class="settingsResetBtn" @click="confirmResetProgress">Reset Progress</button>
               </div>
             </div>
@@ -517,7 +537,7 @@
           </template>
 
           <!-- Step 2: Starter pick -->
-          <template v-else>
+          <template v-else-if="starterPickerStep === 'pick'">
             <div class="unlockTitle" style="color: var(--text-primary)">Pick Your Starter</div>
             <div class="resetConfirmText">Try all three freely until you log your first set. Then your choice locks in.</div>
             <div class="obStarterGridInline">
@@ -539,8 +559,29 @@
               </button>
             </div>
             <div class="starterWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</div>
-            <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Choose' }}</button>
+            <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="starterPickerStep = 'goal'">Next</button>
             <button class="resetConfirmCancel" @click="skipStarterPick">Skip</button>
+          </template>
+
+          <!-- Step 3: Weekly goal -->
+          <template v-else>
+            <div class="unlockTitle" style="color: var(--text-primary)">Set Your Weekly Goal</div>
+            <div class="resetConfirmText">How many days per week do you plan to train? Hit your goal consistently to build a streak and earn bonus XP.</div>
+            <div class="weeklyGoalPicker">
+              <div class="weeklyGoalStepperWrap">
+                <div class="iosStepper">
+                  <button class="iosStepperBtn" @click="starterPickerGoal = Math.max(1, starterPickerGoal - 1)" :disabled="starterPickerGoal <= 1" aria-label="Decrease">−</button>
+                  <span class="iosStepperValue">{{ starterPickerGoal }} day{{ starterPickerGoal !== 1 ? 's' : '' }}</span>
+                  <button class="iosStepperBtn" @click="starterPickerGoal = Math.min(7, starterPickerGoal + 1)" :disabled="starterPickerGoal >= 7" aria-label="Increase">+</button>
+                </div>
+              </div>
+              <div class="weeklyGoalPickerBonus">{{ starterGoalBonusLabel }}</div>
+              <div class="weeklyGoalPickerHint">Your streak grows each week you hit this goal. Longer streaks earn even higher bonuses.</div>
+              <div class="weeklyGoalPickerHint">You can increase this later without losing your streak. Decreasing it will reset your streak.</div>
+              <div v-if="starterPickerGoal >= 7" class="weeklyGoalPickerRest">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</div>
+            </div>
+            <button class="unlockDismiss" @click="confirmStarterPick">Let's Go</button>
+            <button class="resetConfirmCancel" @click="starterPickerStep = 'pick'">Back</button>
           </template>
         </div>
       </div>
@@ -556,6 +597,7 @@
           <div class="progressionDisclosure">
             <div class="disclosureRow disclosureOk">Your workouts and exercises will still be tracked normally.</div>
             <div class="disclosureRow disclosureWarn">You will not earn XP for sets logged while progression is off.</div>
+            <div class="disclosureRow disclosureOk">Your streak is based on training days — it continues as long as you keep hitting your weekly goal, even with progression off.</div>
             <div class="disclosureRow disclosureOk">Your existing XP and unlocked themes are preserved — unlocked themes stay usable.</div>
             <div class="disclosureRow disclosureHint">To hide XP info without losing progress, use "Show XP &amp; streaks" instead.</div>
           </div>
@@ -701,6 +743,24 @@ const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+const effectiveWeeklyTarget = computed(() =>
+  progressionStore.pendingTargetChange ?? progressionStore.weeklyTarget
+)
+
+function adjustWeeklyTarget(delta: number) {
+  const next = Math.max(1, Math.min(7, effectiveWeeklyTarget.value + delta))
+  progressionStore.setWeeklyTarget(next)
+}
+
+const weeklyGoalBonusLabel = computed(() => {
+  const target = effectiveWeeklyTarget.value
+  if (target >= 6) return 'Initial streak bonus: 1.5× (max)'
+  if (target >= 5) return 'Initial streak bonus: 1.3×'
+  if (target >= 4) return 'Initial streak bonus: 1.2×'
+  if (target >= 3) return 'Initial streak bonus: 1.1×'
+  return 'No streak bonus'
+})
 
 // Sort themes: unlocked first, then locked — both groups follow unlock-tier order.
 // Themes not in UNLOCK_TIERS (unchosen starters) slot in before Eternal.
@@ -984,7 +1044,16 @@ function confirmResetProgress() {
 }
 
 const starterPickerVisible = ref(false)
-const starterPickerStep = ref<'explainer' | 'pick'>('explainer')
+const starterPickerStep = ref<'explainer' | 'pick' | 'goal'>('explainer')
+const starterPickerGoal = ref(3)
+const starterGoalBonusLabel = computed(() => {
+  const t = starterPickerGoal.value
+  if (t >= 6) return 'Initial streak bonus: 1.5× (max)'
+  if (t >= 5) return 'Initial streak bonus: 1.3×'
+  if (t >= 4) return 'Initial streak bonus: 1.2×'
+  if (t >= 3) return 'Initial streak bonus: 1.1×'
+  return 'No streak bonus'
+})
 const starterPickerSelection = ref<ThemeId | null>(null)
 
 const STARTER_THEMES: { id: ThemeId; label: string }[] = [
@@ -1058,6 +1127,7 @@ function executeResetProgress() {
   markMigrated()
   // Show starter picker
   starterPickerSelection.value = null
+  starterPickerGoal.value = 3
   starterPickerStep.value = 'explainer'
   starterPickerVisible.value = true
 }
@@ -1065,10 +1135,13 @@ function executeResetProgress() {
 function confirmStarterPick() {
   if (!starterPickerSelection.value) return
   starterPickerVisible.value = false
+  // Set weekly goal directly (not staged — this is the initial value)
+  progressionStore.weeklyTarget = starterPickerGoal.value
   progressionStore.setStarterTheme(starterPickerSelection.value)
   currentTheme.value = starterPickerSelection.value
   runMigrationIfNeeded()
   enforceThemeLock()
+  catchUpStreaks()
 }
 
 function skipStarterPick() {
@@ -1080,6 +1153,30 @@ function skipStarterPick() {
   }
   progressionStore._persist()
   runMigrationIfNeeded()
+  catchUpStreaks()
+}
+
+/** Evaluate missed weeks and show milestone toasts. */
+function catchUpStreaks() {
+  const streakBefore = progressionStore.streakWeeks
+  progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates)
+  const streakAfter = progressionStore.streakWeeks
+
+  if (progressionStore.showProgression && streakAfter > streakBefore) {
+    const MILESTONES = [12, 8, 4, 2] as const
+    for (const m of MILESTONES) {
+      if (streakAfter >= m && streakBefore < m) {
+        const mult = streakAfter >= 12 ? '1.75' : streakAfter >= 8 ? '1.5' : streakAfter >= 4 ? '1.25' : '1.1'
+        setTimeout(() => showXPToast(
+          `${streakAfter}-week streak! Duration bonus: ${mult}×`,
+          progressionStore.progressPercent,
+          progressionStore.totalXP,
+          progressionStore.nextUnlockThreshold
+        ), 1500)
+        break
+      }
+    }
+  }
 }
 
 /** If current theme is locked, switch to starter or pearl. */
@@ -1139,10 +1236,12 @@ function toggleProgression() {
       progressionStore._persist()
       enforceThemeLock()
       runMigrationIfNeeded()
+      catchUpStreaks()
     } else {
       // No real starter chosen — clear pearl default, show explainer + picker
       progressionStore.starterTheme = null
       starterPickerSelection.value = null
+      starterPickerGoal.value = 3
       starterPickerStep.value = 'explainer'
       starterPickerVisible.value = true
     }
@@ -1424,6 +1523,10 @@ onMounted(async () => {
 
   runMigrationIfNeeded()
   enforceThemeLock()
+
+  if (progressionStore.progressionEnabled) {
+    catchUpStreaks()
+  }
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
