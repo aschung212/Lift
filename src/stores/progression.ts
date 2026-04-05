@@ -313,7 +313,16 @@ export const useProgressionStore = defineStore('progression', {
 
     setWeeklyTarget(days: number) {
       const clamped = Math.max(1, Math.min(7, Math.round(days)))
-      if (clamped === this.weeklyTarget) return
+
+      // If setting back to the current active target, clear the pending change
+      if (clamped === this.weeklyTarget) {
+        if (this.pendingTargetChange !== null) {
+          this.pendingTargetChange = null
+          this._persist()
+          this._syncToSupabase()
+        }
+        return
+      }
 
       // Stage the change — takes effect next Monday
       this.pendingTargetChange = clamped
