@@ -3030,6 +3030,29 @@ html.theme-fading .settingsSheet {
   text-align: center;
 }
 
+.wtPlateToggleBtn {
+  position: absolute;
+  left: 0;
+  width: 44px;
+  height: 27px;
+  border-radius: 14px;
+  background: var(--bg-base);
+  border: none;
+  cursor: pointer;
+  transition: background 0.25s;
+  flex-shrink: 0;
+}
+
+.wtPlateToggleBtn .iosToggleKnob {
+  width: 23px;
+  height: 23px;
+  border-radius: 12px;
+}
+
+.wtPlateToggleBtn.iosToggleOn .iosToggleKnob {
+  transform: translateX(17px);
+}
+
 .wtPlateSettingsBtn {
   position: absolute;
   right: 0;
