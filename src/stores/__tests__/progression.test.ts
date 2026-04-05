@@ -82,14 +82,22 @@ describe('progression store', () => {
   // ── removeSetXP ───────────────────────────────────────────────
 
   describe('removeSetXP', () => {
-    it('removes per-set tracking but does not reduce totalXP', () => {
+    it('deducts XP from total and removes tracking', () => {
       const store = useProgressionStore()
       store.logSetXP('set-1', 100)
       store.logSetXP('set-2', 200)
       store.removeSetXP('set-1')
-      expect(store.totalXP).toBe(300) // permanent
+      expect(store.totalXP).toBe(200)
       expect(store.xpPerSet['set-1']).toBeUndefined()
       expect(store.xpPerSet['set-2']).toBe(200)
+    })
+
+    it('does not let totalXP go below zero', () => {
+      const store = useProgressionStore()
+      store.logSetXP('set-1', 100)
+      store.totalXP = 50
+      store.removeSetXP('set-1')
+      expect(store.totalXP).toBe(0)
     })
 
     it('is a no-op for unknown set IDs', () => {

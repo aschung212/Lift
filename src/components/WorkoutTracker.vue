@@ -361,6 +361,7 @@
                   type="text"
                   placeholder="e.g. Bench Press"
                   class="repMaxInput"
+                  maxlength="50"
                   autocomplete="off"
                 />
               </div>
@@ -383,6 +384,7 @@
                     type="text"
                     autocomplete="off"
                     placeholder="Tag name"
+                    maxlength="30"
                     class="wtTagInlineInput"
                     ref="newTagInputEl"
                     @keyup.enter="addNewExerciseTag"
@@ -427,7 +429,7 @@
                     <div class="iosStepper">
                       <button class="iosStepperBtn" @click="newExerciseBarWeight = Math.max(0, newExerciseBarWeight - 5)" aria-label="Decrease weight">−</button>
                       <span class="iosStepperValue">{{ newExerciseBarWeight }} {{ weightUnit }}</span>
-                      <button class="iosStepperBtn" @click="newExerciseBarWeight += 5" aria-label="Increase weight">+</button>
+                      <button class="iosStepperBtn" @click="newExerciseBarWeight = Math.min(MAX_WEIGHT, newExerciseBarWeight + 5)" aria-label="Increase weight">+</button>
                     </div>
                   </div>
                 </template>
@@ -566,6 +568,7 @@
               type="text"
               class="repMaxInput"
               autocomplete="off"
+              maxlength="50"
             />
           </div>
         </label>
@@ -587,6 +590,7 @@
                 type="text"
                 autocomplete="off"
                 placeholder="Tag name"
+                maxlength="30"
                 class="wtTagInlineInput"
                 ref="editTagInputEl"
                 @keyup.enter="addEditTag"
@@ -631,7 +635,7 @@
                 <div class="iosStepper">
                   <button class="iosStepperBtn" @click="editBarWeight = Math.max(0, editBarWeight - 5)" aria-label="Decrease weight">−</button>
                   <span class="iosStepperValue">{{ editBarWeight }} {{ weightUnit }}</span>
-                  <button class="iosStepperBtn" @click="editBarWeight += 5" aria-label="Increase weight">+</button>
+                  <button class="iosStepperBtn" @click="editBarWeight = Math.min(MAX_WEIGHT, editBarWeight + 5)" aria-label="Increase weight">+</button>
                 </div>
               </div>
             </template>
@@ -659,6 +663,7 @@
                   v-model.trim="renameTagValue"
                   type="text"
                   autocomplete="off"
+                  maxlength="30"
                   class="repMaxInput wtTagManagerInput"
                   @keyup.enter="confirmRenameTag"
                   @keyup.escape="renamingTag = null"
@@ -693,6 +698,7 @@
             type="text"
             autocomplete="off"
             placeholder="Tag name"
+            maxlength="30"
             class="repMaxInput"
             ref="tagManagerInputEl"
             @keyup.enter="confirmTagManagerAdd"
@@ -1166,7 +1172,12 @@ function syncPlateWeight() {
 }
 
 function addPlate(denom: number) {
-  currentPlates.value = [...currentPlates.value, denom].sort((a, b) => b - a)
+  const preview = [...currentPlates.value, denom]
+  const previewWeight = isPerSide.value
+    ? platesToWeight(preview, currentBarWeight.value)
+    : currentBarWeight.value + preview.reduce((s, p) => s + p, 0)
+  if (previewWeight > MAX_WEIGHT) return
+  currentPlates.value = preview.sort((a, b) => b - a)
   syncPlateWeight()
 }
 
@@ -1808,7 +1819,9 @@ const bestWeightAtReps = computed<number | null>(() => {
   return best > 0 ? best : null
 })
 
-const hasSetData = computed(() => weight.value !== null && weight.value > 0 && reps.value !== null && reps.value >= 1)
+const MAX_WEIGHT = 2000
+const MAX_REPS = 200
+const hasSetData = computed(() => weight.value !== null && weight.value > 0 && weight.value <= MAX_WEIGHT && reps.value !== null && reps.value >= 1 && reps.value <= MAX_REPS)
 
 const canSave = computed(() => {
   if (isEditMode.value) return hasSetData.value
@@ -1936,7 +1949,10 @@ function undoClearSets(exercise: Exercise) {
   showUndo(
     `${savedSets.length} set${savedSets.length !== 1 ? 's' : ''} cleared`,
     () => store.restoreSets(id, savedSets),
-    () => store.syncDeleteSets(id),
+    () => {
+      store.syncDeleteSets(id)
+      savedSets.forEach(s => progressionStore.removeSetXP(s.id))
+    },
   )
 }
 
@@ -1949,7 +1965,10 @@ function undoDeleteExercise(exercise: Exercise) {
   showUndo(
     `"${saved.name}" deleted`,
     () => store.restoreExercise(saved, idx),
-    () => store.syncDeleteExercise(saved.id),
+    () => {
+      store.syncDeleteExercise(saved.id)
+      saved.sets.forEach(s => progressionStore.removeSetXP(s.id))
+    },
   )
 }
 

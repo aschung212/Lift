@@ -276,8 +276,11 @@ export const useProgressionStore = defineStore('progression', {
     },
 
     removeSetXP(setId: string) {
-      // XP is permanent — total doesn't decrease.
-      // We just remove tracking so recalc doesn't double-count.
+      const entry = this.xpPerSet[setId]
+      if (entry) {
+        const xp = getSetXP(entry)
+        this.totalXP = Math.max(0, this.totalXP - xp)
+      }
       delete this.xpPerSet[setId]
       this._persist()
       this._syncToSupabase()
