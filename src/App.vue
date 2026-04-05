@@ -236,6 +236,9 @@
               <div v-show="progressionActive && progressionStore.pendingTargetChange !== null" class="settingsRow">
                 <span class="settingsHint settingsLabelIndented">Currently {{ progressionStore.weeklyTarget }} day{{ progressionStore.weeklyTarget !== 1 ? 's' : '' }} · changes next Monday</span>
               </div>
+              <div v-show="progressionActive && progressionStore.pendingTargetChange !== null && progressionStore.pendingTargetChange < progressionStore.weeklyTarget && progressionStore.streakWeeks > 0" class="settingsRow">
+                <span class="settingsHint settingsLabelIndented settingsWarning">Your {{ progressionStore.streakWeeks }}-week streak will reset when this change takes effect</span>
+              </div>
               <div v-show="progressionActive && effectiveWeeklyTarget >= 7" class="settingsRow">
                 <span class="settingsHint settingsLabelIndented">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</span>
               </div>
@@ -1462,7 +1465,26 @@ onMounted(async () => {
 
   // Catch up streak evaluation for any weeks missed since last app open
   if (progressionStore.progressionEnabled) {
+    const streakBefore = progressionStore.streakWeeks
     progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates)
+    const streakAfter = progressionStore.streakWeeks
+
+    // Show milestone toast when crossing a streak duration tier
+    if (progressionStore.showProgression && streakAfter > streakBefore) {
+      const MILESTONES = [12, 8, 4, 2] as const
+      for (const m of MILESTONES) {
+        if (streakAfter >= m && streakBefore < m) {
+          const mult = streakAfter >= 12 ? '1.75' : streakAfter >= 8 ? '1.5' : streakAfter >= 4 ? '1.25' : '1.1'
+          setTimeout(() => showXPToast(
+            `${streakAfter}-week streak! Duration bonus: ${mult}×`,
+            progressionStore.progressPercent,
+            progressionStore.totalXP,
+            progressionStore.nextUnlockThreshold
+          ), 1500)
+          break
+        }
+      }
+    }
   }
 })
 onUnmounted(() => {

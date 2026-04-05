@@ -1449,6 +1449,10 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
 }
 
+.settingsWarning {
+  color: var(--accent);
+}
+
 .settingsSegment {
   display: flex;
   width: 100%;
