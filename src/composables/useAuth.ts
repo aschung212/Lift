@@ -4,6 +4,7 @@ import { migrateLocalStorageToSupabase } from '../lib/migrate'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
+import { syncQueue } from '../lib/syncQueue'
 import type { User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
@@ -96,6 +97,62 @@ async function signOut(): Promise<void> {
   }
 }
 
+/**
+ * Delete all user data from Supabase, clear local storage & IndexedDB, then sign out.
+ * Throws if Supabase deletion fails so the caller can show an error.
+ */
+async function deleteAccount(): Promise<void> {
+  // Cancel any pending sync operations to avoid racing with deletion
+  syncQueue.clear()
+
+  const userId = user.value?.id
+  if (supabase && userId) {
+    // Delete from Supabase tables. exercises CASCADE deletes sets.
+    // Order: leaf tables first, then tables with foreign keys.
+    const results = await Promise.allSettled([
+      supabase.from('xp_events').delete().eq('user_id', userId),
+      supabase.from('progression_snapshots').delete().eq('user_id', userId),
+      supabase.from('user_progression').delete().eq('user_id', userId),
+      supabase.from('user_preferences').delete().eq('user_id', userId),
+      supabase.from('bodyweight_entries').delete().eq('user_id', userId),
+      supabase.from('exercises').delete().eq('user_id', userId), // cascades to sets
+    ])
+
+    // Check for hard failures (network errors, not RLS/empty-table errors)
+    const failed = results.filter(r => r.status === 'rejected')
+    if (failed.length > 0) {
+      throw new Error('Failed to delete server data. Please try again.')
+    }
+  }
+
+  // Clear all localStorage keys used by the app
+  const localStorageKeys = [
+    'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
+    'lift-custom-tags', 'onboarding-complete', 'sample-data', 'active-tab',
+    'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
+    'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
+  ]
+  for (const key of localStorageKeys) {
+    localStorage.removeItem(key)
+  }
+
+  // Delete IndexedDB backup database
+  if (typeof indexedDB !== 'undefined') {
+    try {
+      const dbs = await indexedDB.databases()
+      for (const db of dbs) {
+        if (db.name) indexedDB.deleteDatabase(db.name)
+      }
+    } catch {
+      // indexedDB.databases() not supported in all browsers — delete known DB
+      try { indexedDB.deleteDatabase('lift-backup') } catch { /* noop */ }
+    }
+  }
+
+  // Sign out (clears auth session)
+  await signOut()
+}
+
 export function useAuth() {
-  return { user, loading, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn }
+  return { user, loading, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount }
 }

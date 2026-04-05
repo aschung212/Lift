@@ -5336,6 +5336,74 @@ html.theme-fading .settingsSheet {
   -webkit-backdrop-filter: none;
 }
 
+/* ─── Delete account confirmation ─────────────────────────────── */
+
+.settingsDeleteAccount .settingsLabel {
+  color: var(--danger);
+}
+
+.deleteConfirmSheet {
+  max-width: 320px;
+  text-align: left;
+}
+
+.deleteConfirmTitle {
+  text-align: center;
+  font-weight: 600;
+}
+
+.deleteConfirmDesc {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0 0 16px;
+}
+
+.deleteConfirmLabel {
+  display: block;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.deleteConfirmInput {
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  font-size: var(--font-subhead);
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.deleteConfirmInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+.deleteConfirmInput:focus {
+  outline: none;
+  border-color: var(--danger);
+}
+
+.deleteConfirmError {
+  font-size: var(--font-caption1);
+  color: var(--danger);
+  margin: 8px 0 0;
+}
+
+.deleteConfirmBtn {
+  background: var(--danger);
+  color: var(--text-on-accent);
+}
+
+.deleteConfirmBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ─── Mobile backdrop-filter reduction (MAS-267) ────────────────────────── */
 /* Halve blur radii on mobile to reduce GPU paint cost during scroll/animate */
 
