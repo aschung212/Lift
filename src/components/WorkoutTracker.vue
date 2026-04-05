@@ -414,10 +414,11 @@
                   ref="weightInputEl"
                   v-model="weightStr"
                   type="text"
-                  inputmode="decimal"
+                  :inputmode="plateMode ? 'none' : 'decimal'"
+                  :readonly="plateMode"
                   autocomplete="off"
                   placeholder="135"
-                  class="repMaxInput"
+                  :class="['repMaxInput', { repMaxInputReadonly: plateMode }]"
                 />
               </div>
             </label>
@@ -457,7 +458,7 @@
             </div>
             <div v-if="plateDeltaText" class="wtPlateDelta">{{ plateDeltaText }}</div>
             <div class="wtPlateFooter">
-              <span class="wtPlatePerSide">per side</span>
+              <button class="wtPlateCountToggle" @click="togglePlateCountMode">{{ isPerSide ? 'per side' : 'total' }}</button>
               <button class="wtModeSwitcher" @click="toggleInputMode">Use numpad</button>
             </div>
           </div>
@@ -1036,6 +1037,22 @@ const currentBarWeight = computed(() => {
   return ex?.barWeight ?? 45
 })
 
+const isPerSide = computed(() => {
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  return (ex?.plateCountMode ?? 'per-side') === 'per-side'
+})
+
+function togglePlateCountMode() {
+  const id = selectedExerciseId.value
+  if (!id) return
+  const ex = store.exercises.find(e => e.id === id)
+  if (!ex) return
+  const newMode = isPerSide.value ? 'total' : 'per-side'
+  store.setExercisePlateCountMode(id, newMode)
+  // Recalculate weight for new mode
+  syncPlateWeight()
+}
+
 const activeDenominations = computed(() =>
   weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
 )
@@ -1062,10 +1079,20 @@ const plateCounts = computed(() => {
   return counts
 })
 
+function syncPlateWeight() {
+  if (isPerSide.value) {
+    // Per-side: bar + 2 × plates
+    weight.value = displayWeight(platesToWeight(currentPlates.value, currentBarWeight.value))
+  } else {
+    // Total: bar + 1 × plates (single loading point)
+    const plateSum = currentPlates.value.reduce((s, p) => s + p, 0)
+    weight.value = displayWeight(currentBarWeight.value + plateSum)
+  }
+}
+
 function addPlate(denom: number) {
   currentPlates.value = [...currentPlates.value, denom].sort((a, b) => b - a)
-  // Sync to weight input
-  weight.value = displayWeight(platesToWeight(currentPlates.value, currentBarWeight.value))
+  syncPlateWeight()
 }
 
 function removePlate(denom: number) {
@@ -1074,7 +1101,7 @@ function removePlate(denom: number) {
   const updated = [...currentPlates.value]
   updated.splice(idx, 1)
   currentPlates.value = updated
-  weight.value = displayWeight(platesToWeight(currentPlates.value, currentBarWeight.value))
+  syncPlateWeight()
 }
 const newExerciseName = ref('')
 const newExerciseTags = ref<string[]>([])

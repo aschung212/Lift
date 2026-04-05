@@ -17,13 +17,16 @@ export interface WorkoutSet {
 
 export type ExerciseInputMode = 'numpad' | 'plates'
 
+export type PlateCountMode = 'per-side' | 'total'
+
 export interface Exercise {
   id: string
   name: string
   tags: string[]
   sets: WorkoutSet[]
-  inputMode?: ExerciseInputMode  // remembered per exercise, default 'numpad'
-  barWeight?: number             // bar weight in lbs, default 45
+  inputMode?: ExerciseInputMode    // remembered per exercise, default 'numpad'
+  barWeight?: number               // bar weight in lbs, default 45
+  plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
 }
 
 export interface OverloadSuggestion {
@@ -232,6 +235,13 @@ export const useWorkoutStore = defineStore('workout', {
         }).then()
       }
       return id
+    },
+
+    setExercisePlateCountMode(exerciseId: string, mode: PlateCountMode) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
+      if (!exercise) return
+      exercise.plateCountMode = mode
+      this._persist()
     },
 
     setExerciseInputMode(exerciseId: string, mode: ExerciseInputMode) {

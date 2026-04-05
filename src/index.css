@@ -2986,6 +2986,25 @@ html.theme-fading .settingsSheet {
   text-align: center;
 }
 
+.wtPlateCountToggle {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--font-caption1);
+  font-weight: 500;
+  font-family: inherit;
+  font-style: italic;
+  padding: 4px 12px;
+  min-height: 44px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.repMaxInputReadonly {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ─── XP toast ───────────────────────────────────────────────────── */
 
 .xpToast {
