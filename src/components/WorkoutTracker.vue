@@ -437,22 +437,29 @@
             </label>
           </div>
 
-          <button v-if="!plateMode && !isEditMode && isLogForExercise" class="wtModeSwitcher" @click="toggleInputMode">Switch to plates</button>
+          <button v-if="!plateMode && !isEditMode && isLogForExercise" class="wtModeSwitcher wtModeSwitcherNumpad" @click="toggleInputMode">Use plate calculator</button>
 
           <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplay">
-              <span class="wtPlateBreakdown">{{ plateDisplayText }}</span>
+              <span class="wtPlateTotal">{{ displayWeight(platesToWeight(currentPlates, currentBarWeight)) }} {{ weightUnit }}</span>
+              <span class="wtPlateBreakdown">{{ currentPlates.length > 0 ? `Bar + ${plateDisplayText.split('=')[0].split('+').slice(1).join('+').trim()}` : 'Bar only' }}</span>
             </div>
             <div class="wtPlateButtons">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateGroup">
-                <button class="wtPlateBtn" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
-                <span class="wtPlateDenom">{{ denom }}</span>
-                <button class="wtPlateBtn" @click="addPlate(denom)">+</button>
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)">+</button>
+                <div class="wtPlateDenomWrap">
+                  <span class="wtPlateDenom">{{ denom }}</span>
+                  <span v-if="plateCounts.get(denom)" class="wtPlateCount">×{{ plateCounts.get(denom) }}</span>
+                </div>
+                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
               </div>
             </div>
             <div v-if="plateDeltaText" class="wtPlateDelta">{{ plateDeltaText }}</div>
-            <button class="wtModeSwitcher" @click="toggleInputMode">Switch to numpad</button>
+            <div class="wtPlateFooter">
+              <span class="wtPlatePerSide">per side</span>
+              <button class="wtModeSwitcher" @click="toggleInputMode">Use numpad</button>
+            </div>
           </div>
 
           <!-- Live 1RM estimate / PR target -->
@@ -1047,6 +1054,12 @@ const plateDeltaText = computed(() => {
   const delta = plateDelta(previousPlates.value, currentPlates.value)
   if (delta.add.length === 0 && delta.remove.length === 0) return ''
   return formatDelta(delta) + ' per side'
+})
+
+const plateCounts = computed(() => {
+  const counts = new Map<number, number>()
+  for (const p of currentPlates.value) counts.set(p, (counts.get(p) || 0) + 1)
+  return counts
 })
 
 function addPlate(denom: number) {

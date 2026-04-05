@@ -2859,60 +2859,92 @@ html.theme-fading .settingsSheet {
 /* ─── Plate calculator ────────────────────────────────────────────── */
 
 .wtPlateCalc {
-  padding: 0 0 8px;
+  padding: 4px 0 8px;
 }
 
 .wtPlateDisplay {
   text-align: center;
-  padding: 8px 0;
+  padding: 0 0 12px;
+}
+
+.wtPlateTotal {
+  display: block;
+  font-size: var(--font-title2);
+  font-weight: 800;
+  color: var(--text-primary);
 }
 
 .wtPlateBreakdown {
-  font-size: var(--font-caption1);
-  color: var(--text-secondary);
+  display: block;
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 .wtPlateButtons {
   display: flex;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 4px;
 }
 
 .wtPlateGroup {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  flex: 1;
 }
 
 .wtPlateBtn {
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-secondary);
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
   color: var(--text-primary);
-  border-radius: 8px;
-  font-size: var(--font-body);
-  font-weight: 600;
+  border-radius: 12px;
+  font-size: var(--font-title3);
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
+  transition: background 0.1s;
+}
+
+.wtPlateBtnAdd {
+  color: var(--success);
+}
+
+.wtPlateBtnRemove {
+  color: var(--danger);
 }
 
 .wtPlateBtn:active {
   background: var(--accent-subtle);
-  border-color: var(--accent);
 }
 
 .wtPlateBtn:disabled {
-  opacity: 0.25;
+  opacity: 0.2;
   cursor: default;
 }
 
+.wtPlateDenomWrap {
+  text-align: center;
+  line-height: 1.2;
+}
+
 .wtPlateDenom {
-  font-size: var(--font-caption2);
+  display: block;
+  font-size: var(--font-callout);
   font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wtPlateCount {
+  display: block;
+  font-size: var(--font-caption2);
+  font-weight: 600;
   color: var(--accent);
+  min-height: 14px;
 }
 
 .wtPlateDelta {
@@ -2923,17 +2955,35 @@ html.theme-fading .settingsSheet {
   font-style: italic;
 }
 
+.wtPlateFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 4px 0;
+}
+
+.wtPlatePerSide {
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .wtModeSwitcher {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: var(--font-caption1);
+  font-weight: 500;
+  font-family: inherit;
+  padding: 8px 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.wtModeSwitcherNumpad {
   display: block;
   width: 100%;
   text-align: center;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: var(--font-caption2);
-  font-family: inherit;
-  padding: 4px 0;
-  cursor: pointer;
 }
 
 /* ─── XP toast ───────────────────────────────────────────────────── */
