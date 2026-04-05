@@ -468,7 +468,22 @@
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplay">
               <span class="wtPlateTotal">{{ displayWeight(plateWeightLbs) }} {{ weightUnit }}</span>
-              <span class="wtPlateBreakdown">{{ currentPlates.length > 0 ? `Bar (${displayWeight(currentBarWeight)}) + ${formatPlates(currentPlates)} ${isPerSide ? 'per side' : ''}` : 'Bar only' }}</span>
+              <span class="wtPlateBreakdown">
+                <template v-if="editingBaseWeight">
+                  <input
+                    v-model="baseWeightStr"
+                    type="text"
+                    inputmode="decimal"
+                    class="wtBaseWeightInput"
+                    @blur="saveStartingResistance"
+                    @keydown.enter="saveStartingResistance"
+                  /> {{ weightUnit }} base
+                </template>
+                <template v-else>
+                  <span class="wtStartingResistance" @click="editStartingResistance">{{ displayWeight(currentBarWeight) }} {{ weightUnit }} base</span>
+                </template>
+                {{ currentPlates.length > 0 ? ` + ${formatPlates(currentPlates)} ${isPerSide ? 'per side' : ''}` : '' }}
+              </span>
             </div>
             <div class="wtPlateButtons">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateGroup">
@@ -1043,13 +1058,42 @@ function toggleInputMode() {
 
 const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
-  return ex?.barWeight ?? 45
+  if (ex?.barWeight !== undefined) return ex.barWeight
+  // Default: 45 for per-side (barbell), 0 for total (machine)
+  return isPerSide.value ? 45 : 0
 })
 
 const isPerSide = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   return (ex?.plateCountMode ?? 'per-side') === 'per-side'
 })
+
+const editingBaseWeight = ref(false)
+const baseWeightStr = ref('')
+
+function editStartingResistance() {
+  baseWeightStr.value = String(displayWeight(currentBarWeight.value))
+  editingBaseWeight.value = true
+  nextTick(() => {
+    const el = document.querySelector('.wtBaseWeightInput') as HTMLInputElement
+    el?.focus()
+    el?.select()
+  })
+}
+
+function saveStartingResistance() {
+  editingBaseWeight.value = false
+  const parsed = parseFloat(baseWeightStr.value)
+  if (isNaN(parsed) || parsed < 0) return
+  const lbs = toLbs(parsed)
+  const id = selectedExerciseId.value
+  if (!id) return
+  const ex = store.exercises.find(e => e.id === id)
+  if (!ex) return
+  ex.barWeight = lbs
+  store._persist()
+  syncPlateWeight()
+}
 
 function togglePlateCountMode() {
   const id = selectedExerciseId.value

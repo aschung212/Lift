@@ -3013,6 +3013,26 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
 }
 
+.wtStartingResistance {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.wtBaseWeightInput {
+  width: 48px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: var(--font-caption2);
+  font-family: inherit;
+  text-align: center;
+  padding: 2px 4px;
+}
+
 .repMaxInputReadonly {
   opacity: 0.6;
   cursor: default;
