@@ -440,33 +440,7 @@
 
           <button v-if="!plateMode && !isEditMode && isLogForExercise" class="wtModeSwitcher wtModeSwitcherNumpad" @click="toggleInputMode">Use plate calculator</button>
 
-          <!-- Plate calculator (shown when exercise is in plates mode) -->
-          <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
-            <div class="wtPlateDisplay">
-              <span class="wtPlateTotal">{{ displayWeight(platesToWeight(currentPlates, currentBarWeight)) }} {{ weightUnit }}</span>
-              <span class="wtPlateBreakdown">{{ currentPlates.length > 0 ? `Bar + ${plateDisplayText.split('=')[0].split('+').slice(1).join('+').trim()}` : 'Bar only' }}</span>
-            </div>
-            <div class="wtPlateButtons">
-              <div v-for="denom in activeDenominations" :key="denom" class="wtPlateGroup">
-                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)">+</button>
-                <div class="wtPlateDenomWrap">
-                  <span class="wtPlateDenom">{{ denom }}</span>
-                  <span v-if="plateCounts.get(denom)" class="wtPlateCount">×{{ plateCounts.get(denom) }}</span>
-                </div>
-                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
-              </div>
-            </div>
-            <div v-if="plateDeltaText" class="wtPlateDelta">{{ plateDeltaText }}</div>
-            <div class="wtPlateFooter">
-              <div class="wtPlateCountToggle">
-                <button :class="['wtCountOption', { wtCountActive: isPerSide }]" @click="!isPerSide && togglePlateCountMode()">Per side</button>
-                <button :class="['wtCountOption', { wtCountActive: !isPerSide }]" @click="isPerSide && togglePlateCountMode()">Total</button>
-              </div>
-              <button class="wtModeSwitcher" @click="toggleInputMode">Use numpad</button>
-            </div>
-          </div>
-
-          <!-- Live 1RM estimate / PR target -->
+          <!-- Live 1RM estimate / PR target — shown between inputs and plate calc -->
           <div v-if="liveEstimate" class="repMaxResult">
             <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
             <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
@@ -488,6 +462,32 @@
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
             <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
+          </div>
+
+          <!-- Plate calculator (shown when exercise is in plates mode) -->
+          <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
+            <div class="wtPlateDisplay">
+              <span class="wtPlateTotal">{{ displayWeight(plateWeightLbs) }} {{ weightUnit }}</span>
+              <span class="wtPlateBreakdown">{{ currentPlates.length > 0 ? `Bar (${displayWeight(currentBarWeight)}) + ${formatPlates(currentPlates)} ${isPerSide ? 'per side' : ''}` : 'Bar only' }}</span>
+            </div>
+            <div class="wtPlateButtons">
+              <div v-for="denom in activeDenominations" :key="denom" class="wtPlateGroup">
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)">+</button>
+                <div class="wtPlateDenomWrap">
+                  <span class="wtPlateDenom">{{ denom }}</span>
+                  <span v-if="plateCounts.get(denom)" class="wtPlateCount">×{{ plateCounts.get(denom) }}</span>
+                </div>
+                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
+              </div>
+            </div>
+            <div v-if="plateDeltaText" class="wtPlateDelta">{{ plateDeltaText }}</div>
+            <div class="wtPlateFooter">
+              <div class="wtPlateCountToggle">
+                <button :class="['wtCountOption', { wtCountActive: isPerSide }]" @click="!isPerSide && togglePlateCountMode()">Per side</button>
+                <button :class="['wtCountOption', { wtCountActive: !isPerSide }]" @click="isPerSide && togglePlateCountMode()">Total</button>
+              </div>
+              <button class="wtModeSwitcher" @click="toggleInputMode">Use numpad</button>
+            </div>
           </div>
 
           <!-- Actions (always last) -->
@@ -1066,13 +1066,7 @@ const activeDenominations = computed(() =>
   weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
 )
 
-const plateDisplayText = computed(() => {
-  const bar = displayWeight(currentBarWeight.value)
-  const plates = formatPlates(currentPlates.value)
-  const total = displayWeight(platesToWeight(currentPlates.value, currentBarWeight.value))
-  if (!plates) return `Bar (${bar}) = ${total} ${weightUnit.value}`
-  return `Bar (${bar}) + ${plates} per side = ${total} ${weightUnit.value}`
-})
+
 
 const plateDeltaText = computed(() => {
   if (previousPlates.value.length === 0 && currentPlates.value.length === 0) return ''
@@ -1088,15 +1082,16 @@ const plateCounts = computed(() => {
   return counts
 })
 
-function syncPlateWeight() {
+const plateWeightLbs = computed(() => {
   if (isPerSide.value) {
-    // Per-side: bar + 2 × plates
-    weight.value = displayWeight(platesToWeight(currentPlates.value, currentBarWeight.value))
-  } else {
-    // Total: bar + 1 × plates (single loading point)
-    const plateSum = currentPlates.value.reduce((s, p) => s + p, 0)
-    weight.value = displayWeight(currentBarWeight.value + plateSum)
+    return platesToWeight(currentPlates.value, currentBarWeight.value)
   }
+  const plateSum = currentPlates.value.reduce((s, p) => s + p, 0)
+  return currentBarWeight.value + plateSum
+})
+
+function syncPlateWeight() {
+  weight.value = displayWeight(plateWeightLbs.value)
 }
 
 function addPlate(denom: number) {
