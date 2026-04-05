@@ -100,6 +100,7 @@ function load(): Exercise[] {
 export const useWorkoutStore = defineStore('workout', {
   state: () => ({
     exercises: load() as Exercise[],
+    customTags: JSON.parse(localStorage.getItem('lift-custom-tags') || '[]') as string[],
     _userId: null as string | null
   }),
 
@@ -107,6 +108,7 @@ export const useWorkoutStore = defineStore('workout', {
     _persist() {
       const data = JSON.stringify(this.exercises)
       localStorage.setItem(STORAGE_KEY, data)
+      localStorage.setItem('lift-custom-tags', JSON.stringify(this.customTags))
       backupToIDB(STORAGE_KEY, data)
     },
 
@@ -436,7 +438,6 @@ export const useWorkoutStore = defineStore('workout', {
       this.exercises.forEach((e: Exercise) => {
         const idx = e.tags.indexOf(oldName)
         if (idx !== -1) {
-          // Replace old tag; avoid duplicates if newName already exists on this exercise
           if (e.tags.includes(trimmed)) {
             e.tags.splice(idx, 1)
           } else {
@@ -444,6 +445,14 @@ export const useWorkoutStore = defineStore('workout', {
           }
         }
       })
+      const customIdx = this.customTags.indexOf(oldName)
+      if (customIdx !== -1) {
+        if (this.customTags.includes(trimmed)) {
+          this.customTags.splice(customIdx, 1)
+        } else {
+          this.customTags[customIdx] = trimmed
+        }
+      }
       this._persist()
 
       if (this._userId) {
@@ -462,6 +471,7 @@ export const useWorkoutStore = defineStore('workout', {
         const idx = e.tags.indexOf(tagName)
         if (idx !== -1) e.tags.splice(idx, 1)
       })
+      this.customTags = this.customTags.filter(t => t !== tagName)
       this._persist()
 
       if (this._userId) {
@@ -473,6 +483,18 @@ export const useWorkoutStore = defineStore('workout', {
           )
         })
       }
+    },
+
+    addCustomTag(name: string) {
+      const trimmed = name.trim()
+      if (!trimmed || this.customTags.includes(trimmed)) return
+      this.customTags.push(trimmed)
+      this._persist()
+    },
+
+    removeCustomTag(name: string) {
+      this.customTags = this.customTags.filter(t => t !== name)
+      this._persist()
     }
   },
 
@@ -480,6 +502,7 @@ export const useWorkoutStore = defineStore('workout', {
     allTags: (state): string[] => {
       const tagSet = new Set<string>()
       state.exercises.forEach((e: Exercise) => (e.tags || []).forEach((t: string) => tagSet.add(t)))
+      state.customTags.forEach((t: string) => tagSet.add(t))
       return [...tagSet].sort()
     },
 

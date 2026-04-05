@@ -650,9 +650,9 @@
     <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
         <h2 id="tag-manager-title">Manage Tags</h2>
-        <p v-if="tagManagerTags.length === 0 && !tagManagerAdding" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Tap + to create one.</p>
+        <p v-if="store.allTags.length === 0 && !tagManagerAdding" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Tap + to create one.</p>
         <ul class="wtTagManagerList">
-          <li v-for="tag in tagManagerTags" :key="tag" class="wtTagManagerItemWrap">
+          <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItemWrap">
             <div class="wtTagManagerItem">
               <template v-if="renamingTag === tag">
                 <input
@@ -2047,13 +2047,6 @@ const expandedTag = ref<string | null>(null)
 const tagManagerAdding = ref(false)
 const tagManagerNewName = ref('')
 const tagManagerInputEl = ref<HTMLInputElement | null>(null)
-const standaloneTags = ref<string[]>([])
-
-const tagManagerTags = computed(() => {
-  const all = new Set([...store.allTags, ...standaloneTags.value])
-  return [...all].sort()
-})
-
 function openTagManager() {
   tagManagerOpen.value = true
   renamingTag.value = null
@@ -2069,8 +2062,8 @@ function startTagManagerAdd() {
 
 function confirmTagManagerAdd() {
   const tag = tagManagerNewName.value.trim()
-  if (tag && !tagManagerTags.value.includes(tag)) {
-    standaloneTags.value.push(tag)
+  if (tag && !store.allTags.includes(tag)) {
+    store.addCustomTag(tag)
     expandedTag.value = tag
   }
   tagManagerNewName.value = ''
