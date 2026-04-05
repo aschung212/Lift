@@ -907,7 +907,7 @@ describe('WorkoutTracker', () => {
       // Open new exercise modal
       await wrapper.find('.wtLogBtn').trigger('click')
       await wrapper.vm.$nextTick()
-      const addBtn = wrapper.find('.wtTagAddBtn')
+      const addBtn = wrapper.find('.wtTagAddChip')
       expect(addBtn.attributes('aria-label')).toBe('Add tag')
     })
   })
