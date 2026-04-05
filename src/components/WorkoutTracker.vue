@@ -594,30 +594,44 @@
           </div>
         </div>
         <!-- Plate calculator settings (iOS grouped style) -->
-        <div v-if="editExerciseObj?.inputMode === 'plates'" class="iosSettingsSection">
-          <span class="iosSettingsHeader">Plate Calculator</span>
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Input Mode</span>
           <div class="iosSettingsGroup">
             <div class="iosSettingsRow">
-              <span class="iosSettingsRowLabel">Counting</span>
-              <div class="iosSegmentedControl">
-                <button
-                  :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'per-side' }]"
-                  @click="editPlateCountMode = 'per-side'"
-                >Per side</button>
-                <button
-                  :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'total' }]"
-                  @click="editPlateCountMode = 'total'"
-                >Total</button>
-              </div>
+              <span class="iosSettingsRowLabel">Plate calculator</span>
+              <button
+                class="iosToggle"
+                :class="{ iosToggleOn: editPlateMode }"
+                role="switch"
+                :aria-checked="editPlateMode"
+                @click="editPlateMode = !editPlateMode"
+              >
+                <span class="iosToggleKnob" />
+              </button>
             </div>
-            <div class="iosSettingsRow">
-              <span class="iosSettingsRowLabel">Starting weight</span>
-              <div class="iosStepper">
-                <button class="iosStepperBtn" @click="editBarWeight = Math.max(0, editBarWeight - 5)" aria-label="Decrease weight">−</button>
-                <span class="iosStepperValue">{{ editBarWeight }} {{ weightUnit }}</span>
-                <button class="iosStepperBtn" @click="editBarWeight += 5" aria-label="Increase weight">+</button>
+            <template v-if="editPlateMode">
+              <div class="iosSettingsRow">
+                <span class="iosSettingsRowLabel">Counting</span>
+                <div class="iosSegmentedControl">
+                  <button
+                    :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'per-side' }]"
+                    @click="editPlateCountMode = 'per-side'"
+                  >Per side</button>
+                  <button
+                    :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'total' }]"
+                    @click="editPlateCountMode = 'total'"
+                  >Total</button>
+                </div>
               </div>
-            </div>
+              <div class="iosSettingsRow">
+                <span class="iosSettingsRowLabel">Starting weight</span>
+                <div class="iosStepper">
+                  <button class="iosStepperBtn" @click="editBarWeight = Math.max(0, editBarWeight - 5)" aria-label="Decrease weight">−</button>
+                  <span class="iosStepperValue">{{ editBarWeight }} {{ weightUnit }}</span>
+                  <button class="iosStepperBtn" @click="editBarWeight += 5" aria-label="Increase weight">+</button>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
         <div class="repMaxActions">
@@ -1922,18 +1936,16 @@ const editTarget = ref<string | null>(null)
 const editName = ref('')
 const editTags = ref<string[]>([])
 const newTagInput = ref('')
+const editPlateMode = ref(false)
 const editPlateCountMode = ref<'per-side' | 'total'>('per-side')
 const editBarWeight = ref<number>(45)
 
-const editExerciseObj = computed(() => {
-  if (!editTarget.value) return null
-  return store.exercises.find(e => e.id === editTarget.value) || null
-})
 
 function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
+  editPlateMode.value = exercise.inputMode === 'plates'
   editPlateCountMode.value = exercise.plateCountMode || 'per-side'
   editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
   newTagInput.value = ''
@@ -1974,12 +1986,15 @@ function confirmEditExercise() {
   }
   store.renameExercise(editTarget.value, editName.value)
   store.updateExerciseTags(editTarget.value, editTags.value)
-  // Save plate settings if in plates mode
-  const ex = store.exercises.find(e => e.id === editTarget.value)
-  if (ex?.inputMode === 'plates') {
+  // Save input mode and plate settings
+  store.setExerciseInputMode(editTarget.value, editPlateMode.value ? 'plates' : 'numpad')
+  if (editPlateMode.value) {
     store.setExercisePlateCountMode(editTarget.value, editPlateCountMode.value)
-    ex.barWeight = editBarWeight.value
-    store._persist()
+    const ex = store.exercises.find(e => e.id === editTarget.value)
+    if (ex) {
+      ex.barWeight = editBarWeight.value
+      store._persist()
+    }
   }
   editTarget.value = null
   syncPlateWeight()
