@@ -499,7 +499,6 @@
                 <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
               </div>
             </div>
-            <div v-if="plateDeltaText" class="wtPlateDelta">{{ plateDeltaText }}</div>
             <div class="wtPlateFooter">
               <div class="wtPlateCountToggle">
                 <button :class="['wtCountOption', { wtCountActive: isPerSide }]" @click="!isPerSide && togglePlateCountMode()">Per side</button>
