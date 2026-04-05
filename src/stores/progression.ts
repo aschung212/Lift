@@ -358,10 +358,13 @@ export const useProgressionStore = defineStore('progression', {
 
       // Apply pending target change (it takes effect this Monday)
       if (this.pendingTargetChange !== null) {
+        const isDecrease = this.pendingTargetChange < this.weeklyTarget
         this.weeklyTarget = this.pendingTargetChange
         this.pendingTargetChange = null
-        // Target change resets streak
-        this.streakWeeks = metTarget ? 1 : 0
+        // Only decreasing resets streak — increasing is more ambitious, not gaming
+        if (isDecrease) {
+          this.streakWeeks = metTarget ? 1 : 0
+        }
       }
 
       // Record streak history entry

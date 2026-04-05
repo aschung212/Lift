@@ -577,7 +577,7 @@
               </div>
               <div class="weeklyGoalPickerBonus">{{ starterGoalBonusLabel }}</div>
               <div class="weeklyGoalPickerHint">Your streak grows each week you hit this goal. Longer streaks earn even higher bonuses.</div>
-              <div class="weeklyGoalPickerHint">Changing this later will reset your streak.</div>
+              <div class="weeklyGoalPickerHint">You can increase this later without losing your streak. Decreasing it will reset your streak.</div>
               <div v-if="starterPickerGoal >= 7" class="weeklyGoalPickerRest">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</div>
             </div>
             <button class="unlockDismiss" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Start' }}</button>
