@@ -473,20 +473,7 @@
             <div class="wtPlateDisplay">
               <span class="wtPlateTotal">{{ displayWeight(plateWeightLbs) }} {{ weightUnit }}</span>
               <span class="wtPlateBreakdown">
-                <template v-if="editingBaseWeight">
-                  <input
-                    v-model="baseWeightStr"
-                    type="text"
-                    inputmode="decimal"
-                    class="wtBaseWeightInput"
-                    @blur="saveStartingResistance"
-                    @keydown.enter="saveStartingResistance"
-                  /> {{ weightUnit }} base
-                </template>
-                <template v-else>
-                  <span class="wtStartingResistance" @click="editStartingResistance">{{ displayWeight(currentBarWeight) }} {{ weightUnit }} base</span>
-                </template>
-                {{ currentPlates.length > 0 ? ` + ${formatPlates(currentPlates)} ${isPerSide ? 'per side' : ''}` : '' }}
+                {{ currentPlates.length > 0 ? `${currentBarWeight > 0 ? 'Bar + ' : ''}${formatPlates(currentPlates)}${isPerSide ? ' per side' : ''}` : currentBarWeight > 0 ? 'Bar only' : 'No plates' }}
               </span>
             </div>
             <div class="wtPlateButtons">
@@ -504,6 +491,20 @@
                 <button :class="['wtCountOption', { wtCountActive: isPerSide }]" @click="!isPerSide && togglePlateCountMode()">Per side</button>
                 <button :class="['wtCountOption', { wtCountActive: !isPerSide }]" @click="isPerSide && togglePlateCountMode()">Total</button>
               </div>
+              <div v-if="editingBaseWeight" class="wtBasePresets">
+                <button :class="['wtBasePreset', { wtBasePresetActive: currentBarWeight === 0 }]" @click="setBaseWeight(0)">0</button>
+                <button :class="['wtBasePreset', { wtBasePresetActive: currentBarWeight === 45 }]" @click="setBaseWeight(45)">45</button>
+                <input
+                  v-model="baseWeightStr"
+                  type="text"
+                  inputmode="decimal"
+                  class="wtBaseWeightInput"
+                  placeholder="Custom"
+                  @blur="saveStartingResistance"
+                  @keydown.enter="saveStartingResistance"
+                />
+              </div>
+              <button v-else class="wtBaseLabel" @click="editStartingResistance">Bar: {{ displayWeight(currentBarWeight) }}</button>
               <button class="wtModeSwitcher" @click="toggleInputMode">Use numpad</button>
             </div>
           </div>
@@ -662,7 +663,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
-import { platesToWeight, weightToPlates, plateDelta, formatPlates, formatDelta, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
@@ -1077,18 +1078,10 @@ const baseWeightStr = ref('')
 function editStartingResistance() {
   baseWeightStr.value = String(displayWeight(currentBarWeight.value))
   editingBaseWeight.value = true
-  nextTick(() => {
-    const el = document.querySelector('.wtBaseWeightInput') as HTMLInputElement
-    el?.focus()
-    el?.select()
-  })
 }
 
-function saveStartingResistance() {
+function setBaseWeight(lbs: number) {
   editingBaseWeight.value = false
-  const parsed = parseFloat(baseWeightStr.value)
-  if (isNaN(parsed) || parsed < 0) return
-  const lbs = toLbs(parsed)
   const id = selectedExerciseId.value
   if (!id) return
   const ex = store.exercises.find(e => e.id === id)
@@ -1096,6 +1089,14 @@ function saveStartingResistance() {
   ex.barWeight = lbs
   store._persist()
   syncPlateWeight()
+}
+
+function saveStartingResistance() {
+  const parsed = parseFloat(baseWeightStr.value)
+  if (!isNaN(parsed) && parsed >= 0) {
+    setBaseWeight(toLbs(parsed))
+  }
+  editingBaseWeight.value = false
 }
 
 function togglePlateCountMode() {
@@ -1115,14 +1116,6 @@ const activeDenominations = computed(() =>
 
 
 
-const plateDeltaText = computed(() => {
-  // Only show delta during back-to-back logging (previous set exists and plates differ)
-  if (previousPlates.value.length === 0) return ''
-  if (currentPlates.value.length === 0) return ''
-  const delta = plateDelta(previousPlates.value, currentPlates.value)
-  if (delta.add.length === 0 && delta.remove.length === 0) return ''
-  return formatDelta(delta) + (isPerSide.value ? ' per side' : '')
-})
 
 const plateCounts = computed(() => {
   const counts = new Map<number, number>()
