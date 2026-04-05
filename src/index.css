@@ -3030,8 +3030,8 @@ html.theme-fading .settingsSheet {
 /* ─── iOS-style grouped settings ─────────────────────────────────── */
 
 .iosSettingsSection {
-  margin-top: 16px;
-  margin-bottom: 16px;
+  margin-top: 4px;
+  margin-bottom: 8px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
@@ -3039,11 +3039,11 @@ html.theme-fading .settingsSheet {
 .iosSettingsHeader {
   display: block;
   font-size: var(--font-caption2);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
-  padding: 0 16px 8px;
+  letter-spacing: 0.6px;
+  padding: 0 0 8px;
 }
 
 .iosSettingsGroup {
@@ -3159,7 +3159,7 @@ html.theme-fading .settingsSheet {
   display: block;
   font-size: var(--font-caption2);
   color: var(--text-muted);
-  padding: 8px 16px 0;
+  padding: 8px 0 0;
   line-height: 1.4;
 }
 
