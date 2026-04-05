@@ -649,7 +649,12 @@
   <Teleport to="body">
     <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
-        <h2 id="tag-manager-title">Manage Tags</h2>
+        <div class="wtModalHeader">
+          <h2 id="tag-manager-title">Manage Tags</h2>
+          <button class="wtPlateSettingsBtn" @click="startTagManagerAdd" aria-label="New tag">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="20" height="20"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
         <p v-if="tagManagerTags.length === 0 && !tagManagerAdding" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Tap + to create one.</p>
         <ul class="wtTagManagerList">
           <li v-for="tag in tagManagerTags" :key="tag" class="wtTagManagerItemWrap">
@@ -706,7 +711,6 @@
           <button class="wtTagAddBtn" @mousedown.prevent @click="confirmTagManagerAdd" :disabled="!tagManagerNewName" aria-label="Create tag">✓</button>
         </div>
         <div class="repMaxActions">
-          <button v-if="!tagManagerAdding" class="repMaxBtn repMaxBtnCalc" @click="startTagManagerAdd">+ New Tag</button>
           <button class="repMaxBtn repMaxBtnClose" @click="tagManagerOpen = false">Done</button>
         </div>
       </div>
