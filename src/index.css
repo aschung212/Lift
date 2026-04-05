@@ -2856,6 +2856,82 @@ html.theme-fading .settingsSheet {
   gap: 8px;
 }
 
+/* ─── Plate calculator ────────────────────────────────────────────── */
+
+.wtPlateCalc {
+  padding: 0 0 8px;
+}
+
+.wtPlateDisplay {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.wtPlateBreakdown {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+}
+
+.wtPlateButtons {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wtPlateGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.wtPlateBtn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: 8px;
+  font-size: var(--font-body);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.wtPlateBtn:active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+.wtPlateBtn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.wtPlateDenom {
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.wtPlateDelta {
+  text-align: center;
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  padding: 8px 0 0;
+  font-style: italic;
+}
+
+.wtPlateLoadedRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+}
+
 /* ─── XP toast ───────────────────────────────────────────────────── */
 
 .xpToast {

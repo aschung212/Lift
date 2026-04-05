@@ -386,6 +386,15 @@
                 <button class="wtTagAddBtn" @mousedown.prevent @click="addNewExerciseTag" :disabled="!newExerciseTagInput" aria-label="Add tag">+</button>
               </div>
             </div>
+            <label class="wtPlateLoadedRow">
+              <span>Plate loaded</span>
+              <button
+                :class="['glassToggle', { on: newExercisePlateLoaded }]"
+                @click="newExercisePlateLoaded = !newExercisePlateLoaded"
+                role="switch"
+                :aria-checked="newExercisePlateLoaded"
+              ><span class="glassToggleThumb"></span></button>
+            </label>
           </template>
 
           <!-- Date as subtitle (tappable) -->
@@ -435,6 +444,21 @@
                 />
               </div>
             </label>
+          </div>
+
+          <!-- Plate calculator (shown for plate-loaded exercises) -->
+          <div v-if="exerciseIsPlateLoaded && !isEditMode" class="wtPlateCalc">
+            <div class="wtPlateDisplay">
+              <span class="wtPlateBreakdown">{{ plateDisplayText }}</span>
+            </div>
+            <div class="wtPlateButtons">
+              <div v-for="denom in activeDenominations" :key="denom" class="wtPlateGroup">
+                <button class="wtPlateBtn" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
+                <span class="wtPlateDenom">{{ denom }}</span>
+                <button class="wtPlateBtn" @click="addPlate(denom)">+</button>
+              </div>
+            </div>
+            <div v-if="plateDeltaText" class="wtPlateDelta">{{ plateDeltaText }}</div>
           </div>
 
           <!-- Live 1RM estimate / PR target -->
@@ -615,6 +639,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { platesToWeight, weightToPlates, plateDelta, formatPlates, formatDelta, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
@@ -977,9 +1002,59 @@ const showModal = ref(false)
 
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
+
+// ── Plate calculator state ──────────────────────────────────────
+const currentPlates = ref<number[]>([])
+const previousPlates = ref<number[]>([])
+
+const exerciseIsPlateLoaded = computed(() => {
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  return ex?.plateLoaded === true
+})
+
+const currentBarWeight = computed(() => {
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  return ex?.barWeight ?? 45
+})
+
+const activeDenominations = computed(() =>
+  weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+)
+
+const plateDisplayText = computed(() => {
+  const bar = displayWeight(currentBarWeight.value)
+  const plates = formatPlates(currentPlates.value)
+  const total = displayWeight(platesToWeight(currentPlates.value, currentBarWeight.value))
+  if (!plates) return `Bar (${bar}) = ${total} ${weightUnit.value}`
+  return `Bar (${bar}) + ${plates} per side = ${total} ${weightUnit.value}`
+})
+
+const plateDeltaText = computed(() => {
+  if (previousPlates.value.length === 0 && currentPlates.value.length === 0) return ''
+  if (previousPlates.value.length === 0) return ''
+  const delta = plateDelta(previousPlates.value, currentPlates.value)
+  if (delta.add.length === 0 && delta.remove.length === 0) return ''
+  return formatDelta(delta) + ' per side'
+})
+
+function addPlate(denom: number) {
+  currentPlates.value = [...currentPlates.value, denom].sort((a, b) => b - a)
+  // Sync to weight input
+  weight.value = displayWeight(platesToWeight(currentPlates.value, currentBarWeight.value))
+}
+
+function removePlate(denom: number) {
+  const idx = currentPlates.value.indexOf(denom)
+  if (idx === -1) return
+  const updated = [...currentPlates.value]
+  updated.splice(idx, 1)
+  currentPlates.value = updated
+  weight.value = displayWeight(platesToWeight(currentPlates.value, currentBarWeight.value))
+}
 const newExerciseName = ref('')
 const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
+const newExercisePlateLoaded = ref(false)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
 // Vue writing back the parsed number to el.value causes iOS Safari to dismiss
 // the keyboard after each keystroke. Using type="text" + inputmode avoids this.
@@ -1071,6 +1146,24 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   date.value = lastLogDate.value
+  // Initialize plate calculator from last set if plate-loaded
+  const exercise = store.exercises.find(e => e.id === exerciseId)
+  if (exercise?.plateLoaded) {
+    const lastSet = exercise.sets.length > 0 ? exercise.sets[exercise.sets.length - 1] : null
+    if (lastSet) {
+      const barWt = exercise.barWeight ?? 45
+      const plates = weightToPlates(lastSet.weight, barWt, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+      currentPlates.value = plates || []
+      previousPlates.value = plates || []
+      weight.value = displayWeight(lastSet.weight)
+    } else {
+      currentPlates.value = []
+      previousPlates.value = []
+    }
+  } else {
+    currentPlates.value = []
+    previousPlates.value = []
+  }
   showModal.value = true
 }
 
@@ -1612,12 +1705,15 @@ function saveSet() {
       if (pendingTag && !newExerciseTags.value.includes(pendingTag)) {
         newExerciseTags.value.push(pendingTag)
       }
-      const newId = store.addExercise(newExerciseName.value, newExerciseTags.value)
+      const newId = store.addExercise(newExerciseName.value, newExerciseTags.value, {
+        plateLoaded: newExercisePlateLoaded.value || undefined,
+      })
       if (!newId) return
       exerciseId = newId
       selectedExerciseId.value = exerciseId
       newExerciseName.value = ''
       newExerciseTags.value = []
+      newExercisePlateLoaded.value = false
       newExerciseTagInput.value = ''
       logEvent('exercise_add')
     }
@@ -1641,8 +1737,14 @@ function saveSet() {
         startRestTimer()
       }
       // Clear fields and stay on the modal for the next set
-      weight.value = null
-      reps.value = null
+      if (exerciseIsPlateLoaded.value) {
+        // Keep plate config for next set (user adjusts, not reloads)
+        previousPlates.value = [...currentPlates.value]
+        reps.value = null
+      } else {
+        weight.value = null
+        reps.value = null
+      }
       nextTick(() => weightInputEl.value?.focus())
     } else {
       closeModal()

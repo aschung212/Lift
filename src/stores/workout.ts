@@ -20,6 +20,8 @@ export interface Exercise {
   name: string
   tags: string[]
   sets: WorkoutSet[]
+  plateLoaded?: boolean   // true = show plate calculator for this exercise
+  barWeight?: number      // bar weight in lbs, default 45
 }
 
 export interface OverloadSuggestion {
@@ -118,13 +120,18 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (!exercises) return
 
-      const remoteExercises = exercises.map((ex: Record<string, unknown>) => ({
-        id: ex.id as string,
-        name: ex.name as string,
-        tags: (ex.tags as string[]) || [],
-        updated_at: (ex.updated_at as string) || (ex.created_at as string) || new Date().toISOString(),
-        sets: [] as WorkoutSet[]
-      }))
+      const remoteExercises = exercises.map((ex: Record<string, unknown>) => {
+        const exercise: Exercise & { updated_at: string } = {
+          id: ex.id as string,
+          name: ex.name as string,
+          tags: (ex.tags as string[]) || [],
+          updated_at: (ex.updated_at as string) || (ex.created_at as string) || new Date().toISOString(),
+          sets: [] as WorkoutSet[],
+        }
+        if (ex.plate_loaded) exercise.plateLoaded = ex.plate_loaded as boolean
+        if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight as number
+        return exercise
+      })
 
       // Build remote sets grouped by exercise
       const remoteSetsMap = new Map<string, WorkoutSet[]>()
@@ -204,7 +211,7 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    addExercise(name: string, tags: string[] = [], { sync = true }: { sync?: boolean } = {}): string | null {
+    addExercise(name: string, tags: string[] = [], { sync = true, plateLoaded, barWeight }: { sync?: boolean; plateLoaded?: boolean; barWeight?: number } = {}): string | null {
       const trimmed = name.trim()
       if (!trimmed) return null
       const existing = this.exercises.find(
@@ -212,15 +219,34 @@ export const useWorkoutStore = defineStore('workout', {
       )
       if (existing) return existing.id
       const id = uuid()
-      this.exercises.push({ id, name: trimmed, tags: [...tags], sets: [] })
+      const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [] }
+      if (plateLoaded) exercise.plateLoaded = true
+      if (barWeight !== undefined) exercise.barWeight = barWeight
+      this.exercises.push(exercise)
       this._persist()
 
       if (sync && supabase && this._userId) {
         supabase.from('exercises').insert({
-          id, user_id: this._userId, name: trimmed, tags: [...tags]
+          id, user_id: this._userId, name: trimmed, tags: [...tags],
+          plate_loaded: plateLoaded || false, bar_weight: barWeight ?? 45,
         }).then()
       }
       return id
+    },
+
+    updateExercisePlateConfig(exerciseId: string, plateLoaded: boolean, barWeight: number) {
+      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
+      if (!exercise) return
+      exercise.plateLoaded = plateLoaded
+      exercise.barWeight = barWeight
+      this._persist()
+
+      if (supabase && this._userId) {
+        const userId = this._userId
+        syncQueue.enqueue(`exercise-plate:${exerciseId}`, () =>
+          supabase!.from('exercises').update({ plate_loaded: plateLoaded, bar_weight: barWeight }).eq('id', exerciseId).eq('user_id', userId)
+        )
+      }
     },
 
     logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
