@@ -568,12 +568,16 @@
             <div class="unlockTitle" style="color: var(--text-primary)">Set Your Weekly Goal</div>
             <div class="resetConfirmText">How many days per week do you plan to train? Hit your goal consistently to build a streak and earn bonus XP.</div>
             <div class="weeklyGoalPicker">
-              <div class="iosStepper" style="margin: 16px auto">
-                <button class="iosStepperBtn" @click="starterPickerGoal = Math.max(1, starterPickerGoal - 1)" :disabled="starterPickerGoal <= 1" aria-label="Decrease">−</button>
-                <span class="iosStepperValue">{{ starterPickerGoal }} day{{ starterPickerGoal !== 1 ? 's' : '' }}</span>
-                <button class="iosStepperBtn" @click="starterPickerGoal = Math.min(7, starterPickerGoal + 1)" :disabled="starterPickerGoal >= 7" aria-label="Increase">+</button>
+              <div class="weeklyGoalStepperWrap">
+                <div class="iosStepper">
+                  <button class="iosStepperBtn" @click="starterPickerGoal = Math.max(1, starterPickerGoal - 1)" :disabled="starterPickerGoal <= 1" aria-label="Decrease">−</button>
+                  <span class="iosStepperValue">{{ starterPickerGoal }} day{{ starterPickerGoal !== 1 ? 's' : '' }}</span>
+                  <button class="iosStepperBtn" @click="starterPickerGoal = Math.min(7, starterPickerGoal + 1)" :disabled="starterPickerGoal >= 7" aria-label="Increase">+</button>
+                </div>
               </div>
               <div class="weeklyGoalPickerBonus">{{ starterGoalBonusLabel }}</div>
+              <div class="weeklyGoalPickerHint">Your streak grows each week you hit this goal. Longer streaks earn even higher bonuses.</div>
+              <div class="weeklyGoalPickerHint">Changing this later will reset your streak.</div>
               <div v-if="starterPickerGoal >= 7" class="weeklyGoalPickerRest">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</div>
             </div>
             <button class="unlockDismiss" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Start' }}</button>
@@ -750,10 +754,10 @@ function adjustWeeklyTarget(delta: number) {
 
 const weeklyGoalBonusLabel = computed(() => {
   const target = effectiveWeeklyTarget.value
-  if (target >= 6) return 'Streak bonus: 1.5× (max)'
-  if (target >= 5) return 'Streak bonus: 1.3×'
-  if (target >= 4) return 'Streak bonus: 1.2×'
-  if (target >= 3) return 'Streak bonus: 1.1×'
+  if (target >= 6) return 'Initial streak bonus: 1.5× (max)'
+  if (target >= 5) return 'Initial streak bonus: 1.3×'
+  if (target >= 4) return 'Initial streak bonus: 1.2×'
+  if (target >= 3) return 'Initial streak bonus: 1.1×'
   return 'No streak bonus'
 })
 
@@ -1043,10 +1047,10 @@ const starterPickerStep = ref<'explainer' | 'pick' | 'goal'>('explainer')
 const starterPickerGoal = ref(3)
 const starterGoalBonusLabel = computed(() => {
   const t = starterPickerGoal.value
-  if (t >= 6) return 'Streak bonus: 1.5× (max)'
-  if (t >= 5) return 'Streak bonus: 1.3×'
-  if (t >= 4) return 'Streak bonus: 1.2×'
-  if (t >= 3) return 'Streak bonus: 1.1×'
+  if (t >= 6) return 'Initial streak bonus: 1.5× (max)'
+  if (t >= 5) return 'Initial streak bonus: 1.3×'
+  if (t >= 4) return 'Initial streak bonus: 1.2×'
+  if (t >= 3) return 'Initial streak bonus: 1.1×'
   return 'No streak bonus'
 })
 const starterPickerSelection = ref<ThemeId | null>(null)

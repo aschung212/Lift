@@ -3411,11 +3411,24 @@ html.theme-fading .settingsSheet {
   margin: 8px 0 16px;
 }
 
+.weeklyGoalStepperWrap {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0 8px;
+}
+
 .weeklyGoalPickerBonus {
   font-size: var(--font-subhead);
   font-weight: 600;
   color: var(--accent);
   margin-top: 8px;
+}
+
+.weeklyGoalPickerHint {
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.4;
 }
 
 .weeklyGoalPickerRest {
