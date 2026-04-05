@@ -551,19 +551,32 @@ export const useProgressionStore = defineStore('progression', {
 
 /**
  * Count unique training days in a Mon-Sun week.
+ * Uses binary search on sorted dates for O(log n + k) instead of O(n).
  * Exported for testing; used by evaluatePendingWeeks.
+ *
+ * @param sortedDates - YYYY-MM-DD date strings, must be sorted ascending
  */
 export function getTrainingDaysInWeek(
-  setDates: string[],
+  sortedDates: string[],
   weekStartDate: string,  // YYYY-MM-DD (Monday)
   weekEndDate: string,    // YYYY-MM-DD (Sunday)
 ): number {
+  if (sortedDates.length === 0) return 0
+
+  // Binary search for the first date >= weekStartDate
+  let lo = 0, hi = sortedDates.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (sortedDates[mid].slice(0, 10) < weekStartDate) lo = mid + 1
+    else hi = mid
+  }
+
+  // Walk forward counting unique days until we pass weekEndDate
   const days = new Set<string>()
-  for (const date of setDates) {
-    const dateKey = date.slice(0, 10)
-    if (dateKey >= weekStartDate && dateKey <= weekEndDate) {
-      days.add(dateKey)
-    }
+  for (let i = lo; i < sortedDates.length; i++) {
+    const dateKey = sortedDates[i].slice(0, 10)
+    if (dateKey > weekEndDate) break
+    days.add(dateKey)
   }
   return days.size
 }

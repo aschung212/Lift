@@ -223,6 +223,17 @@
                 </button>
               </div>
               <div v-show="progressionActive" class="settingsRow">
+                <span class="settingsLabel settingsLabelIndented">Weekly goal</span>
+                <div class="iosStepper">
+                  <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(progressionStore.weeklyTarget - 1)" :disabled="progressionStore.weeklyTarget <= 1" aria-label="Decrease weekly goal">−</button>
+                  <span class="iosStepperValue">{{ progressionStore.weeklyTarget }} day{{ progressionStore.weeklyTarget !== 1 ? 's' : '' }}</span>
+                  <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(progressionStore.weeklyTarget + 1)" :disabled="progressionStore.weeklyTarget >= 7" aria-label="Increase weekly goal">+</button>
+                </div>
+              </div>
+              <div v-show="progressionActive && progressionStore.pendingTargetChange !== null" class="settingsRow">
+                <span class="settingsHint settingsLabelIndented">Changes to {{ progressionStore.pendingTargetChange }} day{{ progressionStore.pendingTargetChange !== 1 ? 's' : '' }} next Monday</span>
+              </div>
+              <div v-show="progressionActive" class="settingsRow">
                 <button class="settingsResetBtn" @click="confirmResetProgress">Reset Progress</button>
               </div>
             </div>
@@ -1427,8 +1438,7 @@ onMounted(async () => {
 
   // Catch up streak evaluation for any weeks missed since last app open
   if (progressionStore.progressionEnabled) {
-    const setDates = workoutStoreForOnboarding.exercises.flatMap(e => e.sets.map(s => s.date))
-    progressionStore.evaluatePendingWeeks(setDates)
+    progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates)
   }
 })
 onUnmounted(() => {

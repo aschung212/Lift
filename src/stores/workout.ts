@@ -506,6 +506,15 @@ export const useWorkoutStore = defineStore('workout', {
       return [...tagSet].sort()
     },
 
+    /** Sorted unique workout dates (YYYY-MM-DD), derived from all sets. */
+    workoutDates: (state): string[] => {
+      const dates = new Set<string>()
+      state.exercises.forEach((e: Exercise) =>
+        e.sets.forEach((s: WorkoutSet) => dates.add(s.date.slice(0, 10)))
+      )
+      return [...dates].sort()
+    },
+
     getExercisePR: (state) => (exerciseId: string): number => {
       const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise || exercise.sets.length === 0) return 0
