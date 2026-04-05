@@ -1117,11 +1117,12 @@ const activeDenominations = computed(() =>
 
 
 const plateDeltaText = computed(() => {
-  if (previousPlates.value.length === 0 && currentPlates.value.length === 0) return ''
+  // Only show delta during back-to-back logging (previous set exists and plates differ)
   if (previousPlates.value.length === 0) return ''
+  if (currentPlates.value.length === 0) return ''
   const delta = plateDelta(previousPlates.value, currentPlates.value)
   if (delta.add.length === 0 && delta.remove.length === 0) return ''
-  return formatDelta(delta) + ' per side'
+  return formatDelta(delta) + (isPerSide.value ? ' per side' : '')
 })
 
 const plateCounts = computed(() => {
