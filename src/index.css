@@ -2096,25 +2096,37 @@ html.theme-fading .settingsSheet {
 
 .wtTagExerciseList {
   list-style: none;
-  padding: 0 0 8px 32px;
+  padding: 0 0 8px 0;
   margin: 0;
 }
-.wtTagExerciseItem {
-  padding: 4px 0;
-}
-.wtTagExerciseLabel {
+
+.wtTagExerciseRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--font-footnote);
-  color: var(--text);
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px 0 32px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  font-family: inherit;
+  font-size: var(--font-callout);
+  color: var(--text-primary);
   cursor: pointer;
+  text-align: left;
 }
-.wtTagExerciseCheckbox {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-  cursor: pointer;
+
+.wtTagExerciseRow:active {
+  background: var(--bg-hover);
+}
+
+.wtTagExerciseRowName {
+  flex: 1;
+}
+
+.wtTagExerciseCheck {
+  flex-shrink: 0;
 }
 
 .wtTagManagerLabel {

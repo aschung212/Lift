@@ -678,16 +678,11 @@
               </template>
             </div>
             <ul v-if="expandedTag === tag" class="wtTagExerciseList">
-              <li v-for="exercise in store.exercises" :key="exercise.id" class="wtTagExerciseItem">
-                <label class="wtTagExerciseLabel">
-                  <input
-                    type="checkbox"
-                    :checked="exercise.tags.includes(tag)"
-                    @change="toggleExerciseTag(exercise.id, tag)"
-                    class="wtTagExerciseCheckbox"
-                  />
-                  <span>{{ exercise.name }}</span>
-                </label>
+              <li v-for="exercise in store.exercises" :key="exercise.id">
+                <button class="wtTagExerciseRow" @click="toggleExerciseTag(exercise.id, tag)">
+                  <span class="wtTagExerciseRowName">{{ exercise.name }}</span>
+                  <svg v-if="exercise.tags.includes(tag)" class="wtTagExerciseCheck" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
               </li>
             </ul>
           </li>
