@@ -475,7 +475,7 @@
                 <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)">+</button>
                 <div class="wtPlateDenomWrap">
                   <span class="wtPlateDenom">{{ denom }}</span>
-                  <span v-if="plateCounts.get(denom)" class="wtPlateCount">×{{ plateCounts.get(denom) }}</span>
+                  <span class="wtPlateCount">{{ plateCounts.get(denom) ? `×${plateCounts.get(denom)}` : '' }}</span>
                 </div>
                 <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
               </div>
