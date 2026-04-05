@@ -3017,7 +3017,21 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
 }
 
+.wtModalHeader {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.wtModalHeader h2 {
+  flex: 1;
+  text-align: center;
+}
+
 .wtPlateSettingsBtn {
+  position: absolute;
+  right: 0;
   width: 44px;
   height: 44px;
   background: none;
@@ -3032,20 +3046,17 @@ html.theme-fading .settingsSheet {
 .wtEditPlateSettings {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 0;
+  gap: 16px;
+  padding: 12px 0 0;
   border-top: 1px solid var(--border);
 }
 
-.wtEditPlateRow {
+.wtTagRow {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
   align-items: center;
-}
-
-.wtEditPlateLabel {
-  font-size: var(--font-footnote);
-  color: var(--text-secondary);
 }
 
 .wtBasePresets {

@@ -344,7 +344,12 @@
 
         <!-- Log / edit form -->
         <template v-else>
-          <h2 id="log-modal-title">{{ modalTitle }}</h2>
+          <div class="wtModalHeader">
+            <h2 id="log-modal-title">{{ modalTitle }}</h2>
+            <button v-if="plateMode && isLogForExercise" class="wtPlateSettingsBtn" @click="openEditExerciseModal(store.exercises.find(e => e.id === selectedExerciseId)!)" aria-label="Exercise settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+          </div>
 
           <!-- New exercise mode: name + tags input -->
           <template v-if="!isEditMode && selectedExerciseId === '__new__'">
@@ -487,9 +492,6 @@
               </div>
             </div>
             <div class="wtPlateFooter">
-              <button class="wtPlateSettingsBtn" @click="openEditExerciseModal(store.exercises.find(e => e.id === selectedExerciseId)!)" aria-label="Plate settings">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </button>
               <button class="wtModeSwitcher" @click="toggleInputMode">Use numpad</button>
             </div>
           </div>
@@ -552,27 +554,42 @@
         </div>
         <!-- Plate calculator settings -->
         <div v-if="editExerciseObj?.inputMode === 'plates'" class="wtEditPlateSettings">
-          <div class="wtEditPlateRow">
-            <span class="wtEditPlateLabel">Counting</span>
-            <div class="wtPlateCountToggle">
-              <button :class="['wtCountOption', { wtCountActive: editPlateCountMode === 'per-side' }]" @click="editPlateCountMode = 'per-side'">Per side</button>
-              <button :class="['wtCountOption', { wtCountActive: editPlateCountMode === 'total' }]" @click="editPlateCountMode = 'total'">Total</button>
+          <label class="repMaxLabel">
+            Plate loading
+            <div class="wtTagRow">
+              <button
+                :class="['wtTagPickerChip', { wtTagPickerChipActive: editPlateCountMode === 'per-side' }]"
+                @click="editPlateCountMode = 'per-side'"
+              >Per side</button>
+              <button
+                :class="['wtTagPickerChip', { wtTagPickerChipActive: editPlateCountMode === 'total' }]"
+                @click="editPlateCountMode = 'total'"
+              >Total</button>
             </div>
-          </div>
-          <div class="wtEditPlateRow">
-            <span class="wtEditPlateLabel">Starting weight</span>
-            <div class="wtBasePresets">
-              <button :class="['wtBasePreset', { wtBasePresetActive: editBarWeight === 0 }]" @click="editBarWeight = 0">0</button>
-              <button :class="['wtBasePreset', { wtBasePresetActive: editBarWeight === 45 }]" @click="editBarWeight = 45">45</button>
-              <input
-                v-model.number="editBarWeight"
-                type="text"
-                inputmode="decimal"
-                class="wtBaseWeightInput"
-                placeholder="Custom"
-              />
+          </label>
+          <label class="repMaxLabel">
+            Starting weight ({{ weightUnit }})
+            <div class="wtTagRow">
+              <button
+                :class="['wtTagPickerChip', { wtTagPickerChipActive: editBarWeight === 0 }]"
+                @click="editBarWeight = 0"
+              >None (0)</button>
+              <button
+                :class="['wtTagPickerChip', { wtTagPickerChipActive: editBarWeight === 45 }]"
+                @click="editBarWeight = 45"
+              >Bar (45)</button>
+              <div class="repMaxInputRow" style="flex:0 0 auto">
+                <input
+                  v-model.number="editBarWeight"
+                  type="text"
+                  inputmode="decimal"
+                  class="repMaxInput"
+                  style="width: 64px"
+                  placeholder="Custom"
+                />
+              </div>
             </div>
-          </div>
+          </label>
         </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
@@ -2013,7 +2030,11 @@ watch(editTarget, async (target) => {
   if (target) {
     await nextTick()
     const el = document.querySelector<HTMLElement>('[aria-labelledby="edit-exercise-title"]')
-    if (el) editExerciseFocus.activate(el)
+    if (el) {
+      editExerciseFocus.activate(el)
+      // Don't auto-focus the name input — user usually isn't renaming
+      ;(document.activeElement as HTMLElement)?.blur()
+    }
   } else {
     editExerciseFocus.deactivate()
   }
