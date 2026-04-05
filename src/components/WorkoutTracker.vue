@@ -541,6 +541,15 @@
             <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput" aria-label="Add tag">+</button>
           </div>
         </div>
+        <label class="wtPlateLoadedRow">
+          <span>Plate loaded</span>
+          <button
+            :class="['glassToggle', { on: editPlateLoaded }]"
+            @click="editPlateLoaded = !editPlateLoaded"
+            role="switch"
+            :aria-checked="editPlateLoaded"
+          ><span class="glassToggleThumb"></span></button>
+        </label>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
@@ -1796,11 +1805,13 @@ const editTarget = ref<string | null>(null)
 const editName = ref('')
 const editTags = ref<string[]>([])
 const newTagInput = ref('')
+const editPlateLoaded = ref(false)
 
 function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
+  editPlateLoaded.value = exercise.plateLoaded || false
   newTagInput.value = ''
 }
 
@@ -1839,6 +1850,7 @@ function confirmEditExercise() {
   }
   store.renameExercise(editTarget.value, editName.value)
   store.updateExerciseTags(editTarget.value, editTags.value)
+  store.updateExercisePlateConfig(editTarget.value, editPlateLoaded.value, 45)
   editTarget.value = null
   logEvent('exercise_edit')
 }
