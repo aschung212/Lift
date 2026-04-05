@@ -216,11 +216,11 @@ describe('Progression Integration', () => {
       expect(store.totalXP).toBe(200) // increased by 100 (150-50)
     })
 
-    it('removeSetXP preserves total', () => {
+    it('removeSetXP deducts from total', () => {
       const store = useProgressionStore()
       store.logSetXP('set-1', 200)
       store.removeSetXP('set-1')
-      expect(store.totalXP).toBe(200) // permanent
+      expect(store.totalXP).toBe(0)
       expect(store.xpPerSet['set-1']).toBeUndefined()
     })
   })
