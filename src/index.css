@@ -3017,15 +3017,35 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
 }
 
-.wtBaseLabel {
+.wtPlateSettingsBtn {
+  width: 44px;
+  height: 44px;
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: var(--font-caption2);
-  font-family: inherit;
   cursor: pointer;
-  padding: 4px 8px;
-  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wtEditPlateSettings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.wtEditPlateRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wtEditPlateLabel {
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
 }
 
 .wtBasePresets {

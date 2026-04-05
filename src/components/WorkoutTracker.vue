@@ -487,24 +487,9 @@
               </div>
             </div>
             <div class="wtPlateFooter">
-              <div class="wtPlateCountToggle">
-                <button :class="['wtCountOption', { wtCountActive: isPerSide }]" @click="!isPerSide && togglePlateCountMode()">Per side</button>
-                <button :class="['wtCountOption', { wtCountActive: !isPerSide }]" @click="isPerSide && togglePlateCountMode()">Total</button>
-              </div>
-              <div v-if="editingBaseWeight" class="wtBasePresets">
-                <button :class="['wtBasePreset', { wtBasePresetActive: currentBarWeight === 0 }]" @click="setBaseWeight(0)">0</button>
-                <button :class="['wtBasePreset', { wtBasePresetActive: currentBarWeight === 45 }]" @click="setBaseWeight(45)">45</button>
-                <input
-                  v-model="baseWeightStr"
-                  type="text"
-                  inputmode="decimal"
-                  class="wtBaseWeightInput"
-                  placeholder="Custom"
-                  @blur="saveStartingResistance"
-                  @keydown.enter="saveStartingResistance"
-                />
-              </div>
-              <button v-else class="wtBaseLabel" @click="editStartingResistance">Bar: {{ displayWeight(currentBarWeight) }}</button>
+              <button class="wtPlateSettingsBtn" @click="openEditExerciseModal(store.exercises.find(e => e.id === selectedExerciseId)!)" aria-label="Plate settings">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
               <button class="wtModeSwitcher" @click="toggleInputMode">Use numpad</button>
             </div>
           </div>
@@ -563,6 +548,30 @@
               @keyup.enter="addEditTag"
             />
             <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput" aria-label="Add tag">+</button>
+          </div>
+        </div>
+        <!-- Plate calculator settings -->
+        <div v-if="editExerciseObj?.inputMode === 'plates'" class="wtEditPlateSettings">
+          <div class="wtEditPlateRow">
+            <span class="wtEditPlateLabel">Counting</span>
+            <div class="wtPlateCountToggle">
+              <button :class="['wtCountOption', { wtCountActive: editPlateCountMode === 'per-side' }]" @click="editPlateCountMode = 'per-side'">Per side</button>
+              <button :class="['wtCountOption', { wtCountActive: editPlateCountMode === 'total' }]" @click="editPlateCountMode = 'total'">Total</button>
+            </div>
+          </div>
+          <div class="wtEditPlateRow">
+            <span class="wtEditPlateLabel">Starting weight</span>
+            <div class="wtBasePresets">
+              <button :class="['wtBasePreset', { wtBasePresetActive: editBarWeight === 0 }]" @click="editBarWeight = 0">0</button>
+              <button :class="['wtBasePreset', { wtBasePresetActive: editBarWeight === 45 }]" @click="editBarWeight = 45">45</button>
+              <input
+                v-model.number="editBarWeight"
+                type="text"
+                inputmode="decimal"
+                class="wtBaseWeightInput"
+                placeholder="Custom"
+              />
+            </div>
           </div>
         </div>
         <div class="repMaxActions">
@@ -1072,43 +1081,6 @@ const isPerSide = computed(() => {
   return (ex?.plateCountMode ?? 'per-side') === 'per-side'
 })
 
-const editingBaseWeight = ref(false)
-const baseWeightStr = ref('')
-
-function editStartingResistance() {
-  baseWeightStr.value = String(displayWeight(currentBarWeight.value))
-  editingBaseWeight.value = true
-}
-
-function setBaseWeight(lbs: number) {
-  editingBaseWeight.value = false
-  const id = selectedExerciseId.value
-  if (!id) return
-  const ex = store.exercises.find(e => e.id === id)
-  if (!ex) return
-  ex.barWeight = lbs
-  store._persist()
-  syncPlateWeight()
-}
-
-function saveStartingResistance() {
-  const parsed = parseFloat(baseWeightStr.value)
-  if (!isNaN(parsed) && parsed >= 0) {
-    setBaseWeight(toLbs(parsed))
-  }
-  editingBaseWeight.value = false
-}
-
-function togglePlateCountMode() {
-  const id = selectedExerciseId.value
-  if (!id) return
-  const ex = store.exercises.find(e => e.id === id)
-  if (!ex) return
-  const newMode = isPerSide.value ? 'total' : 'per-side'
-  store.setExercisePlateCountMode(id, newMode)
-  // Recalculate weight for new mode
-  syncPlateWeight()
-}
 
 const activeDenominations = computed(() =>
   weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
@@ -1889,11 +1861,20 @@ const editTarget = ref<string | null>(null)
 const editName = ref('')
 const editTags = ref<string[]>([])
 const newTagInput = ref('')
+const editPlateCountMode = ref<'per-side' | 'total'>('per-side')
+const editBarWeight = ref<number>(45)
+
+const editExerciseObj = computed(() => {
+  if (!editTarget.value) return null
+  return store.exercises.find(e => e.id === editTarget.value) || null
+})
 
 function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
+  editPlateCountMode.value = exercise.plateCountMode || 'per-side'
+  editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
   newTagInput.value = ''
 }
 
@@ -1932,7 +1913,15 @@ function confirmEditExercise() {
   }
   store.renameExercise(editTarget.value, editName.value)
   store.updateExerciseTags(editTarget.value, editTags.value)
+  // Save plate settings if in plates mode
+  const ex = store.exercises.find(e => e.id === editTarget.value)
+  if (ex?.inputMode === 'plates') {
+    store.setExercisePlateCountMode(editTarget.value, editPlateCountMode.value)
+    ex.barWeight = editBarWeight.value
+    store._persist()
+  }
   editTarget.value = null
+  syncPlateWeight()
   logEvent('exercise_edit')
 }
 
