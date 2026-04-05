@@ -1424,6 +1424,12 @@ onMounted(async () => {
 
   runMigrationIfNeeded()
   enforceThemeLock()
+
+  // Catch up streak evaluation for any weeks missed since last app open
+  if (progressionStore.progressionEnabled) {
+    const allSets = workoutStoreForOnboarding.exercises.flatMap(e => e.sets)
+    progressionStore.evaluatePendingWeeks(allSets)
+  }
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
