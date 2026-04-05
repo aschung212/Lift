@@ -1427,8 +1427,8 @@ onMounted(async () => {
 
   // Catch up streak evaluation for any weeks missed since last app open
   if (progressionStore.progressionEnabled) {
-    const allSets = workoutStoreForOnboarding.exercises.flatMap(e => e.sets)
-    progressionStore.evaluatePendingWeeks(allSets)
+    const setDates = workoutStoreForOnboarding.exercises.flatMap(e => e.sets.map(s => s.date))
+    progressionStore.evaluatePendingWeeks(setDates)
   }
 })
 onUnmounted(() => {

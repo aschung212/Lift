@@ -460,17 +460,17 @@ describe('Progression Integration', () => {
       store.streakWeeks = 0
       store.streakHistory = []
 
-      // Sets spread across two past weeks (Mon 2026-03-17 and Mon 2026-03-24)
-      const sets = [
-        makeSet({ weight: 100, reps: 5, date: '2026-03-17' }),
-        makeSet({ weight: 100, reps: 5, date: '2026-03-18' }),
-        makeSet({ weight: 100, reps: 5, date: '2026-03-19' }),
-        makeSet({ weight: 100, reps: 5, date: '2026-03-24' }),
-        makeSet({ weight: 100, reps: 5, date: '2026-03-25' }),
+      // Date strings spread across two past weeks (Mon 2026-03-17 and Mon 2026-03-24)
+      const dates = [
+        '2026-03-17',
+        '2026-03-18',
+        '2026-03-19',
+        '2026-03-24',
+        '2026-03-25',
       ]
 
       // Evaluate as if "now" is 2026-03-31 (both weeks are complete)
-      store.evaluatePendingWeeks(sets, new Date('2026-03-31T10:00:00Z'))
+      store.evaluatePendingWeeks(dates, new Date('2026-03-31T10:00:00Z'))
 
       // First week had 3 days → meets target → streak 1
       // Second week had 2 days → misses target → streak resets to 0
@@ -484,15 +484,11 @@ describe('Progression Integration', () => {
       store.progressionEnabled = false
       store.streakHistory = []
 
-      const sets = [
-        makeSet({ weight: 100, reps: 5, date: '2026-03-17' }),
-        makeSet({ weight: 100, reps: 5, date: '2026-03-18' }),
-        makeSet({ weight: 100, reps: 5, date: '2026-03-19' }),
-      ]
+      const dates = ['2026-03-17', '2026-03-18', '2026-03-19']
 
       // Mimic the startup guard: only call if progressionEnabled
       if (store.progressionEnabled) {
-        store.evaluatePendingWeeks(sets, new Date('2026-03-31T10:00:00Z'))
+        store.evaluatePendingWeeks(dates, new Date('2026-03-31T10:00:00Z'))
       }
 
       expect(store.streakHistory.length).toBe(0)

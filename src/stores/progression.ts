@@ -6,7 +6,6 @@ import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import { backupToIDB } from '../lib/durableStorage'
 import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
-import type { WorkoutSet } from './workout'
 import { XP_CONFIG } from '../lib/xp'
 
 const STORAGE_KEY = 'user-progression'
@@ -395,10 +394,10 @@ export const useProgressionStore = defineStore('progression', {
      * Evaluate all weeks that haven't been evaluated since the last recorded week.
      * Called on app startup to catch up if the user hasn't opened the app.
      *
-     * @param allSets - flat array of all workout sets across all exercises
+     * @param setDates - flat array of date strings (YYYY-MM-DD) from all workout sets
      * @param now - current date (injectable for testing)
      */
-    evaluatePendingWeeks(allSets: WorkoutSet[], now: Date = new Date()) {
+    evaluatePendingWeeks(setDates: string[], now: Date = new Date()) {
       const currentMonday = getMonday(now)
       const lastEvaluated = this.streakHistory.length > 0
         ? this.streakHistory[this.streakHistory.length - 1].weekStart
@@ -412,8 +411,8 @@ export const useProgressionStore = defineStore('progression', {
         evalMonday.setUTCDate(evalMonday.getUTCDate() + 7)
       } else {
         // No history — find the earliest set's week, or skip if no sets
-        const earliest = allSets.reduce<string | null>((min, s) => {
-          return min === null || s.date < min ? s.date : min
+        const earliest = setDates.reduce<string | null>((min, d) => {
+          return min === null || d < min ? d : min
         }, null)
         if (!earliest) return
         evalMonday = getMonday(new Date(earliest))
@@ -426,7 +425,7 @@ export const useProgressionStore = defineStore('progression', {
         sunday.setUTCDate(sunday.getUTCDate() + 6)
         const weekEnd = toDateKey(sunday)
 
-        const days = getTrainingDaysInWeek(allSets, weekStart, weekEnd)
+        const days = getTrainingDaysInWeek(setDates, weekStart, weekEnd)
         this.evaluateWeek(days, weekStart)
 
         evalMonday.setUTCDate(evalMonday.getUTCDate() + 7)
@@ -555,13 +554,13 @@ export const useProgressionStore = defineStore('progression', {
  * Exported for testing; used by evaluatePendingWeeks.
  */
 export function getTrainingDaysInWeek(
-  sets: WorkoutSet[],
+  setDates: string[],
   weekStartDate: string,  // YYYY-MM-DD (Monday)
   weekEndDate: string,    // YYYY-MM-DD (Sunday)
 ): number {
   const days = new Set<string>()
-  for (const set of sets) {
-    const dateKey = set.date.slice(0, 10)
+  for (const date of setDates) {
+    const dateKey = date.slice(0, 10)
     if (dateKey >= weekStartDate && dateKey <= weekEndDate) {
       days.add(dateKey)
     }
