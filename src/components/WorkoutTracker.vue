@@ -452,6 +452,7 @@
           </p>
 
           <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
+          <p v-if="selectedExerciseId === '__new__'" class="wtOptionalHint">Log a set (optional)</p>
           <div class="wtInputRow">
             <label class="repMaxLabel" style="flex:1">
               Weight ({{ weightUnit }})
@@ -536,7 +537,7 @@
           <!-- Actions (always last) -->
           <div class="repMaxActions">
             <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
-              {{ isEditMode ? 'Save Changes' : 'Save' }}
+              {{ isEditMode ? 'Save Changes' : (selectedExerciseId === '__new__' && !hasSetData ? 'Add Exercise' : 'Save') }}
             </button>
             <button class="repMaxBtn repMaxBtnClose" @click="closeModal">{{ isEditMode ? 'Cancel' : 'Done' }}</button>
           </div>
