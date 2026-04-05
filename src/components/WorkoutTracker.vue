@@ -391,6 +391,47 @@
                 <button class="wtTagAddBtn" @mousedown.prevent @click="addNewExerciseTag" :disabled="!newExerciseTagInput" aria-label="Add tag">+</button>
               </div>
             </div>
+            <!-- Plate calculator settings for new exercise -->
+            <div class="iosSettingsSection">
+              <span class="iosSettingsHeader">Input Mode</span>
+              <div class="iosSettingsGroup">
+                <div class="iosSettingsRow">
+                  <span class="iosSettingsRowLabel">Plate calculator</span>
+                  <button
+                    class="iosToggle"
+                    :class="{ iosToggleOn: newExercisePlateMode }"
+                    role="switch"
+                    :aria-checked="newExercisePlateMode"
+                    @click="newExercisePlateMode = !newExercisePlateMode"
+                  >
+                    <span class="iosToggleKnob" />
+                  </button>
+                </div>
+                <template v-if="newExercisePlateMode">
+                  <div class="iosSettingsRow">
+                    <span class="iosSettingsRowLabel">Counting</span>
+                    <div class="iosSegmentedControl">
+                      <button
+                        :class="['iosSegment', { iosSegmentActive: newExercisePlateCountMode === 'per-side' }]"
+                        @click="newExercisePlateCountMode = 'per-side'"
+                      >Per side</button>
+                      <button
+                        :class="['iosSegment', { iosSegmentActive: newExercisePlateCountMode === 'total' }]"
+                        @click="newExercisePlateCountMode = 'total'"
+                      >Total</button>
+                    </div>
+                  </div>
+                  <div class="iosSettingsRow">
+                    <span class="iosSettingsRowLabel">Starting weight</span>
+                    <div class="iosStepper">
+                      <button class="iosStepperBtn" @click="newExerciseBarWeight = Math.max(0, newExerciseBarWeight - 5)" aria-label="Decrease weight">−</button>
+                      <span class="iosStepperValue">{{ newExerciseBarWeight }} {{ weightUnit }}</span>
+                      <button class="iosStepperBtn" @click="newExerciseBarWeight += 5" aria-label="Increase weight">+</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
           </template>
 
           <!-- Date as subtitle (tappable) -->
@@ -664,7 +705,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
-import type { Exercise, WorkoutSet } from '../stores/workout'
+import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {
   daysSince: number | null
@@ -1128,6 +1169,9 @@ function removePlate(denom: number) {
 const newExerciseName = ref('')
 const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
+const newExercisePlateMode = ref(false)
+const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
+const newExerciseBarWeight = ref(45)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
 // Vue writing back the parsed number to el.value causes iOS Safari to dismiss
 // the keyboard after each keystroke. Using type="text" + inputmode avoids this.
@@ -1185,6 +1229,9 @@ function openNewExerciseModal() {
   selectedExerciseId.value = '__new__'
   newExerciseTags.value = []
   newExerciseTagInput.value = ''
+  newExercisePlateMode.value = false
+  newExercisePlateCountMode.value = 'per-side'
+  newExerciseBarWeight.value = 45
   date.value = lastLogDate.value
   showModal.value = true
 }
@@ -1782,9 +1829,18 @@ function saveSet() {
       if (!newId) return
       exerciseId = newId
       selectedExerciseId.value = exerciseId
+      if (newExercisePlateMode.value) {
+        store.setExerciseInputMode(newId, 'plates')
+        store.setExercisePlateCountMode(newId, newExercisePlateCountMode.value)
+        const ex = store.exercises.find(e => e.id === newId)
+        if (ex) ex.barWeight = newExerciseBarWeight.value
+      }
       newExerciseName.value = ''
       newExerciseTags.value = []
       newExerciseTagInput.value = ''
+      newExercisePlateMode.value = false
+      newExercisePlateCountMode.value = 'per-side'
+      newExerciseBarWeight.value = 45
       logEvent('exercise_add')
     }
     if (hasSetData.value && weight.value !== null && reps.value !== null) {

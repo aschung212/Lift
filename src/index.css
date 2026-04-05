@@ -3180,6 +3180,38 @@ html.theme-fading .settingsSheet {
   line-height: 1.4;
 }
 
+.iosToggle {
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: 16px;
+  background: var(--bg-base);
+  border: none;
+  cursor: pointer;
+  transition: background 0.25s;
+  flex-shrink: 0;
+}
+
+.iosToggleOn {
+  background: var(--accent);
+}
+
+.iosToggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.25s;
+}
+
+.iosToggleOn .iosToggleKnob {
+  transform: translateX(20px);
+}
+
 .wtTagRow {
   display: flex;
   flex-wrap: wrap;
