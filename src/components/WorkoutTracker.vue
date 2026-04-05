@@ -1231,6 +1231,7 @@ function openNewExerciseModal() {
   editingSet.value = null
   selectedExerciseId.value = '__new__'
   newExerciseTags.value = []
+  newExerciseSessionTags.value = []
   newExerciseTagInput.value = ''
   newExercisePlateMode.value = false
   newExercisePlateCountMode.value = 'per-side'
@@ -1249,8 +1250,9 @@ function startNewTagAdd() {
 
 function addNewExerciseTag() {
   const tag = newExerciseTagInput.value.trim()
-  if (tag && !newExerciseTags.value.includes(tag)) {
-    newExerciseTags.value.push(tag)
+  if (tag) {
+    if (!newExerciseSessionTags.value.includes(tag)) newExerciseSessionTags.value.push(tag)
+    if (!newExerciseTags.value.includes(tag)) newExerciseTags.value.push(tag)
   }
   newExerciseTagInput.value = ''
   nextTick(() => newTagInputEl.value?.focus())
@@ -1258,16 +1260,19 @@ function addNewExerciseTag() {
 
 function finishNewTagAdd() {
   const tag = newExerciseTagInput.value.trim()
-  if (tag && !newExerciseTags.value.includes(tag)) {
-    newExerciseTags.value.push(tag)
+  if (tag) {
+    if (!newExerciseSessionTags.value.includes(tag)) newExerciseSessionTags.value.push(tag)
+    if (!newExerciseTags.value.includes(tag)) newExerciseTags.value.push(tag)
   }
   newExerciseTagInput.value = ''
   newTagAdding.value = false
 }
 
 
+const newExerciseSessionTags = ref<string[]>([])
+
 const allNewExerciseTags = computed(() => {
-  const all = new Set([...store.allTags, ...newExerciseTags.value])
+  const all = new Set([...store.allTags, ...newExerciseTags.value, ...newExerciseSessionTags.value])
   return [...all]
 })
 
@@ -1327,6 +1332,7 @@ function closeModal() {
   selectedExerciseId.value = ''
   newExerciseName.value = ''
   newExerciseTags.value = []
+  newExerciseSessionTags.value = []
   newExerciseTagInput.value = ''
   weight.value = null
   reps.value = null
@@ -1856,6 +1862,7 @@ function saveSet() {
       }
       newExerciseName.value = ''
       newExerciseTags.value = []
+      newExerciseSessionTags.value = []
       newExerciseTagInput.value = ''
       newExercisePlateMode.value = false
       newExercisePlateCountMode.value = 'per-side'
