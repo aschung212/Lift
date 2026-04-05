@@ -367,7 +367,7 @@
             </label>
             <div class="repMaxLabel">
               Tags
-              <div class="wtTagPicker" v-if="allNewExerciseTags.length">
+              <div class="wtTagPicker">
                 <button
                   v-for="tag in allNewExerciseTags"
                   :key="tag"
@@ -377,18 +377,19 @@
                     : {}"
                   @click="toggleNewExerciseTag(tag)"
                 >{{ tag }}</button>
-              </div>
-              <div class="wtTagAddRow">
-                <input
-                  v-model.trim="newExerciseTagInput"
-                  type="text"
-                  autocomplete="off"
-                  placeholder="New tag..."
-                  class="repMaxInput"
-                  ref="newTagInputEl"
-                  @keyup.enter="addNewExerciseTag"
-                />
-                <button class="wtTagAddBtn" @mousedown.prevent @click="addNewExerciseTag" :disabled="!newExerciseTagInput" aria-label="Add tag">+</button>
+                <span v-if="newTagAdding" class="wtTagInlineAdd">
+                  <input
+                    v-model.trim="newExerciseTagInput"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Tag name"
+                    class="wtTagInlineInput"
+                    ref="newTagInputEl"
+                    @keyup.enter="addNewExerciseTag"
+                    @blur="finishNewTagAdd"
+                  />
+                </span>
+                <button v-else class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startNewTagAdd" aria-label="Add tag">+</button>
               </div>
             </div>
             <!-- Plate calculator settings for new exercise -->
@@ -570,7 +571,7 @@
         </label>
         <div class="repMaxLabel">
           Tags
-          <div class="wtTagPicker" v-if="availableEditTags.length">
+          <div class="wtTagPicker">
             <button
               v-for="tag in availableEditTags"
               :key="tag"
@@ -580,18 +581,19 @@
                 : {}"
               @click="toggleEditTag(tag)"
             >{{ tag }}</button>
-          </div>
-          <div class="wtTagAddRow">
-            <input
-              v-model.trim="newTagInput"
-              type="text"
-              autocomplete="off"
-              placeholder="New tag..."
-              class="repMaxInput"
-              ref="editTagInputEl"
-              @keyup.enter="addEditTag"
-            />
-            <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput" aria-label="Add tag">+</button>
+            <span v-if="editTagAdding" class="wtTagInlineAdd">
+              <input
+                v-model.trim="newTagInput"
+                type="text"
+                autocomplete="off"
+                placeholder="Tag name"
+                class="wtTagInlineInput"
+                ref="editTagInputEl"
+                @keyup.enter="addEditTag"
+                @blur="finishEditTagAdd"
+              />
+            </span>
+            <button v-else class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startEditTagAdd" aria-label="Add tag">+</button>
           </div>
         </div>
         <!-- Plate calculator settings (iOS grouped style) -->
@@ -1238,6 +1240,12 @@ function openNewExerciseModal() {
 }
 
 const newTagInputEl = ref<HTMLInputElement | null>(null)
+const newTagAdding = ref(false)
+
+function startNewTagAdd() {
+  newTagAdding.value = true
+  nextTick(() => newTagInputEl.value?.focus())
+}
 
 function addNewExerciseTag() {
   const tag = newExerciseTagInput.value.trim()
@@ -1246,6 +1254,15 @@ function addNewExerciseTag() {
   }
   newExerciseTagInput.value = ''
   nextTick(() => newTagInputEl.value?.focus())
+}
+
+function finishNewTagAdd() {
+  const tag = newExerciseTagInput.value.trim()
+  if (tag && !newExerciseTags.value.includes(tag)) {
+    newExerciseTags.value.push(tag)
+  }
+  newExerciseTagInput.value = ''
+  newTagAdding.value = false
 }
 
 
@@ -1941,6 +1958,12 @@ function openEditExerciseModal(exercise: Exercise) {
 }
 
 const editTagInputEl = ref<HTMLInputElement | null>(null)
+const editTagAdding = ref(false)
+
+function startEditTagAdd() {
+  editTagAdding.value = true
+  nextTick(() => editTagInputEl.value?.focus())
+}
 
 function addEditTag() {
   const tag = newTagInput.value.trim()
@@ -1949,6 +1972,15 @@ function addEditTag() {
   }
   newTagInput.value = ''
   nextTick(() => editTagInputEl.value?.focus())
+}
+
+function finishEditTagAdd() {
+  const tag = newTagInput.value.trim()
+  if (tag && !editTags.value.includes(tag)) {
+    editTags.value.push(tag)
+  }
+  newTagInput.value = ''
+  editTagAdding.value = false
 }
 
 
