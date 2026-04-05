@@ -386,15 +386,6 @@
                 <button class="wtTagAddBtn" @mousedown.prevent @click="addNewExerciseTag" :disabled="!newExerciseTagInput" aria-label="Add tag">+</button>
               </div>
             </div>
-            <label class="wtPlateLoadedRow">
-              <span>Plate loaded</span>
-              <button
-                :class="['glassToggle', { on: newExercisePlateLoaded }]"
-                @click="newExercisePlateLoaded = !newExercisePlateLoaded"
-                role="switch"
-                :aria-checked="newExercisePlateLoaded"
-              ><span class="glassToggleThumb"></span></button>
-            </label>
           </template>
 
           <!-- Date as subtitle (tappable) -->
@@ -446,8 +437,10 @@
             </label>
           </div>
 
-          <!-- Plate calculator (shown for plate-loaded exercises) -->
-          <div v-if="exerciseIsPlateLoaded && !isEditMode" class="wtPlateCalc">
+          <button v-if="!plateMode && !isEditMode && isLogForExercise" class="wtModeSwitcher" @click="toggleInputMode">Switch to plates</button>
+
+          <!-- Plate calculator (shown when exercise is in plates mode) -->
+          <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplay">
               <span class="wtPlateBreakdown">{{ plateDisplayText }}</span>
             </div>
@@ -459,6 +452,7 @@
               </div>
             </div>
             <div v-if="plateDeltaText" class="wtPlateDelta">{{ plateDeltaText }}</div>
+            <button class="wtModeSwitcher" @click="toggleInputMode">Switch to numpad</button>
           </div>
 
           <!-- Live 1RM estimate / PR target -->
@@ -541,15 +535,6 @@
             <button class="wtTagAddBtn" @mousedown.prevent @click="addEditTag" :disabled="!newTagInput" aria-label="Add tag">+</button>
           </div>
         </div>
-        <label class="wtPlateLoadedRow">
-          <span>Plate loaded</span>
-          <button
-            :class="['glassToggle', { on: editPlateLoaded }]"
-            @click="editPlateLoaded = !editPlateLoaded"
-            role="switch"
-            :aria-checked="editPlateLoaded"
-          ><span class="glassToggleThumb"></span></button>
-        </label>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
@@ -1016,10 +1001,28 @@ const selectedExerciseId = ref('')
 const currentPlates = ref<number[]>([])
 const previousPlates = ref<number[]>([])
 
-const exerciseIsPlateLoaded = computed(() => {
+const plateMode = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
-  return ex?.plateLoaded === true
+  return ex?.inputMode === 'plates'
 })
+
+function toggleInputMode() {
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return
+  const ex = store.exercises.find(e => e.id === id)
+  if (!ex) return
+  const newMode = ex.inputMode === 'plates' ? 'numpad' : 'plates'
+  store.setExerciseInputMode(id, newMode)
+  if (newMode === 'plates' && ex.sets.length > 0) {
+    // Initialize plates from last set
+    const lastSet = ex.sets[ex.sets.length - 1]
+    const barWt = ex.barWeight ?? 45
+    const plates = weightToPlates(lastSet.weight, barWt, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    currentPlates.value = plates || []
+    previousPlates.value = plates || []
+    weight.value = displayWeight(lastSet.weight)
+  }
+}
 
 const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
@@ -1063,7 +1066,6 @@ function removePlate(denom: number) {
 const newExerciseName = ref('')
 const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
-const newExercisePlateLoaded = ref(false)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
 // Vue writing back the parsed number to el.value causes iOS Safari to dismiss
 // the keyboard after each keystroke. Using type="text" + inputmode avoids this.
@@ -1157,7 +1159,7 @@ function openLogForExercise(exerciseId: string) {
   date.value = lastLogDate.value
   // Initialize plate calculator from last set if plate-loaded
   const exercise = store.exercises.find(e => e.id === exerciseId)
-  if (exercise?.plateLoaded) {
+  if (exercise?.inputMode === 'plates') {
     const lastSet = exercise.sets.length > 0 ? exercise.sets[exercise.sets.length - 1] : null
     if (lastSet) {
       const barWt = exercise.barWeight ?? 45
@@ -1714,15 +1716,12 @@ function saveSet() {
       if (pendingTag && !newExerciseTags.value.includes(pendingTag)) {
         newExerciseTags.value.push(pendingTag)
       }
-      const newId = store.addExercise(newExerciseName.value, newExerciseTags.value, {
-        plateLoaded: newExercisePlateLoaded.value || undefined,
-      })
+      const newId = store.addExercise(newExerciseName.value, newExerciseTags.value)
       if (!newId) return
       exerciseId = newId
       selectedExerciseId.value = exerciseId
       newExerciseName.value = ''
       newExerciseTags.value = []
-      newExercisePlateLoaded.value = false
       newExerciseTagInput.value = ''
       logEvent('exercise_add')
     }
@@ -1746,7 +1745,7 @@ function saveSet() {
         startRestTimer()
       }
       // Clear fields and stay on the modal for the next set
-      if (exerciseIsPlateLoaded.value) {
+      if (plateMode.value) {
         // Keep plate config for next set (user adjusts, not reloads)
         previousPlates.value = [...currentPlates.value]
         reps.value = null
@@ -1805,13 +1804,11 @@ const editTarget = ref<string | null>(null)
 const editName = ref('')
 const editTags = ref<string[]>([])
 const newTagInput = ref('')
-const editPlateLoaded = ref(false)
 
 function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
-  editPlateLoaded.value = exercise.plateLoaded || false
   newTagInput.value = ''
 }
 
@@ -1850,7 +1847,6 @@ function confirmEditExercise() {
   }
   store.renameExercise(editTarget.value, editName.value)
   store.updateExerciseTags(editTarget.value, editTags.value)
-  store.updateExercisePlateConfig(editTarget.value, editPlateLoaded.value, 45)
   editTarget.value = null
   logEvent('exercise_edit')
 }

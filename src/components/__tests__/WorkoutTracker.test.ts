@@ -546,7 +546,7 @@ describe('WorkoutTracker', () => {
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       await saveBtn.trigger('click')
 
-      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', [], expect.any(Object))
+      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', [])
     })
 
     it('calls addExercise with selected tags', async () => {

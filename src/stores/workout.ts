@@ -15,13 +15,15 @@ export interface WorkoutSet {
   estimated1RM: number
 }
 
+export type ExerciseInputMode = 'numpad' | 'plates'
+
 export interface Exercise {
   id: string
   name: string
   tags: string[]
   sets: WorkoutSet[]
-  plateLoaded?: boolean   // true = show plate calculator for this exercise
-  barWeight?: number      // bar weight in lbs, default 45
+  inputMode?: ExerciseInputMode  // remembered per exercise, default 'numpad'
+  barWeight?: number             // bar weight in lbs, default 45
 }
 
 export interface OverloadSuggestion {
@@ -128,7 +130,8 @@ export const useWorkoutStore = defineStore('workout', {
           updated_at: (ex.updated_at as string) || (ex.created_at as string) || new Date().toISOString(),
           sets: [] as WorkoutSet[],
         }
-        if (ex.plate_loaded) exercise.plateLoaded = ex.plate_loaded as boolean
+        if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
+        if (ex.plate_loaded) exercise.inputMode = 'plates' // migrate old field
         if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight as number
         return exercise
       })
@@ -211,7 +214,7 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    addExercise(name: string, tags: string[] = [], { sync = true, plateLoaded, barWeight }: { sync?: boolean; plateLoaded?: boolean; barWeight?: number } = {}): string | null {
+    addExercise(name: string, tags: string[] = [], { sync = true }: { sync?: boolean } = {}): string | null {
       const trimmed = name.trim()
       if (!trimmed) return null
       const existing = this.exercises.find(
@@ -220,31 +223,27 @@ export const useWorkoutStore = defineStore('workout', {
       if (existing) return existing.id
       const id = uuid()
       const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [] }
-      if (plateLoaded) exercise.plateLoaded = true
-      if (barWeight !== undefined) exercise.barWeight = barWeight
       this.exercises.push(exercise)
       this._persist()
 
       if (sync && supabase && this._userId) {
         supabase.from('exercises').insert({
-          id, user_id: this._userId, name: trimmed, tags: [...tags],
-          plate_loaded: plateLoaded || false, bar_weight: barWeight ?? 45,
+          id, user_id: this._userId, name: trimmed, tags: [...tags]
         }).then()
       }
       return id
     },
 
-    updateExercisePlateConfig(exerciseId: string, plateLoaded: boolean, barWeight: number) {
+    setExerciseInputMode(exerciseId: string, mode: ExerciseInputMode) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
-      exercise.plateLoaded = plateLoaded
-      exercise.barWeight = barWeight
+      exercise.inputMode = mode
       this._persist()
 
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`exercise-plate:${exerciseId}`, () =>
-          supabase!.from('exercises').update({ plate_loaded: plateLoaded, bar_weight: barWeight }).eq('id', exerciseId).eq('user_id', userId)
+        syncQueue.enqueue(`exercise-input-mode:${exerciseId}`, () =>
+          supabase!.from('exercises').update({ input_mode: mode }).eq('id', exerciseId).eq('user_id', userId)
         )
       }
     },

@@ -2923,13 +2923,17 @@ html.theme-fading .settingsSheet {
   font-style: italic;
 }
 
-.wtPlateLoadedRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  font-size: var(--font-footnote);
-  color: var(--text-secondary);
+.wtModeSwitcher {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--font-caption2);
+  font-family: inherit;
+  padding: 4px 0;
+  cursor: pointer;
 }
 
 /* ─── XP toast ───────────────────────────────────────────────────── */
