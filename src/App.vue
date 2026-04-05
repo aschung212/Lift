@@ -537,7 +537,7 @@
           </template>
 
           <!-- Step 2: Starter pick -->
-          <template v-else>
+          <template v-else-if="starterPickerStep === 'pick'">
             <div class="unlockTitle" style="color: var(--text-primary)">Pick Your Starter</div>
             <div class="resetConfirmText">Try all three freely until you log your first set. Then your choice locks in.</div>
             <div class="obStarterGridInline">
@@ -559,8 +559,25 @@
               </button>
             </div>
             <div class="starterWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</div>
-            <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Choose' }}</button>
+            <button class="unlockDismiss" :disabled="!starterPickerSelection" @click="starterPickerStep = 'goal'">Next</button>
             <button class="resetConfirmCancel" @click="skipStarterPick">Skip</button>
+          </template>
+
+          <!-- Step 3: Weekly goal -->
+          <template v-else>
+            <div class="unlockTitle" style="color: var(--text-primary)">Set Your Weekly Goal</div>
+            <div class="resetConfirmText">How many days per week do you plan to train? Hit your goal consistently to build a streak and earn bonus XP.</div>
+            <div class="weeklyGoalPicker">
+              <div class="iosStepper" style="margin: 16px auto">
+                <button class="iosStepperBtn" @click="starterPickerGoal = Math.max(1, starterPickerGoal - 1)" :disabled="starterPickerGoal <= 1" aria-label="Decrease">−</button>
+                <span class="iosStepperValue">{{ starterPickerGoal }} day{{ starterPickerGoal !== 1 ? 's' : '' }}</span>
+                <button class="iosStepperBtn" @click="starterPickerGoal = Math.min(7, starterPickerGoal + 1)" :disabled="starterPickerGoal >= 7" aria-label="Increase">+</button>
+              </div>
+              <div class="weeklyGoalPickerBonus">{{ starterGoalBonusLabel }}</div>
+              <div v-if="starterPickerGoal >= 7" class="weeklyGoalPickerRest">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</div>
+            </div>
+            <button class="unlockDismiss" @click="confirmStarterPick">{{ starterPickerSelection ? 'Choose ' + STARTER_THEMES.find(s => s.id === starterPickerSelection)?.label : 'Start' }}</button>
+            <button class="resetConfirmCancel" @click="starterPickerStep = 'pick'">Back</button>
           </template>
         </div>
       </div>
@@ -1022,7 +1039,16 @@ function confirmResetProgress() {
 }
 
 const starterPickerVisible = ref(false)
-const starterPickerStep = ref<'explainer' | 'pick'>('explainer')
+const starterPickerStep = ref<'explainer' | 'pick' | 'goal'>('explainer')
+const starterPickerGoal = ref(3)
+const starterGoalBonusLabel = computed(() => {
+  const t = starterPickerGoal.value
+  if (t >= 6) return 'Streak bonus: 1.5× (max)'
+  if (t >= 5) return 'Streak bonus: 1.3×'
+  if (t >= 4) return 'Streak bonus: 1.2×'
+  if (t >= 3) return 'Streak bonus: 1.1×'
+  return 'No streak bonus'
+})
 const starterPickerSelection = ref<ThemeId | null>(null)
 
 const STARTER_THEMES: { id: ThemeId; label: string }[] = [
@@ -1096,6 +1122,7 @@ function executeResetProgress() {
   markMigrated()
   // Show starter picker
   starterPickerSelection.value = null
+  starterPickerGoal.value = 3
   starterPickerStep.value = 'explainer'
   starterPickerVisible.value = true
 }
@@ -1103,6 +1130,8 @@ function executeResetProgress() {
 function confirmStarterPick() {
   if (!starterPickerSelection.value) return
   starterPickerVisible.value = false
+  // Set weekly goal directly (not staged — this is the initial value)
+  progressionStore.weeklyTarget = starterPickerGoal.value
   progressionStore.setStarterTheme(starterPickerSelection.value)
   currentTheme.value = starterPickerSelection.value
   runMigrationIfNeeded()
@@ -1207,6 +1236,7 @@ function toggleProgression() {
       // No real starter chosen — clear pearl default, show explainer + picker
       progressionStore.starterTheme = null
       starterPickerSelection.value = null
+      starterPickerGoal.value = 3
       starterPickerStep.value = 'explainer'
       starterPickerVisible.value = true
     }
