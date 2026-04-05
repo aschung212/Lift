@@ -228,13 +228,13 @@
                   <span class="settingsHint">{{ weeklyGoalBonusLabel }}</span>
                 </div>
                 <div class="iosStepper">
-                  <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(progressionStore.weeklyTarget - 1)" :disabled="progressionStore.weeklyTarget <= 1" aria-label="Decrease weekly goal">−</button>
-                  <span class="iosStepperValue">{{ progressionStore.weeklyTarget }} day{{ progressionStore.weeklyTarget !== 1 ? 's' : '' }}</span>
-                  <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(progressionStore.weeklyTarget + 1)" :disabled="progressionStore.weeklyTarget >= 7" aria-label="Increase weekly goal">+</button>
+                  <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(effectiveWeeklyTarget - 1)" :disabled="effectiveWeeklyTarget <= 1" aria-label="Decrease weekly goal">−</button>
+                  <span class="iosStepperValue">{{ effectiveWeeklyTarget }} day{{ effectiveWeeklyTarget !== 1 ? 's' : '' }}</span>
+                  <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(effectiveWeeklyTarget + 1)" :disabled="effectiveWeeklyTarget >= 7" aria-label="Increase weekly goal">+</button>
                 </div>
               </div>
               <div v-show="progressionActive && progressionStore.pendingTargetChange !== null" class="settingsRow">
-                <span class="settingsHint settingsLabelIndented">Changes to {{ progressionStore.pendingTargetChange }} day{{ progressionStore.pendingTargetChange !== 1 ? 's' : '' }} next Monday</span>
+                <span class="settingsHint settingsLabelIndented">Takes effect next Monday</span>
               </div>
               <div v-show="progressionActive" class="settingsRow">
                 <button class="settingsResetBtn" @click="confirmResetProgress">Reset Progress</button>
@@ -716,8 +716,12 @@ connectProgressionStore(() => progressionStore)
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
 
+const effectiveWeeklyTarget = computed(() =>
+  progressionStore.pendingTargetChange ?? progressionStore.weeklyTarget
+)
+
 const weeklyGoalBonusLabel = computed(() => {
-  const target = progressionStore.pendingTargetChange ?? progressionStore.weeklyTarget
+  const target = effectiveWeeklyTarget.value
   if (target >= 6) return 'Streak bonus: 1.5×'
   if (target >= 5) return 'Streak bonus: 1.3×'
   if (target >= 4) return 'Streak bonus: 1.2×'
