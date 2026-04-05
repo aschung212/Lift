@@ -1107,6 +1107,7 @@ function confirmStarterPick() {
   currentTheme.value = starterPickerSelection.value
   runMigrationIfNeeded()
   enforceThemeLock()
+  catchUpStreaks()
 }
 
 function skipStarterPick() {
@@ -1118,6 +1119,30 @@ function skipStarterPick() {
   }
   progressionStore._persist()
   runMigrationIfNeeded()
+  catchUpStreaks()
+}
+
+/** Evaluate missed weeks and show milestone toasts. */
+function catchUpStreaks() {
+  const streakBefore = progressionStore.streakWeeks
+  progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates)
+  const streakAfter = progressionStore.streakWeeks
+
+  if (progressionStore.showProgression && streakAfter > streakBefore) {
+    const MILESTONES = [12, 8, 4, 2] as const
+    for (const m of MILESTONES) {
+      if (streakAfter >= m && streakBefore < m) {
+        const mult = streakAfter >= 12 ? '1.75' : streakAfter >= 8 ? '1.5' : streakAfter >= 4 ? '1.25' : '1.1'
+        setTimeout(() => showXPToast(
+          `${streakAfter}-week streak! Duration bonus: ${mult}×`,
+          progressionStore.progressPercent,
+          progressionStore.totalXP,
+          progressionStore.nextUnlockThreshold
+        ), 1500)
+        break
+      }
+    }
+  }
 }
 
 /** If current theme is locked, switch to starter or pearl. */
@@ -1177,6 +1202,7 @@ function toggleProgression() {
       progressionStore._persist()
       enforceThemeLock()
       runMigrationIfNeeded()
+      catchUpStreaks()
     } else {
       // No real starter chosen — clear pearl default, show explainer + picker
       progressionStore.starterTheme = null
@@ -1463,28 +1489,8 @@ onMounted(async () => {
   runMigrationIfNeeded()
   enforceThemeLock()
 
-  // Catch up streak evaluation for any weeks missed since last app open
   if (progressionStore.progressionEnabled) {
-    const streakBefore = progressionStore.streakWeeks
-    progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates)
-    const streakAfter = progressionStore.streakWeeks
-
-    // Show milestone toast when crossing a streak duration tier
-    if (progressionStore.showProgression && streakAfter > streakBefore) {
-      const MILESTONES = [12, 8, 4, 2] as const
-      for (const m of MILESTONES) {
-        if (streakAfter >= m && streakBefore < m) {
-          const mult = streakAfter >= 12 ? '1.75' : streakAfter >= 8 ? '1.5' : streakAfter >= 4 ? '1.25' : '1.1'
-          setTimeout(() => showXPToast(
-            `${streakAfter}-week streak! Duration bonus: ${mult}×`,
-            progressionStore.progressPercent,
-            progressionStore.totalXP,
-            progressionStore.nextUnlockThreshold
-          ), 1500)
-          break
-        }
-      }
-    }
+    catchUpStreaks()
   }
 })
 onUnmounted(() => {
