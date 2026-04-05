@@ -223,7 +223,10 @@
                 </button>
               </div>
               <div v-show="progressionActive" class="settingsRow">
-                <span class="settingsLabel settingsLabelIndented">Weekly goal</span>
+                <div class="settingsLabelGroup settingsLabelIndented">
+                  <span class="settingsLabel">Weekly goal</span>
+                  <span class="settingsHint">{{ weeklyGoalBonusLabel }}</span>
+                </div>
                 <div class="iosStepper">
                   <button class="iosStepperBtn" @click="progressionStore.setWeeklyTarget(progressionStore.weeklyTarget - 1)" :disabled="progressionStore.weeklyTarget <= 1" aria-label="Decrease weekly goal">−</button>
                   <span class="iosStepperValue">{{ progressionStore.weeklyTarget }} day{{ progressionStore.weeklyTarget !== 1 ? 's' : '' }}</span>
@@ -712,6 +715,15 @@ const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+const weeklyGoalBonusLabel = computed(() => {
+  const target = progressionStore.pendingTargetChange ?? progressionStore.weeklyTarget
+  if (target >= 6) return 'Streak bonus: 1.5×'
+  if (target >= 5) return 'Streak bonus: 1.3×'
+  if (target >= 4) return 'Streak bonus: 1.2×'
+  if (target >= 3) return 'Streak bonus: 1.1×'
+  return 'No streak bonus'
+})
 
 // Sort themes: unlocked first, then locked — both groups follow unlock-tier order.
 // Themes not in UNLOCK_TIERS (unchosen starters) slot in before Eternal.

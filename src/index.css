@@ -1438,10 +1438,15 @@ html.theme-fading .settingsSheet {
   color: var(--text-secondary);
 }
 
+.settingsLabelGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .settingsHint {
   font-size: var(--font-caption1);
   color: var(--text-muted);
-  font-style: italic;
 }
 
 .settingsSegment {
