@@ -1266,8 +1266,6 @@ const recentSets = computed(() => {
 })
 
 function fillFromPrevious(set: { weight: number; reps: number }) {
-  weight.value = displayWeight(set.weight)
-  reps.value = set.reps
   weightStr.value = String(displayWeight(set.weight))
   repsStr.value = String(set.reps)
 }
@@ -1334,7 +1332,24 @@ const plateWeightLbs = computed(() => {
 })
 
 function syncPlateWeight() {
+  _plateSync = true
   weight.value = displayWeight(plateWeightLbs.value)
+  nextTick(() => { _plateSync = false })
+}
+
+// Reverse sync: when weight changes from input/chips, update plates to match
+let _plateSync = false
+
+function syncPlatesFromWeight() {
+  if (_plateSync || !plateMode.value) return
+  const w = weight.value
+  if (w === null || w <= 0) return
+  const lbs = toLbs(w)
+  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  const plates = weightToPlates(lbs, currentBarWeight.value, denoms)
+  if (plates) {
+    currentPlates.value = plates
+  }
 }
 
 function addPlate(denom: number) {
@@ -1374,6 +1389,11 @@ const reps = computed<number | null>({
   get: () => { const n = parseInt(repsStr.value); return isNaN(n) ? null : n },
   set: (v) => { repsStr.value = v === null ? '' : String(v) },
 })
+// Sync plate display when weight changes from input/chips (not from plate buttons)
+watch(weightStr, () => {
+  if (plateMode.value && !_plateSync) syncPlatesFromWeight()
+})
+
 const date = ref(todayISO())
 // Remembers the last date the user manually set when logging, so the modal
 // re-opens to that date rather than always resetting to today.
