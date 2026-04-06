@@ -440,16 +440,16 @@
             </span>
           </p>
 
-          <!-- Previous session sets (quick-fill) -->
-          <div v-if="!isEditMode && isLogForExercise && previousSets.length > 0" class="wtPrevSession">
-            <span class="wtPrevSessionLabel">Last session</span>
+          <!-- Recent sets (quick-fill) -->
+          <div v-if="!isEditMode && isLogForExercise && recentSets.length > 0" class="wtPrevSession">
+            <span class="wtPrevSessionLabel">Recent</span>
             <div class="wtPrevSessionChips">
               <button
-                v-for="(s, i) in previousSets"
+                v-for="(s, i) in recentSets"
                 :key="i"
                 class="wtPrevSessionChip"
                 @click="fillFromPrevious(s)"
-              >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
+              >{{ displayWeight(s.weight) }} × {{ s.reps }}{{ s.count > 1 ? ` (×${s.count})` : '' }}</button>
             </div>
           </div>
 
@@ -1133,22 +1133,29 @@ const showModal = ref(false)
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
 
-// ── Previous session sets (for quick-fill) ──────────────────────
-const previousSets = computed(() => {
+// ── Previous sets for quick-fill ─────────────────────────────────
+const RECENT_SET_LIMIT = 5
+
+const recentSets = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   if (!ex || ex.sets.length === 0) return []
-  // Group sets by local date
-  const byDate = new Map<string, typeof ex.sets>()
-  for (const s of ex.sets) {
-    const key = toLocalDateKey(s.date)
-    if (!byDate.has(key)) byDate.set(key, [])
-    byDate.get(key)!.push(s)
-  }
-  const sortedDates = [...byDate.keys()].sort().reverse()
-  // Skip today so user sees the actual previous session
+  // Sort by date descending, skip today
   const today = todayISO()
-  const prevDate = sortedDates.find(d => d !== today) || sortedDates[0]
-  return byDate.get(prevDate) || []
+  const prior = [...ex.sets]
+    .filter(s => toLocalDateKey(s.date) !== today)
+    .sort((a, b) => b.date.localeCompare(a.date))
+  // Deduplicate by weight×reps, keep count and most recent date
+  const seen = new Map<string, { weight: number; reps: number; count: number }>()
+  for (const s of prior) {
+    const key = `${s.weight}x${s.reps}`
+    if (seen.has(key)) {
+      seen.get(key)!.count++
+    } else {
+      seen.set(key, { weight: s.weight, reps: s.reps, count: 1 })
+    }
+    if (seen.size >= RECENT_SET_LIMIT) break
+  }
+  return [...seen.values()]
 })
 
 function fillFromPrevious(set: { weight: number; reps: number }) {
