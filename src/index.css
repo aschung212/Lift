@@ -3286,9 +3286,21 @@ html.theme-fading .settingsSheet {
   padding: 4px 0 8px;
 }
 
-.wtPlateDisplay {
-  text-align: center;
+.wtPlateDisplayRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0 0 12px;
+}
+
+.wtPlateDisplaySpacer {
+  flex: 1;
+}
+
+.wtPlateDisplayAfter {
+  flex: 1;
+  display: flex;
+  align-items: center;
 }
 
 .wtPlateWeightBtn {
@@ -3314,7 +3326,6 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
   color: var(--text-secondary);
   margin-left: 8px;
-  vertical-align: middle;
 }
 
 .wtPlateWeightInput {
@@ -3340,7 +3351,7 @@ html.theme-fading .settingsSheet {
 .wtPlateClearBtn {
   width: 32px;
   height: 32px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--font-title3);
@@ -3349,8 +3360,6 @@ html.theme-fading .settingsSheet {
   background: none;
   border: none;
   cursor: pointer;
-  vertical-align: middle;
-  margin-left: 4px;
 }
 
 .wtPlateGrid {

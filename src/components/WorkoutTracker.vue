@@ -582,7 +582,8 @@
 
           <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
-            <div class="wtPlateDisplay">
+            <div class="wtPlateDisplayRow">
+              <span class="wtPlateDisplaySpacer"></span>
               <button v-if="!plateNumpadOverride" class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight || 0 }}</button>
               <input
                 v-else
@@ -595,8 +596,10 @@
                 @focus="($event.target as HTMLInputElement)?.select()"
                 @blur="plateNumpadOverride = false"
               />
-              <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
-              <button v-if="currentPlates.length > 0" class="wtPlateClearBtn" @click="currentPlates = []; syncPlateWeight()" aria-label="Clear plates">×</button>
+              <span class="wtPlateDisplayAfter">
+                <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
+                <button v-if="currentPlates.length > 0" class="wtPlateClearBtn" @click="currentPlates = []; syncPlateWeight()" aria-label="Clear plates">×</button>
+              </span>
             </div>
             <div class="wtPlateGrid">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
