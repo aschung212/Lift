@@ -4770,6 +4770,24 @@ html.theme-fading .settingsSheet {
   align-items: center;
   width: 36px;
   flex-shrink: 0;
+  gap: 4px;
+}
+
+.calWeekDayLogBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-footnote);
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-top: 4px;
 }
 
 .calWeekDayName {
@@ -4824,20 +4842,8 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
 }
 
-.calWeekContentHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 32px;
-}
-
 .calWeekLogBtn {
-  font-size: var(--font-footnote);
-  font-weight: 700;
-  font-family: inherit;
-  color: var(--accent);
-  background: transparent;
-  margin-left: auto;
+  display: none; /* replaced by calWeekDayLogBtn in day column */
   border: none;
   padding: 12px 12px;
   min-height: 44px;

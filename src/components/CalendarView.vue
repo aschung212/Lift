@@ -141,12 +141,10 @@
         <div class="calWeekDayCol">
           <span class="calWeekDayName">{{ day.shortName }}</span>
           <span class="calWeekDayNum" :class="{ calWeekDayNumToday: day.isToday }">{{ day.dayNum }}</span>
+          <button class="calWeekDayLogBtn" @click="openLogModal(day.dateStr)">+</button>
         </div>
         <div class="calWeekContent">
-          <div class="calWeekContentHeader">
-            <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
-            <button class="calWeekLogBtn" @click="openLogModal(day.dateStr)">+ Log</button>
-          </div>
+          <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
           <div v-if="day.exercises.length > 0" class="calExList">
             <div v-for="ex in day.exercises" :key="ex" class="calExGroup">
               <button
