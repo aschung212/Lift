@@ -752,7 +752,7 @@ import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
 import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
-import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
+import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
 import ExerciseGraph from './ExerciseGraph.vue'
 
@@ -769,11 +769,15 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
 
   // Best 1RM from existing sets (before this set was added, it's already in the array)
   const otherSets = exercise.sets.filter(s => s.id !== setId)
-  const best1RM = calculateBest1RM(otherSets)
+  const rawBest1RM = calculateBest1RM(otherSets)
+
+  // Suppress PR detection for immature exercises (all sets from same day)
+  const isEstablished = isExerciseEstablished(otherSets, date.value || todayISO())
+  const best1RM = isEstablished ? rawBest1RM : null
 
   // Rep PR only awards bonus when NOT already in PR/Tied PR zone
   const isPRZone = best1RM !== null && estimated1RM >= best1RM
-  const isRepPR = !isPRZone && checkRepPR(weight, reps, otherSets)
+  const isRepPR = isEstablished && !isPRZone && checkRepPR(weight, reps, otherSets)
 
   const setIndex = exercise.sets.length - 1
   const baseXP = calculateSetXP({
@@ -794,7 +798,11 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
   else zone = 'working'
 
   const mult = progressionStore.currentMultiplier
-  const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+  let xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+  // If no history entry for current week, apply currentMultiplier directly
+  if (xp === baseXP && mult > 1) {
+    xp = Math.round(baseXP * mult)
+  }
   const setMeta = { theme: currentTheme.value, epoch: progressionStore.epoch, zone, isPR, isRepPR }
 
   // Always record metadata (shadow ledger — enables per-theme stats even without progression)
@@ -1707,6 +1715,9 @@ const isNewPR = computed(() => {
   if (!liveEstimateLbs.value || isEditMode.value) return false
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return false
+  const exercise = store.exercises.find(e => e.id === id)
+  if (!exercise) return false
+  if (!isExerciseEstablished(exercise.sets, date.value || todayISO())) return false
   const pr = store.getExercisePR(id)
   return pr > 0 && liveEstimateLbs.value > pr
 })
@@ -1736,14 +1747,17 @@ const liveXPPreview = computed(() => {
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return null
 
-  const best1RM = calculateBest1RM(exercise.sets)
+  const rawBest1RM = calculateBest1RM(exercise.sets)
   const estimated1RM = liveEstimateLbs.value
   const w = toLbs(weight.value!)
   const r = reps.value!
 
+  const isEstablished = isExerciseEstablished(exercise.sets, date.value || todayISO())
+  const best1RM = isEstablished ? rawBest1RM : null
+
   const isPRZone = best1RM !== null && estimated1RM >= best1RM
   const hasSetAtWeight = exercise.sets.some(s => s.weight === w)
-  const isRepPR = !isPRZone && checkRepPR(w, r, exercise.sets)
+  const isRepPR = isEstablished && !isPRZone && checkRepPR(w, r, exercise.sets)
   const isNewWeight = !isPRZone && !isRepPR && !hasSetAtWeight && best1RM !== null
 
   const setIndex = exercise.sets.length
@@ -1842,7 +1856,9 @@ function saveSet() {
       const set = ex?.sets.find(s => s.id === editSetId)
       if (ex && set) {
         const otherSets = ex.sets.filter(s => s.id !== editSetId)
-        const best = calculateBest1RM(otherSets)
+        const rawBest = calculateBest1RM(otherSets)
+        const editEstablished = isExerciseEstablished(otherSets, set.date)
+        const best = editEstablished ? rawBest : null
         const newXP = calculateSetXP({
           setEstimated1RM: set.estimated1RM,
           exerciseBest1RM: best,
@@ -1852,7 +1868,7 @@ function saveSet() {
         const editIsPR = best !== null && set.estimated1RM > best
         const editIsTie = best !== null && set.estimated1RM === best
         const editIsPRZone = editIsPR || editIsTie
-        const editIsRepPR = !editIsPRZone && checkRepPR(set.weight, set.reps, otherSets)
+        const editIsRepPR = editEstablished && !editIsPRZone && checkRepPR(set.weight, set.reps, otherSets)
         let editZone: string
         if (best === null) editZone = 'new_exercise'
         else if (editIsPR) editZone = 'pr'

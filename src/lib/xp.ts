@@ -91,16 +91,16 @@ export const XP_CONFIG = {
  */
 export function calculateSetXP(params: {
   setEstimated1RM: number
-  exerciseBest1RM: number | null  // null = new exercise
-  setIndex: number                // 0-based, for new exercise flat rate
+  exerciseBest1RM: number | null  // null = new/immature exercise
+  setIndex?: number               // unused — kept for API compatibility
   isRepPR?: boolean               // true if this set beats the rep record at its weight
 }): number {
-  const { setEstimated1RM, exerciseBest1RM, setIndex, isRepPR } = params
+  const { setEstimated1RM, exerciseBest1RM, isRepPR } = params
   const cfg = XP_CONFIG
 
-  // New exercise: first N sets get flat rate
+  // New/immature exercise: flat rate for all sets (PR detection is suppressed)
   if (exerciseBest1RM === null) {
-    return setIndex < cfg.newExerciseMaxSets ? cfg.newExerciseFlatXP : cfg.minXP
+    return cfg.newExerciseFlatXP
   }
 
   // Guard against zero/negative best
@@ -150,6 +150,17 @@ export function checkRepPR(
     .filter(s => s.weight === weight)
     .reduce((max, s) => Math.max(max, s.reps), 0)
   return bestReps > 0 && reps > bestReps
+}
+
+/**
+ * Check if an exercise is "established" — has sets from at least one day
+ * prior to the given date. Until established, PR detection is suppressed
+ * to prevent XP farming from warmup progressions on new exercises.
+ */
+export function isExerciseEstablished(sets: WorkoutSet[], currentDate: string): boolean {
+  const today = currentDate.slice(0, 10)
+  const priorDays = new Set(sets.map(s => s.date.slice(0, 10)))
+  return priorDays.size >= 1 && !([...priorDays].every(d => d === today))
 }
 
 /**
