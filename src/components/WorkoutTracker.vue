@@ -501,33 +501,55 @@
             <span class="wtSectionDividerText">Log a set (optional)</span>
             <span class="wtSectionDividerLine" />
           </div>
-          <!-- Plate mode: reps stepper first, then weight (closer to plate calc) -->
+          <!-- Live 1RM estimate / PR target -->
+          <div v-if="liveEstimate" class="repMaxResult">
+            <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
+            <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
+            <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
+            <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
+          </div>
+          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget" :class="{ repMaxResultTappable: plateMode }" @click="plateMode && loadPRTarget()">
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
+            <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
+            <span v-if="plateMode" class="repMaxPersonalBest">Tap to load plates</span>
+          </div>
+          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="repsStr = '1'">
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
+            <span class="repMaxPersonalBest">Any rep at this weight is a new PR</span>
+            <span class="repMaxPersonalBest">Tap to set reps</span>
+          </div>
+          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="loadPRTargetReps">
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
+            <span class="repMaxPersonalBest">Tap to set reps</span>
+          </div>
+          <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
+            <span class="repMaxResultLabel">Estimated 1RM</span>
+            <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
+          </div>
+
+          <!-- Plate mode: reps stepper + weight in plate calc below -->
           <template v-if="plateMode && !isEditMode">
             <div class="wtRepsStepperFull">
               <span class="wtRepsStepperLabel">Reps</span>
               <div class="wtRepsStepperBar">
-                <button class="wtRepsStepBtnLg" @click="adjustReps(-1)" :disabled="!reps || reps <= 1" aria-label="Decrease reps">−</button>
+                <button class="wtRepsStepBtnLg" @click="adjustReps(-1)" :disabled="reps === null || reps <= 0" aria-label="Decrease reps">−</button>
                 <input
                   v-model="repsStr"
                   type="text"
                   inputmode="numeric"
                   autocomplete="off"
-                  placeholder="8"
+                  placeholder="—"
                   class="wtRepsStepperInput"
+                  @focus="($event.target as HTMLInputElement)?.select()"
                 />
                 <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
               </div>
             </div>
-            <!-- Hidden weight input for data binding + numpad focus target -->
-            <input
-              ref="weightInputEl"
-              v-model="weightStr"
-              type="text"
-              inputmode="decimal"
-              autocomplete="off"
-              class="wtHiddenWeightInput"
-              @blur="plateNumpadOverride = false"
-            />
           </template>
           <!-- Numpad / edit mode: side-by-side weight + reps -->
           <div v-else class="wtInputRow">
@@ -561,51 +583,34 @@
             </label>
           </div>
 
-          <!-- Live 1RM estimate / PR target — shown between inputs and plate calc -->
-          <div v-if="liveEstimate" class="repMaxResult">
-            <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
-            <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
-            <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
-            <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
-          </div>
-          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
-            <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
-          </div>
-          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
-            <span class="repMaxPersonalBest">Any rep at this weight is a new PR</span>
-          </div>
-          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
-            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
-            <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
-          </div>
-          <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
-            <span class="repMaxResultLabel">Estimated 1RM</span>
-            <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
-          </div>
-
           <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
-            <div class="wtPlateDisplay">
-              <button class="wtPlateWeightBtn" @click="onWeightInputFocus(); weightInputEl?.focus()">{{ weight || 0 }}</button>
-              <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
-              <span class="wtPlateBreakdown">
-                {{ currentPlates.length > 0 ? `${currentBarWeight > 0 ? 'Bar + ' : ''}${formatPlates(currentPlates)}${isPerSide ? ' per side' : ''}` : currentBarWeight > 0 ? 'Bar only' : 'No plates' }}
+            <div class="wtPlateDisplayRow">
+              <span class="wtPlateDisplaySpacer"></span>
+              <button v-if="!plateNumpadOverride" class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight || 0 }}</button>
+              <input
+                v-else
+                ref="weightInputEl"
+                v-model="weightStr"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                class="wtPlateWeightInput"
+                @focus="($event.target as HTMLInputElement)?.select()"
+                @blur="plateNumpadOverride = false"
+              />
+              <span class="wtPlateDisplayAfter">
+                <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
+                <button v-if="currentPlates.length > 0" class="wtPlateClearBtn" @click="currentPlates = []; syncPlateWeight()" aria-label="Clear plates">×</button>
               </span>
             </div>
-            <div class="wtPlateButtons">
-              <div v-for="denom in activeDenominations" :key="denom" class="wtPlateGroup">
-                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)">+</button>
-                <div class="wtPlateDenomWrap">
-                  <span class="wtPlateDenom">{{ denom }}</span>
-                  <span class="wtPlateCount">{{ plateCounts.get(denom) ? `×${plateCounts.get(denom)}` : '' }}</span>
+            <div class="wtPlateGrid">
+              <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" :aria-label="`Add ${denom}`">{{ denom }}</button>
+                <div class="wtPlateCountBox" :class="{ wtPlateCountActive: plateCounts.get(denom) }">
+                  <span class="wtPlateCountNum">{{ plateCounts.get(denom) || 0 }}</span>
                 </div>
-                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
+                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" :aria-label="`Remove ${denom}`">{{ denom }}</button>
               </div>
             </div>
           </div>
@@ -855,7 +860,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
-import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
@@ -1309,9 +1314,40 @@ const plateNumpadOverride = ref(false)
 
 function adjustReps(delta: number) {
   const current = reps.value ?? 0
-  const next = Math.max(1, Math.min(MAX_REPS, current + delta))
-  reps.value = next
-  repsStr.value = String(next)
+  const next = Math.max(0, Math.min(MAX_REPS, current + delta))
+  if (next === 0) {
+    repsStr.value = ''
+  } else {
+    repsStr.value = String(next)
+  }
+}
+
+function loadPRTarget() {
+  if (!prTargetWeight.value) return
+  const targetLbs = toLbs(prTargetWeight.value)
+  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  const barWt = currentBarWeight.value
+  // Smallest weight increment: smallest plate × 2 for per-side, × 1 for total
+  const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
+  // Round up to nearest achievable weight above bar
+  const plateWeight = targetLbs - barWt
+  if (plateWeight <= 0) {
+    currentPlates.value = []
+    syncPlateWeight()
+    return
+  }
+  const roundedPlateWeight = Math.ceil(plateWeight / smallestIncrement) * smallestIncrement
+  const roundedTotal = barWt + roundedPlateWeight
+  const plates = weightToPlates(roundedTotal, barWt, denoms)
+  if (plates) {
+    currentPlates.value = plates
+    syncPlateWeight()
+  }
+}
+
+function loadPRTargetReps() {
+  if (!prTargetReps.value || prTargetReps.value < 1) return
+  repsStr.value = String(prTargetReps.value)
 }
 
 function onWeightInputFocus() {
@@ -1917,6 +1953,8 @@ function playGoBeep() {
 
 const liveEstimate = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
+  // In plate mode, bar-only (no plates) should show PR suggestion instead of live estimate
+  if (plateMode.value && currentPlates.value.length === 0) return null
   const w = toLbs(weight.value)
   const est = reps.value === 1 ? w : w * (1 + reps.value / 30)
   return displayWeight(Math.round(est))
@@ -1924,6 +1962,7 @@ const liveEstimate = computed(() => {
 
 const liveEstimateLbs = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
+  if (plateMode.value && currentPlates.value.length === 0) return null
   const w = toLbs(weight.value)
   return reps.value === 1 ? Math.round(w) : Math.round(w * (1 + reps.value / 30))
 })
@@ -1943,7 +1982,9 @@ const isNewPR = computed(() => {
 // When only one field is filled, show what's needed in the other to beat the PR
 const prTargetWeight = computed<number | null>(() => {
   if (isEditMode.value || !reps.value || reps.value < 1) return null
-  if (weight.value && weight.value > 0) return null // both filled → show live estimate instead
+  // In plate mode, treat bar-only (no plates) as "no weight entered" for suggestions
+  const isBarOnly = plateMode.value && currentPlates.value.length === 0
+  if (!isBarOnly && weight.value && weight.value > 0) return null // both filled → show live estimate instead
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return null
   const pr = store.getExercisePR(id)
