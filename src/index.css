@@ -3094,7 +3094,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtRepsStepBtnLg {
-  width: 48px;
+  flex: 1;
   height: 48px;
   display: flex;
   align-items: center;
@@ -3106,7 +3106,6 @@ html.theme-fading .settingsSheet {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   cursor: pointer;
-  flex-shrink: 0;
 }
 
 .wtRepsStepBtnLg:first-child {
@@ -3125,8 +3124,8 @@ html.theme-fading .settingsSheet {
 }
 
 .wtRepsStepperInput {
-  flex: 1;
-  min-width: 0;
+  width: 72px;
+  flex: 0 0 72px;
   text-align: center;
   font-size: var(--font-title2);
   font-weight: 700;
@@ -3155,7 +3154,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtRepsStepBtnLg {
-  width: 48px;
+  flex: 1;
   height: 48px;
   display: flex;
   align-items: center;
@@ -3167,7 +3166,6 @@ html.theme-fading .settingsSheet {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   cursor: pointer;
-  flex-shrink: 0;
 }
 
 .wtRepsStepBtnLg:first-child {
