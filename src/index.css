@@ -3076,12 +3076,12 @@ html.theme-fading .settingsSheet {
 }
 
 .wtRepsStepBtn {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-title3);
+  font-size: var(--font-title2);
   font-weight: 500;
   font-family: inherit;
   color: var(--accent);
@@ -3109,6 +3109,10 @@ html.theme-fading .settingsSheet {
 .repMaxInputStepper {
   border-radius: 0;
   text-align: center;
+  height: 48px;
+  min-height: 48px;
+  font-size: var(--font-title3);
+  font-weight: 600;
 }
 
 .wtRepsFullRow {
