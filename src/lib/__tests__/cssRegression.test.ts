@@ -193,6 +193,37 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.wtTimerEditResetBtn touch target (LIFT-79)', () => {
+    const lines = getRuleLines('.wtTimerEditResetBtn')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('has adequate padding (not 4px)', () => {
+      const paddingLine = lines.find(l => l.startsWith('padding'))
+      expect(paddingLine).toBeDefined()
+      // Ensure padding is at least 8px vertically
+      expect(paddingLine).not.toMatch(/padding:\s*4px/)
+    })
+  })
+
+  describe('.wtTimerPresetSm touch target (LIFT-79)', () => {
+    const lines = getRuleLines('.wtTimerPresetSm')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtTimerEditCountdown touch target (LIFT-79)', () => {
+    const lines = getRuleLines('.wtTimerEditCountdown')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {
     // Valid spacing values: 0, 1, 2, 4, 8, 12, 16, 24, 32, and multiples of 8 above 32
     const SCALE = new Set([0, 1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128])
