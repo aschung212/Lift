@@ -514,16 +514,18 @@
             <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
             <span v-if="plateMode" class="repMaxPersonalBest">Tap to load plates</span>
           </div>
-          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
+          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="repsStr = '1'">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
             <span class="repMaxPersonalBest">Any rep at this weight is a new PR</span>
+            <span class="repMaxPersonalBest">Tap to set reps</span>
           </div>
-          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
+          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="loadPRTargetReps">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
             <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
+            <span class="repMaxPersonalBest">Tap to set reps</span>
           </div>
           <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
             <span class="repMaxResultLabel">Estimated 1RM</span>
@@ -1325,18 +1327,27 @@ function loadPRTarget() {
   const targetLbs = toLbs(prTargetWeight.value)
   const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
   const barWt = currentBarWeight.value
-  // Try exact, then round up by smallest plate increment until we find a valid breakdown
-  const smallestPlate = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
-  for (let tryWeight = targetLbs; tryWeight <= targetLbs + smallestPlate * 2; tryWeight += smallestPlate) {
-    const plates = weightToPlates(tryWeight, barWt, denoms)
-    if (plates) {
-      currentPlates.value = plates
-      syncPlateWeight()
-      return
-    }
+  // Smallest weight increment: smallest plate × 2 for per-side, × 1 for total
+  const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
+  // Round up to nearest achievable weight above bar
+  const plateWeight = targetLbs - barWt
+  if (plateWeight <= 0) {
+    currentPlates.value = []
+    syncPlateWeight()
+    return
   }
-  // Fallback: just set the weight directly
-  weightStr.value = String(prTargetWeight.value)
+  const roundedPlateWeight = Math.ceil(plateWeight / smallestIncrement) * smallestIncrement
+  const roundedTotal = barWt + roundedPlateWeight
+  const plates = weightToPlates(roundedTotal, barWt, denoms)
+  if (plates) {
+    currentPlates.value = plates
+    syncPlateWeight()
+  }
+}
+
+function loadPRTargetReps() {
+  if (!prTargetReps.value || prTargetReps.value < 1) return
+  repsStr.value = String(prTargetReps.value)
 }
 
 function onWeightInputFocus() {
