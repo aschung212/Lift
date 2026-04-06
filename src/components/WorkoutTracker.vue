@@ -1369,13 +1369,14 @@ let _plateSync = false
 function syncPlatesFromWeight() {
   if (_plateSync || !plateMode.value) return
   const w = weight.value
-  if (w === null || w <= 0) return
+  if (w === null || w <= 0) {
+    currentPlates.value = []
+    return
+  }
   const lbs = toLbs(w)
   const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
   const plates = weightToPlates(lbs, currentBarWeight.value, denoms)
-  if (plates) {
-    currentPlates.value = plates
-  }
+  currentPlates.value = plates || []
 }
 
 function addPlate(denom: number) {
