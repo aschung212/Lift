@@ -4471,21 +4471,18 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.2px;
+  background: none;
+  border: none;
+  font-family: inherit;
 }
 
-.calTodayBtn {
-  display: block;
-  margin: 4px auto 8px;
-  padding: 4px 16px;
-  min-height: 32px;
-  font-size: var(--font-caption1);
-  font-weight: 600;
-  font-family: inherit;
+.calNavLabelTappable {
   color: var(--accent);
-  background: var(--accent-subtle);
-  border: none;
-  border-radius: 16px;
   cursor: pointer;
+}
+
+.calNavLabel:disabled {
+  opacity: 1;
 }
 
 /* Monthly grid */

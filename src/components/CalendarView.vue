@@ -12,10 +12,9 @@
     <!-- Navigation -->
     <div class="calNav">
       <button class="calNavBtn" @click="prev" aria-label="Previous">‹</button>
-      <span class="calNavLabel">{{ navLabel }}</span>
+      <button :class="['calNavLabel', { calNavLabelTappable: !isCurrentPeriod }]" :disabled="isCurrentPeriod" @click="goToToday">{{ navLabel }}</button>
       <button class="calNavBtn" @click="next" aria-label="Next">›</button>
     </div>
-    <button v-if="!isCurrentPeriod" class="calTodayBtn" @click="goToToday">Back to Today</button>
 
     <!-- Tag filter -->
     <template v-if="store.allTags.length > 0">
