@@ -594,18 +594,16 @@
             <div class="wtPlateDisplay">
               <button class="wtPlateWeightBtn" @click="onWeightInputFocus(); weightInputEl?.focus()">{{ weight || 0 }}</button>
               <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
-              <span class="wtPlateBreakdown">
-                {{ currentPlates.length > 0 ? `${currentBarWeight > 0 ? 'Bar + ' : ''}${formatPlates(currentPlates)}${isPerSide ? ' per side' : ''}` : currentBarWeight > 0 ? 'Bar only' : 'No plates' }}
-              </span>
+              <span v-if="isPerSide" class="wtPlateModeBadge">per side</span>
             </div>
-            <div class="wtPlateButtons">
-              <div v-for="denom in activeDenominations" :key="denom" class="wtPlateGroup">
-                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)">+</button>
-                <div class="wtPlateDenomWrap">
-                  <span class="wtPlateDenom">{{ denom }}</span>
-                  <span class="wtPlateCount">{{ plateCounts.get(denom) ? `×${plateCounts.get(denom)}` : '' }}</span>
+            <div class="wtPlateGrid">
+              <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" aria-label="Add {{ denom }}">+</button>
+                <div class="wtPlateCountBox" :class="{ wtPlateCountActive: plateCounts.get(denom) }">
+                  <span class="wtPlateCountNum">{{ plateCounts.get(denom) || 0 }}</span>
                 </div>
-                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)">−</button>
+                <span class="wtPlateDenomLabel">{{ denom }}</span>
+                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" aria-label="Remove {{ denom }}">−</button>
               </div>
             </div>
           </div>
@@ -855,7 +853,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
-import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'

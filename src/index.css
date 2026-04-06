@@ -3314,32 +3314,24 @@ html.theme-fading .settingsSheet {
   pointer-events: none;
 }
 
-.wtPlateTotal {
-  display: block;
-  font-size: var(--font-title2);
-  font-weight: 800;
-  color: var(--text-primary);
-}
-
-.wtPlateBreakdown {
+.wtPlateModeBadge {
   display: block;
   font-size: var(--font-caption2);
   color: var(--text-muted);
   margin-top: 4px;
 }
 
-.wtPlateButtons {
+.wtPlateGrid {
   display: flex;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 0 4px;
+  justify-content: center;
+  gap: 8px;
 }
 
-.wtPlateGroup {
+.wtPlateCol {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex: 1;
 }
 
@@ -3374,24 +3366,29 @@ html.theme-fading .settingsSheet {
   cursor: default;
 }
 
-.wtPlateDenomWrap {
-  text-align: center;
-  line-height: 1.2;
+.wtPlateCountBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 36px;
 }
 
-.wtPlateDenom {
-  display: block;
-  font-size: var(--font-callout);
+.wtPlateCountNum {
+  font-size: var(--font-title3);
   font-weight: 700;
-  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
 }
 
-.wtPlateCount {
-  display: block;
-  font-size: var(--font-caption2);
-  font-weight: 600;
+.wtPlateCountActive .wtPlateCountNum {
   color: var(--accent);
-  min-height: 14px;
+}
+
+.wtPlateDenomLabel {
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .wtPlateDelta {
