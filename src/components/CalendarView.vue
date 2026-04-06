@@ -12,7 +12,7 @@
     <!-- Navigation -->
     <div class="calNav">
       <button class="calNavBtn" @click="prev" aria-label="Previous">‹</button>
-      <span class="calNavLabel">{{ navLabel }}</span>
+      <button :class="['calNavLabel', { calNavLabelTappable: !isCurrentPeriod }]" :disabled="isCurrentPeriod" @click="goToToday">{{ navLabel }}</button>
       <button class="calNavBtn" @click="next" aria-label="Next">›</button>
     </div>
 
@@ -92,31 +92,39 @@
             </span>
           </div>
 
-          <button
-            v-for="ex in trainingMap[selectedDay]"
-            :key="ex"
-            :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
-            :aria-expanded="detailKey === `${selectedDay}::${ex}`"
-            @click="toggleDetail(selectedDay, ex)"
-          >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(selectedDay, ex) }}</span></button>
-
-          <template v-for="ex in trainingMap[selectedDay]" :key="`detail-${ex}`">
-            <div v-if="detailKey === `${selectedDay}::${ex}`" class="calSetList">
-              <div
-                v-for="s in getSetsForDay(selectedDay, ex)"
-                :key="s.id"
-                :class="['calSetRow', { calSetRowPR: s.isPR }]"
+          <div class="calExList">
+            <div v-for="ex in trainingMap[selectedDay]" :key="ex" class="calExGroup">
+              <button
+                :class="['calExRow', { calExRowExpanded: expandedExercises.has(`${selectedDay}::${ex}`), calExRowPR: isPRExercise(selectedDay, ex) }]"
+                :aria-expanded="expandedExercises.has(`${selectedDay}::${ex}`)"
+                @click="toggleDetail(selectedDay, ex)"
               >
-                <span class="calSetMain">
-                  <span v-if="s.isPR" class="calSetPR">🏆</span>
-                  <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
-                  <span class="calSetSep">×</span>
-                  <span class="calSetReps">{{ s.reps }} reps</span>
+                <span class="calExRowLeft">
+                  <span v-if="isPRExercise(selectedDay, ex)" class="calSetPR">🏆</span>
+                  <span class="calExRowName">{{ ex }}</span>
                 </span>
-                <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                <span class="calExRowRight">
+                  <span class="calExRowCount">{{ getSetCount(selectedDay, ex) }} set{{ getSetCount(selectedDay, ex) !== 1 ? 's' : '' }}</span>
+                  <span :class="['calExRowChevron', { calExRowChevronOpen: expandedExercises.has(`${selectedDay}::${ex}`) }]">›</span>
+                </span>
+              </button>
+              <div v-if="expandedExercises.has(`${selectedDay}::${ex}`)" class="calSetList">
+                <div
+                  v-for="s in getSetsForDay(selectedDay, ex)"
+                  :key="s.id"
+                  :class="['calSetRow', { calSetRowPR: s.isPR }]"
+                >
+                  <span class="calSetMain">
+                    <span v-if="s.isPR" class="calSetPR">🏆</span>
+                    <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
+                    <span class="calSetSep">×</span>
+                    <span class="calSetReps">{{ s.reps }} reps</span>
+                  </span>
+                  <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                </div>
               </div>
             </div>
-          </template>
+          </div>
         </div>
         <p v-else class="calDetailEmpty">No sets logged.</p>
       </div>
@@ -133,35 +141,43 @@
         <div class="calWeekDayCol">
           <span class="calWeekDayName">{{ day.shortName }}</span>
           <span class="calWeekDayNum" :class="{ calWeekDayNumToday: day.isToday }">{{ day.dayNum }}</span>
+          <button class="calWeekDayLogBtn" @click="openLogModal(day.dateStr)">+</button>
         </div>
         <div class="calWeekContent">
           <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
-          <button
-            v-for="ex in day.exercises"
-            :key="ex"
-            :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
-            :aria-expanded="detailKey === `${day.dateStr}::${ex}`"
-            @click="toggleDetail(day.dateStr, ex)"
-          >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(day.dateStr, ex) }}</span></button>
-
-          <template v-for="ex in day.exercises" :key="`detail-${ex}`">
-            <div v-if="detailKey === `${day.dateStr}::${ex}`" class="calSetList">
-              <div
-                v-for="s in getSetsForDay(day.dateStr, ex)"
-                :key="s.id"
-                :class="['calSetRow', { calSetRowPR: s.isPR }]"
+          <div v-if="day.exercises.length > 0" class="calExList">
+            <div v-for="ex in day.exercises" :key="ex" class="calExGroup">
+              <button
+                :class="['calExRow calExRowCompact', { calExRowExpanded: expandedExercises.has(`${day.dateStr}::${ex}`), calExRowPR: isPRExercise(day.dateStr, ex) }]"
+                :aria-expanded="expandedExercises.has(`${day.dateStr}::${ex}`)"
+                @click="toggleDetail(day.dateStr, ex)"
               >
-                <span class="calSetMain">
-                  <span v-if="s.isPR" class="calSetPR">🏆</span>
-                  <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
-                  <span class="calSetSep">×</span>
-                  <span class="calSetReps">{{ s.reps }} reps</span>
+                <span class="calExRowLeft">
+                  <span v-if="isPRExercise(day.dateStr, ex)" class="calSetPR">🏆</span>
+                  <span class="calExRowName">{{ ex }}</span>
                 </span>
-                <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                <span class="calExRowRight">
+                  <span class="calExRowCount">{{ getSetCount(day.dateStr, ex) }}</span>
+                  <span :class="['calExRowChevron', { calExRowChevronOpen: expandedExercises.has(`${day.dateStr}::${ex}`) }]">›</span>
+                </span>
+              </button>
+              <div v-if="expandedExercises.has(`${day.dateStr}::${ex}`)" class="calSetList">
+                <div
+                  v-for="s in getSetsForDay(day.dateStr, ex)"
+                  :key="s.id"
+                  :class="['calSetRow', { calSetRowPR: s.isPR }]"
+                >
+                  <span class="calSetMain">
+                    <span v-if="s.isPR" class="calSetPR">🏆</span>
+                    <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
+                    <span class="calSetSep">×</span>
+                    <span class="calSetReps">{{ s.reps }} reps</span>
+                  </span>
+                  <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                </div>
               </div>
             </div>
-          </template>
-          <button class="calWeekLogBtn" @click="openLogModal(day.dateStr)">+ Log</button>
+          </div>
         </div>
       </div>
 
@@ -174,20 +190,35 @@
     </div>
   </div>
 
+  <!-- Exercise Picker Modal -->
+  <Teleport to="body">
+    <div v-if="exercisePickerDate" class="repMaxOverlay" @click.self="exercisePickerDate = null" @keydown.escape="exercisePickerDate = null">
+      <div class="repMaxModal" role="dialog" aria-modal="true">
+        <h2>Choose Exercise</h2>
+        <div class="wtExPickerList">
+          <button
+            v-for="ex in store.exercises"
+            :key="ex.id"
+            class="wtExPickerRow"
+            @click="pickExercise(ex.id)"
+          >
+            <span class="wtExPickerName">{{ ex.name }}</span>
+            <span class="wtChevron">›</span>
+          </button>
+        </div>
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnClose" @click="exercisePickerDate = null">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
   <!-- Log Set Modal -->
   <Teleport to="body">
     <div v-if="logModal.open" class="repMaxOverlay" @click.self="closeLogModal" @keydown.escape="closeLogModal">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title">
-        <h2 id="cal-modal-title">Log a Set</h2>
+        <h2 id="cal-modal-title">{{ store.exercises.find(e => e.id === logModal.exerciseId)?.name || 'Log a Set' }}</h2>
         <p class="wtModalSubtitle">{{ formatSelectedDay(logModal.date) }}</p>
-
-        <label class="repMaxLabel">
-          Exercise
-          <select v-model="logModal.exerciseId" class="repMaxInput">
-            <option value="" disabled>Select exercise...</option>
-            <option v-for="ex in store.exercises" :key="ex.id" :value="ex.id">{{ ex.name }}</option>
-          </select>
-        </label>
 
         <div class="wtInputRow">
           <label class="repMaxLabel" style="flex:1">
@@ -374,11 +405,16 @@ const daySummary = computed(() => {
 })
 
 // Exercise detail expand: "YYYY-MM-DD::Exercise Name" or null
-const detailKey = ref<string | null>(null)
+const expandedExercises = ref(new Set<string>())
+watch(selectedDay, () => expandedExercises.value.clear())
 
 function toggleDetail(dateStr: string, exName: string) {
   const key = `${dateStr}::${exName}`
-  detailKey.value = detailKey.value === key ? null : key
+  if (expandedExercises.value.has(key)) {
+    expandedExercises.value.delete(key)
+  } else {
+    expandedExercises.value.add(key)
+  }
 }
 
 function getSetsForDay(dateStr: string, exName: string) {
@@ -413,6 +449,21 @@ const navLabel = computed(() => {
   const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   return `${fmt(first)} – ${fmt(last)}`
 })
+
+const isCurrentPeriod = computed(() => {
+  const now = new Date()
+  if (view.value === 'month') {
+    return cursor.value.getFullYear() === now.getFullYear() && cursor.value.getMonth() === now.getMonth()
+  }
+  // Week view: check if today falls within the displayed week
+  const days = weekDays.value
+  return days.some(d => d.isToday)
+})
+
+function goToToday() {
+  cursor.value = new Date()
+  selectedDay.value = null
+}
 
 function prev() {
   const d = new Date(cursor.value)
@@ -502,8 +553,16 @@ function formatSelectedDay(dateStr: string) {
 const calModalFocus = useFocusTrap()
 const logModal = ref<{ open: boolean; date: string; exerciseId: string; weight: number | null; reps: number | null }>({ open: false, date: '', exerciseId: '', weight: null, reps: null })
 
+const exercisePickerDate = ref<string | null>(null)
+
 function openLogModal(dateStr: string) {
-  logModal.value = { open: true, date: dateStr, exerciseId: '', weight: null, reps: null }
+  exercisePickerDate.value = dateStr
+}
+
+function pickExercise(exerciseId: string) {
+  const dateStr = exercisePickerDate.value!
+  exercisePickerDate.value = null
+  logModal.value = { open: true, date: dateStr, exerciseId, weight: null, reps: null }
 }
 
 function closeLogModal() {
