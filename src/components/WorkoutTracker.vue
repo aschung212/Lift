@@ -114,9 +114,11 @@
               :class="['wtTimelineRow', { wtTimelineRowActive: activeSetId === entry.set.id }]"
               @click="toggleSetActions(entry.set.id)"
             >
-              <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
-              <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
-              <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
+              <div class="wtTimelineRowMain">
+                <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
+                <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
+                <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
+              </div>
               <div v-if="activeSetId === entry.set.id" class="wtSetActions">
                 <button class="wtSetBtn" @click.stop="openEditModal(store.exercises.find(e => e.id === entry.exerciseId)!, entry.set)" aria-label="Edit set">Edit</button>
                 <button class="wtSetBtn wtSetBtnDel" @click.stop="undoDeleteSet(entry.exerciseId, entry.set)" aria-label="Delete set">Delete</button>
