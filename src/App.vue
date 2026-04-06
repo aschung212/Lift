@@ -15,6 +15,16 @@
     <!-- Authenticated app -->
     <template v-else>
       <main class="appContainer">
+        <div v-if="isPreviewDeploy" class="previewBanner" role="status">
+          <template v-if="isPreviewMode">
+            Preview mode — changes stay local
+            <button class="previewToggle" @click="isPreviewMode = false">Enable writes</button>
+          </template>
+          <template v-else>
+            ⚠ Live writes enabled — changes sync to Supabase
+            <button class="previewToggle" @click="isPreviewMode = true">Go read-only</button>
+          </template>
+        </div>
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
@@ -706,6 +716,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
+import { isPreviewDeploy, isPreviewMode } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'

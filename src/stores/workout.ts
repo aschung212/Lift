@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { supabase } from '../lib/supabase'
+import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
@@ -240,7 +240,7 @@ export const useWorkoutStore = defineStore('workout', {
       this.exercises.push(exercise)
       this._persist()
 
-      if (sync && supabase && this._userId) {
+      if (sync && supabase && !isPreviewMode.value && this._userId) {
         supabase.from('exercises').insert({
           id, user_id: this._userId, name: trimmed, tags: [...tags]
         }).then()
@@ -280,7 +280,7 @@ export const useWorkoutStore = defineStore('workout', {
       exercise.sets.push({ id, date, weight, reps, estimated1RM })
       this._persist()
 
-      if (sync && supabase && this._userId) {
+      if (sync && supabase && !isPreviewMode.value && this._userId) {
         supabase.from('sets').insert({
           id, user_id: this._userId, exercise_id: exerciseId,
           date, weight, reps, estimated_1rm: estimated1RM
@@ -317,7 +317,7 @@ export const useWorkoutStore = defineStore('workout', {
       exercise.sets = exercise.sets.filter((s: WorkoutSet) => s.id !== setId)
       this._persist()
 
-      if (sync && supabase && this._userId) {
+      if (sync && supabase && !isPreviewMode.value && this._userId) {
         const userId = this._userId
         syncQueue.enqueue(`set-delete:${setId}`, () =>
           supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
@@ -369,7 +369,7 @@ export const useWorkoutStore = defineStore('workout', {
       this.exercises.splice(idx, 1)
       this._persist()
 
-      if (sync && supabase && this._userId) {
+      if (sync && supabase && !isPreviewMode.value && this._userId) {
         const userId = this._userId
         syncQueue.enqueue(`exercise-delete-sets:${exerciseId}`, () =>
           supabase!.from('sets').delete().eq('exercise_id', exerciseId).eq('user_id', userId)

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { supabase } from '../lib/supabase'
+import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { uuid } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
@@ -75,7 +75,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this.entries.push({ id, date, weight })
       this._persist()
 
-      if (sync && supabase && this._userId) {
+      if (sync && supabase && !isPreviewMode.value && this._userId) {
         supabase.from('bodyweight_entries').insert({
           id, user_id: this._userId, date, weight
         }).then()

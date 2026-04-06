@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SyncQueue, syncStatus, _resetRateLimit } from '../syncQueue'
 
 // Mock supabase so the module loads (syncQueue checks supabase for the singleton)
-vi.mock('../supabase', () => ({ supabase: {} }))
+vi.mock('../supabase', () => ({ supabase: {}, isPreviewMode: { value: false } }))
 
 describe('SyncQueue', () => {
   beforeEach(() => {

@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { supabase } from './supabase'
+import { supabase, isPreviewMode } from './supabase'
 import { logError, logWarn } from './logger'
 
 type SyncOperation = () => PromiseLike<unknown>
@@ -42,7 +42,7 @@ export class SyncQueue {
    * the previous operation is replaced (last-write-wins).
    */
   enqueue(key: string, op: SyncOperation): void {
-    if (!supabase) return
+    if (!supabase || isPreviewMode.value) return
     // Rate limiting
     _rateCount++
     if (!_rateResetTimer) {
