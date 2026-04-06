@@ -518,17 +518,6 @@
                 <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
               </div>
             </div>
-            <!-- Weight input (hidden, focused when user taps weight display) -->
-            <input
-              ref="weightInputEl"
-              v-model="weightStr"
-              type="text"
-              inputmode="decimal"
-              autocomplete="off"
-              class="wtHiddenWeightInput"
-              @focus="($event.target as HTMLInputElement)?.select()"
-              @blur="plateNumpadOverride = false"
-            />
           </template>
           <!-- Numpad / edit mode: side-by-side weight + reps -->
           <div v-else class="wtInputRow">
@@ -593,7 +582,18 @@
           <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplay">
-              <button class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight || 0 }}</button>
+              <button v-if="!plateNumpadOverride" class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight || 0 }}</button>
+              <input
+                v-else
+                ref="weightInputEl"
+                v-model="weightStr"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                class="wtPlateWeightInput"
+                @focus="($event.target as HTMLInputElement)?.select()"
+                @blur="plateNumpadOverride = false"
+              />
               <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
               <span v-if="isPerSide" class="wtPlateModeBadge">per side</span>
             </div>

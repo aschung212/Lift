@@ -3305,13 +3305,24 @@ html.theme-fading .settingsSheet {
   margin-left: 8px;
 }
 
-.wtHiddenWeightInput {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
+.wtPlateWeightInput {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  width: 120px;
+  height: 48px;
+  padding: 0 16px;
+  font-size: var(--font-title2);
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  text-align: center;
+  outline: none;
 }
 
 .wtPlateModeBadge {
