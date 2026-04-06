@@ -39,6 +39,8 @@
         <StarterPickerFlow
           @confirm="handleStarterConfirm"
           @skip="handleStarterSkip"
+          @preview="handleStarterPreview"
+          @revert-preview="handleStarterRevertPreview"
         />
       </template>
     </div>
@@ -375,9 +377,18 @@ function goToStarter(sampleData: boolean) {
   step.value = 'starter-flow'
 }
 
-const { currentTheme } = useTheme()
+const { currentTheme, previewTheme, revertPreview } = useTheme()
+
+function handleStarterPreview(themeId: ThemeId) {
+  previewTheme(themeId)
+}
+
+function handleStarterRevertPreview() {
+  revertPreview()
+}
 
 function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
+  revertPreview()
   progressionStore.weeklyTarget = weeklyGoal
   progressionStore.setStarterTheme(themeId)
   currentTheme.value = themeId
@@ -385,6 +396,7 @@ function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
 }
 
 function handleStarterSkip() {
+  revertPreview()
   finish(pendingSampleData)
 }
 
