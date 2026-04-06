@@ -31,6 +31,8 @@ const mockSignUp = vi.fn().mockResolvedValue({ data: { user: { identities: [{}] 
 const mockSignOut = vi.fn().mockResolvedValue({})
 const mockGetSession = vi.fn().mockResolvedValue({ data: { session: null } })
 const mockOnAuthStateChange = vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } })
+const mockDelete = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
+const mockFrom = vi.fn().mockReturnValue({ delete: () => mockDelete() })
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -41,8 +43,15 @@ vi.mock('../../lib/supabase', () => ({
       signOut: (...args: unknown[]) => mockSignOut(...args),
       getSession: (...args: unknown[]) => mockGetSession(...args),
       onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
-    }
+    },
+    from: (...args: unknown[]) => mockFrom(...args),
   }
+}))
+
+// Mock syncQueue
+const mockSyncQueueClear = vi.fn()
+vi.mock('../../lib/syncQueue', () => ({
+  syncQueue: { clear: () => mockSyncQueueClear() }
 }))
 
 // Need to reset modules to get fresh state for useAuth
@@ -157,6 +166,101 @@ describe('useAuth', () => {
       expect(user.value).toBeNull()
       await devSignIn()
       expect(user.value).toEqual({ id: 'local-dev', email: 'dev@localhost' })
+    })
+  })
+
+  describe('deleteAccount', () => {
+    it('clears all localStorage keys used by the app', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      // Set some localStorage keys
+      localStorage.setItem('workout-exercises', '[]')
+      localStorage.setItem('bodyweight-entries', '[]')
+      localStorage.setItem('user-progression', '{}')
+      localStorage.setItem('app-theme', 'fire')
+      localStorage.setItem('rest-duration', '90')
+
+      await deleteAccount()
+
+      expect(localStorage.getItem('workout-exercises')).toBeNull()
+      expect(localStorage.getItem('bodyweight-entries')).toBeNull()
+      expect(localStorage.getItem('user-progression')).toBeNull()
+      expect(localStorage.getItem('app-theme')).toBeNull()
+      expect(localStorage.getItem('rest-duration')).toBeNull()
+    })
+
+    it('signs user out after deletion', async () => {
+      const { deleteAccount, devSignIn, user } = useAuth()
+      await devSignIn()
+      expect(user.value).not.toBeNull()
+
+      await deleteAccount()
+      expect(user.value).toBeNull()
+    })
+
+    it('cancels pending sync operations before deleting', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      await deleteAccount()
+      expect(mockSyncQueueClear).toHaveBeenCalled()
+    })
+
+    it('exposes deleteAccount function', () => {
+      const auth = useAuth()
+      expect(typeof auth.deleteAccount).toBe('function')
+    })
+
+    it('throws when Supabase deletion returns rejected promises', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      // Make supabase.from().delete().eq() reject (network error)
+      mockDelete.mockReturnValueOnce({
+        eq: vi.fn().mockRejectedValue(new Error('Network failure'))
+      })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+    })
+
+    it('deletes all IndexedDB databases via indexedDB.databases() when available', async () => {
+      const mockDeleteDatabase = vi.fn()
+      const mockDatabases = vi.fn().mockResolvedValue([
+        { name: 'lift-backup' },
+        { name: 'other-db' },
+      ])
+      vi.stubGlobal('indexedDB', {
+        databases: mockDatabases,
+        deleteDatabase: mockDeleteDatabase,
+      })
+
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      await deleteAccount()
+
+      expect(mockDatabases).toHaveBeenCalled()
+      expect(mockDeleteDatabase).toHaveBeenCalledWith('lift-backup')
+      expect(mockDeleteDatabase).toHaveBeenCalledWith('other-db')
+
+      // Restore indexedDB to default (undefined in test env)
+      vi.stubGlobal('indexedDB', undefined)
+    })
+
+    it('falls back to deleting lift-backup when indexedDB.databases() is not supported', async () => {
+      const mockDeleteDatabase = vi.fn()
+      vi.stubGlobal('indexedDB', {
+        databases: vi.fn().mockRejectedValue(new Error('not supported')),
+        deleteDatabase: mockDeleteDatabase,
+      })
+
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      await deleteAccount()
+
+      expect(mockDeleteDatabase).toHaveBeenCalledWith('lift-backup')
+
+      vi.stubGlobal('indexedDB', undefined)
     })
   })
 })

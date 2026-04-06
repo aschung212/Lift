@@ -391,6 +391,14 @@
             <div class="settingsGroup">
               <button class="settingsSignOut" @click="confirmSignOut">Sign Out</button>
             </div>
+
+            <div class="settingsGroup">
+              <div class="settingsHeader">Danger Zone</div>
+              <button class="settingsRow settingsRowBtn settingsDeleteAccount" @click="showDeleteAccountConfirm">
+                <span class="settingsLabel">Delete Account</span>
+                <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
             </div>
           </div>
         </div>
@@ -498,6 +506,40 @@
             <div class="confirmActions">
               <button class="confirmBtn confirmBtnCancel" @click="dismissConfirm">Cancel</button>
               <button class="confirmBtn confirmBtnConfirm" @click="acceptConfirm">Confirm</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+    <!-- Delete account confirmation dialog -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="deleteAccountOpen" class="confirmOverlay" @click.self="deleteAccountOpen = false" @keydown.escape="deleteAccountOpen = false">
+          <div class="confirmSheet deleteConfirmSheet" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-desc">
+            <p id="delete-title" class="confirmMessage deleteConfirmTitle">Delete Account</p>
+            <p id="delete-desc" class="deleteConfirmDesc">This will permanently erase all your workout data, progression, and settings. This action cannot be undone.</p>
+            <label class="deleteConfirmLabel" for="delete-confirm-input">Type <strong>DELETE</strong> to confirm</label>
+            <input
+              id="delete-confirm-input"
+              v-model="deleteConfirmText"
+              class="deleteConfirmInput"
+              type="text"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="DELETE"
+            />
+            <p v-if="deleteError" class="deleteConfirmError" role="alert">{{ deleteError }}</p>
+            <div class="confirmActions">
+              <button class="confirmBtn confirmBtnCancel" @click="deleteAccountOpen = false">Cancel</button>
+              <button
+                class="confirmBtn deleteConfirmBtn"
+                :disabled="deleteConfirmText !== 'DELETE' || deletingAccount"
+                @click="executeDeleteAccount"
+              >
+                {{ deletingAccount ? 'Deleting…' : 'Delete Everything' }}
+              </button>
             </div>
           </div>
         </div>
@@ -809,7 +851,7 @@ const sortedThemes = computed(() => {
   return [...unlocked, ...locked]
 })
 
-const { user, loading, signOut } = useAuth()
+const { user, loading, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
@@ -929,6 +971,12 @@ const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeSh
 
 // ── Confirm dialog state (declared before watchers that reference it) ──
 const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
+
+// ── Delete account state ──────────────────────────────────────────
+const deleteAccountOpen = ref(false)
+const deleteConfirmText = ref('')
+const deletingAccount = ref(false)
+const deleteError = ref('')
 
 // ── Focus trap watches for v-if modals ─────────────────────────
 watch(shortcutsOpen, async (open) => {
@@ -1367,6 +1415,30 @@ function confirmSignOut() {
     onboardingComplete.value = false
     signOut()
   })
+}
+
+function showDeleteAccountConfirm() {
+  deleteConfirmText.value = ''
+  deleteError.value = ''
+  deletingAccount.value = false
+  deleteAccountOpen.value = true
+  logEvent('delete_account_opened')
+}
+
+async function executeDeleteAccount() {
+  if (deleteConfirmText.value !== 'DELETE') return
+  deletingAccount.value = true
+  deleteError.value = ''
+  try {
+    await deleteAccount()
+    deleteAccountOpen.value = false
+    settingsOpen.value = false
+    onboardingComplete.value = false
+    logEvent('account_deleted')
+  } catch (err) {
+    deleteError.value = err instanceof Error ? err.message : 'Deletion failed. Please try again.'
+    deletingAccount.value = false
+  }
 }
 
 function exportData(format: 'csv' | 'json') {
