@@ -3636,42 +3636,53 @@ html.theme-fading .settingsSheet {
 
 /* Misc modal elements */
 .wtPrevSession {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .wtPrevSessionLabel {
   font-size: var(--font-caption2);
-  font-weight: 600;
-  color: var(--text-muted);
+  font-weight: 700;
+  color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.6px;
+  margin-bottom: 8px;
+  display: block;
 }
 
 .wtPrevSessionChips {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.wtPrevSessionChips::-webkit-scrollbar {
+  display: none;
 }
 
 .wtPrevSessionChip {
-  padding: 8px 12px;
+  padding: 8px 16px;
   min-height: 44px;
   display: flex;
   align-items: center;
-  font-size: var(--font-footnote);
+  white-space: nowrap;
+  font-size: var(--font-callout);
   font-weight: 600;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
-  color: var(--accent);
-  background: var(--accent-subtle);
-  border: 1px solid var(--accent);
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
   border-radius: 10px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .wtPrevSessionChip:active {
-  opacity: 0.6;
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .wtInputRow {

@@ -1137,15 +1137,15 @@ const selectedExerciseId = ref('')
 const previousSets = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   if (!ex || ex.sets.length === 0) return []
-  // Group sets by local date, find the most recent date
+  // Group sets by local date
   const byDate = new Map<string, typeof ex.sets>()
   for (const s of ex.sets) {
-    const key = s.date.slice(0, 10)
+    const key = toLocalDateKey(s.date)
     if (!byDate.has(key)) byDate.set(key, [])
     byDate.get(key)!.push(s)
   }
   const sortedDates = [...byDate.keys()].sort().reverse()
-  // Use most recent date's sets (skip today if user is actively logging)
+  // Skip today so user sees the actual previous session
   const today = todayISO()
   const prevDate = sortedDates.find(d => d !== today) || sortedDates[0]
   return byDate.get(prevDate) || []
