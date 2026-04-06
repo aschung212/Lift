@@ -249,17 +249,17 @@ describe('CalendarView', () => {
       const wrapper = mountCalendar()
       await wrapper.find('.calCellToday').trigger('click')
 
-      expect(wrapper.find('.calTagCount').exists()).toBe(true)
+      expect(wrapper.find('.calExRowCount').exists()).toBe(true)
     })
 
-    it('expands set details when exercise tag is clicked', async () => {
+    it('expands set details when exercise row is clicked', async () => {
       const today = new Date()
       const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
       exercises = makeExercises([dateStr])
 
       const wrapper = mountCalendar()
       await wrapper.find('.calCellToday').trigger('click')
-      await wrapper.find('.calDetailTag').trigger('click')
+      await wrapper.find('.calExRow').trigger('click')
 
       expect(wrapper.find('.calSetList').exists()).toBe(true)
       expect(wrapper.find('.calSetRow').exists()).toBe(true)
@@ -272,10 +272,10 @@ describe('CalendarView', () => {
 
       const wrapper = mountCalendar()
       await wrapper.find('.calCellToday').trigger('click')
-      await wrapper.find('.calDetailTag').trigger('click')
+      await wrapper.find('.calExRow').trigger('click')
       expect(wrapper.find('.calSetList').exists()).toBe(true)
 
-      await wrapper.find('.calDetailTag').trigger('click')
+      await wrapper.find('.calExRow').trigger('click')
       expect(wrapper.find('.calSetList').exists()).toBe(false)
     })
   })

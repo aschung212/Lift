@@ -92,31 +92,39 @@
             </span>
           </div>
 
-          <button
-            v-for="ex in trainingMap[selectedDay]"
-            :key="ex"
-            :class="['calDetailTag', { calDetailTagPR: isPRExercise(selectedDay, ex) }]"
-            :aria-expanded="detailKey === `${selectedDay}::${ex}`"
-            @click="toggleDetail(selectedDay, ex)"
-          >{{ isPRExercise(selectedDay, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(selectedDay, ex) }}</span></button>
-
-          <template v-for="ex in trainingMap[selectedDay]" :key="`detail-${ex}`">
-            <div v-if="detailKey === `${selectedDay}::${ex}`" class="calSetList">
-              <div
-                v-for="s in getSetsForDay(selectedDay, ex)"
-                :key="s.id"
-                :class="['calSetRow', { calSetRowPR: s.isPR }]"
+          <div class="calExList">
+            <div v-for="ex in trainingMap[selectedDay]" :key="ex" class="calExGroup">
+              <button
+                :class="['calExRow', { calExRowExpanded: detailKey === `${selectedDay}::${ex}`, calExRowPR: isPRExercise(selectedDay, ex) }]"
+                :aria-expanded="detailKey === `${selectedDay}::${ex}`"
+                @click="toggleDetail(selectedDay, ex)"
               >
-                <span class="calSetMain">
-                  <span v-if="s.isPR" class="calSetPR">🏆</span>
-                  <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
-                  <span class="calSetSep">×</span>
-                  <span class="calSetReps">{{ s.reps }} reps</span>
+                <span class="calExRowLeft">
+                  <span v-if="isPRExercise(selectedDay, ex)" class="calSetPR">🏆</span>
+                  <span class="calExRowName">{{ ex }}</span>
                 </span>
-                <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                <span class="calExRowRight">
+                  <span class="calExRowCount">{{ getSetCount(selectedDay, ex) }} set{{ getSetCount(selectedDay, ex) !== 1 ? 's' : '' }}</span>
+                  <span :class="['calExRowChevron', { calExRowChevronOpen: detailKey === `${selectedDay}::${ex}` }]">›</span>
+                </span>
+              </button>
+              <div v-if="detailKey === `${selectedDay}::${ex}`" class="calSetList">
+                <div
+                  v-for="s in getSetsForDay(selectedDay, ex)"
+                  :key="s.id"
+                  :class="['calSetRow', { calSetRowPR: s.isPR }]"
+                >
+                  <span class="calSetMain">
+                    <span v-if="s.isPR" class="calSetPR">🏆</span>
+                    <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
+                    <span class="calSetSep">×</span>
+                    <span class="calSetReps">{{ s.reps }} reps</span>
+                  </span>
+                  <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                </div>
               </div>
             </div>
-          </template>
+          </div>
         </div>
         <p v-else class="calDetailEmpty">No sets logged.</p>
       </div>
