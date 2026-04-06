@@ -769,11 +769,20 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
 
   // Best 1RM from existing sets (before this set was added, it's already in the array)
   const otherSets = exercise.sets.filter(s => s.id !== setId)
-  const best1RM = calculateBest1RM(otherSets)
+  const rawBest1RM = calculateBest1RM(otherSets)
+
+  // PR suppression for immature exercises:
+  // An exercise is "established" when it has sets from at least 2 different days.
+  // Until then, all sets are treated as new-exercise (flat XP, no PR multipliers).
+  // This prevents farming XP by creating exercises and logging progressively heavier warmup sets.
+  const today = date.value || todayISO()
+  const priorDays = new Set(otherSets.map(s => s.date.slice(0, 10)))
+  const isEstablished = priorDays.size >= 1 && !([...priorDays].every(d => d === today.slice(0, 10)))
+  const best1RM = isEstablished ? rawBest1RM : null
 
   // Rep PR only awards bonus when NOT already in PR/Tied PR zone
   const isPRZone = best1RM !== null && estimated1RM >= best1RM
-  const isRepPR = !isPRZone && checkRepPR(weight, reps, otherSets)
+  const isRepPR = isEstablished && !isPRZone && checkRepPR(weight, reps, otherSets)
 
   const setIndex = exercise.sets.length - 1
   const baseXP = calculateSetXP({
@@ -1842,7 +1851,11 @@ function saveSet() {
       const set = ex?.sets.find(s => s.id === editSetId)
       if (ex && set) {
         const otherSets = ex.sets.filter(s => s.id !== editSetId)
-        const best = calculateBest1RM(otherSets)
+        const rawBest = calculateBest1RM(otherSets)
+        const editPriorDays = new Set(otherSets.map(s => s.date.slice(0, 10)))
+        const editSetDay = set.date.slice(0, 10)
+        const editEstablished = editPriorDays.size >= 1 && !([...editPriorDays].every(d => d === editSetDay))
+        const best = editEstablished ? rawBest : null
         const newXP = calculateSetXP({
           setEstimated1RM: set.estimated1RM,
           exerciseBest1RM: best,
@@ -1852,7 +1865,7 @@ function saveSet() {
         const editIsPR = best !== null && set.estimated1RM > best
         const editIsTie = best !== null && set.estimated1RM === best
         const editIsPRZone = editIsPR || editIsTie
-        const editIsRepPR = !editIsPRZone && checkRepPR(set.weight, set.reps, otherSets)
+        const editIsRepPR = editEstablished && !editIsPRZone && checkRepPR(set.weight, set.reps, otherSets)
         let editZone: string
         if (best === null) editZone = 'new_exercise'
         else if (editIsPR) editZone = 'pr'
