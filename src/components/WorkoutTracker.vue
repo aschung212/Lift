@@ -1922,6 +1922,8 @@ function playGoBeep() {
 
 const liveEstimate = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
+  // In plate mode, bar-only (no plates) should show PR suggestion instead of live estimate
+  if (plateMode.value && currentPlates.value.length === 0) return null
   const w = toLbs(weight.value)
   const est = reps.value === 1 ? w : w * (1 + reps.value / 30)
   return displayWeight(Math.round(est))
@@ -1929,6 +1931,7 @@ const liveEstimate = computed(() => {
 
 const liveEstimateLbs = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
+  if (plateMode.value && currentPlates.value.length === 0) return null
   const w = toLbs(weight.value)
   return reps.value === 1 ? Math.round(w) : Math.round(w * (1 + reps.value / 30))
 })
