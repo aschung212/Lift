@@ -143,5 +143,14 @@ export class SyncQueue {
   }
 }
 
+/** Reset rate limit state (for testing only). */
+export function _resetRateLimit(): void {
+  _rateCount = 0
+  if (_rateResetTimer) {
+    clearTimeout(_rateResetTimer)
+    _rateResetTimer = null
+  }
+}
+
 /** Shared sync queue instance used by all stores (1-second debounce). */
 export const syncQueue = new SyncQueue(1000)
