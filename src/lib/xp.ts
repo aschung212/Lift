@@ -91,11 +91,11 @@ export const XP_CONFIG = {
  */
 export function calculateSetXP(params: {
   setEstimated1RM: number
-  exerciseBest1RM: number | null  // null = new exercise
-  setIndex: number                // 0-based, for new exercise flat rate
+  exerciseBest1RM: number | null  // null = new/immature exercise
+  setIndex?: number               // unused — kept for API compatibility
   isRepPR?: boolean               // true if this set beats the rep record at its weight
 }): number {
-  const { setEstimated1RM, exerciseBest1RM, setIndex, isRepPR } = params
+  const { setEstimated1RM, exerciseBest1RM, isRepPR } = params
   const cfg = XP_CONFIG
 
   // New/immature exercise: flat rate for all sets (PR detection is suppressed)
