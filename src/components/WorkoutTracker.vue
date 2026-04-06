@@ -534,7 +534,7 @@
             <div class="wtRepsStepperFull">
               <span class="wtRepsStepperLabel">Reps</span>
               <div class="wtRepsStepperBar">
-                <button class="wtRepsStepBtnLg" @click="adjustReps(-1)" :disabled="!reps || reps <= 1" aria-label="Decrease reps">−</button>
+                <button class="wtRepsStepBtnLg" @click="adjustReps(-1)" :disabled="reps === null || reps <= 0" aria-label="Decrease reps">−</button>
                 <input
                   v-model="repsStr"
                   type="text"
@@ -1311,9 +1311,12 @@ const plateNumpadOverride = ref(false)
 
 function adjustReps(delta: number) {
   const current = reps.value ?? 0
-  const next = Math.max(1, Math.min(MAX_REPS, current + delta))
-  reps.value = next
-  repsStr.value = String(next)
+  const next = Math.max(0, Math.min(MAX_REPS, current + delta))
+  if (next === 0) {
+    repsStr.value = ''
+  } else {
+    repsStr.value = String(next)
+  }
 }
 
 function onWeightInputFocus() {
