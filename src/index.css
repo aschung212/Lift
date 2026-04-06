@@ -3113,8 +3113,8 @@ html.theme-fading .settingsSheet {
 }
 
 .wtRepsStepperInput {
-  width: 72px;
-  flex: 0 0 72px;
+  width: 96px;
+  flex: 0 0 96px;
   text-align: center;
   border-radius: 12px;
   font-size: var(--font-title2);
@@ -3278,7 +3278,25 @@ html.theme-fading .settingsSheet {
 .wtPlateDisplay {
   text-align: center;
   padding: 0 0 12px;
+}
+
+.wtPlateWeightBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  height: 48px;
+  padding: 0 24px;
+  font-size: var(--font-title2);
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
   cursor: pointer;
+  margin-bottom: 4px;
 }
 
 .wtHiddenWeightInput {
@@ -3288,12 +3306,6 @@ html.theme-fading .settingsSheet {
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
-}
-
-.wtPlateTotalEdit {
-  font-size: var(--font-caption1);
-  color: var(--text-muted);
-  margin-left: 4px;
 }
 
 .wtPlateTotal {
