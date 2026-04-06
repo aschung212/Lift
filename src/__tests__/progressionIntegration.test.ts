@@ -114,7 +114,7 @@ describe('Progression Integration', () => {
   // ── XP calculation integration ────────────────────────────────
 
   describe('XP calculation end-to-end', () => {
-    it('first 3 sets earn flat 50, 4th uses normal formula', () => {
+    it('all sets on immature exercise earn flat 50', () => {
       const xp1 = calculateSetXP({ setEstimated1RM: 100, exerciseBest1RM: null, setIndex: 0 })
       const xp2 = calculateSetXP({ setEstimated1RM: 100, exerciseBest1RM: null, setIndex: 1 })
       const xp3 = calculateSetXP({ setEstimated1RM: 100, exerciseBest1RM: null, setIndex: 2 })
@@ -122,7 +122,7 @@ describe('Progression Integration', () => {
       expect(xp1).toBe(50)
       expect(xp2).toBe(50)
       expect(xp3).toBe(50)
-      expect(xp4).toBe(10) // min XP, no best to compare against
+      expect(xp4).toBe(50) // no cap — PR detection handles maturity
     })
 
     it('zone transitions are correct at boundaries', () => {

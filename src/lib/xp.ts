@@ -98,9 +98,9 @@ export function calculateSetXP(params: {
   const { setEstimated1RM, exerciseBest1RM, setIndex, isRepPR } = params
   const cfg = XP_CONFIG
 
-  // New exercise: first N sets get flat rate
+  // New/immature exercise: flat rate for all sets (PR detection is suppressed)
   if (exerciseBest1RM === null) {
-    return setIndex < cfg.newExerciseMaxSets ? cfg.newExerciseFlatXP : cfg.minXP
+    return cfg.newExerciseFlatXP
   }
 
   // Guard against zero/negative best

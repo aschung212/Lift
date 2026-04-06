@@ -180,10 +180,13 @@ describe('calculateSetXP', () => {
       })).toBe(50)
     })
 
-    it('returns minimum XP for fourth set', () => {
+    it('returns flat XP for all sets on immature exercise', () => {
       expect(calculateSetXP({
         setEstimated1RM: 80, exerciseBest1RM: null, setIndex: 3,
-      })).toBe(10)
+      })).toBe(50)
+      expect(calculateSetXP({
+        setEstimated1RM: 80, exerciseBest1RM: null, setIndex: 10,
+      })).toBe(50)
     })
   })
 
