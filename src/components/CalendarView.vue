@@ -190,20 +190,35 @@
     </div>
   </div>
 
+  <!-- Exercise Picker Modal -->
+  <Teleport to="body">
+    <div v-if="exercisePickerDate" class="repMaxOverlay" @click.self="exercisePickerDate = null" @keydown.escape="exercisePickerDate = null">
+      <div class="repMaxModal" role="dialog" aria-modal="true">
+        <h2>Choose Exercise</h2>
+        <div class="wtExPickerList">
+          <button
+            v-for="ex in store.exercises"
+            :key="ex.id"
+            class="wtExPickerRow"
+            @click="pickExercise(ex.id)"
+          >
+            <span class="wtExPickerName">{{ ex.name }}</span>
+            <span class="wtChevron">›</span>
+          </button>
+        </div>
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnClose" @click="exercisePickerDate = null">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
   <!-- Log Set Modal -->
   <Teleport to="body">
     <div v-if="logModal.open" class="repMaxOverlay" @click.self="closeLogModal" @keydown.escape="closeLogModal">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title">
-        <h2 id="cal-modal-title">Log a Set</h2>
+        <h2 id="cal-modal-title">{{ store.exercises.find(e => e.id === logModal.exerciseId)?.name || 'Log a Set' }}</h2>
         <p class="wtModalSubtitle">{{ formatSelectedDay(logModal.date) }}</p>
-
-        <label class="repMaxLabel">
-          Exercise
-          <select v-model="logModal.exerciseId" class="repMaxInput">
-            <option value="" disabled>Select exercise...</option>
-            <option v-for="ex in store.exercises" :key="ex.id" :value="ex.id">{{ ex.name }}</option>
-          </select>
-        </label>
 
         <div class="wtInputRow">
           <label class="repMaxLabel" style="flex:1">
@@ -523,8 +538,16 @@ function formatSelectedDay(dateStr: string) {
 const calModalFocus = useFocusTrap()
 const logModal = ref<{ open: boolean; date: string; exerciseId: string; weight: number | null; reps: number | null }>({ open: false, date: '', exerciseId: '', weight: null, reps: null })
 
+const exercisePickerDate = ref<string | null>(null)
+
 function openLogModal(dateStr: string) {
-  logModal.value = { open: true, date: dateStr, exerciseId: '', weight: null, reps: null }
+  exercisePickerDate.value = dateStr
+}
+
+function pickExercise(exerciseId: string) {
+  const dateStr = exercisePickerDate.value!
+  exercisePickerDate.value = null
+  logModal.value = { open: true, date: dateStr, exerciseId, weight: null, reps: null }
 }
 
 function closeLogModal() {
