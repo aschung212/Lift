@@ -95,8 +95,8 @@
           <div class="calExList">
             <div v-for="ex in trainingMap[selectedDay]" :key="ex" class="calExGroup">
               <button
-                :class="['calExRow', { calExRowExpanded: detailKey === `${selectedDay}::${ex}`, calExRowPR: isPRExercise(selectedDay, ex) }]"
-                :aria-expanded="detailKey === `${selectedDay}::${ex}`"
+                :class="['calExRow', { calExRowExpanded: expandedExercises.has(`${selectedDay}::${ex}`), calExRowPR: isPRExercise(selectedDay, ex) }]"
+                :aria-expanded="expandedExercises.has(`${selectedDay}::${ex}`)"
                 @click="toggleDetail(selectedDay, ex)"
               >
                 <span class="calExRowLeft">
@@ -105,10 +105,10 @@
                 </span>
                 <span class="calExRowRight">
                   <span class="calExRowCount">{{ getSetCount(selectedDay, ex) }} set{{ getSetCount(selectedDay, ex) !== 1 ? 's' : '' }}</span>
-                  <span :class="['calExRowChevron', { calExRowChevronOpen: detailKey === `${selectedDay}::${ex}` }]">›</span>
+                  <span :class="['calExRowChevron', { calExRowChevronOpen: expandedExercises.has(`${selectedDay}::${ex}`) }]">›</span>
                 </span>
               </button>
-              <div v-if="detailKey === `${selectedDay}::${ex}`" class="calSetList">
+              <div v-if="expandedExercises.has(`${selectedDay}::${ex}`)" class="calSetList">
                 <div
                   v-for="s in getSetsForDay(selectedDay, ex)"
                   :key="s.id"
@@ -148,12 +148,12 @@
             v-for="ex in day.exercises"
             :key="ex"
             :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
-            :aria-expanded="detailKey === `${day.dateStr}::${ex}`"
+            :aria-expanded="expandedExercises.has(`${day.dateStr}::${ex}`)"
             @click="toggleDetail(day.dateStr, ex)"
           >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(day.dateStr, ex) }}</span></button>
 
           <template v-for="ex in day.exercises" :key="`detail-${ex}`">
-            <div v-if="detailKey === `${day.dateStr}::${ex}`" class="calSetList">
+            <div v-if="expandedExercises.has(`${day.dateStr}::${ex}`)" class="calSetList">
               <div
                 v-for="s in getSetsForDay(day.dateStr, ex)"
                 :key="s.id"
@@ -382,11 +382,16 @@ const daySummary = computed(() => {
 })
 
 // Exercise detail expand: "YYYY-MM-DD::Exercise Name" or null
-const detailKey = ref<string | null>(null)
+const expandedExercises = ref(new Set<string>())
+watch(selectedDay, () => expandedExercises.value.clear())
 
 function toggleDetail(dateStr: string, exName: string) {
   const key = `${dateStr}::${exName}`
-  detailKey.value = detailKey.value === key ? null : key
+  if (expandedExercises.value.has(key)) {
+    expandedExercises.value.delete(key)
+  } else {
+    expandedExercises.value.add(key)
+  }
 }
 
 function getSetsForDay(dateStr: string, exName: string) {
