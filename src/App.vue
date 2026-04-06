@@ -879,7 +879,7 @@ function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
 // ── Service worker auto-update ──────────────────────────────────
 const swUpdated = ref(false)
 let swRegistration: ServiceWorkerRegistration | undefined
-const updateSW = registerSW({
+registerSW({
   onRegisteredSW(_url, registration) {
     swRegistration = registration ?? undefined
     // Poll for updates every 10 minutes
