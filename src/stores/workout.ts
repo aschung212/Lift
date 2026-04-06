@@ -89,6 +89,30 @@ function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; remo
   return { exercises: result, removed }
 }
 
+/**
+ * Deduplicate sets within each exercise by content (date + weight + reps).
+ * When multiple sets have identical content, keep the first one encountered
+ * and return the duplicate IDs for cleanup.
+ */
+function deduplicateSetsByContent(exercises: Exercise[]): string[] {
+  const removedSetIds: string[] = []
+  for (const ex of exercises) {
+    const seen = new Map<string, string>() // content key → first set ID
+    const uniqueSets: WorkoutSet[] = []
+    for (const set of ex.sets) {
+      const key = `${set.date}|${set.weight}|${set.reps}`
+      if (!seen.has(key)) {
+        seen.set(key, set.id)
+        uniqueSets.push(set)
+      } else {
+        removedSetIds.push(set.id)
+      }
+    }
+    ex.sets = uniqueSets
+  }
+  return removedSetIds
+}
+
 function load(): Exercise[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -199,6 +223,19 @@ export const useWorkoutStore = defineStore('workout', {
           // Delete the duplicate exercise
           syncQueue.enqueue(`exercise-dedup-delete:${dupe.id}`, () =>
             supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
+          )
+        }
+      }
+
+      // Deduplicate sets by content (same date + weight + reps within an exercise).
+      // This catches duplicates created by fire-and-forget inserts or multi-device sync
+      // where the same set was inserted with different UUIDs.
+      const dupSetIds = deduplicateSetsByContent(deduped.exercises)
+      if (supabase && this._userId && dupSetIds.length > 0) {
+        const userId = this._userId
+        for (const setId of dupSetIds) {
+          syncQueue.enqueue(`set-content-dedup:${setId}`, () =>
+            supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
           )
         }
       }
