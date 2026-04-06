@@ -196,7 +196,7 @@ export function useTheme() {
   // Weight conversion helpers — data is always stored in lbs
   function displayWeight(lbs: number): number {
     if (weightUnit.value === 'kg') return +(lbs * 0.453592).toFixed(1)
-    return lbs
+    return +lbs.toFixed(1)
   }
   function toLbs(value: number): number {
     if (weightUnit.value === 'kg') return +(value / 0.453592).toFixed(1)
