@@ -173,7 +173,7 @@ describe('WorkoutTracker', () => {
 
     it('renders "New Exercise" button', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtCardFooterBtn').text()).toBe('+ New Exercise')
+      expect(wrapper.find('.wtLogBtn').text()).toBe('+ New Exercise')
     })
 
     it('does not render tag filter bar when no tags', () => {
@@ -516,7 +516,7 @@ describe('WorkoutTracker', () => {
   describe('new exercise modal', () => {
     it('opens modal when "+ New Exercise" is clicked', async () => {
       const wrapper = mountTracker()
-      await wrapper.find('.wtCardFooterBtn').trigger('click')
+      await wrapper.find('.wtLogBtn').trigger('click')
       await wrapper.vm.$nextTick()
 
       expect(wrapper.find('.repMaxModal').exists()).toBe(true)
@@ -524,7 +524,7 @@ describe('WorkoutTracker', () => {
 
     it('shows "New Exercise" as modal title', async () => {
       const wrapper = mountTracker()
-      await wrapper.find('.wtCardFooterBtn').trigger('click')
+      await wrapper.find('.wtLogBtn').trigger('click')
       await wrapper.vm.$nextTick()
 
       expect(wrapper.find('#log-modal-title').text()).toBe('New Exercise')
@@ -535,7 +535,7 @@ describe('WorkoutTracker', () => {
       mockAddExercise.mockReturnValue('ex-new')
       const wrapper = mountTracker()
 
-      await wrapper.find('.wtCardFooterBtn').trigger('click')
+      await wrapper.find('.wtLogBtn').trigger('click')
       await wrapper.vm.$nextTick()
 
       // Enter exercise name
@@ -554,7 +554,7 @@ describe('WorkoutTracker', () => {
       mockAddExercise.mockReturnValue('ex-new')
       const wrapper = mountTracker()
 
-      await wrapper.find('.wtCardFooterBtn').trigger('click')
+      await wrapper.find('.wtLogBtn').trigger('click')
       await wrapper.vm.$nextTick()
 
       // Enter exercise name
@@ -579,7 +579,7 @@ describe('WorkoutTracker', () => {
 
     it('disables save button when name is empty', async () => {
       const wrapper = mountTracker()
-      await wrapper.find('.wtCardFooterBtn').trigger('click')
+      await wrapper.find('.wtLogBtn').trigger('click')
       await wrapper.vm.$nextTick()
 
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
@@ -772,8 +772,10 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.wtDetailEditBtn').trigger('click')
       await wrapper.vm.$nextTick()
 
-      // Click Delete Exercise in edit modal
+      // Click Delete Exercise, then confirm
       await wrapper.find('.wtEditDeleteBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.find('.wtEditDeleteConfirmDanger').trigger('click')
       await wrapper.vm.$nextTick()
 
       expect(mockDeleteExercise).toHaveBeenCalledWith('ex-1', { sync: false })
@@ -908,7 +910,7 @@ describe('WorkoutTracker', () => {
       exercises = JSON.parse(JSON.stringify(EXERCISES))
       const wrapper = mountTracker()
       // Open new exercise modal
-      await wrapper.find('.wtCardFooterBtn').trigger('click')
+      await wrapper.find('.wtLogBtn').trigger('click')
       await wrapper.vm.$nextTick()
       const addBtn = wrapper.find('.wtTagAddChip')
       expect(addBtn.attributes('aria-label')).toBe('Add tag')

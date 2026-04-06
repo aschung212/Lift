@@ -3,6 +3,7 @@
   <div class="wtCard">
     <div class="wtCardHeader">
       <h2 class="wtTitle">Exercise Tracker</h2>
+      <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
     </div>
 
     <!-- Tag filter -->
@@ -89,10 +90,6 @@
       </li>
     </ul>
 
-    <!-- Fixed footer -->
-    <div class="wtCardFooter">
-      <button class="wtCardFooterBtn" @click="openNewExerciseModal">+ New Exercise</button>
-    </div>
   </div>
 
   <!-- Exercise detail modal -->
@@ -191,13 +188,6 @@
               </template>
             </div>
           </template>
-
-          <!-- Clear all sets -->
-          <div v-if="detailExercise.sets.length > 0" class="wtClearWrap">
-            <button class="wtClearBtn" @click="undoClearSets(detailExercise)" :aria-label="`Clear all sets for ${detailExercise.name}`">
-              Clear all sets
-            </button>
-          </div>
 
         </div>
 
@@ -642,10 +632,18 @@
           <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
         </div>
         <button
+          v-if="!confirmDeleteExercise"
           class="wtEditDeleteBtn"
-          @click="undoDeleteExercise(store.exercises.find(e => e.id === editTarget)!); editTarget = null"
-          :aria-label="`Delete exercise`"
+          @click="confirmDeleteExercise = true"
+          aria-label="Delete exercise"
         >Delete Exercise</button>
+        <div v-else class="wtEditDeleteConfirm">
+          <span class="wtEditDeleteConfirmText">Delete this exercise and all its sets?</span>
+          <div class="wtEditDeleteConfirmActions">
+            <button class="wtEditDeleteConfirmBtn wtEditDeleteConfirmCancel" @click="confirmDeleteExercise = false">Cancel</button>
+            <button class="wtEditDeleteConfirmBtn wtEditDeleteConfirmDanger" @click="undoDeleteExercise(store.exercises.find(e => e.id === editTarget)!); editTarget = null">Delete</button>
+          </div>
+        </div>
       </div>
     </div>
   </Teleport>
@@ -1991,6 +1989,7 @@ function undoDeleteExercise(exercise: Exercise) {
 
 // ── Edit exercise state (rename + tags) ──────────────────────────
 const editTarget = ref<string | null>(null)
+const confirmDeleteExercise = ref(false)
 const editName = ref('')
 const editTags = ref<string[]>([])
 const newTagInput = ref('')
@@ -2001,6 +2000,7 @@ const editBarWeight = ref<number>(45)
 
 function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
+  confirmDeleteExercise.value = false
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
   editPlateMode.value = exercise.inputMode === 'plates'
