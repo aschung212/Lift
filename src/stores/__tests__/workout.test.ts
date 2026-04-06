@@ -184,28 +184,6 @@ describe('workout store', () => {
     })
   })
 
-  // ── clearSets / restoreSets ────────────────────────────────────
-  describe('clearSets / restoreSets', () => {
-    it('clears all sets for an exercise', () => {
-      const store = useWorkoutStore()
-      const exId = store.addExercise('Bench')!
-      store.logSet(exId, 135, 10)
-      store.logSet(exId, 185, 5)
-      store.clearSets(exId)
-      expect(store.exercises[0].sets).toHaveLength(0)
-    })
-
-    it('restores cleared sets', () => {
-      const store = useWorkoutStore()
-      const exId = store.addExercise('Bench')!
-      store.logSet(exId, 135, 10)
-      store.logSet(exId, 185, 5)
-      const savedSets = [...store.exercises[0].sets]
-      store.clearSets(exId)
-      store.restoreSets(exId, savedSets)
-      expect(store.exercises[0].sets).toHaveLength(2)
-    })
-  })
 
   // ── renameExercise ─────────────────────────────────────────────
   describe('renameExercise', () => {

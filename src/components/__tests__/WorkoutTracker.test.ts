@@ -106,12 +106,9 @@ const mockAddExercise = vi.fn()
 const mockLogSet = vi.fn()
 const mockUpdateSet = vi.fn()
 const mockDeleteSet = vi.fn()
-const mockClearSets = vi.fn()
 const mockDeleteExercise = vi.fn()
 const mockRestoreSet = vi.fn()
 const mockSyncDeleteSet = vi.fn()
-const mockRestoreSets = vi.fn()
-const mockSyncDeleteSets = vi.fn()
 const mockRestoreExercise = vi.fn()
 const mockSyncDeleteExercise = vi.fn()
 const mockRenameExercise = vi.fn()
@@ -130,12 +127,9 @@ vi.mock('../../stores/workout', () => ({
     logSet: mockLogSet,
     updateSet: mockUpdateSet,
     deleteSet: mockDeleteSet,
-    clearSets: mockClearSets,
     deleteExercise: mockDeleteExercise,
     restoreSet: mockRestoreSet,
     syncDeleteSet: mockSyncDeleteSet,
-    restoreSets: mockRestoreSets,
-    syncDeleteSets: mockSyncDeleteSets,
     restoreExercise: mockRestoreExercise,
     syncDeleteExercise: mockSyncDeleteExercise,
     renameExercise: mockRenameExercise,

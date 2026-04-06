@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { uuid } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
+import { logError, logWarn } from '../lib/logger'
 
 const STORAGE_KEY = 'bodyweight-entries'
 
@@ -15,8 +16,12 @@ export interface BodyweightEntry {
 function load(): BodyweightEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) throw new Error('Expected array')
+    return parsed
+  } catch (e) {
+    logWarn('Corrupt bodyweight data in localStorage, using empty state', { error: String(e) })
     return []
   }
 }
@@ -30,7 +35,11 @@ export const useBodyweightStore = defineStore('bodyweight', {
   actions: {
     _persist() {
       const data = JSON.stringify(this.entries)
-      localStorage.setItem(STORAGE_KEY, data)
+      try {
+        localStorage.setItem(STORAGE_KEY, data)
+      } catch (e) {
+        logError(e, { source: 'bodyweight._persist', size: data.length })
+      }
       backupToIDB(STORAGE_KEY, data)
     },
 
@@ -98,7 +107,10 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this._persist()
 
       if (sync && supabase && this._userId) {
-        supabase.from('bodyweight_entries').delete().eq('id', id).then()
+        const userId = this._userId
+        syncQueue.enqueue(`bodyweight-delete:${id}`, () =>
+          supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId)
+        )
       }
     },
 
@@ -109,7 +121,10 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
     syncDeleteEntry(id: string) {
       if (supabase && this._userId) {
-        supabase.from('bodyweight_entries').delete().eq('id', id).then()
+        const userId = this._userId
+        syncQueue.enqueue(`bodyweight-delete:${id}`, () =>
+          supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId)
+        )
       }
     },
 
@@ -118,7 +133,10 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this._persist()
 
       if (supabase && this._userId) {
-        supabase.from('bodyweight_entries').delete().eq('user_id', this._userId).then()
+        const userId = this._userId
+        syncQueue.enqueue('bodyweight-clear-all', () =>
+          supabase!.from('bodyweight_entries').delete().eq('user_id', userId)
+        )
       }
     }
   },

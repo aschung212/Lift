@@ -551,7 +551,7 @@
   <!-- Global XP toast -->
   <Teleport to="body">
     <transition name="xpGlobalFade">
-      <div v-if="xpToast.visible" class="xpGlobalToast">
+      <div v-if="xpToast.visible" class="xpGlobalToast" role="status" aria-live="polite">
         <div class="xpToastEarned">{{ xpToast.text }}</div>
         <div class="xpToastTotal">{{ xpToast.nextThresholdXP ? `${xpToast.totalXP.toLocaleString()} / ${xpToast.nextThresholdXP.toLocaleString()} XP` : `${xpToast.totalXP.toLocaleString()} XP` }}</div>
         <div v-if="xpToast.nextThresholdXP" class="xpToastProgress">
@@ -669,7 +669,7 @@
   <Teleport to="body">
     <transition name="unlockFade">
       <div v-if="unlockCelebration.visible" class="unlockOverlay" @click.self="dismissUnlockCelebration">
-        <div class="unlockModal">
+        <div class="unlockModal" role="alert" aria-live="assertive">
           <div class="unlockIcon">
             <span
               class="unlockDot"
