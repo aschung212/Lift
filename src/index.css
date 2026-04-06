@@ -4737,6 +4737,7 @@ html.theme-fading .settingsSheet {
 .calExRowCompact {
   padding: 8px 0;
   font-size: var(--font-footnote);
+  min-height: 36px;
 }
 
 /* Weekly view */
@@ -4800,9 +4801,8 @@ html.theme-fading .settingsSheet {
 .calWeekContent {
   flex: 1;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .calWeekTag {
@@ -4830,6 +4830,7 @@ html.theme-fading .settingsSheet {
   font-family: inherit;
   color: var(--accent);
   background: transparent;
+  align-self: flex-end;
   border: none;
   padding: 12px 12px;
   min-height: 44px;
