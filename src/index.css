@@ -900,6 +900,33 @@ html.modal-open .tabContent {
   height: 20px;
 }
 
+.syncIndicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
+}
+
+.syncIndicator--syncing {
+  color: var(--text-muted);
+  animation: syncSpin 1s linear infinite;
+}
+
+.syncIndicator--error {
+  color: var(--danger);
+}
+
+.syncIndicator--offline {
+  color: var(--text-muted);
+}
+
+@keyframes syncSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .tabIcon {
   width: 24px;
   height: 24px;

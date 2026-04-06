@@ -19,6 +19,11 @@
           Viewing sample data — Tap to clear and start fresh
         </button>
         <div class="appTopBar">
+          <span v-if="syncStatus !== 'synced'" class="syncIndicator" :class="'syncIndicator--' + syncStatus" :title="syncStatusLabel" role="status">
+            <svg v-if="syncStatus === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <svg v-else-if="syncStatus === 'offline'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+          </span>
           <button
             class="settingsGearBtn"
             @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
@@ -722,6 +727,7 @@ import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
 import { usePreferencesStore } from './stores/preferences'
 import type { WeightGoalDirection } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
+import { syncStatus } from './lib/syncQueue'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
@@ -804,6 +810,22 @@ const { user, loading, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+
+const syncStatusLabel = computed(() => {
+  if (syncStatus.value === 'syncing') return 'Syncing...'
+  if (syncStatus.value === 'error') return 'Sync failed — changes saved locally'
+  if (syncStatus.value === 'offline') return 'Offline — changes saved locally'
+  return ''
+})
+
+// Detect offline/online
+function updateOnlineStatus() {
+  if (!navigator.onLine) syncStatus.value = 'offline'
+  else if (syncStatus.value === 'offline') syncStatus.value = 'synced'
+}
+window.addEventListener('online', updateOnlineStatus)
+window.addEventListener('offline', updateOnlineStatus)
+if (!navigator.onLine) syncStatus.value = 'offline'
 
 const settingsOpen = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)
