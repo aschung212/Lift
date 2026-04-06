@@ -4,7 +4,7 @@ import { syncQueue } from '../lib/syncQueue'
 import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid } from '../lib/uuid'
-import { logWarn } from '../lib/logger'
+import { logError, logWarn } from '../lib/logger'
 
 const STORAGE_KEY = 'workout-exercises'
 
@@ -112,8 +112,12 @@ export const useWorkoutStore = defineStore('workout', {
   actions: {
     _persist() {
       const data = JSON.stringify(this.exercises)
-      localStorage.setItem(STORAGE_KEY, data)
-      localStorage.setItem('lift-custom-tags', JSON.stringify(this.customTags))
+      try {
+        localStorage.setItem(STORAGE_KEY, data)
+        localStorage.setItem('lift-custom-tags', JSON.stringify(this.customTags))
+      } catch (e) {
+        logError(e, { source: 'workout._persist', size: data.length })
+      }
       backupToIDB(STORAGE_KEY, data)
     },
 
@@ -314,7 +318,10 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (sync && supabase && this._userId) {
-        supabase.from('sets').delete().eq('id', setId).then()
+        const userId = this._userId
+        syncQueue.enqueue(`set-delete:${setId}`, () =>
+          supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
+        )
       }
     },
 
@@ -322,24 +329,6 @@ export const useWorkoutStore = defineStore('workout', {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       exercise.sets.push(set)
-      this._persist()
-    },
-
-    clearSets(exerciseId: string, { sync = true }: { sync?: boolean } = {}) {
-      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
-      if (!exercise) return
-      exercise.sets = []
-      this._persist()
-
-      if (sync && supabase && this._userId) {
-        supabase.from('sets').delete().eq('exercise_id', exerciseId).then()
-      }
-    },
-
-    restoreSets(exerciseId: string, sets: WorkoutSet[]) {
-      const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
-      if (!exercise) return
-      exercise.sets = [...sets]
       this._persist()
     },
 
@@ -381,10 +370,13 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (sync && supabase && this._userId) {
-        Promise.all([
-          supabase.from('sets').delete().eq('exercise_id', exerciseId),
-          supabase.from('exercises').delete().eq('id', exerciseId)
-        ]).then()
+        const userId = this._userId
+        syncQueue.enqueue(`exercise-delete-sets:${exerciseId}`, () =>
+          supabase!.from('sets').delete().eq('exercise_id', exerciseId).eq('user_id', userId)
+        )
+        syncQueue.enqueue(`exercise-delete:${exerciseId}`, () =>
+          supabase!.from('exercises').delete().eq('id', exerciseId).eq('user_id', userId)
+        )
       }
     },
 
@@ -399,22 +391,22 @@ export const useWorkoutStore = defineStore('workout', {
 
     syncDeleteSet(setId: string) {
       if (supabase && this._userId) {
-        supabase.from('sets').delete().eq('id', setId).then()
-      }
-    },
-
-    syncDeleteSets(exerciseId: string) {
-      if (supabase && this._userId) {
-        supabase.from('sets').delete().eq('exercise_id', exerciseId).then()
+        const userId = this._userId
+        syncQueue.enqueue(`set-delete:${setId}`, () =>
+          supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
+        )
       }
     },
 
     syncDeleteExercise(exerciseId: string) {
       if (supabase && this._userId) {
-        Promise.all([
-          supabase.from('sets').delete().eq('exercise_id', exerciseId),
-          supabase.from('exercises').delete().eq('id', exerciseId)
-        ]).then()
+        const userId = this._userId
+        syncQueue.enqueue(`exercise-delete-sets:${exerciseId}`, () =>
+          supabase!.from('sets').delete().eq('exercise_id', exerciseId).eq('user_id', userId)
+        )
+        syncQueue.enqueue(`exercise-delete:${exerciseId}`, () =>
+          supabase!.from('exercises').delete().eq('id', exerciseId).eq('user_id', userId)
+        )
       }
     },
 

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import { logError } from '../lib/logger'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -60,7 +61,11 @@ export const usePreferencesStore = defineStore('preferences', {
 
   actions: {
     _persist() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
+      } catch (e) {
+        logError(e, { source: 'preferences._persist' })
+      }
       if (supabase && this._userId) {
         const features = { ...this.features }
         const weightGoal = this.weightGoal
