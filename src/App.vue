@@ -431,12 +431,11 @@
       </Transition>
     </Teleport>
 
-    <!-- SW update toast -->
+    <!-- SW updated toast (informational, auto-dismisses) -->
     <Teleport to="body">
       <Transition name="undoToast">
-        <div v-if="swNeedRefresh" class="undoToastBar swUpdateBar" role="status" aria-live="polite">
-          <span class="undoToastMsg">New version available</span>
-          <button class="undoToastBtn" @click="updateSW()">Update</button>
+        <div v-if="swUpdated" class="undoToastBar swUpdateBar" role="status" aria-live="polite">
+          <span class="undoToastMsg">App updated ✓</span>
         </div>
       </Transition>
     </Teleport>
@@ -877,10 +876,35 @@ function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
   }
 }
 
-// ── Service worker update prompt ────────────────────────────────
-const swNeedRefresh = ref(false)
+// ── Service worker auto-update ──────────────────────────────────
+const swUpdated = ref(false)
+let swRegistration: ServiceWorkerRegistration | undefined
 const updateSW = registerSW({
-  onNeedRefresh() { swNeedRefresh.value = true },
+  onRegisteredSW(_url, registration) {
+    swRegistration = registration ?? undefined
+    // Poll for updates every 10 minutes
+    setInterval(() => registration?.update(), 10 * 60 * 1000)
+  },
+  onOfflineReady() { /* SW installed, app works offline */ },
+})
+
+// Check for SW update on visibility change (tab switch back, app resume)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') swRegistration?.update()
+})
+
+// Expose a function components can call after meaningful user actions
+function checkForSWUpdate() { swRegistration?.update() }
+
+// Listen for the controlling SW changing — means auto-update activated
+let currentController = navigator.serviceWorker?.controller
+navigator.serviceWorker?.addEventListener('controllerchange', () => {
+  if (currentController) {
+    // A new SW took over — show informational toast, then auto-dismiss
+    swUpdated.value = true
+    setTimeout(() => { swUpdated.value = false }, 4000)
+  }
+  currentController = navigator.serviceWorker?.controller ?? null
 })
 
 // ── Onboarding ──────────────────────────────────────────────────
@@ -1048,6 +1072,7 @@ function switchTab(tabId: string) {
   activeTab.value = tabId
   localStorage.setItem('active-tab', tabId)
   tabSwitch(from, tabId)
+  checkForSWUpdate()
 }
 
 function selectTheme(id: string) {

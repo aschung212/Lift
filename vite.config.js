@@ -33,7 +33,7 @@ export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
         name: 'Lift — Workout Tracker',
