@@ -3339,7 +3339,20 @@ html.theme-fading .settingsSheet {
   font-size: var(--font-caption2);
   color: var(--text-muted);
   margin-top: 4px;
-  position: relative;
+}
+
+.wtPlateClearBtn {
+  display: block;
+  margin: 8px auto 0;
+  padding: 4px 16px;
+  min-height: 32px;
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
 }
 
 .wtPlateGrid {

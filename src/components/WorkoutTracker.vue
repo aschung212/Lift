@@ -596,6 +596,7 @@
               />
               <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
               <span v-if="isPerSide" class="wtPlateModeBadge">per side</span>
+              <button v-if="currentPlates.length > 0" class="wtPlateClearBtn" @click="currentPlates = []; syncPlateWeight()">Clear</button>
             </div>
             <div class="wtPlateGrid">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
