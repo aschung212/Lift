@@ -3246,6 +3246,14 @@ html.theme-fading .settingsSheet {
   background: transparent;
 }
 
+.repMaxResultTappable {
+  cursor: pointer;
+}
+
+.repMaxResultTappable:active {
+  background: var(--accent-subtle);
+}
+
 .repMaxTargetHint {
   font-size: var(--font-caption1);
   color: var(--text-muted);

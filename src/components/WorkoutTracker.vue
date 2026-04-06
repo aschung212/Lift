@@ -508,10 +508,11 @@
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
             <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
           </div>
-          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
+          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget" :class="{ repMaxResultTappable: plateMode }" @click="plateMode && loadPRTarget()">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
             <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
+            <span v-if="plateMode" class="repMaxPersonalBest">Tap to load plates</span>
           </div>
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
@@ -1317,6 +1318,25 @@ function adjustReps(delta: number) {
   } else {
     repsStr.value = String(next)
   }
+}
+
+function loadPRTarget() {
+  if (!prTargetWeight.value) return
+  const targetLbs = toLbs(prTargetWeight.value)
+  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  const barWt = currentBarWeight.value
+  // Try exact, then round up by smallest plate increment until we find a valid breakdown
+  const smallestPlate = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
+  for (let tryWeight = targetLbs; tryWeight <= targetLbs + smallestPlate * 2; tryWeight += smallestPlate) {
+    const plates = weightToPlates(tryWeight, barWt, denoms)
+    if (plates) {
+      currentPlates.value = plates
+      syncPlateWeight()
+      return
+    }
+  }
+  // Fallback: just set the weight directly
+  weightStr.value = String(prTargetWeight.value)
 }
 
 function onWeightInputFocus() {
