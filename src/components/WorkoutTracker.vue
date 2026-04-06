@@ -518,21 +518,16 @@
                 <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
               </div>
             </div>
-            <label class="repMaxLabel">
-              Weight ({{ weightUnit }})
-              <div class="repMaxInputRow">
-                <input
-                  ref="weightInputEl"
-                  v-model="weightStr"
-                  type="text"
-                  :inputmode="plateNumpadOverride ? 'decimal' : 'none'"
-                  autocomplete="off"
-                  placeholder="135"
-                  :class="['repMaxInput', { repMaxInputReadonly: !plateNumpadOverride }]"
-                  @focus="onWeightInputFocus"
-                />
-              </div>
-            </label>
+            <!-- Hidden weight input for data binding + numpad focus target -->
+            <input
+              ref="weightInputEl"
+              v-model="weightStr"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              class="wtHiddenWeightInput"
+              @blur="plateNumpadOverride = false"
+            />
           </template>
           <!-- Numpad / edit mode: side-by-side weight + reps -->
           <div v-else class="wtInputRow">
@@ -596,8 +591,8 @@
 
           <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
-            <div class="wtPlateDisplay">
-              <span class="wtPlateTotal">{{ displayWeight(plateWeightLbs) }} {{ weightUnit }}</span>
+            <div class="wtPlateDisplay" @click="onWeightInputFocus(); weightInputEl?.focus()" role="button" tabindex="0">
+              <span class="wtPlateTotal">{{ displayWeight(plateWeightLbs) }} {{ weightUnit }} <span class="wtPlateTotalEdit">✎</span></span>
               <span class="wtPlateBreakdown">
                 {{ currentPlates.length > 0 ? `${currentBarWeight > 0 ? 'Bar + ' : ''}${formatPlates(currentPlates)}${isPerSide ? ' per side' : ''}` : currentBarWeight > 0 ? 'Bar only' : 'No plates' }}
               </span>

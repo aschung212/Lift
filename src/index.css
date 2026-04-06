@@ -3301,6 +3301,22 @@ html.theme-fading .settingsSheet {
 .wtPlateDisplay {
   text-align: center;
   padding: 0 0 12px;
+  cursor: pointer;
+}
+
+.wtHiddenWeightInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wtPlateTotalEdit {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  margin-left: 4px;
 }
 
 .wtPlateTotal {
