@@ -12,7 +12,8 @@
     <!-- Navigation -->
     <div class="calNav">
       <button class="calNavBtn" @click="prev" aria-label="Previous">‹</button>
-      <span class="calNavLabel">{{ navLabel }}</span>
+      <button v-if="!isCurrentPeriod" class="calNavLabel calNavLabelTappable" @click="goToToday">{{ navLabel }} <span class="calNavTodayHint">Today</span></button>
+      <span v-else class="calNavLabel">{{ navLabel }}</span>
       <button class="calNavBtn" @click="next" aria-label="Next">›</button>
     </div>
 
@@ -449,6 +450,21 @@ const navLabel = computed(() => {
   const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   return `${fmt(first)} – ${fmt(last)}`
 })
+
+const isCurrentPeriod = computed(() => {
+  const now = new Date()
+  if (view.value === 'month') {
+    return cursor.value.getFullYear() === now.getFullYear() && cursor.value.getMonth() === now.getMonth()
+  }
+  // Week view: check if today falls within the displayed week
+  const days = weekDays.value
+  return days.some(d => d.isToday)
+})
+
+function goToToday() {
+  cursor.value = new Date()
+  selectedDay.value = null
+}
 
 function prev() {
   const d = new Date(cursor.value)

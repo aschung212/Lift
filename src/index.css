@@ -4473,6 +4473,22 @@ html.theme-fading .settingsSheet {
   letter-spacing: -0.2px;
 }
 
+.calNavLabelTappable {
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calNavTodayHint {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+}
+
 /* Monthly grid */
 .calGrid {
   display: grid;
