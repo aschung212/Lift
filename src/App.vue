@@ -586,6 +586,8 @@
             :resolved-mode="resolvedMode"
             @confirm="handleStarterConfirm"
             @skip="handleStarterSkip"
+            @preview="handleStarterPreview"
+            @revert-preview="handleStarterRevertPreview"
           />
         </div>
       </div>
@@ -1170,7 +1172,16 @@ function executeResetProgress() {
   starterPickerVisible.value = true
 }
 
+function handleStarterPreview(themeId: ThemeId) {
+  previewTheme(themeId)
+}
+
+function handleStarterRevertPreview() {
+  revertPreview()
+}
+
 function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
+  revertPreview()
   starterPickerVisible.value = false
   progressionStore.weeklyTarget = weeklyGoal
   progressionStore.setStarterTheme(themeId)
@@ -1181,6 +1192,7 @@ function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
 }
 
 function handleStarterSkip() {
+  revertPreview()
   starterPickerVisible.value = false
   progressionStore.progressionEnabled = true
   if (!progressionStore.starterTheme) {

@@ -9,7 +9,7 @@
       <div class="spfExplainerRow">Build streaks for even more XP</div>
     </div>
     <button class="spfPrimary" @click="step = 'pick'">Pick a Starter Theme</button>
-    <button v-if="showSkip" class="spfSecondary" @click="$emit('skip')">Skip — I'll use the defaults</button>
+    <button v-if="showSkip" class="spfSecondary" @click="emit('revert-preview'); emit('skip')">Skip — I'll use the defaults</button>
   </template>
 
   <!-- Step 2: Starter pick -->
@@ -21,7 +21,7 @@
         v-for="s in STARTERS"
         :key="s.id"
         :class="['spfCard', { selected: selection === s.id }]"
-        @click="selection = s.id"
+        @click="selectStarter(s.id)"
       >
         <span
           class="spfDot"
@@ -36,7 +36,7 @@
     </div>
     <div class="spfWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</div>
     <button class="spfPrimary" :disabled="!selection" @click="step = 'goal'">Next</button>
-    <button v-if="showSkip" class="spfSecondary" @click="$emit('skip')">Skip</button>
+    <button v-if="showSkip" class="spfSecondary" @click="emit('revert-preview'); emit('skip')">Skip</button>
   </template>
 
   <!-- Step 3: Weekly goal -->
@@ -71,9 +71,11 @@ const props = withDefaults(defineProps<{
   resolvedMode: 'dark',
 })
 
-defineEmits<{
+const emit = defineEmits<{
   confirm: [themeId: ThemeId, weeklyGoal: number]
   skip: []
+  preview: [themeId: ThemeId]
+  'revert-preview': []
 }>()
 
 const step = ref<'explainer' | 'pick' | 'goal'>('explainer')
@@ -99,10 +101,16 @@ function getPreview(id: ThemeId) {
   return THEME_PREVIEWS[id]?.[props.resolvedMode] || THEME_PREVIEWS[id]?.dark || { accent: '#888', bg: '#222' }
 }
 
+function selectStarter(id: ThemeId) {
+  selection.value = id
+  emit('preview', id)
+}
+
 function reset() {
   step.value = 'explainer'
   selection.value = null
   goal.value = 3
+  emit('revert-preview')
 }
 
 defineExpose({ reset })
