@@ -518,7 +518,7 @@
                 <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
               </div>
             </div>
-            <!-- Hidden weight input for data binding + numpad focus target -->
+            <!-- Weight input (hidden, focused when user taps weight display) -->
             <input
               ref="weightInputEl"
               v-model="weightStr"
@@ -526,6 +526,7 @@
               inputmode="decimal"
               autocomplete="off"
               class="wtHiddenWeightInput"
+              @focus="($event.target as HTMLInputElement)?.select()"
               @blur="plateNumpadOverride = false"
             />
           </template>
@@ -592,18 +593,17 @@
           <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplay">
-              <button class="wtPlateWeightBtn" @click="onWeightInputFocus(); weightInputEl?.focus()">{{ weight || 0 }}</button>
+              <button class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight || 0 }}</button>
               <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
               <span v-if="isPerSide" class="wtPlateModeBadge">per side</span>
             </div>
             <div class="wtPlateGrid">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
-                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" aria-label="Add {{ denom }}">+</button>
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" :aria-label="`Add ${denom}`">{{ denom }}</button>
                 <div class="wtPlateCountBox" :class="{ wtPlateCountActive: plateCounts.get(denom) }">
                   <span class="wtPlateCountNum">{{ plateCounts.get(denom) || 0 }}</span>
                 </div>
-                <span class="wtPlateDenomLabel">{{ denom }}</span>
-                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" aria-label="Remove {{ denom }}">−</button>
+                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" :aria-label="`Remove ${denom}`">{{ denom }}</button>
               </div>
             </div>
           </div>

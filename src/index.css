@@ -3342,9 +3342,10 @@ html.theme-fading .settingsSheet {
   background: var(--bg-elevated);
   color: var(--text-primary);
   border-radius: 12px;
-  font-size: var(--font-title3);
-  font-weight: 500;
+  font-size: var(--font-callout);
+  font-weight: 700;
   font-family: inherit;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -3385,11 +3386,6 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
 }
 
-.wtPlateDenomLabel {
-  font-size: var(--font-caption1);
-  font-weight: 600;
-  color: var(--text-secondary);
-}
 
 .wtPlateDelta {
   text-align: center;
