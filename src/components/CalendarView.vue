@@ -144,31 +144,39 @@
         </div>
         <div class="calWeekContent">
           <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
-          <button
-            v-for="ex in day.exercises"
-            :key="ex"
-            :class="['calWeekTag', { calWeekTagPR: isPRExercise(day.dateStr, ex) }]"
-            :aria-expanded="expandedExercises.has(`${day.dateStr}::${ex}`)"
-            @click="toggleDetail(day.dateStr, ex)"
-          >{{ isPRExercise(day.dateStr, ex) ? '🏆 ' : '' }}{{ ex }} <span class="calTagCount">{{ getSetCount(day.dateStr, ex) }}</span></button>
-
-          <template v-for="ex in day.exercises" :key="`detail-${ex}`">
-            <div v-if="expandedExercises.has(`${day.dateStr}::${ex}`)" class="calSetList">
-              <div
-                v-for="s in getSetsForDay(day.dateStr, ex)"
-                :key="s.id"
-                :class="['calSetRow', { calSetRowPR: s.isPR }]"
+          <div v-else class="calExList">
+            <div v-for="ex in day.exercises" :key="ex" class="calExGroup">
+              <button
+                :class="['calExRow calExRowCompact', { calExRowExpanded: expandedExercises.has(`${day.dateStr}::${ex}`), calExRowPR: isPRExercise(day.dateStr, ex) }]"
+                :aria-expanded="expandedExercises.has(`${day.dateStr}::${ex}`)"
+                @click="toggleDetail(day.dateStr, ex)"
               >
-                <span class="calSetMain">
-                  <span v-if="s.isPR" class="calSetPR">🏆</span>
-                  <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
-                  <span class="calSetSep">×</span>
-                  <span class="calSetReps">{{ s.reps }} reps</span>
+                <span class="calExRowLeft">
+                  <span v-if="isPRExercise(day.dateStr, ex)" class="calSetPR">🏆</span>
+                  <span class="calExRowName">{{ ex }}</span>
                 </span>
-                <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                <span class="calExRowRight">
+                  <span class="calExRowCount">{{ getSetCount(day.dateStr, ex) }}</span>
+                  <span :class="['calExRowChevron', { calExRowChevronOpen: expandedExercises.has(`${day.dateStr}::${ex}`) }]">›</span>
+                </span>
+              </button>
+              <div v-if="expandedExercises.has(`${day.dateStr}::${ex}`)" class="calSetList">
+                <div
+                  v-for="s in getSetsForDay(day.dateStr, ex)"
+                  :key="s.id"
+                  :class="['calSetRow', { calSetRowPR: s.isPR }]"
+                >
+                  <span class="calSetMain">
+                    <span v-if="s.isPR" class="calSetPR">🏆</span>
+                    <span class="calSetWeight">{{ displayWeight(s.weight) }} {{ weightUnit }}</span>
+                    <span class="calSetSep">×</span>
+                    <span class="calSetReps">{{ s.reps }} reps</span>
+                  </span>
+                  <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                </div>
               </div>
             </div>
-          </template>
+          </div>
           <button class="calWeekLogBtn" @click="openLogModal(day.dateStr)">+ Log</button>
         </div>
       </div>

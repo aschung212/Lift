@@ -4734,6 +4734,11 @@ html.theme-fading .settingsSheet {
   color: var(--pr);
 }
 
+.calExRowCompact {
+  padding: 8px 0;
+  font-size: var(--font-footnote);
+}
+
 /* Weekly view */
 .calWeek {
   display: flex;
