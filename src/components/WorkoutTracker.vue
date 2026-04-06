@@ -1716,6 +1716,12 @@ const isNewPR = computed(() => {
   if (!liveEstimateLbs.value || isEditMode.value) return false
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return false
+  const exercise = store.exercises.find(e => e.id === id)
+  if (!exercise) return false
+  // Suppress PR badge for immature exercises (same-day only)
+  const prDay = (date.value || todayISO()).slice(0, 10)
+  const prPriorDays = new Set(exercise.sets.map(s => s.date.slice(0, 10)))
+  if (prPriorDays.size < 1 || [...prPriorDays].every(d => d === prDay)) return false
   const pr = store.getExercisePR(id)
   return pr > 0 && liveEstimateLbs.value > pr
 })
@@ -1745,14 +1751,20 @@ const liveXPPreview = computed(() => {
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return null
 
-  const best1RM = calculateBest1RM(exercise.sets)
+  const rawBest1RM = calculateBest1RM(exercise.sets)
   const estimated1RM = liveEstimateLbs.value
   const w = toLbs(weight.value!)
   const r = reps.value!
 
+  // Same immature exercise check as computeAndLogXP
+  const previewDay = (date.value || todayISO()).slice(0, 10)
+  const priorDays = new Set(exercise.sets.map(s => s.date.slice(0, 10)))
+  const isEstablished = priorDays.size >= 1 && !([...priorDays].every(d => d === previewDay))
+  const best1RM = isEstablished ? rawBest1RM : null
+
   const isPRZone = best1RM !== null && estimated1RM >= best1RM
   const hasSetAtWeight = exercise.sets.some(s => s.weight === w)
-  const isRepPR = !isPRZone && checkRepPR(w, r, exercise.sets)
+  const isRepPR = isEstablished && !isPRZone && checkRepPR(w, r, exercise.sets)
   const isNewWeight = !isPRZone && !isRepPR && !hasSetAtWeight && best1RM !== null
 
   const setIndex = exercise.sets.length
