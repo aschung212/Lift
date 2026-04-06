@@ -3,9 +3,6 @@
   <div class="wtCard">
     <div class="wtCardHeader">
       <h2 class="wtTitle">Exercise Tracker</h2>
-      <div class="wtHeaderActions">
-        <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
-      </div>
     </div>
 
     <!-- Tag filter -->
@@ -91,6 +88,11 @@
         </div>
       </li>
     </ul>
+
+    <!-- Fixed footer -->
+    <div class="wtCardFooter">
+      <button class="wtCardFooterBtn" @click="openNewExerciseModal">+ New Exercise</button>
+    </div>
   </div>
 
   <!-- Exercise detail modal -->
@@ -101,7 +103,9 @@
         <div class="wtDetailHeader">
           <button class="wtDetailBack" @click="detailExerciseId = null" aria-label="Back to exercise list">‹ Back</button>
           <h2 class="wtDetailTitle" id="detail-modal-title">{{ detailExercise.name }}</h2>
-          <button class="wtDetailLogBtn" @click="openLogForExercise(detailExercise.id)" :aria-label="`Log a set for ${detailExercise.name}`">+ Log</button>
+          <button class="wtDetailEditBtn" @click="openEditExerciseModal(detailExercise)" :aria-label="`Edit ${detailExercise.name}`">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+          </button>
         </div>
 
         <div class="wtDetailBody">
@@ -195,19 +199,11 @@
             </button>
           </div>
 
-          <!-- Exercise actions -->
-          <div class="wtSetActions wtExActions">
-            <button
-              class="wtSetBtn"
-              @click="openEditExerciseModal(detailExercise)"
-              :aria-label="`Edit ${detailExercise.name}`"
-            >Edit Exercise</button>
-            <button
-              class="wtSetBtn wtSetBtnDel"
-              @click="undoDeleteExercise(detailExercise)"
-              :aria-label="`Delete ${detailExercise.name}`"
-            >Delete Exercise</button>
-          </div>
+        </div>
+
+        <!-- Fixed footer -->
+        <div class="wtDetailFooter">
+          <button class="wtDetailFooterBtn" @click="openLogForExercise(detailExercise.id)" :aria-label="`Log a set for ${detailExercise.name}`">+ Log Set</button>
         </div>
       </div>
     </div>
@@ -645,6 +641,11 @@
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
         </div>
+        <button
+          class="wtEditDeleteBtn"
+          @click="undoDeleteExercise(store.exercises.find(e => e.id === editTarget)!); editTarget = null"
+          :aria-label="`Delete exercise`"
+        >Delete Exercise</button>
       </div>
     </div>
   </Teleport>
