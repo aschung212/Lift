@@ -3126,9 +3126,14 @@ html.theme-fading .settingsSheet {
   padding: 0;
   background: var(--bg-primary);
   border: 1px solid var(--border-strong);
-  border-radius: 0;
   color: var(--text-primary);
   outline: none;
+}
+
+.wtRepsStepperInput::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+  opacity: 0.5;
 }
 
 .wtRepsFullRow {
@@ -3278,6 +3283,7 @@ html.theme-fading .settingsSheet {
 .wtPlateDisplay {
   text-align: center;
   padding: 0 0 12px;
+  position: relative;
 }
 
 .wtPlateWeightBtn {
@@ -3299,10 +3305,13 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPlateWeightUnit {
+  position: absolute;
+  left: calc(50% + 60px);
+  top: 50%;
+  transform: translateY(-50%);
   font-size: var(--font-body);
   font-weight: 600;
   color: var(--text-secondary);
-  margin-left: 8px;
 }
 
 .wtPlateWeightInput {
@@ -3330,6 +3339,7 @@ html.theme-fading .settingsSheet {
   font-size: var(--font-caption2);
   color: var(--text-muted);
   margin-top: 4px;
+  position: relative;
 }
 
 .wtPlateGrid {

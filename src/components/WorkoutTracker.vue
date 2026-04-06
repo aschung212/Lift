@@ -512,7 +512,7 @@
                   type="text"
                   inputmode="numeric"
                   autocomplete="off"
-                  placeholder="8"
+                  placeholder="—"
                   class="wtRepsStepperInput"
                 />
                 <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
