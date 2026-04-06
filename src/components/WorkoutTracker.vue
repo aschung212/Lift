@@ -501,7 +501,35 @@
             <span class="wtSectionDividerText">Log a set (optional)</span>
             <span class="wtSectionDividerLine" />
           </div>
-          <!-- Plate mode: reps stepper first, then weight (closer to plate calc) -->
+          <!-- Live 1RM estimate / PR target -->
+          <div v-if="liveEstimate" class="repMaxResult">
+            <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
+            <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
+            <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
+            <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
+          </div>
+          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
+            <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
+          </div>
+          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
+            <span class="repMaxPersonalBest">Any rep at this weight is a new PR</span>
+          </div>
+          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
+            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
+          </div>
+          <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
+            <span class="repMaxResultLabel">Estimated 1RM</span>
+            <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
+          </div>
+
+          <!-- Plate mode: reps stepper + weight in plate calc below -->
           <template v-if="plateMode && !isEditMode">
             <div class="wtRepsStepperFull">
               <span class="wtRepsStepperLabel">Reps</span>
@@ -549,34 +577,6 @@
                 />
               </div>
             </label>
-          </div>
-
-          <!-- Live 1RM estimate / PR target — shown between inputs and plate calc -->
-          <div v-if="liveEstimate" class="repMaxResult">
-            <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
-            <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
-            <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
-            <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
-          </div>
-          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
-            <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
-          </div>
-          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
-            <span class="repMaxPersonalBest">Any rep at this weight is a new PR</span>
-          </div>
-          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
-            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
-            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
-            <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
-          </div>
-          <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
-            <span class="repMaxResultLabel">Estimated 1RM</span>
-            <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
           </div>
 
           <!-- Plate calculator (shown when exercise is in plates mode) -->
