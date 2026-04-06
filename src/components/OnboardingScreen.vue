@@ -33,83 +33,26 @@
         </div>
       </template>
 
-      <!-- Step 2: Starter theme pick -->
-      <!-- Step 2: Progression explainer -->
-      <template v-else-if="step === 'explainer'">
+      <!-- Steps 2-4: Progression explainer + starter pick + weekly goal -->
+      <template v-else>
         <div class="obLogo">Lift</div>
-        <p class="obTagline">Lift has a theme progression system.</p>
-
-        <div class="obExplainer">
-          <div class="obExplainerRow">Every set you log earns XP</div>
-          <div class="obExplainerRow">Hit PRs for bonus multipliers</div>
-          <div class="obExplainerRow">Earn enough XP to unlock new themes</div>
-          <div class="obExplainerRow">Build streaks for even more XP</div>
-        </div>
-
-        <button class="obStarterConfirm" @click="step = 'starter'">Pick a Starter Theme</button>
-        <button class="obStarterSkip" @click="skipStarter">Skip — I'll use the defaults</button>
-      </template>
-
-      <!-- Step 3: Starter pick -->
-      <template v-else-if="step === 'starter'">
-        <div class="obLogo">Lift</div>
-        <p class="obTagline">Try all three freely until you log your first set. Then your choice locks in.</p>
-
-        <div class="obStarterGrid">
-          <button
-            v-for="s in STARTER_THEMES"
-            :key="s.id"
-            :class="['obStarterCard', { selected: selectedStarter === s.id }]"
-            @click="selectedStarter = s.id"
-          >
-            <span
-              class="obStarterDot"
-              :style="{ background: 'linear-gradient(135deg, ' + s.accent + ', ' + s.bg + ')' }"
-            >
-              <svg v-if="s.id === 'fire'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 23c-4.97 0-8-3.03-8-7 0-2.5 1.5-5 3-6.5.5-.5 1.37-.18 1.37.54 0 1.3.6 2.46 1.63 3.2.2.14.46-.05.38-.28-.5-1.46-.63-3.1-.08-4.96C11.5 4.5 14 2 16 1c.4-.2.82.18.68.6C15.5 5.5 17 7 18 8.5c2 3 2 5 2 6.5 0 3.97-3.03 8-8 8z"/></svg>
-              <svg v-else-if="s.id === 'water'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2 15c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 19c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3M2 11c0 0 2-3 4-3s4 3 6 3 4-3 6-3 4 3 4 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              <svg v-else-if="s.id === 'luck'" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 3C12 3 9 6 9 8.5c0 1.4.7 2.6 1.8 3.2L12 12l1.2-.3C14.3 11.1 15 9.9 15 8.5 15 6 12 3 12 3z"/><path d="M21 12c0 0-3-3-5.5-3-1.4 0-2.6.7-3.2 1.8L12 12l.3 1.2c.6 1.1 1.8 1.8 3.2 1.8C18 15 21 12 21 12z"/><path d="M12 21c0 0 3-3 3-5.5 0-1.4-.7-2.6-1.8-3.2L12 12l-1.2.3C9.7 12.9 9 14.1 9 15.5 9 18 12 21 12 21z"/><path d="M3 12c0 0 3 3 5.5 3 1.4 0 2.6-.7 3.2-1.8L12 12l-.3-1.2C11.1 9.7 9.9 9 8.5 9 6 9 3 12 3 12z"/></svg>
-            </span>
-            <span class="obStarterLabel">{{ s.label }}</span>
-          </button>
-        </div>
-
-        <p class="obStarterWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</p>
-        <button class="obStarterConfirm" :disabled="!selectedStarter" @click="step = 'goal'">Next</button>
-        <button class="obStarterSkip" @click="skipStarter">Skip — I'll just use the default</button>
-      </template>
-
-      <!-- Step 4: Weekly goal -->
-      <template v-else-if="step === 'goal'">
-        <div class="obLogo">Lift</div>
-        <p class="obTagline">How many days per week do you plan to train? Hit your goal consistently to build a streak and earn bonus XP.</p>
-
-        <div class="obGoalPicker">
-          <div class="iosStepper">
-            <button class="iosStepperBtn" @click="weeklyGoal = Math.max(1, weeklyGoal - 1)" :disabled="weeklyGoal <= 1" aria-label="Decrease">−</button>
-            <span class="iosStepperValue">{{ weeklyGoal }} day{{ weeklyGoal !== 1 ? 's' : '' }}</span>
-            <button class="iosStepperBtn" @click="weeklyGoal = Math.min(7, weeklyGoal + 1)" :disabled="weeklyGoal >= 7" aria-label="Increase">+</button>
-          </div>
-          <div class="obGoalBonus">{{ goalBonusLabel }}</div>
-          <p class="obGoalHints">Your streak grows each week you hit this goal. Longer streaks earn even higher bonuses.</p>
-          <p class="obGoalHints">You can increase this later without losing your streak. Decreasing it will reset your streak.</p>
-          <p v-if="weeklyGoal >= 7" class="obGoalHints">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</p>
-        </div>
-
-        <button class="obStarterConfirm" @click="confirmStarter">Let's Go</button>
-        <button class="obStarterSkip" @click="step = 'starter'">Back</button>
+        <StarterPickerFlow
+          @confirm="handleStarterConfirm"
+          @skip="handleStarterSkip"
+        />
       </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
-import { useTheme, THEME_PREVIEWS, type ThemeId } from '../composables/useTheme'
+import { useTheme, type ThemeId } from '../composables/useTheme'
 import { useAnalytics } from '../composables/useAnalytics'
+import StarterPickerFlow from './StarterPickerFlow.vue'
 
 const emit = defineEmits<{ complete: [] }>()
 const workoutStore = useWorkoutStore()
@@ -117,25 +60,8 @@ const bwStore = useBodyweightStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 
-const step = ref<'setup' | 'explainer' | 'starter' | 'goal'>('setup')
-const selectedStarter = ref<ThemeId | null>(null)
-const weeklyGoal = ref(3)
-
-const goalBonusLabel = computed(() => {
-  const t = weeklyGoal.value
-  if (t >= 6) return 'Initial streak bonus: 1.5× (max)'
-  if (t >= 5) return 'Initial streak bonus: 1.3×'
-  if (t >= 4) return 'Initial streak bonus: 1.2×'
-  if (t >= 3) return 'Initial streak bonus: 1.1×'
-  return 'No streak bonus'
-})
+const step = ref<'setup' | 'starter-flow'>('setup')
 let pendingSampleData = false
-
-const STARTER_THEMES = [
-  { id: 'fire' as ThemeId, label: 'Intensity', accent: THEME_PREVIEWS.fire.dark.accent, bg: THEME_PREVIEWS.fire.dark.bg },
-  { id: 'water' as ThemeId, label: 'Flow', accent: THEME_PREVIEWS.water.dark.accent, bg: THEME_PREVIEWS.water.dark.bg },
-  { id: 'luck' as ThemeId, label: 'Luck', accent: THEME_PREVIEWS.luck.dark.accent, bg: THEME_PREVIEWS.luck.dark.bg },
-]
 
 const STARTER_EXERCISES = [
   { name: 'Bench Press', tags: ['Push', 'Chest'] },
@@ -446,21 +372,19 @@ function finish(sampleData: boolean) {
 
 function goToStarter(sampleData: boolean) {
   pendingSampleData = sampleData
-  step.value = 'explainer'
+  step.value = 'starter-flow'
 }
 
 const { currentTheme } = useTheme()
 
-function confirmStarter() {
-  if (selectedStarter.value) {
-    progressionStore.weeklyTarget = weeklyGoal.value
-    progressionStore.setStarterTheme(selectedStarter.value)
-    currentTheme.value = selectedStarter.value
-  }
+function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
+  progressionStore.weeklyTarget = weeklyGoal
+  progressionStore.setStarterTheme(themeId)
+  currentTheme.value = themeId
   finish(pendingSampleData)
 }
 
-function skipStarter() {
+function handleStarterSkip() {
   finish(pendingSampleData)
 }
 
@@ -588,134 +512,4 @@ function chooseExplore() {
   line-height: 1.3;
 }
 
-/* ─── Progression explainer ──────────────────────────────────────── */
-
-.obExplainer {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 32px;
-  text-align: left;
-}
-
-.obExplainerRow {
-  font-size: var(--font-callout);
-  color: var(--text-secondary);
-  padding-left: 8px;
-  border-left: 3px solid var(--accent);
-}
-
-/* ─── Starter theme picker ───────────────────────────────────────── */
-
-.obStarterGrid {
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  margin-bottom: 32px;
-}
-
-.obStarterCard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.obStarterDot {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  border: 3px solid transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-on-accent);
-  transition: border-color 0.2s, transform 0.2s;
-}
-
-.obStarterCard.selected .obStarterDot {
-  border-color: var(--accent);
-  transform: scale(1.1);
-}
-
-.obStarterLabel {
-  font-size: var(--font-callout);
-  font-weight: 600;
-  color: var(--text-secondary);
-  transition: color 0.15s;
-}
-
-.obStarterCard.selected .obStarterLabel {
-  color: var(--text-primary);
-}
-
-.obStarterWarning {
-  font-size: var(--font-caption2);
-  color: var(--text-tertiary);
-  text-align: center;
-  margin-bottom: 16px;
-  line-height: 1.4;
-}
-
-.obGoalPicker {
-  text-align: center;
-  margin: 16px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.obGoalBonus {
-  font-size: var(--font-subhead);
-  font-weight: 600;
-  color: var(--accent);
-  margin-top: 12px;
-}
-
-.obGoalHints {
-  font-size: var(--font-caption2);
-  color: var(--text-muted);
-  margin-top: 8px;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.obStarterConfirm {
-  width: 100%;
-  padding: 16px;
-  min-height: 44px;
-  background: var(--accent);
-  color: var(--text-on-accent);
-  border: none;
-  border-radius: 12px;
-  font-size: var(--font-callout);
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: opacity 0.15s;
-  margin-bottom: 12px;
-}
-
-.obStarterConfirm:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.obStarterSkip {
-  width: 100%;
-  padding: 12px;
-  min-height: 44px;
-  background: none;
-  border: none;
-  color: var(--text-tertiary);
-  font-size: var(--font-footnote);
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-}
 </style>
