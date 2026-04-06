@@ -1956,21 +1956,6 @@ function undoDeleteSet(exerciseId: string, set: WorkoutSet) {
   )
 }
 
-function undoClearSets(exercise: Exercise) {
-  const savedSets = [...exercise.sets]
-  const id = exercise.id
-  store.clearSets(id, { sync: false })
-  logEvent('sets_clear_all', { count: savedSets.length })
-  showUndo(
-    `${savedSets.length} set${savedSets.length !== 1 ? 's' : ''} cleared`,
-    () => store.restoreSets(id, savedSets),
-    () => {
-      store.syncDeleteSets(id)
-      savedSets.forEach(s => progressionStore.removeSetXP(s.id))
-    },
-  )
-}
-
 function undoDeleteExercise(exercise: Exercise) {
   const saved = { ...exercise, sets: [...exercise.sets] }
   const idx = store.exercises.indexOf(exercise)
