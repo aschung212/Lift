@@ -1078,8 +1078,8 @@ function toggleShowAll(id: string) {
 }
 
 function visibleSets(exercise: Exercise): WorkoutSet[] {
-  const reversed = [...exercise.sets].reverse()
-  return showAllSets.value.has(exercise.id) ? reversed : reversed.slice(0, SET_LIMIT)
+  const sorted = [...exercise.sets].sort((a, b) => b.date.localeCompare(a.date))
+  return showAllSets.value.has(exercise.id) ? sorted : sorted.slice(0, SET_LIMIT)
 }
 
 function toLocalDateKey(iso: string): string {
