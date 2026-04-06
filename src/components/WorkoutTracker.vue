@@ -798,7 +798,11 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
   else zone = 'working'
 
   const mult = progressionStore.currentMultiplier
-  const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+  let xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
+  // If no history entry for current week, apply currentMultiplier directly
+  if (xp === baseXP && mult > 1) {
+    xp = Math.round(baseXP * mult)
+  }
   const setMeta = { theme: currentTheme.value, epoch: progressionStore.epoch, zone, isPR, isRepPR }
 
   // Always record metadata (shadow ledger — enables per-theme stats even without progression)
