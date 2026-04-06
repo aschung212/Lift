@@ -501,7 +501,36 @@
             <span class="wtSectionDividerText">Log a set (optional)</span>
             <span class="wtSectionDividerLine" />
           </div>
-          <div class="wtInputRow">
+          <!-- Plate mode: reps stepper first, then weight (closer to plate calc) -->
+          <template v-if="plateMode && !isEditMode">
+            <div class="wtRepsStepperFull">
+              <span class="wtRepsStepperLabel">Reps</span>
+              <div class="wtRepsStepperBar">
+                <button class="wtRepsStepBtnLg" @click="adjustReps(-1)" :disabled="!reps || reps <= 1" aria-label="Decrease reps">−</button>
+                <input
+                  v-model="repsStr"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="8"
+                  class="wtRepsStepperInput"
+                />
+                <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
+              </div>
+            </div>
+            <!-- Hidden weight input for data binding + numpad focus target -->
+            <input
+              ref="weightInputEl"
+              v-model="weightStr"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              class="wtHiddenWeightInput"
+              @blur="plateNumpadOverride = false"
+            />
+          </template>
+          <!-- Numpad / edit mode: side-by-side weight + reps -->
+          <div v-else class="wtInputRow">
             <label class="repMaxLabel" style="flex:1">
               Weight ({{ weightUnit }})
               <div class="repMaxInputRow">
@@ -509,11 +538,10 @@
                   ref="weightInputEl"
                   v-model="weightStr"
                   type="text"
-                  :inputmode="(plateMode && !plateNumpadOverride) ? 'none' : 'decimal'"
+                  inputmode="decimal"
                   autocomplete="off"
                   placeholder="135"
-                  :class="['repMaxInput', { repMaxInputReadonly: plateMode && !plateNumpadOverride }]"
-                  @focus="onWeightInputFocus"
+                  class="repMaxInput"
                 />
               </div>
             </label>
@@ -564,7 +592,8 @@
           <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplay">
-              <span class="wtPlateTotal">{{ displayWeight(plateWeightLbs) }} {{ weightUnit }}</span>
+              <button class="wtPlateWeightBtn" @click="onWeightInputFocus(); weightInputEl?.focus()">{{ weight || 0 }}</button>
+              <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
               <span class="wtPlateBreakdown">
                 {{ currentPlates.length > 0 ? `${currentBarWeight > 0 ? 'Bar + ' : ''}${formatPlates(currentPlates)}${isPerSide ? ' per side' : ''}` : currentBarWeight > 0 ? 'Bar only' : 'No plates' }}
               </span>
@@ -1264,8 +1293,6 @@ const recentSets = computed(() => {
 })
 
 function fillFromPrevious(set: { weight: number; reps: number }) {
-  weight.value = displayWeight(set.weight)
-  reps.value = set.reps
   weightStr.value = String(displayWeight(set.weight))
   repsStr.value = String(set.reps)
 }
@@ -1279,6 +1306,13 @@ const plateMode = computed(() => {
   return ex?.inputMode === 'plates'
 })
 const plateNumpadOverride = ref(false)
+
+function adjustReps(delta: number) {
+  const current = reps.value ?? 0
+  const next = Math.max(1, Math.min(MAX_REPS, current + delta))
+  reps.value = next
+  repsStr.value = String(next)
+}
 
 function onWeightInputFocus() {
   if (plateMode.value && !plateNumpadOverride.value) {
@@ -1325,7 +1359,25 @@ const plateWeightLbs = computed(() => {
 })
 
 function syncPlateWeight() {
+  _plateSync = true
   weight.value = displayWeight(plateWeightLbs.value)
+  nextTick(() => { _plateSync = false })
+}
+
+// Reverse sync: when weight changes from input/chips, update plates to match
+let _plateSync = false
+
+function syncPlatesFromWeight() {
+  if (_plateSync || !plateMode.value) return
+  const w = weight.value
+  if (w === null || w <= 0) {
+    currentPlates.value = []
+    return
+  }
+  const lbs = toLbs(w)
+  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  const plates = weightToPlates(lbs, currentBarWeight.value, denoms)
+  currentPlates.value = plates || []
 }
 
 function addPlate(denom: number) {
@@ -1365,6 +1417,11 @@ const reps = computed<number | null>({
   get: () => { const n = parseInt(repsStr.value); return isNaN(n) ? null : n },
   set: (v) => { repsStr.value = v === null ? '' : String(v) },
 })
+// Sync plate display when weight changes from input/chips (not from plate buttons)
+watch(weightStr, () => {
+  if (plateMode.value && !_plateSync) syncPlatesFromWeight()
+})
+
 const date = ref(todayISO())
 // Remembers the last date the user manually set when logging, so the modal
 // re-opens to that date rather than always resetting to today.

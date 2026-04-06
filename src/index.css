@@ -3071,6 +3071,107 @@ html.theme-fading .settingsSheet {
   margin-top: 8px;
 }
 
+.wtRepsStepperFull {
+  margin-bottom: 12px;
+}
+
+.wtRepsStepperLabel {
+  display: block;
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.wtRepsStepperBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wtRepsStepBtnLg {
+  flex: 1;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-title2);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.wtRepsStepBtnLg:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.wtRepsStepperInput {
+  width: 96px;
+  flex: 0 0 96px;
+  text-align: center;
+  border-radius: 12px;
+  font-size: var(--font-title2);
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.wtRepsFullRow {
+  margin-bottom: 8px;
+}
+
+.wtRepsStepper {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.wtRepsStepBtnLg {
+  flex: 1;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-title2);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.wtRepsStepBtnLg:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.wtRepsInputLg {
+  flex: 1;
+  text-align: center;
+  font-size: var(--font-title2);
+  font-weight: 600;
+  border-radius: 0;
+  height: 48px;
+  min-height: 48px;
+}
+
 .repMaxInput {
   flex: 1;
   padding: 12px 16px;
@@ -3107,6 +3208,7 @@ html.theme-fading .settingsSheet {
   background: var(--accent-subtle);
   border-radius: 10px;
   padding: 16px 16px;
+  margin-top: 16px;
   margin-bottom: 16px;
   min-height: 120px;
 }
@@ -3176,6 +3278,40 @@ html.theme-fading .settingsSheet {
 .wtPlateDisplay {
   text-align: center;
   padding: 0 0 12px;
+}
+
+.wtPlateWeightBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: 48px;
+  padding: 0 24px;
+  font-size: var(--font-title2);
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.wtPlateWeightUnit {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 8px;
+}
+
+.wtHiddenWeightInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .wtPlateTotal {
