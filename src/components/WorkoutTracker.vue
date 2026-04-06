@@ -3,11 +3,18 @@
   <div class="wtCard">
     <div class="wtCardHeader">
       <h2 class="wtTitle">Exercise Tracker</h2>
-      <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+      <button v-if="listView === 'exercises'" class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+      <button v-else class="wtLogBtn" @click="openTimelineLogModal">+ Log Set</button>
     </div>
 
-    <!-- Tag filter -->
-    <template v-if="store.allTags.length > 0">
+    <!-- View toggle -->
+    <div v-if="store.exercises.length > 0" class="wtViewToggle">
+      <button :class="['wtViewToggleBtn', { active: listView === 'exercises' }]" @click="listView = 'exercises'">Exercises</button>
+      <button :class="['wtViewToggleBtn', { active: listView === 'timeline' }]" @click="listView = 'timeline'">Timeline</button>
+    </div>
+
+    <!-- Tag filter (exercises view only) -->
+    <template v-if="listView === 'exercises' && store.allTags.length > 0">
       <div class="wtTagFilterBar">
         <button
           v-for="tag in store.allTags"
@@ -29,8 +36,8 @@
       </div>
     </template>
 
-    <!-- Search bar (shown when 5+ exercises) -->
-    <div v-if="store.exercises.length >= 5" class="wtSearchBar">
+    <!-- Search bar (exercises view, shown when 5+ exercises) -->
+    <div v-if="listView === 'exercises' && store.exercises.length >= 5" class="wtSearchBar">
       <input
         v-model="searchQuery"
         type="search"
@@ -46,7 +53,8 @@
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
-    <p v-else-if="filteredExercises.length === 0" class="wtEmpty">
+    <template v-else-if="listView === 'exercises'">
+    <p v-if="filteredExercises.length === 0" class="wtEmpty">
       No exercises match your search.
     </p>
 
@@ -89,6 +97,40 @@
         </div>
       </li>
     </ul>
+    </template>
+
+    <!-- Timeline view -->
+    <template v-else-if="listView === 'timeline'">
+      <div v-if="timelineSets.length === 0" class="wtEmpty">
+        No sets logged yet.
+      </div>
+      <div v-else class="wtTimeline">
+        <template v-for="group in visibleTimelineGroups" :key="group.key">
+          <p class="wtTimelineDateHeader">{{ group.label }}</p>
+          <div class="wtSetCard">
+            <div
+              v-for="entry in group.sets"
+              :key="entry.set.id"
+              :class="['wtTimelineRow', { wtTimelineRowActive: activeSetId === entry.set.id }]"
+              @click="toggleSetActions(entry.set.id)"
+            >
+              <div class="wtTimelineRowMain">
+                <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
+                <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
+                <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
+              </div>
+              <div v-if="activeSetId === entry.set.id" class="wtSetActions">
+                <button class="wtSetBtn" @click.stop="openEditModal(store.exercises.find(e => e.id === entry.exerciseId)!, entry.set)" aria-label="Edit set">Edit</button>
+                <button class="wtSetBtn wtSetBtnDel" @click.stop="undoDeleteSet(entry.exerciseId, entry.set)" aria-label="Delete set">Delete</button>
+              </div>
+            </div>
+          </div>
+        </template>
+        <button v-if="timelineLimit < timelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
+          Show more ({{ timelineSets.length - timelineLimit }} remaining)
+        </button>
+      </div>
+    </template>
 
   </div>
 
@@ -660,6 +702,29 @@
     </div>
   </Teleport>
 
+  <!-- Exercise Picker (timeline + Log Set) -->
+  <Teleport to="body">
+    <div v-if="timelineLogPicking" class="repMaxOverlay" @click.self="timelineLogPicking = false" @keydown.escape="timelineLogPicking = false">
+      <div class="repMaxModal" role="dialog" aria-modal="true">
+        <h2>Choose Exercise</h2>
+        <div class="wtExPickerList">
+          <button
+            v-for="ex in store.exercises"
+            :key="ex.id"
+            class="wtExPickerRow"
+            @click="pickExerciseForLog(ex.id)"
+          >
+            <span class="wtExPickerName">{{ ex.name }}</span>
+            <span class="wtChevron">›</span>
+          </button>
+        </div>
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnClose" @click="timelineLogPicking = false">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
   <!-- Tag Manager Modal -->
   <Teleport to="body">
     <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
@@ -883,6 +948,46 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
   }
 }
+
+// ── View toggle ──────────────────────────────────────────────────
+const listView = ref<'exercises' | 'timeline'>(
+  (localStorage.getItem('wt-list-view') as 'exercises' | 'timeline') || 'exercises'
+)
+watch(listView, v => localStorage.setItem('wt-list-view', v))
+
+// ── Timeline view ───────────────────────────────────────────────
+const timelineLimit = ref(50)
+
+interface TimelineEntry {
+  exerciseId: string
+  exerciseName: string
+  set: { id: string; date: string; weight: number; reps: number; estimated1RM: number }
+}
+
+const timelineSets = computed((): TimelineEntry[] => {
+  const entries: TimelineEntry[] = []
+  for (const ex of store.exercises) {
+    for (const s of ex.sets) {
+      entries.push({ exerciseId: ex.id, exerciseName: ex.name, set: s })
+    }
+  }
+  return entries.sort((a, b) => b.set.date.localeCompare(a.set.date))
+})
+
+const visibleTimelineGroups = computed(() => {
+  const limited = timelineSets.value.slice(0, timelineLimit.value)
+  const groups: { key: string; label: string; sets: TimelineEntry[] }[] = []
+  for (const entry of limited) {
+    const k = toLocalDateKey(entry.set.date)
+    const last = groups[groups.length - 1]
+    if (last && last.key === k) {
+      last.sets.push(entry)
+    } else {
+      groups.push({ key: k, label: formatDate(entry.set.date), sets: [entry] })
+    }
+  }
+  return groups
+})
 
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
@@ -1354,6 +1459,17 @@ function toggleNewExerciseTag(tag: string) {
   } else {
     newExerciseTags.value.push(tag)
   }
+}
+
+const timelineLogPicking = ref(false)
+
+function openTimelineLogModal() {
+  timelineLogPicking.value = true
+}
+
+function pickExerciseForLog(exerciseId: string) {
+  timelineLogPicking.value = false
+  openLogForExercise(exerciseId)
 }
 
 // Open modal pre-targeted at a specific existing exercise

@@ -69,7 +69,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
     addEntry(weight: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}): string {
       const date = dateStr
-        ? new Date(dateStr + 'T12:00:00').toISOString()
+        ? dateStr + 'T23:59:59.000Z'
         : new Date().toISOString()
       const id = uuid()
       this.entries.push({ id, date, weight })
@@ -88,7 +88,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (!entry) return
       entry.weight = weight
       if (dateStr) {
-        entry.date = new Date(dateStr + 'T12:00:00').toISOString()
+        entry.date = dateStr + 'T23:59:59.000Z'
       }
       this._persist()
 

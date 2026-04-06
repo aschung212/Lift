@@ -1766,6 +1766,35 @@ html.theme-fading .settingsSheet {
   border-bottom: 1px solid var(--border);
 }
 
+.wtViewToggle {
+  display: flex;
+  margin: 8px 16px;
+  padding: 2px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+}
+
+.wtViewToggleBtn {
+  flex: 1;
+  padding: 8px;
+  min-height: 32px;
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.wtViewToggleBtn.active {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+}
+
 .wtTitle {
   font-size: var(--font-caption2);
   font-weight: 700;
@@ -1876,6 +1905,115 @@ html.theme-fading .settingsSheet {
 }
 
 /* ─── Exercise list ─────────────────────────────────────────────────────── */
+
+/* ─── Timeline view ─────────────────────────────────────────────────────── */
+
+.wtTimeline {
+  padding: 0 16px 16px;
+}
+
+.wtTimelineDateHeader {
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 16px 0 8px;
+}
+
+.wtTimelineRow {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.wtTimelineRow:last-child {
+  border-bottom: none;
+}
+
+.wtTimelineRowMain {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.wtTimelineExName {
+  flex: 1;
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtTimelineSetDetail {
+  font-size: var(--font-footnote);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.wtTimelineE1RM {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.wtTimelineRowActive {
+  background: var(--bg-hover);
+}
+
+.wtExPickerList {
+  max-height: 300px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 8px 0;
+}
+
+.wtExPickerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0;
+  min-height: 44px;
+  font-size: var(--font-body);
+  font-family: inherit;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-align: left;
+}
+
+.wtExPickerRow:last-child {
+  border-bottom: none;
+}
+
+.wtExPickerName {
+  font-weight: 500;
+}
+
+.wtTimelineShowMore {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  min-height: 44px;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
 
 .wtExerciseList {
   list-style: none;
