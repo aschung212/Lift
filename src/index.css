@@ -4824,13 +4824,20 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
 }
 
+.calWeekContentHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
 .calWeekLogBtn {
   font-size: var(--font-footnote);
   font-weight: 700;
   font-family: inherit;
   color: var(--accent);
   background: transparent;
-  align-self: flex-end;
+  margin-left: auto;
   border: none;
   padding: 12px 12px;
   min-height: 44px;

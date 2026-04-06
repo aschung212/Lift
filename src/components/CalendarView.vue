@@ -143,8 +143,11 @@
           <span class="calWeekDayNum" :class="{ calWeekDayNumToday: day.isToday }">{{ day.dayNum }}</span>
         </div>
         <div class="calWeekContent">
-          <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
-          <div v-else class="calExList">
+          <div class="calWeekContentHeader">
+            <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
+            <button class="calWeekLogBtn" @click="openLogModal(day.dateStr)">+ Log</button>
+          </div>
+          <div v-if="day.exercises.length > 0" class="calExList">
             <div v-for="ex in day.exercises" :key="ex" class="calExGroup">
               <button
                 :class="['calExRow calExRowCompact', { calExRowExpanded: expandedExercises.has(`${day.dateStr}::${ex}`), calExRowPR: isPRExercise(day.dateStr, ex) }]"
@@ -177,7 +180,6 @@
               </div>
             </div>
           </div>
-          <button class="calWeekLogBtn" @click="openLogModal(day.dateStr)">+ Log</button>
         </div>
       </div>
 
