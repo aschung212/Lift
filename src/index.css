@@ -3071,13 +3071,28 @@ html.theme-fading .settingsSheet {
   margin-top: 8px;
 }
 
-.wtRepsRow {
-  gap: 0;
+.wtRepsStepperFull {
+  margin-top: 12px;
 }
 
-.wtRepsStepBtn {
-  width: 48px;
-  height: 48px;
+.wtRepsStepperLabel {
+  display: block;
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.wtRepsStepperBar {
+  display: flex;
+  align-items: center;
+}
+
+.wtRepsStepBtnLg {
+  width: 56px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3091,28 +3106,38 @@ html.theme-fading .settingsSheet {
   flex-shrink: 0;
 }
 
-.wtRepsStepBtn:first-child {
-  border-radius: 8px 0 0 8px;
+.wtRepsStepBtnLg:first-child {
+  border-radius: 12px 0 0 12px;
   border-right: none;
 }
 
-.wtRepsStepBtn:last-child {
-  border-radius: 0 8px 8px 0;
+.wtRepsStepBtnLg:last-child {
+  border-radius: 0 12px 12px 0;
   border-left: none;
 }
 
-.wtRepsStepBtn:disabled {
+.wtRepsStepBtnLg:disabled {
   opacity: 0.3;
   cursor: default;
 }
 
-.repMaxInputStepper {
-  border-radius: 0;
+.wtRepsStepperInput {
+  flex: 1;
   text-align: center;
-  height: 48px;
-  min-height: 48px;
-  font-size: var(--font-title3);
-  font-weight: 600;
+  font-size: var(--font-title2);
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  height: 56px;
+  min-height: 56px;
+  padding: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+  color: var(--text-primary);
+  outline: none;
 }
 
 .wtRepsFullRow {

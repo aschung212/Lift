@@ -501,7 +501,41 @@
             <span class="wtSectionDividerText">Log a set (optional)</span>
             <span class="wtSectionDividerLine" />
           </div>
-          <div class="wtInputRow">
+          <!-- Plate mode: weight input full width, reps as stepper below -->
+          <template v-if="plateMode && !isEditMode">
+            <label class="repMaxLabel">
+              Weight ({{ weightUnit }})
+              <div class="repMaxInputRow">
+                <input
+                  ref="weightInputEl"
+                  v-model="weightStr"
+                  type="text"
+                  :inputmode="plateNumpadOverride ? 'decimal' : 'none'"
+                  autocomplete="off"
+                  placeholder="135"
+                  :class="['repMaxInput', { repMaxInputReadonly: !plateNumpadOverride }]"
+                  @focus="onWeightInputFocus"
+                />
+              </div>
+            </label>
+            <div class="wtRepsStepperFull">
+              <span class="wtRepsStepperLabel">Reps</span>
+              <div class="wtRepsStepperBar">
+                <button class="wtRepsStepBtnLg" @click="adjustReps(-1)" :disabled="!reps || reps <= 1" aria-label="Decrease reps">−</button>
+                <input
+                  v-model="repsStr"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="8"
+                  class="wtRepsStepperInput"
+                />
+                <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
+              </div>
+            </div>
+          </template>
+          <!-- Numpad / edit mode: side-by-side weight + reps -->
+          <div v-else class="wtInputRow">
             <label class="repMaxLabel" style="flex:1">
               Weight ({{ weightUnit }})
               <div class="repMaxInputRow">
@@ -509,28 +543,25 @@
                   ref="weightInputEl"
                   v-model="weightStr"
                   type="text"
-                  :inputmode="(plateMode && !plateNumpadOverride) ? 'none' : 'decimal'"
+                  inputmode="decimal"
                   autocomplete="off"
                   placeholder="135"
-                  :class="['repMaxInput', { repMaxInputReadonly: plateMode && !plateNumpadOverride }]"
-                  @focus="onWeightInputFocus"
+                  class="repMaxInput"
                 />
               </div>
             </label>
 
             <label class="repMaxLabel" style="flex:1">
               Reps
-              <div class="repMaxInputRow wtRepsRow">
-                <button v-if="plateMode && !isEditMode" class="wtRepsStepBtn" @click="adjustReps(-1)" :disabled="!reps || reps <= 1" aria-label="Decrease reps">−</button>
+              <div class="repMaxInputRow">
                 <input
                   v-model="repsStr"
                   type="text"
                   inputmode="numeric"
                   autocomplete="off"
                   placeholder="8"
-                  :class="['repMaxInput', { repMaxInputStepper: plateMode && !isEditMode }]"
+                  class="repMaxInput"
                 />
-                <button v-if="plateMode && !isEditMode" class="wtRepsStepBtn" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
               </div>
             </label>
           </div>
