@@ -3341,21 +3341,19 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPlateClearBtn {
-  position: absolute;
-  right: calc(50% - 90px);
-  top: 50%;
-  transform: translateY(-50%);
   width: 32px;
   height: 32px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-body);
+  font-size: var(--font-title3);
   font-family: inherit;
   color: var(--text-muted);
   background: none;
   border: none;
   cursor: pointer;
+  vertical-align: middle;
+  margin-left: 4px;
 }
 
 .wtPlateGrid {
