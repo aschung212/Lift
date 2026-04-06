@@ -42,8 +42,8 @@
   --border-strong:   #c8b8b8;
   --text-primary:    #1a1212;
   --text-secondary:  #6e5858;
-  --text-muted:      #907878;
-  --accent:          #dc3545;
+  --text-muted:      #7c6767;
+  --accent:          #ca313f;
   --accent-hover:    #c82333;
   --accent-subtle:   rgba(220, 53, 69, 0.08);
   --danger:          #dc2626;
@@ -106,8 +106,8 @@
   --border-strong:   #a8b8e0;
   --text-primary:    #1a1a2e;
   --text-secondary:  #60609a;
-  --text-muted:      #7878a0;
-  --accent:          #0066ff;
+  --text-muted:      #636384;
+  --accent:          #005ce5;
   --accent-hover:    #0052cc;
   --accent-subtle:   rgba(0, 102, 255, 0.08);
   --danger:          #dc2626;
@@ -171,7 +171,7 @@
   --border-strong:   #a0b8ac;
   --text-primary:    #0a1a14;
   --text-secondary:  #3a5a48;
-  --text-muted:      #5a7868;
+  --text-muted:      #597666;
   --accent:          #4a6058;
   --accent-hover:    #3a5048;
   --accent-subtle:   rgba(74, 96, 88, 0.08);
@@ -235,9 +235,9 @@
   --border-strong:   #c8be98;
   --text-primary:    #1a1800;
   --text-secondary:  #6a6030;
-  --text-muted:      #8a8050;
-  --accent:          #a08800;
-  --accent-hover:    #8a7600;
+  --text-muted:      #7a7147;
+  --accent:          #837000;
+  --accent-hover:    #6f5f00;
   --accent-subtle:   rgba(160, 136, 0, 0.08);
   --danger:          #dc2626;
   --danger-subtle:   rgba(220, 38, 38, 0.08);
@@ -300,8 +300,8 @@
   --border-strong:   #c8c0b0;
   --text-primary:    #1a1810;
   --text-secondary:  #6a6050;
-  --text-muted:      #8a8070;
-  --accent:          #8a7020;
+  --text-muted:      #797062;
+  --accent:          #886e20;
   --accent-hover:    #746010;
   --accent-subtle:   rgba(138, 112, 32, 0.08);
   --danger:          #dc2626;
@@ -364,7 +364,7 @@
   --border-strong:   #b8b0d4;
   --text-primary:    #18182a;
   --text-secondary:  #5c5890;
-  --text-muted:      #7e7aa0;
+  --text-muted:      #6c6889;
   --accent:          #7c3aed;
   --accent-hover:    #6d28d9;
   --accent-subtle:   rgba(124, 58, 237, 0.08);
@@ -429,7 +429,7 @@
   --border-strong:   #c0c0bc;
   --text-primary:    #1a1a1a;
   --text-secondary:  #606060;
-  --text-muted:      #888888;
+  --text-muted:      #6f6f6f;
   --accent:          #505050;
   --accent-hover:    #404040;
   --accent-subtle:   rgba(80, 80, 80, 0.08);
@@ -526,8 +526,8 @@
   --border-strong:   #c8a0c8;
   --text-primary:    #1e1028;
   --text-secondary:  #625098;
-  --text-muted:      #887098;
-  --accent:          #c83080;
+  --text-muted:      #725e80;
+  --accent:          #b82c76;
   --accent-hover:    #b02068;
   --accent-subtle:   rgba(200, 48, 128, 0.08);
   --danger:          #dc2626;
@@ -621,7 +621,7 @@
   --border-strong:   #c8b8a4;
   --text-primary:    #1a1210;
   --text-secondary:  #6a5444;
-  --text-muted:      #8a7464;
+  --text-muted:      #7d695a;
   --accent:          #7a5438;
   --accent-hover:    #684428;
   --accent-subtle:   rgba(122, 84, 56, 0.08);
@@ -2872,7 +2872,6 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  opacity: 0.7;
 }
 
 .repMaxResultValue {
