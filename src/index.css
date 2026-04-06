@@ -3289,7 +3289,6 @@ html.theme-fading .settingsSheet {
 .wtPlateDisplay {
   text-align: center;
   padding: 0 0 12px;
-  position: relative;
 }
 
 .wtPlateWeightBtn {
@@ -3311,13 +3310,11 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPlateWeightUnit {
-  position: absolute;
-  left: calc(50% + 60px);
-  top: 50%;
-  transform: translateY(-50%);
   font-size: var(--font-body);
   font-weight: 600;
   color: var(--text-secondary);
+  margin-left: 8px;
+  vertical-align: middle;
 }
 
 .wtPlateWeightInput {
