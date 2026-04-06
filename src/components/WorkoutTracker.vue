@@ -1948,7 +1948,9 @@ const isNewPR = computed(() => {
 // When only one field is filled, show what's needed in the other to beat the PR
 const prTargetWeight = computed<number | null>(() => {
   if (isEditMode.value || !reps.value || reps.value < 1) return null
-  if (weight.value && weight.value > 0) return null // both filled → show live estimate instead
+  // In plate mode, treat bar-only (no plates) as "no weight entered" for suggestions
+  const isBarOnly = plateMode.value && currentPlates.value.length === 0
+  if (!isBarOnly && weight.value && weight.value > 0) return null // both filled → show live estimate instead
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return null
   const pr = store.getExercisePR(id)
