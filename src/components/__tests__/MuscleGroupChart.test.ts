@@ -114,13 +114,17 @@ describe('MuscleGroupChart', () => {
   })
 
   describe('touch target compliance', () => {
-    it('view toggle button meets 44px iOS HIG minimum touch target', () => {
+    // NOTE: jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
+    // cannot verify the actual 44px sizing here. The actual 44px rule is verified
+    // via CSS regression tests in cssRegression.test.ts which read the stylesheet
+    // source directly. This test verifies the element has the correct class and
+    // no inline style overrides that would shrink it below 44px.
+    it('view toggle has mgViewToggle class (44px verified in CSS regression tests)', () => {
       const wrapper = mountChart()
       const toggle = wrapper.find('.mgViewToggle')
-      const style = getComputedStyle(toggle.element)
-      // The scoped CSS sets width/height to 44px — verify the class is applied
+      expect(toggle.exists()).toBe(true)
       expect(toggle.classes()).toContain('mgViewToggle')
-      // Verify inline styles don't override to a smaller size
+      // Ensure no inline styles override the CSS-defined 44px touch target
       const inlineWidth = toggle.element.style.width
       const inlineHeight = toggle.element.style.height
       if (inlineWidth) expect(parseInt(inlineWidth)).toBeGreaterThanOrEqual(44)
