@@ -1104,6 +1104,9 @@ function confirmResetProgress() {
 const starterPickerVisible = ref(false)
 const starterPickerRef = ref<InstanceType<typeof StarterPickerFlow> | null>(null)
 
+// Revert any in-flight theme preview if the picker is hidden for any reason
+watch(starterPickerVisible, (visible) => { if (!visible) revertPreview() })
+
 const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
 const progressionToggleEl = ref<HTMLElement | null>(null)
 
