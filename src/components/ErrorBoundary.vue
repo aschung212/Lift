@@ -10,12 +10,13 @@
 
 <script setup lang="ts">
 import { ref, onErrorCaptured } from 'vue'
+import { logError } from '../lib/logger'
 
 const error = ref<Error | null>(null)
 
 onErrorCaptured((err) => {
   error.value = err
-  console.error('[ErrorBoundary]', err)
+  logError(err, { source: 'ErrorBoundary' })
   return false // prevent propagation
 })
 

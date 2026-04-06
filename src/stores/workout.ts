@@ -4,6 +4,7 @@ import { syncQueue } from '../lib/syncQueue'
 import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid } from '../lib/uuid'
+import { logWarn } from '../lib/logger'
 
 const STORAGE_KEY = 'workout-exercises'
 
@@ -91,8 +92,12 @@ function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; remo
 function load(): Exercise[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) throw new Error('Expected array')
+    return parsed
+  } catch (e) {
+    logWarn('Corrupt workout data in localStorage, using empty state', { error: String(e) })
     return []
   }
 }

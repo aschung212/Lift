@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { inject } from '@vercel/analytics'
 import { injectSpeedInsights } from '@vercel/speed-insights'
 import { initNativePlugins } from './lib/native'
+import { setSentryCaptureException, logError } from './lib/logger'
 import App from './App.vue'
 import './index.css'
 
@@ -16,11 +17,7 @@ app.use(createPinia())
 // ── Sentry error monitoring (lazy-loaded to improve TTI) ──────
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN as string | undefined
 
-// Lazy reference populated after dynamic import
-let captureException: ((err: Error, ctx?: Record<string, unknown>) => void) | null = null
-
 if (sentryDsn && import.meta.env.PROD) {
-  // Dynamic import — Sentry chunk is only fetched in production with a DSN configured
   import('@sentry/vue').then((Sentry) => {
     Sentry.init({
       app,
@@ -33,15 +30,12 @@ if (sentryDsn && import.meta.env.PROD) {
         return event
       },
     })
-    captureException = (err, ctx) => Sentry.captureException(err, { extra: ctx })
+    setSentryCaptureException((err, ctx) => Sentry.captureException(err, { extra: ctx }))
   })
 }
 
 app.config.errorHandler = (err, _instance, info) => {
-  console.error(`[Vue Error] ${info}:`, err)
-  if (err instanceof Error) {
-    captureException?.(err, { info })
-  }
+  logError(err, { vueInfo: info })
 }
 
 app.mount('#app');

@@ -7,6 +7,7 @@ import { backupToIDB } from '../lib/durableStorage'
 import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
+import { logWarn } from '../lib/logger'
 
 const STORAGE_KEY = 'user-progression'
 
@@ -167,7 +168,8 @@ function load(): ProgressionState {
     parsed.unlockedThemes = migrateUnlockedThemes(parsed.unlockedThemes)
     if (!parsed.epoch) parsed.epoch = 1
     return parsed
-  } catch {
+  } catch (e) {
+    logWarn('Corrupt progression data in localStorage, using defaults', { error: String(e) })
     return defaultState()
   }
 }

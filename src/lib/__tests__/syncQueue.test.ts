@@ -76,7 +76,7 @@ describe('SyncQueue', () => {
     expect(queue.pending).toBe(0)
   })
 
-  it('should handle operation failures gracefully (allSettled)', async () => {
+  it('should handle operation failures gracefully with retries', async () => {
     const queue = new SyncQueue(100)
     const failing = vi.fn().mockRejectedValue(new Error('network'))
     const succeeding = vi.fn().mockResolvedValue(undefined)
@@ -87,7 +87,8 @@ describe('SyncQueue', () => {
     vi.advanceTimersByTime(100)
     await vi.runAllTimersAsync()
 
-    expect(failing).toHaveBeenCalledOnce()
+    // Failing op retried up to 5 times + 1 initial = 6 total
+    expect(failing).toHaveBeenCalledTimes(6)
     expect(succeeding).toHaveBeenCalledOnce()
     expect(queue.pending).toBe(0)
   })

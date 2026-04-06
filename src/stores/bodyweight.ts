@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { uuid } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
+import { logWarn } from '../lib/logger'
 
 const STORAGE_KEY = 'bodyweight-entries'
 
@@ -15,8 +16,12 @@ export interface BodyweightEntry {
 function load(): BodyweightEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) throw new Error('Expected array')
+    return parsed
+  } catch (e) {
+    logWarn('Corrupt bodyweight data in localStorage, using empty state', { error: String(e) })
     return []
   }
 }

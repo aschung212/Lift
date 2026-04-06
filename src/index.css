@@ -5055,7 +5055,7 @@ html.theme-fading .settingsSheet {
   justify-content: center;
   z-index: 200;
   animation: overlayFadeIn 0.2s ease-out;
-  padding: 24px;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 24px calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
 .kbSheet {
@@ -5268,7 +5268,7 @@ html.theme-fading .settingsSheet {
   align-items: center;
   justify-content: center;
   z-index: 250;
-  padding: 24px;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 24px calc(24px + env(safe-area-inset-bottom, 0px));
   touch-action: none;
   overscroll-behavior: contain;
   animation: overlayFadeIn 0.2s ease-out;
