@@ -440,6 +440,19 @@
             </span>
           </p>
 
+          <!-- Recent sets (quick-fill) -->
+          <div v-if="!isEditMode && isLogForExercise && recentSets.length > 0" class="wtPrevSession">
+            <span class="wtPrevSessionLabel">Recent</span>
+            <div class="wtPrevSessionChips">
+              <button
+                v-for="(s, i) in recentSets"
+                :key="i"
+                class="wtPrevSessionChip"
+                @click="fillFromPrevious(s)"
+              >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
+            </div>
+          </div>
+
           <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
           <div v-if="selectedExerciseId === '__new__'" class="wtSectionDivider">
             <span class="wtSectionDividerLine" />
@@ -1065,8 +1078,8 @@ function toggleShowAll(id: string) {
 }
 
 function visibleSets(exercise: Exercise): WorkoutSet[] {
-  const reversed = [...exercise.sets].reverse()
-  return showAllSets.value.has(exercise.id) ? reversed : reversed.slice(0, SET_LIMIT)
+  const sorted = [...exercise.sets].sort((a, b) => b.date.localeCompare(a.date))
+  return showAllSets.value.has(exercise.id) ? sorted : sorted.slice(0, SET_LIMIT)
 }
 
 function toLocalDateKey(iso: string): string {
@@ -1119,6 +1132,38 @@ const showModal = ref(false)
 
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
+
+// ── Previous sets for quick-fill ─────────────────────────────────
+const RECENT_SET_LIMIT = 5
+
+const recentSets = computed(() => {
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  if (!ex || ex.sets.length === 0) return []
+  // Sort by date descending, skip today
+  const today = todayISO()
+  const prior = [...ex.sets]
+    .filter(s => toLocalDateKey(s.date) !== today)
+    .sort((a, b) => b.date.localeCompare(a.date))
+  // Deduplicate by weight×reps, keep most recent of each
+  const seen = new Set<string>()
+  const result: { weight: number; reps: number }[] = []
+  for (const s of prior) {
+    const key = `${s.weight}x${s.reps}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      result.push({ weight: s.weight, reps: s.reps })
+    }
+    if (result.length >= RECENT_SET_LIMIT) break
+  }
+  return result
+})
+
+function fillFromPrevious(set: { weight: number; reps: number }) {
+  weight.value = displayWeight(set.weight)
+  reps.value = set.reps
+  weightStr.value = String(displayWeight(set.weight))
+  repsStr.value = String(set.reps)
+}
 
 // ── Plate calculator state ──────────────────────────────────────
 const currentPlates = ref<number[]>([])

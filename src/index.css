@@ -3635,6 +3635,56 @@ html.theme-fading .settingsSheet {
 }
 
 /* Misc modal elements */
+.wtPrevSession {
+  margin-bottom: 16px;
+}
+
+.wtPrevSessionLabel {
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.wtPrevSessionChips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.wtPrevSessionChips::-webkit-scrollbar {
+  display: none;
+}
+
+.wtPrevSessionChip {
+  padding: 8px 16px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: var(--font-callout);
+  font-weight: 600;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.wtPrevSessionChip:active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .wtInputRow {
   display: flex;
   gap: 12px;
