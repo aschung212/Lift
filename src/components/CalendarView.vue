@@ -90,6 +90,11 @@
               <span class="calSumValue">🏆 {{ daySummary.prs }}</span>
               <span class="calSumLabel">PR{{ daySummary.prs !== 1 ? 's' : '' }}</span>
             </span>
+            <span v-if="daySummary.xp > 0" class="calSumDivider"></span>
+            <span v-if="daySummary.xp > 0" class="calSumStat calSumXP">
+              <span class="calSumValue">{{ daySummary.xp.toLocaleString() }}</span>
+              <span class="calSumLabel">XP</span>
+            </span>
           </div>
 
           <button
@@ -113,7 +118,10 @@
                   <span class="calSetSep">×</span>
                   <span class="calSetReps">{{ s.reps }} reps</span>
                 </span>
-                <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                <span class="calSetE1RM">
+                  ~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }}
+                  <span v-if="getSetXP(s.id)" class="calSetXP">+{{ getSetXP(s.id)!.xp }} XP</span>
+                </span>
               </div>
             </div>
           </template>
@@ -157,7 +165,10 @@
                   <span class="calSetSep">×</span>
                   <span class="calSetReps">{{ s.reps }} reps</span>
                 </span>
-                <span class="calSetE1RM">~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }} e1RM</span>
+                <span class="calSetE1RM">
+                  ~{{ displayWeight(Math.round(s.estimated1RM)) }} {{ weightUnit }}
+                  <span v-if="getSetXP(s.id)" class="calSetXP">+{{ getSetXP(s.id)!.xp }} XP</span>
+                </span>
               </div>
             </div>
           </template>
@@ -237,6 +248,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import { useProgressionStore } from '../stores/progression'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useFocusTrap } from '../composables/useFocusTrap'
@@ -244,6 +256,7 @@ import { useMuscleGroupVolume } from '../composables/useMuscleGroupVolume'
 import MuscleGroupChart from './MuscleGroupChart.vue'
 
 const store = useWorkoutStore()
+const progressionStore = useProgressionStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 
@@ -365,11 +378,14 @@ const daySummary = computed(() => {
     ? `${(displayWeight(totalVolume) / 1000).toFixed(1)}k`
     : String(displayWeight(totalVolume))
 
+  const xp = getDayXP(dayStr)
+
   return {
     exercises: exerciseCount,
     sets: totalSets,
     volumeDisplay: formatted,
     prs: prCount,
+    xp,
   }
 })
 
@@ -399,6 +415,27 @@ function getSetCount(dateStr: string, exName: string) {
   if (!exercise) return 0
   const dayStr = dateStr.slice(0, 10)
   return exercise.sets.filter(s => s.date.slice(0, 10) === dayStr).length
+}
+
+function getSetXP(setId: string): { xp: number; zone: string; isPR: boolean; isRepPR: boolean } | null {
+  const entry = progressionStore.xpPerSet[setId]
+  if (!entry) return null
+  if (typeof entry === 'number') return { xp: entry, zone: '', isPR: false, isRepPR: false }
+  return { xp: entry.xp, zone: entry.zone, isPR: entry.isPR, isRepPR: entry.isRepPR }
+}
+
+function getDayXP(dateStr: string): number {
+  const dayStr = dateStr.slice(0, 10)
+  let total = 0
+  for (const exercise of filteredExercises.value) {
+    for (const set of exercise.sets) {
+      if (set.date.slice(0, 10) === dayStr) {
+        const entry = progressionStore.xpPerSet[set.id]
+        if (entry) total += typeof entry === 'number' ? entry : entry.xp
+      }
+    }
+  }
+  return total
 }
 
 

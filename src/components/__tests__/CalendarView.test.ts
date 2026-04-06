@@ -48,6 +48,14 @@ vi.mock('../../stores/workout', () => ({
   })
 }))
 
+vi.mock('../../stores/progression', () => ({
+  useProgressionStore: () => ({
+    xpPerSet: {},
+    progressionEnabled: false,
+    showProgression: false,
+  })
+}))
+
 import CalendarView from '../CalendarView.vue'
 
 function mountCalendar() {

@@ -4703,6 +4703,16 @@ html.theme-fading .settingsSheet {
   white-space: nowrap;
 }
 
+.calSetXP {
+  color: var(--accent);
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.calSumXP .calSumValue {
+  color: var(--accent);
+}
+
 .calSetPR {
   font-size: var(--font-footnote);
   line-height: 1;
