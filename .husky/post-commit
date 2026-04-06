@@ -1,0 +1,5 @@
+#!/bin/sh
+# Gemini Flash review after every commit — non-blocking, informational only
+if [ -f "$HOME/.claude/scripts/review-router.sh" ]; then
+  bash "$HOME/.claude/scripts/review-router.sh" commit 2>&1 || true
+fi
