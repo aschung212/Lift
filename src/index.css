@@ -52,7 +52,7 @@
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(26, 18, 18, 0.14);
   --shadow-sm:       0 2px 8px rgba(26, 18, 18, 0.08);
-  --glass-fill:      rgba(255,235,235,0.50);
+  --glass-fill:      rgba(255,235,235,0.82);
   --glass-edge:      rgba(255,200,200,0.60);
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(245,230,230,0.75);
@@ -105,7 +105,7 @@
   --border:          #c8d4ee;
   --border-strong:   #a8b8e0;
   --text-primary:    #1a1a2e;
-  --text-secondary:  #60609a;
+  --text-secondary:  #505088;
   --text-muted:      #636384;
   --accent:          #005ce5;
   --accent-hover:    #0052cc;
@@ -116,7 +116,7 @@
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(26, 26, 46, 0.18);
   --shadow-sm:       0 2px 8px rgba(26, 26, 46, 0.10);
-  --glass-fill:      rgba(220,232,255,0.55);
+  --glass-fill:      rgba(220,232,255,0.82);
   --glass-edge:      rgba(180,210,255,0.70);
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(210,225,255,0.75);
@@ -181,7 +181,7 @@
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(10, 26, 18, 0.10);
   --shadow-sm:       0 2px 8px rgba(10, 26, 18, 0.06);
-  --glass-fill:      rgba(180, 210, 195, 0.25);
+  --glass-fill:      rgba(180, 210, 195, 0.82);
   --glass-edge:      rgba(160, 195, 178, 0.35);
   --glass-shine:     rgba(255, 255, 255, 0.90);
   --glass-bar:       rgba(240, 245, 242, 0.82);
@@ -245,7 +245,7 @@
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(20, 18, 0, 0.10);
   --shadow-sm:       0 2px 8px rgba(20, 18, 0, 0.06);
-  --glass-fill:      rgba(255, 240, 180, 0.30);
+  --glass-fill:      rgba(255, 240, 180, 0.82);
   --glass-edge:      rgba(255, 230, 140, 0.40);
   --glass-shine:     rgba(255, 255, 255, 0.90);
   --glass-bar:       rgba(248, 246, 232, 0.82);
@@ -310,7 +310,7 @@
   --success-subtle:  rgba(77, 124, 15, 0.08);
   --shadow:          0 8px 32px rgba(26, 24, 16, 0.10);
   --shadow-sm:       0 2px 8px rgba(26, 24, 16, 0.06);
-  --glass-fill:      rgba(248, 240, 220, 0.35);
+  --glass-fill:      rgba(248, 240, 220, 0.82);
   --glass-edge:      rgba(220, 210, 180, 0.45);
   --glass-shine:     rgba(255, 255, 255, 0.90);
   --glass-bar:       rgba(248, 246, 242, 0.82);
@@ -374,7 +374,7 @@
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(24, 24, 42, 0.14);
   --shadow-sm:       0 2px 8px rgba(24, 24, 42, 0.08);
-  --glass-fill:      rgba(230,225,255,0.50);
+  --glass-fill:      rgba(230,225,255,0.82);
   --glass-edge:      rgba(200,190,240,0.60);
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(235,230,250,0.75);
@@ -439,7 +439,7 @@
   --success-subtle:  rgba(21, 128, 61, 0.08);
   --shadow:          0 8px 32px rgba(0, 0, 0, 0.08);
   --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.04);
-  --glass-fill:      rgba(255, 255, 255, 0.50);
+  --glass-fill:      rgba(255, 255, 255, 0.82);
   --glass-edge:      rgba(220, 220, 220, 0.55);
   --glass-shine:     rgba(255, 255, 255, 0.90);
   --glass-bar:       rgba(244, 244, 242, 0.82);
@@ -503,7 +503,7 @@
   --success-subtle:  rgba(22, 163, 74, 0.08);
   --shadow:          0 8px 32px rgba(10, 16, 32, 0.10);
   --shadow-sm:       0 2px 8px rgba(10, 16, 32, 0.06);
-  --glass-fill:      rgba(210, 215, 240, 0.35);
+  --glass-fill:      rgba(210, 215, 240, 0.82);
   --glass-edge:      rgba(190, 200, 230, 0.50);
   --glass-shine:     rgba(255, 255, 255, 0.90);
   --glass-bar:       rgba(234, 236, 245, 0.82);
@@ -525,7 +525,7 @@
   --border:          #e0c8e0;
   --border-strong:   #c8a0c8;
   --text-primary:    #1e1028;
-  --text-secondary:  #625098;
+  --text-secondary:  #503e80;
   --text-muted:      #725e80;
   --accent:          #b82c76;
   --accent-hover:    #b02068;
@@ -536,7 +536,7 @@
   --success-subtle:  rgba(13, 138, 58, 0.08);
   --shadow:          0 8px 32px rgba(30, 16, 40, 0.18);
   --shadow-sm:       0 2px 8px rgba(30, 16, 40, 0.10);
-  --glass-fill:      rgba(255,220,240,0.52);
+  --glass-fill:      rgba(255,220,240,0.82);
   --glass-edge:      rgba(255,180,220,0.68);
   --glass-shine:     rgba(255,255,255,0.90);
   --glass-bar:       rgba(248,220,240,0.75);
@@ -631,7 +631,7 @@
   --success-subtle:  rgba(77, 124, 15, 0.08);
   --shadow:          0 8px 32px rgba(26, 18, 16, 0.12);
   --shadow-sm:       0 2px 8px rgba(26, 18, 16, 0.06);
-  --glass-fill:      rgba(255, 240, 220, 0.40);
+  --glass-fill:      rgba(255, 240, 220, 0.82);
   --glass-edge:      rgba(220, 200, 170, 0.55);
   --glass-shine:     rgba(255, 255, 255, 0.90);
   --glass-bar:       rgba(245, 239, 232, 0.82);
@@ -2210,9 +2210,8 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
   padding: 8px 16px;
   color: var(--text-secondary);
-  border-color: var(--border-strong);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
-  border: 1px solid;
   cursor: pointer;
   font-family: inherit;
   background: transparent;
@@ -3310,7 +3309,7 @@ html.theme-fading .settingsSheet {
 
 .repMaxResultPlaceholderText {
   font-size: var(--font-footnote);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .repMaxInputReadonly {

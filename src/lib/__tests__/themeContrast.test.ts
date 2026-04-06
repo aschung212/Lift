@@ -72,7 +72,7 @@ const themes: Record<string, ThemeColors> = {
   },
   'water-light': {
     bgPrimary: '#dde4f5', bgSecondary: '#ffffff', bgElevated: '#ffffff',
-    textPrimary: '#1a1a2e', textSecondary: '#60609a', textMuted: '#636384',
+    textPrimary: '#1a1a2e', textSecondary: '#505088', textMuted: '#636384',
     accent: '#005ce5', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
   },
   'luck-dark': {
@@ -137,7 +137,7 @@ const themes: Record<string, ThemeColors> = {
   },
   'love-light': {
     bgPrimary: '#f0dff0', bgSecondary: '#ffffff', bgElevated: '#ffffff',
-    textPrimary: '#1e1028', textSecondary: '#625098', textMuted: '#725e80',
+    textPrimary: '#1e1028', textSecondary: '#503e80', textMuted: '#725e80',
     accent: '#b82c76', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
   },
   'love-dark': {

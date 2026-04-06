@@ -374,7 +374,7 @@
                   :key="tag"
                   :class="['wtTagPickerChip', { wtTagPickerChipActive: newExerciseTags.includes(tag) }]"
                   :style="!newExerciseTags.includes(tag)
-                    ? { borderColor: 'var(--border)', color: 'var(--text-secondary)' }
+                    ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
                     : {}"
                   @click="toggleNewExerciseTag(tag)"
                 >{{ tag }}</button>
@@ -469,11 +469,10 @@
                   v-model="weightStr"
                   type="text"
                   :inputmode="(plateMode && !plateNumpadOverride) ? 'none' : 'decimal'"
-                  :readonly="plateMode && !plateNumpadOverride"
                   autocomplete="off"
                   placeholder="135"
                   :class="['repMaxInput', { repMaxInputReadonly: plateMode && !plateNumpadOverride }]"
-                  @click="onWeightInputClick"
+                  @focus="onWeightInputFocus"
                 />
               </div>
             </label>
@@ -580,7 +579,7 @@
               :key="tag"
               :class="['wtTagPickerChip', { wtTagPickerChipActive: editTags.includes(tag) }]"
               :style="!editTags.includes(tag)
-                ? { borderColor: 'var(--border)', color: 'var(--text-secondary)' }
+                ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
                 : {}"
               @click="toggleEditTag(tag)"
             >{{ tag }}</button>
@@ -1132,12 +1131,13 @@ const plateMode = computed(() => {
 })
 const plateNumpadOverride = ref(false)
 
-function onWeightInputClick() {
+function onWeightInputFocus() {
   if (plateMode.value && !plateNumpadOverride.value) {
     plateNumpadOverride.value = true
-    nextTick(() => {
-      weightInputEl.value?.focus()
-    })
+    // Force inputmode update synchronously so iOS shows keyboard from this tap
+    if (weightInputEl.value) {
+      weightInputEl.value.inputMode = 'decimal'
+    }
   }
 }
 
