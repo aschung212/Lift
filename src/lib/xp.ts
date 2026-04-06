@@ -193,19 +193,6 @@ export function calculateBest1RM(
 }
 
 /**
- * Calculate bodyweight logging XP.
- * Returns bodyweightXP if the date hasn't already been credited, 0 otherwise.
- */
-export function calculateBodyweightXP(
-  date: string,
-  existingDates: string[]
-): number {
-  const dateKey = date.slice(0, 10)
-  const credited = existingDates.some(d => d.slice(0, 10) === dateKey)
-  return credited ? 0 : XP_CONFIG.bodyweightXP
-}
-
-/**
  * Look up the streak multiplier for a given date.
  *
  * Multiplier = durationMultiplier × targetMultiplier

@@ -269,38 +269,8 @@ describe('workout store', () => {
     })
   })
 
-  // ── moveExercise / reorderExercise ─────────────────────────────
-  describe('moveExercise / reorderExercise', () => {
-    it('moves exercise down', () => {
-      const store = useWorkoutStore()
-      store.addExercise('Bench')
-      store.addExercise('Squat')
-      store.addExercise('Deadlift')
-      const benchId = store.exercises[0].id
-      store.moveExercise(benchId, 1)
-      expect(store.exercises[0].name).toBe('Squat')
-      expect(store.exercises[1].name).toBe('Bench')
-    })
-
-    it('moves exercise up', () => {
-      const store = useWorkoutStore()
-      store.addExercise('Bench')
-      store.addExercise('Squat')
-      const squatId = store.exercises[1].id
-      store.moveExercise(squatId, -1)
-      expect(store.exercises[0].name).toBe('Squat')
-      expect(store.exercises[1].name).toBe('Bench')
-    })
-
-    it('does nothing for out-of-bounds move', () => {
-      const store = useWorkoutStore()
-      store.addExercise('Bench')
-      store.addExercise('Squat')
-      const benchId = store.exercises[0].id
-      store.moveExercise(benchId, -1) // Can't move first item up
-      expect(store.exercises[0].name).toBe('Bench')
-    })
-
+  // ── reorderExercise ─────────────────────────────────────────────
+  describe('reorderExercise', () => {
     it('reorders exercise from one index to another', () => {
       const store = useWorkoutStore()
       store.addExercise('A')
