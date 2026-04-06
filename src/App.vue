@@ -770,6 +770,7 @@ import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } fr
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
+import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
 import { usePreferencesStore } from './stores/preferences'
 import type { WeightGoalDirection } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
@@ -1442,65 +1443,30 @@ async function executeDeleteAccount() {
   }
 }
 
-function exportData(format: 'csv' | 'json') {
+async function exportData(format: 'csv' | 'json') {
   const workoutStore = useWorkoutStore()
   const bwStore = useBodyweightStore()
   const timestamp = new Date().toISOString().slice(0, 10)
+  const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown'
+  const userIdHash = user.value?.id ? await hashUserId(user.value.id) : 'anonymous'
+  const metadata = { exportDate: new Date().toISOString(), appVersion, userIdHash }
 
   if (format === 'json') {
-    const data = {
-      exportDate: new Date().toISOString(),
-      exercises: workoutStore.exercises.map(e => ({
-        name: e.name,
-        tags: e.tags,
-        sets: e.sets.map(s => ({
-          date: s.date,
-          weight: s.weight,
-          reps: s.reps,
-          estimated1RM: s.estimated1RM,
-        })),
-      })),
-      bodyweight: bwStore.sortedEntries.map(e => ({
-        date: e.date,
-        weight: e.weight,
-      })),
-      progression: {
-        totalXP: progressionStore.totalXP,
-        epoch: progressionStore.epoch,
-        streakWeeks: progressionStore.streakWeeks,
-        weeklyTarget: progressionStore.weeklyTarget,
-        starterTheme: progressionStore.starterTheme,
-        unlockedThemes: progressionStore.unlockedThemes,
-        xpPerSet: progressionStore.xpPerSet,
-      },
-    }
+    const data = buildJsonExport(metadata, workoutStore.exercises, bwStore.sortedEntries, {
+      totalXP: progressionStore.totalXP,
+      epoch: progressionStore.epoch,
+      streakWeeks: progressionStore.streakWeeks,
+      weeklyTarget: progressionStore.weeklyTarget,
+      starterTheme: progressionStore.starterTheme,
+      unlockedThemes: progressionStore.unlockedThemes,
+      xpPerSet: progressionStore.xpPerSet,
+    })
     downloadFile(`lift-export-${timestamp}.json`, JSON.stringify(data, null, 2), 'application/json')
   } else {
-    const lines = ['Exercise,Date,Weight,Reps,Estimated 1RM,Tags']
-    for (const ex of workoutStore.exercises) {
-      for (const s of ex.sets) {
-        const date = s.date.slice(0, 10)
-        const tags = ex.tags.join(';')
-        lines.push(`${csvEscape(ex.name)},${date},${s.weight},${s.reps},${s.estimated1RM},${csvEscape(tags)}`)
-      }
-    }
-    if (bwStore.sortedEntries.length > 0) {
-      lines.push('')
-      lines.push('Date,Body Weight')
-      for (const e of bwStore.sortedEntries) {
-        lines.push(`${e.date.slice(0, 10)},${e.weight}`)
-      }
-    }
-    downloadFile(`lift-export-${timestamp}.csv`, lines.join('\n'), 'text/csv')
+    const csv = buildCsvExport(metadata, workoutStore.exercises, bwStore.sortedEntries)
+    downloadFile(`lift-export-${timestamp}.csv`, csv, 'text/csv')
   }
   logEvent('data_export', { format })
-}
-
-function csvEscape(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`
-  }
-  return value
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {
