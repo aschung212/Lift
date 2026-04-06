@@ -592,7 +592,8 @@
           <!-- Plate calculator (shown when exercise is in plates mode) -->
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplay">
-              <button class="wtPlateWeightBtn" @click="onWeightInputFocus(); weightInputEl?.focus()">{{ weight || 0 }} {{ weightUnit }}</button>
+              <button class="wtPlateWeightBtn" @click="onWeightInputFocus(); weightInputEl?.focus()">{{ weight || 0 }}</button>
+              <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
               <span class="wtPlateBreakdown">
                 {{ currentPlates.length > 0 ? `${currentBarWeight > 0 ? 'Bar + ' : ''}${formatPlates(currentPlates)}${isPerSide ? ' per side' : ''}` : currentBarWeight > 0 ? 'Bar only' : 'No plates' }}
               </span>
