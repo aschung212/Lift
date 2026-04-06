@@ -78,15 +78,15 @@ function detectFormat(headers: string[]): 'strong' | 'hevy' | 'lift' | 'unknown'
 
 function parseDate(dateStr: string): string {
   const trimmed = dateStr.trim()
-  // ISO format: 2026-04-05 or 2026-04-05T12:00:00Z
+  // ISO format: 2026-04-05 or 2026-04-05T23:59:59Z
   if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-    return trimmed.slice(0, 10) + 'T12:00:00.000Z'
+    return trimmed.slice(0, 10) + 'T23:59:59.000Z'
   }
   // US format: 04/05/2026 or 4/5/2026
   const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
   if (usMatch) {
     const [, m, d, y] = usMatch
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T12:00:00.000Z`
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T23:59:59.000Z`
   }
   // Fallback: try Date.parse
   const parsed = new Date(trimmed)

@@ -273,7 +273,7 @@ export const useWorkoutStore = defineStore('workout', {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       const date = dateStr
-        ? new Date(dateStr + 'T12:00:00').toISOString()
+        ? dateStr + 'T23:59:59.000Z'
         : new Date().toISOString()
       const id = uuid()
       const estimated1RM = epley(weight, reps)
@@ -297,7 +297,7 @@ export const useWorkoutStore = defineStore('workout', {
       set.reps = reps
       set.estimated1RM = epley(weight, reps)
       if (dateStr) {
-        set.date = new Date(dateStr + 'T12:00:00').toISOString()
+        set.date = dateStr + 'T23:59:59.000Z'
       }
       this._persist()
 
