@@ -449,7 +449,7 @@
                 :key="i"
                 class="wtPrevSessionChip"
                 @click="fillFromPrevious(s)"
-              >{{ displayWeight(s.weight) }} × {{ s.reps }}{{ s.count > 1 ? ` (×${s.count})` : '' }}</button>
+              >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
             </div>
           </div>
 
@@ -1144,18 +1144,18 @@ const recentSets = computed(() => {
   const prior = [...ex.sets]
     .filter(s => toLocalDateKey(s.date) !== today)
     .sort((a, b) => b.date.localeCompare(a.date))
-  // Deduplicate by weight×reps, keep count and most recent date
-  const seen = new Map<string, { weight: number; reps: number; count: number }>()
+  // Deduplicate by weight×reps, keep most recent of each
+  const seen = new Set<string>()
+  const result: { weight: number; reps: number }[] = []
   for (const s of prior) {
     const key = `${s.weight}x${s.reps}`
-    if (seen.has(key)) {
-      seen.get(key)!.count++
-    } else {
-      seen.set(key, { weight: s.weight, reps: s.reps, count: 1 })
+    if (!seen.has(key)) {
+      seen.add(key)
+      result.push({ weight: s.weight, reps: s.reps })
     }
-    if (seen.size >= RECENT_SET_LIMIT) break
+    if (result.length >= RECENT_SET_LIMIT) break
   }
-  return [...seen.values()]
+  return result
 })
 
 function fillFromPrevious(set: { weight: number; reps: number }) {
