@@ -4413,6 +4413,11 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
 }
 .wtTimerEditResetBtn:active { opacity: 0.6; }
+.wtTimerDisableBtn {
+  color: var(--danger);
+  margin-top: 8px;
+  min-height: 44px;
+}
 
 
 .wtTimerFlash {

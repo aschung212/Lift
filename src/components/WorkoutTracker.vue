@@ -308,6 +308,7 @@
               <button class="wtTimerEditAddBtn" :disabled="!newWarningValue" @click="addWarningOption">Add</button>
             </div>
             <button class="wtTimerEditResetBtn" @click="resetAllDefaults">Reset to defaults</button>
+            <button class="wtTimerEditResetBtn wtTimerDisableBtn" @click="disableRestTimer">Disable Rest Timer</button>
             <div class="repMaxActions">
               <button class="repMaxBtn repMaxBtnCalc" @click="editingPresets = false">Done</button>
             </div>
@@ -870,7 +871,7 @@ const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
-const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs } = useTheme()
+const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
 
 function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
@@ -1863,6 +1864,26 @@ function onOverlayClick() {
 function dismissTimer() {
   stopTimer()
   closeModal()
+}
+
+function disableRestTimer() {
+  const hadActiveTimer = timerActive.value
+  const wasPaused = timerPaused.value
+  const previousSeconds = timerSeconds.value
+  const previousDuration = restDuration.value
+  setRestTimerEnabled(false)
+  dismissTimer()
+  showUndo('Rest timer disabled', () => {
+    setRestTimerEnabled(true)
+    if (hadActiveTimer) {
+      timerSeconds.value = previousSeconds
+      restDuration.value = previousDuration
+      timerActive.value = true
+      timerPaused.value = wasPaused
+      showModal.value = true
+      if (previousSeconds > 0) startInterval()
+    }
+  }, () => { /* already disabled — no-op on commit */ })
 }
 
 function openRestTimer() {
