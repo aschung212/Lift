@@ -75,15 +75,36 @@
         </div>
 
         <p class="obStarterWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</p>
-        <button class="obStarterConfirm" :disabled="!selectedStarter" @click="confirmStarter">Choose {{ selectedStarter ? STARTER_THEMES.find(s => s.id === selectedStarter)?.label : '' }}</button>
+        <button class="obStarterConfirm" :disabled="!selectedStarter" @click="step = 'goal'">Next</button>
         <button class="obStarterSkip" @click="skipStarter">Skip — I'll just use the default</button>
+      </template>
+
+      <!-- Step 4: Weekly goal -->
+      <template v-else-if="step === 'goal'">
+        <div class="obLogo">Lift</div>
+        <p class="obTagline">How many days per week do you plan to train? Hit your goal consistently to build a streak and earn bonus XP.</p>
+
+        <div class="obGoalPicker">
+          <div class="iosStepper">
+            <button class="iosStepperBtn" @click="weeklyGoal = Math.max(1, weeklyGoal - 1)" :disabled="weeklyGoal <= 1" aria-label="Decrease">−</button>
+            <span class="iosStepperValue">{{ weeklyGoal }} day{{ weeklyGoal !== 1 ? 's' : '' }}</span>
+            <button class="iosStepperBtn" @click="weeklyGoal = Math.min(7, weeklyGoal + 1)" :disabled="weeklyGoal >= 7" aria-label="Increase">+</button>
+          </div>
+          <div class="obGoalBonus">{{ goalBonusLabel }}</div>
+          <p class="obGoalHints">Your streak grows each week you hit this goal. Longer streaks earn even higher bonuses.</p>
+          <p class="obGoalHints">You can increase this later without losing your streak. Decreasing it will reset your streak.</p>
+          <p v-if="weeklyGoal >= 7" class="obGoalHints">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</p>
+        </div>
+
+        <button class="obStarterConfirm" @click="confirmStarter">Let's Go</button>
+        <button class="obStarterSkip" @click="step = 'starter'">Back</button>
       </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
@@ -96,8 +117,18 @@ const bwStore = useBodyweightStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 
-const step = ref<'setup' | 'explainer' | 'starter'>('setup')
+const step = ref<'setup' | 'explainer' | 'starter' | 'goal'>('setup')
 const selectedStarter = ref<ThemeId | null>(null)
+const weeklyGoal = ref(3)
+
+const goalBonusLabel = computed(() => {
+  const t = weeklyGoal.value
+  if (t >= 6) return 'Initial streak bonus: 1.5× (max)'
+  if (t >= 5) return 'Initial streak bonus: 1.3×'
+  if (t >= 4) return 'Initial streak bonus: 1.2×'
+  if (t >= 3) return 'Initial streak bonus: 1.1×'
+  return 'No streak bonus'
+})
 let pendingSampleData = false
 
 const STARTER_THEMES = [
@@ -422,6 +453,7 @@ const { currentTheme } = useTheme()
 
 function confirmStarter() {
   if (selectedStarter.value) {
+    progressionStore.weeklyTarget = weeklyGoal.value
     progressionStore.setStarterTheme(selectedStarter.value)
     currentTheme.value = selectedStarter.value
   }
@@ -628,6 +660,29 @@ function chooseExplore() {
   text-align: center;
   margin-bottom: 16px;
   line-height: 1.4;
+}
+
+.obGoalPicker {
+  text-align: center;
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.obGoalBonus {
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 12px;
+}
+
+.obGoalHints {
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .obStarterConfirm {

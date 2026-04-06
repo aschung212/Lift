@@ -249,10 +249,11 @@ describe('OnboardingScreen', () => {
       expect((confirm.element as HTMLButtonElement).disabled).toBe(false)
     })
 
-    it('confirming a starter calls setStarterTheme', async () => {
+    it('confirming a starter calls setStarterTheme after goal step', async () => {
       await goToStarterPicker()
       await wrapper.findAll('.obStarterCard')[0].trigger('click') // Fire
-      await wrapper.find('.obStarterConfirm').trigger('click')
+      await wrapper.find('.obStarterConfirm').trigger('click') // → goal step
+      await wrapper.find('.obStarterConfirm').trigger('click') // → confirm
       expect(mockSetStarterTheme).toHaveBeenCalledWith('fire')
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })

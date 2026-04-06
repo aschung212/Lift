@@ -42,6 +42,17 @@ export function backupToIDB(key: string, value: string): void {
   })
 }
 
+/** Clear all data from IndexedDB backup. */
+export async function clearIDB(): Promise<void> {
+  try {
+    const database = await openDB()
+    const tx = database.transaction(STORE_NAME, 'readwrite')
+    tx.objectStore(STORE_NAME).clear()
+  } catch {
+    // IndexedDB unavailable — silently fail
+  }
+}
+
 /** Read a value from IndexedDB backup. */
 export async function restoreFromIDB(key: string): Promise<string | null> {
   try {

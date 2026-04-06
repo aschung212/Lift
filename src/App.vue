@@ -767,7 +767,7 @@ import { useTheme, connectProgressionStore, type ThemeId } from './composables/u
 import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration, showXPToast } from './stores/progression'
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
-import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
+import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { usePreferencesStore } from './stores/preferences'
@@ -1333,8 +1333,9 @@ function devRunMigration() {
   markMigrated()
 }
 
-function devClearAll() {
+async function devClearAll() {
   localStorage.clear()
+  await clearIDB()
   location.reload()
 }
 
