@@ -3,7 +3,8 @@
   <div class="wtCard">
     <div class="wtCardHeader">
       <h2 class="wtTitle">Exercise Tracker</h2>
-      <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+      <button v-if="listView === 'exercises'" class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
+      <button v-else class="wtLogBtn" @click="openLogForExercise(timelineSets.length ? timelineSets[0].exerciseId : '')">+ Log Set</button>
     </div>
 
     <!-- View toggle -->
@@ -111,7 +112,7 @@
               v-for="entry in group.sets"
               :key="entry.set.id"
               class="wtTimelineRow"
-              @click="openDetailModal(entry.exerciseId)"
+              @click="openLogForExercise(entry.exerciseId)"
             >
               <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
               <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
