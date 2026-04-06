@@ -520,15 +520,17 @@
 
             <label class="repMaxLabel" style="flex:1">
               Reps
-              <div class="repMaxInputRow">
+              <div class="repMaxInputRow wtRepsRow">
+                <button v-if="plateMode && !isEditMode" class="wtRepsStepBtn" @click="adjustReps(-1)" :disabled="!reps || reps <= 1" aria-label="Decrease reps">−</button>
                 <input
                   v-model="repsStr"
                   type="text"
                   inputmode="numeric"
                   autocomplete="off"
                   placeholder="8"
-                  class="repMaxInput"
+                  :class="['repMaxInput', { repMaxInputStepper: plateMode && !isEditMode }]"
                 />
+                <button v-if="plateMode && !isEditMode" class="wtRepsStepBtn" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
               </div>
             </label>
           </div>
@@ -1279,6 +1281,13 @@ const plateMode = computed(() => {
   return ex?.inputMode === 'plates'
 })
 const plateNumpadOverride = ref(false)
+
+function adjustReps(delta: number) {
+  const current = reps.value ?? 0
+  const next = Math.max(1, Math.min(MAX_REPS, current + delta))
+  reps.value = next
+  repsStr.value = String(next)
+}
 
 function onWeightInputFocus() {
   if (plateMode.value && !plateNumpadOverride.value) {
