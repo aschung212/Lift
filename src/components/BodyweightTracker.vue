@@ -41,7 +41,7 @@
       </div>
     </div>
     <div v-else-if="periodStats && periodStats.count === 1" class="bwStatsSingle">
-      Only 1 entry in this period — log more to see trends.
+      Log at least 2 entries on different days to see trends.
     </div>
 
     <!-- Graph -->
@@ -139,9 +139,7 @@
       </svg>
     </div>
 
-    <p v-else-if="store.entries.length === 1" class="wtGraphSingle">
-      Log at least 2 entries on different days to see your progress graph.
-    </p>
+    <!-- graph placeholder handled by bwStatsSingle above -->
 
     <p v-else-if="store.entries.length === 0" class="wtEmpty">
       Hit "+ Log" to record your first weigh-in.

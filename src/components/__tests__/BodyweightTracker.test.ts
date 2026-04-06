@@ -123,7 +123,7 @@ describe('BodyweightTracker', () => {
 
     it('shows single-entry prompt instead of stats', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.bwStatsSingle').text()).toContain('Only 1 entry')
+      expect(wrapper.find('.bwStatsSingle').text()).toContain('Log at least 2 entries')
     })
 
     it('does not render SVG chart with only 1 day', () => {
