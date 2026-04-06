@@ -1959,6 +1959,42 @@ html.theme-fading .settingsSheet {
   white-space: nowrap;
 }
 
+.wtTimelineRowActive {
+  background: var(--bg-hover);
+}
+
+.wtExPickerList {
+  max-height: 300px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 8px 0;
+}
+
+.wtExPickerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0;
+  min-height: 44px;
+  font-size: var(--font-body);
+  font-family: inherit;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-align: left;
+}
+
+.wtExPickerRow:last-child {
+  border-bottom: none;
+}
+
+.wtExPickerName {
+  font-weight: 500;
+}
+
 .wtTimelineShowMore {
   width: 100%;
   padding: 12px;

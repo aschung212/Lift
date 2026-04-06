@@ -4,7 +4,7 @@
     <div class="wtCardHeader">
       <h2 class="wtTitle">Exercise Tracker</h2>
       <button v-if="listView === 'exercises'" class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
-      <button v-else class="wtLogBtn" @click="openLogForExercise(timelineSets.length ? timelineSets[0].exerciseId : '')">+ Log Set</button>
+      <button v-else class="wtLogBtn" @click="openTimelineLogModal">+ Log Set</button>
     </div>
 
     <!-- View toggle -->
@@ -111,12 +111,16 @@
             <div
               v-for="entry in group.sets"
               :key="entry.set.id"
-              class="wtTimelineRow"
-              @click="openLogForExercise(entry.exerciseId)"
+              :class="['wtTimelineRow', { wtTimelineRowActive: activeSetId === entry.set.id }]"
+              @click="toggleSetActions(entry.set.id)"
             >
               <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
               <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
               <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
+              <div v-if="activeSetId === entry.set.id" class="wtSetActions">
+                <button class="wtSetBtn" @click.stop="openEditModal(store.exercises.find(e => e.id === entry.exerciseId)!, entry.set)" aria-label="Edit set">Edit</button>
+                <button class="wtSetBtn wtSetBtnDel" @click.stop="undoDeleteSet(entry.exerciseId, entry.set)" aria-label="Delete set">Delete</button>
+              </div>
             </div>
           </div>
         </template>
@@ -691,6 +695,29 @@
             <button class="wtEditDeleteConfirmBtn wtEditDeleteConfirmCancel" @click="confirmDeleteExercise = false">Cancel</button>
             <button class="wtEditDeleteConfirmBtn wtEditDeleteConfirmDanger" @click="undoDeleteExercise(store.exercises.find(e => e.id === editTarget)!); editTarget = null">Delete</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Exercise Picker (timeline + Log Set) -->
+  <Teleport to="body">
+    <div v-if="timelineLogPicking" class="repMaxOverlay" @click.self="timelineLogPicking = false" @keydown.escape="timelineLogPicking = false">
+      <div class="repMaxModal" role="dialog" aria-modal="true">
+        <h2>Choose Exercise</h2>
+        <div class="wtExPickerList">
+          <button
+            v-for="ex in store.exercises"
+            :key="ex.id"
+            class="wtExPickerRow"
+            @click="pickExerciseForLog(ex.id)"
+          >
+            <span class="wtExPickerName">{{ ex.name }}</span>
+            <span class="wtChevron">›</span>
+          </button>
+        </div>
+        <div class="repMaxActions">
+          <button class="repMaxBtn repMaxBtnClose" @click="timelineLogPicking = false">Cancel</button>
         </div>
       </div>
     </div>
@@ -1430,6 +1457,17 @@ function toggleNewExerciseTag(tag: string) {
   } else {
     newExerciseTags.value.push(tag)
   }
+}
+
+const timelineLogPicking = ref(false)
+
+function openTimelineLogModal() {
+  timelineLogPicking.value = true
+}
+
+function pickExerciseForLog(exerciseId: string) {
+  timelineLogPicking.value = false
+  openLogForExercise(exerciseId)
 }
 
 // Open modal pre-targeted at a specific existing exercise
