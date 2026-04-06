@@ -3088,9 +3088,7 @@ html.theme-fading .settingsSheet {
 .wtRepsStepperBar {
   display: flex;
   align-items: center;
-  max-width: 100%;
-  overflow: hidden;
-  border-radius: 12px;
+  gap: 12px;
 }
 
 .wtRepsStepBtnLg {
@@ -3105,17 +3103,8 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
+  border-radius: 12px;
   cursor: pointer;
-}
-
-.wtRepsStepBtnLg:first-child {
-  border-radius: 0;
-  border-right: none;
-}
-
-.wtRepsStepBtnLg:last-child {
-  border-radius: 0;
-  border-left: none;
 }
 
 .wtRepsStepBtnLg:disabled {
@@ -3127,6 +3116,7 @@ html.theme-fading .settingsSheet {
   width: 72px;
   flex: 0 0 72px;
   text-align: center;
+  border-radius: 12px;
   font-size: var(--font-title2);
   font-weight: 700;
   font-family: inherit;
@@ -3136,8 +3126,6 @@ html.theme-fading .settingsSheet {
   padding: 0;
   background: var(--bg-primary);
   border: 1px solid var(--border-strong);
-  border-left: none;
-  border-right: none;
   border-radius: 0;
   color: var(--text-primary);
   outline: none;
@@ -3165,17 +3153,8 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
+  border-radius: 12px;
   cursor: pointer;
-}
-
-.wtRepsStepBtnLg:first-child {
-  border-radius: 0;
-  border-right: none;
-}
-
-.wtRepsStepBtnLg:last-child {
-  border-radius: 0;
-  border-left: none;
 }
 
 .wtRepsStepBtnLg:disabled {
