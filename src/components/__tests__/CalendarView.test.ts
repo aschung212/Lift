@@ -322,7 +322,7 @@ describe('CalendarView', () => {
       const wrapper = mountCalendar()
       await wrapper.findAll('.calToggleBtn')[1].trigger('click')
 
-      expect(wrapper.findAll('.calWeekLogBtn').length).toBe(7)
+      expect(wrapper.findAll('.calWeekDayLogBtn').length).toBe(7)
     })
 
     it('navigates weeks with arrows', async () => {
@@ -358,6 +358,60 @@ describe('CalendarView', () => {
       const wrapper = mountCalendar()
       expect(wrapper.find('.calCellPR').exists()).toBe(true)
       expect(wrapper.find('.calCellPR').text()).toContain('🏆')
+    })
+  })
+
+  describe('nav label tap-to-today', () => {
+    it('nav label is not tappable when on current period', () => {
+      const wrapper = mountCalendar()
+      const label = wrapper.find('.calNavLabel')
+      expect(label.classes()).not.toContain('calNavLabelTappable')
+      expect((label.element as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it('nav label becomes tappable when viewing a past month', async () => {
+      const wrapper = mountCalendar()
+      // Navigate back one month
+      await wrapper.findAll('.calNavBtn')[0].trigger('click')
+      const label = wrapper.find('.calNavLabel')
+      expect(label.classes()).toContain('calNavLabelTappable')
+      expect((label.element as HTMLButtonElement).disabled).toBe(false)
+    })
+
+    it('tapping nav label returns to current month', async () => {
+      const wrapper = mountCalendar()
+      const currentLabel = wrapper.find('.calNavLabel').text()
+      // Navigate back
+      await wrapper.findAll('.calNavBtn')[0].trigger('click')
+      expect(wrapper.find('.calNavLabel').text()).not.toBe(currentLabel)
+      // Tap label to return
+      await wrapper.find('.calNavLabel').trigger('click')
+      expect(wrapper.find('.calNavLabel').text()).toBe(currentLabel)
+    })
+  })
+
+  describe('accordion multi-expand', () => {
+    it('allows multiple exercises expanded simultaneously', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = [
+        { id: 'ex-1', name: 'Bench', tags: ['Chest'], sets: [{ id: 's1', date: `${dateStr}T12:00:00`, weight: 135, reps: 5, estimated1RM: 158 }] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [{ id: 's2', date: `${dateStr}T12:00:00`, weight: 225, reps: 5, estimated1RM: 263 }] },
+      ]
+
+      const wrapper = mountCalendar()
+      await wrapper.find('.calCellToday').trigger('click')
+
+      const rows = wrapper.findAll('.calExRow')
+      expect(rows).toHaveLength(2)
+
+      // Expand first
+      await rows[0].trigger('click')
+      expect(wrapper.findAll('.calSetList')).toHaveLength(1)
+
+      // Expand second — both should be open
+      await rows[1].trigger('click')
+      expect(wrapper.findAll('.calSetList')).toHaveLength(2)
     })
   })
 
