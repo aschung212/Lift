@@ -586,6 +586,8 @@
             :resolved-mode="resolvedMode"
             @confirm="handleStarterConfirm"
             @skip="handleStarterSkip"
+            @preview="handleStarterPreview"
+            @revert-preview="handleStarterRevertPreview"
           />
         </div>
       </div>
@@ -1102,6 +1104,9 @@ function confirmResetProgress() {
 const starterPickerVisible = ref(false)
 const starterPickerRef = ref<InstanceType<typeof StarterPickerFlow> | null>(null)
 
+// Revert any in-flight theme preview if the picker is hidden for any reason
+watch(starterPickerVisible, (visible) => { if (!visible) revertPreview() })
+
 const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
 const progressionToggleEl = ref<HTMLElement | null>(null)
 
@@ -1170,7 +1175,16 @@ function executeResetProgress() {
   starterPickerVisible.value = true
 }
 
+function handleStarterPreview(themeId: ThemeId) {
+  previewTheme(themeId)
+}
+
+function handleStarterRevertPreview() {
+  revertPreview()
+}
+
 function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
+  revertPreview()
   starterPickerVisible.value = false
   progressionStore.weeklyTarget = weeklyGoal
   progressionStore.setStarterTheme(themeId)
@@ -1181,6 +1195,7 @@ function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
 }
 
 function handleStarterSkip() {
+  revertPreview()
   starterPickerVisible.value = false
   progressionStore.progressionEnabled = true
   if (!progressionStore.starterTheme) {
