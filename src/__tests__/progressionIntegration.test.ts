@@ -29,7 +29,6 @@ import {
   calculateSetXP,
   calculateBest1RM,
   applyStreakMultiplier,
-  calculateBodyweightXP,
   checkRepPR,
   XP_CONFIG,
   type StreakHistoryEntry,
@@ -184,11 +183,6 @@ describe('Progression Integration', () => {
   // ── Bodyweight XP ─────────────────────────────────────────────
 
   describe('bodyweight XP', () => {
-    it('awards 100 XP per unique date', () => {
-      expect(calculateBodyweightXP('2026-04-01', [])).toBe(100)
-      expect(calculateBodyweightXP('2026-04-01', ['2026-04-01'])).toBe(0)
-    })
-
     it('integrates with progression store', () => {
       const store = useProgressionStore()
       store.progressionEnabled = true
@@ -253,14 +247,14 @@ describe('Progression Integration', () => {
       expect(store.weeklyTarget).toBe(2) // change applied
     })
 
-    it('revert target preserves streak', () => {
+    it('clearing pending target preserves streak', () => {
       const store = useProgressionStore()
       store.evaluateWeek(3, '2026-03-16')
       store.evaluateWeek(3, '2026-03-23')
       expect(store.streakWeeks).toBe(2)
 
       store.setWeeklyTarget(6)
-      store.revertTargetChange()
+      store.pendingTargetChange = null
       store.evaluateWeek(3, '2026-03-30')
       expect(store.streakWeeks).toBe(3) // preserved
     })

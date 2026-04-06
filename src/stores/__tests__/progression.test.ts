@@ -161,7 +161,7 @@ describe('progression store', () => {
     })
   })
 
-  // ── setWeeklyTarget / revertTargetChange ──────────────────────
+  // ── setWeeklyTarget ────────────────────────────────────────────
 
   describe('weekly target management', () => {
     it('stages a target change without immediately applying', () => {
@@ -170,14 +170,6 @@ describe('progression store', () => {
       store.setWeeklyTarget(5)
       expect(store.weeklyTarget).toBe(3) // unchanged until evaluateWeek
       expect(store.pendingTargetChange).toBe(5)
-    })
-
-    it('can revert a staged change', () => {
-      const store = useProgressionStore()
-      store.setWeeklyTarget(5)
-      store.revertTargetChange()
-      expect(store.pendingTargetChange).toBeNull()
-      expect(store.weeklyTarget).toBe(3)
     })
 
     it('clamps target to 1-7', () => {
@@ -547,17 +539,17 @@ describe('progression store', () => {
   // ── Full streak lifecycle ─────────────────────────────────────
 
   describe('streak lifecycle', () => {
-    it('revert before evaluation preserves streak', () => {
+    it('clearing pending change before evaluation preserves streak', () => {
       const store = useProgressionStore()
       // Build a 2-week streak
       store.evaluateWeek(3, '2026-03-16')
       store.evaluateWeek(4, '2026-03-23')
       expect(store.streakWeeks).toBe(2)
 
-      // Stage a change mid-week, then revert
+      // Stage a change mid-week, then clear it
       store.setWeeklyTarget(6)
       expect(store.pendingTargetChange).toBe(6)
-      store.revertTargetChange()
+      store.pendingTargetChange = null
 
       // Evaluate the current week — streak should continue normally
       store.evaluateWeek(3, '2026-03-30')

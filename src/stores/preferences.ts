@@ -117,11 +117,6 @@ export const usePreferencesStore = defineStore('preferences', {
       this._persist()
     },
 
-    setFeature(featureId: string, enabled: boolean) {
-      this.features[featureId] = enabled
-      this._persist()
-    },
-
     setWeightGoalDirection(direction: WeightGoalDirection) {
       this.weightGoal.direction = direction
       this._persist()

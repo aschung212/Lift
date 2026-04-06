@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   calculateSetXP,
   calculateBest1RM,
-  calculateBodyweightXP,
   applyStreakMultiplier,
   checkRepPR,
   XP_CONFIG,
@@ -280,32 +279,6 @@ describe('calculateBest1RM', () => {
       makeSet({ estimated1RM: 100, date: '2026-03-20T10:00:00Z' }),
     ]
     expect(calculateBest1RM(sets, { windowMonths: 1 })).toBe(100)
-  })
-})
-
-// --- calculateBodyweightXP ---
-
-describe('calculateBodyweightXP', () => {
-  it('returns 100 for a new date', () => {
-    expect(calculateBodyweightXP('2026-04-01', [])).toBe(100)
-  })
-
-  it('returns 0 for a duplicate date', () => {
-    expect(calculateBodyweightXP('2026-04-01', ['2026-04-01'])).toBe(0)
-  })
-
-  it('matches on date portion only (ignores time)', () => {
-    expect(calculateBodyweightXP(
-      '2026-04-01T15:30:00Z',
-      ['2026-04-01T08:00:00Z']
-    )).toBe(0)
-  })
-
-  it('returns 100 when existing dates are different days', () => {
-    expect(calculateBodyweightXP(
-      '2026-04-02',
-      ['2026-04-01', '2026-04-03']
-    )).toBe(100)
   })
 })
 

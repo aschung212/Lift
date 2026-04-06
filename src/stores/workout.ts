@@ -413,16 +413,6 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    moveExercise(exerciseId: string, direction: number) {
-      const idx = this.exercises.findIndex((e: Exercise) => e.id === exerciseId)
-      if (idx === -1) return
-      const newIdx = idx + direction
-      if (newIdx < 0 || newIdx >= this.exercises.length) return
-      const [item] = this.exercises.splice(idx, 1)
-      this.exercises.splice(newIdx, 0, item)
-      this._persist()
-    },
-
     reorderExercise(fromIndex: number, toIndex: number) {
       if (fromIndex === toIndex) return
       if (fromIndex < 0 || toIndex < 0) return

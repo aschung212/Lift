@@ -49,34 +49,6 @@ describe('usePreferencesStore', () => {
     })
   })
 
-  describe('setFeature', () => {
-    it('explicitly sets a feature to disabled', () => {
-      store.setFeature('weight', false)
-      expect(store.features.weight).toBe(false)
-    })
-
-    it('explicitly sets a feature to enabled', () => {
-      store.setFeature('weight', false)
-      store.setFeature('weight', true)
-      expect(store.features.weight).toBe(true)
-    })
-  })
-
-  describe('setFeature edge cases', () => {
-    it('allows disabling the last feature (no guard like toggleFeature)', () => {
-      store.setFeature('calendar', false)
-      store.setFeature('weight', false)
-      store.setFeature('workouts', false)
-      expect(store.enabledCount).toBe(0)
-    })
-
-    it('handles unknown feature keys', () => {
-      store.setFeature('analytics', true)
-      expect(store.features.analytics).toBe(true)
-      expect(store.enabledCount).toBe(4)
-    })
-  })
-
   describe('toggleFeature edge cases', () => {
     it('toggling multiple features tracks enabledCount correctly', () => {
       expect(store.enabledCount).toBe(3)

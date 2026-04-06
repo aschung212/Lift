@@ -330,12 +330,6 @@ export const useProgressionStore = defineStore('progression', {
       this._syncToSupabase()
     },
 
-    revertTargetChange() {
-      this.pendingTargetChange = null
-      this._persist()
-      this._syncToSupabase()
-    },
-
     /**
      * Evaluate the completed week. Called at week boundary (Monday).
      * @param daysTrainedThisWeek - number of unique training days in the completed week
