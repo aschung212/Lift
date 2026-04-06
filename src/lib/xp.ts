@@ -153,6 +153,17 @@ export function checkRepPR(
 }
 
 /**
+ * Check if an exercise is "established" — has sets from at least one day
+ * prior to the given date. Until established, PR detection is suppressed
+ * to prevent XP farming from warmup progressions on new exercises.
+ */
+export function isExerciseEstablished(sets: WorkoutSet[], currentDate: string): boolean {
+  const today = currentDate.slice(0, 10)
+  const priorDays = new Set(sets.map(s => s.date.slice(0, 10)))
+  return priorDays.size >= 1 && !([...priorDays].every(d => d === today))
+}
+
+/**
  * Calculate the best estimated 1RM for an exercise within a rolling window.
  * Defaults to XP_CONFIG.best1RMWindowMonths.
  */

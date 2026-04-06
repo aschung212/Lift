@@ -752,7 +752,7 @@ import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
 import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
-import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, XP_CONFIG } from '../lib/xp'
+import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
 import ExerciseGraph from './ExerciseGraph.vue'
 
@@ -771,13 +771,8 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
   const otherSets = exercise.sets.filter(s => s.id !== setId)
   const rawBest1RM = calculateBest1RM(otherSets)
 
-  // PR suppression for immature exercises:
-  // An exercise is "established" when it has sets from at least 2 different days.
-  // Until then, all sets are treated as new-exercise (flat XP, no PR multipliers).
-  // This prevents farming XP by creating exercises and logging progressively heavier warmup sets.
-  const today = date.value || todayISO()
-  const priorDays = new Set(otherSets.map(s => s.date.slice(0, 10)))
-  const isEstablished = priorDays.size >= 1 && !([...priorDays].every(d => d === today.slice(0, 10)))
+  // Suppress PR detection for immature exercises (all sets from same day)
+  const isEstablished = isExerciseEstablished(otherSets, date.value || todayISO())
   const best1RM = isEstablished ? rawBest1RM : null
 
   // Rep PR only awards bonus when NOT already in PR/Tied PR zone
@@ -1718,10 +1713,7 @@ const isNewPR = computed(() => {
   if (!id || id === '__new__') return false
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return false
-  // Suppress PR badge for immature exercises (same-day only)
-  const prDay = (date.value || todayISO()).slice(0, 10)
-  const prPriorDays = new Set(exercise.sets.map(s => s.date.slice(0, 10)))
-  if (prPriorDays.size < 1 || [...prPriorDays].every(d => d === prDay)) return false
+  if (!isExerciseEstablished(exercise.sets, date.value || todayISO())) return false
   const pr = store.getExercisePR(id)
   return pr > 0 && liveEstimateLbs.value > pr
 })
@@ -1756,10 +1748,7 @@ const liveXPPreview = computed(() => {
   const w = toLbs(weight.value!)
   const r = reps.value!
 
-  // Same immature exercise check as computeAndLogXP
-  const previewDay = (date.value || todayISO()).slice(0, 10)
-  const priorDays = new Set(exercise.sets.map(s => s.date.slice(0, 10)))
-  const isEstablished = priorDays.size >= 1 && !([...priorDays].every(d => d === previewDay))
+  const isEstablished = isExerciseEstablished(exercise.sets, date.value || todayISO())
   const best1RM = isEstablished ? rawBest1RM : null
 
   const isPRZone = best1RM !== null && estimated1RM >= best1RM
@@ -1864,9 +1853,7 @@ function saveSet() {
       if (ex && set) {
         const otherSets = ex.sets.filter(s => s.id !== editSetId)
         const rawBest = calculateBest1RM(otherSets)
-        const editPriorDays = new Set(otherSets.map(s => s.date.slice(0, 10)))
-        const editSetDay = set.date.slice(0, 10)
-        const editEstablished = editPriorDays.size >= 1 && !([...editPriorDays].every(d => d === editSetDay))
+        const editEstablished = isExerciseEstablished(otherSets, set.date)
         const best = editEstablished ? rawBest : null
         const newXP = calculateSetXP({
           setEstimated1RM: set.estimated1RM,

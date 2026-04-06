@@ -33,6 +33,7 @@ vi.mock('../../lib/xp', () => ({
   calculateBest1RM: () => null,
   applyStreakMultiplier: (_xp: number) => _xp,
   checkRepPR: () => false,
+  isExerciseEstablished: () => false,
   XP_CONFIG: { warmupThreshold: 0.5, prMultiplier: 3, tieMultiplier: 2, repPRMultiplier: 1.25 },
 }))
 
