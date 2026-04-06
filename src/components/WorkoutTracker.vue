@@ -542,6 +542,7 @@
                   autocomplete="off"
                   placeholder="—"
                   class="wtRepsStepperInput"
+                  @focus="($event.target as HTMLInputElement)?.select()"
                 />
                 <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
               </div>
@@ -595,8 +596,7 @@
                 @blur="plateNumpadOverride = false"
               />
               <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
-              <span v-if="isPerSide" class="wtPlateModeBadge">per side</span>
-              <button v-if="currentPlates.length > 0" class="wtPlateClearBtn" @click="currentPlates = []; syncPlateWeight()">Clear</button>
+              <button v-if="currentPlates.length > 0" class="wtPlateClearBtn" @click="currentPlates = []; syncPlateWeight()" aria-label="Clear plates">×</button>
             </div>
             <div class="wtPlateGrid">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">

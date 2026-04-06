@@ -3130,6 +3130,12 @@ html.theme-fading .settingsSheet {
   outline: none;
 }
 
+.wtRepsStepperInput:focus {
+  border-color: var(--accent);
+  border-width: 2px;
+  outline: none;
+}
+
 .wtRepsStepperInput::placeholder {
   color: var(--text-muted);
   font-weight: 400;
@@ -3215,7 +3221,7 @@ html.theme-fading .settingsSheet {
   padding: 16px 16px;
   margin-top: 16px;
   margin-bottom: 16px;
-  min-height: 120px;
+  min-height: 140px;
 }
 
 .repMaxResultLabel {
@@ -3334,20 +3340,17 @@ html.theme-fading .settingsSheet {
   outline: none;
 }
 
-.wtPlateModeBadge {
-  display: block;
-  font-size: var(--font-caption2);
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
 .wtPlateClearBtn {
-  display: block;
-  margin: 8px auto 0;
-  padding: 4px 16px;
-  min-height: 32px;
-  font-size: var(--font-caption1);
-  font-weight: 600;
+  position: absolute;
+  right: calc(50% - 90px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-body);
   font-family: inherit;
   color: var(--text-muted);
   background: none;
