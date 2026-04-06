@@ -346,6 +346,17 @@
                   <button class="exportBtn" @click="exportData('json')" aria-label="Export data as JSON">JSON</button>
                 </div>
               </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Import</span>
+                <div class="exportBtnGroup">
+                  <button class="exportBtn" @click="triggerImport" aria-label="Import workout data from CSV">CSV</button>
+                </div>
+                <input ref="importFileInput" type="file" accept=".csv" class="hiddenFileInput" @change="handleImportFile" />
+              </div>
+              <div v-if="importResult" class="settingsImportResult" role="status">
+                <span v-if="importResult.error" class="settingsImportError">{{ importResult.error }}</span>
+                <span v-else class="settingsImportSuccess">Imported {{ importResult.exercises }} exercise{{ importResult.exercises !== 1 ? 's' : '' }} with {{ importResult.sets }} sets ({{ importResult.format }})</span>
+              </div>
               <div class="privacyTransparency" role="region" aria-label="Data transparency">
                 <div class="privacyRow">
                   <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/></svg>
@@ -724,6 +735,7 @@ import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/du
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
+import { importCSV } from './lib/csvImport'
 import { usePreferencesStore } from './stores/preferences'
 import type { WeightGoalDirection } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
@@ -1426,6 +1438,43 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+// ── CSV Import ──────────────────────────────────────────────────
+const importFileInput = ref<HTMLInputElement | null>(null)
+const importResult = ref<{ exercises: number; sets: number; format: string; error?: string } | null>(null)
+
+function triggerImport() {
+  importResult.value = null
+  importFileInput.value?.click()
+}
+
+function handleImportFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    const text = reader.result as string
+    const result = importCSV(text)
+    if (result.format === 'unknown' || result.exercises.length === 0) {
+      importResult.value = { exercises: 0, sets: 0, format: 'unknown', error: 'Unrecognized format. Supported: Strong, Hevy, Lift CSV.' }
+      return
+    }
+    // Merge imported exercises into the store
+    const workoutStore = useWorkoutStore()
+    for (const ex of result.exercises) {
+      const existingId = workoutStore.addExercise(ex.name, ex.tags, { sync: false })
+      if (!existingId) continue
+      for (const set of ex.sets) {
+        workoutStore.logSet(existingId, set.weight, set.reps, set.date.slice(0, 10), { sync: false })
+      }
+    }
+    importResult.value = { exercises: result.exercises.length, sets: result.totalSets, format: result.format }
+    logEvent('data_import', { format: result.format, exercises: result.exercises.length, sets: result.totalSets })
+  }
+  reader.readAsText(file)
+  // Reset input so the same file can be re-selected
+  if (importFileInput.value) importFileInput.value.value = ''
 }
 
 function toggleFeature(featureId: string) {

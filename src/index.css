@@ -1613,6 +1613,28 @@ html.theme-fading .settingsSheet {
 }
 .exportBtn:active { opacity: 0.6; }
 
+.hiddenFileInput {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.settingsImportResult {
+  padding: 8px 16px;
+  font-size: var(--font-caption2);
+  line-height: 1.4;
+}
+
+.settingsImportSuccess {
+  color: var(--success);
+}
+
+.settingsImportError {
+  color: var(--danger);
+}
+
 /* ─── Dev tools ──────────────────────────────────────────────────────────── */
 
 .devToolsGrid {
