@@ -3,9 +3,7 @@
   <div class="wtCard">
     <div class="wtCardHeader">
       <h2 class="wtTitle">Exercise Tracker</h2>
-      <div class="wtHeaderActions">
-        <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
-      </div>
+      <button class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
     </div>
 
     <!-- Tag filter -->
@@ -91,6 +89,7 @@
         </div>
       </li>
     </ul>
+
   </div>
 
   <!-- Exercise detail modal -->
@@ -101,7 +100,9 @@
         <div class="wtDetailHeader">
           <button class="wtDetailBack" @click="detailExerciseId = null" aria-label="Back to exercise list">‹ Back</button>
           <h2 class="wtDetailTitle" id="detail-modal-title">{{ detailExercise.name }}</h2>
-          <button class="wtDetailLogBtn" @click="openLogForExercise(detailExercise.id)" :aria-label="`Log a set for ${detailExercise.name}`">+ Log</button>
+          <button class="wtDetailEditBtn" @click="openEditExerciseModal(detailExercise)" :aria-label="`Edit ${detailExercise.name}`">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+          </button>
         </div>
 
         <div class="wtDetailBody">
@@ -188,26 +189,11 @@
             </div>
           </template>
 
-          <!-- Clear all sets -->
-          <div v-if="detailExercise.sets.length > 0" class="wtClearWrap">
-            <button class="wtClearBtn" @click="undoClearSets(detailExercise)" :aria-label="`Clear all sets for ${detailExercise.name}`">
-              Clear all sets
-            </button>
-          </div>
+        </div>
 
-          <!-- Exercise actions -->
-          <div class="wtSetActions wtExActions">
-            <button
-              class="wtSetBtn"
-              @click="openEditExerciseModal(detailExercise)"
-              :aria-label="`Edit ${detailExercise.name}`"
-            >Edit Exercise</button>
-            <button
-              class="wtSetBtn wtSetBtnDel"
-              @click="undoDeleteExercise(detailExercise)"
-              :aria-label="`Delete ${detailExercise.name}`"
-            >Delete Exercise</button>
-          </div>
+        <!-- Fixed footer -->
+        <div class="wtDetailFooter">
+          <button class="wtDetailFooterBtn" @click="openLogForExercise(detailExercise.id)" :aria-label="`Log a set for ${detailExercise.name}`">+ Log Set</button>
         </div>
       </div>
     </div>
@@ -643,6 +629,19 @@
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
+        </div>
+        <button
+          v-if="!confirmDeleteExercise"
+          class="wtEditDeleteBtn"
+          @click="confirmDeleteExercise = true"
+          aria-label="Delete exercise"
+        >Delete Exercise</button>
+        <div v-else class="wtEditDeleteConfirm">
+          <span class="wtEditDeleteConfirmText">Delete this exercise and all its sets?</span>
+          <div class="wtEditDeleteConfirmActions">
+            <button class="wtEditDeleteConfirmBtn wtEditDeleteConfirmCancel" @click="confirmDeleteExercise = false">Cancel</button>
+            <button class="wtEditDeleteConfirmBtn wtEditDeleteConfirmDanger" @click="undoDeleteExercise(store.exercises.find(e => e.id === editTarget)!); editTarget = null">Delete</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1957,21 +1956,6 @@ function undoDeleteSet(exerciseId: string, set: WorkoutSet) {
   )
 }
 
-function undoClearSets(exercise: Exercise) {
-  const savedSets = [...exercise.sets]
-  const id = exercise.id
-  store.clearSets(id, { sync: false })
-  logEvent('sets_clear_all', { count: savedSets.length })
-  showUndo(
-    `${savedSets.length} set${savedSets.length !== 1 ? 's' : ''} cleared`,
-    () => store.restoreSets(id, savedSets),
-    () => {
-      store.syncDeleteSets(id)
-      savedSets.forEach(s => progressionStore.removeSetXP(s.id))
-    },
-  )
-}
-
 function undoDeleteExercise(exercise: Exercise) {
   const saved = { ...exercise, sets: [...exercise.sets] }
   const idx = store.exercises.indexOf(exercise)
@@ -1990,6 +1974,7 @@ function undoDeleteExercise(exercise: Exercise) {
 
 // ── Edit exercise state (rename + tags) ──────────────────────────
 const editTarget = ref<string | null>(null)
+const confirmDeleteExercise = ref(false)
 const editName = ref('')
 const editTags = ref<string[]>([])
 const newTagInput = ref('')
@@ -2000,6 +1985,7 @@ const editBarWeight = ref<number>(45)
 
 function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
+  confirmDeleteExercise.value = false
   editName.value = exercise.name
   editTags.value = [...(exercise.tags || [])]
   editPlateMode.value = exercise.inputMode === 'plates'

@@ -429,14 +429,13 @@ describe('WorkoutTracker', () => {
       expect(btns.map(b => b.text())).toContain('Delete')
     })
 
-    it('shows Edit Exercise and Delete Exercise buttons', async () => {
+    it('shows Edit button in detail header and Log Set in footer', async () => {
       const wrapper = mountTracker()
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
-      const exBtns = wrapper.find('.wtExActions').findAll('.wtSetBtn')
-      expect(exBtns.map(b => b.text())).toContain('Edit Exercise')
-      expect(exBtns.map(b => b.text())).toContain('Delete Exercise')
+      expect(wrapper.find('.wtDetailEditBtn').exists()).toBe(true)
+      expect(wrapper.find('.wtDetailFooterBtn').text()).toBe('+ Log Set')
     })
 
     it('shows empty message for exercise with no sets', async () => {
@@ -447,12 +446,12 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtSetEmpty').text()).toContain('No sets logged yet')
     })
 
-    it('has + Log button in detail header', async () => {
+    it('has + Log Set button in detail footer', async () => {
       const wrapper = mountTracker()
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.find('.wtDetailLogBtn').text()).toBe('+ Log')
+      expect(wrapper.find('.wtDetailFooterBtn').text()).toBe('+ Log Set')
     })
   })
 
@@ -764,14 +763,19 @@ describe('WorkoutTracker', () => {
       expect(mockDeleteSet).toHaveBeenCalledWith('ex-1', expect.any(String), { sync: false })
     })
 
-    it('calls deleteExercise when Delete Exercise is clicked', async () => {
+    it('calls deleteExercise from edit exercise modal', async () => {
       const wrapper = mountTracker()
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
-      const exBtns = wrapper.find('.wtExActions').findAll('.wtSetBtn')
-      const deleteExBtn = exBtns.find(b => b.text() === 'Delete Exercise')!
-      await deleteExBtn.trigger('click')
+      // Open edit modal from detail header
+      await wrapper.find('.wtDetailEditBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Click Delete Exercise, then confirm
+      await wrapper.find('.wtEditDeleteBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.find('.wtEditDeleteConfirmDanger').trigger('click')
       await wrapper.vm.$nextTick()
 
       expect(mockDeleteExercise).toHaveBeenCalledWith('ex-1', { sync: false })

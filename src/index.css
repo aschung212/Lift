@@ -2186,14 +2186,6 @@ html.theme-fading .settingsSheet {
 .wtTagManagerSaveBtn { color: var(--accent); }
 .wtTagManagerCancelBtn { color: var(--text-secondary); }
 
-/* ─── Templates ────────────────────────────────────────────────────────── */
-
-.wtHeaderActions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 /* ─── Edit exercise modal: tag section ─────────────────────────────────── */
 
 .wtTagPicker {
@@ -2379,19 +2371,38 @@ html.theme-fading .settingsSheet {
   margin: 0;
 }
 
-.wtDetailLogBtn {
-  font-size: var(--font-footnote);
-  font-weight: 600;
-  font-family: inherit;
+.wtDetailEditBtn {
   color: var(--accent);
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px 0;
+  padding: 8px;
   min-height: 44px;
+  min-width: 44px;
   display: flex;
   align-items: center;
-  white-space: nowrap;
+  justify-content: center;
+}
+
+.wtDetailFooter {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+}
+
+.wtDetailFooterBtn {
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 12px;
+  font-size: var(--font-callout);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .wtDetailBody {
@@ -2523,9 +2534,57 @@ html.theme-fading .settingsSheet {
   padding: 8px 16px 12px;
 }
 
-.wtExActions {
-  padding: 12px 16px 16px;
-  border-top: 1px solid var(--border);
+.wtEditDeleteBtn {
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  margin-top: 24px;
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.wtEditDeleteConfirm {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.wtEditDeleteConfirmText {
+  display: block;
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.wtEditDeleteConfirmActions {
+  display: flex;
+  gap: 8px;
+}
+
+.wtEditDeleteConfirmBtn {
+  flex: 1;
+  padding: 12px;
+  min-height: 44px;
+  border: none;
+  border-radius: 10px;
+  font-size: var(--font-callout);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.wtEditDeleteConfirmCancel {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.wtEditDeleteConfirmDanger {
+  background: var(--danger);
+  color: #fff;
 }
 
 /* ─── PR History ───────────────────────────────────────────────────────── */
