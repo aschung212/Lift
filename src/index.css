@@ -3635,6 +3635,45 @@ html.theme-fading .settingsSheet {
 }
 
 /* Misc modal elements */
+.wtPrevSession {
+  margin-bottom: 12px;
+}
+
+.wtPrevSessionLabel {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.wtPrevSessionChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.wtPrevSessionChip {
+  padding: 8px 12px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.wtPrevSessionChip:active {
+  opacity: 0.6;
+}
+
 .wtInputRow {
   display: flex;
   gap: 12px;
