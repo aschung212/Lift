@@ -3072,7 +3072,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtRepsStepperFull {
-  margin-top: 12px;
+  margin-bottom: 12px;
 }
 
 .wtRepsStepperLabel {
@@ -3091,8 +3091,8 @@ html.theme-fading .settingsSheet {
 }
 
 .wtRepsStepBtnLg {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3128,8 +3128,8 @@ html.theme-fading .settingsSheet {
   font-weight: 700;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
-  height: 56px;
-  min-height: 56px;
+  height: 48px;
+  min-height: 48px;
   padding: 0;
   background: var(--bg-primary);
   border: 1px solid var(--border-strong);
@@ -3151,8 +3151,8 @@ html.theme-fading .settingsSheet {
 }
 
 .wtRepsStepBtnLg {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3187,8 +3187,8 @@ html.theme-fading .settingsSheet {
   font-size: var(--font-title2);
   font-weight: 600;
   border-radius: 0;
-  height: 56px;
-  min-height: 56px;
+  height: 48px;
+  min-height: 48px;
 }
 
 .repMaxInput {
@@ -3227,6 +3227,7 @@ html.theme-fading .settingsSheet {
   background: var(--accent-subtle);
   border-radius: 10px;
   padding: 16px 16px;
+  margin-top: 16px;
   margin-bottom: 16px;
   min-height: 120px;
 }

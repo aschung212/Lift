@@ -501,23 +501,8 @@
             <span class="wtSectionDividerText">Log a set (optional)</span>
             <span class="wtSectionDividerLine" />
           </div>
-          <!-- Plate mode: weight input full width, reps as stepper below -->
+          <!-- Plate mode: reps stepper first, then weight (closer to plate calc) -->
           <template v-if="plateMode && !isEditMode">
-            <label class="repMaxLabel">
-              Weight ({{ weightUnit }})
-              <div class="repMaxInputRow">
-                <input
-                  ref="weightInputEl"
-                  v-model="weightStr"
-                  type="text"
-                  :inputmode="plateNumpadOverride ? 'decimal' : 'none'"
-                  autocomplete="off"
-                  placeholder="135"
-                  :class="['repMaxInput', { repMaxInputReadonly: !plateNumpadOverride }]"
-                  @focus="onWeightInputFocus"
-                />
-              </div>
-            </label>
             <div class="wtRepsStepperFull">
               <span class="wtRepsStepperLabel">Reps</span>
               <div class="wtRepsStepperBar">
@@ -533,6 +518,21 @@
                 <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
               </div>
             </div>
+            <label class="repMaxLabel">
+              Weight ({{ weightUnit }})
+              <div class="repMaxInputRow">
+                <input
+                  ref="weightInputEl"
+                  v-model="weightStr"
+                  type="text"
+                  :inputmode="plateNumpadOverride ? 'decimal' : 'none'"
+                  autocomplete="off"
+                  placeholder="135"
+                  :class="['repMaxInput', { repMaxInputReadonly: !plateNumpadOverride }]"
+                  @focus="onWeightInputFocus"
+                />
+              </div>
+            </label>
           </template>
           <!-- Numpad / edit mode: side-by-side weight + reps -->
           <div v-else class="wtInputRow">
