@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import BodyHeatmap from '../BodyHeatmap.vue'
 import type { MuscleGroupSets } from '../../composables/useMuscleGroupVolume'
 
@@ -20,6 +22,26 @@ function mountHeatmap(props?: Partial<{ weeklyVolume: MuscleGroupSets[]; maxSets
       maxSets: props?.maxSets ?? 12,
     },
   })
+}
+
+// Read component source to test CSS rules directly (jsdom doesn't apply scoped CSS)
+const componentSrc = readFileSync(resolve(__dirname, '../BodyHeatmap.vue'), 'utf-8')
+const styleMatch = componentSrc.match(/<style[^>]*>([\s\S]*?)<\/style>/)
+const styleBlock = styleMatch ? styleMatch[1] : ''
+
+function getComponentRuleLines(selector: string): string[] {
+  const needle = selector + ' {'
+  const idx = styleBlock.indexOf(needle)
+  if (idx === -1) return []
+  const start = styleBlock.indexOf('{', idx) + 1
+  let depth = 1
+  let end = start
+  while (depth > 0 && end < styleBlock.length) {
+    if (styleBlock[end] === '{') depth++
+    if (styleBlock[end] === '}') depth--
+    end++
+  }
+  return styleBlock.slice(start, end - 1).split('\n').map((l: string) => l.trim()).filter(Boolean)
 }
 
 describe('BodyHeatmap', () => {
@@ -207,6 +229,25 @@ describe('BodyHeatmap', () => {
     it('legend is hidden from screen readers', () => {
       const wrapper = mountHeatmap()
       expect(wrapper.find('.heatmapLegend').attributes('aria-hidden')).toBe('true')
+    })
+  })
+
+  describe('CSS regression: iOS HIG touch targets', () => {
+    // Regression: .heatmapTab had min-height: 32px, below 44pt iOS HIG minimum (LIFT-96)
+    // jsdom doesn't apply scoped CSS, so we read the stylesheet source directly
+    const tabLines = getComponentRuleLines('.heatmapTab')
+
+    it('.heatmapTab has min-height: 44px for iOS HIG compliance', () => {
+      const hasCorrectMinHeight = tabLines.some(l => l.includes('min-height') && l.includes('44px'))
+      expect(hasCorrectMinHeight).toBe(true)
+    })
+
+    it('.heatmapTab does not use sub-44px min-height', () => {
+      const hasSmallMinHeight = tabLines.some(l => {
+        const match = l.match(/min-height\s*:\s*(\d+)px/)
+        return match && parseInt(match[1], 10) < 44
+      })
+      expect(hasSmallMinHeight).toBe(false)
     })
   })
 })

@@ -247,7 +247,7 @@ function regionStyle(group: MuscleGroup): Record<string, string> {
   border: none;
   border-radius: 6px;
   padding: 8px 16px;
-  min-height: 32px;
+  min-height: 44px;
   min-width: 64px;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
