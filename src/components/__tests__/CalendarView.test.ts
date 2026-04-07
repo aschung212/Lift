@@ -422,5 +422,72 @@ describe('CalendarView', () => {
       expect(navBtns[0].attributes('aria-label')).toBe('Previous')
       expect(navBtns[1].attributes('aria-label')).toBe('Next')
     })
+
+    it('in-month calendar cells have role="button" and tabindex="0"', () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      expect(inMonthCells.length).toBeGreaterThan(0)
+      for (const cell of inMonthCells) {
+        expect(cell.attributes('role')).toBe('button')
+        expect(cell.attributes('tabindex')).toBe('0')
+      }
+    })
+
+    it('other-month cells do not have role="button"', () => {
+      const wrapper = mountCalendar()
+      const otherCells = wrapper.findAll('.calCellOtherMonth')
+      if (otherCells.length > 0) {
+        for (const cell of otherCells) {
+          expect(cell.attributes('role')).toBeUndefined()
+          expect(cell.attributes('tabindex')).toBe('-1')
+        }
+      }
+    })
+
+    it('in-month calendar cells have descriptive aria-labels', () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      const todayCell = wrapper.find('.calCellToday')
+      const label = todayCell.attributes('aria-label')!
+      expect(label).toBeTruthy()
+      // Should contain the date and exercise count
+      expect(label).toContain('today')
+      expect(label).toContain('1 exercise')
+    })
+
+    it('calendar cells with PR show "PR" in aria-label', () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      const todayCell = wrapper.find('.calCellToday')
+      const label = todayCell.attributes('aria-label')!
+      expect(label).toContain('PR')
+    })
+
+    it('selected calendar cell has aria-pressed="true"', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('click')
+      expect(inMonthCells[0].attributes('aria-pressed')).toBe('true')
+    })
+
+    it('calendar cells respond to Enter key', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('keydown', { key: 'Enter' })
+      expect(wrapper.find('.calCellSelected').exists()).toBe(true)
+    })
+
+    it('calendar cells respond to Space key', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('keydown', { key: ' ' })
+      expect(wrapper.find('.calCellSelected').exists()).toBe(true)
+    })
   })
 })
