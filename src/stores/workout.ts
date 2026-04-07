@@ -88,6 +88,10 @@ function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; remo
       }
       removed.push(group[i])
     }
+    // If a sample exercise absorbs a real one, adopt it (clear sample flag)
+    if (primary.sample && group.some(ex => !ex.sample)) {
+      delete primary.sample
+    }
     // Merge tags from duplicates
     const tagSet = new Set(primary.tags)
     for (let i = 1; i < group.length; i++) {
@@ -130,6 +134,29 @@ export const useWorkoutStore = defineStore('workout', {
         logError(e, { source: 'workout._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+    },
+
+    /** Clear sample flag and push exercise + all its sets to Supabase. */
+    _adoptExercise(exercise: Exercise) {
+      delete exercise.sample
+      if (supabase && !isPreviewMode.value && this._userId) {
+        const userId = this._userId
+        syncQueue.enqueue(`exercise:${exercise.id}`, () =>
+          supabase!.from('exercises').upsert({
+            id: exercise.id, user_id: userId, name: exercise.name, tags: exercise.tags,
+            ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}), ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {})
+          })
+        )
+        for (const set of exercise.sets) {
+          syncQueue.enqueue(`set:${set.id}`, () =>
+            supabase!.from('sets').upsert({
+              id: set.id, user_id: userId, exercise_id: exercise.id,
+              date: set.date, weight: set.weight, reps: set.reps,
+              estimated_1rm: set.estimated1RM
+            })
+          )
+        }
+      }
     },
 
     async init(userId: string) {
@@ -394,7 +421,7 @@ export const useWorkoutStore = defineStore('workout', {
     setExerciseInputMode(exerciseId: string, mode: ExerciseInputMode) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
-      if (exercise.sample) delete exercise.sample
+      if (exercise.sample) this._adoptExercise(exercise)
       exercise.inputMode = mode
       exercise.updated_at = new Date().toISOString()
       this._persist()
@@ -415,19 +442,7 @@ export const useWorkoutStore = defineStore('workout', {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       // Real user action on a sample exercise adopts it (makes it syncable)
-      if (sync && exercise.sample) {
-        delete exercise.sample
-        // Push the newly-adopted exercise to Supabase so sets don't hit FK violations
-        if (supabase && !isPreviewMode.value && this._userId) {
-          const userId = this._userId
-          syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-            supabase!.from('exercises').upsert({
-              id: exerciseId, user_id: userId, name: exercise.name, tags: exercise.tags,
-              ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}), ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {})
-            })
-          )
-        }
-      }
+      if (sync && exercise.sample) this._adoptExercise(exercise)
       const date = dateStr
         ? endOfDayISO(dateStr)
         : new Date().toISOString()
@@ -450,8 +465,7 @@ export const useWorkoutStore = defineStore('workout', {
       if (!exercise) return
       const set = exercise.sets.find((s: WorkoutSet) => s.id === setId)
       if (!set) return
-      const wasAdopted = !!exercise.sample
-      if (exercise.sample) delete exercise.sample
+      if (exercise.sample) this._adoptExercise(exercise)
       set.weight = weight
       set.reps = reps
       set.estimated1RM = epley(weight, reps)
@@ -463,14 +477,6 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (supabase && this._userId) {
         const userId = this._userId
-        if (wasAdopted) {
-          syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-            supabase!.from('exercises').upsert({
-              id: exerciseId, user_id: userId, name: exercise.name, tags: exercise.tags,
-              ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}), ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {})
-            })
-          )
-        }
         syncQueue.enqueue(`set:${setId}`, () =>
           supabase!.from('sets').upsert({
             id: setId, user_id: userId, exercise_id: exerciseId,
@@ -510,7 +516,7 @@ export const useWorkoutStore = defineStore('workout', {
       if (!trimmed) return
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
-      if (exercise.sample) delete exercise.sample
+      if (exercise.sample) this._adoptExercise(exercise)
       exercise.name = trimmed
       exercise.updated_at = new Date().toISOString()
       this._persist()
@@ -530,7 +536,7 @@ export const useWorkoutStore = defineStore('workout', {
     updateExerciseTags(exerciseId: string, tags: string[]) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
-      if (exercise.sample) delete exercise.sample
+      if (exercise.sample) this._adoptExercise(exercise)
       exercise.tags = [...tags]
       exercise.updated_at = new Date().toISOString()
       this._persist()
@@ -634,7 +640,7 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (this._userId && modified.length > 0) {
         const userId = this._userId
-        for (const e of modified) {
+        for (const e of modified.filter(e => !e.sample)) {
           const { name, tags, inputMode, barWeight } = e
           syncQueue.enqueue(`exercise:${e.id}`, () =>
             supabase!.from('exercises').upsert({
@@ -661,7 +667,7 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (this._userId && modified.length > 0) {
         const userId = this._userId
-        for (const e of modified) {
+        for (const e of modified.filter(e => !e.sample)) {
           const { name, tags, inputMode, barWeight } = e
           syncQueue.enqueue(`exercise:${e.id}`, () =>
             supabase!.from('exercises').upsert({
