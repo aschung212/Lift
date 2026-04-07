@@ -5,6 +5,7 @@ import { mergeEntities } from '../lib/conflictResolver'
 import { uuid } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
+import { addTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
 const STORAGE_KEY = 'bodyweight-entries'
 
@@ -12,6 +13,7 @@ export interface BodyweightEntry {
   id: string
   date: string
   weight: number
+  updated_at?: string  // ISO 8601, used for last-write-wins merge
 }
 
 function load(): BodyweightEntry[] {
@@ -60,7 +62,14 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (!data) return
 
-      const remoteEntries = data.map((e: Record<string, unknown>) => ({
+      // Filter out tombstoned entries (deleted offline, not yet synced)
+      const remoteIds = new Set(data.map((e: Record<string, unknown>) => e.id as string))
+      cleanupTombstones(remoteIds)
+      const filteredData = data.filter(
+        (e: Record<string, unknown>) => !isTombstoned(e.id as string)
+      )
+
+      const remoteEntries = filteredData.map((e: Record<string, unknown>) => ({
         id: e.id as string,
         date: e.date as string,
         weight: e.weight as number,
@@ -68,11 +77,10 @@ export const useBodyweightStore = defineStore('bodyweight', {
       }))
 
       // Merge local + remote using last-write-wins
+      // (#1 fix: local entries now carry updated_at from mutations)
       const localWithTimestamps = this.entries.map((e) => ({
         ...e,
-        updated_at:
-          (e as BodyweightEntry & { updated_at?: string }).updated_at ||
-          new Date(0).toISOString(),
+        updated_at: e.updated_at || new Date(0).toISOString(),
       }))
       const { merged, localOnly } = mergeEntities(localWithTimestamps, remoteEntries)
 
@@ -105,13 +113,17 @@ export const useBodyweightStore = defineStore('bodyweight', {
         }
       }
 
-      this.entries = [...byDate.values()].map(({ updated_at: _, ...rest }) => rest)
+      // Keep updated_at in persisted state so future merges have accurate timestamps
+      this.entries = [...byDate.values()]
       this._persist()
 
       // Push local-only entries to remote
-      if (localOnly.length > 0) {
+      // (#3 fix: filter localOnly to exclude entries removed by date dedup)
+      const survivingIds = new Set([...byDate.values()].map(e => e.id))
+      const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id))
+      if (filteredLocalOnly.length > 0) {
         const userId = this._userId
-        for (const entry of localOnly) {
+        for (const entry of filteredLocalOnly) {
           syncQueue.enqueue(`bodyweight-push:${entry.id}`, () =>
             supabase!.from('bodyweight_entries').upsert({
               id: entry.id,
@@ -129,7 +141,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         ? dateStr + 'T23:59:59.000Z'
         : new Date().toISOString()
       const id = uuid()
-      this.entries.push({ id, date, weight })
+      this.entries.push({ id, date, weight, updated_at: new Date().toISOString() })
       this._persist()
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
@@ -147,6 +159,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (dateStr) {
         entry.date = dateStr + 'T23:59:59.000Z'
       }
+      entry.updated_at = new Date().toISOString()
       this._persist()
 
       if (supabase && this._userId) {
@@ -160,6 +173,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     },
 
     deleteEntry(id: string, { sync = true }: { sync?: boolean } = {}) {
+      addTombstone(id)
       this.entries = this.entries.filter((e: BodyweightEntry) => e.id !== id)
       this._persist()
 

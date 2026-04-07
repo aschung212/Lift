@@ -12,6 +12,8 @@ const RATE_LIMIT_MAX = 50
 const RATE_LIMIT_WINDOW = 60_000 // 1 minute
 let _rateCount = 0
 let _rateResetTimer: ReturnType<typeof setTimeout> | null = null
+// Deferred operations that exceeded the rate limit — processed in the next window
+const _deferredOps = new Map<string, SyncOperation>()
 
 /**
  * Batches and debounces Supabase sync operations with retry.
@@ -46,10 +48,22 @@ export class SyncQueue {
     // Rate limiting
     _rateCount++
     if (!_rateResetTimer) {
-      _rateResetTimer = setTimeout(() => { _rateCount = 0; _rateResetTimer = null }, RATE_LIMIT_WINDOW)
+      _rateResetTimer = setTimeout(() => {
+        _rateCount = 0
+        _rateResetTimer = null
+        // Drain deferred operations into the queue for the next flush
+        if (_deferredOps.size > 0) {
+          for (const [k, v] of _deferredOps) {
+            this._queue.set(k, v)
+          }
+          _deferredOps.clear()
+          this._scheduleFlush()
+        }
+      }, RATE_LIMIT_WINDOW)
     }
     if (_rateCount > RATE_LIMIT_MAX) {
-      logWarn('Sync rate limit exceeded, dropping operation', { key })
+      logWarn('Sync rate limit exceeded, deferring operation', { key })
+      _deferredOps.set(key, op)
       return
     }
     this._queue.set(key, op)
@@ -100,7 +114,7 @@ export class SyncQueue {
 
   /** Number of pending (unflushed) operations. */
   get pending(): number {
-    return this._queue.size + this._retryQueue.size
+    return this._queue.size + this._retryQueue.size + _deferredOps.size
   }
 
   /** Cancel all pending operations without executing them. */
@@ -116,6 +130,7 @@ export class SyncQueue {
     this._queue.clear()
     this._retryQueue.clear()
     this._attemptMap.clear()
+    _deferredOps.clear()
   }
 
   private _scheduleFlush(): void {
@@ -150,6 +165,7 @@ export function _resetRateLimit(): void {
     clearTimeout(_rateResetTimer)
     _rateResetTimer = null
   }
+  _deferredOps.clear()
 }
 
 /** Shared sync queue instance used by all stores (1-second debounce). */
