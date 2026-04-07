@@ -441,8 +441,11 @@ export const useWorkoutStore = defineStore('workout', {
     logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
-      // Real user action on a sample exercise adopts it (makes it syncable)
-      if (sync && exercise.sample) this._adoptExercise(exercise)
+      // Real user action on a sample exercise adopts it (makes it syncable).
+      // _adoptExercise pushes via syncQueue, so we must also use syncQueue for
+      // the new set to avoid FK violations from the set arriving before the exercise.
+      const wasAdopted = sync && !!exercise.sample
+      if (wasAdopted) this._adoptExercise(exercise)
       const date = dateStr
         ? endOfDayISO(dateStr)
         : new Date().toISOString()
@@ -453,10 +456,21 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
-        supabase.from('sets').insert({
-          id, user_id: this._userId, exercise_id: exerciseId,
-          date, weight, reps, estimated_1rm: estimated1RM
-        }).then()
+        if (wasAdopted) {
+          // Use syncQueue so this set is batched with the exercise creation
+          const userId = this._userId
+          syncQueue.enqueue(`set:${id}`, () =>
+            supabase!.from('sets').upsert({
+              id, user_id: userId, exercise_id: exerciseId,
+              date, weight, reps, estimated_1rm: estimated1RM
+            })
+          )
+        } else {
+          supabase.from('sets').insert({
+            id, user_id: this._userId, exercise_id: exerciseId,
+            date, weight, reps, estimated_1rm: estimated1RM
+          }).then()
+        }
       }
     },
 
