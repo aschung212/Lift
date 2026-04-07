@@ -273,7 +273,8 @@ export const useWorkoutStore = defineStore('workout', {
             supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
           )
           // Push the primary's merged state (tags may have been combined from dupes)
-          if (primary) {
+          // Skip if primary is sample-only — don't leak sample data to Supabase
+          if (primary && !primary.sample) {
             syncQueue.enqueue(`exercise:${primary.id}`, () =>
               supabase!.from('exercises').upsert({
                 id: primary.id, user_id: userId, name: primary.name, tags: primary.tags,
