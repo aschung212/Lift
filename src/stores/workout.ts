@@ -5,7 +5,7 @@ import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
-import { addTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
+import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -267,7 +267,8 @@ export const useWorkoutStore = defineStore('workout', {
         for (const ex of filteredLocalOnly) {
           syncQueue.enqueue(`exercise:${ex.id}`, () =>
             supabase!.from('exercises').upsert({
-              id: ex.id, user_id: userId, name: ex.name, tags: ex.tags
+              id: ex.id, user_id: userId, name: ex.name, tags: ex.tags,
+              input_mode: ex.inputMode || 'numpad', bar_weight: ex.barWeight ?? 45
             })
           )
           for (const set of ex.sets) {
@@ -290,7 +291,8 @@ export const useWorkoutStore = defineStore('workout', {
         for (const ex of filteredLocalWins) {
           syncQueue.enqueue(`exercise:${ex.id}`, () =>
             supabase!.from('exercises').upsert({
-              id: ex.id, user_id: userId, name: ex.name, tags: ex.tags
+              id: ex.id, user_id: userId, name: ex.name, tags: ex.tags,
+              input_mode: ex.inputMode || 'numpad', bar_weight: ex.barWeight ?? 45
             })
           )
           for (const set of ex.sets) {
@@ -433,6 +435,7 @@ export const useWorkoutStore = defineStore('workout', {
     restoreSet(exerciseId: string, set: WorkoutSet) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      removeTombstone('sets', set.id)
       exercise.sets.push(set)
       this._persist()
     },
@@ -497,6 +500,7 @@ export const useWorkoutStore = defineStore('workout', {
     },
 
     restoreExercise(exercise: Exercise, atIndex?: number) {
+      removeTombstone(TOMBSTONE_STORE, exercise.id)
       if (atIndex !== undefined && atIndex >= 0 && atIndex <= this.exercises.length) {
         this.exercises.splice(atIndex, 0, exercise)
       } else {

@@ -5,7 +5,7 @@ import { mergeEntities } from '../lib/conflictResolver'
 import { uuid } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
-import { addTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
+import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
 const TOMBSTONE_STORE = 'bodyweight'
 
@@ -138,9 +138,11 @@ export const useBodyweightStore = defineStore('bodyweight', {
       }
 
       // Push local-wins back to Supabase (offline edits that beat remote timestamps)
-      if (localWins.length > 0) {
+      // Filter against surviving IDs to avoid racing with dedup deletes
+      const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id))
+      if (filteredLocalWins.length > 0) {
         const userId = this._userId
-        for (const entry of localWins) {
+        for (const entry of filteredLocalWins) {
           syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
             supabase!.from('bodyweight_entries').upsert({
               id: entry.id,
@@ -217,6 +219,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     },
 
     restoreEntry(entry: BodyweightEntry) {
+      removeTombstone(TOMBSTONE_STORE, entry.id)
       this.entries.push(entry)
       this._persist()
     },

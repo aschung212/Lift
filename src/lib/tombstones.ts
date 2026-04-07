@@ -52,6 +52,14 @@ export function addTombstone(store: string, id: string) {
   setStoreSet(store, ids)
 }
 
+export function removeTombstone(store: string, id: string) {
+  const ids = getStoreSet(store)
+  if (ids.has(id)) {
+    ids.delete(id)
+    setStoreSet(store, ids)
+  }
+}
+
 export function isTombstoned(store: string, id: string): boolean {
   return getStoreSet(store).has(id)
 }
