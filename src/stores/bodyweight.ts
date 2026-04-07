@@ -184,9 +184,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this._persist()
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
-        supabase.from('bodyweight_entries').insert({
-          id, user_id: this._userId, date, weight
-        }).then()
+        const userId = this._userId
+        syncQueue.enqueue(`bodyweight:${id}`, () =>
+          supabase!.from('bodyweight_entries').upsert({
+            id, user_id: userId, date, weight
+          })
+        )
       }
       return id
     },

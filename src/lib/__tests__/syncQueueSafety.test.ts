@@ -69,4 +69,36 @@ describe('SyncQueue data integrity', () => {
       violations.join('\n')
     ).toHaveLength(0)
   })
+
+  it('no fire-and-forget Supabase calls — all mutations must go through syncQueue', () => {
+    const violations: string[] = []
+
+    for (const filePath of getStoreFiles()) {
+      const content = readFileSync(filePath, 'utf-8')
+      const lines = content.split('\n')
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        // Match supabase.from(...).insert/upsert/update/delete(...).then()
+        // These bypass syncQueue's retry, rate limiting, and error handling.
+        if (/supabase[!]?\.from\(/.test(line) || /\)\s*\.then\(\s*\)/.test(line)) {
+          // Check if this line or nearby lines have .then() with no callback
+          const window = lines.slice(Math.max(0, i - 2), i + 3).join('\n')
+          if (/\.(?:insert|upsert|update|delete)\([\s\S]*?\)[\s\S]*?\.then\(\s*\)/.test(window)) {
+            const fileName = filePath.split('/').pop()
+            violations.push(
+              `${fileName}:${i + 1} — fire-and-forget .then() on Supabase call. ` +
+              `Route through syncQueue.enqueue() for retry, rate limiting, and error handling.`
+            )
+          }
+        }
+      }
+    }
+
+    expect(
+      violations,
+      'Fire-and-forget Supabase calls bypass syncQueue error handling and retries:\n' +
+      violations.join('\n')
+    ).toHaveLength(0)
+  })
 })
