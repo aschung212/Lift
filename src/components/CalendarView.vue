@@ -23,11 +23,14 @@
           v-for="tag in store.allTags"
           :key="tag"
           :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
+          :aria-pressed="activeTagFilters.includes(tag) ? 'true' : 'false'"
+          :aria-label="activeTagFilters.includes(tag) ? `Remove ${tag} filter` : `Filter by ${tag}`"
           @click="toggleTagFilter(tag)"
         >{{ tag }}</button>
         <button
           v-if="activeTagFilters.length > 0"
           class="wtTagChip wtTagChipClear"
+          aria-label="Clear all tag filters"
           @click="activeTagFilters = []"
         >× Clear</button>
       </div>
@@ -141,7 +144,7 @@
         <div class="calWeekDayCol">
           <span class="calWeekDayName">{{ day.shortName }}</span>
           <span class="calWeekDayNum" :class="{ calWeekDayNumToday: day.isToday }">{{ day.dayNum }}</span>
-          <button class="calWeekDayLogBtn" @click="openLogModal(day.dateStr)">+</button>
+          <button class="calWeekDayLogBtn" :aria-label="`Log set for ${day.shortName}`" @click="openLogModal(day.dateStr)">+</button>
         </div>
         <div class="calWeekContent">
           <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>
@@ -193,8 +196,8 @@
   <!-- Exercise Picker Modal -->
   <Teleport to="body">
     <div v-if="exercisePickerDate" class="repMaxOverlay" @click.self="exercisePickerDate = null" @keydown.escape="exercisePickerDate = null">
-      <div class="repMaxModal" role="dialog" aria-modal="true">
-        <h2>Choose Exercise</h2>
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="exercise-picker-title">
+        <h2 id="exercise-picker-title">Choose Exercise</h2>
         <div class="wtExPickerList">
           <button
             v-for="ex in store.exercises"
@@ -551,6 +554,7 @@ function formatSelectedDay(dateStr: string) {
 
 // ── Log modal ─────────────────────────────────────────────────────
 const calModalFocus = useFocusTrap()
+const pickerFocus = useFocusTrap()
 const logModal = ref<{ open: boolean; date: string; exerciseId: string; weight: number | null; reps: number | null }>({ open: false, date: '', exerciseId: '', weight: null, reps: null })
 
 const exercisePickerDate = ref<string | null>(null)
@@ -558,6 +562,16 @@ const exercisePickerDate = ref<string | null>(null)
 function openLogModal(dateStr: string) {
   exercisePickerDate.value = dateStr
 }
+
+watch(exercisePickerDate, async (val) => {
+  if (val) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('[aria-labelledby="exercise-picker-title"]')
+    if (el) pickerFocus.activate(el)
+  } else {
+    pickerFocus.deactivate()
+  }
+})
 
 function pickExercise(exerciseId: string) {
   const dateStr = exercisePickerDate.value!

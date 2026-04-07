@@ -422,5 +422,94 @@ describe('CalendarView', () => {
       expect(navBtns[0].attributes('aria-label')).toBe('Previous')
       expect(navBtns[1].attributes('aria-label')).toBe('Next')
     })
+
+    it('view toggle buttons have aria-pressed', () => {
+      const wrapper = mountCalendar()
+      const btns = wrapper.findAll('.calToggleBtn')
+      expect(btns[0].attributes('aria-pressed')).toBe('true')  // Month is default
+      expect(btns[1].attributes('aria-pressed')).toBe('false')
+    })
+
+    it('tag filter buttons have aria-pressed and aria-label', () => {
+      exercises = makeExercises(['2026-03-31'])
+      const wrapper = mountCalendar()
+      const tagBtns = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
+      expect(tagBtns.length).toBeGreaterThan(0)
+
+      // Initially unpressed
+      expect(tagBtns[0].attributes('aria-pressed')).toBe('false')
+      expect(tagBtns[0].attributes('aria-label')).toContain('Filter by')
+    })
+
+    it('tag filter buttons toggle aria-pressed on click', async () => {
+      exercises = makeExercises(['2026-03-31'])
+      const wrapper = mountCalendar()
+      const tagBtn = wrapper.find('.wtTagChip:not(.wtTagChipClear)')
+
+      expect(tagBtn.attributes('aria-pressed')).toBe('false')
+      expect(tagBtn.attributes('aria-label')).toContain('Filter by')
+
+      await tagBtn.trigger('click')
+
+      expect(tagBtn.attributes('aria-pressed')).toBe('true')
+      expect(tagBtn.attributes('aria-label')).toContain('Remove')
+    })
+
+    it('clear tag filter button has aria-label', async () => {
+      exercises = makeExercises(['2026-03-31'])
+      const wrapper = mountCalendar()
+      const tagBtn = wrapper.find('.wtTagChip:not(.wtTagChipClear)')
+      await tagBtn.trigger('click')
+
+      const clearBtn = wrapper.find('.wtTagChipClear')
+      expect(clearBtn.exists()).toBe(true)
+      expect(clearBtn.attributes('aria-label')).toBe('Clear all tag filters')
+    })
+
+    it('exercise picker modal has aria-labelledby linking to heading', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      // Select today, then click "+ Log" to open exercise picker
+      await wrapper.find('.calCellToday').trigger('click')
+      await wrapper.find('.calLogBtn').trigger('click')
+
+      // The picker is Teleport-stubbed so it renders inline
+      const dialog = wrapper.find('[role="dialog"]')
+      expect(dialog.exists()).toBe(true)
+      expect(dialog.attributes('aria-labelledby')).toBe('exercise-picker-title')
+      expect(wrapper.find('#exercise-picker-title').exists()).toBe(true)
+      expect(wrapper.find('#exercise-picker-title').text()).toBe('Choose Exercise')
+    })
+
+    it('weekly log buttons have descriptive aria-labels', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      const logBtns = wrapper.findAll('.calWeekDayLogBtn')
+      expect(logBtns.length).toBe(7)
+
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      logBtns.forEach((btn, i) => {
+        expect(btn.attributes('aria-label')).toBe(`Log set for ${dayNames[i]}`)
+      })
+    })
+
+    it('exercise expand rows have aria-expanded', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      await wrapper.find('.calCellToday').trigger('click')
+
+      const exRow = wrapper.find('.calExRow')
+      expect(exRow.attributes('aria-expanded')).toBe('false')
+
+      await exRow.trigger('click')
+      expect(exRow.attributes('aria-expanded')).toBe('true')
+    })
   })
 })
