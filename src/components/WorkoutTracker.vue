@@ -328,10 +328,11 @@
                 :stroke-dashoffset="2 * Math.PI * 88 * (1 - timerProgress)"
               />
             </svg>
-            <div class="wtTimerRingInner" aria-live="polite" aria-atomic="true">
+            <div class="wtTimerRingInner" aria-hidden="true">
               <span :class="['wtTimerTime', { wtTimerTimeDone: timerSeconds === 0 }]">{{ timerDisplay }}</span>
               <span class="wtTimerLabel">{{ timerSeconds === 0 ? 'Done' : 'remaining' }}</span>
             </div>
+            <span class="srOnly" aria-live="polite" aria-atomic="true">{{ timerAnnouncement }}</span>
           </div>
 
           <!-- Play / Pause / Restart -->
@@ -1626,6 +1627,7 @@ function closeModal() {
 const timerActive = ref(false)
 const timerPaused = ref(false)
 const timerSeconds = ref(0)
+const timerAnnouncement = ref('')
 const restDuration = ref(parseInt(localStorage.getItem('rest-duration') ?? '90') || 90)
 let timerIntervalId: ReturnType<typeof setInterval> | null = null
 
@@ -1689,6 +1691,14 @@ function removeWarningOption(val: number) {
   localStorage.setItem('rest-warnings', JSON.stringify(warningTimes.value))
 }
 
+function formatTimerAnnouncement(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  if (m > 0 && s > 0) return `${m} minute${m > 1 ? 's' : ''} ${s} second${s !== 1 ? 's' : ''}`
+  if (m > 0) return `${m} minute${m > 1 ? 's' : ''}`
+  return `${s} second${s !== 1 ? 's' : ''}`
+}
+
 function startInterval() {
   if (timerIntervalId !== null) clearInterval(timerIntervalId)
   timerIntervalId = setInterval(() => {
@@ -1696,12 +1706,14 @@ function startInterval() {
       timerSeconds.value--
       if (warningTimes.value.includes(timerSeconds.value)) {
         playWarningBeep(timerSeconds.value)
+        timerAnnouncement.value = `${formatTimerAnnouncement(timerSeconds.value)} remaining`
       }
       if (timerSeconds.value <= 0) {
         playGoBeep()
         if (timerIntervalId !== null) clearInterval(timerIntervalId)
         timerIntervalId = null
         timerSeconds.value = 0
+        timerAnnouncement.value = 'Rest timer done'
         if (!editingPresets.value) {
           onTimerComplete()
         }
@@ -1715,6 +1727,7 @@ function startRestTimer() {
   timerActive.value = true
   timerPaused.value = false
   timerSeconds.value = restDuration.value
+  timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
   startInterval()
 }
 

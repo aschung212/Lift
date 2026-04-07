@@ -224,6 +224,16 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.srOnly screen-reader utility (LIFT-77)', () => {
+    it('has position: absolute and clip to hide visually', () => {
+      const lines = getRuleLines('.srOnly')
+      expect(lines.length).toBeGreaterThan(0)
+      expect(lines.some(l => l.startsWith('position: absolute'))).toBe(true)
+      expect(lines.some(l => l.startsWith('clip: rect(0, 0, 0, 0)'))).toBe(true)
+      expect(lines.some(l => l.startsWith('overflow: hidden'))).toBe(true)
+    })
+  })
+
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {
     // Valid spacing values: 0, 1, 2, 4, 8, 12, 16, 24, 32, and multiples of 8 above 32
     const SCALE = new Set([0, 1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128])

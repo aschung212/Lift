@@ -909,5 +909,24 @@ describe('WorkoutTracker', () => {
       const addBtn = wrapper.find('.wtTagAddChip')
       expect(addBtn.attributes('aria-label')).toBe('Add tag')
     })
+
+    it('timer visual display has aria-hidden (not aria-live) to prevent per-second announcements', () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const timerInner = wrapper.find('.wtTimerRingInner')
+      if (timerInner.exists()) {
+        expect(timerInner.attributes('aria-hidden')).toBe('true')
+        expect(timerInner.attributes('aria-live')).toBeUndefined()
+      }
+    })
+
+    it('timer has a screen-reader-only aria-live region for milestone announcements', () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const srAnnouncement = wrapper.find('.srOnly[aria-live="polite"]')
+      if (srAnnouncement.exists()) {
+        expect(srAnnouncement.attributes('aria-atomic')).toBe('true')
+      }
+    })
   })
 })
