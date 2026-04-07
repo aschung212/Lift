@@ -109,7 +109,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (dupIds.length > 0) {
         const userId = this._userId
         for (const id of dupIds) {
-          syncQueue.enqueue(`bodyweight-dedup:${id}`, () =>
+          syncQueue.enqueue(`bodyweight:${id}`, () =>
             supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId),
           )
         }
@@ -126,7 +126,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (filteredLocalOnly.length > 0) {
         const userId = this._userId
         for (const entry of filteredLocalOnly) {
-          syncQueue.enqueue(`bodyweight-push:${entry.id}`, () =>
+          syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
             supabase!.from('bodyweight_entries').upsert({
               id: entry.id,
               user_id: userId,
@@ -141,7 +141,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (localWins.length > 0) {
         const userId = this._userId
         for (const entry of localWins) {
-          syncQueue.enqueue(`bodyweight-sync:${entry.id}`, () =>
+          syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
             supabase!.from('bodyweight_entries').upsert({
               id: entry.id,
               user_id: userId,
@@ -160,7 +160,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         const userId = this._userId
         for (const e of tombstoneEntries) {
           const entryId = e.id as string
-          syncQueue.enqueue(`bodyweight-delete:${entryId}`, () =>
+          syncQueue.enqueue(`bodyweight:${entryId}`, () =>
             supabase!.from('bodyweight_entries').delete().eq('id', entryId).eq('user_id', userId),
           )
         }
@@ -197,7 +197,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         const update: Record<string, unknown> = { weight }
         if (dateStr) update.date = entry.date
         const userId = this._userId
-        syncQueue.enqueue(`bodyweight-update:${id}`, () =>
+        syncQueue.enqueue(`bodyweight:${id}`, () =>
           supabase!.from('bodyweight_entries').update(update).eq('id', id).eq('user_id', userId)
         )
       }
@@ -210,7 +210,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (sync && supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`bodyweight-delete:${id}`, () =>
+        syncQueue.enqueue(`bodyweight:${id}`, () =>
           supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId)
         )
       }
@@ -224,7 +224,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     syncDeleteEntry(id: string) {
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`bodyweight-delete:${id}`, () =>
+        syncQueue.enqueue(`bodyweight:${id}`, () =>
           supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId)
         )
       }
@@ -236,7 +236,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue('bodyweight-clear-all', () =>
+        syncQueue.enqueue('bodyweight:clear-all', () =>
           supabase!.from('bodyweight_entries').delete().eq('user_id', userId)
         )
       }
