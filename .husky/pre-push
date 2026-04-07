@@ -1,4 +1,7 @@
 #!/bin/sh
+# Ensure system binaries are in PATH (sysctl lives in /usr/sbin on macOS)
+export PATH="/usr/sbin:/sbin:$PATH"
+
 # Gemini 3.1 Pro review before push — reviews full branch diff
 if [ -f "$HOME/.claude/scripts/review-router.sh" ]; then
   echo ""
