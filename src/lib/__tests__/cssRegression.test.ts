@@ -224,6 +224,48 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('brace balance (LIFT-252)', () => {
+    // Regression: an extra closing brace in index.css caused a CSS minifier
+    // warning ("unexpected }") that could silently drop rules in production.
+    it('index.css has balanced braces', () => {
+      let depth = 0
+      const lines = css.split('\n')
+      for (let i = 0; i < lines.length; i++) {
+        for (const ch of lines[i]) {
+          if (ch === '{') depth++
+          if (ch === '}') depth--
+        }
+        if (depth < 0) {
+          expect.fail(`Extra closing brace at line ${i + 1}: "${lines[i].trim()}"`)
+        }
+      }
+      if (depth !== 0) {
+        expect.fail(`Brace imbalance: ${depth > 0 ? depth + ' unclosed' : Math.abs(depth) + ' extra closing'} brace(s)`)
+      }
+    })
+
+    it('Vue component style blocks have balanced braces', () => {
+      const componentsDir = resolve(__dirname, '../../components')
+      const vueFiles = readdirSync(componentsDir).filter((f: string) => f.endsWith('.vue'))
+      for (const file of vueFiles) {
+        const content = readFileSync(resolve(componentsDir, file), 'utf-8')
+        const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/)
+        if (!styleMatch) continue
+        let depth = 0
+        const lines = styleMatch[1].split('\n')
+        for (let i = 0; i < lines.length; i++) {
+          for (const ch of lines[i]) {
+            if (ch === '{') depth++
+            if (ch === '}') depth--
+          }
+        }
+        if (depth !== 0) {
+          expect.fail(`${file}: brace imbalance (${depth > 0 ? depth + ' unclosed' : Math.abs(depth) + ' extra closing'})`)
+        }
+      }
+    })
+  })
+
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {
     // Valid spacing values: 0, 1, 2, 4, 8, 12, 16, 24, 32, and multiples of 8 above 32
     const SCALE = new Set([0, 1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128])
