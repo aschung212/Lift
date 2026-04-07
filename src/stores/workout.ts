@@ -247,12 +247,12 @@ export const useWorkoutStore = defineStore('workout', {
           const primary = deduped.exercises.find(e =>
             e.name.toLowerCase() === dupe.name.toLowerCase()
           )
-          if (primary) {
+          if (primary && !primary.sample) {
+            // Only sync dedup operations for non-sample exercises
             const primarySetIds = new Set(primary.sets.map(s => s.id))
             for (const set of dupe.sets) {
               if (primarySetIds.has(set.id)) {
                 // Set was merged into primary — upsert under the primary exercise ID.
-                // Uses upsert (not update) because the set may be local-only and not yet in Supabase.
                 syncQueue.enqueue(`set:${set.id}`, () =>
                   supabase!.from('sets').upsert({
                     id: set.id, user_id: userId, exercise_id: primary.id,
@@ -267,14 +267,11 @@ export const useWorkoutStore = defineStore('workout', {
                 )
               }
             }
-          }
-          // Delete the duplicate exercise
-          syncQueue.enqueue(`exercise:${dupe.id}`, () =>
-            supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
-          )
-          // Push the primary's merged state (tags may have been combined from dupes)
-          // Skip if primary is sample-only — don't leak sample data to Supabase
-          if (primary && !primary.sample) {
+            // Delete the duplicate exercise from Supabase
+            syncQueue.enqueue(`exercise:${dupe.id}`, () =>
+              supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
+            )
+            // Push the primary's merged state (tags may have been combined from dupes)
             syncQueue.enqueue(`exercise:${primary.id}`, () =>
               supabase!.from('exercises').upsert({
                 id: primary.id, user_id: userId, name: primary.name, tags: primary.tags,
