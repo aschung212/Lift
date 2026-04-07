@@ -99,6 +99,8 @@ export const useBodyweightStore = defineStore('bodyweight', {
           // Keep the one with the later updated_at
           if (entry.updated_at > existing.updated_at) {
             dupIds.push(existing.id)
+            // If a sample entry replaces a real remote entry, adopt it so it gets synced back
+            if (entry.sample && !existing.sample) delete entry.sample
             byDate.set(dateKey, entry)
           } else {
             dupIds.push(entry.id)
@@ -189,6 +191,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     updateEntry(id: string, weight: number, dateStr?: string) {
       const entry = this.entries.find((e: BodyweightEntry) => e.id === id)
       if (!entry) return
+      if (entry.sample) delete entry.sample
       entry.weight = weight
       if (dateStr) {
         entry.date = endOfDayISO(dateStr)

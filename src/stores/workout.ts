@@ -394,6 +394,7 @@ export const useWorkoutStore = defineStore('workout', {
     setExerciseInputMode(exerciseId: string, mode: ExerciseInputMode) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      if (exercise.sample) delete exercise.sample
       exercise.inputMode = mode
       exercise.updated_at = new Date().toISOString()
       this._persist()
@@ -416,6 +417,16 @@ export const useWorkoutStore = defineStore('workout', {
       // Real user action on a sample exercise adopts it (makes it syncable)
       if (sync && exercise.sample) {
         delete exercise.sample
+        // Push the newly-adopted exercise to Supabase so sets don't hit FK violations
+        if (supabase && !isPreviewMode.value && this._userId) {
+          const userId = this._userId
+          syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+            supabase!.from('exercises').upsert({
+              id: exerciseId, user_id: userId, name: exercise.name, tags: exercise.tags,
+              ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}), ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {})
+            })
+          )
+        }
       }
       const date = dateStr
         ? endOfDayISO(dateStr)
@@ -439,6 +450,8 @@ export const useWorkoutStore = defineStore('workout', {
       if (!exercise) return
       const set = exercise.sets.find((s: WorkoutSet) => s.id === setId)
       if (!set) return
+      const wasAdopted = !!exercise.sample
+      if (exercise.sample) delete exercise.sample
       set.weight = weight
       set.reps = reps
       set.estimated1RM = epley(weight, reps)
@@ -450,6 +463,14 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (supabase && this._userId) {
         const userId = this._userId
+        if (wasAdopted) {
+          syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+            supabase!.from('exercises').upsert({
+              id: exerciseId, user_id: userId, name: exercise.name, tags: exercise.tags,
+              ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}), ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {})
+            })
+          )
+        }
         syncQueue.enqueue(`set:${setId}`, () =>
           supabase!.from('sets').upsert({
             id: setId, user_id: userId, exercise_id: exerciseId,
@@ -489,6 +510,7 @@ export const useWorkoutStore = defineStore('workout', {
       if (!trimmed) return
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      if (exercise.sample) delete exercise.sample
       exercise.name = trimmed
       exercise.updated_at = new Date().toISOString()
       this._persist()
@@ -508,6 +530,7 @@ export const useWorkoutStore = defineStore('workout', {
     updateExerciseTags(exerciseId: string, tags: string[]) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      if (exercise.sample) delete exercise.sample
       exercise.tags = [...tags]
       exercise.updated_at = new Date().toISOString()
       this._persist()
