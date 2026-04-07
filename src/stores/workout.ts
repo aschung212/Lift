@@ -249,7 +249,7 @@ export const useWorkoutStore = defineStore('workout', {
             syncQueue.enqueue(`exercise:${primary.id}`, () =>
               supabase!.from('exercises').upsert({
                 id: primary.id, user_id: userId, name: primary.name, tags: primary.tags,
-                input_mode: primary.inputMode || 'numpad', bar_weight: primary.barWeight ?? 45
+                ...(primary.inputMode ? { input_mode: primary.inputMode } : {}), ...(primary.barWeight != null ? { bar_weight: primary.barWeight } : {})
               })
             )
           }
@@ -306,7 +306,7 @@ export const useWorkoutStore = defineStore('workout', {
           syncQueue.enqueue(`exercise:${ex.id}`, () =>
             supabase!.from('exercises').upsert({
               id: ex.id, user_id: userId, name: ex.name, tags: ex.tags,
-              input_mode: ex.inputMode || 'numpad', bar_weight: ex.barWeight ?? 45
+              ...(ex.inputMode ? { input_mode: ex.inputMode } : {}), ...(ex.barWeight != null ? { bar_weight: ex.barWeight } : {})
             })
           )
           for (const set of ex.sets) {
@@ -330,7 +330,7 @@ export const useWorkoutStore = defineStore('workout', {
           syncQueue.enqueue(`exercise:${ex.id}`, () =>
             supabase!.from('exercises').upsert({
               id: ex.id, user_id: userId, name: ex.name, tags: ex.tags,
-              input_mode: ex.inputMode || 'numpad', bar_weight: ex.barWeight ?? 45
+              ...(ex.inputMode ? { input_mode: ex.inputMode } : {}), ...(ex.barWeight != null ? { bar_weight: ex.barWeight } : {})
             })
           )
           for (const set of ex.sets) {
@@ -402,7 +402,7 @@ export const useWorkoutStore = defineStore('workout', {
         syncQueue.enqueue(`exercise:${exerciseId}`, () =>
           supabase!.from('exercises').upsert({
             id: exerciseId, user_id: userId, name, tags,
-            input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+            ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
           })
         )
       }
@@ -493,7 +493,7 @@ export const useWorkoutStore = defineStore('workout', {
         syncQueue.enqueue(`exercise:${exerciseId}`, () =>
           supabase!.from('exercises').upsert({
             id: exerciseId, user_id: userId, name: n, tags: t,
-            input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+            ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
           })
         )
       }
@@ -513,7 +513,7 @@ export const useWorkoutStore = defineStore('workout', {
         syncQueue.enqueue(`exercise:${exerciseId}`, () =>
           supabase!.from('exercises').upsert({
             id: exerciseId, user_id: userId, name, tags: tagsCopy,
-            input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+            ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
           })
         )
       }
@@ -610,7 +610,7 @@ export const useWorkoutStore = defineStore('workout', {
           syncQueue.enqueue(`exercise:${e.id}`, () =>
             supabase!.from('exercises').upsert({
               id: e.id, user_id: userId, name, tags: [...tags],
-              input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+              ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
             })
           )
         }
@@ -637,7 +637,7 @@ export const useWorkoutStore = defineStore('workout', {
           syncQueue.enqueue(`exercise:${e.id}`, () =>
             supabase!.from('exercises').upsert({
               id: e.id, user_id: userId, name, tags: [...tags],
-              input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+              ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
             })
           )
         }
