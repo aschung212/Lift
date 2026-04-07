@@ -243,6 +243,15 @@ export const useWorkoutStore = defineStore('workout', {
           syncQueue.enqueue(`exercise:${dupe.id}`, () =>
             supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
           )
+          // Push the primary's merged state (tags may have been combined from dupes)
+          if (primary) {
+            syncQueue.enqueue(`exercise:${primary.id}`, () =>
+              supabase!.from('exercises').upsert({
+                id: primary.id, user_id: userId, name: primary.name, tags: primary.tags,
+                input_mode: primary.inputMode || 'numpad', bar_weight: primary.barWeight ?? 45
+              })
+            )
+          }
         }
       }
 
@@ -349,8 +358,12 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (supabase && this._userId) {
         const userId = this._userId
+        const { name, tags, inputMode, barWeight } = exercise
         syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-          supabase!.from('exercises').update({ input_mode: mode }).eq('id', exerciseId).eq('user_id', userId)
+          supabase!.from('exercises').upsert({
+            id: exerciseId, user_id: userId, name, tags,
+            input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+          })
         )
       }
     },
@@ -390,11 +403,13 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (supabase && this._userId) {
-        const update: Record<string, unknown> = { weight, reps, estimated_1rm: set.estimated1RM }
-        if (dateStr) update.date = set.date
         const userId = this._userId
         syncQueue.enqueue(`set:${setId}`, () =>
-          supabase!.from('sets').update(update).eq('id', setId).eq('user_id', userId)
+          supabase!.from('sets').upsert({
+            id: setId, user_id: userId, exercise_id: exerciseId,
+            date: set.date, weight: set.weight, reps: set.reps,
+            estimated_1rm: set.estimated1RM
+          })
         )
       }
     },
@@ -433,8 +448,12 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (supabase && this._userId) {
         const userId = this._userId
+        const { name: n, tags: t, inputMode, barWeight } = exercise
         syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-          supabase!.from('exercises').update({ name: trimmed }).eq('id', exerciseId).eq('user_id', userId)
+          supabase!.from('exercises').upsert({
+            id: exerciseId, user_id: userId, name: n, tags: t,
+            input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+          })
         )
       }
     },
@@ -447,10 +466,14 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (supabase && this._userId) {
-        const tagsCopy = [...tags]
         const userId = this._userId
+        const { name, inputMode, barWeight } = exercise
+        const tagsCopy = [...tags]
         syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-          supabase!.from('exercises').update({ tags: tagsCopy }).eq('id', exerciseId).eq('user_id', userId)
+          supabase!.from('exercises').upsert({
+            id: exerciseId, user_id: userId, name, tags: tagsCopy,
+            input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+          })
         )
       }
     },
@@ -541,9 +564,12 @@ export const useWorkoutStore = defineStore('workout', {
       if (this._userId && modified.length > 0) {
         const userId = this._userId
         for (const e of modified) {
-          const tags = [...e.tags]
+          const { name, tags, inputMode, barWeight } = e
           syncQueue.enqueue(`exercise:${e.id}`, () =>
-            supabase!.from('exercises').update({ tags }).eq('id', e.id).eq('user_id', userId)
+            supabase!.from('exercises').upsert({
+              id: e.id, user_id: userId, name, tags: [...tags],
+              input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+            })
           )
         }
       }
@@ -565,9 +591,12 @@ export const useWorkoutStore = defineStore('workout', {
       if (this._userId && modified.length > 0) {
         const userId = this._userId
         for (const e of modified) {
-          const tags = [...e.tags]
+          const { name, tags, inputMode, barWeight } = e
           syncQueue.enqueue(`exercise:${e.id}`, () =>
-            supabase!.from('exercises').update({ tags }).eq('id', e.id).eq('user_id', userId)
+            supabase!.from('exercises').upsert({
+              id: e.id, user_id: userId, name, tags: [...tags],
+              input_mode: inputMode || 'numpad', bar_weight: barWeight ?? 45
+            })
           )
         }
       }

@@ -194,11 +194,11 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this._persist()
 
       if (supabase && this._userId) {
-        const update: Record<string, unknown> = { weight }
-        if (dateStr) update.date = entry.date
         const userId = this._userId
         syncQueue.enqueue(`bodyweight:${id}`, () =>
-          supabase!.from('bodyweight_entries').update(update).eq('id', id).eq('user_id', userId)
+          supabase!.from('bodyweight_entries').upsert({
+            id, user_id: userId, date: entry.date, weight: entry.weight
+          })
         )
       }
     },

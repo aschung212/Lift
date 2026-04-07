@@ -91,7 +91,10 @@ export class SyncQueue {
       )
       let hasFailure = false
       results.forEach((result, i) => {
-        if (result.status === 'rejected') {
+        if (result.status === 'fulfilled') {
+          // Clear retry counter on success so future failures get full retries
+          this._attemptMap.delete(entries[i][0])
+        } else if (result.status === 'rejected') {
           hasFailure = true
           const [key, op] = entries[i]
           const prevAttempt = this._attemptMap.get(key) ?? 0
