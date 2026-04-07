@@ -8,7 +8,7 @@ type SyncOperation = () => PromiseLike<unknown>
 export const syncStatus = ref<'synced' | 'syncing' | 'error' | 'offline'>('synced')
 
 // Rate limiting: max operations per window
-const RATE_LIMIT_MAX = 50
+const RATE_LIMIT_MAX = 200
 const RATE_LIMIT_WINDOW = 60_000 // 1 minute
 let _rateCount = 0
 let _rateResetTimer: ReturnType<typeof setTimeout> | null = null
