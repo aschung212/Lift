@@ -8,7 +8,9 @@ vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn() }
 }))
 
-import { useProgressionStore, getTrainingDaysInWeek, getUnlockedThemeIds } from '../progression'
+import { useProgressionStore, getTrainingDaysInWeek, getUnlockedThemeIds, computeWeekXP } from '../progression'
+import type { SetXPEntry } from '../progression'
+import { XP_CONFIG } from '../../lib/xp'
 
 /** Helper: get theme IDs from store's unlocked themes */
 function unlockedIds(store: ReturnType<typeof useProgressionStore>): string[] {
@@ -533,6 +535,83 @@ describe('progression store', () => {
       store.evaluatePendingWeeks(dates, new Date('2026-04-06T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(3)
       expect(store.streakWeeks).toBe(0) // broken by empty weeks
+    })
+  })
+
+  // ── computeWeekXP ────────────────────────────────────────────
+
+  describe('computeWeekXP', () => {
+    it('sums XP from sets in the given week', () => {
+      const xpPerSet: Record<string, SetXPEntry | number> = {
+        's1': { xp: 10, theme: 'fire', epoch: 0, zone: 'working', isPR: false, isRepPR: false },
+        's2': { xp: 25, theme: 'fire', epoch: 0, zone: 'pr', isPR: true, isRepPR: false },
+        's3': { xp: 5, theme: 'water', epoch: 0, zone: 'warmup', isPR: false, isRepPR: false },
+      }
+      const setIdToDate: Record<string, string> = {
+        's1': '2026-03-23',
+        's2': '2026-03-25',
+        's3': '2026-03-30', // next week
+      }
+      expect(computeWeekXP(xpPerSet, [], setIdToDate, '2026-03-23', '2026-03-29')).toBe(35)
+    })
+
+    it('includes bodyweight XP for dates in the week', () => {
+      const xpPerSet: Record<string, SetXPEntry | number> = {
+        's1': { xp: 10, theme: 'fire', epoch: 0, zone: 'working', isPR: false, isRepPR: false },
+      }
+      const setIdToDate: Record<string, string> = { 's1': '2026-03-23' }
+      const bodyweightDates = ['2026-03-24', '2026-03-26', '2026-03-30']
+      const result = computeWeekXP(xpPerSet, bodyweightDates, setIdToDate, '2026-03-23', '2026-03-29')
+      expect(result).toBe(10 + 2 * XP_CONFIG.bodyweightXP)
+    })
+
+    it('handles legacy number format in xpPerSet', () => {
+      const xpPerSet: Record<string, SetXPEntry | number> = {
+        's1': 15, // legacy number
+        's2': { xp: 20, theme: 'fire', epoch: 0, zone: 'working', isPR: false, isRepPR: false },
+      }
+      const setIdToDate: Record<string, string> = { 's1': '2026-03-23', 's2': '2026-03-24' }
+      expect(computeWeekXP(xpPerSet, [], setIdToDate, '2026-03-23', '2026-03-29')).toBe(35)
+    })
+
+    it('returns 0 when no sets fall in the week', () => {
+      const xpPerSet: Record<string, SetXPEntry | number> = {
+        's1': { xp: 10, theme: 'fire', epoch: 0, zone: 'working', isPR: false, isRepPR: false },
+      }
+      const setIdToDate: Record<string, string> = { 's1': '2026-03-30' }
+      expect(computeWeekXP(xpPerSet, [], setIdToDate, '2026-03-23', '2026-03-29')).toBe(0)
+    })
+
+    it('ignores sets not in setIdToDate map', () => {
+      const xpPerSet: Record<string, SetXPEntry | number> = {
+        's1': { xp: 10, theme: 'fire', epoch: 0, zone: 'working', isPR: false, isRepPR: false },
+        'orphan': { xp: 99, theme: 'fire', epoch: 0, zone: 'working', isPR: false, isRepPR: false },
+      }
+      const setIdToDate: Record<string, string> = { 's1': '2026-03-23' }
+      expect(computeWeekXP(xpPerSet, [], setIdToDate, '2026-03-23', '2026-03-29')).toBe(10)
+    })
+  })
+
+  // ── evaluatePendingWeeks with weekXP ────────────────────────
+
+  describe('evaluatePendingWeeks with setIdToDate', () => {
+    it('passes computed weekXP to logWeeklySnapshot', () => {
+      const store = useProgressionStore()
+      store.xpPerSet = {
+        's1': { xp: 10, theme: 'fire', epoch: 0, zone: 'working', isPR: false, isRepPR: false },
+        's2': { xp: 20, theme: 'fire', epoch: 0, zone: 'pr', isPR: true, isRepPR: false },
+      }
+      const dates = ['2026-03-23', '2026-03-25', '2026-03-27']
+      const setIdToDate: Record<string, string> = { 's1': '2026-03-23', 's2': '2026-03-25' }
+      store.evaluatePendingWeeks(dates, new Date('2026-03-30T10:00:00Z'), setIdToDate)
+      expect(store.streakHistory).toHaveLength(1)
+    })
+
+    it('falls back to 0 weekXP when setIdToDate not provided', () => {
+      const store = useProgressionStore()
+      const dates = ['2026-03-23', '2026-03-25', '2026-03-27']
+      store.evaluatePendingWeeks(dates, new Date('2026-03-30T10:00:00Z'))
+      expect(store.streakHistory).toHaveLength(1)
     })
   })
 
