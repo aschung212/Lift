@@ -601,5 +601,33 @@ describe('workout store', () => {
       store.deleteExercise(id, { sync: false })
       expect(store.exercises).toHaveLength(0)
     })
+
+    it('marks exercises as sample when sync: false (#232)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Sample Exercise', [], { sync: false })!
+      expect(store.exercises[0].sample).toBe(true)
+    })
+
+    it('does not mark exercises as sample when sync: true', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Real Exercise')
+      expect(store.exercises[0].sample).toBeUndefined()
+    })
+
+    it('clears sample flag when a real set is logged (#232)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Sample Exercise', [], { sync: false })!
+      expect(store.exercises[0].sample).toBe(true)
+      // Log a real set (sync: true by default)
+      store.logSet(id, 135, 10)
+      expect(store.exercises[0].sample).toBeUndefined()
+    })
+
+    it('keeps sample flag when a sample set is logged', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Sample Exercise', [], { sync: false })!
+      store.logSet(id, 135, 10, undefined, { sync: false })
+      expect(store.exercises[0].sample).toBe(true)
+    })
   })
 })

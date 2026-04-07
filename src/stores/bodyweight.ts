@@ -16,6 +16,7 @@ export interface BodyweightEntry {
   date: string
   weight: number
   updated_at?: string  // ISO 8601, used for last-write-wins merge
+  sample?: boolean     // true for onboarding sample data — never synced to Supabase
 }
 
 function load(): BodyweightEntry[] {
@@ -80,11 +81,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       // Merge local + remote using last-write-wins
       // (#1 fix: local entries now carry updated_at from mutations)
-      const localWithTimestamps = this.entries.map((e) => ({
+      type BWWithTimestamp = BodyweightEntry & { updated_at: string }
+      const localWithTimestamps: BWWithTimestamp[] = this.entries.map((e) => ({
         ...e,
         updated_at: e.updated_at || new Date(0).toISOString(),
       }))
-      const { merged, localOnly, localWins } = mergeEntities(localWithTimestamps, remoteEntries)
+      const { merged, localOnly, localWins } = mergeEntities<BWWithTimestamp>(localWithTimestamps, remoteEntries as BWWithTimestamp[])
 
       // Deduplicate by date — keep only the latest entry per date (by updated_at)
       const byDate = new Map<string, (typeof merged)[0]>()
@@ -98,9 +100,13 @@ export const useBodyweightStore = defineStore('bodyweight', {
           // Keep the one with the later updated_at
           if (entry.updated_at > existing.updated_at) {
             dupIds.push(existing.id)
+            // If a sample entry replaces a real remote entry, adopt it so it gets synced back
+            if (entry.sample && !existing.sample) delete entry.sample
             byDate.set(dateKey, entry)
           } else {
             dupIds.push(entry.id)
+            // If existing sample entry beats a real remote entry, adopt it
+            if (existing.sample && !entry.sample) delete existing.sample
           }
         }
       }
@@ -122,7 +128,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       // Push local-only entries to remote
       // (#3 fix: filter localOnly to exclude entries removed by date dedup)
       const survivingIds = new Set([...byDate.values()].map(e => e.id))
-      const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id))
+      const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id) && !e.sample)
       if (filteredLocalOnly.length > 0) {
         const userId = this._userId
         for (const entry of filteredLocalOnly) {
@@ -139,7 +145,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       // Push local-wins back to Supabase (offline edits that beat remote timestamps)
       // Filter against surviving IDs to avoid racing with dedup deletes
-      const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id))
+      const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id) && !e.sample)
       if (filteredLocalWins.length > 0) {
         const userId = this._userId
         for (const entry of filteredLocalWins) {
@@ -174,7 +180,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         ? endOfDayISO(dateStr)
         : new Date().toISOString()
       const id = uuid()
-      this.entries.push({ id, date, weight, updated_at: new Date().toISOString() })
+      this.entries.push({ id, date, weight, updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) })
       this._persist()
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
@@ -188,6 +194,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     updateEntry(id: string, weight: number, dateStr?: string) {
       const entry = this.entries.find((e: BodyweightEntry) => e.id === id)
       if (!entry) return
+      if (entry.sample) delete entry.sample
       entry.weight = weight
       if (dateStr) {
         entry.date = endOfDayISO(dateStr)

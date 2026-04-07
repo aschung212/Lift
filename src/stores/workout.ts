@@ -32,6 +32,7 @@ export interface Exercise {
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   updated_at?: string              // ISO 8601, used for last-write-wins merge
+  sample?: boolean                 // true for onboarding sample data — never synced to Supabase
 }
 
 export interface OverloadSuggestion {
@@ -87,6 +88,10 @@ function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; remo
       }
       removed.push(group[i])
     }
+    // If a sample exercise absorbs a real one, adopt it (clear sample flag)
+    if (primary.sample && group.some(ex => !ex.sample)) {
+      delete primary.sample
+    }
     // Merge tags from duplicates
     const tagSet = new Set(primary.tags)
     for (let i = 1; i < group.length; i++) {
@@ -129,6 +134,29 @@ export const useWorkoutStore = defineStore('workout', {
         logError(e, { source: 'workout._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+    },
+
+    /** Clear sample flag and push exercise + all its sets to Supabase. */
+    _adoptExercise(exercise: Exercise) {
+      delete exercise.sample
+      if (supabase && !isPreviewMode.value && this._userId) {
+        const userId = this._userId
+        syncQueue.enqueue(`exercise:${exercise.id}`, () =>
+          supabase!.from('exercises').upsert({
+            id: exercise.id, user_id: userId, name: exercise.name, tags: exercise.tags,
+            ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}), ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {})
+          })
+        )
+        for (const set of exercise.sets) {
+          syncQueue.enqueue(`set:${set.id}`, () =>
+            supabase!.from('sets').upsert({
+              id: set.id, user_id: userId, exercise_id: exercise.id,
+              date: set.date, weight: set.weight, reps: set.reps,
+              estimated_1rm: set.estimated1RM
+            })
+          )
+        }
+      }
     },
 
     async init(userId: string) {
@@ -219,12 +247,12 @@ export const useWorkoutStore = defineStore('workout', {
           const primary = deduped.exercises.find(e =>
             e.name.toLowerCase() === dupe.name.toLowerCase()
           )
-          if (primary) {
+          if (primary && !primary.sample) {
+            // Only sync dedup operations for non-sample exercises
             const primarySetIds = new Set(primary.sets.map(s => s.id))
             for (const set of dupe.sets) {
               if (primarySetIds.has(set.id)) {
                 // Set was merged into primary — upsert under the primary exercise ID.
-                // Uses upsert (not update) because the set may be local-only and not yet in Supabase.
                 syncQueue.enqueue(`set:${set.id}`, () =>
                   supabase!.from('sets').upsert({
                     id: set.id, user_id: userId, exercise_id: primary.id,
@@ -239,13 +267,11 @@ export const useWorkoutStore = defineStore('workout', {
                 )
               }
             }
-          }
-          // Delete the duplicate exercise
-          syncQueue.enqueue(`exercise:${dupe.id}`, () =>
-            supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
-          )
-          // Push the primary's merged state (tags may have been combined from dupes)
-          if (primary) {
+            // Delete the duplicate exercise from Supabase
+            syncQueue.enqueue(`exercise:${dupe.id}`, () =>
+              supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
+            )
+            // Push the primary's merged state (tags may have been combined from dupes)
             syncQueue.enqueue(`exercise:${primary.id}`, () =>
               supabase!.from('exercises').upsert({
                 id: primary.id, user_id: userId, name: primary.name, tags: primary.tags,
@@ -298,8 +324,9 @@ export const useWorkoutStore = defineStore('workout', {
 
       // Push local-only exercises to remote
       // (#3 fix: filter localOnly to exclude exercises removed by dedup)
+      // (#232 fix: skip sample exercises — they were created with sync:false during onboarding)
       const survivingIds = new Set(deduped.exercises.map(e => e.id))
-      const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id))
+      const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id) && !e.sample)
       if (filteredLocalOnly.length > 0) {
         const userId = this._userId
         for (const ex of filteredLocalOnly) {
@@ -323,7 +350,7 @@ export const useWorkoutStore = defineStore('workout', {
 
       // Push local-wins back to Supabase (offline edits that beat remote timestamps)
       // Filter against surviving IDs to avoid racing with dedup deletes
-      const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id))
+      const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id) && !e.sample)
       if (filteredLocalWins.length > 0) {
         const userId = this._userId
         for (const ex of filteredLocalWins) {
@@ -370,7 +397,7 @@ export const useWorkoutStore = defineStore('workout', {
       )
       if (existing) return existing.id
       const id = uuid()
-      const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString() }
+      const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) }
       this.exercises.push(exercise)
       this._persist()
 
@@ -392,6 +419,7 @@ export const useWorkoutStore = defineStore('workout', {
     setExerciseInputMode(exerciseId: string, mode: ExerciseInputMode) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      if (exercise.sample) this._adoptExercise(exercise)
       exercise.inputMode = mode
       exercise.updated_at = new Date().toISOString()
       this._persist()
@@ -411,6 +439,11 @@ export const useWorkoutStore = defineStore('workout', {
     logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      // Real user action on a sample exercise adopts it (makes it syncable).
+      // _adoptExercise pushes via syncQueue, so we must also use syncQueue for
+      // the new set to avoid FK violations from the set arriving before the exercise.
+      const wasAdopted = sync && !!exercise.sample
+      if (wasAdopted) this._adoptExercise(exercise)
       const date = dateStr
         ? endOfDayISO(dateStr)
         : new Date().toISOString()
@@ -421,10 +454,21 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
-        supabase.from('sets').insert({
-          id, user_id: this._userId, exercise_id: exerciseId,
-          date, weight, reps, estimated_1rm: estimated1RM
-        }).then()
+        if (wasAdopted) {
+          // Use syncQueue so this set is batched with the exercise creation
+          const userId = this._userId
+          syncQueue.enqueue(`set:${id}`, () =>
+            supabase!.from('sets').upsert({
+              id, user_id: userId, exercise_id: exerciseId,
+              date, weight, reps, estimated_1rm: estimated1RM
+            })
+          )
+        } else {
+          supabase.from('sets').insert({
+            id, user_id: this._userId, exercise_id: exerciseId,
+            date, weight, reps, estimated_1rm: estimated1RM
+          }).then()
+        }
       }
     },
 
@@ -433,6 +477,7 @@ export const useWorkoutStore = defineStore('workout', {
       if (!exercise) return
       const set = exercise.sets.find((s: WorkoutSet) => s.id === setId)
       if (!set) return
+      if (exercise.sample) this._adoptExercise(exercise)
       set.weight = weight
       set.reps = reps
       set.estimated1RM = epley(weight, reps)
@@ -483,6 +528,7 @@ export const useWorkoutStore = defineStore('workout', {
       if (!trimmed) return
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      if (exercise.sample) this._adoptExercise(exercise)
       exercise.name = trimmed
       exercise.updated_at = new Date().toISOString()
       this._persist()
@@ -502,6 +548,7 @@ export const useWorkoutStore = defineStore('workout', {
     updateExerciseTags(exerciseId: string, tags: string[]) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      if (exercise.sample) this._adoptExercise(exercise)
       exercise.tags = [...tags]
       exercise.updated_at = new Date().toISOString()
       this._persist()
@@ -605,7 +652,7 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (this._userId && modified.length > 0) {
         const userId = this._userId
-        for (const e of modified) {
+        for (const e of modified.filter(e => !e.sample)) {
           const { name, tags, inputMode, barWeight } = e
           syncQueue.enqueue(`exercise:${e.id}`, () =>
             supabase!.from('exercises').upsert({
@@ -632,7 +679,7 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (this._userId && modified.length > 0) {
         const userId = this._userId
-        for (const e of modified) {
+        for (const e of modified.filter(e => !e.sample)) {
           const { name, tags, inputMode, barWeight } = e
           syncQueue.enqueue(`exercise:${e.id}`, () =>
             supabase!.from('exercises').upsert({
