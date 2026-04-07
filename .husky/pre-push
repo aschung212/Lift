@@ -1,6 +1,5 @@
 #!/bin/sh
-# Gemini Flash + Pro/Codex review before push — blocks until review completes
-# Review output is shown to whoever is pushing (Claude, builder, or you)
+# Gemini 3.1 Pro review before push — reviews full branch diff
 if [ -f "$HOME/.claude/scripts/review-router.sh" ]; then
   echo ""
   echo "═══ Pre-push review ═══"

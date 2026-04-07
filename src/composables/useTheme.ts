@@ -229,10 +229,14 @@ export function useTheme() {
     applyPreview(currentTheme.value)
   }
 
+  function setRestTimerEnabled(enabled: boolean): void {
+    restTimerEnabled.value = enabled
+  }
+
   return {
     currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode,
     glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit,
     displayWeight, toLbs, selectTheme, previewTheme, revertPreview,
-    isThemeUnlocked,
+    isThemeUnlocked, setRestTimerEnabled,
   }
 }
