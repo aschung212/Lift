@@ -66,13 +66,19 @@ function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; remo
     // Pick the one with the most sets as primary
     group.sort((a, b) => b.sets.length - a.sets.length)
     const primary = group[0]
-    // Merge sets from duplicates, deduplicating by set ID
+    // Merge sets from duplicates, deduplicating by both ID and content.
+    // Content dedup (date+weight+reps) is safe here because these sets
+    // originate from duplicate exercises created by sync — they represent
+    // the same logged set, just inserted under different exercise UUIDs.
     const setIds = new Set(primary.sets.map(s => s.id))
+    const setContentKeys = new Set(primary.sets.map(s => `${s.date}|${s.weight}|${s.reps}`))
     for (let i = 1; i < group.length; i++) {
       for (const set of group[i].sets) {
-        if (!setIds.has(set.id)) {
+        const contentKey = `${set.date}|${set.weight}|${set.reps}`
+        if (!setIds.has(set.id) && !setContentKeys.has(contentKey)) {
           primary.sets.push(set)
           setIds.add(set.id)
+          setContentKeys.add(contentKey)
         }
       }
       removed.push(group[i])

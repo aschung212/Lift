@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import { mergeEntities } from '../lib/conflictResolver'
 import { uuid } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
@@ -59,12 +60,68 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (!data) return
 
-      this.entries = data.map((e: Record<string, unknown>) => ({
+      const remoteEntries = data.map((e: Record<string, unknown>) => ({
         id: e.id as string,
         date: e.date as string,
-        weight: e.weight as number
+        weight: e.weight as number,
+        updated_at: (e.updated_at as string) || (e.created_at as string) || new Date().toISOString(),
       }))
+
+      // Merge local + remote using last-write-wins
+      const localWithTimestamps = this.entries.map((e) => ({
+        ...e,
+        updated_at:
+          (e as BodyweightEntry & { updated_at?: string }).updated_at ||
+          new Date(0).toISOString(),
+      }))
+      const { merged, localOnly } = mergeEntities(localWithTimestamps, remoteEntries)
+
+      // Deduplicate by date — keep only the latest entry per date (by updated_at)
+      const byDate = new Map<string, (typeof merged)[0]>()
+      const dupIds: string[] = []
+      for (const entry of merged) {
+        const dateKey = entry.date.slice(0, 10)
+        const existing = byDate.get(dateKey)
+        if (!existing) {
+          byDate.set(dateKey, entry)
+        } else {
+          // Keep the one with the later updated_at
+          if (entry.updated_at > existing.updated_at) {
+            dupIds.push(existing.id)
+            byDate.set(dateKey, entry)
+          } else {
+            dupIds.push(entry.id)
+          }
+        }
+      }
+
+      // Clean up duplicate entries from Supabase
+      if (dupIds.length > 0) {
+        const userId = this._userId
+        for (const id of dupIds) {
+          syncQueue.enqueue(`bodyweight-dedup:${id}`, () =>
+            supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId),
+          )
+        }
+      }
+
+      this.entries = [...byDate.values()].map(({ updated_at: _, ...rest }) => rest)
       this._persist()
+
+      // Push local-only entries to remote
+      if (localOnly.length > 0) {
+        const userId = this._userId
+        for (const entry of localOnly) {
+          syncQueue.enqueue(`bodyweight-push:${entry.id}`, () =>
+            supabase!.from('bodyweight_entries').upsert({
+              id: entry.id,
+              user_id: userId,
+              date: entry.date,
+              weight: entry.weight,
+            }),
+          )
+        }
+      }
     },
 
     addEntry(weight: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}): string {
