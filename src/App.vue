@@ -361,7 +361,7 @@
                 <div class="exportBtnGroup">
                   <button class="exportBtn" @click="triggerImport" aria-label="Import workout data from CSV">CSV</button>
                 </div>
-                <input ref="importFileInput" type="file" accept=".csv" class="hiddenFileInput" @change="handleImportFile" />
+                <input ref="importFileInput" type="file" accept=".csv" class="hiddenFileInput" aria-label="Import CSV file" @change="handleImportFile" />
               </div>
               <div v-if="importResult" class="settingsImportResult" role="status">
                 <span v-if="importResult.error" class="settingsImportError">{{ importResult.error }}</span>
