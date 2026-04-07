@@ -1,4 +1,4 @@
-import { uuid } from './uuid'
+import { uuid, endOfDayISO } from './uuid'
 import type { Exercise } from '../stores/workout'
 
 export interface ImportResult {
@@ -80,13 +80,13 @@ function parseDate(dateStr: string): string {
   const trimmed = dateStr.trim()
   // ISO format: 2026-04-05 or 2026-04-05T23:59:59Z
   if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-    return trimmed.slice(0, 10) + 'T23:59:59.000Z'
+    return endOfDayISO(trimmed.slice(0, 10))
   }
   // US format: 04/05/2026 or 4/5/2026
   const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
   if (usMatch) {
     const [, m, d, y] = usMatch
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T23:59:59.000Z`
+    return endOfDayISO(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`)
   }
   // Fallback: try Date.parse
   const parsed = new Date(trimmed)

@@ -3,7 +3,7 @@ import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
-import { uuid } from '../lib/uuid'
+import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
@@ -256,6 +256,43 @@ export const useWorkoutStore = defineStore('workout', {
         }
       }
 
+      // Deduplicate sets within each exercise by content (date+weight+reps).
+      // This catches duplicates already baked into a single exercise from
+      // a previous sync cycle that merged duplicate exercise rows.
+      //
+      // Only dedup sets whose timestamps match the old hardcoded format
+      // (T23:59:59.000Z) — these are from the code that created the sync
+      // duplicates. Sets with jitter or real-time timestamps are guaranteed
+      // unique and are never deduped, even if they share weight/reps.
+      const dupSetIds: string[] = []
+      for (const ex of deduped.exercises) {
+        const seen = new Map<string, string>()
+        const uniqueSets: WorkoutSet[] = []
+        for (const set of ex.sets) {
+          const key = `${set.date}|${set.weight}|${set.reps}`
+          const isOldFixedTimestamp = set.date.endsWith('T23:59:59.000Z')
+          if (!seen.has(key)) {
+            seen.set(key, set.id)
+            uniqueSets.push(set)
+          } else if (isOldFixedTimestamp) {
+            // Duplicate with old fixed timestamp — sync artifact, delete it
+            dupSetIds.push(set.id)
+          } else {
+            // Duplicate content but unique timestamp — legitimate set, keep it
+            uniqueSets.push(set)
+          }
+        }
+        ex.sets = uniqueSets
+      }
+      if (supabase && this._userId && dupSetIds.length > 0) {
+        const userId = this._userId
+        for (const setId of dupSetIds) {
+          syncQueue.enqueue(`set:${setId}`, () =>
+            supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
+          )
+        }
+      }
+
       this.exercises = deduped.exercises
       this._persist()
 
@@ -375,7 +412,7 @@ export const useWorkoutStore = defineStore('workout', {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
       const date = dateStr
-        ? dateStr + 'T23:59:59.000Z'
+        ? endOfDayISO(dateStr)
         : new Date().toISOString()
       const id = uuid()
       const estimated1RM = epley(weight, reps)
@@ -400,7 +437,7 @@ export const useWorkoutStore = defineStore('workout', {
       set.reps = reps
       set.estimated1RM = epley(weight, reps)
       if (dateStr) {
-        set.date = dateStr + 'T23:59:59.000Z'
+        set.date = endOfDayISO(dateStr)
       }
       exercise.updated_at = new Date().toISOString()
       this._persist()

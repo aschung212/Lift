@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { importCSV } from '../csvImport'
 
-vi.mock('../uuid', () => ({ uuid: () => 'test-uuid' }))
+vi.mock('../uuid', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return { ...actual, uuid: () => 'test-uuid' }
+})
 
 describe('csvImport', () => {
   describe('Strong format', () => {
