@@ -56,7 +56,7 @@ import { useTheme, type ThemeId } from '../composables/useTheme'
 import { useAnalytics } from '../composables/useAnalytics'
 import StarterPickerFlow from './StarterPickerFlow.vue'
 
-const emit = defineEmits<{ complete: [] }>()
+const emit = defineEmits<{ complete: []; started: [] }>()
 const workoutStore = useWorkoutStore()
 const bwStore = useBodyweightStore()
 const progressionStore = useProgressionStore()
@@ -402,11 +402,13 @@ function handleStarterSkip() {
 
 function chooseEmpty() {
   logEvent('onboarding_choice', { choice: 'empty' })
+  emit('started')
   goToStarter(false)
 }
 
 function chooseStarter() {
   logEvent('onboarding_choice', { choice: 'starter' })
+  emit('started')
   for (const ex of STARTER_EXERCISES) {
     workoutStore.addExercise(ex.name, ex.tags)
   }
@@ -417,6 +419,7 @@ const noSync = { sync: false }
 
 function chooseExplore() {
   logEvent('onboarding_choice', { choice: 'explore' })
+  emit('started')
   // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)

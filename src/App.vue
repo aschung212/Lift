@@ -10,7 +10,7 @@
     <AuthScreen v-else-if="!user" />
 
     <!-- Onboarding -->
-    <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" />
+    <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" @started="onboardingInProgress = true" />
 
     <!-- Authenticated app -->
     <template v-else>
@@ -929,7 +929,7 @@ const bodyweightStoreForOnboarding = useBodyweightStore()
 // Reactive so it catches data that loads asynchronously after auth.
 // onboardingInProgress prevents the watcher from firing when the onboarding
 // screen itself adds exercises (e.g. Popular Exercises option).
-const onboardingInProgress = ref(!onboardingComplete.value)
+const onboardingInProgress = ref(false)
 watch(
   () => workoutStoreForOnboarding.exercises.length + bodyweightStoreForOnboarding.entries.length,
   (total) => {
