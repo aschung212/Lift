@@ -51,13 +51,14 @@ export class SyncQueue {
       _rateResetTimer = setTimeout(() => {
         _rateCount = 0
         _rateResetTimer = null
-        // Drain deferred operations into the queue for the next flush
+        // Re-enqueue deferred operations through the rate-limited path.
+        // Take a snapshot and clear first to avoid infinite deferral loops.
         if (_deferredOps.size > 0) {
-          for (const [k, v] of _deferredOps) {
-            this._queue.set(k, v)
-          }
+          const batch = new Map(_deferredOps)
           _deferredOps.clear()
-          this._scheduleFlush()
+          for (const [k, v] of batch) {
+            this.enqueue(k, v)
+          }
         }
       }, RATE_LIMIT_WINDOW)
     }

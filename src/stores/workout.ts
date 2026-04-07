@@ -7,6 +7,8 @@ import { uuid } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
+const TOMBSTONE_STORE = 'exercises'
+
 const STORAGE_KEY = 'workout-exercises'
 
 export interface WorkoutSet {
@@ -146,9 +148,9 @@ export const useWorkoutStore = defineStore('workout', {
 
       // Filter out tombstoned exercises (deleted offline, not yet synced)
       const remoteIds = new Set(exercises.map((ex: Record<string, unknown>) => ex.id as string))
-      cleanupTombstones(remoteIds)
+      cleanupTombstones(TOMBSTONE_STORE, remoteIds)
       const filteredExercises = exercises.filter(
-        (ex: Record<string, unknown>) => !isTombstoned(ex.id as string)
+        (ex: Record<string, unknown>) => !isTombstoned(TOMBSTONE_STORE, ex.id as string)
       )
 
       const remoteExercises = filteredExercises.map((ex: Record<string, unknown>) => {
@@ -189,7 +191,7 @@ export const useWorkoutStore = defineStore('workout', {
         updated_at: ex.updated_at || new Date(0).toISOString()
       }))
 
-      const { merged, localOnly } = mergeEntities(localWithTimestamps, remoteExercises)
+      const { merged, localOnly, localWins } = mergeEntities(localWithTimestamps, remoteExercises)
 
       // Deduplicate exercises by name (case-insensitive).
       // Supabase can end up with multiple exercises of the same name from
@@ -209,9 +211,14 @@ export const useWorkoutStore = defineStore('workout', {
             const primarySetIds = new Set(primary.sets.map(s => s.id))
             for (const set of dupe.sets) {
               if (primarySetIds.has(set.id)) {
-                // Set was merged into primary — reassign it in Supabase
+                // Set was merged into primary — upsert under the primary exercise ID.
+                // Uses upsert (not update) because the set may be local-only and not yet in Supabase.
                 syncQueue.enqueue(`set-reassign:${set.id}`, () =>
-                  supabase!.from('sets').update({ exercise_id: primary.id }).eq('id', set.id).eq('user_id', userId)
+                  supabase!.from('sets').upsert({
+                    id: set.id, user_id: userId, exercise_id: primary.id,
+                    date: set.date, weight: set.weight, reps: set.reps,
+                    estimated_1rm: set.estimated1RM
+                  })
                 )
               } else {
                 // Set was content-deduped out — delete it from Supabase
@@ -252,6 +259,43 @@ export const useWorkoutStore = defineStore('workout', {
               })
             )
           }
+        }
+      }
+
+      // Push local-wins back to Supabase (offline edits that beat remote timestamps)
+      if (localWins.length > 0) {
+        const userId = this._userId
+        for (const ex of localWins) {
+          syncQueue.enqueue(`exercise-sync:${ex.id}`, () =>
+            supabase!.from('exercises').upsert({
+              id: ex.id, user_id: userId, name: ex.name, tags: ex.tags
+            })
+          )
+          for (const set of ex.sets) {
+            syncQueue.enqueue(`set-sync:${set.id}`, () =>
+              supabase!.from('sets').upsert({
+                id: set.id, user_id: userId, exercise_id: ex.id,
+                date: set.date, weight: set.weight, reps: set.reps,
+                estimated_1rm: set.estimated1RM
+              })
+            )
+          }
+        }
+      }
+
+      // Process active tombstones: ensure pending deletes are synced
+      const tombstoneExercises = exercises
+        .filter((ex: Record<string, unknown>) => isTombstoned(TOMBSTONE_STORE, ex.id as string))
+      if (tombstoneExercises.length > 0) {
+        const userId = this._userId
+        for (const ex of tombstoneExercises) {
+          const exId = ex.id as string
+          syncQueue.enqueue(`exercise-delete-sets:${exId}`, () =>
+            supabase!.from('sets').delete().eq('exercise_id', exId).eq('user_id', userId)
+          )
+          syncQueue.enqueue(`exercise-delete:${exId}`, () =>
+            supabase!.from('exercises').delete().eq('id', exId).eq('user_id', userId)
+          )
         }
       }
     },
@@ -400,7 +444,7 @@ export const useWorkoutStore = defineStore('workout', {
     deleteExercise(exerciseId: string, { sync = true }: { sync?: boolean } = {}) {
       const idx = this.exercises.findIndex((e: Exercise) => e.id === exerciseId)
       if (idx === -1) return
-      addTombstone(exerciseId)
+      addTombstone(TOMBSTONE_STORE, exerciseId)
       this.exercises.splice(idx, 1)
       this._persist()
 
@@ -457,6 +501,7 @@ export const useWorkoutStore = defineStore('workout', {
     renameTag(oldName: string, newName: string) {
       const trimmed = newName.trim()
       if (!trimmed || trimmed === oldName) return
+      const modified: Exercise[] = []
       this.exercises.forEach((e: Exercise) => {
         const idx = e.tags.indexOf(oldName)
         if (idx !== -1) {
@@ -465,6 +510,8 @@ export const useWorkoutStore = defineStore('workout', {
           } else {
             e.tags[idx] = trimmed
           }
+          e.updated_at = new Date().toISOString()
+          modified.push(e)
         }
       })
       const customIdx = this.customTags.indexOf(oldName)
@@ -477,33 +524,38 @@ export const useWorkoutStore = defineStore('workout', {
       }
       this._persist()
 
-      if (this._userId) {
+      if (this._userId && modified.length > 0) {
         const userId = this._userId
-        this.exercises.forEach((e: Exercise) => {
+        for (const e of modified) {
           const tags = [...e.tags]
           syncQueue.enqueue(`exercise-tags:${e.id}`, () =>
             supabase!.from('exercises').update({ tags }).eq('id', e.id).eq('user_id', userId)
           )
-        })
+        }
       }
     },
 
     deleteTag(tagName: string) {
+      const modified: Exercise[] = []
       this.exercises.forEach((e: Exercise) => {
         const idx = e.tags.indexOf(tagName)
-        if (idx !== -1) e.tags.splice(idx, 1)
+        if (idx !== -1) {
+          e.tags.splice(idx, 1)
+          e.updated_at = new Date().toISOString()
+          modified.push(e)
+        }
       })
       this.customTags = this.customTags.filter(t => t !== tagName)
       this._persist()
 
-      if (this._userId) {
+      if (this._userId && modified.length > 0) {
         const userId = this._userId
-        this.exercises.forEach((e: Exercise) => {
+        for (const e of modified) {
           const tags = [...e.tags]
           syncQueue.enqueue(`exercise-tags:${e.id}`, () =>
             supabase!.from('exercises').update({ tags }).eq('id', e.id).eq('user_id', userId)
           )
-        })
+        }
       }
     },
 

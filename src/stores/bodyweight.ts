@@ -7,6 +7,8 @@ import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
+const TOMBSTONE_STORE = 'bodyweight'
+
 const STORAGE_KEY = 'bodyweight-entries'
 
 export interface BodyweightEntry {
@@ -64,9 +66,9 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       // Filter out tombstoned entries (deleted offline, not yet synced)
       const remoteIds = new Set(data.map((e: Record<string, unknown>) => e.id as string))
-      cleanupTombstones(remoteIds)
+      cleanupTombstones(TOMBSTONE_STORE, remoteIds)
       const filteredData = data.filter(
-        (e: Record<string, unknown>) => !isTombstoned(e.id as string)
+        (e: Record<string, unknown>) => !isTombstoned(TOMBSTONE_STORE, e.id as string)
       )
 
       const remoteEntries = filteredData.map((e: Record<string, unknown>) => ({
@@ -82,7 +84,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         ...e,
         updated_at: e.updated_at || new Date(0).toISOString(),
       }))
-      const { merged, localOnly } = mergeEntities(localWithTimestamps, remoteEntries)
+      const { merged, localOnly, localWins } = mergeEntities(localWithTimestamps, remoteEntries)
 
       // Deduplicate by date — keep only the latest entry per date (by updated_at)
       const byDate = new Map<string, (typeof merged)[0]>()
@@ -134,6 +136,35 @@ export const useBodyweightStore = defineStore('bodyweight', {
           )
         }
       }
+
+      // Push local-wins back to Supabase (offline edits that beat remote timestamps)
+      if (localWins.length > 0) {
+        const userId = this._userId
+        for (const entry of localWins) {
+          syncQueue.enqueue(`bodyweight-sync:${entry.id}`, () =>
+            supabase!.from('bodyweight_entries').upsert({
+              id: entry.id,
+              user_id: userId,
+              date: entry.date,
+              weight: entry.weight,
+            }),
+          )
+        }
+      }
+
+      // Process active tombstones: ensure pending deletes are synced
+      const tombstoneEntries = data.filter(
+        (e: Record<string, unknown>) => isTombstoned(TOMBSTONE_STORE, e.id as string),
+      )
+      if (tombstoneEntries.length > 0) {
+        const userId = this._userId
+        for (const e of tombstoneEntries) {
+          const entryId = e.id as string
+          syncQueue.enqueue(`bodyweight-delete:${entryId}`, () =>
+            supabase!.from('bodyweight_entries').delete().eq('id', entryId).eq('user_id', userId),
+          )
+        }
+      }
     },
 
     addEntry(weight: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}): string {
@@ -173,7 +204,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     },
 
     deleteEntry(id: string, { sync = true }: { sync?: boolean } = {}) {
-      addTombstone(id)
+      addTombstone(TOMBSTONE_STORE, id)
       this.entries = this.entries.filter((e: BodyweightEntry) => e.id !== id)
       this._persist()
 
