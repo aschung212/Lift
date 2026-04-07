@@ -300,11 +300,11 @@
               </template>
             </div>
             <div v-if="editTab === 'rest'" class="wtTimerEditRow" style="margin-top: var(--space-2)">
-              <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="addPreset" ref="presetInputEl" />
+              <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="addPreset" ref="presetInputEl" aria-label="Timer preset seconds" />
               <button class="wtTimerEditAddBtn" :disabled="!newPresetValue" @click="addPreset">Add</button>
             </div>
             <div v-else class="wtTimerEditRow" style="margin-top: var(--space-2)">
-              <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" />
+              <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" aria-label="Warning alert seconds" />
               <button class="wtTimerEditAddBtn" :disabled="!newWarningValue" @click="addWarningOption">Add</button>
             </div>
             <button class="wtTimerEditResetBtn" @click="resetAllDefaults">Reset to defaults</button>
@@ -416,6 +416,7 @@
                     maxlength="30"
                     class="wtTagInlineInput"
                     ref="newTagInputEl"
+                    aria-label="New tag name"
                     @keyup.enter="addNewExerciseTag"
                     @blur="finishNewTagAdd"
                   />
@@ -546,6 +547,7 @@
                   autocomplete="off"
                   placeholder="—"
                   class="wtRepsStepperInput"
+                  aria-label="Reps"
                   @focus="($event.target as HTMLInputElement)?.select()"
                 />
                 <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
@@ -597,6 +599,7 @@
                 inputmode="decimal"
                 autocomplete="off"
                 class="wtPlateWeightInput"
+                aria-label="Weight"
                 @focus="($event.target as HTMLInputElement)?.select()"
                 @blur="plateNumpadOverride = false"
               />
@@ -667,6 +670,7 @@
                 placeholder="Tag name"
                 maxlength="30"
                 class="wtTagInlineInput"
+                aria-label="New tag name"
                 ref="editTagInputEl"
                 @keyup.enter="addEditTag"
                 @blur="finishEditTagAdd"
@@ -776,6 +780,7 @@
                   autocomplete="off"
                   maxlength="30"
                   class="repMaxInput wtTagManagerInput"
+                  aria-label="Rename tag"
                   @keyup.enter="confirmRenameTag"
                   @keyup.escape="renamingTag = null"
                   ref="renameTagInputEl"
@@ -787,7 +792,7 @@
                 <button class="wtTagManagerExpandBtn" @click="toggleTagExpand(tag)" :aria-expanded="expandedTag === tag" :aria-label="'Show exercises for ' + tag">
                   <span class="wtTagManagerExpandIcon" :class="{ expanded: expandedTag === tag }">›</span>
                 </button>
-                <span class="wtTagManagerLabel" @click="toggleTagExpand(tag)" role="button">{{ tag }}</span>
+                <span class="wtTagManagerLabel" @click="toggleTagExpand(tag)" role="button" tabindex="0" @keydown.enter="toggleTagExpand(tag)" @keydown.space.prevent="toggleTagExpand(tag)">{{ tag }}</span>
                 <span class="wtTagManagerCount">{{ tagExerciseCount(tag) }}</span>
                 <button class="wtTagManagerEditBtn" @click="startRenameTag(tag)" aria-label="Rename tag">✎</button>
                 <button class="wtTagManagerDeleteBtn" @click="confirmDeleteTag(tag)" aria-label="Delete tag">✕</button>
@@ -811,6 +816,7 @@
             placeholder="Tag name"
             maxlength="30"
             class="repMaxInput"
+            aria-label="New tag name"
             ref="tagManagerInputEl"
             @keyup.enter="confirmTagManagerAdd"
             @keyup.escape="cancelTagManagerAdd"

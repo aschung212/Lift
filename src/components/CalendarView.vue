@@ -141,7 +141,7 @@
         <div class="calWeekDayCol">
           <span class="calWeekDayName">{{ day.shortName }}</span>
           <span class="calWeekDayNum" :class="{ calWeekDayNumToday: day.isToday }">{{ day.dayNum }}</span>
-          <button class="calWeekDayLogBtn" @click="openLogModal(day.dateStr)">+</button>
+          <button class="calWeekDayLogBtn" :aria-label="`Log workout for ${day.shortName} ${day.dayNum}`" @click="openLogModal(day.dateStr)">+</button>
         </div>
         <div class="calWeekContent">
           <span v-if="day.exercises.length === 0" class="calWeekRest">Rest</span>

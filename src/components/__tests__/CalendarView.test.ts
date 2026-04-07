@@ -422,5 +422,18 @@ describe('CalendarView', () => {
       expect(navBtns[0].attributes('aria-label')).toBe('Previous')
       expect(navBtns[1].attributes('aria-label')).toBe('Next')
     })
+
+    it('week view log buttons have aria-labels (LIFT-93)', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      const logBtns = wrapper.findAll('.calWeekDayLogBtn')
+      expect(logBtns.length).toBe(7)
+      for (const btn of logBtns) {
+        const label = btn.attributes('aria-label')
+        expect(label).toBeTruthy()
+        expect(label).toMatch(/^Log workout for/)
+      }
+    })
   })
 })
