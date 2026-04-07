@@ -81,11 +81,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       // Merge local + remote using last-write-wins
       // (#1 fix: local entries now carry updated_at from mutations)
-      const localWithTimestamps = this.entries.map((e) => ({
+      type BWWithTimestamp = BodyweightEntry & { updated_at: string }
+      const localWithTimestamps: BWWithTimestamp[] = this.entries.map((e) => ({
         ...e,
         updated_at: e.updated_at || new Date(0).toISOString(),
       }))
-      const { merged, localOnly, localWins } = mergeEntities(localWithTimestamps, remoteEntries)
+      const { merged, localOnly, localWins } = mergeEntities<BWWithTimestamp>(localWithTimestamps, remoteEntries as BWWithTimestamp[])
 
       // Deduplicate by date — keep only the latest entry per date (by updated_at)
       const byDate = new Map<string, (typeof merged)[0]>()
