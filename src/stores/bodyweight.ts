@@ -104,6 +104,8 @@ export const useBodyweightStore = defineStore('bodyweight', {
             byDate.set(dateKey, entry)
           } else {
             dupIds.push(entry.id)
+            // If existing sample entry beats a real remote entry, adopt it
+            if (existing.sample && !entry.sample) delete existing.sample
           }
         }
       }
