@@ -32,6 +32,7 @@ export interface Exercise {
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   updated_at?: string              // ISO 8601, used for last-write-wins merge
+  sample?: boolean                 // true for onboarding sample data — never synced to Supabase
 }
 
 export interface OverloadSuggestion {
@@ -298,8 +299,9 @@ export const useWorkoutStore = defineStore('workout', {
 
       // Push local-only exercises to remote
       // (#3 fix: filter localOnly to exclude exercises removed by dedup)
+      // (#232 fix: skip sample exercises — they were created with sync:false during onboarding)
       const survivingIds = new Set(deduped.exercises.map(e => e.id))
-      const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id))
+      const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id) && !e.sample)
       if (filteredLocalOnly.length > 0) {
         const userId = this._userId
         for (const ex of filteredLocalOnly) {
@@ -323,7 +325,7 @@ export const useWorkoutStore = defineStore('workout', {
 
       // Push local-wins back to Supabase (offline edits that beat remote timestamps)
       // Filter against surviving IDs to avoid racing with dedup deletes
-      const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id))
+      const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id) && !e.sample)
       if (filteredLocalWins.length > 0) {
         const userId = this._userId
         for (const ex of filteredLocalWins) {
@@ -370,7 +372,7 @@ export const useWorkoutStore = defineStore('workout', {
       )
       if (existing) return existing.id
       const id = uuid()
-      const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString() }
+      const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) }
       this.exercises.push(exercise)
       this._persist()
 
@@ -411,6 +413,10 @@ export const useWorkoutStore = defineStore('workout', {
     logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
       const exercise = this.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise) return
+      // Real user action on a sample exercise adopts it (makes it syncable)
+      if (sync && exercise.sample) {
+        delete exercise.sample
+      }
       const date = dateStr
         ? endOfDayISO(dateStr)
         : new Date().toISOString()
