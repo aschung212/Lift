@@ -191,6 +191,15 @@ describe('CSS regression tests', () => {
         expect(lines.some(l => l.includes('height') && l.includes('44px'))).toBe(true)
       })
     })
+
+    describe('.mgRow in MuscleGroupChart (LIFT-97)', () => {
+      const style = getVueStyleBlock('MuscleGroupChart.vue')
+      const lines = getRuleLines('.mgRow', style)
+
+      it('has min-height: 44px for iOS HIG touch target', () => {
+        expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      })
+    })
   })
 
   describe('.wtTimerEditResetBtn touch target (LIFT-79)', () => {
