@@ -910,4 +910,293 @@ describe('WorkoutTracker', () => {
       expect(addBtn.attributes('aria-label')).toBe('Add tag')
     })
   })
+
+  describe('view toggle', () => {
+    beforeEach(() => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+    })
+
+    it('renders Exercises and Timeline toggle buttons when exercises exist', () => {
+      const wrapper = mountTracker()
+      const btns = wrapper.findAll('.wtViewToggleBtn')
+      expect(btns.length).toBe(2)
+      expect(btns[0].text()).toBe('Exercises')
+      expect(btns[1].text()).toBe('Timeline')
+    })
+
+    it('does not render toggle when no exercises exist', () => {
+      exercises = []
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtViewToggle').exists()).toBe(false)
+    })
+
+    it('defaults to exercises view', () => {
+      const wrapper = mountTracker()
+      const activeBtn = wrapper.find('.wtViewToggleBtn.active')
+      expect(activeBtn.text()).toBe('Exercises')
+    })
+
+    it('switches to timeline view when Timeline button is clicked', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtViewToggleBtn.active').text()).toBe('Timeline')
+    })
+
+    it('shows "+ New Exercise" in exercises view and "+ Log Set" in timeline view', async () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtLogBtn').text()).toBe('+ New Exercise')
+
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtLogBtn').text()).toBe('+ Log Set')
+    })
+
+    it('persists view selection to localStorage', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('wt-list-view', 'timeline')
+    })
+
+    it('restores view from localStorage on mount', () => {
+      localStorage.setItem('wt-list-view', 'timeline')
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtViewToggleBtn.active').text()).toBe('Timeline')
+    })
+  })
+
+  describe('timeline view', () => {
+    const TIMELINE_EXERCISES: Exercise[] = [
+      {
+        id: 'ex-1',
+        name: 'Bench Press',
+        tags: ['Chest'],
+        sets: [
+          { id: 's-1', date: '2026-03-10T10:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's-2', date: '2026-03-10T10:05:00', weight: 185, reps: 4, estimated1RM: 208 },
+          { id: 's-3', date: '2026-03-12T09:00:00', weight: 195, reps: 5, estimated1RM: 228 },
+        ]
+      },
+      {
+        id: 'ex-2',
+        name: 'Squat',
+        tags: ['Legs'],
+        sets: [
+          { id: 's-4', date: '2026-03-10T11:00:00', weight: 225, reps: 5, estimated1RM: 263 },
+          { id: 's-5', date: '2026-03-12T10:00:00', weight: 235, reps: 3, estimated1RM: 257 },
+        ]
+      },
+    ]
+
+    async function mountTimeline() {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+      return wrapper
+    }
+
+    beforeEach(() => {
+      exercises = JSON.parse(JSON.stringify(TIMELINE_EXERCISES))
+    })
+
+    it('renders all sets across exercises sorted by date (newest first)', async () => {
+      const wrapper = await mountTimeline()
+      const rows = wrapper.findAll('.wtTimelineRow')
+      expect(rows.length).toBe(5)
+      // Mar 12 sets come first (Squat at 10:00, Bench at 09:00 — sorted desc by ISO string)
+      expect(rows[0].text()).toContain('235')
+      expect(rows[1].text()).toContain('195')
+    })
+
+    it('groups sets by date with date headers', async () => {
+      const wrapper = await mountTimeline()
+      const headers = wrapper.findAll('.wtTimelineDateHeader')
+      expect(headers.length).toBe(2) // Mar 12 and Mar 10
+    })
+
+    it('displays exercise name in each timeline row', async () => {
+      const wrapper = await mountTimeline()
+      const names = wrapper.findAll('.wtTimelineExName')
+      expect(names.length).toBe(5)
+      // Mar 12 sets: Squat (10:00) then Bench (09:00) — desc order
+      expect(names[0].text()).toBe('Squat')
+      expect(names[1].text()).toBe('Bench Press')
+    })
+
+    it('displays weight × reps and estimated 1RM for each set', async () => {
+      const wrapper = await mountTimeline()
+      const details = wrapper.findAll('.wtTimelineSetDetail')
+      // First entry is Squat 235×3 (latest by time)
+      expect(details[0].text()).toContain('235')
+      expect(details[0].text()).toContain('3')
+
+      const e1rms = wrapper.findAll('.wtTimelineE1RM')
+      expect(e1rms[0].text()).toContain('257')
+    })
+
+    it('shows empty message when no sets exist', async () => {
+      exercises = [{ id: 'ex-1', name: 'Bench', tags: [], sets: [] }]
+      const wrapper = await mountTimeline()
+      expect(wrapper.text()).toContain('No sets logged yet')
+    })
+
+    it('reveals edit/delete actions on timeline row tap', async () => {
+      const wrapper = await mountTimeline()
+      await wrapper.findAll('.wtTimelineRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtTimelineRowActive').exists()).toBe(true)
+      const btns = wrapper.findAll('.wtSetBtn')
+      expect(btns.map(b => b.text())).toContain('Edit')
+      expect(btns.map(b => b.text())).toContain('Delete')
+    })
+
+    it('hides tag filter bar in timeline view', async () => {
+      const wrapper = await mountTimeline()
+      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+    })
+
+    it('hides search bar in timeline view', async () => {
+      // Need 5+ exercises for search bar
+      exercises = [
+        { id: '1', name: 'A', tags: [], sets: [{ id: 's1', date: '2026-01-01T10:00:00', weight: 100, reps: 5, estimated1RM: 117 }] },
+        { id: '2', name: 'B', tags: [], sets: [] },
+        { id: '3', name: 'C', tags: [], sets: [] },
+        { id: '4', name: 'D', tags: [], sets: [] },
+        { id: '5', name: 'E', tags: [], sets: [] },
+      ]
+      const wrapper = await mountTimeline()
+      expect(wrapper.find('.wtSearchBar').exists()).toBe(false)
+    })
+  })
+
+  describe('timeline pagination', () => {
+    beforeEach(() => {
+      // Create exercise with 55 sets to test "show more" (limit is 50)
+      const sets = Array.from({ length: 55 }, (_, i) => ({
+        id: `s-${i}`,
+        date: `2026-01-${String(Math.floor(i / 3) + 1).padStart(2, '0')}T10:00:00`,
+        weight: 135 + i,
+        reps: 5,
+        estimated1RM: 158 + i,
+      }))
+      exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets }]
+    })
+
+    it('limits visible timeline entries to 50 initially', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const rows = wrapper.findAll('.wtTimelineRow')
+      expect(rows.length).toBe(50)
+    })
+
+    it('shows "Show more" button with remaining count', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const showMore = wrapper.find('.wtTimelineShowMore')
+      expect(showMore.exists()).toBe(true)
+      expect(showMore.text()).toContain('5 remaining')
+    })
+
+    it('loads more entries when "Show more" is clicked', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.wtTimelineShowMore').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const rows = wrapper.findAll('.wtTimelineRow')
+      expect(rows.length).toBe(55)
+      expect(wrapper.find('.wtTimelineShowMore').exists()).toBe(false)
+    })
+  })
+
+  describe('show all / show less sets', () => {
+    beforeEach(() => {
+      // Create exercise with 15 sets — exceeds SET_LIMIT of 10
+      const sets = Array.from({ length: 15 }, (_, i) => ({
+        id: `s-${i}`,
+        date: `2026-01-${String(i + 1).padStart(2, '0')}T10:00:00`,
+        weight: 135 + i * 5,
+        reps: 5,
+        estimated1RM: 158 + i * 5,
+      }))
+      exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets }]
+    })
+
+    it('limits visible sets to 10 initially in detail modal', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const setRows = wrapper.findAll('.wtSetRow')
+      expect(setRows.length).toBe(10)
+    })
+
+    it('shows "Show all X sets" button when sets exceed limit', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const btn = wrapper.find('.wtShowAllBtn')
+      expect(btn.exists()).toBe(true)
+      expect(btn.text()).toContain('Show all 15 sets')
+    })
+
+    it('shows all sets when "Show all" is clicked', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.wtShowAllBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const setRows = wrapper.findAll('.wtSetRow')
+      expect(setRows.length).toBe(15)
+    })
+
+    it('toggles button text to "Show less" after expanding', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.wtShowAllBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtShowAllBtn').text()).toBe('Show less')
+    })
+
+    it('collapses back to limit when "Show less" is clicked', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Expand
+      await wrapper.find('.wtShowAllBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.findAll('.wtSetRow').length).toBe(15)
+
+      // Collapse
+      await wrapper.find('.wtShowAllBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.findAll('.wtSetRow').length).toBe(10)
+    })
+
+    it('does not show "Show all" button when sets are within limit', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES)) // 2 sets on Bench Press
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtShowAllBtn').exists()).toBe(false)
+    })
+  })
 })
