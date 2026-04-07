@@ -12,20 +12,27 @@ const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf-8')
  */
 
 // Helper: extract lines between a selector and its closing brace
-function getRuleLines(selector: string): string[] {
+function getRuleLines(selector: string, source = css): string[] {
   // Match the selector at the start of a line to avoid matching it inside another selector
   const needle = '\n' + selector + ' {'
-  const idx = css.indexOf(needle)
+  const idx = source.indexOf(needle)
   if (idx === -1) return []
-  const start = css.indexOf('{', idx) + 1
+  const start = source.indexOf('{', idx) + 1
   let depth = 1
   let end = start
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth++
-    if (css[end] === '}') depth--
+  while (depth > 0 && end < source.length) {
+    if (source[end] === '{') depth++
+    if (source[end] === '}') depth--
     end++
   }
-  return css.slice(start, end - 1).split('\n').map((l: string) => l.trim()).filter(Boolean)
+  return source.slice(start, end - 1).split('\n').map((l: string) => l.trim()).filter(Boolean)
+}
+
+// Helper: extract the <style> block from a Vue SFC
+function getVueStyleBlock(componentPath: string): string {
+  const content = readFileSync(resolve(__dirname, '../../components', componentPath), 'utf-8')
+  const match = content.match(/<style[^>]*>([\s\S]*?)<\/style>/)
+  return match ? match[1] : ''
 }
 
 describe('CSS regression tests', () => {
@@ -163,6 +170,56 @@ describe('CSS regression tests', () => {
     })
 
     it('has min-height for touch targets', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('Vue component touch target compliance', () => {
+    // jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
+    // cannot verify sizing in component tests. These CSS regression tests
+    // read the stylesheet source directly to assert 44px touch targets.
+
+    describe('.mgViewToggle in MuscleGroupChart', () => {
+      const style = getVueStyleBlock('MuscleGroupChart.vue')
+      const lines = getRuleLines('.mgViewToggle', style)
+
+      it('has width: 44px for iOS HIG touch target', () => {
+        expect(lines.some(l => l.includes('width') && l.includes('44px'))).toBe(true)
+      })
+
+      it('has height: 44px for iOS HIG touch target', () => {
+        expect(lines.some(l => l.includes('height') && l.includes('44px'))).toBe(true)
+      })
+    })
+  })
+
+  describe('.wtTimerEditResetBtn touch target (LIFT-79)', () => {
+    const lines = getRuleLines('.wtTimerEditResetBtn')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('has adequate padding (not 4px)', () => {
+      const paddingLine = lines.find(l => l.startsWith('padding'))
+      expect(paddingLine).toBeDefined()
+      // Ensure padding is at least 8px vertically
+      expect(paddingLine).not.toMatch(/padding:\s*4px/)
+    })
+  })
+
+  describe('.wtTimerPresetSm touch target (LIFT-79)', () => {
+    const lines = getRuleLines('.wtTimerPresetSm')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtTimerEditCountdown touch target (LIFT-79)', () => {
+    const lines = getRuleLines('.wtTimerEditCountdown')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
       expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
     })
   })

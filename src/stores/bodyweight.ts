@@ -1,9 +1,13 @@
 import { defineStore } from 'pinia'
-import { supabase } from '../lib/supabase'
+import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
-import { uuid } from '../lib/uuid'
+import { mergeEntities } from '../lib/conflictResolver'
+import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
+import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
+
+const TOMBSTONE_STORE = 'bodyweight'
 
 const STORAGE_KEY = 'bodyweight-entries'
 
@@ -11,6 +15,8 @@ export interface BodyweightEntry {
   id: string
   date: string
   weight: number
+  updated_at?: string  // ISO 8601, used for last-write-wins merge
+  sample?: boolean     // true for onboarding sample data — never synced to Supabase
 }
 
 function load(): BodyweightEntry[] {
@@ -59,23 +65,125 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (!data) return
 
-      this.entries = data.map((e: Record<string, unknown>) => ({
+      // Filter out tombstoned entries (deleted offline, not yet synced)
+      const remoteIds = new Set(data.map((e: Record<string, unknown>) => e.id as string))
+      cleanupTombstones(TOMBSTONE_STORE, remoteIds)
+      const filteredData = data.filter(
+        (e: Record<string, unknown>) => !isTombstoned(TOMBSTONE_STORE, e.id as string)
+      )
+
+      const remoteEntries = filteredData.map((e: Record<string, unknown>) => ({
         id: e.id as string,
         date: e.date as string,
-        weight: e.weight as number
+        weight: e.weight as number,
+        updated_at: (e.updated_at as string) || (e.created_at as string) || new Date().toISOString(),
       }))
+
+      // Merge local + remote using last-write-wins
+      // (#1 fix: local entries now carry updated_at from mutations)
+      type BWWithTimestamp = BodyweightEntry & { updated_at: string }
+      const localWithTimestamps: BWWithTimestamp[] = this.entries.map((e) => ({
+        ...e,
+        updated_at: e.updated_at || new Date(0).toISOString(),
+      }))
+      const { merged, localOnly, localWins } = mergeEntities<BWWithTimestamp>(localWithTimestamps, remoteEntries as BWWithTimestamp[])
+
+      // Deduplicate by date — keep only the latest entry per date (by updated_at)
+      const byDate = new Map<string, (typeof merged)[0]>()
+      const dupIds: string[] = []
+      for (const entry of merged) {
+        const dateKey = entry.date.slice(0, 10)
+        const existing = byDate.get(dateKey)
+        if (!existing) {
+          byDate.set(dateKey, entry)
+        } else {
+          // Keep the one with the later updated_at
+          if (entry.updated_at > existing.updated_at) {
+            dupIds.push(existing.id)
+            // If a sample entry replaces a real remote entry, adopt it so it gets synced back
+            if (entry.sample && !existing.sample) delete entry.sample
+            byDate.set(dateKey, entry)
+          } else {
+            dupIds.push(entry.id)
+            // If existing sample entry beats a real remote entry, adopt it
+            if (existing.sample && !entry.sample) delete existing.sample
+          }
+        }
+      }
+
+      // Clean up duplicate entries from Supabase
+      if (dupIds.length > 0) {
+        const userId = this._userId
+        for (const id of dupIds) {
+          syncQueue.enqueue(`bodyweight:${id}`, () =>
+            supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId),
+          )
+        }
+      }
+
+      // Keep updated_at in persisted state so future merges have accurate timestamps
+      this.entries = [...byDate.values()]
       this._persist()
+
+      // Push local-only entries to remote
+      // (#3 fix: filter localOnly to exclude entries removed by date dedup)
+      const survivingIds = new Set([...byDate.values()].map(e => e.id))
+      const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id) && !e.sample)
+      if (filteredLocalOnly.length > 0) {
+        const userId = this._userId
+        for (const entry of filteredLocalOnly) {
+          syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
+            supabase!.from('bodyweight_entries').upsert({
+              id: entry.id,
+              user_id: userId,
+              date: entry.date,
+              weight: entry.weight,
+            }),
+          )
+        }
+      }
+
+      // Push local-wins back to Supabase (offline edits that beat remote timestamps)
+      // Filter against surviving IDs to avoid racing with dedup deletes
+      const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id) && !e.sample)
+      if (filteredLocalWins.length > 0) {
+        const userId = this._userId
+        for (const entry of filteredLocalWins) {
+          syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
+            supabase!.from('bodyweight_entries').upsert({
+              id: entry.id,
+              user_id: userId,
+              date: entry.date,
+              weight: entry.weight,
+            }),
+          )
+        }
+      }
+
+      // Process active tombstones: ensure pending deletes are synced
+      const tombstoneEntries = data.filter(
+        (e: Record<string, unknown>) => isTombstoned(TOMBSTONE_STORE, e.id as string),
+      )
+      if (tombstoneEntries.length > 0) {
+        const userId = this._userId
+        for (const e of tombstoneEntries) {
+          const entryId = e.id as string
+          syncQueue.enqueue(`bodyweight:${entryId}`, () =>
+            supabase!.from('bodyweight_entries').delete().eq('id', entryId).eq('user_id', userId),
+          )
+        }
+      }
     },
 
     addEntry(weight: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}): string {
       const date = dateStr
-        ? dateStr + 'T23:59:59.000Z'
+        ? endOfDayISO(dateStr)
         : new Date().toISOString()
       const id = uuid()
-      this.entries.push({ id, date, weight })
+      this.entries.push({ id, date, weight, updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) })
       this._persist()
 
-      if (sync && supabase && this._userId) {
+      if (sync && supabase && !isPreviewMode.value && this._userId) {
         supabase.from('bodyweight_entries').insert({
           id, user_id: this._userId, date, weight
         }).then()
@@ -86,35 +194,39 @@ export const useBodyweightStore = defineStore('bodyweight', {
     updateEntry(id: string, weight: number, dateStr?: string) {
       const entry = this.entries.find((e: BodyweightEntry) => e.id === id)
       if (!entry) return
+      if (entry.sample) delete entry.sample
       entry.weight = weight
       if (dateStr) {
-        entry.date = dateStr + 'T23:59:59.000Z'
+        entry.date = endOfDayISO(dateStr)
       }
+      entry.updated_at = new Date().toISOString()
       this._persist()
 
       if (supabase && this._userId) {
-        const update: Record<string, unknown> = { weight }
-        if (dateStr) update.date = entry.date
         const userId = this._userId
-        syncQueue.enqueue(`bodyweight-update:${id}`, () =>
-          supabase!.from('bodyweight_entries').update(update).eq('id', id).eq('user_id', userId)
+        syncQueue.enqueue(`bodyweight:${id}`, () =>
+          supabase!.from('bodyweight_entries').upsert({
+            id, user_id: userId, date: entry.date, weight: entry.weight
+          })
         )
       }
     },
 
     deleteEntry(id: string, { sync = true }: { sync?: boolean } = {}) {
+      addTombstone(TOMBSTONE_STORE, id)
       this.entries = this.entries.filter((e: BodyweightEntry) => e.id !== id)
       this._persist()
 
       if (sync && supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`bodyweight-delete:${id}`, () =>
+        syncQueue.enqueue(`bodyweight:${id}`, () =>
           supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId)
         )
       }
     },
 
     restoreEntry(entry: BodyweightEntry) {
+      removeTombstone(TOMBSTONE_STORE, entry.id)
       this.entries.push(entry)
       this._persist()
     },
@@ -122,7 +234,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     syncDeleteEntry(id: string) {
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`bodyweight-delete:${id}`, () =>
+        syncQueue.enqueue(`bodyweight:${id}`, () =>
           supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId)
         )
       }
@@ -134,7 +246,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue('bodyweight-clear-all', () =>
+        syncQueue.enqueue('bodyweight:clear-all', () =>
           supabase!.from('bodyweight_entries').delete().eq('user_id', userId)
         )
       }

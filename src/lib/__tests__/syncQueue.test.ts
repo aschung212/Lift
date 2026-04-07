@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SyncQueue, syncStatus, _resetRateLimit } from '../syncQueue'
 
 // Mock supabase so the module loads (syncQueue checks supabase for the singleton)
-vi.mock('../supabase', () => ({ supabase: {} }))
+vi.mock('../supabase', () => ({ supabase: {}, isPreviewMode: { value: false } }))
 
 describe('SyncQueue', () => {
   beforeEach(() => {
@@ -214,17 +214,28 @@ describe('SyncQueue', () => {
     expect(failingOp).toHaveBeenCalledTimes(1)
   })
 
-  it('should drop operations when rate limit is exceeded', async () => {
+  it('should defer operations when rate limit is exceeded', async () => {
     const queue = new SyncQueue(100)
 
-    // Enqueue 60 operations rapidly — rate limit is 50/minute
-    for (let i = 0; i < 60; i++) {
-      queue.enqueue(`rate-${i}`, vi.fn().mockResolvedValue(i))
+    // Enqueue 250 operations rapidly — rate limit is 200/minute
+    const ops = Array.from({ length: 250 }, (_, i) => vi.fn().mockResolvedValue(i))
+    for (let i = 0; i < 250; i++) {
+      queue.enqueue(`rate-${i}`, ops[i])
     }
 
-    // Queue should have accepted at most 50 (some may already be counted from prior tests)
-    // The key assertion: not all 60 were accepted
-    expect(queue.pending).toBeLessThan(60)
+    // All 250 should be tracked (200 in queue + 50 deferred)
+    expect(queue.pending).toBe(250)
+
+    // Flush the main queue — only the first 200 should run
+    await queue.flush()
+    const calledCount = ops.filter(op => op.mock.calls.length > 0).length
+    expect(calledCount).toBe(200)
+
+    // After the rate window resets, deferred ops move into the queue
+    await vi.advanceTimersByTimeAsync(60_000)
+    await queue.flush()
+    const totalCalled = ops.filter(op => op.mock.calls.length > 0).length
+    expect(totalCalled).toBe(250)
   })
 
   it('should update syncStatus through lifecycle', async () => {

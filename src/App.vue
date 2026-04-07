@@ -10,11 +10,21 @@
     <AuthScreen v-else-if="!user" />
 
     <!-- Onboarding -->
-    <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" />
+    <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" @started="onboardingInProgress = true" />
 
     <!-- Authenticated app -->
     <template v-else>
       <main class="appContainer">
+        <div v-if="isPreviewDeploy" class="previewBanner" role="status">
+          <template v-if="isPreviewMode">
+            Preview mode — changes stay local
+            <button class="previewToggle" @click="isPreviewMode = false">Enable writes</button>
+          </template>
+          <template v-else>
+            ⚠ Live writes enabled — changes sync to Supabase
+            <button class="previewToggle" @click="isPreviewMode = true">Go read-only</button>
+          </template>
+        </div>
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
@@ -706,6 +716,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
+import { isPreviewDeploy, isPreviewMode } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
@@ -881,7 +892,7 @@ function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
 // ── Service worker auto-update ──────────────────────────────────
 const swUpdated = ref(false)
 let swRegistration: ServiceWorkerRegistration | undefined
-const updateSW = registerSW({
+registerSW({
   onRegisteredSW(_url, registration) {
     swRegistration = registration ?? undefined
     // Poll for updates every 10 minutes
@@ -918,7 +929,7 @@ const bodyweightStoreForOnboarding = useBodyweightStore()
 // Reactive so it catches data that loads asynchronously after auth.
 // onboardingInProgress prevents the watcher from firing when the onboarding
 // screen itself adds exercises (e.g. Popular Exercises option).
-const onboardingInProgress = ref(!onboardingComplete.value)
+const onboardingInProgress = ref(false)
 watch(
   () => workoutStoreForOnboarding.exercises.length + bodyweightStoreForOnboarding.entries.length,
   (total) => {
