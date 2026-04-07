@@ -202,13 +202,14 @@ export const useWorkoutStore = defineStore('workout', {
         updated_at: ex.updated_at || new Date(0).toISOString()
       }))
 
-      const { merged, localOnly, localWins } = mergeEntities(localWithTimestamps, remoteExercises)
+      type ExerciseWithTimestamp = Exercise & { updated_at: string }
+      const { merged, localOnly, localWins } = mergeEntities<ExerciseWithTimestamp>(localWithTimestamps, remoteExercises as ExerciseWithTimestamp[])
 
       // Deduplicate exercises by name (case-insensitive).
       // Supabase can end up with multiple exercises of the same name from
       // different sessions/devices with different UUIDs. Merge their sets
       // into the primary (the one with the most sets) and delete the dupes.
-      const deduped = deduplicateByName(merged)
+      const deduped = deduplicateByName(merged as Exercise[])
 
       // Clean up duplicate exercises from Supabase
       // (#4 fix: only reassign sets that survived content dedup; delete the rest)
