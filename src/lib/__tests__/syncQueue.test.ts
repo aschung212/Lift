@@ -214,17 +214,28 @@ describe('SyncQueue', () => {
     expect(failingOp).toHaveBeenCalledTimes(1)
   })
 
-  it('should drop operations when rate limit is exceeded', async () => {
+  it('should defer operations when rate limit is exceeded', async () => {
     const queue = new SyncQueue(100)
 
     // Enqueue 60 operations rapidly — rate limit is 50/minute
+    const ops = Array.from({ length: 60 }, (_, i) => vi.fn().mockResolvedValue(i))
     for (let i = 0; i < 60; i++) {
-      queue.enqueue(`rate-${i}`, vi.fn().mockResolvedValue(i))
+      queue.enqueue(`rate-${i}`, ops[i])
     }
 
-    // Queue should have accepted at most 50 (some may already be counted from prior tests)
-    // The key assertion: not all 60 were accepted
-    expect(queue.pending).toBeLessThan(60)
+    // All 60 should be tracked (50 in queue + 10 deferred)
+    expect(queue.pending).toBe(60)
+
+    // Flush the main queue — only the first 50 should run
+    await queue.flush()
+    const calledCount = ops.filter(op => op.mock.calls.length > 0).length
+    expect(calledCount).toBe(50)
+
+    // After the rate window resets, deferred ops move into the queue
+    await vi.advanceTimersByTimeAsync(60_000)
+    await queue.flush()
+    const totalCalled = ops.filter(op => op.mock.calls.length > 0).length
+    expect(totalCalled).toBe(60)
   })
 
   it('should update syncStatus through lifecycle', async () => {

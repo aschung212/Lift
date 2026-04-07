@@ -12,6 +12,8 @@ const RATE_LIMIT_MAX = 50
 const RATE_LIMIT_WINDOW = 60_000 // 1 minute
 let _rateCount = 0
 let _rateResetTimer: ReturnType<typeof setTimeout> | null = null
+// Deferred operations that exceeded the rate limit — processed in the next window
+const _deferredOps = new Map<string, SyncOperation>()
 
 /**
  * Batches and debounces Supabase sync operations with retry.
@@ -46,10 +48,23 @@ export class SyncQueue {
     // Rate limiting
     _rateCount++
     if (!_rateResetTimer) {
-      _rateResetTimer = setTimeout(() => { _rateCount = 0; _rateResetTimer = null }, RATE_LIMIT_WINDOW)
+      _rateResetTimer = setTimeout(() => {
+        _rateCount = 0
+        _rateResetTimer = null
+        // Re-enqueue deferred operations through the rate-limited path.
+        // Take a snapshot and clear first to avoid infinite deferral loops.
+        if (_deferredOps.size > 0) {
+          const batch = new Map(_deferredOps)
+          _deferredOps.clear()
+          for (const [k, v] of batch) {
+            this.enqueue(k, v)
+          }
+        }
+      }, RATE_LIMIT_WINDOW)
     }
     if (_rateCount > RATE_LIMIT_MAX) {
-      logWarn('Sync rate limit exceeded, dropping operation', { key })
+      logWarn('Sync rate limit exceeded, deferring operation', { key })
+      _deferredOps.set(key, op)
       return
     }
     this._queue.set(key, op)
@@ -76,7 +91,10 @@ export class SyncQueue {
       )
       let hasFailure = false
       results.forEach((result, i) => {
-        if (result.status === 'rejected') {
+        if (result.status === 'fulfilled') {
+          // Clear retry counter on success so future failures get full retries
+          this._attemptMap.delete(entries[i][0])
+        } else if (result.status === 'rejected') {
           hasFailure = true
           const [key, op] = entries[i]
           const prevAttempt = this._attemptMap.get(key) ?? 0
@@ -100,7 +118,7 @@ export class SyncQueue {
 
   /** Number of pending (unflushed) operations. */
   get pending(): number {
-    return this._queue.size + this._retryQueue.size
+    return this._queue.size + this._retryQueue.size + _deferredOps.size
   }
 
   /** Cancel all pending operations without executing them. */
@@ -116,6 +134,7 @@ export class SyncQueue {
     this._queue.clear()
     this._retryQueue.clear()
     this._attemptMap.clear()
+    _deferredOps.clear()
   }
 
   private _scheduleFlush(): void {
@@ -150,6 +169,7 @@ export function _resetRateLimit(): void {
     clearTimeout(_rateResetTimer)
     _rateResetTimer = null
   }
+  _deferredOps.clear()
 }
 
 /** Shared sync queue instance used by all stores (1-second debounce). */
