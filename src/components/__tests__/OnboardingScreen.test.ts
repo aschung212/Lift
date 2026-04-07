@@ -29,7 +29,10 @@ vi.mock('../../stores/progression', () => ({
   })
 }))
 
-vi.mock('../../lib/uuid', () => ({ uuid: () => 'test-uuid' }))
+vi.mock('../../lib/uuid', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return { ...actual, uuid: () => 'test-uuid' }
+})
 
 import { getLocalStorageMock } from '../../__tests__/helpers'
 const localStorageMock = getLocalStorageMock()

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
-import { uuid } from '../lib/uuid'
+import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
@@ -171,7 +171,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
     addEntry(weight: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}): string {
       const date = dateStr
-        ? dateStr + 'T23:59:59.000Z'
+        ? endOfDayISO(dateStr)
         : new Date().toISOString()
       const id = uuid()
       this.entries.push({ id, date, weight, updated_at: new Date().toISOString() })
@@ -190,7 +190,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (!entry) return
       entry.weight = weight
       if (dateStr) {
-        entry.date = dateStr + 'T23:59:59.000Z'
+        entry.date = endOfDayISO(dateStr)
       }
       entry.updated_at = new Date().toISOString()
       this._persist()

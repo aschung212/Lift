@@ -3,7 +3,10 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useBodyweightStore } from '../bodyweight'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
-vi.mock('../../lib/uuid', () => ({ uuid: () => 'bw-uuid-' + Math.random().toString(36).slice(2, 8) }))
+vi.mock('../../lib/uuid', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return { ...actual, uuid: () => 'bw-uuid-' + Math.random().toString(36).slice(2, 8) }
+})
 
 const localStorageMock = getLocalStorageMock()
 
