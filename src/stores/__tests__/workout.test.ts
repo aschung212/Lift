@@ -11,7 +11,7 @@ vi.mock('../../lib/conflictResolver', () => ({
   mergeEntities: vi.fn(() => ({ merged: [], localOnly: [] }))
 }))
 
-import { useWorkoutStore, deduplicateSets, deduplicateByName } from '../workout'
+import { useWorkoutStore, deduplicateSets, deduplicateByName, cleanupTriplicates } from '../workout'
 import type { Exercise, WorkoutSet } from '../workout'
 
 describe('workout store', () => {
@@ -637,19 +637,7 @@ describe('workout store', () => {
       return { id, date, weight, reps, estimated1RM: Math.round(weight * (1 + reps / 30)) }
     }
 
-    it('removes triplicates with different jitter timestamps on the same day', () => {
-      const sets = [
-        makeSet('a1', '2026-04-04T23:59:42.317Z', 505, 6),
-        makeSet('a2', '2026-04-04T23:59:18.901Z', 505, 6),
-        makeSet('a3', '2026-04-04T23:59:55.123Z', 505, 6),
-      ]
-      const { unique, removedIds } = deduplicateSets(sets)
-      expect(unique).toHaveLength(1)
-      expect(unique[0].id).toBe('a1')
-      expect(removedIds).toEqual(['a2', 'a3'])
-    })
-
-    it('removes triplicates with old fixed timestamps', () => {
+    it('removes exact timestamp duplicates (old fixed format)', () => {
       const sets = [
         makeSet('b1', '2026-04-04T23:59:59.000Z', 225, 10),
         makeSet('b2', '2026-04-04T23:59:59.000Z', 225, 10),
@@ -658,6 +646,20 @@ describe('workout store', () => {
       const { unique, removedIds } = deduplicateSets(sets)
       expect(unique).toHaveLength(1)
       expect(removedIds).toHaveLength(2)
+    })
+
+    it('preserves jitter-differentiated sets (5x5 safe)', () => {
+      // Different jitter timestamps = different sets, even if same weight/reps
+      const sets = [
+        makeSet('a1', '2026-04-04T23:59:42.317Z', 225, 5),
+        makeSet('a2', '2026-04-04T23:59:18.901Z', 225, 5),
+        makeSet('a3', '2026-04-04T23:59:55.123Z', 225, 5),
+        makeSet('a4', '2026-04-04T23:59:07.456Z', 225, 5),
+        makeSet('a5', '2026-04-04T23:59:33.789Z', 225, 5),
+      ]
+      const { unique, removedIds } = deduplicateSets(sets)
+      expect(unique).toHaveLength(5)
+      expect(removedIds).toHaveLength(0)
     })
 
     it('keeps sets with different weight or reps on the same day', () => {
@@ -682,28 +684,76 @@ describe('workout store', () => {
       expect(removedIds).toHaveLength(0)
     })
 
-    it('keeps real-time timestamps even if same content on same day', () => {
+    it('preserves real-time logged identical sets (3x10 in-session)', () => {
       const sets = [
-        makeSet('e1', '2026-04-04T14:30:00.000Z', 225, 10), // real-time
-        makeSet('e2', '2026-04-04T14:45:00.000Z', 225, 10), // real-time
-        makeSet('e3', '2026-04-04T15:00:00.000Z', 225, 10), // real-time
+        makeSet('e1', '2026-04-04T14:30:00.000Z', 225, 10),
+        makeSet('e2', '2026-04-04T14:45:00.000Z', 225, 10),
+        makeSet('e3', '2026-04-04T15:00:00.000Z', 225, 10),
       ]
       const { unique, removedIds } = deduplicateSets(sets)
       expect(unique).toHaveLength(3)
       expect(removedIds).toHaveLength(0)
     })
+  })
 
-    it('deduplicates end-of-day timestamps but keeps real-time ones', () => {
-      const sets = [
-        makeSet('f1', '2026-04-04T14:30:00.000Z', 225, 10), // real-time — keep
-        makeSet('f2', '2026-04-04T23:59:42.317Z', 225, 10), // jitter — keep (first EOD)
-        makeSet('f3', '2026-04-04T23:59:59.000Z', 225, 10), // old fixed — dedup
-      ]
-      const { unique, removedIds } = deduplicateSets(sets)
-      expect(unique).toHaveLength(2)
-      expect(unique[0].id).toBe('f1')
-      expect(unique[1].id).toBe('f2')
-      expect(removedIds).toEqual(['f3'])
+  // ── cleanupTriplicates (one-time migration) ───────────────────
+  describe('cleanupTriplicates', () => {
+    function makeSet(id: string, date: string, weight: number, reps: number): WorkoutSet {
+      return { id, date, weight, reps, estimated1RM: Math.round(weight * (1 + reps / 30)) }
+    }
+
+    it('removes jitter-timestamped triplicates from end-of-day sets', () => {
+      const exercises: Exercise[] = [{
+        id: 'ex1', name: 'Hack Squat', tags: [], sets: [
+          makeSet('s1', '2026-04-04T23:59:42.317Z', 505, 6),
+          makeSet('s2', '2026-04-04T23:59:18.901Z', 505, 6),
+          makeSet('s3', '2026-04-04T23:59:55.123Z', 505, 6),
+        ]
+      }]
+      const removedIds = cleanupTriplicates(exercises)
+      expect(exercises[0].sets).toHaveLength(1)
+      expect(removedIds).toHaveLength(2)
+    })
+
+    it('never touches real-time logged sets', () => {
+      const exercises: Exercise[] = [{
+        id: 'ex1', name: 'Squat', tags: [], sets: [
+          makeSet('s1', '2026-04-04T14:30:00.000Z', 225, 5),
+          makeSet('s2', '2026-04-04T14:35:00.000Z', 225, 5),
+          makeSet('s3', '2026-04-04T14:40:00.000Z', 225, 5),
+        ]
+      }]
+      const removedIds = cleanupTriplicates(exercises)
+      expect(exercises[0].sets).toHaveLength(3)
+      expect(removedIds).toHaveLength(0)
+    })
+
+    it('preserves different content on the same day', () => {
+      const exercises: Exercise[] = [{
+        id: 'ex1', name: 'RDLs', tags: [], sets: [
+          makeSet('s1', '2026-03-18T23:59:42.317Z', 205, 10),
+          makeSet('s2', '2026-03-18T23:59:18.901Z', 235, 10),
+          makeSet('s3', '2026-03-18T23:59:55.123Z', 185, 10),
+        ]
+      }]
+      const removedIds = cleanupTriplicates(exercises)
+      expect(exercises[0].sets).toHaveLength(3)
+      expect(removedIds).toHaveLength(0)
+    })
+
+    it('handles mixed real-time and end-of-day sets correctly', () => {
+      const exercises: Exercise[] = [{
+        id: 'ex1', name: 'Bench', tags: [], sets: [
+          makeSet('s1', '2026-04-04T14:30:00.000Z', 225, 10), // real-time, keep
+          makeSet('s2', '2026-04-04T23:59:42.317Z', 225, 10), // EOD, keep (first)
+          makeSet('s3', '2026-04-04T23:59:18.901Z', 225, 10), // EOD, remove (dup)
+        ]
+      }]
+      const removedIds = cleanupTriplicates(exercises)
+      expect(exercises[0].sets).toHaveLength(2)
+      expect(exercises[0].sets[0].id).toBe('s1')
+      expect(exercises[0].sets[1].id).toBe('s2')
+      expect(removedIds).toEqual(['s3'])
     })
   })
 

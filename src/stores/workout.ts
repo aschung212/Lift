@@ -53,27 +53,18 @@ function epley(weight: number, reps: number): number {
  * the most sets as primary and merges all other sets into it.
  */
 /**
- * Deduplicate sets within an exercise by content (day + weight + reps).
- * Uses day-level date (YYYY-MM-DD) so jitter timestamps don't prevent dedup.
- *
- * Only deduplicates sets with end-of-day timestamps (T23:59:*) — these are
- * from backdated entries or sync artifacts. Real-time timestamps (e.g.,
- * T14:30:22) are always kept, even if they share weight/reps on the same day,
- * because the user may legitimately log multiple identical sets.
+ * Deduplicate sets within an exercise by exact content (full date + weight + reps).
+ * Uses the full ISO timestamp so jitter-differentiated sets are preserved —
+ * this protects programs like 5x5 where the same weight/reps is logged
+ * multiple times. Only catches exact timestamp collisions (e.g., old fixed
+ * T23:59:59.000Z format or truly identical entries).
  */
 export function deduplicateSets(sets: WorkoutSet[]): { unique: WorkoutSet[]; removedIds: string[] } {
   const seen = new Map<string, string>()
   const unique: WorkoutSet[] = []
   const removedIds: string[] = []
   for (const set of sets) {
-    const isEndOfDay = set.date.includes('T23:59:')
-    if (!isEndOfDay) {
-      // Real-time timestamp — always keep (legitimate separate set)
-      unique.push(set)
-      continue
-    }
-    const day = set.date.slice(0, 10) // YYYY-MM-DD
-    const key = `${day}|${set.weight}|${set.reps}`
+    const key = `${set.date}|${set.weight}|${set.reps}`
     if (!seen.has(key)) {
       seen.set(key, set.id)
       unique.push(set)
@@ -82,6 +73,36 @@ export function deduplicateSets(sets: WorkoutSet[]): { unique: WorkoutSet[]; rem
     }
   }
   return { unique, removedIds }
+}
+
+/**
+ * One-time cleanup for triplicate sync artifacts. Groups end-of-day sets
+ * by (day + weight + reps) and keeps only one per group. Real-time sets
+ * are never touched. Runs once and sets a localStorage flag.
+ */
+export function cleanupTriplicates(exercises: Exercise[]): string[] {
+  const removedIds: string[] = []
+  for (const ex of exercises) {
+    const seen = new Map<string, string>() // day|weight|reps → first set ID
+    const cleaned: WorkoutSet[] = []
+    for (const set of ex.sets) {
+      const isEndOfDay = set.date.includes('T23:59:')
+      if (!isEndOfDay) {
+        cleaned.push(set)
+        continue
+      }
+      const day = set.date.slice(0, 10)
+      const key = `${day}|${set.weight}|${set.reps}`
+      if (!seen.has(key)) {
+        seen.set(key, set.id)
+        cleaned.push(set)
+      } else {
+        removedIds.push(set.id)
+      }
+    }
+    ex.sets = cleaned
+  }
+  return removedIds
 }
 
 export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; removed: Exercise[] } {
@@ -104,14 +125,15 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
     group.sort((a, b) => b.sets.length - a.sets.length)
     const primary = group[0]
     // Merge sets from duplicates, deduplicating by both ID and content.
-    // Content dedup (date+weight+reps) is safe here because these sets
-    // originate from duplicate exercises created by sync — they represent
-    // the same logged set, just inserted under different exercise UUIDs.
+    // Uses day-level date (YYYY-MM-DD) for content keys so jitter timestamps
+    // don't prevent dedup. This is safe here because duplicate exercises are
+    // copies of the same workout data from different sync sources — sets
+    // from the dupe represent the same logged sets, not additional ones.
     const setIds = new Set(primary.sets.map(s => s.id))
-    const setContentKeys = new Set(primary.sets.map(s => `${s.date}|${s.weight}|${s.reps}`))
+    const setContentKeys = new Set(primary.sets.map(s => `${s.date.slice(0, 10)}|${s.weight}|${s.reps}`))
     for (let i = 1; i < group.length; i++) {
       for (const set of group[i].sets) {
-        const contentKey = `${set.date}|${set.weight}|${set.reps}`
+        const contentKey = `${set.date.slice(0, 10)}|${set.weight}|${set.reps}`
         if (!setIds.has(set.id) && !setContentKeys.has(contentKey)) {
           primary.sets.push(set)
           setIds.add(set.id)
@@ -335,15 +357,30 @@ export const useWorkoutStore = defineStore('workout', {
         }
       }
 
-      // Deduplicate sets within each exercise by content (day+weight+reps).
-      // Cleans up triplicates from the historic sync bug where 3 exercises
-      // with the same name were merged but jitter-timestamped sets survived.
+      // Deduplicate sets within each exercise by exact content match
+      // (full timestamp + weight + reps). Catches identical entries safely
+      // without affecting programs like 5x5 that log the same weight/reps
+      // multiple times (those get unique jitter timestamps).
       const dupSetIds: string[] = []
       for (const ex of deduped.exercises) {
         const { unique, removedIds } = deduplicateSets(ex.sets)
         ex.sets = unique
         dupSetIds.push(...removedIds)
       }
+
+      // One-time cleanup: remove triplicate sync artifacts from the historic
+      // bug where 3 exercises with the same name were merged but jitter
+      // timestamps prevented content dedup. Only targets end-of-day
+      // timestamps (T23:59:*) so real-time logged sets are never touched.
+      if (!localStorage.getItem('triplicate-cleanup-v1')) {
+        const cleanedIds = cleanupTriplicates(deduped.exercises)
+        dupSetIds.push(...cleanedIds)
+        if (cleanedIds.length > 0) {
+          logWarn(`One-time triplicate cleanup: removed ${cleanedIds.length} duplicate sets`)
+        }
+        localStorage.setItem('triplicate-cleanup-v1', new Date().toISOString())
+      }
+
       if (supabase && this._userId && dupSetIds.length > 0) {
         const userId = this._userId
         for (const setId of dupSetIds) {
