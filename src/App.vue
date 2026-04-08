@@ -1220,7 +1220,14 @@ function handleStarterSkip() {
 /** Evaluate missed weeks and show milestone toasts. */
 function catchUpStreaks() {
   const streakBefore = progressionStore.streakWeeks
-  progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates)
+  // Build setId→date map so evaluatePendingWeeks can compute weekly XP
+  const setIdToDate: Record<string, string> = {}
+  for (const exercise of workoutStoreForOnboarding.exercises) {
+    for (const set of exercise.sets) {
+      setIdToDate[set.id] = set.date.slice(0, 10)
+    }
+  }
+  progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates, new Date(), setIdToDate)
   const streakAfter = progressionStore.streakWeeks
 
   if (progressionStore.showProgression && streakAfter > streakBefore) {

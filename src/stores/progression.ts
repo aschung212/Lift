@@ -340,8 +340,9 @@ export const useProgressionStore = defineStore('progression', {
      * Evaluate the completed week. Called at week boundary (Monday).
      * @param daysTrainedThisWeek - number of unique training days in the completed week
      * @param weekStart - ISO date string of the Monday being evaluated
+     * @param weekXP - total XP earned from sets in this week (0 if unknown)
      */
-    evaluateWeek(daysTrainedThisWeek: number, weekStart: string) {
+    evaluateWeek(daysTrainedThisWeek: number, weekStart: string, weekXP = 0) {
       // Determine the effective target for this week
       // Anti-gaming: if there's a pending change, evaluate against the HIGHER target
       const effectiveTarget = this.pendingTargetChange !== null
@@ -392,7 +393,7 @@ export const useProgressionStore = defineStore('progression', {
         userId: this._userId,
         weekStart: weekStart.slice(0, 10),
         totalXP: this.totalXP,
-        weekXP: 0, // TODO: compute from xpPerSet entries in this week
+        weekXP,
         streakWeeks: this.streakWeeks,
         trainingDays: daysTrainedThisWeek,
         weeklyTarget: this.weeklyTarget,
@@ -408,8 +409,9 @@ export const useProgressionStore = defineStore('progression', {
      *
      * @param setDates - flat array of date strings (YYYY-MM-DD) from all workout sets
      * @param now - current date (injectable for testing)
+     * @param setIdToDate - optional map of setId → YYYY-MM-DD for computing weekly XP
      */
-    evaluatePendingWeeks(setDates: string[], now: Date = new Date()) {
+    evaluatePendingWeeks(setDates: string[], now: Date = new Date(), setIdToDate?: Record<string, string>) {
       const currentMonday = getMonday(now)
       const lastEvaluated = this.streakHistory.length > 0
         ? this.streakHistory[this.streakHistory.length - 1].weekStart
@@ -438,7 +440,10 @@ export const useProgressionStore = defineStore('progression', {
         const weekEnd = toDateKey(sunday)
 
         const days = getTrainingDaysInWeek(setDates, weekStart, weekEnd)
-        this.evaluateWeek(days, weekStart)
+        const weekXP = setIdToDate
+          ? computeWeekXP(this.xpPerSet, this.bodyweightXPDates, setIdToDate, weekStart, weekEnd)
+          : 0
+        this.evaluateWeek(days, weekStart, weekXP)
 
         evalMonday.setUTCDate(evalMonday.getUTCDate() + 7)
       }
@@ -560,6 +565,38 @@ export const useProgressionStore = defineStore('progression', {
 })
 
 // --- Module-level helpers ---
+
+/**
+ * Compute total XP earned in a Mon-Sun week from set XP entries and bodyweight XP.
+ * Exported for testing.
+ */
+export function computeWeekXP(
+  xpPerSet: Record<string, SetXPEntry | number>,
+  bodyweightXPDates: string[],
+  setIdToDate: Record<string, string>,
+  weekStart: string,
+  weekEnd: string,
+): number {
+  let total = 0
+
+  // Sum XP from workout sets in this week
+  for (const [setId, entry] of Object.entries(xpPerSet)) {
+    const date = setIdToDate[setId]
+    if (date && date >= weekStart && date <= weekEnd) {
+      total += getSetXP(entry)
+    }
+  }
+
+  // Sum bodyweight XP for dates in this week
+  for (const date of bodyweightXPDates) {
+    const d = date.slice(0, 10)
+    if (d >= weekStart && d <= weekEnd) {
+      total += XP_CONFIG.bodyweightXP
+    }
+  }
+
+  return total
+}
 
 /**
  * Count unique training days in a Mon-Sun week.
