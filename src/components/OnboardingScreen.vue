@@ -389,8 +389,7 @@ function handleStarterRevertPreview() {
 
 function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
   revertPreview()
-  progressionStore.weeklyTarget = weeklyGoal
-  progressionStore.setStarterTheme(themeId)
+  progressionStore.setStarterTheme(themeId, weeklyGoal)
   currentTheme.value = themeId
   finish(pendingSampleData)
 }

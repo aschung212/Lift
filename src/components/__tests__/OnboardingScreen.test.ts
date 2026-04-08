@@ -257,7 +257,7 @@ describe('OnboardingScreen', () => {
       await wrapper.findAll('.spfCard')[0].trigger('click') // Fire
       await wrapper.findAll('.spfPrimary').at(-1)!.trigger('click') // → goal step
       await wrapper.find('.spfPrimary').trigger('click') // → confirm
-      expect(mockSetStarterTheme).toHaveBeenCalledWith('fire')
+      expect(mockSetStarterTheme).toHaveBeenCalledWith('fire', 3)
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
