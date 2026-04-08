@@ -74,6 +74,9 @@
             :class="['wtDragHandle', { wtDragHandleDisabled: activeTagFilters.length > 0 }]"
             @touchstart.prevent="activeTagFilters.length === 0 && onDragStart(index, $event)"
             @mousedown="activeTagFilters.length === 0 && onDragStart(index, $event)"
+            role="button"
+            tabindex="0"
+            :aria-disabled="activeTagFilters.length > 0"
             aria-label="Drag to reorder"
           >⠿</span>
           <button

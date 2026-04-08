@@ -223,6 +223,26 @@ describe('WorkoutTracker', () => {
       const handles = wrapper.findAll('.wtDragHandle')
       expect(handles.length).toBe(3)
     })
+
+    it('drag handles have role="button", tabindex="0", and aria-label', () => {
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtDragHandle')
+      for (const handle of handles) {
+        expect(handle.attributes('role')).toBe('button')
+        expect(handle.attributes('tabindex')).toBe('0')
+        expect(handle.attributes('aria-label')).toBe('Drag to reorder')
+      }
+    })
+
+    it('drag handles have aria-disabled when tag filter is active', async () => {
+      const wrapper = mountTracker()
+      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
+      const legsChip = chips.find(c => c.text() === 'Legs')!
+      await legsChip.trigger('click')
+      const handles = wrapper.findAll('.wtDragHandle')
+      const disabledHandles = handles.filter(h => h.attributes('aria-disabled') === 'true')
+      expect(disabledHandles.length).toBeGreaterThan(0)
+    })
   })
 
   describe('tag filtering', () => {
