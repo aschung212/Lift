@@ -11,8 +11,8 @@ vi.mock('../../lib/conflictResolver', () => ({
   mergeEntities: vi.fn(() => ({ merged: [], localOnly: [] }))
 }))
 
-import { useWorkoutStore } from '../workout'
-import type { Exercise } from '../workout'
+import { useWorkoutStore, deduplicateSets, deduplicateByName } from '../workout'
+import type { Exercise, WorkoutSet } from '../workout'
 
 describe('workout store', () => {
   beforeEach(() => {
@@ -628,6 +628,91 @@ describe('workout store', () => {
       const id = store.addExercise('Sample Exercise', [], { sync: false })!
       store.logSet(id, 135, 10, undefined, { sync: false })
       expect(store.exercises[0].sample).toBe(true)
+    })
+  })
+
+  // ── deduplicateSets (sync triplicate cleanup) ─────────────────
+  describe('deduplicateSets', () => {
+    function makeSet(id: string, date: string, weight: number, reps: number): WorkoutSet {
+      return { id, date, weight, reps, estimated1RM: Math.round(weight * (1 + reps / 30)) }
+    }
+
+    it('removes exact timestamp duplicates (old fixed format)', () => {
+      const sets = [
+        makeSet('b1', '2026-04-04T23:59:59.000Z', 225, 10),
+        makeSet('b2', '2026-04-04T23:59:59.000Z', 225, 10),
+        makeSet('b3', '2026-04-04T23:59:59.000Z', 225, 10),
+      ]
+      const { unique, removedIds } = deduplicateSets(sets)
+      expect(unique).toHaveLength(1)
+      expect(removedIds).toHaveLength(2)
+    })
+
+    it('preserves jitter-differentiated sets (5x5 safe)', () => {
+      // Different jitter timestamps = different sets, even if same weight/reps
+      const sets = [
+        makeSet('a1', '2026-04-04T23:59:42.317Z', 225, 5),
+        makeSet('a2', '2026-04-04T23:59:18.901Z', 225, 5),
+        makeSet('a3', '2026-04-04T23:59:55.123Z', 225, 5),
+        makeSet('a4', '2026-04-04T23:59:07.456Z', 225, 5),
+        makeSet('a5', '2026-04-04T23:59:33.789Z', 225, 5),
+      ]
+      const { unique, removedIds } = deduplicateSets(sets)
+      expect(unique).toHaveLength(5)
+      expect(removedIds).toHaveLength(0)
+    })
+
+    it('keeps sets with different weight or reps on the same day', () => {
+      const sets = [
+        makeSet('c1', '2026-04-04T23:59:42.317Z', 225, 36),
+        makeSet('c2', '2026-04-04T23:59:18.901Z', 505, 6),
+        makeSet('c3', '2026-04-04T23:59:55.123Z', 500, 5),
+        makeSet('c4', '2026-04-04T23:59:11.456Z', 315, 6),
+      ]
+      const { unique, removedIds } = deduplicateSets(sets)
+      expect(unique).toHaveLength(4)
+      expect(removedIds).toHaveLength(0)
+    })
+
+    it('keeps sets with the same weight/reps on different days', () => {
+      const sets = [
+        makeSet('d1', '2026-04-01T23:59:42.317Z', 505, 6),
+        makeSet('d2', '2026-04-04T23:59:18.901Z', 505, 6),
+      ]
+      const { unique, removedIds } = deduplicateSets(sets)
+      expect(unique).toHaveLength(2)
+      expect(removedIds).toHaveLength(0)
+    })
+
+    it('preserves real-time logged identical sets (3x10 in-session)', () => {
+      const sets = [
+        makeSet('e1', '2026-04-04T14:30:00.000Z', 225, 10),
+        makeSet('e2', '2026-04-04T14:45:00.000Z', 225, 10),
+        makeSet('e3', '2026-04-04T15:00:00.000Z', 225, 10),
+      ]
+      const { unique, removedIds } = deduplicateSets(sets)
+      expect(unique).toHaveLength(3)
+      expect(removedIds).toHaveLength(0)
+    })
+  })
+
+  // ── deduplicateByName ─────────────────────────────────────────
+  describe('deduplicateByName', () => {
+    it('merges exercises with same name, keeping the one with most sets', () => {
+      const exercises: Exercise[] = [
+        { id: 'x1', name: 'Squat', tags: ['Legs'], sets: [
+          { id: 's1', date: '2026-04-01T23:59:59.000Z', weight: 225, reps: 5, estimated1RM: 263 },
+          { id: 's2', date: '2026-04-01T23:59:59.000Z', weight: 275, reps: 3, estimated1RM: 303 },
+        ]},
+        { id: 'x2', name: 'squat', tags: [], sets: [
+          { id: 's3', date: '2026-04-01T23:59:42.000Z', weight: 225, reps: 5, estimated1RM: 263 },
+        ]},
+      ]
+      const { exercises: result, removed } = deduplicateByName(exercises)
+      expect(result).toHaveLength(1)
+      expect(result[0].id).toBe('x1')
+      expect(removed).toHaveLength(1)
+      expect(removed[0].id).toBe('x2')
     })
   })
 })

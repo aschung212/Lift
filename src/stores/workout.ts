@@ -52,7 +52,36 @@ function epley(weight: number, reps: number): number {
  * For each group of exercises with the same name, keeps the one with
  * the most sets as primary and merges all other sets into it.
  */
-function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; removed: Exercise[] } {
+/**
+ * Deduplicate sets within an exercise by exact content (full date + weight + reps).
+ * Uses the full ISO timestamp so jitter-differentiated sets are preserved —
+ * this protects programs like 5x5 where the same weight/reps is logged
+ * multiple times. Only catches exact timestamp collisions (e.g., old fixed
+ * T23:59:59.000Z format or truly identical entries).
+ */
+export function deduplicateSets(sets: WorkoutSet[]): { unique: WorkoutSet[]; removedIds: string[] } {
+  const seen = new Map<string, string>()
+  const unique: WorkoutSet[] = []
+  const removedIds: string[] = []
+  for (const set of sets) {
+    const key = `${set.date}|${set.weight}|${set.reps}`
+    if (!seen.has(key)) {
+      seen.set(key, set.id)
+      unique.push(set)
+    } else {
+      removedIds.push(set.id)
+    }
+  }
+  return { unique, removedIds }
+}
+
+/**
+ * One-time cleanup for triplicate sync artifacts. Groups end-of-day sets
+ * by (day + weight + reps) and keeps only one per group. Real-time sets
+ * are never touched. Runs once and sets a localStorage flag.
+ */
+
+export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; removed: Exercise[] } {
   const groups = new Map<string, Exercise[]>()
   for (const ex of exercises) {
     const key = ex.name.toLowerCase()
@@ -72,14 +101,15 @@ function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; remo
     group.sort((a, b) => b.sets.length - a.sets.length)
     const primary = group[0]
     // Merge sets from duplicates, deduplicating by both ID and content.
-    // Content dedup (date+weight+reps) is safe here because these sets
-    // originate from duplicate exercises created by sync — they represent
-    // the same logged set, just inserted under different exercise UUIDs.
+    // Uses day-level date (YYYY-MM-DD) for content keys so jitter timestamps
+    // don't prevent dedup. This is safe here because duplicate exercises are
+    // copies of the same workout data from different sync sources — sets
+    // from the dupe represent the same logged sets, not additional ones.
     const setIds = new Set(primary.sets.map(s => s.id))
-    const setContentKeys = new Set(primary.sets.map(s => `${s.date}|${s.weight}|${s.reps}`))
+    const setContentKeys = new Set(primary.sets.map(s => `${s.date.slice(0, 10)}|${s.weight}|${s.reps}`))
     for (let i = 1; i < group.length; i++) {
       for (const set of group[i].sets) {
-        const contentKey = `${set.date}|${set.weight}|${set.reps}`
+        const contentKey = `${set.date.slice(0, 10)}|${set.weight}|${set.reps}`
         if (!setIds.has(set.id) && !setContentKeys.has(contentKey)) {
           primary.sets.push(set)
           setIds.add(set.id)
@@ -233,6 +263,27 @@ export const useWorkoutStore = defineStore('workout', {
       type ExerciseWithTimestamp = Exercise & { updated_at: string }
       const { merged, localOnly, localWins } = mergeEntities<ExerciseWithTimestamp>(localWithTimestamps, remoteExercises as ExerciseWithTimestamp[])
 
+      // Merge sets by ID for exercises that exist in both local and remote.
+      // mergeEntities picks one exercise wholesale (last-write-wins), but
+      // the losing side may have sets the winning side doesn't. Union them
+      // by set ID so no sets are lost during sync.
+      const localExMap = new Map(localWithTimestamps.map(e => [e.id, e]))
+      const remoteExMap = new Map(remoteExercises.map(e => [e.id, e]))
+      for (const ex of merged) {
+        const localEx = localExMap.get(ex.id)
+        const remoteEx = remoteExMap.get(ex.id)
+        if (localEx && remoteEx) {
+          const setIds = new Set(ex.sets.map(s => s.id))
+          const otherSets = (ex === localEx || ex.updated_at === localEx.updated_at) ? remoteEx.sets : localEx.sets
+          for (const set of otherSets) {
+            if (!setIds.has(set.id) && !isTombstoned('sets', set.id)) {
+              ex.sets.push(set)
+              setIds.add(set.id)
+            }
+          }
+        }
+      }
+
       // Deduplicate exercises by name (case-insensitive).
       // Supabase can end up with multiple exercises of the same name from
       // different sessions/devices with different UUIDs. Merge their sets
@@ -282,34 +333,17 @@ export const useWorkoutStore = defineStore('workout', {
         }
       }
 
-      // Deduplicate sets within each exercise by content (date+weight+reps).
-      // This catches duplicates already baked into a single exercise from
-      // a previous sync cycle that merged duplicate exercise rows.
-      //
-      // Only dedup sets whose timestamps match the old hardcoded format
-      // (T23:59:59.000Z) — these are from the code that created the sync
-      // duplicates. Sets with jitter or real-time timestamps are guaranteed
-      // unique and are never deduped, even if they share weight/reps.
+      // Deduplicate sets within each exercise by exact content match
+      // (full timestamp + weight + reps). Catches identical entries safely
+      // without affecting programs like 5x5 that log the same weight/reps
+      // multiple times (those get unique jitter timestamps).
       const dupSetIds: string[] = []
       for (const ex of deduped.exercises) {
-        const seen = new Map<string, string>()
-        const uniqueSets: WorkoutSet[] = []
-        for (const set of ex.sets) {
-          const key = `${set.date}|${set.weight}|${set.reps}`
-          const isOldFixedTimestamp = set.date.endsWith('T23:59:59.000Z')
-          if (!seen.has(key)) {
-            seen.set(key, set.id)
-            uniqueSets.push(set)
-          } else if (isOldFixedTimestamp) {
-            // Duplicate with old fixed timestamp — sync artifact, delete it
-            dupSetIds.push(set.id)
-          } else {
-            // Duplicate content but unique timestamp — legitimate set, keep it
-            uniqueSets.push(set)
-          }
-        }
-        ex.sets = uniqueSets
+        const { unique, removedIds } = deduplicateSets(ex.sets)
+        ex.sets = unique
+        dupSetIds.push(...removedIds)
       }
+
       if (supabase && this._userId && dupSetIds.length > 0) {
         const userId = this._userId
         for (const setId of dupSetIds) {
@@ -349,7 +383,9 @@ export const useWorkoutStore = defineStore('workout', {
       }
 
       // Push local-wins back to Supabase (offline edits that beat remote timestamps)
-      // Filter against surviving IDs to avoid racing with dedup deletes
+      // Only push exercise metadata + sets that don't already exist in remote.
+      // Previously this pushed ALL sets for every localWins exercise, causing
+      // rate-limit storms (500+ operations on every sync).
       const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id) && !e.sample)
       if (filteredLocalWins.length > 0) {
         const userId = this._userId
@@ -360,14 +396,25 @@ export const useWorkoutStore = defineStore('workout', {
               ...(ex.inputMode ? { input_mode: ex.inputMode } : {}), ...(ex.barWeight != null ? { bar_weight: ex.barWeight } : {})
             })
           )
+          // Only push sets that are new or have changed content (offline edits)
+          const remoteSets = new Map(
+            (remoteExMap.get(ex.id)?.sets || []).map(s => [s.id, s])
+          )
           for (const set of ex.sets) {
-            syncQueue.enqueue(`set:${set.id}`, () =>
-              supabase!.from('sets').upsert({
-                id: set.id, user_id: userId, exercise_id: ex.id,
-                date: set.date, weight: set.weight, reps: set.reps,
-                estimated_1rm: set.estimated1RM
-              })
-            )
+            const remote = remoteSets.get(set.id)
+            const needsPush = !remote
+              || remote.weight !== set.weight
+              || remote.reps !== set.reps
+              || remote.date !== set.date
+            if (needsPush) {
+              syncQueue.enqueue(`set:${set.id}`, () =>
+                supabase!.from('sets').upsert({
+                  id: set.id, user_id: userId, exercise_id: ex.id,
+                  date: set.date, weight: set.weight, reps: set.reps,
+                  estimated_1rm: set.estimated1RM
+                })
+              )
+            }
           }
         }
       }
