@@ -98,7 +98,7 @@ const bonusLabel = computed(() => {
 })
 
 function getPreview(id: ThemeId) {
-  return THEME_PREVIEWS[id]?.[props.resolvedMode] || THEME_PREVIEWS[id]?.dark || { accent: '#888', bg: '#222' }
+  return THEME_PREVIEWS[id]?.[props.resolvedMode] || THEME_PREVIEWS[id]?.dark || { accent: 'var(--text-secondary)', bg: 'var(--bg-primary)' }
 }
 
 function selectStarter(id: ThemeId) {

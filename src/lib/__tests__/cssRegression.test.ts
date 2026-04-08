@@ -349,4 +349,61 @@ describe('CSS regression tests', () => {
       }
     })
   })
+
+  describe('no hardcoded colors in component rules (LIFT-279)', () => {
+    // Matches hex colors (#xxx, #xxxx, #xxxxxx, #xxxxxxxx) in CSS property values.
+    // Excludes: theme token definitions ([data-theme=...][data-mode=...] blocks),
+    // comments, SVG/image data URIs, and :root/:where selectors.
+    const HEX_COLOR = /#[0-9a-fA-F]{3,8}\b/
+
+    // Lines that are legitimate exceptions (theme token definitions, comments, etc.)
+    function isException(line: string, lineIndex: number): boolean {
+      const trimmed = line.trim()
+      // Comment lines
+      if (trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('//')) return true
+      // CSS custom property definitions (theme tokens)
+      if (trimmed.startsWith('--')) return true
+      // Data URIs, SVG references, background-image with url()
+      if (trimmed.includes('url(')) return true
+      // Gradient mesh definitions (theme-specific decorative gradients)
+      if (trimmed.includes('radial-gradient') || trimmed.includes('linear-gradient')) return true
+      // Shadow definitions using rgba/hsla (not hex)
+      if (!HEX_COLOR.test(trimmed)) return true
+      return false
+    }
+
+    // Check if a line is inside a theme token block ([data-theme=...][data-mode=...])
+    function isInThemeBlock(lineIndex: number, lines: string[]): boolean {
+      // Walk backwards to find the nearest selector
+      for (let i = lineIndex - 1; i >= 0; i--) {
+        const l = lines[i].trim()
+        if (l.includes('[data-theme=') && l.includes('[data-mode=')) return true
+        // If we hit a closing brace without finding a theme selector, we're not in a theme block
+        if (l === '}') return false
+      }
+      return false
+    }
+
+    it('index.css component rules use only CSS custom properties for colors', () => {
+      const lines = css.split('\n')
+      const violations: { line: number; text: string }[] = []
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        if (isException(line, i)) continue
+        if (isInThemeBlock(i, lines)) continue
+        // Only check color-related properties
+        const trimmed = line.trim()
+        if (!/^\s*(color|background|border|border-color|border-bottom-color|border-top-color|border-left-color|border-right-color|outline-color|box-shadow)\s*:/.test(line)) continue
+        if (HEX_COLOR.test(trimmed)) {
+          violations.push({ line: i + 1, text: trimmed })
+        }
+      }
+
+      if (violations.length > 0) {
+        const report = violations.map(v => `  L${v.line}: ${v.text}`).join('\n')
+        expect.fail(`Found ${violations.length} hardcoded color(s) — use CSS custom properties instead:\n${report}`)
+      }
+    })
+  })
 })
