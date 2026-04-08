@@ -38,4 +38,4 @@ app.config.errorHandler = (err, _instance, info) => {
   logError(err, { vueInfo: info })
 }
 
-app.mount('#app');
+app.mount('#app')
