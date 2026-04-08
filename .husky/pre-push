@@ -1,4 +1,7 @@
 #!/bin/sh
+# Ensure system binaries are in PATH (sysctl lives in /usr/sbin on macOS)
+export PATH="/usr/sbin:/sbin:$PATH"
+
 # Ensure branch is rebased on latest master before pushing
 BRANCH=$(git branch --show-current 2>/dev/null)
 if [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ]; then
