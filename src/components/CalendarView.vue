@@ -50,7 +50,13 @@
             calCellHasWork: cell.exercises.length > 0 && cell.inMonth,
             calCellSelected: selectedDay === cell.dateStr && cell.inMonth
           }"
+          :role="cell.inMonth ? 'button' : undefined"
+          :tabindex="cell.inMonth ? 0 : -1"
+          :aria-label="cell.inMonth ? cellAriaLabel(cell) : undefined"
+          :aria-pressed="cell.inMonth ? selectedDay === cell.dateStr : undefined"
           @click="cell.inMonth && toggleDay(cell.dateStr)"
+          @keydown.enter.prevent="cell.inMonth && toggleDay(cell.dateStr)"
+          @keydown.space.prevent="cell.inMonth && toggleDay(cell.dateStr)"
         >
           <span class="calCellNum">{{ cell.day }}</span>
           <span v-if="cell.inMonth && hasPR(cell.dateStr)" class="calCellPR">🏆</span>
@@ -486,6 +492,19 @@ function next() {
 
 function toggleDay(dateStr: string) {
   selectedDay.value = selectedDay.value === dateStr ? null : dateStr
+}
+
+function cellAriaLabel(cell: { dateStr: string; exercises: string[]; isToday: boolean }): string {
+  const date = new Date(cell.dateStr + 'T12:00:00')
+  const dateLabel = date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  const parts = [dateLabel]
+  if (cell.isToday) parts.push('today')
+  if (cell.exercises.length > 0) {
+    parts.push(`${cell.exercises.length} exercise${cell.exercises.length !== 1 ? 's' : ''}`)
+  }
+  if (hasPR(cell.dateStr)) parts.push('PR')
+  if (selectedDay.value === cell.dateStr) parts.push('selected')
+  return parts.join(', ')
 }
 
 // Monthly grid cells

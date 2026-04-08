@@ -472,11 +472,9 @@ describe('CalendarView', () => {
       exercises = makeExercises([dateStr])
 
       const wrapper = mountCalendar()
-      // Select today, then click "+ Log" to open exercise picker
       await wrapper.find('.calCellToday').trigger('click')
       await wrapper.find('.calLogBtn').trigger('click')
 
-      // The picker is Teleport-stubbed so it renders inline
       const dialog = wrapper.find('[role="dialog"]')
       expect(dialog.exists()).toBe(true)
       expect(dialog.attributes('aria-labelledby')).toBe('exercise-picker-title')
@@ -510,6 +508,72 @@ describe('CalendarView', () => {
 
       await exRow.trigger('click')
       expect(exRow.attributes('aria-expanded')).toBe('true')
+    })
+
+    it('in-month calendar cells have role="button" and tabindex="0"', () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      expect(inMonthCells.length).toBeGreaterThan(0)
+      for (const cell of inMonthCells) {
+        expect(cell.attributes('role')).toBe('button')
+        expect(cell.attributes('tabindex')).toBe('0')
+      }
+    })
+
+    it('other-month cells do not have role="button"', () => {
+      const wrapper = mountCalendar()
+      const otherCells = wrapper.findAll('.calCellOtherMonth')
+      if (otherCells.length > 0) {
+        for (const cell of otherCells) {
+          expect(cell.attributes('role')).toBeUndefined()
+          expect(cell.attributes('tabindex')).toBe('-1')
+        }
+      }
+    })
+
+    it('in-month calendar cells have descriptive aria-labels', () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      const todayCell = wrapper.find('.calCellToday')
+      const label = todayCell.attributes('aria-label')!
+      expect(label).toBeTruthy()
+      expect(label).toContain('today')
+      expect(label).toContain('1 exercise')
+    })
+
+    it('calendar cells with PR show "PR" in aria-label', () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+
+      const wrapper = mountCalendar()
+      const todayCell = wrapper.find('.calCellToday')
+      const label = todayCell.attributes('aria-label')!
+      expect(label).toContain('PR')
+    })
+
+    it('selected calendar cell has aria-pressed="true"', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('click')
+      expect(inMonthCells[0].attributes('aria-pressed')).toBe('true')
+    })
+
+    it('calendar cells respond to Enter key', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('keydown', { key: 'Enter' })
+      expect(wrapper.find('.calCellSelected').exists()).toBe(true)
+    })
+
+    it('calendar cells respond to Space key', async () => {
+      const wrapper = mountCalendar()
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('keydown', { key: ' ' })
+      expect(wrapper.find('.calCellSelected').exists()).toBe(true)
     })
   })
 })
