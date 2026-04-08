@@ -260,7 +260,11 @@ export const useProgressionStore = defineStore('progression', {
         .eq('user_id', this._userId)
         .single()
 
-      if (!data) return
+      if (!data) {
+        // No row yet — push local state to create the initial row
+        this._syncToSupabase()
+        return
+      }
 
       // Merge remote state — remote wins for simple scalar fields
       this.streakWeeks = (data.streak_weeks as number) ?? this.streakWeeks
