@@ -20,6 +20,9 @@ vi.mock('../../stores/bodyweight', () => ({
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({ init: vi.fn() })
 }))
+vi.mock('../../stores/progression', () => ({
+  useProgressionStore: () => ({ init: vi.fn() })
+}))
 vi.mock('../../lib/migrate', () => ({
   migrateLocalStorageToSupabase: vi.fn()
 }))
