@@ -42,4 +42,22 @@ describe('SkeletonLoader', () => {
     const wrapper = mount(SkeletonLoader, { props: { rows: 1 } })
     expect(wrapper.findAll('.skeletonRow')).toHaveLength(1)
   })
+
+  it('has role="status" for screen reader announcement', () => {
+    const wrapper = mount(SkeletonLoader)
+    const card = wrapper.find('.skeletonCard')
+    expect(card.attributes('role')).toBe('status')
+  })
+
+  it('has aria-label describing the loading state', () => {
+    const wrapper = mount(SkeletonLoader)
+    const card = wrapper.find('.skeletonCard')
+    expect(card.attributes('aria-label')).toBe('Loading content')
+  })
+
+  it('has aria-busy="true" to indicate loading', () => {
+    const wrapper = mount(SkeletonLoader)
+    const card = wrapper.find('.skeletonCard')
+    expect(card.attributes('aria-busy')).toBe('true')
+  })
 })
