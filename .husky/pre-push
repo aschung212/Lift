@@ -14,12 +14,3 @@ if [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ]; then
     fi
   fi
 fi
-
-# Gemini 3.1 Pro review before push — reviews full branch diff
-if [ -f "$HOME/.claude/scripts/review-router.sh" ]; then
-  echo ""
-  echo "═══ Pre-push review ═══"
-  bash "$HOME/.claude/scripts/review-router.sh" push 2>&1 || true
-  echo "═══════════════════════"
-  echo ""
-fi
