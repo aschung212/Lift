@@ -55,13 +55,23 @@ function epley(weight: number, reps: number): number {
 /**
  * Deduplicate sets within an exercise by content (day + weight + reps).
  * Uses day-level date (YYYY-MM-DD) so jitter timestamps don't prevent dedup.
- * Returns the deduplicated sets and the IDs of removed duplicates.
+ *
+ * Only deduplicates sets with end-of-day timestamps (T23:59:*) — these are
+ * from backdated entries or sync artifacts. Real-time timestamps (e.g.,
+ * T14:30:22) are always kept, even if they share weight/reps on the same day,
+ * because the user may legitimately log multiple identical sets.
  */
 export function deduplicateSets(sets: WorkoutSet[]): { unique: WorkoutSet[]; removedIds: string[] } {
   const seen = new Map<string, string>()
   const unique: WorkoutSet[] = []
   const removedIds: string[] = []
   for (const set of sets) {
+    const isEndOfDay = set.date.includes('T23:59:')
+    if (!isEndOfDay) {
+      // Real-time timestamp — always keep (legitimate separate set)
+      unique.push(set)
+      continue
+    }
     const day = set.date.slice(0, 10) // YYYY-MM-DD
     const key = `${day}|${set.weight}|${set.reps}`
     if (!seen.has(key)) {
@@ -386,9 +396,17 @@ export const useWorkoutStore = defineStore('workout', {
               ...(ex.inputMode ? { input_mode: ex.inputMode } : {}), ...(ex.barWeight != null ? { bar_weight: ex.barWeight } : {})
             })
           )
-          const remoteSetIds = new Set(remoteExMap.get(ex.id)?.sets.map(s => s.id) || [])
+          // Only push sets that are new or have changed content (offline edits)
+          const remoteSets = new Map(
+            (remoteExMap.get(ex.id)?.sets || []).map(s => [s.id, s])
+          )
           for (const set of ex.sets) {
-            if (!remoteSetIds.has(set.id)) {
+            const remote = remoteSets.get(set.id)
+            const needsPush = !remote
+              || remote.weight !== set.weight
+              || remote.reps !== set.reps
+              || remote.date !== set.date
+            if (needsPush) {
               syncQueue.enqueue(`set:${set.id}`, () =>
                 supabase!.from('sets').upsert({
                   id: set.id, user_id: userId, exercise_id: ex.id,

@@ -682,15 +682,28 @@ describe('workout store', () => {
       expect(removedIds).toHaveLength(0)
     })
 
-    it('handles mixed real-time and end-of-day timestamps', () => {
+    it('keeps real-time timestamps even if same content on same day', () => {
       const sets = [
         makeSet('e1', '2026-04-04T14:30:00.000Z', 225, 10), // real-time
-        makeSet('e2', '2026-04-04T23:59:42.317Z', 225, 10), // jitter
-        makeSet('e3', '2026-04-04T23:59:59.000Z', 225, 10), // old fixed
+        makeSet('e2', '2026-04-04T14:45:00.000Z', 225, 10), // real-time
+        makeSet('e3', '2026-04-04T15:00:00.000Z', 225, 10), // real-time
       ]
       const { unique, removedIds } = deduplicateSets(sets)
-      expect(unique).toHaveLength(1)
-      expect(removedIds).toHaveLength(2)
+      expect(unique).toHaveLength(3)
+      expect(removedIds).toHaveLength(0)
+    })
+
+    it('deduplicates end-of-day timestamps but keeps real-time ones', () => {
+      const sets = [
+        makeSet('f1', '2026-04-04T14:30:00.000Z', 225, 10), // real-time — keep
+        makeSet('f2', '2026-04-04T23:59:42.317Z', 225, 10), // jitter — keep (first EOD)
+        makeSet('f3', '2026-04-04T23:59:59.000Z', 225, 10), // old fixed — dedup
+      ]
+      const { unique, removedIds } = deduplicateSets(sets)
+      expect(unique).toHaveLength(2)
+      expect(unique[0].id).toBe('f1')
+      expect(unique[1].id).toBe('f2')
+      expect(removedIds).toEqual(['f3'])
     })
   })
 
