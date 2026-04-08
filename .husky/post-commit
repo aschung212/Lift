@@ -1,0 +1,21 @@
+#!/bin/sh
+# Gemini 3.1 Pro review after commit — reviews full branch diff
+# Skips: master/main commits, rebases, amends, merges
+
+BRANCH=$(git branch --show-current 2>/dev/null)
+
+# Skip if on master/main (production commits don't need branch review)
+case "$BRANCH" in master|main) exit 0 ;; esac
+
+# Skip if rebasing or merging
+[ -d "$(git rev-parse --git-dir)/rebase-merge" ] && exit 0
+[ -d "$(git rev-parse --git-dir)/rebase-apply" ] && exit 0
+[ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ] && exit 0
+
+if [ -f "$HOME/.claude/scripts/review-router.sh" ]; then
+  echo ""
+  echo "═══ Post-commit review ═══"
+  bash "$HOME/.claude/scripts/review-router.sh" commit 2>&1 || true
+  echo "══════════════════════════"
+  echo ""
+fi
