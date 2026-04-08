@@ -2455,13 +2455,32 @@ function confirmDeleteTag(tag: string) {
 
 
 // ── Focus traps for v-if modals ─────────────────────────────────
+// iOS Safari scrolls the entire viewport when an input inside a fixed overlay
+// gets focus. Instead of fighting the scroll (which causes a visible bounce),
+// compensate instantly by translating the overlay to track the visual viewport.
+// The overlay stays visually in place even as iOS moves the layout viewport.
+let overlayEl: HTMLElement | null = null
+
+function compensateViewportScroll() {
+  const vv = window.visualViewport
+  if (!vv || !overlayEl) return
+  overlayEl.style.transform = `translateY(${vv.offsetTop}px)`
+}
+
 watch(showModal, async (open) => {
   if (open) {
     await nextTick()
+    overlayEl = document.querySelector<HTMLElement>('.repMaxOverlay')
     const el = document.querySelector<HTMLElement>('.repMaxModal')
     if (el) logModalFocus.activate(el)
+    window.visualViewport?.addEventListener('scroll', compensateViewportScroll)
+    window.visualViewport?.addEventListener('resize', compensateViewportScroll)
   } else {
     logModalFocus.deactivate()
+    window.visualViewport?.removeEventListener('scroll', compensateViewportScroll)
+    window.visualViewport?.removeEventListener('resize', compensateViewportScroll)
+    if (overlayEl) overlayEl.style.transform = ''
+    overlayEl = null
   }
 })
 
