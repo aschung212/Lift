@@ -2094,6 +2094,9 @@ const prTargetReps = computed<number | null>(() => {
   // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
   if (Math.round(wLbs) > pr) return 0 // any rep beats it (1RM at this weight already exceeds PR)
   const needed = Math.ceil(30 * ((pr + 0.5) / wLbs - 1))
+  // Epley at reps=1 uses weight directly (1RM = weight), not the formula.
+  // If the formula says 1 rep but weight doesn't beat PR, need at least 2 reps.
+  if (needed <= 1 && Math.round(wLbs) <= pr) return 2
   return needed
 })
 
