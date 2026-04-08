@@ -988,15 +988,17 @@ describe('WorkoutTracker', () => {
   })
 
   describe('timeline view', () => {
+    // Uses endOfDayISO-style timestamps (23:59:ss.msZ) to match production behavior.
+    // Within a day, sets from different exercises preserve insertion order (Bench before Squat).
     const TIMELINE_EXERCISES: Exercise[] = [
       {
         id: 'ex-1',
         name: 'Bench Press',
         tags: ['Chest'],
         sets: [
-          { id: 's-1', date: '2026-03-10T10:00:00', weight: 185, reps: 5, estimated1RM: 216 },
-          { id: 's-2', date: '2026-03-10T10:05:00', weight: 185, reps: 4, estimated1RM: 208 },
-          { id: 's-3', date: '2026-03-12T09:00:00', weight: 195, reps: 5, estimated1RM: 228 },
+          { id: 's-1', date: '2026-03-10T23:59:10.100Z', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's-2', date: '2026-03-10T23:59:20.200Z', weight: 185, reps: 4, estimated1RM: 208 },
+          { id: 's-3', date: '2026-03-12T23:59:05.300Z', weight: 195, reps: 5, estimated1RM: 228 },
         ]
       },
       {
@@ -1004,8 +1006,8 @@ describe('WorkoutTracker', () => {
         name: 'Squat',
         tags: ['Legs'],
         sets: [
-          { id: 's-4', date: '2026-03-10T11:00:00', weight: 225, reps: 5, estimated1RM: 263 },
-          { id: 's-5', date: '2026-03-12T10:00:00', weight: 235, reps: 3, estimated1RM: 257 },
+          { id: 's-4', date: '2026-03-10T23:59:30.400Z', weight: 225, reps: 5, estimated1RM: 263 },
+          { id: 's-5', date: '2026-03-12T23:59:45.500Z', weight: 235, reps: 3, estimated1RM: 257 },
         ]
       },
     ]
@@ -1025,9 +1027,10 @@ describe('WorkoutTracker', () => {
       const wrapper = await mountTimeline()
       const rows = wrapper.findAll('.wtTimelineRow')
       expect(rows.length).toBe(5)
-      // Mar 12 sets come first (Squat at 10:00, Bench at 09:00 — sorted desc by ISO string)
-      expect(rows[0].text()).toContain('235')
-      expect(rows[1].text()).toContain('195')
+      // Mar 12 sets come first. Within a day, insertion order is preserved
+      // (Bench iterated before Squat), so Bench 195 then Squat 235
+      expect(rows[0].text()).toContain('195')
+      expect(rows[1].text()).toContain('235')
     })
 
     it('groups sets by date with date headers', async () => {
@@ -1040,20 +1043,20 @@ describe('WorkoutTracker', () => {
       const wrapper = await mountTimeline()
       const names = wrapper.findAll('.wtTimelineExName')
       expect(names.length).toBe(5)
-      // Mar 12 sets: Squat (10:00) then Bench (09:00) — desc order
-      expect(names[0].text()).toBe('Squat')
-      expect(names[1].text()).toBe('Bench Press')
+      // Mar 12 sets: Bench then Squat (insertion order preserved within day)
+      expect(names[0].text()).toBe('Bench Press')
+      expect(names[1].text()).toBe('Squat')
     })
 
     it('displays weight × reps and estimated 1RM for each set', async () => {
       const wrapper = await mountTimeline()
       const details = wrapper.findAll('.wtTimelineSetDetail')
-      // First entry is Squat 235×3 (latest by time)
-      expect(details[0].text()).toContain('235')
-      expect(details[0].text()).toContain('3')
+      // First entry is Bench 195×5 (insertion order within day)
+      expect(details[0].text()).toContain('195')
+      expect(details[0].text()).toContain('5')
 
       const e1rms = wrapper.findAll('.wtTimelineE1RM')
-      expect(e1rms[0].text()).toContain('257')
+      expect(e1rms[0].text()).toContain('228')
     })
 
     it('shows empty message when no sets exist', async () => {

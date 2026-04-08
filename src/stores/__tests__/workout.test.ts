@@ -714,5 +714,20 @@ describe('workout store', () => {
       expect(removed).toHaveLength(1)
       expect(removed[0].id).toBe('x2')
     })
+
+    it('sorts merged sets chronologically (regression: out-of-order after dedup)', () => {
+      const exercises: Exercise[] = [
+        { id: 'x1', name: 'Bench', tags: [], sets: [
+          { id: 's1', date: '2026-04-02T23:59:59.000Z', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's3', date: '2026-04-04T23:59:59.000Z', weight: 195, reps: 5, estimated1RM: 228 },
+        ]},
+        { id: 'x2', name: 'bench', tags: [], sets: [
+          { id: 's2', date: '2026-04-03T23:59:59.000Z', weight: 190, reps: 5, estimated1RM: 222 },
+        ]},
+      ]
+      const { exercises: result } = deduplicateByName(exercises)
+      expect(result).toHaveLength(1)
+      expect(result[0].sets.map(s => s.id)).toEqual(['s1', 's2', 's3'])
+    })
   })
 })

@@ -122,6 +122,11 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
     if (primary.sample && group.some(ex => !ex.sample)) {
       delete primary.sample
     }
+    // Re-sort merged sets by day. Use only the date portion (YYYY-MM-DD)
+    // because endOfDayISO adds random seconds/ms jitter — sorting by full
+    // timestamp would randomly shuffle same-day sets. JS sort is stable,
+    // so same-day sets preserve their array insertion order (= logged order).
+    primary.sets.sort((a, b) => a.date.slice(0, 10).localeCompare(b.date.slice(0, 10)))
     // Merge tags from duplicates
     const tagSet = new Set(primary.tags)
     for (let i = 1; i < group.length; i++) {
@@ -274,11 +279,16 @@ export const useWorkoutStore = defineStore('workout', {
         if (localEx && remoteEx) {
           const setIds = new Set(ex.sets.map(s => s.id))
           const otherSets = (ex === localEx || ex.updated_at === localEx.updated_at) ? remoteEx.sets : localEx.sets
+          let merged = false
           for (const set of otherSets) {
             if (!setIds.has(set.id) && !isTombstoned('sets', set.id)) {
               ex.sets.push(set)
               setIds.add(set.id)
+              merged = true
             }
+          }
+          if (merged) {
+            ex.sets.sort((a, b) => a.date.slice(0, 10).localeCompare(b.date.slice(0, 10)))
           }
         }
       }
