@@ -1,4 +1,17 @@
 #!/bin/sh
+# Ensure branch is rebased on latest master before pushing
+BRANCH=$(git branch --show-current 2>/dev/null)
+if [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ]; then
+  git fetch origin master --quiet
+  if ! git merge-base --is-ancestor origin/master HEAD; then
+    echo "Branch is behind master. Attempting rebase..."
+    if ! git rebase origin/master; then
+      git rebase --abort
+      echo "Rebase conflict — pushing as-is. PR will show conflicts on GitHub."
+    fi
+  fi
+fi
+
 # Gemini 3.1 Pro review before push — reviews full branch diff
 if [ -f "$HOME/.claude/scripts/review-router.sh" ]; then
   echo ""
