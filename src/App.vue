@@ -1208,8 +1208,7 @@ function handleStarterRevertPreview() {
 function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
   revertPreview()
   starterPickerVisible.value = false
-  progressionStore.weeklyTarget = weeklyGoal
-  progressionStore.setStarterTheme(themeId)
+  progressionStore.setStarterTheme(themeId, weeklyGoal)
   currentTheme.value = themeId
   runMigrationIfNeeded()
   enforceThemeLock()
@@ -1229,16 +1228,42 @@ function handleStarterSkip() {
   catchUpStreaks()
 }
 
-/** Evaluate missed weeks and show milestone toasts. */
-function catchUpStreaks() {
-  const streakBefore = progressionStore.streakWeeks
-  // Build setId→date map so evaluatePendingWeeks can compute weekly XP
-  const setIdToDate: Record<string, string> = {}
+/** Build setId→date map from workout store for streak evaluation. */
+function buildSetIdToDate(): Record<string, string> {
+  const map: Record<string, string> = {}
   for (const exercise of workoutStoreForOnboarding.exercises) {
     for (const set of exercise.sets) {
-      setIdToDate[set.id] = set.date.slice(0, 10)
+      map[set.id] = set.date.slice(0, 10)
     }
   }
+  return map
+}
+
+/** One-time: apply pending target and re-evaluate all streak history.
+ *  Fixes data corrupted by the Supabase sync bug where weeklyTarget
+ *  was restored to the default (3) instead of the user's chosen value. */
+function applyStreakTargetCorrection() {
+  const MIGRATION_KEY = 'streak-target-correction-v1'
+  if (localStorage.getItem(MIGRATION_KEY)) return
+  if (!progressionStore.progressionEnabled) return
+  if (progressionStore.pendingTargetChange === null) return
+
+  // The pending change IS the user's intended target — apply it now
+  progressionStore.weeklyTarget = progressionStore.pendingTargetChange
+  progressionStore.pendingTargetChange = null
+  progressionStore.reEvaluateStreaks(
+    workoutStoreForOnboarding.workoutDates,
+    new Date(),
+    buildSetIdToDate()
+  )
+  localStorage.setItem(MIGRATION_KEY, new Date().toISOString())
+}
+
+/** Evaluate missed weeks and show milestone toasts. */
+function catchUpStreaks() {
+  applyStreakTargetCorrection()
+  const streakBefore = progressionStore.streakWeeks
+  const setIdToDate = buildSetIdToDate()
   progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates, new Date(), setIdToDate)
   const streakAfter = progressionStore.streakWeeks
 

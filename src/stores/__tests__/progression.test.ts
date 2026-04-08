@@ -354,6 +354,25 @@ describe('progression store', () => {
       store.setStarterTheme('fire')
       expect(store.starterTheme).toBe('water')
     })
+
+    it('sets weeklyTarget atomically with starter theme (prevents stale default sync)', () => {
+      const store = useProgressionStore()
+      expect(store.weeklyTarget).toBe(3) // default
+      store.setStarterTheme('fire', 5)
+      expect(store.weeklyTarget).toBe(5)
+      expect(store.starterTheme).toBe('fire')
+      expect(store.progressionEnabled).toBe(true)
+      // Verify it was persisted
+      const saved = JSON.parse(localStorage.getItem('user-progression')!)
+      expect(saved.weeklyTarget).toBe(5)
+    })
+
+    it('does not change weeklyTarget when not provided', () => {
+      const store = useProgressionStore()
+      store.weeklyTarget = 4
+      store.setStarterTheme('water')
+      expect(store.weeklyTarget).toBe(4)
+    })
   })
 
   // ── setShowProgression ────────────────────────────────────────
@@ -640,6 +659,53 @@ describe('progression store', () => {
       const dates = ['2026-03-23', '2026-03-25', '2026-03-27']
       store.evaluatePendingWeeks(dates, new Date('2026-03-30T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(1)
+    })
+  })
+
+  // ── reEvaluateStreaks ──────────────────────────────────────────
+
+  describe('reEvaluateStreaks', () => {
+    it('re-evaluates all history using current weeklyTarget (regression: stale target from Supabase)', () => {
+      const store = useProgressionStore()
+      // Simulate: streak was originally evaluated with target 3
+      store.weeklyTarget = 3
+      const dates = ['2026-03-03', '2026-03-04', '2026-03-05',  // week 1: 3 days
+                     '2026-03-10', '2026-03-11', '2026-03-12',  // week 2: 3 days
+                     '2026-03-17', '2026-03-18', '2026-03-19']  // week 3: 3 days
+      store.evaluatePendingWeeks(dates, new Date('2026-03-24T10:00:00Z'))
+      expect(store.streakWeeks).toBe(3)
+      expect(store.streakHistory).toHaveLength(3)
+
+      // Now fix the target to 4 and re-evaluate — all weeks had only 3 days, so streak breaks
+      store.weeklyTarget = 4
+      store.reEvaluateStreaks(dates, new Date('2026-03-24T10:00:00Z'))
+      expect(store.streakWeeks).toBe(0)
+      expect(store.streakHistory).toHaveLength(3)
+      expect(store.streakHistory.every(h => h.weeklyTarget === 4)).toBe(true)
+    })
+
+    it('preserves streak for weeks that meet the corrected target', () => {
+      const store = useProgressionStore()
+      store.weeklyTarget = 3
+      const dates = ['2026-03-03', '2026-03-04', '2026-03-05', '2026-03-06',  // week 1: 4 days
+                     '2026-03-10', '2026-03-11', '2026-03-12', '2026-03-13',  // week 2: 4 days
+                     '2026-03-17', '2026-03-18', '2026-03-19', '2026-03-20']  // week 3: 4 days
+      store.evaluatePendingWeeks(dates, new Date('2026-03-24T10:00:00Z'))
+      expect(store.streakWeeks).toBe(3)
+
+      // Re-evaluate at target 4 — still met
+      store.weeklyTarget = 4
+      store.reEvaluateStreaks(dates, new Date('2026-03-24T10:00:00Z'))
+      expect(store.streakWeeks).toBe(3)
+    })
+
+    it('clears pending target change before re-evaluating', () => {
+      const store = useProgressionStore()
+      store.weeklyTarget = 3
+      store.pendingTargetChange = 5
+      const dates = ['2026-03-03', '2026-03-04', '2026-03-05']
+      store.reEvaluateStreaks(dates, new Date('2026-03-10T10:00:00Z'))
+      expect(store.pendingTargetChange).toBeNull()
     })
   })
 

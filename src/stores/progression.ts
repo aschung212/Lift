@@ -467,6 +467,17 @@ export const useProgressionStore = defineStore('progression', {
       }
     },
 
+    /**
+     * Re-evaluate all streak history from scratch using the current weeklyTarget.
+     * Use when the target was corrupted (e.g., Supabase restored a stale default).
+     */
+    reEvaluateStreaks(setDates: string[], now: Date = new Date(), setIdToDate?: Record<string, string>) {
+      this.streakHistory = []
+      this.streakWeeks = 0
+      this.pendingTargetChange = null
+      this.evaluatePendingWeeks(setDates, now, setIdToDate)
+    },
+
     // --- Theme Actions ---
 
     checkUnlocks(): ThemeId[] {
@@ -505,10 +516,13 @@ export const useProgressionStore = defineStore('progression', {
       return newlyUnlocked
     },
 
-    setStarterTheme(themeId: ThemeId) {
+    setStarterTheme(themeId: ThemeId, weeklyTarget?: number) {
       if (this.starterTheme !== null) return // one-time only
       this.starterTheme = themeId
       this.progressionEnabled = true
+      if (weeklyTarget !== undefined) {
+        this.weeklyTarget = weeklyTarget
+      }
       if (!hasTheme(this.unlockedThemes, themeId)) {
         addTheme(this.unlockedThemes, themeId)
       }
