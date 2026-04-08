@@ -74,7 +74,12 @@
             :class="['wtDragHandle', { wtDragHandleDisabled: activeTagFilters.length > 0 }]"
             @touchstart.prevent="activeTagFilters.length === 0 && onDragStart(index, $event)"
             @mousedown="activeTagFilters.length === 0 && onDragStart(index, $event)"
+            role="button"
+            tabindex="0"
+            :aria-disabled="activeTagFilters.length > 0"
             aria-label="Drag to reorder"
+            @keydown.space.prevent="activeTagFilters.length === 0 && onDragStart(index, $event)"
+            @keydown.enter.prevent="activeTagFilters.length === 0 && onDragStart(index, $event)"
           >⠿</span>
           <button
             class="wtExerciseRow"
@@ -745,8 +750,8 @@
   <!-- Exercise Picker (timeline + Log Set) -->
   <Teleport to="body">
     <div v-if="timelineLogPicking" class="repMaxOverlay" @click.self="timelineLogPicking = false" @keydown.escape="timelineLogPicking = false">
-      <div class="repMaxModal" role="dialog" aria-modal="true">
-        <h2>Choose Exercise</h2>
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="exercisePickerTitle">
+        <h2 id="exercisePickerTitle">Choose Exercise</h2>
         <div class="wtExPickerList">
           <button
             v-for="ex in store.exercises"
