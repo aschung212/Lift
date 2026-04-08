@@ -167,6 +167,12 @@ function load(): ProgressionState {
     const parsed = { ...defaultState(), ...JSON.parse(raw) }
     parsed.unlockedThemes = migrateUnlockedThemes(parsed.unlockedThemes)
     if (!parsed.epoch) parsed.epoch = 1
+    // Defensive: if starter was picked and XP earned, the trial is over.
+    // Only infer starterConfirmed — do NOT force progressionEnabled, as the
+    // user may have intentionally disabled progression while keeping their data.
+    if (parsed.starterTheme && parsed.totalXP > 0) {
+      parsed.starterConfirmed = true
+    }
     return parsed
   } catch (e) {
     logWarn('Corrupt progression data in localStorage, using defaults', { error: String(e) })
@@ -217,11 +223,20 @@ export const useProgressionStore = defineStore('progression', {
       this.weeklyTarget = (data.weekly_target as number) ?? this.weeklyTarget
       this.pendingTargetChange = (data.pending_target_change as number | null) ?? this.pendingTargetChange
       this.showProgression = (data.show_progression as boolean) ?? this.showProgression
+      this.progressionEnabled = (data.progression_enabled as boolean) ?? this.progressionEnabled
       this.unlockedThemes = migrateUnlockedThemes((data.unlocked_themes as unknown) ?? this.unlockedThemes)
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
+      this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
+      this.epoch = (data.epoch as number) ?? this.epoch
       this.streakHistory = (data.streak_history as StreakWeekEntry[]) ?? this.streakHistory
       this.xpPerSet = (data.xp_per_set as Record<string, number>) ?? this.xpPerSet
       this.bodyweightXPDates = (data.bodyweight_xp_dates as string[]) ?? this.bodyweightXPDates
+      // Defensive: if we have a starter theme and XP, the trial is over.
+      // Handles rows written before starter_confirmed column existed.
+      // Do NOT infer progressionEnabled — user may have disabled it intentionally.
+      if (this.starterTheme && this.totalXP > 0) {
+        this.starterConfirmed = true
+      }
       this._persist()
     },
 
@@ -235,8 +250,11 @@ export const useProgressionStore = defineStore('progression', {
         weekly_target: this.weeklyTarget,
         pending_target_change: this.pendingTargetChange,
         show_progression: this.showProgression,
+        progression_enabled: this.progressionEnabled,
         unlocked_themes: this.unlockedThemes,
         starter_theme: this.starterTheme,
+        starter_confirmed: this.starterConfirmed,
+        epoch: this.epoch,
         streak_history: this.streakHistory,
         xp_per_set: this.xpPerSet,
         bodyweight_xp_dates: this.bodyweightXPDates,

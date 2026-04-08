@@ -52,6 +52,34 @@ describe('progression store', () => {
       // Defaults fill in missing fields
       expect(store.showProgression).toBe(true)
     })
+
+    it('infers starterConfirmed when localStorage has starterTheme + XP (regression: trial mode re-entry)', () => {
+      // Reproduces bug where starterConfirmed was not persisted to Supabase,
+      // so after localStorage eviction + Supabase restore, users with 31K XP
+      // saw "Trying starters" again.
+      localStorage.setItem('user-progression', JSON.stringify({
+        totalXP: 31167,
+        starterTheme: 'fire',
+        starterConfirmed: false,
+        progressionEnabled: false,
+      }))
+      setActivePinia(createPinia())
+      const store = useProgressionStore()
+      expect(store.starterConfirmed).toBe(true)
+      // progressionEnabled is NOT inferred — user may have disabled it intentionally
+      expect(store.progressionEnabled).toBe(false)
+    })
+
+    it('does NOT infer starterConfirmed when no XP has been earned', () => {
+      localStorage.setItem('user-progression', JSON.stringify({
+        totalXP: 0,
+        starterTheme: 'fire',
+        starterConfirmed: false,
+      }))
+      setActivePinia(createPinia())
+      const store = useProgressionStore()
+      expect(store.starterConfirmed).toBe(false)
+    })
   })
 
   // ── logSetXP ──────────────────────────────────────────────────
