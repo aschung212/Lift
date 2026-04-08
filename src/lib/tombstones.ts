@@ -68,6 +68,11 @@ export function isTombstoned(store: string, id: string): boolean {
  * Remove tombstones for IDs that no longer exist in remote data.
  * Only operates on the specified store's tombstones — other stores are untouched.
  */
+/** Reset in-memory cache (for testing only). */
+export function _resetCache(): void {
+  _data = null
+}
+
 export function cleanupTombstones(store: string, remoteIds: Set<string>) {
   const ids = getStoreSet(store)
   if (ids.size === 0) return
