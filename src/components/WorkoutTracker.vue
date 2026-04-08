@@ -867,7 +867,7 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
-import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { useProgressionStore, showXPToast, showUnlockCelebration, queueUnlockCelebrations } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
@@ -945,10 +945,13 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     }
     const newUnlocks = progressionStore.checkUnlocks()
     if (newUnlocks.length > 0) {
-      const theme = THEMES.find(t => t.id === newUnlocks[0])
-      if (theme) {
+      const unlockData = newUnlocks
+        .map(id => THEMES.find(t => t.id === id))
+        .filter((t): t is (typeof THEMES)[number] => !!t)
+        .map(t => ({ themeId: t.id, themeName: t.label }))
+      if (unlockData.length > 0) {
         setTimeout(() => {
-          showUnlockCelebration(theme.id, theme.label)
+          queueUnlockCelebrations(unlockData)
           notifySuccess()
         }, progressionStore.showProgression ? 1500 : 500)
       }
@@ -987,7 +990,7 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     if (mult > 1) parts.push(`${mult}x streak`)
     parts.push(`${xp} XP`)
 
-    showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
+    showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold, isPR || isRepPR)
   }
 }
 

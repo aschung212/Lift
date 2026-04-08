@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
@@ -8,7 +8,7 @@ vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn() }
 }))
 
-import { useProgressionStore, getTrainingDaysInWeek, getUnlockedThemeIds, computeWeekXP } from '../progression'
+import { useProgressionStore, getTrainingDaysInWeek, getUnlockedThemeIds, computeWeekXP, xpToast, showXPToast, unlockCelebration, showUnlockCelebration, queueUnlockCelebrations, dismissUnlockCelebration } from '../progression'
 import type { SetXPEntry } from '../progression'
 import { XP_CONFIG } from '../../lib/xp'
 
@@ -673,6 +673,86 @@ describe('progression store', () => {
       // History records the raw combined (1.0 × 1.1 = 1.1)
       // The applyStreakMultiplier in xp.ts gates on streakCount < 1 and returns baseXP
       expect(lastEntry.combinedMultiplier).toBe(1.1)
+    })
+  })
+
+  // ── XP Toast isPR flag ──────────────────────────────────────────
+
+  describe('XP toast isPR flag', () => {
+    it('defaults isPR to false', () => {
+      showXPToast('test', 50, 1000, 5000)
+      expect(xpToast.isPR).toBe(false)
+      expect(xpToast.visible).toBe(true)
+    })
+
+    it('sets isPR to true when passed', () => {
+      showXPToast('PR! · 150 XP', 50, 1000, 5000, true)
+      expect(xpToast.isPR).toBe(true)
+    })
+
+    it('resets isPR on subsequent non-PR toast', () => {
+      showXPToast('PR!', 50, 1000, 5000, true)
+      expect(xpToast.isPR).toBe(true)
+      showXPToast('Working', 50, 1000, 5000)
+      expect(xpToast.isPR).toBe(false)
+    })
+  })
+
+  // ── Unlock celebration queue ────────────────────────────────────
+
+  describe('unlock celebration queue', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      unlockCelebration.visible = false
+      unlockCelebration.themeId = null
+      unlockCelebration.themeName = ''
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('shows single unlock immediately', () => {
+      queueUnlockCelebrations([{ themeId: 'fire', themeName: 'Fire' }])
+      expect(unlockCelebration.visible).toBe(true)
+      expect(unlockCelebration.themeId).toBe('fire')
+      expect(unlockCelebration.themeName).toBe('Fire')
+    })
+
+    it('queues multiple unlocks and shows them sequentially on dismiss', () => {
+      queueUnlockCelebrations([
+        { themeId: 'fire', themeName: 'Fire' },
+        { themeId: 'water', themeName: 'Water' },
+        { themeId: 'luck', themeName: 'Luck' },
+      ])
+
+      // First unlock shown immediately
+      expect(unlockCelebration.themeId).toBe('fire')
+
+      // Dismiss first → second appears after delay
+      dismissUnlockCelebration()
+      expect(unlockCelebration.visible).toBe(false)
+      vi.advanceTimersByTime(400)
+      expect(unlockCelebration.visible).toBe(true)
+      expect(unlockCelebration.themeId).toBe('water')
+
+      // Dismiss second → third appears after delay
+      dismissUnlockCelebration()
+      vi.advanceTimersByTime(400)
+      expect(unlockCelebration.themeId).toBe('luck')
+
+      // Dismiss third → no more
+      dismissUnlockCelebration()
+      vi.advanceTimersByTime(400)
+      expect(unlockCelebration.visible).toBe(false)
+    })
+
+    it('does not show next unlock if queue is empty', () => {
+      showUnlockCelebration('air', 'Air')
+      expect(unlockCelebration.visible).toBe(true)
+      dismissUnlockCelebration()
+      vi.advanceTimersByTime(500)
+      expect(unlockCelebration.visible).toBe(false)
     })
   })
 })

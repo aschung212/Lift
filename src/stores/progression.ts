@@ -24,14 +24,16 @@ export const xpToast = reactive({
   progressPercent: 0,
   totalXP: 0,
   nextThresholdXP: null as number | null,
+  isPR: false,
   _timer: null as ReturnType<typeof setTimeout> | null,
 })
 
-export function showXPToast(text: string, progressPercent: number, totalXP: number, nextThresholdXP: number | null) {
+export function showXPToast(text: string, progressPercent: number, totalXP: number, nextThresholdXP: number | null, isPR = false) {
   xpToast.text = text
   xpToast.progressPercent = progressPercent
   xpToast.totalXP = totalXP
   xpToast.nextThresholdXP = nextThresholdXP
+  xpToast.isPR = isPR
   xpToast.visible = true
   if (xpToast._timer) clearTimeout(xpToast._timer)
   xpToast._timer = setTimeout(() => { xpToast.visible = false }, 4000)
@@ -44,14 +46,35 @@ export const unlockCelebration = reactive({
   themeName: '',
 })
 
+// Queue for showing multiple unlock celebrations sequentially
+const unlockQueue: Array<{ themeId: ThemeId; themeName: string }> = []
+
 export function showUnlockCelebration(themeId: ThemeId, themeName: string) {
   unlockCelebration.themeId = themeId
   unlockCelebration.themeName = themeName
   unlockCelebration.visible = true
 }
 
+export function queueUnlockCelebrations(unlocks: Array<{ themeId: ThemeId; themeName: string }>) {
+  unlockQueue.push(...unlocks)
+  if (!unlockCelebration.visible && unlockQueue.length > 0) {
+    showNextUnlock()
+  }
+}
+
+function showNextUnlock() {
+  const next = unlockQueue.shift()
+  if (next) {
+    showUnlockCelebration(next.themeId, next.themeName)
+  }
+}
+
 export function dismissUnlockCelebration() {
   unlockCelebration.visible = false
+  // Show next queued unlock after a short delay
+  if (unlockQueue.length > 0) {
+    setTimeout(showNextUnlock, 400)
+  }
 }
 
 export interface ThemeUnlock {

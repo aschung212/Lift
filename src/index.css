@@ -3845,6 +3845,18 @@ html.theme-fading .settingsSheet {
   transition: width 0.3s ease;
 }
 
+.xpGlobalToast--pr {
+  border-color: #FFD700;
+  color: #FFD700;
+  animation: xpPRPulse 1.5s ease-in-out 2;
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
+}
+
+@keyframes xpPRPulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(255, 215, 0, 0.3); }
+  50% { box-shadow: 0 0 24px rgba(255, 215, 0, 0.6); }
+}
+
 .xpGlobalFade-enter-active { transition: opacity 0.2s, transform 0.2s; }
 .xpGlobalFade-leave-active { transition: opacity 0.5s, transform 0.5s; }
 .xpGlobalFade-enter-from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
@@ -3904,6 +3916,44 @@ html.theme-fading .settingsSheet {
   justify-content: center;
   z-index: 10001;
   padding: 24px;
+  overflow: hidden;
+}
+
+/* ─── Confetti particles ────────────────────────────────────────── */
+
+.confettiContainer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  pointer-events: none;
+}
+
+.confettiPiece {
+  position: absolute;
+  opacity: 0;
+  animation: confettiBurst 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  animation-delay: var(--confetti-delay, 0s);
+}
+
+@keyframes confettiBurst {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(0);
+    opacity: 1;
+  }
+  20% {
+    opacity: 1;
+    transform: translate(
+      calc(var(--confetti-x) * 0.3),
+      calc(var(--confetti-y) * 0.3)
+    ) rotate(calc(var(--confetti-rotate) * 0.5)) scale(1.2);
+  }
+  100% {
+    transform: translate(
+      var(--confetti-x),
+      calc(var(--confetti-y) + 80px)
+    ) rotate(var(--confetti-rotate)) scale(0.6);
+    opacity: 0;
+  }
 }
 
 .unlockModal {

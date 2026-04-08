@@ -576,7 +576,7 @@
   <!-- Global XP toast -->
   <Teleport to="body">
     <transition name="xpGlobalFade">
-      <div v-if="xpToast.visible" class="xpGlobalToast" role="status" aria-live="polite">
+      <div v-if="xpToast.visible" :class="['xpGlobalToast', { 'xpGlobalToast--pr': xpToast.isPR }]" role="status" aria-live="polite">
         <div class="xpToastEarned">{{ xpToast.text }}</div>
         <div class="xpToastTotal">{{ xpToast.nextThresholdXP ? `${xpToast.totalXP.toLocaleString()} / ${xpToast.nextThresholdXP.toLocaleString()} XP` : `${xpToast.totalXP.toLocaleString()} XP` }}</div>
         <div v-if="xpToast.nextThresholdXP" class="xpToastProgress">
@@ -696,6 +696,10 @@
   <Teleport to="body">
     <transition name="unlockFade">
       <div v-if="unlockCelebration.visible" class="unlockOverlay" @click.self="dismissUnlockCelebration">
+        <!-- Confetti particles -->
+        <div class="confettiContainer" aria-hidden="true">
+          <span v-for="i in 24" :key="i" class="confettiPiece" :style="confettiStyle(i)"></span>
+        </div>
         <div class="unlockModal" role="alert" aria-live="assertive">
           <div class="unlockIcon">
             <span
@@ -740,7 +744,7 @@ const BodyweightTracker = defineAsyncComponent({
   delay: 100,
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
-import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration, showXPToast } from './stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, queueUnlockCelebrations, showXPToast } from './stores/progression'
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
@@ -1121,6 +1125,27 @@ watch(starterPickerVisible, (visible) => { if (!visible) revertPreview() })
 const STARTER_IDS: ThemeId[] = ['fire', 'water', 'luck']
 const progressionToggleEl = ref<HTMLElement | null>(null)
 
+// Confetti particle styles — deterministic per index for consistent rendering
+const CONFETTI_COLORS = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#FF8C42']
+function confettiStyle(i: number) {
+  const angle = (i / 24) * 360
+  const distance = 120 + (i % 5) * 40
+  const size = 6 + (i % 3) * 3
+  const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length]
+  const delay = (i % 6) * 0.05
+  const rotation = (i * 47) % 360
+  return {
+    '--confetti-x': `${Math.cos(angle * Math.PI / 180) * distance}px`,
+    '--confetti-y': `${Math.sin(angle * Math.PI / 180) * distance}px`,
+    '--confetti-rotate': `${rotation}deg`,
+    '--confetti-delay': `${delay}s`,
+    width: `${size}px`,
+    height: `${size}px`,
+    background: color,
+    borderRadius: i % 3 === 0 ? '50%' : '2px',
+  }
+}
+
 function scrollToProgressionToggle() {
   const el = progressionToggleEl.value
   if (!el) return
@@ -1265,12 +1290,13 @@ function runMigrationIfNeeded() {
       progressionStore._persist()
       // Show celebration for each unlocked theme sequentially
       if (newUnlocks.length > 0) {
-        newUnlocks.forEach((themeId, i) => {
-          const theme = THEMES.find(t => t.id === themeId)
-          if (theme) {
-            setTimeout(() => showUnlockCelebration(theme.id, theme.label), 500 + i * 2500)
-          }
-        })
+        const unlockData = newUnlocks
+          .map(id => THEMES.find(t => t.id === id))
+          .filter((t): t is (typeof THEMES)[number] => !!t)
+          .map(t => ({ themeId: t.id, themeName: t.label }))
+        if (unlockData.length > 0) {
+          setTimeout(() => queueUnlockCelebrations(unlockData), 500)
+        }
       }
     }
     markMigrated()
