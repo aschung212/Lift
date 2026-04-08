@@ -511,19 +511,19 @@
             <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
             <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
           </div>
-          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget" :class="{ repMaxResultTappable: plateMode }" @click="plateMode && loadPRTarget()">
+          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget" :class="{ repMaxResultTappable: plateMode }" :role="plateMode ? 'button' : undefined" :tabindex="plateMode ? 0 : undefined" :aria-label="plateMode ? `Load plates for ${prTargetWeight} ${weightUnit} × ${reps} to beat your estimated 1RM` : undefined" @click="plateMode && loadPRTarget()" @keydown.enter="plateMode && loadPRTarget()" @keydown.space.prevent="plateMode && loadPRTarget()">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
             <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
             <span v-if="plateMode" class="repMaxPersonalBest">Tap to load plates</span>
           </div>
-          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="repsStr = '1'">
+          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget repMaxResultTappable" role="button" tabindex="0" :aria-label="`Set reps to 1 — any rep at ${displayWeight(toLbs(weight!))} ${weightUnit} is a new PR`" @click="repsStr = '1'" @keydown.enter="repsStr = '1'" @keydown.space.prevent="repsStr = '1'">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
             <span class="repMaxPersonalBest">Any rep at this weight is a new PR</span>
             <span class="repMaxPersonalBest">Tap to set reps</span>
           </div>
-          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="loadPRTargetReps">
+          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget repMaxResultTappable" role="button" tabindex="0" :aria-label="`Set reps to ${prTargetReps} to beat your estimated 1RM at ${displayWeight(toLbs(weight!))} ${weightUnit}`" @click="loadPRTargetReps" @keydown.enter="loadPRTargetReps" @keydown.space.prevent="loadPRTargetReps">
             <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>

@@ -3300,6 +3300,11 @@ html.theme-fading .settingsSheet {
 .repMaxResultTappable:active {
   background: var(--accent-subtle);
 }
+.repMaxResultTappable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
 
 .repMaxTargetHint {
   font-size: var(--font-caption1);

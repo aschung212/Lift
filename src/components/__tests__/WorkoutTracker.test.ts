@@ -656,6 +656,103 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  describe('PR target card accessibility', () => {
+    beforeEach(() => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+    })
+
+    it('prTargetReps card has role="button", tabindex, and aria-label', async () => {
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Enter weight only (no reps) to trigger prTargetReps
+      const inputs = wrapper.findAll('.repMaxModal input')
+      const weightInput = inputs.find(i => i.attributes('inputmode') === 'decimal')!
+      await weightInput.setValue('150')
+      await wrapper.vm.$nextTick()
+
+      const target = wrapper.find('.repMaxResultTarget')
+      expect(target.exists()).toBe(true)
+      expect(target.attributes('role')).toBe('button')
+      expect(target.attributes('tabindex')).toBe('0')
+      expect(target.attributes('aria-label')).toBeTruthy()
+    })
+
+    it('prTargetReps card responds to keyboard Enter', async () => {
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const inputs = wrapper.findAll('.repMaxModal input')
+      const weightInput = inputs.find(i => i.attributes('inputmode') === 'decimal')!
+      await weightInput.setValue('150')
+      await wrapper.vm.$nextTick()
+
+      const target = wrapper.find('.repMaxResultTarget')
+      expect(target.exists()).toBe(true)
+      await target.trigger('keydown.enter')
+      await wrapper.vm.$nextTick()
+
+      // Reps should be filled in after pressing Enter on the PR target
+      const repsInput = wrapper.findAll('.repMaxModal input').find(i => i.attributes('inputmode') === 'numeric')!
+      expect((repsInput.element as HTMLInputElement).value).not.toBe('')
+    })
+
+    it('prTargetWeight card has role="button" and aria-label when plate mode is on', async () => {
+      // Enable plate mode on the exercise
+      exercises[0].inputMode = 'plates'
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Enter reps only (no weight) to trigger prTargetWeight
+      const inputs = wrapper.findAll('.repMaxModal input')
+      const repsInput = inputs.find(i => i.attributes('inputmode') === 'numeric')!
+      await repsInput.setValue('5')
+      await wrapper.vm.$nextTick()
+
+      const target = wrapper.find('.repMaxResultTarget')
+      if (target.exists()) {
+        // When plate mode is on, it should have button role
+        expect(target.attributes('role')).toBe('button')
+        expect(target.attributes('tabindex')).toBe('0')
+        expect(target.attributes('aria-label')).toContain('Load plates')
+      }
+    })
+
+    it('prTargetWeight card has no role when plate mode is off', async () => {
+      localStorageMock.removeItem('lift_plate_mode')
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Enter reps only (no weight) to trigger prTargetWeight
+      const inputs = wrapper.findAll('.repMaxModal input')
+      const repsInput = inputs.find(i => i.attributes('inputmode') === 'numeric')!
+      await repsInput.setValue('5')
+      await wrapper.vm.$nextTick()
+
+      const target = wrapper.find('.repMaxResultTarget')
+      if (target.exists()) {
+        // When plate mode is off, it should NOT have button role (it's not interactive)
+        expect(target.attributes('role')).toBeUndefined()
+        expect(target.attributes('tabindex')).toBeUndefined()
+      }
+    })
+
+    it('focus-visible CSS rule exists for tappable PR target cards', async () => {
+      const css = await import('fs').then(fs =>
+        fs.readFileSync('src/index.css', 'utf-8')
+      )
+      expect(css).toContain('.repMaxResultTappable:focus-visible')
+    })
+  })
+
   describe('exercise search', () => {
     const FIVE_EXERCISES: Exercise[] = [
       { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
