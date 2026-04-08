@@ -2149,7 +2149,42 @@ html.theme-fading .settingsSheet {
 .wtExerciseLogBtn:hover  { background: var(--accent-subtle); }
 .wtExerciseLogBtn:active { opacity: 0.75; }
 
-/* ─── Drag handle ──────────────────────────────────────────────────────── */
+/* ─── Reorder controls (drag handle + WCAG 2.5.7 buttons) ─────────────── */
+
+.wtReorderControls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+}
+
+.wtReorderDisabled {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.wtReorderBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 22px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.wtReorderBtn:active {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
 
 .wtDragHandle {
   display: flex;
@@ -2161,7 +2196,6 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
   background: none;
   border: none;
-  border-right: 1px solid var(--border);
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;

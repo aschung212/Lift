@@ -223,6 +223,63 @@ describe('WorkoutTracker', () => {
       const handles = wrapper.findAll('.wtDragHandle')
       expect(handles.length).toBe(3)
     })
+
+    it('renders up/down reorder buttons (WCAG 2.5.7)', () => {
+      const wrapper = mountTracker()
+      const reorderBtns = wrapper.findAll('.wtReorderBtn')
+      // 3 exercises: first has only down, middle has up+down, last has only up = 4 buttons
+      expect(reorderBtns.length).toBe(4)
+    })
+
+    it('first exercise has no move-up button', () => {
+      const wrapper = mountTracker()
+      const items = wrapper.findAll('.wtExerciseItem')
+      const firstItem = items[0]
+      const upBtn = firstItem.findAll('.wtReorderBtn').filter(b =>
+        b.attributes('aria-label')?.includes('up')
+      )
+      expect(upBtn.length).toBe(0)
+    })
+
+    it('last exercise has no move-down button', () => {
+      const wrapper = mountTracker()
+      const items = wrapper.findAll('.wtExerciseItem')
+      const lastItem = items[items.length - 1]
+      const downBtn = lastItem.findAll('.wtReorderBtn').filter(b =>
+        b.attributes('aria-label')?.includes('down')
+      )
+      expect(downBtn.length).toBe(0)
+    })
+
+    it('move-down button calls reorderExercise', async () => {
+      const wrapper = mountTracker()
+      const items = wrapper.findAll('.wtExerciseItem')
+      const firstItem = items[0]
+      const downBtn = firstItem.findAll('.wtReorderBtn').find(b =>
+        b.attributes('aria-label')?.includes('down')
+      )!
+      await downBtn.trigger('click')
+      expect(mockReorderExercise).toHaveBeenCalledWith(0, 1)
+    })
+
+    it('move-up button calls reorderExercise', async () => {
+      const wrapper = mountTracker()
+      const items = wrapper.findAll('.wtExerciseItem')
+      const lastItem = items[items.length - 1]
+      const upBtn = lastItem.findAll('.wtReorderBtn').find(b =>
+        b.attributes('aria-label')?.includes('up')
+      )!
+      await upBtn.trigger('click')
+      expect(mockReorderExercise).toHaveBeenCalledWith(2, 1)
+    })
+
+    it('hides reorder buttons when tag filter is active', async () => {
+      const wrapper = mountTracker()
+      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
+      await chips[0].trigger('click')
+
+      expect(wrapper.findAll('.wtReorderBtn').length).toBe(0)
+    })
   })
 
   describe('tag filtering', () => {

@@ -70,12 +70,30 @@
         :data-index="index"
       >
         <div class="wtExerciseHeader">
-          <span
-            :class="['wtDragHandle', { wtDragHandleDisabled: activeTagFilters.length > 0 }]"
-            @touchstart.prevent="activeTagFilters.length === 0 && onDragStart(index, $event)"
-            @mousedown="activeTagFilters.length === 0 && onDragStart(index, $event)"
-            aria-label="Drag to reorder"
-          >⠿</span>
+          <div :class="['wtReorderControls', { wtReorderDisabled: activeTagFilters.length > 0 }]">
+            <button
+              v-if="activeTagFilters.length === 0 && index > 0"
+              class="wtReorderBtn"
+              :aria-label="`Move ${exercise.name} up`"
+              @click="moveExercise(index, index - 1)"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <span
+              :class="['wtDragHandle', { wtDragHandleDisabled: activeTagFilters.length > 0 }]"
+              @touchstart.prevent="activeTagFilters.length === 0 && onDragStart(index, $event)"
+              @mousedown="activeTagFilters.length === 0 && onDragStart(index, $event)"
+              aria-hidden="true"
+            >⠿</span>
+            <button
+              v-if="activeTagFilters.length === 0 && index < filteredExercises.length - 1"
+              class="wtReorderBtn"
+              :aria-label="`Move ${exercise.name} down`"
+              @click="moveExercise(index, index + 1)"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
           <button
             class="wtExerciseRow"
             @click="openDetailModal(exercise.id)"
@@ -1209,6 +1227,12 @@ function onDragStart(index: number, _event: MouseEvent | TouchEvent) {
   document.addEventListener('touchend', onEnd, { once: true })
   document.addEventListener('mousemove', onMove)
   document.addEventListener('mouseup', onEnd, { once: true })
+}
+
+// ── Single-pointer reorder (WCAG 2.5.7) ─────────────────────────
+function moveExercise(fromIndex: number, toIndex: number) {
+  store.reorderExercise(fromIndex, toIndex)
+  logEvent('exercise_reorder')
 }
 
 // ── Set actions (tap-to-reveal) ──────────────────────────────────
