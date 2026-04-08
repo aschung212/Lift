@@ -254,11 +254,20 @@ export const useProgressionStore = defineStore('progression', {
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_progression')
         .select('*')
         .eq('user_id', this._userId)
         .single()
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Row genuinely doesn't exist — push local state to create it
+          this._syncToSupabase()
+        }
+        // For any other error (network, auth, etc.), don't overwrite — just bail
+        return
+      }
 
       if (!data) return
 
