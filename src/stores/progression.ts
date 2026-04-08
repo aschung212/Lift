@@ -48,6 +48,7 @@ export const unlockCelebration = reactive({
 
 // Queue for showing multiple unlock celebrations sequentially
 const unlockQueue: Array<{ themeId: ThemeId; themeName: string }> = []
+let unlockTransitionTimer: ReturnType<typeof setTimeout> | null = null
 
 export function showUnlockCelebration(themeId: ThemeId, themeName: string) {
   unlockCelebration.themeId = themeId
@@ -57,12 +58,14 @@ export function showUnlockCelebration(themeId: ThemeId, themeName: string) {
 
 export function queueUnlockCelebrations(unlocks: Array<{ themeId: ThemeId; themeName: string }>) {
   unlockQueue.push(...unlocks)
-  if (!unlockCelebration.visible && unlockQueue.length > 0) {
+  // Only start showing if not already visible and no transition pending
+  if (!unlockCelebration.visible && !unlockTransitionTimer && unlockQueue.length > 0) {
     showNextUnlock()
   }
 }
 
 function showNextUnlock() {
+  unlockTransitionTimer = null
   const next = unlockQueue.shift()
   if (next) {
     showUnlockCelebration(next.themeId, next.themeName)
@@ -71,9 +74,14 @@ function showNextUnlock() {
 
 export function dismissUnlockCelebration() {
   unlockCelebration.visible = false
+  // Cancel any pending transition to prevent double-pop
+  if (unlockTransitionTimer) {
+    clearTimeout(unlockTransitionTimer)
+    unlockTransitionTimer = null
+  }
   // Show next queued unlock after a short delay
   if (unlockQueue.length > 0) {
-    setTimeout(showNextUnlock, 400)
+    unlockTransitionTimer = setTimeout(showNextUnlock, 400)
   }
 }
 
