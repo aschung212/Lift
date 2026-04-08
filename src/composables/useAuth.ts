@@ -4,6 +4,7 @@ import { migrateLocalStorageToSupabase } from '../lib/migrate'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
+import { useProgressionStore } from '../stores/progression'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import type { User, Provider } from '@supabase/supabase-js'
@@ -21,11 +22,13 @@ async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
   const preferencesStore = usePreferencesStore()
+  const progressionStore = useProgressionStore()
   await migrateLocalStorageToSupabase(userId)
   await Promise.all([
     workoutStore.init(userId),
     bodyweightStore.init(userId),
     preferencesStore.init(userId),
+    progressionStore.init(userId),
   ])
 }
 
