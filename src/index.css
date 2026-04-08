@@ -1828,7 +1828,6 @@ html.theme-fading .settingsSheet {
   background: var(--accent);
   color: var(--text-on-accent);
 }
-}
 
 .wtTitle {
   font-size: var(--font-caption2);
