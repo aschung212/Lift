@@ -1013,7 +1013,7 @@ const timelineSets = computed((): TimelineEntry[] => {
       entries.push({ exerciseId: ex.id, exerciseName: ex.name, set: s })
     }
   }
-  return entries.sort((a, b) => b.set.date.localeCompare(a.set.date))
+  return entries.sort((a, b) => b.set.date.slice(0, 10).localeCompare(a.set.date.slice(0, 10)))
 })
 
 const visibleTimelineGroups = computed(() => {
@@ -1225,7 +1225,7 @@ function toggleShowAll(id: string) {
 }
 
 function visibleSets(exercise: Exercise): WorkoutSet[] {
-  const sorted = [...exercise.sets].sort((a, b) => b.date.localeCompare(a.date))
+  const sorted = [...exercise.sets].sort((a, b) => b.date.slice(0, 10).localeCompare(a.date.slice(0, 10)))
   return showAllSets.value.has(exercise.id) ? sorted : sorted.slice(0, SET_LIMIT)
 }
 
