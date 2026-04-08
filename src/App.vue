@@ -1,13 +1,11 @@
 <template>
   <ErrorBoundary>
   <div id="appShell">
-    <!-- Loading state -->
-    <div v-if="loading" class="authLoading">
-      <div class="authLoadingDot"></div>
-    </div>
+    <!-- Nothing renders while loading — splash screen covers this -->
+    <template v-if="!loading">
 
     <!-- Auth screen -->
-    <AuthScreen v-else-if="!user" />
+    <AuthScreen v-if="!user" />
 
     <!-- Onboarding -->
     <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" @started="onboardingInProgress = true" />
@@ -570,6 +568,7 @@
         </div>
       </Transition>
     </Teleport>
+    </template>
   </div>
   </ErrorBoundary>
 
@@ -834,6 +833,17 @@ const { user, loading, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+
+// Dismiss splash screen once auth resolves
+watch(loading, (isLoading) => {
+  if (!isLoading) {
+    const splash = document.getElementById('splash')
+    if (splash) {
+      splash.classList.add('fade-out')
+      splash.addEventListener('transitionend', () => splash.remove())
+    }
+  }
+}, { immediate: true })
 
 const syncStatusLabel = computed(() => {
   if (syncStatus.value === 'syncing') return 'Syncing...'
