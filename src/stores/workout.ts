@@ -80,30 +80,6 @@ export function deduplicateSets(sets: WorkoutSet[]): { unique: WorkoutSet[]; rem
  * by (day + weight + reps) and keeps only one per group. Real-time sets
  * are never touched. Runs once and sets a localStorage flag.
  */
-export function cleanupTriplicates(exercises: Exercise[]): string[] {
-  const removedIds: string[] = []
-  for (const ex of exercises) {
-    const seen = new Map<string, string>() // day|weight|reps → first set ID
-    const cleaned: WorkoutSet[] = []
-    for (const set of ex.sets) {
-      const isEndOfDay = set.date.includes('T23:59:')
-      if (!isEndOfDay) {
-        cleaned.push(set)
-        continue
-      }
-      const day = set.date.slice(0, 10)
-      const key = `${day}|${set.weight}|${set.reps}`
-      if (!seen.has(key)) {
-        seen.set(key, set.id)
-        cleaned.push(set)
-      } else {
-        removedIds.push(set.id)
-      }
-    }
-    ex.sets = cleaned
-  }
-  return removedIds
-}
 
 export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; removed: Exercise[] } {
   const groups = new Map<string, Exercise[]>()
@@ -366,19 +342,6 @@ export const useWorkoutStore = defineStore('workout', {
         const { unique, removedIds } = deduplicateSets(ex.sets)
         ex.sets = unique
         dupSetIds.push(...removedIds)
-      }
-
-      // One-time cleanup: remove triplicate sync artifacts from the historic
-      // bug where 3 exercises with the same name were merged but jitter
-      // timestamps prevented content dedup. Only targets end-of-day
-      // timestamps (T23:59:*) so real-time logged sets are never touched.
-      if (!localStorage.getItem('triplicate-cleanup-v1')) {
-        const cleanedIds = cleanupTriplicates(deduped.exercises)
-        dupSetIds.push(...cleanedIds)
-        if (cleanedIds.length > 0) {
-          logWarn(`One-time triplicate cleanup: removed ${cleanedIds.length} duplicate sets`)
-        }
-        localStorage.setItem('triplicate-cleanup-v1', new Date().toISOString())
       }
 
       if (supabase && this._userId && dupSetIds.length > 0) {
