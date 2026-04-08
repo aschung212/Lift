@@ -220,7 +220,6 @@ export const useWorkoutStore = defineStore('workout', {
           sets: [] as WorkoutSet[],
         }
         if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
-        if (ex.plate_loaded) exercise.inputMode = 'plates' // migrate old field
         if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight as number
         return exercise
       })
