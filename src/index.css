@@ -793,9 +793,9 @@ button, [role="tab"], [role="switch"], a {
   padding: 8px 16px;
   font-size: var(--font-footnote);
   font-weight: 500;
-  color: #1a6dff;
-  background: #e8f0fe;
-  border-bottom: 1px solid #b4d0fe;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
   text-align: center;
   flex-shrink: 0;
   display: flex;
@@ -803,13 +803,7 @@ button, [role="tab"], [role="switch"], a {
   justify-content: center;
   gap: 12px;
 }
-@media (prefers-color-scheme: dark) {
-  .previewBanner {
-    color: #8ab4ff;
-    background: #1a2744;
-    border-bottom-color: #2a3f66;
-  }
-}
+/* Dark overrides removed — .previewBanner now uses theme CSS custom properties */
 .previewToggle {
   font-size: var(--font-caption2);
   font-weight: 600;
@@ -1708,8 +1702,8 @@ html.theme-fading .settingsSheet {
 .devBtn:active { opacity: 0.6; }
 
 .devBtnDanger {
-  color: #ff6b6b;
-  border-color: #ff6b6b33;
+  color: var(--danger);
+  border-color: var(--danger-subtle);
 }
 
 /* ─── Privacy transparency ──────────────────────────────────────────────── */
@@ -2818,7 +2812,7 @@ html.theme-fading .settingsSheet {
 
 .wtEditDeleteConfirmDanger {
   background: var(--danger);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 /* ─── PR History ───────────────────────────────────────────────────────── */
@@ -3876,7 +3870,7 @@ html.theme-fading .settingsSheet {
 }
 
 .resetConfirmDanger {
-  background: #ff4444 !important;
+  background: var(--danger) !important;
 }
 
 .resetConfirmCancel {

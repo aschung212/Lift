@@ -285,6 +285,81 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('no hardcoded colors outside theme variables (LIFT-264)', () => {
+    // Regression: hardcoded hex colors bypass the theme system, causing
+    // elements to ignore the user's selected theme in all 9 themes.
+
+    // Extract all CSS rule blocks that are NOT inside :root { } (i.e., not theme variable definitions)
+    function getNonRootCSS(): string {
+      const lines = css.split('\n')
+      const result: { line: number; text: string }[] = []
+      let inRoot = false
+      let depth = 0
+
+      for (let i = 0; i < lines.length; i++) {
+        const text = lines[i]
+        // Detect :root or [data-theme*=...] variable blocks
+        if (/^\s*(:root|\[data-theme)/.test(text) && text.includes('{')) {
+          inRoot = true
+          depth = 1
+          continue
+        }
+        if (inRoot) {
+          for (const ch of text) {
+            if (ch === '{') depth++
+            if (ch === '}') depth--
+          }
+          if (depth <= 0) inRoot = false
+          continue
+        }
+        result.push({ line: i + 1, text })
+      }
+      return result
+        .map(r => `/*L${r.line}*/ ${r.text}`)
+        .join('\n')
+    }
+
+    // Check for hardcoded hex colors in property values (not comments, not SVG, not CSS variable names)
+    function findHardcodedColors(): { line: number; text: string }[] {
+      const violations: { line: number; text: string }[] = []
+      const nonRoot = getNonRootCSS()
+
+      for (const raw of nonRoot.split('\n')) {
+        const lineMatch = raw.match(/\/\*L(\d+)\*\/\s*(.*)/)
+        if (!lineMatch) continue
+        const lineNum = parseInt(lineMatch[1], 10)
+        const text = lineMatch[2].trim()
+
+        // Skip comments, empty lines, selectors, closing braces
+        if (!text || text.startsWith('/*') || text.startsWith('//') || text.endsWith('{') || text === '}') continue
+        // Skip lines that are just variable references or content strings
+        if (!text.includes(':')) continue
+
+        // Only check color-related properties
+        if (!/color|background|border|outline|box-shadow|text-decoration|fill|stroke/i.test(text.split(':')[0])) continue
+
+        // Check for hardcoded hex colors
+        if (/#[0-9a-fA-F]{3,8}\b/.test(text)) {
+          violations.push({ line: lineNum, text })
+        }
+      }
+      return violations
+    }
+
+    it('CSS rules use theme variables, not hardcoded hex colors', () => {
+      const violations = findHardcodedColors()
+      if (violations.length > 0) {
+        const report = violations
+          .map(v => `  L${v.line}: ${v.text}`)
+          .join('\n')
+        expect.fail(
+          `Found ${violations.length} hardcoded color(s) outside theme variables:\n${report}\n` +
+          `Use var(--color) CSS custom properties instead.`
+        )
+      }
+    })
+  })
+
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {
     // Valid spacing values: 0, 1, 2, 4, 8, 12, 16, 24, 32, and multiples of 8 above 32
     const SCALE = new Set([0, 1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128])
