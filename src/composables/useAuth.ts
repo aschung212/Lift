@@ -5,6 +5,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { syncQueue } from '../lib/syncQueue'
+import { logError } from '../lib/logger'
 import type { User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
@@ -45,6 +46,9 @@ function init(): void {
     } else {
       loading.value = false
     }
+  }).catch((err) => {
+    logError(err, { source: 'useAuth', action: 'getSession' })
+    loading.value = false
   })
 
   supabase!.auth.onAuthStateChange((_event, session) => {

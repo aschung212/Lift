@@ -402,9 +402,12 @@ export const useWorkoutStore = defineStore('workout', {
       this._persist()
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
-        supabase.from('exercises').insert({
-          id, user_id: this._userId, name: trimmed, tags: [...tags]
-        }).then()
+        const userId = this._userId
+        syncQueue.enqueue(`exercise:${id}`, () =>
+          supabase!.from('exercises').upsert({
+            id, user_id: userId, name: trimmed, tags: [...tags]
+          })
+        )
       }
       return id
     },
@@ -464,10 +467,13 @@ export const useWorkoutStore = defineStore('workout', {
             })
           )
         } else {
-          supabase.from('sets').insert({
-            id, user_id: this._userId, exercise_id: exerciseId,
-            date, weight, reps, estimated_1rm: estimated1RM
-          }).then()
+          const userId = this._userId
+          syncQueue.enqueue(`set:${id}`, () =>
+            supabase!.from('sets').upsert({
+              id, user_id: userId, exercise_id: exerciseId,
+              date, weight, reps, estimated_1rm: estimated1RM
+            })
+          )
         }
       }
     },
