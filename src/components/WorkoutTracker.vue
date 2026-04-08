@@ -591,7 +591,7 @@
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
             <div class="wtPlateDisplayRow">
               <span class="wtPlateDisplaySpacer"></span>
-              <button v-if="!plateNumpadOverride" class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight || 0 }}</button>
+              <button v-if="!plateNumpadOverride" class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight != null ? weight : '—' }}</button>
               <input
                 v-else
                 ref="weightInputEl"
@@ -606,7 +606,7 @@
               />
               <span class="wtPlateDisplayAfter">
                 <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
-                <button v-if="currentPlates.length > 0" class="wtPlateClearBtn" @click="currentPlates = []; syncPlateWeight()" aria-label="Clear plates">×</button>
+                <button v-if="currentPlates.length > 0 || weight" class="wtPlateClearBtn" @click="currentPlates = []; weight = null; weightStr = ''" aria-label="Clear weight">×</button>
               </span>
             </div>
             <div class="wtPlateGrid">
@@ -1993,8 +1993,6 @@ function playGoBeep() {
 
 const liveEstimate = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
-  // In plate mode, bar-only (no plates) should show PR suggestion instead of live estimate
-  if (plateMode.value && currentPlates.value.length === 0) return null
   const w = toLbs(weight.value)
   const est = reps.value === 1 ? w : w * (1 + reps.value / 30)
   return displayWeight(Math.round(est))
@@ -2002,7 +2000,6 @@ const liveEstimate = computed(() => {
 
 const liveEstimateLbs = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
-  if (plateMode.value && currentPlates.value.length === 0) return null
   const w = toLbs(weight.value)
   return reps.value === 1 ? Math.round(w) : Math.round(w * (1 + reps.value / 30))
 })
@@ -2022,9 +2019,8 @@ const isNewPR = computed(() => {
 // When only one field is filled, show what's needed in the other to beat the PR
 const prTargetWeight = computed<number | null>(() => {
   if (isEditMode.value || !reps.value || reps.value < 1) return null
-  // In plate mode, treat bar-only (no plates) as "no weight entered" for suggestions
-  const isBarOnly = plateMode.value && currentPlates.value.length === 0
-  if (!isBarOnly && weight.value && weight.value > 0) return null // both filled → show live estimate instead
+  // Show PR suggestion when weight is empty; show live estimate when weight is filled
+  if (weight.value && weight.value > 0) return null
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return null
   const pr = store.getExercisePR(id)
