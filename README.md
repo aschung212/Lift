@@ -12,6 +12,14 @@ A **mobile-first Progressive Web App** for tracking strength training, bodyweigh
 ![Tests](https://img.shields.io/badge/tests-299_passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
+<p align="center">
+  <img src="docs/screenshots/IMG_5472.PNG" alt="Exercise detail with PR chart" width="230" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/IMG_5455.PNG" alt="Calendar view with tag filtering" width="230" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/IMG_5408.jpg" alt="Body weight tracker" width="230" />
+</p>
+
 ---
 
 ## What It Does
