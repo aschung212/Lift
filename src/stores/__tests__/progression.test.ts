@@ -8,7 +8,7 @@ vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn() }
 }))
 
-import { useProgressionStore, getTrainingDaysInWeek, getUnlockedThemeIds, computeWeekXP } from '../progression'
+import { useProgressionStore, getTrainingDaysInWeek, getUnlockedThemeIds, computeWeekXP, mergeXpPerSet, mergeUnlockedThemes, mergeBodyweightDates } from '../progression'
 import type { SetXPEntry } from '../progression'
 import { XP_CONFIG } from '../../lib/xp'
 
@@ -706,6 +706,64 @@ describe('progression store', () => {
       const dates = ['2026-03-03', '2026-03-04', '2026-03-05']
       store.reEvaluateStreaks(dates, new Date('2026-03-10T10:00:00Z'))
       expect(store.pendingTargetChange).toBeNull()
+    })
+  })
+
+  // ── Merge functions (cross-device sync) ───────────────────────
+
+  describe('mergeXpPerSet', () => {
+    it('unions keys from local and remote', () => {
+      const local = { 's1': 50, 's2': 100 }
+      const remote = { 's2': 80, 's3': 200 }
+      const merged = mergeXpPerSet(local, remote)
+      expect(Object.keys(merged).sort()).toEqual(['s1', 's2', 's3'])
+    })
+
+    it('keeps higher XP on conflict', () => {
+      const local = { 's1': 100 }
+      const remote: Record<string, SetXPEntry | number> = {
+        's1': { xp: 150, theme: 'fire', epoch: 1, zone: 'pr', isPR: true, isRepPR: false }
+      }
+      const merged = mergeXpPerSet(local, remote)
+      expect(merged['s1']).toEqual(remote['s1']) // remote wins (150 > 100)
+    })
+
+    it('keeps local when local XP is higher', () => {
+      const local: Record<string, SetXPEntry | number> = {
+        's1': { xp: 200, theme: 'fire', epoch: 1, zone: 'pr', isPR: true, isRepPR: false }
+      }
+      const remote = { 's1': 100 }
+      const merged = mergeXpPerSet(local, remote)
+      expect(merged['s1']).toEqual(local['s1']) // local wins (200 > 100)
+    })
+  })
+
+  describe('mergeUnlockedThemes', () => {
+    it('unions themes from both lists', () => {
+      const local = [{ id: 'pearl' as const, unlockedAt: '2026-01-01' }]
+      const remote = [
+        { id: 'pearl' as const, unlockedAt: '2026-01-02' },
+        { id: 'fire' as const, unlockedAt: '2026-03-01' },
+      ]
+      const merged = mergeUnlockedThemes(local, remote)
+      expect(merged.map(t => t.id).sort()).toEqual(['fire', 'pearl'])
+    })
+
+    it('keeps earliest unlock timestamp on conflict', () => {
+      const local = [{ id: 'pearl' as const, unlockedAt: '2026-01-01' }]
+      const remote = [{ id: 'pearl' as const, unlockedAt: '2026-01-05' }]
+      const merged = mergeUnlockedThemes(local, remote)
+      expect(merged[0].unlockedAt).toBe('2026-01-01')
+    })
+  })
+
+  describe('mergeBodyweightDates', () => {
+    it('unions and sorts dates', () => {
+      const merged = mergeBodyweightDates(
+        ['2026-03-01', '2026-03-03'],
+        ['2026-03-02', '2026-03-03'],
+      )
+      expect(merged).toEqual(['2026-03-01', '2026-03-02', '2026-03-03'])
     })
   })
 

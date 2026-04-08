@@ -148,6 +148,51 @@ export function getUnlockedThemeIds(themes: ThemeUnlock[]): ThemeId[] {
   return themes.map(t => t.id)
 }
 
+/** Merge two xpPerSet maps: union of keys, higher XP wins on conflict. */
+export function mergeXpPerSet(
+  local: Record<string, SetXPEntry | number>,
+  remote: Record<string, SetXPEntry | number>,
+): Record<string, SetXPEntry | number> {
+  const merged = { ...local }
+  for (const [id, remoteEntry] of Object.entries(remote)) {
+    const localEntry = merged[id]
+    if (!localEntry) {
+      merged[id] = remoteEntry
+    } else if (getSetXP(remoteEntry) > getSetXP(localEntry)) {
+      merged[id] = remoteEntry
+    }
+  }
+  return merged
+}
+
+/** Merge two unlocked theme lists: union by theme ID, keep earliest unlock. */
+export function mergeUnlockedThemes(local: ThemeUnlock[], remote: ThemeUnlock[]): ThemeUnlock[] {
+  const byId = new Map<string, ThemeUnlock>()
+  for (const t of local) byId.set(t.id, t)
+  for (const t of remote) {
+    const existing = byId.get(t.id)
+    if (!existing || (t.unlockedAt && (!existing.unlockedAt || t.unlockedAt < existing.unlockedAt))) {
+      byId.set(t.id, t)
+    }
+  }
+  return Array.from(byId.values())
+}
+
+/** Merge two bodyweight XP date lists: union of unique dates. */
+export function mergeBodyweightDates(local: string[], remote: string[]): string[] {
+  return [...new Set([...local, ...remote])].sort()
+}
+
+/** Recalculate totalXP from xpPerSet + bodyweight dates. */
+function recalcTotalXP(xpPerSet: Record<string, SetXPEntry | number>, bodyweightDates: string[], bodyweightXPPerDay: number): number {
+  let total = 0
+  for (const entry of Object.values(xpPerSet)) {
+    total += getSetXP(entry)
+  }
+  total += bodyweightDates.length * bodyweightXPPerDay
+  return total
+}
+
 /** Migration: convert old ThemeId[] format to ThemeUnlock[] */
 function migrateUnlockedThemes(themes: unknown): ThemeUnlock[] {
   if (!Array.isArray(themes)) return [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
@@ -217,27 +262,39 @@ export const useProgressionStore = defineStore('progression', {
 
       if (!data) return
 
-      // Merge remote state — remote wins for simple fields
-      this.totalXP = (data.total_xp as number) ?? this.totalXP
+      // Merge remote state — remote wins for simple scalar fields
       this.streakWeeks = (data.streak_weeks as number) ?? this.streakWeeks
       this.weeklyTarget = (data.weekly_target as number) ?? this.weeklyTarget
       this.pendingTargetChange = (data.pending_target_change as number | null) ?? this.pendingTargetChange
       this.showProgression = (data.show_progression as boolean) ?? this.showProgression
       this.progressionEnabled = (data.progression_enabled as boolean) ?? this.progressionEnabled
-      this.unlockedThemes = migrateUnlockedThemes((data.unlocked_themes as unknown) ?? this.unlockedThemes)
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
       this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
       this.epoch = (data.epoch as number) ?? this.epoch
       this.streakHistory = (data.streak_history as StreakWeekEntry[]) ?? this.streakHistory
-      this.xpPerSet = (data.xp_per_set as Record<string, number>) ?? this.xpPerSet
-      this.bodyweightXPDates = (data.bodyweight_xp_dates as string[]) ?? this.bodyweightXPDates
+
+      // Merge collection fields — union strategy, no data loss
+      const remoteThemes = migrateUnlockedThemes((data.unlocked_themes as unknown) ?? [])
+      this.unlockedThemes = mergeUnlockedThemes(this.unlockedThemes, remoteThemes)
+
+      const remoteXpPerSet = (data.xp_per_set as Record<string, SetXPEntry | number>) ?? {}
+      this.xpPerSet = mergeXpPerSet(this.xpPerSet, remoteXpPerSet)
+
+      const remoteBodyweightDates = (data.bodyweight_xp_dates as string[]) ?? []
+      this.bodyweightXPDates = mergeBodyweightDates(this.bodyweightXPDates, remoteBodyweightDates)
+
+      // Recalculate totalXP from merged data — eliminates drift from stale overwrites
+      this.totalXP = recalcTotalXP(this.xpPerSet, this.bodyweightXPDates, XP_CONFIG.bodyweightXP)
       // Defensive: if we have a starter theme and XP, the trial is over.
       // Handles rows written before starter_confirmed column existed.
       // Do NOT infer progressionEnabled — user may have disabled it intentionally.
       if (this.starterTheme && this.totalXP > 0) {
         this.starterConfirmed = true
       }
+      // Ensure theme unlocks are consistent with merged XP
+      this.checkUnlocks()
       this._persist()
+      this._syncToSupabase()
     },
 
     _syncToSupabase() {
