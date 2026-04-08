@@ -1189,6 +1189,7 @@ function executeResetProgress() {
   progressionStore.starterConfirmed = false
   progressionStore.progressionEnabled = false
   progressionStore._persist()
+  progressionStore._syncToSupabase()
   // Note: do NOT clear migration flag — reset means fresh start, not re-migrate historical data
   markMigrated()
   // Show starter picker
@@ -1223,6 +1224,7 @@ function handleStarterSkip() {
     progressionStore.starterTheme = 'pearl'
   }
   progressionStore._persist()
+  progressionStore._syncToSupabase()
   runMigrationIfNeeded()
   catchUpStreaks()
 }
@@ -1293,6 +1295,7 @@ function confirmDisableProgression() {
   disableProgressionVisible.value = false
   progressionStore.progressionEnabled = false
   progressionStore._persist()
+  progressionStore._syncToSupabase()
   enforceThemeLock()
 }
 
@@ -1312,6 +1315,7 @@ function toggleProgression() {
         progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
       }
       progressionStore._persist()
+      progressionStore._syncToSupabase()
       enforceThemeLock()
       runMigrationIfNeeded()
       catchUpStreaks()
