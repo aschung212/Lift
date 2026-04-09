@@ -27,6 +27,13 @@ if (sentryDsn && import.meta.env.PROD) {
       enabled: true,
       beforeSend(event) {
         if (event.request?.cookies) delete event.request.cookies
+        // Drop SecurityErrors from bot-probed paths (e.g. /js/rest/field)
+        if (
+          event.exception?.values?.some((e) => e.type === 'SecurityError') &&
+          window.location.pathname !== '/'
+        ) {
+          return null
+        }
         return event
       },
     })
