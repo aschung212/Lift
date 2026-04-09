@@ -1245,6 +1245,9 @@ function buildSetIdToDate(): Record<string, string> {
 function applyStreakTargetCorrection() {
   const MIGRATION_KEY = 'streak-target-correction-v1'
   if (localStorage.getItem(MIGRATION_KEY)) return
+  // Always mark as done — this is a one-time fix for the Supabase sync bug,
+  // not something that should re-trigger on future target changes.
+  localStorage.setItem(MIGRATION_KEY, new Date().toISOString())
   if (!progressionStore.progressionEnabled) return
   if (progressionStore.pendingTargetChange === null) return
 
@@ -1256,7 +1259,6 @@ function applyStreakTargetCorrection() {
     new Date(),
     buildSetIdToDate()
   )
-  localStorage.setItem(MIGRATION_KEY, new Date().toISOString())
 }
 
 /** Evaluate missed weeks and show milestone toasts. */
