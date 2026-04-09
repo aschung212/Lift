@@ -104,10 +104,11 @@ export const usePreferencesStore = defineStore('preferences', {
             .select('preferences')
             .eq('user_id', userId)
             .single()
-          if (data?.preferences?.features) {
-            this.features = { ...DEFAULTS, ...data.preferences.features }
-            if (data.preferences.weightGoal) {
-              this.weightGoal = _migrateWeightGoal(data.preferences.weightGoal)
+          const prefs = data?.preferences as Record<string, unknown> | null
+          if (prefs?.features) {
+            this.features = { ...DEFAULTS, ...prefs.features as Record<string, boolean> }
+            if (prefs.weightGoal) {
+              this.weightGoal = _migrateWeightGoal(prefs.weightGoal as { target?: number; unit?: string })
             }
             localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
           }

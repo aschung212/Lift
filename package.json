@@ -20,6 +20,7 @@
     "db:new": "npx supabase migration new",
     "db:status": "npx supabase migration list",
     "db:diff": "npx supabase db diff",
+    "db:types": "npx supabase gen types --linked --lang typescript 2>/dev/null > src/lib/database.types.ts",
     "cap:sync": "npx cap sync",
     "cap:open:ios": "npx cap open ios",
     "cap:run:ios": "npx cap run ios",

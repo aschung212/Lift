@@ -8,6 +8,7 @@ import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
+import type { Json } from '../lib/database.types'
 
 const STORAGE_KEY = 'user-progression'
 
@@ -280,7 +281,7 @@ export const useProgressionStore = defineStore('progression', {
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
       this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
       this.epoch = (data.epoch as number) ?? this.epoch
-      this.streakHistory = (data.streak_history as StreakWeekEntry[]) ?? this.streakHistory
+      this.streakHistory = (data.streak_history as unknown as StreakWeekEntry[]) ?? this.streakHistory
 
       // Merge collection fields — union strategy, no data loss
       const remoteThemes = migrateUnlockedThemes((data.unlocked_themes as unknown) ?? [])
@@ -317,13 +318,13 @@ export const useProgressionStore = defineStore('progression', {
         pending_target_change: this.pendingTargetChange,
         show_progression: this.showProgression,
         progression_enabled: this.progressionEnabled,
-        unlocked_themes: this.unlockedThemes,
+        unlocked_themes: this.unlockedThemes as unknown as Json,
         starter_theme: this.starterTheme,
         starter_confirmed: this.starterConfirmed,
         epoch: this.epoch,
-        streak_history: this.streakHistory,
-        xp_per_set: this.xpPerSet,
-        bodyweight_xp_dates: this.bodyweightXPDates,
+        streak_history: this.streakHistory as unknown as Json,
+        xp_per_set: this.xpPerSet as unknown as Json,
+        bodyweight_xp_dates: this.bodyweightXPDates as unknown as Json,
       }
       syncQueue.enqueue('progression-sync', () =>
         supabase!.from('user_progression').upsert(payload)

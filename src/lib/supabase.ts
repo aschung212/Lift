@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { ref } from 'vue'
+import type { Database } from './database.types'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -16,6 +17,6 @@ export const isPreviewDeploy: boolean =
 /** Reactive flag — true when writes should be blocked. Starts true on preview deploys, can be toggled. */
 export const isPreviewMode = ref(isPreviewDeploy)
 
-export const supabase: SupabaseClient | null = !import.meta.env.DEV && supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey)
+export const supabase: SupabaseClient<Database> | null = !import.meta.env.DEV && supabaseUrl && supabaseAnonKey
+  ? createClient<Database>(supabaseUrl, supabaseAnonKey)
   : null
