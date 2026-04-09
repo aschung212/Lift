@@ -44,7 +44,7 @@ export function logXPEvent(data: XPEventData): void {
   syncQueue.enqueue(`xp-event:${data.setId}`, () =>
     supabase!.from('xp_events').upsert({
       set_id: data.setId,
-      user_id: data.userId,
+      user_id: data.userId!,
       exercise_id: data.exerciseId,
       set_date: data.setDate,
       base_xp: data.baseXP,
@@ -88,7 +88,7 @@ export function logWeeklySnapshot(data: WeeklySnapshotData): void {
 
   syncQueue.enqueue(`progression-snapshot:${data.weekStart}`, () =>
     supabase!.from('progression_snapshots').upsert({
-      user_id: data.userId,
+      user_id: data.userId!,
       week_start: data.weekStart,
       total_xp: data.totalXP,
       week_xp: data.weekXP,
