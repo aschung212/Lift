@@ -2158,19 +2158,30 @@ const bestWeightAtReps = computed<number | null>(() => {
 
 const MAX_WEIGHT = 2000
 
-/** Scroll an input above the iOS keyboard after the keyboard finishes animating */
+/** Shrink modal to fit above iOS keyboard, then scroll input into view */
 function scrollInputAboveKeyboard(el: HTMLElement) {
   setTimeout(() => {
-    const modal = el.closest('.repMaxModal')
+    const modal = el.closest('.repMaxModal') as HTMLElement | null
     if (!modal) return
     const vv = window.visualViewport
-    if (vv) {
+    if (!vv) return
+    // Shrink modal so it fits within the visible viewport above the keyboard
+    const availableHeight = vv.height - 96
+    modal.style.maxHeight = `${availableHeight}px`
+    // Scroll the input into view within the now-scrollable modal
+    nextTick(() => {
       const inputRect = el.getBoundingClientRect()
       const visibleBottom = vv.offsetTop + vv.height
       if (inputRect.bottom > visibleBottom - 16) {
         modal.scrollTop += inputRect.bottom - visibleBottom + 60
       }
+    })
+    // Restore max-height when keyboard dismisses
+    const restore = () => {
+      modal.style.maxHeight = ''
+      vv.removeEventListener('resize', restore)
     }
+    vv.addEventListener('resize', restore)
   }, 400)
 }
 const MAX_REPS = 200
