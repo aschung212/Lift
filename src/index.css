@@ -3688,6 +3688,30 @@ html.theme-fading .settingsSheet {
   line-height: 36px;
 }
 
+.iosStepperValueTappable {
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.iosStepperInput {
+  min-width: 56px;
+  width: 56px;
+  text-align: center;
+  font-size: var(--font-callout);
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  border: none;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0 8px;
+  line-height: 36px;
+  height: 36px;
+  font-family: inherit;
+  outline: none;
+}
+
 .iosSettingsFooter {
   display: block;
   font-size: var(--font-caption2);

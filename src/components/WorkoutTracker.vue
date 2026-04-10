@@ -459,7 +459,19 @@
                     <span class="iosSettingsRowLabel">Starting weight</span>
                     <div class="iosStepper">
                       <button class="iosStepperBtn" @click="newExerciseBarWeight = Math.max(0, newExerciseBarWeight - 5)" aria-label="Decrease weight">−</button>
-                      <span class="iosStepperValue">{{ newExerciseBarWeight }} {{ weightUnit }}</span>
+                      <input
+                        v-if="newBarWeightEditing"
+                        ref="newBarWeightInputEl"
+                        :value="newExerciseBarWeight"
+                        type="text"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        class="iosStepperInput"
+                        aria-label="Starting weight"
+                        @focus="($event.target as HTMLInputElement)?.select(); scrollInputAboveKeyboard($event.target as HTMLElement)"
+                        @blur="newExerciseBarWeight = Math.max(0, Math.min(MAX_WEIGHT, Math.round(Number(($event.target as HTMLInputElement).value) || 0))); newBarWeightEditing = false"
+                      />
+                      <button v-else class="iosStepperValue iosStepperValueTappable" @click="newBarWeightEditing = true; nextTick(() => newBarWeightInputEl?.focus())">{{ newExerciseBarWeight }} {{ weightUnit }}</button>
                       <button class="iosStepperBtn" @click="newExerciseBarWeight = Math.min(MAX_WEIGHT, newExerciseBarWeight + 5)" aria-label="Increase weight">+</button>
                     </div>
                   </div>
@@ -714,7 +726,19 @@
                 <span class="iosSettingsRowLabel">Starting weight</span>
                 <div class="iosStepper">
                   <button class="iosStepperBtn" @click="editBarWeight = Math.max(0, editBarWeight - 5)" aria-label="Decrease weight">−</button>
-                  <span class="iosStepperValue">{{ editBarWeight }} {{ weightUnit }}</span>
+                  <input
+                    v-if="editBarWeightEditing"
+                    ref="editBarWeightInputEl"
+                    :value="editBarWeight"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    class="iosStepperInput"
+                    aria-label="Starting weight"
+                    @focus="($event.target as HTMLInputElement)?.select(); scrollInputAboveKeyboard($event.target as HTMLElement)"
+                    @blur="editBarWeight = Math.max(0, Math.min(MAX_WEIGHT, Math.round(Number(($event.target as HTMLInputElement).value) || 0))); editBarWeightEditing = false"
+                  />
+                  <button v-else class="iosStepperValue iosStepperValueTappable" @click="editBarWeightEditing = true; nextTick(() => editBarWeightInputEl?.focus())">{{ editBarWeight }} {{ weightUnit }}</button>
                   <button class="iosStepperBtn" @click="editBarWeight = Math.min(MAX_WEIGHT, editBarWeight + 5)" aria-label="Increase weight">+</button>
                 </div>
               </div>
@@ -1448,6 +1472,8 @@ const newExerciseTagInput = ref('')
 const newExercisePlateMode = ref(false)
 const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
 const newExerciseBarWeight = ref(45)
+const newBarWeightEditing = ref(false)
+const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
 // Vue writing back the parsed number to el.value causes iOS Safari to dismiss
 // the keyboard after each keystroke. Using type="text" + inputmode avoids this.
@@ -2131,6 +2157,33 @@ const bestWeightAtReps = computed<number | null>(() => {
 })
 
 const MAX_WEIGHT = 2000
+
+/** Shrink modal to fit above iOS keyboard, then scroll input into view */
+function scrollInputAboveKeyboard(el: HTMLElement) {
+  setTimeout(() => {
+    const modal = el.closest('.repMaxModal') as HTMLElement | null
+    if (!modal) return
+    const vv = window.visualViewport
+    if (!vv) return
+    // Shrink modal so it fits within the visible viewport above the keyboard
+    const availableHeight = vv.height - 96
+    modal.style.maxHeight = `${availableHeight}px`
+    // Scroll the input into view within the now-scrollable modal
+    nextTick(() => {
+      const inputRect = el.getBoundingClientRect()
+      const visibleBottom = vv.offsetTop + vv.height
+      if (inputRect.bottom > visibleBottom - 16) {
+        modal.scrollTop += inputRect.bottom - visibleBottom + 60
+      }
+    })
+    // Restore max-height when keyboard dismisses
+    const restore = () => {
+      modal.style.maxHeight = ''
+      vv.removeEventListener('resize', restore)
+    }
+    vv.addEventListener('resize', restore)
+  }, 400)
+}
 const MAX_REPS = 200
 const hasSetData = computed(() => weight.value !== null && weight.value > 0 && weight.value <= MAX_WEIGHT && reps.value !== null && reps.value >= 1 && reps.value <= MAX_REPS)
 
@@ -2279,6 +2332,8 @@ const newTagInput = ref('')
 const editPlateMode = ref(false)
 const editPlateCountMode = ref<'per-side' | 'total'>('per-side')
 const editBarWeight = ref<number>(45)
+const editBarWeightEditing = ref(false)
+const editBarWeightInputEl = ref<HTMLInputElement | null>(null)
 
 
 function openEditExerciseModal(exercise: Exercise) {
