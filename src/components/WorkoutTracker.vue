@@ -611,11 +611,11 @@
             </div>
             <div class="wtPlateGrid">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
-                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" :aria-label="`Add ${denom}`">{{ denom }}</button>
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" :aria-label="`Add ${denom}`">+{{ denom }}</button>
                 <div class="wtPlateCountBox" :class="{ wtPlateCountActive: plateCounts.get(denom) }">
                   <span class="wtPlateCountNum">{{ plateCounts.get(denom) || 0 }}</span>
                 </div>
-                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" :aria-label="`Remove ${denom}`">{{ denom }}</button>
+                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" :aria-label="`Remove ${denom}`">−{{ denom }}</button>
               </div>
             </div>
           </div>
