@@ -542,8 +542,14 @@
             <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
             <span class="repMaxPersonalBest">Tap to set reps</span>
           </div>
-          <div v-else-if="!isEditMode && isLogForExercise && prTargetsTable" class="wtPrTargets">
-            <button class="wtPrTargetsHeader" @click="prTableExpanded = !prTableExpanded" aria-expanded="prTableExpanded">
+          <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
+            <span class="repMaxResultLabel">Estimated 1RM</span>
+            <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
+          </div>
+
+          <!-- PR targets table (always visible when exercise has a PR) -->
+          <div v-if="!isEditMode && isLogForExercise && prTargetsTable" class="wtPrTargets">
+            <button class="wtPrTargetsHeader" @click="prTableExpanded = !prTableExpanded" :aria-expanded="prTableExpanded">
               <span class="wtPrTargetsTitle">PR Targets</span>
               <span class="wtPrTargetsSub">Beat {{ displayWeight(store.getExercisePR(selectedExerciseId)) }} {{ weightUnit }} e1RM</span>
               <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: prTableExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -558,13 +564,8 @@
                 <span class="wtPrTargetsReps">{{ row.reps }}</span>
                 <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
                 <span class="wtPrTargetsWeight">{{ row.displayWt }} {{ weightUnit }}</span>
-                <span v-if="row.plates" class="wtPrTargetsPlates">{{ row.plates }}</span>
               </button>
             </div>
-          </div>
-          <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
-            <span class="repMaxResultLabel">Estimated 1RM</span>
-            <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
           </div>
 
           <!-- Plate mode: reps stepper + weight in plate calc below -->
@@ -912,7 +913,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
-import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
@@ -2154,7 +2155,6 @@ interface PRTargetRow {
   weightLbs: number
   displayWt: number
   e1rm: number
-  plates: string | null
 }
 
 const prTargetsTable = computed<PRTargetRow[] | null>(() => {
@@ -2195,18 +2195,12 @@ const prTargetsTable = computed<PRTargetRow[] | null>(() => {
     }
 
     const e1rm = r === 1 ? finalLbs : Math.round(finalLbs * (1 + r / 30))
-    let platesStr: string | null = null
-    if (isPlate) {
-      const ps = weightToPlates(finalLbs, barWt, denoms)
-      platesStr = ps ? formatPlates(ps) : null
-    }
 
     rows.push({
       reps: r,
       weightLbs: finalLbs,
       displayWt: displayWeight(finalLbs),
       e1rm: displayWeight(e1rm),
-      plates: platesStr,
     })
   }
 

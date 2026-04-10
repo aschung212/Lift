@@ -3422,17 +3422,6 @@ html.theme-fading .settingsSheet {
   margin-left: auto;
 }
 
-.wtPrTargetsPlates {
-  font-size: var(--font-caption1);
-  color: var(--text-secondary);
-  font-weight: 500;
-  margin-left: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
-}
-
 .wtDateInline {
   position: relative;
 }
