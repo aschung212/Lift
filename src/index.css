@@ -3394,10 +3394,6 @@ html.theme-fading .settingsSheet {
   background: var(--accent-subtle);
 }
 
-.wtPrTargetsRowActive {
-  background: var(--accent-subtle);
-}
-
 .wtPrTargetsReps {
   font-size: var(--font-body);
   font-weight: 700;
@@ -3420,6 +3416,15 @@ html.theme-fading .settingsSheet {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   margin-left: auto;
+}
+
+.wtPrTargetsE1rm {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+  white-space: nowrap;
 }
 
 .wtDateInline {

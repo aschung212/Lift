@@ -558,12 +558,13 @@
               <button
                 v-for="row in prTargetsTable"
                 :key="row.reps"
-                :class="['wtPrTargetsRow', { wtPrTargetsRowActive: row.reps === prSetReps }]"
+                class="wtPrTargetsRow"
                 @click="fillFromPRTable(row)"
               >
                 <span class="wtPrTargetsReps">{{ row.reps }}</span>
                 <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
                 <span class="wtPrTargetsWeight">{{ row.displayWt }} {{ weightUnit }}</span>
+                <span class="wtPrTargetsE1rm">~{{ row.e1rm }} e1RM</span>
               </button>
             </div>
           </div>
@@ -2205,13 +2206,6 @@ const prTargetsTable = computed<PRTargetRow[] | null>(() => {
   }
 
   return rows
-})
-
-const prSetReps = computed<number | null>(() => {
-  const id = selectedExerciseId.value
-  if (!id || id === '__new__') return null
-  const prSet = store.getExercisePRSet(id)
-  return prSet?.reps ?? null
 })
 
 function fillFromPRTable(row: PRTargetRow) {
