@@ -2077,7 +2077,10 @@ const prTargetWeight = computed<number | null>(() => {
   if (pr <= 0) return null
   // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
   const target = pr + 0.5
-  const targetLbs = reps.value === 1 ? Math.ceil(target) : Math.ceil(target / (1 + reps.value / 30))
+  const rawLbs = reps.value === 1 ? Math.ceil(target) : Math.ceil(target / (1 + reps.value / 30))
+  // Round up to nearest achievable weight increment (5 lbs or 2.5 kg)
+  const increment = weightUnit.value === 'kg' ? Math.round(2.5 / 0.453592) : 5
+  const targetLbs = Math.ceil(rawLbs / increment) * increment
   return displayWeight(targetLbs)
 })
 
