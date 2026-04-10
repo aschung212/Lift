@@ -2079,9 +2079,14 @@ const prTargetWeight = computed<number | null>(() => {
   const target = pr + 0.5
   const rawLbs = reps.value === 1 ? Math.ceil(target) : Math.ceil(target / (1 + reps.value / 30))
   // Round up to nearest achievable weight increment (5 lbs or 2.5 kg)
-  const increment = weightUnit.value === 'kg' ? Math.round(2.5 / 0.453592) : 5
-  const targetLbs = Math.ceil(rawLbs / increment) * increment
-  return displayWeight(targetLbs)
+  // Round in display-unit space to avoid fractional conversion errors
+  if (weightUnit.value === 'kg') {
+    const rawKg = rawLbs * 0.453592
+    const roundedKg = Math.ceil(rawKg / 2.5) * 2.5
+    return roundedKg
+  }
+  const targetLbs = Math.ceil(rawLbs / 5) * 5
+  return targetLbs
 })
 
 // ── Live XP preview (shown when both weight and reps are filled) ──
@@ -2192,10 +2197,14 @@ const prTargetsTable = computed<PRTargetRow[] | null>(() => {
         const roundedPlateWeight = Math.ceil(plateWeight / smallestIncrement) * smallestIncrement
         finalLbs = barWt + roundedPlateWeight
       }
+    } else if (weightUnit.value === 'kg') {
+      // Numpad kg mode: round in kg space, convert back to lbs
+      const rawKg = rawLbs * 0.453592
+      const roundedKg = Math.ceil(rawKg / 2.5) * 2.5
+      finalLbs = Math.round(roundedKg / 0.453592)
     } else {
-      // Numpad mode: round up to nearest 5 lbs (or 2.5 kg converted to lbs)
-      const increment = weightUnit.value === 'kg' ? Math.round(2.5 / 0.453592) : 5
-      finalLbs = Math.ceil(rawLbs / increment) * increment
+      // Numpad lbs mode: round to nearest 5 lbs
+      finalLbs = Math.ceil(rawLbs / 5) * 5
     }
 
     const e1rm = r === 1 ? finalLbs : Math.round(finalLbs * (1 + r / 30))
