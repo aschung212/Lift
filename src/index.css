@@ -3314,6 +3314,119 @@ html.theme-fading .settingsSheet {
   margin-top: 4px;
 }
 
+/* ─── PR Targets Table ───────────────────────────────────────────────── */
+
+.wtPrTargets {
+  margin: 16px 0;
+  border-radius: 10px;
+  border: 1px dashed var(--accent);
+  overflow: hidden;
+}
+
+.wtPrTargetsHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtPrTargetsHeader:active {
+  background: var(--accent-subtle);
+}
+
+.wtPrTargetsTitle {
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.wtPrTargetsSub {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.wtPrTargetsChevron {
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.wtPrTargetsChevronOpen {
+  transform: rotate(180deg);
+}
+
+.wtPrTargetsList {
+  max-height: 300px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-top: 1px solid var(--border);
+}
+
+.wtPrTargetsRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtPrTargetsRow:last-child {
+  border-bottom: none;
+}
+
+.wtPrTargetsRow:active {
+  background: var(--accent-subtle);
+}
+
+.wtPrTargetsReps {
+  font-size: var(--font-body);
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 24px;
+  text-align: right;
+}
+
+.wtPrTargetsRepsLabel {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  font-weight: 500;
+  min-width: 32px;
+}
+
+.wtPrTargetsWeight {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.wtPrTargetsE1rm {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
 .wtDateInline {
   position: relative;
 }

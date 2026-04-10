@@ -547,6 +547,28 @@
             <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
           </div>
 
+          <!-- PR targets table (always visible when exercise has a PR) -->
+          <div v-if="!isEditMode && isLogForExercise && prTargetsTable" class="wtPrTargets">
+            <button class="wtPrTargetsHeader" @click="prTableExpanded = !prTableExpanded" :aria-expanded="prTableExpanded">
+              <span class="wtPrTargetsTitle">PR Targets</span>
+              <span class="wtPrTargetsSub">Beat {{ displayWeight(store.getExercisePR(selectedExerciseId)) }} {{ weightUnit }} e1RM</span>
+              <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: prTableExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div v-if="prTableExpanded" class="wtPrTargetsList">
+              <button
+                v-for="row in prTargetsTable"
+                :key="row.reps"
+                class="wtPrTargetsRow"
+                @click="fillFromPRTable(row)"
+              >
+                <span class="wtPrTargetsReps">{{ row.reps }}</span>
+                <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
+                <span class="wtPrTargetsWeight">{{ row.displayWt }} {{ weightUnit }}</span>
+                <span class="wtPrTargetsE1rm">~{{ row.e1rm }} e1RM</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Plate mode: reps stepper + weight in plate calc below -->
           <template v-if="plateMode && !isEditMode">
             <div class="wtRepsStepperFull">
@@ -1473,6 +1495,7 @@ const newExercisePlateMode = ref(false)
 const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
 const newExerciseBarWeight = ref(45)
 const newBarWeightEditing = ref(false)
+const prTableExpanded = ref(false)
 const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
 // Vue writing back the parsed number to el.value causes iOS Safari to dismiss
@@ -1653,6 +1676,7 @@ function closeModal() {
   reps.value = null
   date.value = todayISO()
   plateNumpadOverride.value = false
+  prTableExpanded.value = false
 }
 
 // ── Rest timer ──────────────────────────────────────────────────
@@ -2125,6 +2149,81 @@ const prTargetReps = computed<number | null>(() => {
   if (needed <= 1 && Math.round(wLbs) <= pr) return 2
   return needed
 })
+
+// ── PR targets table (all weight/rep combos to beat PR) ─────────
+interface PRTargetRow {
+  reps: number
+  weightLbs: number
+  displayWt: number
+  e1rm: number
+}
+
+const prTargetsTable = computed<PRTargetRow[] | null>(() => {
+  if (isEditMode.value) return null
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  const exercise = store.exercises.find(e => e.id === id)
+  if (!exercise) return null
+  if (!isExerciseEstablished(exercise.sets, date.value || todayISO())) return null
+  const pr = store.getExercisePR(id)
+  if (pr <= 0) return null
+
+  const target = pr + 0.5
+  const isPlate = plateMode.value
+  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  const barWt = currentBarWeight.value
+  // Smallest total weight increment: smallest plate × 2 (per-side) or × 1 (total)
+  const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
+  const rows: PRTargetRow[] = []
+
+  for (let r = 1; r <= 20; r++) {
+    const rawLbs = r === 1 ? Math.ceil(target) : Math.ceil(target / (1 + r / 30))
+    // Round up to nearest achievable weight (5 lb increments for lbs, 2.5 kg for kg)
+    let finalLbs: number
+    if (isPlate) {
+      // Plate mode: round up to nearest plate increment above bar weight
+      const plateWeight = rawLbs - barWt
+      if (plateWeight <= 0) {
+        finalLbs = barWt
+      } else {
+        const roundedPlateWeight = Math.ceil(plateWeight / smallestIncrement) * smallestIncrement
+        finalLbs = barWt + roundedPlateWeight
+      }
+    } else {
+      // Numpad mode: round up to nearest 5 lbs (or 2.5 kg converted to lbs)
+      const increment = weightUnit.value === 'kg' ? Math.round(2.5 / 0.453592) : 5
+      finalLbs = Math.ceil(rawLbs / increment) * increment
+    }
+
+    const e1rm = r === 1 ? finalLbs : Math.round(finalLbs * (1 + r / 30))
+
+    rows.push({
+      reps: r,
+      weightLbs: finalLbs,
+      displayWt: displayWeight(finalLbs),
+      e1rm: displayWeight(e1rm),
+    })
+  }
+
+  return rows
+})
+
+function fillFromPRTable(row: PRTargetRow) {
+  if (plateMode.value) {
+    const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+    const barWt = currentBarWeight.value
+    const plates = weightToPlates(row.weightLbs, barWt, denoms)
+    if (plates) {
+      currentPlates.value = plates
+      syncPlateWeight()
+    }
+  } else {
+    weightStr.value = String(row.displayWt)
+  }
+  repsStr.value = String(row.reps)
+  prTableExpanded.value = false
+  impactLight()
+}
 
 // ── Personal bests from actual history ──────────────────────────
 // Best reps at the entered weight (exact match in lbs)
