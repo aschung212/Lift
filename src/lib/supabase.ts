@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { ref } from 'vue'
 import type { Database } from './database.types'
 
@@ -17,6 +17,12 @@ export const isPreviewDeploy: boolean =
 /** Reactive flag — true when writes should be blocked. Starts true on preview deploys, can be toggled. */
 export const isPreviewMode = ref(isPreviewDeploy)
 
-export const supabase: SupabaseClient<Database> | null = !import.meta.env.DEV && supabaseUrl && supabaseAnonKey
-  ? createClient<Database>(supabaseUrl, supabaseAnonKey)
-  : null
+/** Supabase client — null until initSupabase() resolves. */
+export let supabase: SupabaseClient<Database> | null = null
+
+/** Lazily load the Supabase SDK and create the client. */
+export async function initSupabase(): Promise<void> {
+  if (import.meta.env.DEV || !supabaseUrl || !supabaseAnonKey) return
+  const { createClient } = await import('@supabase/supabase-js')
+  supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+}

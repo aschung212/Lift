@@ -36,13 +36,13 @@ function init(): void {
   if (_initialized) return
   _initialized = true
 
-  // Dev mode: show auth screen, allow instant sign-in via devSignIn()
-  if (import.meta.env.DEV) {
+  // Dev mode or Supabase unavailable: fall back to local-only mode
+  if (import.meta.env.DEV || !supabase) {
     loading.value = false
     return
   }
 
-  supabase!.auth.getSession().then(({ data: { session } }) => {
+  supabase.auth.getSession().then(({ data: { session } }) => {
     user.value = session?.user ?? null
     if (session?.user) {
       initStores(session.user.id).then(() => { loading.value = false })
@@ -54,7 +54,7 @@ function init(): void {
     loading.value = false
   })
 
-  supabase!.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange((_event, session) => {
     const prev = user.value
     user.value = session?.user ?? null
     if (session?.user && !prev) {
@@ -62,8 +62,6 @@ function init(): void {
     }
   })
 }
-
-init()
 
 async function signInWithProvider(provider: Provider): Promise<{ error: AuthError | null }> {
   if (!supabase) return { error: { message: 'Supabase not configured' } }
@@ -161,5 +159,5 @@ async function deleteAccount(): Promise<void> {
 }
 
 export function useAuth() {
-  return { user, loading, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount }
+  return { user, loading, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount }
 }
