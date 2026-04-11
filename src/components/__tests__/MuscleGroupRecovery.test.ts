@@ -1,33 +1,47 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import MuscleGroupRecovery from '../MuscleGroupRecovery.vue'
+import { useWorkoutStore } from '../../stores/workout'
 import type { TagRecovery } from '../../composables/useTagRecovery'
 
 const sampleRecovery: TagRecovery[] = [
   { tag: 'Legs', lastTrainedDate: '2026-04-08', hoursSince: 72, daysSince: 3, recoveryDays: 3, status: 'recovered' },
   { tag: 'Chest', lastTrainedDate: '2026-04-09', hoursSince: 48, daysSince: 2, recoveryDays: null, status: 'unknown' },
   { tag: 'Shoulders', lastTrainedDate: '2026-04-10', hoursSince: 24, daysSince: 1, recoveryDays: 2, status: 'recovering' },
-  { tag: 'Biceps', lastTrainedDate: '2026-04-11', hoursSince: 4, daysSince: 0, recoveryDays: 2, status: 'recent' },
 ]
 
-function mountRecovery(props?: Partial<{ recovery: TagRecovery[] }>) {
+function mountRecovery(props?: Partial<{ recovery: TagRecovery[]; hiddenCount: number }>) {
   return mount(MuscleGroupRecovery, {
     props: {
       recovery: props?.recovery ?? sampleRecovery,
+      hiddenCount: props?.hiddenCount ?? 0,
+    },
+    global: {
+      plugins: [createPinia()],
     },
   })
 }
 
 describe('MuscleGroupRecovery', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   describe('visibility', () => {
     it('renders when recovery has data', () => {
       const wrapper = mountRecovery()
-      expect(wrapper.find('.recCard').exists()).toBe(true)
+      expect(wrapper.find('.mgChart').exists()).toBe(true)
     })
 
-    it('does not render when recovery is empty', () => {
-      const wrapper = mountRecovery({ recovery: [] })
-      expect(wrapper.find('.recCard').exists()).toBe(false)
+    it('does not render when recovery is empty and no hidden tags', () => {
+      const wrapper = mountRecovery({ recovery: [], hiddenCount: 0 })
+      expect(wrapper.find('.mgChart').exists()).toBe(false)
+    })
+
+    it('renders when recovery is empty but hidden tags exist', () => {
+      const wrapper = mountRecovery({ recovery: [], hiddenCount: 2 })
+      expect(wrapper.find('.mgChart').exists()).toBe(true)
     })
   })
 
@@ -35,53 +49,93 @@ describe('MuscleGroupRecovery', () => {
     it('renders one row per tag', () => {
       const wrapper = mountRecovery()
       const rows = wrapper.findAll('.recRow')
-      expect(rows).toHaveLength(4)
+      expect(rows).toHaveLength(3)
     })
 
     it('displays tag names', () => {
       const wrapper = mountRecovery()
-      const tags = wrapper.findAll('.recTag')
-      expect(tags.map(t => t.text())).toEqual(['Legs', 'Chest', 'Shoulders', 'Biceps'])
+      const names = wrapper.findAll('.recName')
+      expect(names.map(n => n.text())).toEqual(['Legs', 'Chest', 'Shoulders'])
     })
 
-    it('displays days-ago text', () => {
+    it('displays readable days-ago text', () => {
       const wrapper = mountRecovery()
       const days = wrapper.findAll('.recDays')
-      expect(days.map(d => d.text())).toEqual(['3d ago', '2d ago', 'Yesterday', 'Today'])
+      expect(days.map(d => d.text())).toEqual(['3 days ago', '2 days ago', 'Yesterday'])
     })
   })
 
-  describe('progress bars', () => {
-    it('shows filled bar for tags with recovery window', () => {
+  describe('status dots', () => {
+    it('shows colored dot only for tags with recovery window', () => {
       const wrapper = mountRecovery()
-      const fills = wrapper.findAll('.recBarFill')
-      expect(fills.length).toBeGreaterThan(0)
+      const dots = wrapper.findAll('.recDot')
+      expect(dots).toHaveLength(2) // Legs, Shoulders (not Chest)
     })
 
-    it('applies correct status class to bar', () => {
+    it('applies correct status class to dots', () => {
       const wrapper = mountRecovery()
-      const fills = wrapper.findAll('.recBarFill')
-      expect(fills[0].classes()).toContain('recBar--recovered')
-      expect(fills[1].classes()).toContain('recBar--recovering')
-      expect(fills[2].classes()).toContain('recBar--recent')
+      const dots = wrapper.findAll('.recDot')
+      expect(dots[0].classes()).toContain('recDot--recovered')
+      expect(dots[1].classes()).toContain('recDot--recovering')
+    })
+  })
+
+  describe('inline settings', () => {
+    it('expands on tap to show settings', async () => {
+      const wrapper = mountRecovery()
+      expect(wrapper.find('.recExpanded').exists()).toBe(false)
+
+      await wrapper.findAll('.recRow')[0].trigger('click')
+      expect(wrapper.find('.recExpanded').exists()).toBe(true)
     })
 
-    it('shows empty track for tags without recovery window', () => {
+    it('collapses on second tap', async () => {
       const wrapper = mountRecovery()
-      const emptyTracks = wrapper.findAll('.recBarTrackEmpty')
-      expect(emptyTracks).toHaveLength(1) // Chest has no recovery window
+      const row = wrapper.findAll('.recRow')[0]
+
+      await row.trigger('click')
+      expect(wrapper.find('.recExpanded').exists()).toBe(true)
+
+      await row.trigger('click')
+      expect(wrapper.find('.recExpanded').exists()).toBe(false)
     })
 
-    it('scales bar width based on hoursSince and recoveryHours', () => {
+    it('shows recovery window input and hide button', async () => {
       const wrapper = mountRecovery()
-      const fills = wrapper.findAll('.recBarFill')
-      // Legs: 72h / 72h = 100%
-      expect(fills[0].attributes('style')).toContain('width: 100%')
-      // Shoulders: 24h / 48h = 50%
-      expect(fills[1].attributes('style')).toContain('width: 50%')
-      // Biceps: 4h / 48h ≈ 8.33%
-      const bicepsStyle = fills[2].attributes('style') || ''
-      expect(bicepsStyle).toMatch(/width:\s*8\.3/)
+      await wrapper.findAll('.recRow')[0].trigger('click')
+
+      expect(wrapper.find('.recDaysInput').exists()).toBe(true)
+      expect(wrapper.findAll('.recActionBtn').length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('hidden tags footer', () => {
+    it('does not show footer when no tags are hidden', () => {
+      const wrapper = mountRecovery({ hiddenCount: 0 })
+      expect(wrapper.find('.recHiddenFooter').exists()).toBe(false)
+    })
+
+    it('shows footer with count when tags are hidden', () => {
+      const wrapper = mountRecovery({ hiddenCount: 2 })
+      const footer = wrapper.find('.recHiddenFooter')
+      expect(footer.exists()).toBe(true)
+      expect(footer.text()).toContain('2 hidden tags')
+    })
+
+    it('uses singular when one tag hidden', () => {
+      const wrapper = mountRecovery({ hiddenCount: 1 })
+      expect(wrapper.find('.recHiddenFooter').text()).toContain('1 hidden tag')
+    })
+
+    it('toggles hidden list on footer tap', async () => {
+      const wrapper = mountRecovery({ hiddenCount: 1 })
+      expect(wrapper.find('.recHiddenList').exists()).toBe(false)
+
+      await wrapper.find('.recHiddenFooter').trigger('click')
+      expect(wrapper.find('.recHiddenList').exists()).toBe(true)
+
+      await wrapper.find('.recHiddenFooter').trigger('click')
+      expect(wrapper.find('.recHiddenList').exists()).toBe(false)
     })
   })
 
@@ -93,20 +147,24 @@ describe('MuscleGroupRecovery', () => {
       expect(list.attributes('aria-label')).toBe('Tag recovery status')
     })
 
-    it('each row has listitem role with descriptive label', () => {
+    it('rows have aria-expanded attribute', () => {
       const wrapper = mountRecovery()
-      const items = wrapper.findAll('[role="listitem"]')
-      expect(items).toHaveLength(4)
-      expect(items[0].attributes('aria-label')).toContain('Legs')
-      expect(items[0].attributes('aria-label')).toContain('3d ago')
-      expect(items[0].attributes('aria-label')).toContain('recovered')
+      const rows = wrapper.findAll('.recRow')
+      expect(rows[0].attributes('aria-expanded')).toBe('false')
+    })
+
+    it('each row has descriptive aria-label', () => {
+      const wrapper = mountRecovery()
+      const rows = wrapper.findAll('.recRow')
+      expect(rows[0].attributes('aria-label')).toContain('Legs')
+      expect(rows[0].attributes('aria-label')).toContain('3 days ago')
     })
   })
 
   describe('title', () => {
     it('displays Recovery title', () => {
       const wrapper = mountRecovery()
-      expect(wrapper.find('.recTitle').text()).toBe('Recovery')
+      expect(wrapper.find('.mgTitle').text()).toBe('Recovery')
     })
   })
 })

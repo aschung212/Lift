@@ -845,36 +845,7 @@
                 <button class="wtTagManagerDeleteBtn" @click="confirmDeleteTag(tag)" aria-label="Delete tag">✕</button>
               </template>
             </div>
-            <div v-if="expandedTag === tag" class="wtTagExpandedSection">
-              <div class="wtTagRecoveryRow">
-                <span class="wtTagRecoveryLabel">Track recovery</span>
-                <button
-                  class="wtTagRecoveryToggle"
-                  :class="{ wtTagRecoveryToggleOn: !store.tagRecoveryExcluded.includes(tag) }"
-                  :aria-label="store.tagRecoveryExcluded.includes(tag) ? 'Enable recovery tracking for ' + tag : 'Disable recovery tracking for ' + tag"
-                  :aria-pressed="!store.tagRecoveryExcluded.includes(tag)"
-                  @click="store.setTagRecoveryExcluded(tag, !store.tagRecoveryExcluded.includes(tag))"
-                >
-                  <span class="wtTagRecoveryToggleThumb"></span>
-                </button>
-              </div>
-              <div v-if="!store.tagRecoveryExcluded.includes(tag)" class="wtTagRecoveryRow">
-                <label class="wtTagRecoveryLabel" :for="'recovery-' + tag">Window</label>
-                <input
-                  :id="'recovery-' + tag"
-                  type="number"
-                  inputmode="numeric"
-                  min="1"
-                  max="99"
-                  :value="store.tagRecoveryDays[tag] ?? ''"
-                  placeholder="—"
-                  class="wtTagRecoveryInput"
-                  aria-label="Recovery window in days"
-                  @change="onRecoveryDaysChange(tag, $event)"
-                />
-                <span class="wtTagRecoveryUnit">days</span>
-              </div>
-              <ul class="wtTagExerciseList">
+            <ul v-if="expandedTag === tag" class="wtTagExerciseList">
                 <li v-for="exercise in store.exercises" :key="exercise.id">
                   <button class="wtTagExerciseRow" @click="toggleExerciseTag(exercise.id, tag)">
                     <span class="wtTagExerciseRowName">{{ exercise.name }}</span>
@@ -882,7 +853,6 @@
                   </button>
                 </li>
               </ul>
-            </div>
           </li>
         </ul>
         <div v-if="tagManagerAdding" class="wtTagManagerAddRow">
@@ -2592,13 +2562,6 @@ function cancelTagManagerAdd() {
 
 function toggleTagExpand(tag: string) {
   expandedTag.value = expandedTag.value === tag ? null : tag
-}
-
-function onRecoveryDaysChange(tag: string, event: Event) {
-  const input = event.target as HTMLInputElement
-  const val = input.value.trim()
-  const parsed = parseInt(val, 10)
-  store.setTagRecoveryDays(tag, val && !Number.isNaN(parsed) ? parsed : null)
 }
 
 function toggleExerciseTag(exerciseId: string, tag: string) {

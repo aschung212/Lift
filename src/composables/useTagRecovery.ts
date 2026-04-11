@@ -40,21 +40,27 @@ export function useTagRecovery(
       }
     }
 
+    // Compare calendar days, not timestamps. Sets are stored with end-of-day
+    // UTC times (T23:59:xxZ) so timestamp math drifts depending on timezone
+    // and time of day. Calendar day diff is always correct.
+    const todayStr = currentTime.getFullYear() + '-'
+      + String(currentTime.getMonth() + 1).padStart(2, '0') + '-'
+      + String(currentTime.getDate()).padStart(2, '0')
+    const todayMs = new Date(todayStr + 'T00:00:00').getTime()
+
     const results: TagRecovery[] = []
     for (const [tag, dateStr] of Object.entries(latestByTag)) {
-      const lastDate = new Date(dateStr + 'T12:00:00')
-      const rawHours = (currentTime.getTime() - lastDate.getTime()) / 3_600_000
-      const hoursSince = Math.max(0, rawHours)
-      const daysSince = Math.floor(hoursSince / 24)
+      const lastMs = new Date(dateStr + 'T00:00:00').getTime()
+      const daysSince = Math.max(0, Math.round((todayMs - lastMs) / 86_400_000))
+      const hoursSince = daysSince * 24
       const recDays = tagRecoveryDays.value[tag] ?? null
-      const recHours = recDays !== null ? recDays * 24 : null
 
       let status: TagRecovery['status']
-      if (recHours === null) {
+      if (recDays === null) {
         status = 'unknown'
-      } else if (hoursSince >= recHours) {
+      } else if (daysSince >= recDays) {
         status = 'recovered'
-      } else if (hoursSince >= recHours * 0.5) {
+      } else if (daysSince * 2 >= recDays) {
         status = 'recovering'
       } else {
         status = 'recent'
@@ -79,7 +85,27 @@ export function useTagRecovery(
     return results
   })
 
-  const hasData = computed(() => recovery.value.length > 0)
+  // Count how many excluded tags actually have logged sets
+  const hiddenCount = computed((): number => {
+    const excluded = new Set(excludedTags.value)
+    const hiddenWithSets = new Set<string>()
+    for (const exercise of exercises.value) {
+      if (!exercise.tags || exercise.tags.length === 0) continue
+      for (const set of exercise.sets) {
+        if (set.date) {
+          for (const tag of exercise.tags) {
+            if (excluded.has(tag)) hiddenWithSets.add(tag)
+          }
+        }
+      }
+    }
+    return hiddenWithSets.size
+  })
 
-  return { recovery, hasData }
+  // Total tags with data (visible + hidden)
+  const totalCount = computed(() => recovery.value.length + hiddenCount.value)
+
+  const hasData = computed(() => totalCount.value > 0)
+
+  return { recovery, hasData, hiddenCount, totalCount }
 }
