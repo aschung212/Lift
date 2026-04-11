@@ -2005,6 +2005,12 @@ html.theme-fading .settingsSheet {
   white-space: nowrap;
 }
 
+.wtTimelineBadge {
+  margin-left: 4px;
+  font-size: var(--font-footnote);
+  line-height: 1;
+}
+
 .wtTimelineE1RM {
   font-size: var(--font-caption1);
   color: var(--text-muted);
