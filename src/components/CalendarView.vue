@@ -190,17 +190,20 @@
         </div>
       </div>
 
-      <!-- Weekly muscle group volume chart -->
-      <MuscleGroupChart
-        :weekly-volume="weeklyVolume"
-        :max-sets="maxSets"
-        :total-sets="totalSets"
-      />
-
       <MuscleGroupRecovery
         v-if="hasRecoveryData"
         :recovery="tagRecovery"
         :hidden-count="recoveryHiddenCount"
+      />
+
+      <!-- Weekly muscle group volume chart (collapsible) -->
+      <MuscleGroupChart
+        v-if="weeklyVolume.length > 0"
+        :weekly-volume="weeklyVolume"
+        :max-sets="maxSets"
+        :total-sets="totalSets"
+        :collapsed="volumeCollapsed"
+        @toggle-collapsed="volumeCollapsed = !volumeCollapsed"
       />
     </div>
   </div>
@@ -286,7 +289,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useFocusTrap } from '../composables/useFocusTrap'
-import { useMuscleGroupVolume } from '../composables/useMuscleGroupVolume'
+import { useTagVolume } from '../composables/useTagVolume'
 import { useTagRecovery } from '../composables/useTagRecovery'
 import MuscleGroupChart from './MuscleGroupChart.vue'
 import MuscleGroupRecovery from './MuscleGroupRecovery.vue'
@@ -571,13 +574,14 @@ const weekDays = computed(() => {
 // ── Weekly muscle group volume ────────────────────────────────────
 const weekDateStrings = computed(() => weekDays.value.map(d => d.dateStr))
 const exercisesRef = computed(() => filteredExercises.value)
-const { weeklyVolume, maxSets, totalSets } = useMuscleGroupVolume(exercisesRef, weekDateStrings)
+const { weeklyVolume, maxSets, totalSets } = useTagVolume(exercisesRef, weekDateStrings)
 
 // ── Tag recovery ─────────────────────────────────────────────────
 const allExercisesRef = computed(() => store.exercises)
 const tagRecoveryDaysRef = computed(() => store.tagRecoveryDays)
 const tagRecoveryExcludedRef = computed(() => store.tagRecoveryExcluded)
 const { recovery: tagRecovery, hasData: hasRecoveryData, hiddenCount: recoveryHiddenCount } = useTagRecovery(allExercisesRef, tagRecoveryDaysRef, tagRecoveryExcludedRef)
+const volumeCollapsed = ref(false)
 
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
