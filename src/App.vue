@@ -1640,8 +1640,19 @@ onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
   logEvent('session_start')
 
-  // Load Supabase SDK off the critical render path, then start auth
-  initSupabase().then(() => initAuth())
+  // Load Supabase SDK off the critical render path, then start auth.
+  // If the SDK fails to load (offline first visit, network error), fall
+  // back to local-only mode so the app still renders from localStorage.
+  initSupabase()
+    .then(() => initAuth())
+    .catch(() => initAuth())
+
+  // When skipWaiting activates a new SW, reload to pick up fresh chunk hashes.
+  // Without this, lazy-loaded tabs would request old hashed filenames that the
+  // new SW's precache no longer contains, causing ChunkLoadErrors.
+  navigator.serviceWorker?.addEventListener('controllerchange', () => {
+    window.location.reload()
+  })
 
   // Request persistent storage to prevent browser eviction
   requestPersistentStorage()
