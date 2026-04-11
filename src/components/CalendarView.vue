@@ -196,6 +196,11 @@
         :max-sets="maxSets"
         :total-sets="totalSets"
       />
+
+      <MuscleGroupRecovery
+        v-if="hasRecoveryData"
+        :recovery="tagRecovery"
+      />
     </div>
   </div>
 
@@ -281,7 +286,9 @@ import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useMuscleGroupVolume } from '../composables/useMuscleGroupVolume'
+import { useTagRecovery } from '../composables/useTagRecovery'
 import MuscleGroupChart from './MuscleGroupChart.vue'
+import MuscleGroupRecovery from './MuscleGroupRecovery.vue'
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
@@ -564,6 +571,12 @@ const weekDays = computed(() => {
 const weekDateStrings = computed(() => weekDays.value.map(d => d.dateStr))
 const exercisesRef = computed(() => filteredExercises.value)
 const { weeklyVolume, maxSets, totalSets } = useMuscleGroupVolume(exercisesRef, weekDateStrings)
+
+// ── Tag recovery ─────────────────────────────────────────────────
+const allExercisesRef = computed(() => store.exercises)
+const tagRecoveryDaysRef = computed(() => store.tagRecoveryDays)
+const tagRecoveryExcludedRef = computed(() => store.tagRecoveryExcluded)
+const { recovery: tagRecovery, hasData: hasRecoveryData } = useTagRecovery(allExercisesRef, tagRecoveryDaysRef, tagRecoveryExcludedRef)
 
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {

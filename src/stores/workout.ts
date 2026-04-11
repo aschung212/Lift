@@ -156,6 +156,8 @@ export const useWorkoutStore = defineStore('workout', {
   state: () => ({
     exercises: load() as Exercise[],
     customTags: JSON.parse(localStorage.getItem('lift-custom-tags') || '[]') as string[],
+    tagRecoveryDays: JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}') as Record<string, number>,
+    tagRecoveryExcluded: JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]') as string[],
     _userId: null as string | null
   }),
 
@@ -165,6 +167,8 @@ export const useWorkoutStore = defineStore('workout', {
       try {
         localStorage.setItem(STORAGE_KEY, data)
         localStorage.setItem('lift-custom-tags', JSON.stringify(this.customTags))
+        localStorage.setItem('lift-tag-recovery-days', JSON.stringify(this.tagRecoveryDays))
+        localStorage.setItem('lift-tag-recovery-excluded', JSON.stringify(this.tagRecoveryExcluded))
       } catch (e) {
         logError(e, { source: 'workout._persist', size: data.length })
       }
@@ -710,6 +714,21 @@ export const useWorkoutStore = defineStore('workout', {
           this.customTags[customIdx] = trimmed
         }
       }
+      if (oldName in this.tagRecoveryDays) {
+        const days = this.tagRecoveryDays[oldName]
+        delete this.tagRecoveryDays[oldName]
+        if (!(trimmed in this.tagRecoveryDays)) {
+          this.tagRecoveryDays[trimmed] = days
+        }
+      }
+      const exclIdx = this.tagRecoveryExcluded.indexOf(oldName)
+      if (exclIdx !== -1) {
+        if (!this.tagRecoveryExcluded.includes(trimmed)) {
+          this.tagRecoveryExcluded[exclIdx] = trimmed
+        } else {
+          this.tagRecoveryExcluded.splice(exclIdx, 1)
+        }
+      }
       this._persist()
 
       if (this._userId && modified.length > 0) {
@@ -737,6 +756,8 @@ export const useWorkoutStore = defineStore('workout', {
         }
       })
       this.customTags = this.customTags.filter(t => t !== tagName)
+      delete this.tagRecoveryDays[tagName]
+      this.tagRecoveryExcluded = this.tagRecoveryExcluded.filter(t => t !== tagName)
       this._persist()
 
       if (this._userId && modified.length > 0) {
@@ -751,6 +772,25 @@ export const useWorkoutStore = defineStore('workout', {
           )
         }
       }
+    },
+
+    setTagRecoveryDays(tag: string, days: number | null) {
+      if (days === null || days <= 0) {
+        delete this.tagRecoveryDays[tag]
+      } else {
+        this.tagRecoveryDays[tag] = days
+      }
+      this._persist()
+    },
+
+    setTagRecoveryExcluded(tag: string, excluded: boolean) {
+      const idx = this.tagRecoveryExcluded.indexOf(tag)
+      if (excluded && idx === -1) {
+        this.tagRecoveryExcluded.push(tag)
+      } else if (!excluded && idx !== -1) {
+        this.tagRecoveryExcluded.splice(idx, 1)
+      }
+      this._persist()
     },
 
     addCustomTag(name: string) {
