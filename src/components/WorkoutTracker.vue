@@ -1077,12 +1077,12 @@ const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
         map[s.id] = 'pr'
       }
     }
-    // Rep PR: best reps at each weight (only for sets that aren't already a weight PR)
+    // Rep PR: best reps at each weight (computed across ALL sets to get true baseline)
     const bestRepsAtWeight: Record<number, number> = {}
     for (const s of ex.sets) {
-      if (map[s.id]) continue
       bestRepsAtWeight[s.weight] = Math.max(bestRepsAtWeight[s.weight] ?? 0, s.reps)
     }
+    // Only assign repPR badge to non-weight-PR sets
     for (const s of ex.sets) {
       if (!map[s.id] && s.reps === bestRepsAtWeight[s.weight] && ex.sets.filter(o => o.weight === s.weight).length > 1) {
         map[s.id] = 'repPR'
