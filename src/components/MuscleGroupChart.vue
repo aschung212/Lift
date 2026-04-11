@@ -1,74 +1,54 @@
 <template>
   <div v-if="weeklyVolume.length > 0" class="mgChart">
-    <div class="mgHeader">
-      <p class="mgTitle">Weekly Volume by Muscle Group</p>
-      <button
-        class="mgViewToggle"
-        :aria-label="`Switch to ${showHeatmap ? 'bar chart' : 'body heatmap'} view`"
-        @click="showHeatmap = !showHeatmap"
-      >
-        <svg v-if="!showHeatmap" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="5" r="3" />
-          <line x1="12" y1="8" x2="12" y2="16" />
-          <line x1="8" y1="12" x2="16" y2="12" />
-          <line x1="12" y1="16" x2="8" y2="22" />
-          <line x1="12" y1="16" x2="16" y2="22" />
-        </svg>
-        <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="4" y1="20" x2="4" y2="14" />
-          <line x1="9" y1="20" x2="9" y2="8" />
-          <line x1="14" y1="20" x2="14" y2="4" />
-          <line x1="19" y1="20" x2="19" y2="11" />
-        </svg>
-      </button>
-    </div>
+    <button class="mgHeader" @click="$emit('toggleCollapsed')">
+      <p class="mgTitle">Weekly Volume by Tag</p>
+      <div class="mgHeaderRight">
+        <span v-if="collapsed" class="mgCollapsedSummary">{{ totalSets }} sets</span>
+        <svg class="mgChevron" :class="{ mgChevronOpen: !collapsed }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </button>
 
-    <BodyHeatmap
-      v-if="showHeatmap"
-      :weekly-volume="weeklyVolume"
-      :max-sets="maxSets"
-    />
-
-    <template v-else>
-      <div class="mgBars" role="list" :aria-label="`Weekly muscle group volume: ${totalSets} total sets across ${weeklyVolume.length} muscle groups`">
+    <template v-if="!collapsed">
+      <div class="mgBars" role="list" :aria-label="`Weekly tag volume: ${totalSets} total sets across ${weeklyVolume.length} tags`">
         <div
           v-for="(item, index) in weeklyVolume"
-          :key="item.group"
+          :key="item.tag"
           class="mgRow"
           role="listitem"
-          :aria-label="`${item.group}: ${item.sets} sets`"
+          :aria-label="`${item.tag}: ${item.sets} sets`"
         >
-          <span class="mgLabel">{{ item.group }}</span>
+          <span class="mgLabel">{{ item.tag }}</span>
           <div class="mgBarTrack">
             <div
               class="mgBarFill"
               :style="{
                 width: `${(item.sets / maxSets) * 100}%`,
-                opacity: 1 - (index * 0.08),
+                opacity: 1 - (index * 0.06),
               }"
             ></div>
           </div>
           <span class="mgCount">{{ item.sets }}</span>
         </div>
       </div>
-    </template>
 
-    <p class="mgTotal">{{ totalSets }} sets this week</p>
+      <p class="mgTotal">{{ totalSets }} sets this week</p>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { MuscleGroupSets } from '../composables/useMuscleGroupVolume'
-import BodyHeatmap from './BodyHeatmap.vue'
+import type { TagVolume } from '../composables/useTagVolume'
 
 defineProps<{
-  weeklyVolume: MuscleGroupSets[]
+  weeklyVolume: TagVolume[]
   maxSets: number
   totalSets: number
+  collapsed?: boolean
 }>()
 
-const showHeatmap = ref(false)
+defineEmits<{
+  toggleCollapsed: []
+}>()
 </script>
 
 <style scoped>
@@ -84,7 +64,19 @@ const showHeatmap = ref(false)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  color: inherit;
+  font: inherit;
+  min-height: 44px;
+}
+
+.mgHeader:active {
+  opacity: 0.6;
 }
 
 .mgTitle {
@@ -92,25 +84,28 @@ const showHeatmap = ref(false)
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+  text-align: left;
 }
 
-.mgViewToggle {
+.mgHeaderRight {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: none;
-  border-radius: 8px;
-  background: var(--bg-elevated);
-  color: var(--text-secondary);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.2s;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-.mgViewToggle:active {
-  background: var(--border);
+.mgCollapsedSummary {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mgChevron {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.mgChevronOpen {
+  transform: rotate(180deg);
 }
 
 .mgBars {
@@ -170,7 +165,7 @@ const showHeatmap = ref(false)
   .mgBarFill {
     transition: none;
   }
-  .mgViewToggle {
+  .mgChevron {
     transition: none;
   }
 }

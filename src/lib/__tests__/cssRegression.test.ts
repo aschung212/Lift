@@ -179,16 +179,12 @@ describe('CSS regression tests', () => {
     // cannot verify sizing in component tests. These CSS regression tests
     // read the stylesheet source directly to assert 44px touch targets.
 
-    describe('.mgViewToggle in MuscleGroupChart', () => {
+    describe('.mgHeader in MuscleGroupChart', () => {
       const style = getVueStyleBlock('MuscleGroupChart.vue')
-      const lines = getRuleLines('.mgViewToggle', style)
+      const lines = getRuleLines('.mgHeader', style)
 
-      it('has width: 44px for iOS HIG touch target', () => {
-        expect(lines.some(l => l.includes('width') && l.includes('44px'))).toBe(true)
-      })
-
-      it('has height: 44px for iOS HIG touch target', () => {
-        expect(lines.some(l => l.includes('height') && l.includes('44px'))).toBe(true)
+      it('has min-height: 44px for iOS HIG touch target', () => {
+        expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
       })
     })
 
