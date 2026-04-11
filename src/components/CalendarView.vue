@@ -200,6 +200,7 @@
       <MuscleGroupRecovery
         v-if="hasRecoveryData"
         :recovery="tagRecovery"
+        :hidden-count="recoveryHiddenCount"
       />
     </div>
   </div>
@@ -576,7 +577,7 @@ const { weeklyVolume, maxSets, totalSets } = useMuscleGroupVolume(exercisesRef, 
 const allExercisesRef = computed(() => store.exercises)
 const tagRecoveryDaysRef = computed(() => store.tagRecoveryDays)
 const tagRecoveryExcludedRef = computed(() => store.tagRecoveryExcluded)
-const { recovery: tagRecovery, hasData: hasRecoveryData } = useTagRecovery(allExercisesRef, tagRecoveryDaysRef, tagRecoveryExcludedRef)
+const { recovery: tagRecovery, hasData: hasRecoveryData, hiddenCount: recoveryHiddenCount } = useTagRecovery(allExercisesRef, tagRecoveryDaysRef, tagRecoveryExcludedRef)
 
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
