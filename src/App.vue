@@ -715,7 +715,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
-import { isPreviewDeploy, isPreviewMode } from './lib/supabase'
+import { isPreviewDeploy, isPreviewMode, initSupabase } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
@@ -829,7 +829,7 @@ const sortedThemes = computed(() => {
   return [...unlocked, ...locked]
 })
 
-const { user, loading, signOut, deleteAccount } = useAuth()
+const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
@@ -1639,6 +1639,9 @@ function onBeforeUnload() {
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
   logEvent('session_start')
+
+  // Load Supabase SDK off the critical render path, then start auth
+  initSupabase().then(() => initAuth())
 
   // Request persistent storage to prevent browser eviction
   requestPersistentStorage()

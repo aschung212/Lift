@@ -63,8 +63,6 @@ function init(): void {
   })
 }
 
-init()
-
 async function signInWithProvider(provider: Provider): Promise<{ error: AuthError | null }> {
   if (!supabase) return { error: { message: 'Supabase not configured' } }
   const { error } = await supabase.auth.signInWithOAuth({
@@ -161,5 +159,5 @@ async function deleteAccount(): Promise<void> {
 }
 
 export function useAuth() {
-  return { user, loading, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount }
+  return { user, loading, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount }
 }
