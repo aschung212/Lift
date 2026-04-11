@@ -324,6 +324,34 @@ describe('workout store', () => {
       // Should have just 'Upper', not ['Upper', 'Upper']
       expect(store.exercises[0].tags).toEqual(['Upper'])
     })
+
+    it('transfers recovery days to the new tag name', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', ['Push'])
+      store.setTagRecoveryDays('Push', 2)
+      store.renameTag('Push', 'Upper Push')
+      expect(store.tagRecoveryDays['Upper Push']).toBe(2)
+      expect(store.tagRecoveryDays['Push']).toBeUndefined()
+    })
+
+    it('drops recovery days if new tag name already has them', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', ['Push', 'Upper'])
+      store.setTagRecoveryDays('Push', 2)
+      store.setTagRecoveryDays('Upper', 3)
+      store.renameTag('Push', 'Upper')
+      expect(store.tagRecoveryDays['Upper']).toBe(3) // keeps existing
+      expect(store.tagRecoveryDays['Push']).toBeUndefined()
+    })
+
+    it('transfers excluded status to the new tag name', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', ['Push'])
+      store.setTagRecoveryExcluded('Push', true)
+      store.renameTag('Push', 'Upper Push')
+      expect(store.tagRecoveryExcluded).toContain('Upper Push')
+      expect(store.tagRecoveryExcluded).not.toContain('Push')
+    })
   })
 
   describe('deleteTag', () => {
@@ -341,6 +369,22 @@ describe('workout store', () => {
       store.addExercise('Bench', ['Push'])
       store.deleteTag('Nonexistent')
       expect(store.exercises[0].tags).toEqual(['Push'])
+    })
+
+    it('removes recovery days for the deleted tag', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', ['Push'])
+      store.setTagRecoveryDays('Push', 2)
+      store.deleteTag('Push')
+      expect(store.tagRecoveryDays['Push']).toBeUndefined()
+    })
+
+    it('removes excluded status for the deleted tag', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', ['Push'])
+      store.setTagRecoveryExcluded('Push', true)
+      store.deleteTag('Push')
+      expect(store.tagRecoveryExcluded).not.toContain('Push')
     })
   })
 
