@@ -117,6 +117,8 @@
               <div class="wtTimelineRowMain">
                 <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
                 <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
+                <span v-if="timelinePRMap[entry.set.id] === 'pr'" class="wtTimelineBadge" aria-label="Personal record">🏆</span>
+                <span v-else-if="timelinePRMap[entry.set.id] === 'repPR'" class="wtTimelineBadge" aria-label="Rep personal record">🔥</span>
                 <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
               </div>
               <div v-if="activeSetId === entry.set.id" class="wtSetActions">
@@ -1060,6 +1062,34 @@ const timelineSets = computed((): TimelineEntry[] => {
     }
   }
   return entries.sort((a, b) => b.set.date.slice(0, 10).localeCompare(a.set.date.slice(0, 10)))
+})
+
+// PR badge map: for each set, determine if it's the all-time best e1RM (weight PR)
+// or the best reps at its weight (rep PR) for that exercise
+const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
+  const map: Record<string, 'pr' | 'repPR'> = {}
+  for (const ex of store.exercises) {
+    if (ex.sets.length === 0) continue
+    const best1RM = Math.max(...ex.sets.map(s => s.estimated1RM))
+    // Weight PR: the set(s) that achieved the all-time best e1RM
+    for (const s of ex.sets) {
+      if (s.estimated1RM === best1RM) {
+        map[s.id] = 'pr'
+      }
+    }
+    // Rep PR: best reps at each weight (computed across ALL sets to get true baseline)
+    const bestRepsAtWeight: Record<number, number> = {}
+    for (const s of ex.sets) {
+      bestRepsAtWeight[s.weight] = Math.max(bestRepsAtWeight[s.weight] ?? 0, s.reps)
+    }
+    // Only assign repPR badge to non-weight-PR sets
+    for (const s of ex.sets) {
+      if (!map[s.id] && s.reps === bestRepsAtWeight[s.weight] && ex.sets.filter(o => o.weight === s.weight).length > 1) {
+        map[s.id] = 'repPR'
+      }
+    }
+  }
+  return map
 })
 
 const visibleTimelineGroups = computed(() => {
