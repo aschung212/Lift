@@ -2083,6 +2083,11 @@ html.theme-fading .settingsSheet {
 .wtExerciseHeader {
   display: flex;
   align-items: stretch;
+  /* Long-press picks up the row to reorder. Block iOS text selection/magnifier
+     and the callout menu so the gesture doesn't fight the system. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .wtExerciseRow {
@@ -2168,25 +2173,21 @@ html.theme-fading .settingsSheet {
   background: none;
   border: none;
   border-right: 1px solid var(--border);
-  cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  transition: color 0.15s, background-color 0.15s;
-}
-
-.wtDragHandle:active:not(.wtDragHandleDisabled) {
-  color: var(--accent);
-  background: var(--accent-subtle);
+  pointer-events: none;
+  transition: color 0.15s;
 }
 
 .wtDragHandleDisabled {
   opacity: 0.25;
-  cursor: default;
 }
 
-/* Drag-to-reorder */
+/* Long-press pickup feedback — lifts the row while dragging */
 .wt-dragging {
   opacity: 0.4;
+  transform: scale(1.02);
+  transition: transform 0.12s;
 }
 
 .wt-drag-over {
