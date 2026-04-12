@@ -68,13 +68,17 @@
           'wt-drag-over': activeTagFilters.length === 0 && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
         }"
         :data-index="index"
+        @touchstart="onItemTouchStart(index, $event)"
+        @touchmove="onItemTouchMove($event)"
+        @touchend="onItemTouchEnd()"
+        @touchcancel="onItemTouchEnd()"
+        @mousedown="onItemMouseDown(index, $event)"
+        @click.capture="onItemClickCapture($event)"
       >
         <div class="wtExerciseHeader">
           <span
             :class="['wtDragHandle', { wtDragHandleDisabled: activeTagFilters.length > 0 }]"
-            @touchstart.prevent="activeTagFilters.length === 0 && onDragStart(index, $event)"
-            @mousedown="activeTagFilters.length === 0 && onDragStart(index, $event)"
-            aria-label="Drag to reorder"
+            aria-hidden="true"
           >⠿</span>
           <button
             class="wtExerciseRow"
@@ -1237,9 +1241,37 @@ const prHistory = computed((): PREntry[] => {
   return prs.reverse()
 })
 
-// ── Drag-to-reorder ─────────────────────────────────────────────
+// ── Long-press to reorder ──────────────────────────────────────
+// Accidental reorders were common when a touchstart on the left-edge
+// drag handle fired immediately. Now the whole row is the handle, and
+// it requires a ~400ms hold (matching iOS Reminders / Files / Music).
+// Short taps still open the detail modal; scrolls cancel the hold.
+const LONG_PRESS_MS = 400
+const MOVE_TOLERANCE_PX = 8
+const SUPPRESS_CLICK_MS = 50
+
 const exerciseListEl = ref<HTMLElement | null>(null)
 const dragState = reactive({ dragging: false, fromIndex: -1, overIndex: -1 })
+
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let pressStartX = 0
+let pressStartY = 0
+let suppressClickUntil = 0
+
+function clearLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+function shouldIgnorePressTarget(event: TouchEvent | MouseEvent): boolean {
+  if (activeTagFilters.value.length > 0) return true
+  const target = event.target as HTMLElement | null
+  // Never start a drag when pressing the "+ Log" affordance.
+  if (target?.closest('.wtExerciseLogBtn')) return true
+  return false
+}
 
 function getItemIndexFromPoint(clientY: number): number {
   const list = exerciseListEl.value
@@ -1254,7 +1286,75 @@ function getItemIndexFromPoint(clientY: number): number {
   return items.length - 1
 }
 
-function onDragStart(index: number, _event: MouseEvent | TouchEvent) {
+function onItemTouchStart(index: number, event: TouchEvent) {
+  if (shouldIgnorePressTarget(event)) return
+  const t = event.touches[0]
+  if (!t) return
+  pressStartX = t.clientX
+  pressStartY = t.clientY
+  clearLongPress()
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    beginDrag(index)
+  }, LONG_PRESS_MS)
+}
+
+function onItemTouchMove(event: TouchEvent) {
+  if (!longPressTimer) return
+  const t = event.touches[0]
+  if (!t) return
+  const dx = Math.abs(t.clientX - pressStartX)
+  const dy = Math.abs(t.clientY - pressStartY)
+  if (dx > MOVE_TOLERANCE_PX || dy > MOVE_TOLERANCE_PX) {
+    clearLongPress()
+  }
+}
+
+function onItemTouchEnd() {
+  clearLongPress()
+}
+
+function onItemMouseDown(index: number, event: MouseEvent) {
+  if (shouldIgnorePressTarget(event)) return
+  pressStartX = event.clientX
+  pressStartY = event.clientY
+  clearLongPress()
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    beginDrag(index)
+  }, LONG_PRESS_MS)
+
+  const onMouseMove = (e: MouseEvent) => {
+    if (!longPressTimer) {
+      document.removeEventListener('mousemove', onMouseMove)
+      return
+    }
+    if (
+      Math.abs(e.clientX - pressStartX) > MOVE_TOLERANCE_PX ||
+      Math.abs(e.clientY - pressStartY) > MOVE_TOLERANCE_PX
+    ) {
+      clearLongPress()
+      document.removeEventListener('mousemove', onMouseMove)
+    }
+  }
+  const onMouseUp = () => {
+    clearLongPress()
+    document.removeEventListener('mousemove', onMouseMove)
+  }
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp, { once: true })
+}
+
+function onItemClickCapture(event: MouseEvent) {
+  if (performance.now() < suppressClickUntil) {
+    event.stopPropagation()
+    event.preventDefault()
+  }
+}
+
+function beginDrag(index: number) {
+  // Haptic confirms pickup — Capacitor Haptics on native, Vibration API on web.
+  impactLight()
   dragState.dragging = true
   dragState.fromIndex = index
   dragState.overIndex = index
@@ -1263,11 +1363,14 @@ function onDragStart(index: number, _event: MouseEvent | TouchEvent) {
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
     const idx = getItemIndexFromPoint(clientY)
     if (idx !== -1) dragState.overIndex = idx
+    // Block page scroll while the user is dragging.
+    if (e.cancelable) e.preventDefault()
   }
 
   const onEnd = () => {
     document.removeEventListener('touchmove', onMove)
     document.removeEventListener('touchend', onEnd)
+    document.removeEventListener('touchcancel', onEnd)
     document.removeEventListener('mousemove', onMove)
     document.removeEventListener('mouseup', onEnd)
 
@@ -1279,10 +1382,14 @@ function onDragStart(index: number, _event: MouseEvent | TouchEvent) {
     dragState.dragging = false
     dragState.fromIndex = -1
     dragState.overIndex = -1
+    // iOS synthesizes a click on touchend — suppress the stale click.
+    suppressClickUntil = performance.now() + SUPPRESS_CLICK_MS
   }
 
-  document.addEventListener('touchmove', onMove, { passive: true })
+  // Non-passive so the move handler can preventDefault page scroll.
+  document.addEventListener('touchmove', onMove, { passive: false })
   document.addEventListener('touchend', onEnd, { once: true })
+  document.addEventListener('touchcancel', onEnd, { once: true })
   document.addEventListener('mousemove', onMove)
   document.addEventListener('mouseup', onEnd, { once: true })
 }
