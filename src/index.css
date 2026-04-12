@@ -5688,10 +5688,6 @@ html.theme-fading .settingsSheet {
   background: var(--accent-subtle);
 }
 
-.swUpdateBar {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 124px);
-}
-
 .undoToast-enter-active {
   animation: undoToastIn 0.25s ease-out;
 }
