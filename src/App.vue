@@ -439,15 +439,6 @@
       </Transition>
     </Teleport>
 
-    <!-- SW updated toast (informational, auto-dismisses) -->
-    <Teleport to="body">
-      <Transition name="undoToast">
-        <div v-if="swUpdated" class="undoToastBar swUpdateBar" role="status" aria-live="polite">
-          <span class="undoToastMsg">App updated ✓</span>
-        </div>
-      </Transition>
-    </Teleport>
-
     <!-- Keyboard shortcuts help -->
     <Teleport to="body">
       <Transition name="undoToast">
@@ -900,7 +891,6 @@ function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
 }
 
 // ── Service worker auto-update ──────────────────────────────────
-const swUpdated = ref(false)
 let swRegistration: ServiceWorkerRegistration | undefined
 registerSW({
   onRegisteredSW(_url, registration) {
@@ -919,13 +909,14 @@ document.addEventListener('visibilitychange', () => {
 // Expose a function components can call after meaningful user actions
 function checkForSWUpdate() { swRegistration?.update() }
 
-// Listen for the controlling SW changing — means auto-update activated
+// Listen for the controlling SW changing — means auto-update activated.
+// On first visit currentController is null; skip reload to avoid a surprise refresh.
+// On subsequent changes a new SW took over — reload to pick up fresh chunk hashes
+// (without this, lazy-loaded tabs request old hashed filenames that no longer exist).
 let currentController = navigator.serviceWorker?.controller
 navigator.serviceWorker?.addEventListener('controllerchange', () => {
   if (currentController) {
-    // A new SW took over — show informational toast, then auto-dismiss
-    swUpdated.value = true
-    setTimeout(() => { swUpdated.value = false }, 4000)
+    window.location.reload()
   }
   currentController = navigator.serviceWorker?.controller ?? null
 })
@@ -1646,13 +1637,6 @@ onMounted(async () => {
   initSupabase()
     .then(() => initAuth())
     .catch(() => initAuth())
-
-  // When skipWaiting activates a new SW, reload to pick up fresh chunk hashes.
-  // Without this, lazy-loaded tabs would request old hashed filenames that the
-  // new SW's precache no longer contains, causing ChunkLoadErrors.
-  navigator.serviceWorker?.addEventListener('controllerchange', () => {
-    window.location.reload()
-  })
 
   // Request persistent storage to prevent browser eviction
   requestPersistentStorage()
