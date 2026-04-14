@@ -88,9 +88,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
       }))
       const { merged, localOnly, localWins } = mergeEntities<BWWithTimestamp>(localWithTimestamps, remoteEntries as BWWithTimestamp[])
 
-      // Deduplicate by date — keep only the latest entry per date (by updated_at)
+      // Deduplicate by date for LOCAL display only — keep the entry with the
+      // later updated_at per date. We intentionally do NOT push deletes to
+      // Supabase for the losers; the client has no authority to mutate server
+      // data based on dedup heuristics. Server-side cleanup should be a
+      // controlled one-time SQL migration. See incident 2026-04-12 (SEV1).
       const byDate = new Map<string, (typeof merged)[0]>()
-      const dupIds: string[] = []
       for (const entry of merged) {
         const dateKey = entry.date.slice(0, 10)
         const existing = byDate.get(dateKey)
@@ -99,25 +102,13 @@ export const useBodyweightStore = defineStore('bodyweight', {
         } else {
           // Keep the one with the later updated_at
           if (entry.updated_at > existing.updated_at) {
-            dupIds.push(existing.id)
             // If a sample entry replaces a real remote entry, adopt it so it gets synced back
             if (entry.sample && !existing.sample) delete entry.sample
             byDate.set(dateKey, entry)
           } else {
-            dupIds.push(entry.id)
             // If existing sample entry beats a real remote entry, adopt it
             if (existing.sample && !entry.sample) delete existing.sample
           }
-        }
-      }
-
-      // Clean up duplicate entries from Supabase
-      if (dupIds.length > 0) {
-        const userId = this._userId
-        for (const id of dupIds) {
-          syncQueue.enqueue(`bodyweight:${id}`, () =>
-            supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId),
-          )
         }
       }
 
