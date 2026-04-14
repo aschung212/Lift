@@ -86,9 +86,9 @@
           >
             <div class="wtExerciseNameBlock">
               <span class="wtExerciseName">{{ exercise.name }}</span>
-              <span v-if="store.getExercisePRSet(exercise.id)" class="wtExerciseMeta">
-                Est. 1RM: {{ displayWeight(store.getExercisePRSet(exercise.id)!.estimated1RM) }} {{ weightUnit }}
-                ({{ displayWeight(store.getExercisePRSet(exercise.id)!.weight) }} × {{ store.getExercisePRSet(exercise.id)!.reps }})
+              <span v-if="store.getExercisePRSet(exercise.id, prBaselineDate)" class="wtExerciseMeta">
+                Est. 1RM: {{ displayWeight(store.getExercisePRSet(exercise.id, prBaselineDate)!.estimated1RM) }} {{ weightUnit }}
+                ({{ displayWeight(store.getExercisePRSet(exercise.id, prBaselineDate)!.weight) }} × {{ store.getExercisePRSet(exercise.id, prBaselineDate)!.reps }})
               </span>
             </div>
             <span class="wtChevron">›</span>
@@ -179,7 +179,7 @@
                     :key="set.id"
                     class="wtSetRow"
                     :class="{
-                      wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id) && set.date.slice(0,10) === detailPRDate,
+                      wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id, prBaselineDate) && set.date.slice(0,10) === detailPRDate,
                       'wtSetRowActive': activeSetId === set.id,
                     }"
                     @click="toggleSetActions(set.id)"
@@ -187,7 +187,7 @@
                     <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
                     <span class="wtSet1RM">
                       ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
-                      <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id) && set.date.slice(0,10) === detailPRDate" class="wtSetPR">🏆</span>
+                      <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id, prBaselineDate) && set.date.slice(0,10) === detailPRDate" class="wtSetPR">🏆</span>
                     </span>
                     <div v-if="activeSetId === set.id" class="wtSetActions">
                       <button
@@ -557,7 +557,7 @@
           <div v-if="!isEditMode && isLogForExercise && prTargetsTable" class="wtPrTargets">
             <button class="wtPrTargetsHeader" @click="prTableExpanded = !prTableExpanded" :aria-expanded="prTableExpanded">
               <span class="wtPrTargetsTitle">PR Targets</span>
-              <span class="wtPrTargetsSub">Beat {{ displayWeight(store.getExercisePR(selectedExerciseId)) }} {{ weightUnit }} e1RM</span>
+              <span class="wtPrTargetsSub">Beat {{ displayWeight(store.getExercisePR(selectedExerciseId, prBaselineDate)) }} {{ weightUnit }} e1RM</span>
               <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: prTableExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div v-if="prTableExpanded" class="wtPrTargetsList">
@@ -919,6 +919,7 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
+import { usePRBaseline } from '../composables/usePRBaseline'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
@@ -932,6 +933,15 @@ const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
+const { prBaselineDate } = usePRBaseline()
+
+// Filter sets to those on/after the user-set PR baseline.
+// When no baseline is set, returns sets unchanged (legacy all-time behavior).
+function filterSetsSinceBaseline<T extends { date: string }>(sets: T[]): T[] {
+  const baseline = prBaselineDate.value
+  if (!baseline) return sets
+  return sets.filter(s => s.date.slice(0, 10) >= baseline)
+}
 
 function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
   const exercise = store.exercises.find(e => e.id === exerciseId)
@@ -939,15 +949,18 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
 
   // Best 1RM from existing sets (before this set was added, it's already in the array)
   const otherSets = exercise.sets.filter(s => s.id !== setId)
-  const rawBest1RM = calculateBest1RM(otherSets)
+  // Apply user-set PR baseline (falls back to rolling window when unset).
+  const rawBest1RM = calculateBest1RM(otherSets, { sinceDate: prBaselineDate.value })
 
   // Suppress PR detection for immature exercises (all sets from same day)
   const isEstablished = isExerciseEstablished(otherSets, date.value || todayISO())
   const best1RM = isEstablished ? rawBest1RM : null
 
-  // Rep PR only awards bonus when NOT already in PR/Tied PR zone
+  // Rep PR only awards bonus when NOT already in PR/Tied PR zone.
+  // When a baseline is set, rep PRs are also evaluated against sets since that date.
+  const repPRPriorSets = filterSetsSinceBaseline(otherSets)
   const isPRZone = best1RM !== null && estimated1RM >= best1RM
-  const isRepPR = isEstablished && !isPRZone && checkRepPR(weight, reps, otherSets)
+  const isRepPR = isEstablished && !isPRZone && checkRepPR(weight, reps, repPRPriorSets)
 
   const setIndex = exercise.sets.length - 1
   const baseXP = calculateSetXP({
@@ -1068,27 +1081,30 @@ const timelineSets = computed((): TimelineEntry[] => {
   return entries.sort((a, b) => b.set.date.slice(0, 10).localeCompare(a.set.date.slice(0, 10)))
 })
 
-// PR badge map: for each set, determine if it's the all-time best e1RM (weight PR)
-// or the best reps at its weight (rep PR) for that exercise
+// PR badge map: for each set, determine if it's the best e1RM (weight PR)
+// or the best reps at its weight (rep PR) for that exercise.
+// Respects the user-set PR baseline: when set, only sets on/after baseline
+// are eligible for badges AND serve as the comparison pool.
 const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
   const map: Record<string, 'pr' | 'repPR'> = {}
   for (const ex of store.exercises) {
     if (ex.sets.length === 0) continue
-    const best1RM = Math.max(...ex.sets.map(s => s.estimated1RM))
-    // Weight PR: the set(s) that achieved the all-time best e1RM
-    for (const s of ex.sets) {
+    const eligible = filterSetsSinceBaseline(ex.sets)
+    if (eligible.length === 0) continue
+    const best1RM = Math.max(...eligible.map(s => s.estimated1RM))
+    // Weight PR: set(s) achieving the best e1RM within the baseline window
+    for (const s of eligible) {
       if (s.estimated1RM === best1RM) {
         map[s.id] = 'pr'
       }
     }
-    // Rep PR: best reps at each weight (computed across ALL sets to get true baseline)
+    // Rep PR: best reps at each weight within the baseline window
     const bestRepsAtWeight: Record<number, number> = {}
-    for (const s of ex.sets) {
+    for (const s of eligible) {
       bestRepsAtWeight[s.weight] = Math.max(bestRepsAtWeight[s.weight] ?? 0, s.reps)
     }
-    // Only assign repPR badge to non-weight-PR sets
-    for (const s of ex.sets) {
-      if (!map[s.id] && s.reps === bestRepsAtWeight[s.weight] && ex.sets.filter(o => o.weight === s.weight).length > 1) {
+    for (const s of eligible) {
+      if (!map[s.id] && s.reps === bestRepsAtWeight[s.weight] && eligible.filter(o => o.weight === s.weight).length > 1) {
         map[s.id] = 'repPR'
       }
     }
@@ -1156,14 +1172,15 @@ const detailExercise = computed((): Exercise | null =>
 )
 const detailExerciseId = ref<string | null>(null)
 
-// Earliest date the detail exercise hit its PR — only that date gets trophies
+// Earliest date the detail exercise hit its PR — only that date gets trophies.
+// Respects baseline: searches only sets on/after the baseline when set.
 const detailPRDate = computed(() => {
   const ex = detailExercise.value
   if (!ex) return ''
-  const pr = store.getExercisePR(ex.id)
+  const pr = store.getExercisePR(ex.id, prBaselineDate.value)
   if (!pr) return ''
   let earliest = ''
-  for (const set of ex.sets) {
+  for (const set of filterSetsSinceBaseline(ex.sets)) {
     if (set.estimated1RM === pr) {
       const day = set.date.slice(0, 10)
       if (!earliest || day < earliest) earliest = day
@@ -2198,7 +2215,7 @@ const isNewPR = computed(() => {
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return false
   if (!isExerciseEstablished(exercise.sets, date.value || todayISO())) return false
-  const pr = store.getExercisePR(id)
+  const pr = store.getExercisePR(id, prBaselineDate.value)
   return pr > 0 && liveEstimateLbs.value > pr
 })
 
@@ -2210,7 +2227,7 @@ const prTargetWeight = computed<number | null>(() => {
   if (weight.value && weight.value > 0) return null
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return null
-  const pr = store.getExercisePR(id)
+  const pr = store.getExercisePR(id, prBaselineDate.value)
   if (pr <= 0) return null
   // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
   const target = pr + 0.5
@@ -2236,7 +2253,7 @@ const liveXPPreview = computed(() => {
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return null
 
-  const rawBest1RM = calculateBest1RM(exercise.sets)
+  const rawBest1RM = calculateBest1RM(exercise.sets, { sinceDate: prBaselineDate.value })
   const estimated1RM = liveEstimateLbs.value
   const w = toLbs(weight.value!)
   const r = reps.value!
@@ -2244,9 +2261,10 @@ const liveXPPreview = computed(() => {
   const isEstablished = isExerciseEstablished(exercise.sets, date.value || todayISO())
   const best1RM = isEstablished ? rawBest1RM : null
 
+  const repPRPriorSets = filterSetsSinceBaseline(exercise.sets)
   const isPRZone = best1RM !== null && estimated1RM >= best1RM
-  const hasSetAtWeight = exercise.sets.some(s => s.weight === w)
-  const isRepPR = isEstablished && !isPRZone && checkRepPR(w, r, exercise.sets)
+  const hasSetAtWeight = repPRPriorSets.some(s => s.weight === w)
+  const isRepPR = isEstablished && !isPRZone && checkRepPR(w, r, repPRPriorSets)
   const isNewWeight = !isPRZone && !isRepPR && !hasSetAtWeight && best1RM !== null
 
   const setIndex = exercise.sets.length
@@ -2283,7 +2301,7 @@ const prTargetReps = computed<number | null>(() => {
   if (reps.value && reps.value >= 1) return null // both filled
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return null
-  const pr = store.getExercisePR(id)
+  const pr = store.getExercisePR(id, prBaselineDate.value)
   if (pr <= 0) return null
   const wLbs = toLbs(weight.value)
   // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
@@ -2310,7 +2328,7 @@ const prTargetsTable = computed<PRTargetRow[] | null>(() => {
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return null
   if (!isExerciseEstablished(exercise.sets, date.value || todayISO())) return null
-  const pr = store.getExercisePR(id)
+  const pr = store.getExercisePR(id, prBaselineDate.value)
   if (pr <= 0) return null
 
   const target = pr + 0.5
@@ -2454,7 +2472,7 @@ function saveSet() {
       const set = ex?.sets.find(s => s.id === editSetId)
       if (ex && set) {
         const otherSets = ex.sets.filter(s => s.id !== editSetId)
-        const rawBest = calculateBest1RM(otherSets)
+        const rawBest = calculateBest1RM(otherSets, { sinceDate: prBaselineDate.value })
         const editEstablished = isExerciseEstablished(otherSets, set.date)
         const best = editEstablished ? rawBest : null
         const newXP = calculateSetXP({
@@ -2466,7 +2484,8 @@ function saveSet() {
         const editIsPR = best !== null && set.estimated1RM > best
         const editIsTie = best !== null && set.estimated1RM === best
         const editIsPRZone = editIsPR || editIsTie
-        const editIsRepPR = editEstablished && !editIsPRZone && checkRepPR(set.weight, set.reps, otherSets)
+        const editRepPRPriorSets = filterSetsSinceBaseline(otherSets)
+        const editIsRepPR = editEstablished && !editIsPRZone && checkRepPR(set.weight, set.reps, editRepPRPriorSets)
         let editZone: string
         if (best === null) editZone = 'new_exercise'
         else if (editIsPR) editZone = 'pr'

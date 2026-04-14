@@ -260,6 +260,42 @@
               </div>
             </div>
 
+            <div class="settingsGroup">
+              <div class="settingsHeader">Personal Records</div>
+              <div class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Evaluate PRs since</span>
+                  <span class="settingsHint">{{ formatBaselineLabel(prBaselineDate) }}</span>
+                </div>
+                <div class="settingsInputWrap">
+                  <input
+                    type="date"
+                    class="settingsInput"
+                    :value="prBaselineDate ?? ''"
+                    :max="new Date().toISOString().slice(0,10)"
+                    @change="onBaselineDateInput(($event.target as HTMLInputElement).value)"
+                    aria-label="PR baseline date"
+                  />
+                  <button
+                    v-if="prBaselineDate"
+                    class="settingsInputClear"
+                    @click="clearPRBaseline()"
+                    aria-label="Clear PR baseline (use all time)"
+                  >×</button>
+                </div>
+              </div>
+              <div class="settingsRow">
+                <button class="settingsRevealBtn" @click="confirmStartNewTrainingBlock">
+                  Start new training block
+                </button>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsHint">
+                  PRs are evaluated against sets on or after this date. Your XP history and past workouts are never modified.
+                </span>
+              </div>
+            </div>
+
             <!-- Dev tools — only on localhost/LAN -->
             <div v-if="isDev" class="settingsGroup">
               <div class="settingsHeader">Dev Tools</div>
@@ -730,6 +766,7 @@ const BodyweightTracker = defineAsyncComponent({
   delay: 100,
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
+import { usePRBaseline } from './composables/usePRBaseline'
 import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration, showXPToast } from './stores/progression'
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
@@ -750,6 +787,27 @@ import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
+
+function formatBaselineLabel(iso: string | null): string {
+  if (!iso) return 'All time'
+  const d = new Date(iso + 'T12:00:00')
+  if (isNaN(d.getTime())) return 'All time'
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function onBaselineDateInput(value: string) {
+  if (!value) clearPRBaseline()
+  else setPRBaseline(value)
+}
+
+function confirmStartNewTrainingBlock() {
+  const nextLabel = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  showConfirm(
+    `Start a new training block from ${nextLabel}? PRs will be evaluated only against sets from today onward. Your XP history stays intact.`,
+    () => { startNewTrainingBlock() }
+  )
+}
 const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 

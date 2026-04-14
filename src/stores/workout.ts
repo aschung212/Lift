@@ -823,16 +823,34 @@ export const useWorkoutStore = defineStore('workout', {
       return [...dates].sort()
     },
 
-    getExercisePR: (state) => (exerciseId: string): number => {
+    /**
+     * Max estimated1RM across all sets for an exercise.
+     * When `sinceDate` (YYYY-MM-DD) is provided, only sets on or after that
+     * date are considered. Default (undefined/null) preserves legacy
+     * all-time behavior.
+     */
+    getExercisePR: (state) => (exerciseId: string, sinceDate?: string | null): number => {
       const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise || exercise.sets.length === 0) return 0
-      return Math.max(...exercise.sets.map((s: WorkoutSet) => s.estimated1RM))
+      const filtered = sinceDate
+        ? exercise.sets.filter((s: WorkoutSet) => s.date.slice(0, 10) >= sinceDate)
+        : exercise.sets
+      if (filtered.length === 0) return 0
+      return Math.max(...filtered.map((s: WorkoutSet) => s.estimated1RM))
     },
 
-    getExercisePRSet: (state) => (exerciseId: string): WorkoutSet | null => {
+    /**
+     * The single set that achieved the max estimated1RM.
+     * Respects `sinceDate` like getExercisePR.
+     */
+    getExercisePRSet: (state) => (exerciseId: string, sinceDate?: string | null): WorkoutSet | null => {
       const exercise = state.exercises.find((e: Exercise) => e.id === exerciseId)
       if (!exercise || exercise.sets.length === 0) return null
-      return exercise.sets.reduce((best: WorkoutSet, s: WorkoutSet) =>
+      const filtered = sinceDate
+        ? exercise.sets.filter((s: WorkoutSet) => s.date.slice(0, 10) >= sinceDate)
+        : exercise.sets
+      if (filtered.length === 0) return null
+      return filtered.reduce((best: WorkoutSet, s: WorkoutSet) =>
         s.estimated1RM > best.estimated1RM ? s : best
       )
     },

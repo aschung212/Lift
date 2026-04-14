@@ -81,9 +81,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useTheme } from '../composables/useTheme'
+import { usePRBaseline } from '../composables/usePRBaseline'
 import type { Exercise } from '../stores/workout'
 
 const { weightUnit, displayWeight } = useTheme()
+const { prBaselineDate } = usePRBaseline()
 
 const props = defineProps<{
   exercise: Exercise
@@ -102,11 +104,15 @@ const PAD_B = 26
 const chartW = W - PAD_L - PAD_R
 const chartH = H - PAD_T - PAD_B
 
-// Best estimated1RM per calendar date, sorted chronologically
+// Best estimated1RM per calendar date, sorted chronologically.
+// Filters to sets on/after the PR baseline when set — keeps the graph aligned
+// with the user's current training block view.
 const dailyBest = computed((): [string, number][] => {
   const byDate: Record<string, number> = {}
+  const baseline = prBaselineDate.value
   for (const s of props.exercise.sets) {
     const day = s.date.slice(0, 10) // YYYY-MM-DD
+    if (baseline && day < baseline) continue
     if (!byDate[day] || s.estimated1RM > byDate[day]) {
       byDate[day] = s.estimated1RM
     }

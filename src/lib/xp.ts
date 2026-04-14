@@ -164,19 +164,35 @@ export function isExerciseEstablished(sets: WorkoutSet[], currentDate: string): 
 }
 
 /**
- * Calculate the best estimated 1RM for an exercise within a rolling window.
- * Defaults to XP_CONFIG.best1RMWindowMonths.
+ * Calculate the best estimated 1RM for an exercise within a time window.
+ *
+ * - If `sinceDate` is provided (YYYY-MM-DD or ISO), only sets on or after that
+ *   date are considered. Takes precedence over `windowMonths`.
+ * - Otherwise falls back to the rolling `windowMonths` window
+ *   (default: XP_CONFIG.best1RMWindowMonths).
+ *
+ * Returns null when no sets fall inside the window.
  */
 export function calculateBest1RM(
   sets: WorkoutSet[],
-  options: { windowMonths?: number } = {}
+  options: { windowMonths?: number; sinceDate?: string | null } = {}
 ): number | null {
   if (sets.length === 0) return null
 
-  const months = options.windowMonths ?? XP_CONFIG.best1RMWindowMonths
-  const windowMs = months * 30 * 24 * 60 * 60 * 1000
-  const now = Date.now()
-  const cutoff = now - windowMs
+  let cutoff: number
+  if (options.sinceDate) {
+    // Normalize to start-of-day for YYYY-MM-DD inputs so the anchor day itself is included.
+    const anchor = options.sinceDate.length === 10
+      ? options.sinceDate + 'T00:00:00'
+      : options.sinceDate
+    const parsed = new Date(anchor).getTime()
+    if (isNaN(parsed)) return calculateBest1RM(sets, { windowMonths: options.windowMonths })
+    cutoff = parsed
+  } else {
+    const months = options.windowMonths ?? XP_CONFIG.best1RMWindowMonths
+    const windowMs = months * 30 * 24 * 60 * 60 * 1000
+    cutoff = Date.now() - windowMs
+  }
 
   let best: number | null = null
 

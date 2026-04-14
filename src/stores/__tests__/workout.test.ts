@@ -423,6 +423,41 @@ describe('workout store', () => {
       const store = useWorkoutStore()
       expect(store.getExercisePR('fake')).toBe(0)
     })
+
+    describe('sinceDate (PR baseline)', () => {
+      it('excludes sets before sinceDate', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 225, 5, '2025-06-01T10:00:00Z') // 1RM ≈ 262
+        store.logSet(id, 185, 5, '2026-02-01T10:00:00Z') // 1RM ≈ 216
+        store.logSet(id, 135, 5, '2026-03-01T10:00:00Z') // 1RM ≈ 158
+        expect(store.getExercisePR(id, '2026-01-01')).toBe(216)
+      })
+
+      it('includes sets exactly on sinceDate', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 5, '2026-01-01T00:00:00Z')
+        expect(store.getExercisePR(id, '2026-01-01')).toBeGreaterThan(0)
+      })
+
+      it('returns 0 when all sets are before sinceDate', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 225, 5, '2024-01-01T10:00:00Z')
+        expect(store.getExercisePR(id, '2026-01-01')).toBe(0)
+      })
+
+      it('undefined sinceDate preserves all-time behavior', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 225, 5, '2020-01-01T10:00:00Z')
+        store.logSet(id, 135, 5, '2026-03-01T10:00:00Z')
+        // Older set has higher 1RM; without baseline it should win
+        const allTime = store.getExercisePR(id)
+        expect(allTime).toBeGreaterThan(store.getExercisePR(id, '2026-01-01'))
+      })
+    })
   })
 
   describe('getRecentSets', () => {
