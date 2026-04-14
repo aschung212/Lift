@@ -288,6 +288,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { usePRBaseline } from '../composables/usePRBaseline'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useTagVolume } from '../composables/useTagVolume'
 import { useTagRecovery } from '../composables/useTagRecovery'
@@ -296,6 +297,7 @@ import MuscleGroupRecovery from './MuscleGroupRecovery.vue'
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useTheme()
+const { prBaselineDate } = usePRBaseline()
 const { logEvent } = useAnalytics()
 
 // ── Tag filtering ────────────────────────────────────────────────
@@ -358,18 +360,21 @@ const trainingMap = computed(() => {
   return map
 })
 
-// Map YYYY-MM-DD → Set of exercise names that achieved an all-time PR on that date
-// Only the first set to reach the PR value counts — ties on later dates are not new records
+// Map YYYY-MM-DD → Set of exercise names that achieved a PR on that date.
+// Only the first set to reach the PR value counts — ties on later dates are not new records.
+// Respects the PR baseline: when set, only sets on/after the baseline count.
 const prMap = computed(() => {
   const map: Record<string, Set<string>> = {}
+  const baseline = prBaselineDate.value
   for (const exercise of filteredExercises.value) {
-    const pr = store.getExercisePR(exercise.id)
+    const pr = store.getExercisePR(exercise.id, baseline)
     if (!pr) continue
-    // Find the earliest date any set hit the PR value
+    // Find the earliest date (within baseline window) any set hit the PR value
     let earliestDate = ''
     for (const set of exercise.sets) {
+      const day = set.date.slice(0, 10)
+      if (baseline && day < baseline) continue
       if (set.estimated1RM === pr) {
-        const day = set.date.slice(0, 10)
         if (!earliestDate || day < earliestDate) earliestDate = day
       }
     }
@@ -406,7 +411,7 @@ const daySummary = computed(() => {
     for (const s of daySets) {
       totalVolume += s.weight * s.reps
     }
-    const pr = store.getExercisePR(exercise.id)
+    const pr = store.getExercisePR(exercise.id, prBaselineDate.value)
     if (pr && daySets.some(s => s.estimated1RM === pr)) {
       prCount++
     }
@@ -440,7 +445,7 @@ function toggleDetail(dateStr: string, exName: string) {
 function getSetsForDay(dateStr: string, exName: string) {
   const exercise = store.exercises.find(e => e.name === exName)
   if (!exercise) return []
-  const pr = store.getExercisePR(exercise.id)
+  const pr = store.getExercisePR(exercise.id, prBaselineDate.value)
   const dayStr = dateStr.slice(0, 10)
   // Only mark as PR if this is the earliest date the PR was achieved
   const isPRDay = prMap.value[dayStr]?.has(exName) ?? false

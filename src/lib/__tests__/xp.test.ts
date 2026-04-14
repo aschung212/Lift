@@ -280,6 +280,58 @@ describe('calculateBest1RM', () => {
     ]
     expect(calculateBest1RM(sets, { windowMonths: 1 })).toBe(100)
   })
+
+  describe('sinceDate (PR baseline)', () => {
+    it('excludes sets before the baseline date', () => {
+      const sets = [
+        makeSet({ estimated1RM: 300, date: '2025-06-01T10:00:00Z' }),
+        makeSet({ estimated1RM: 150, date: '2026-01-15T10:00:00Z' }),
+        makeSet({ estimated1RM: 200, date: '2026-03-01T10:00:00Z' }),
+      ]
+      // Baseline of 2026-01-01 should exclude the 300 set from 2025
+      expect(calculateBest1RM(sets, { sinceDate: '2026-01-01' })).toBe(200)
+    })
+
+    it('includes sets on the baseline date itself', () => {
+      const sets = [
+        makeSet({ estimated1RM: 100, date: '2026-01-01T08:00:00Z' }),
+        makeSet({ estimated1RM: 120, date: '2026-02-01T10:00:00Z' }),
+      ]
+      expect(calculateBest1RM(sets, { sinceDate: '2026-01-01' })).toBe(120)
+    })
+
+    it('returns null when no sets fall on/after baseline', () => {
+      const sets = [
+        makeSet({ estimated1RM: 300, date: '2025-01-01T10:00:00Z' }),
+      ]
+      expect(calculateBest1RM(sets, { sinceDate: '2026-01-01' })).toBeNull()
+    })
+
+    it('sinceDate takes precedence over windowMonths', () => {
+      // Within 6-month rolling window but before baseline — must be excluded
+      const sets = [
+        makeSet({ estimated1RM: 300, date: '2025-12-01T10:00:00Z' }),
+        makeSet({ estimated1RM: 150, date: '2026-02-01T10:00:00Z' }),
+      ]
+      expect(calculateBest1RM(sets, { sinceDate: '2026-01-01', windowMonths: 12 })).toBe(150)
+    })
+
+    it('null sinceDate falls back to windowMonths behavior', () => {
+      const sets = [
+        makeSet({ estimated1RM: 300, date: '2025-01-01T10:00:00Z' }),
+        makeSet({ estimated1RM: 100, date: '2026-03-01T10:00:00Z' }),
+      ]
+      // null → rolling window; 2025 set is outside default 6mo window
+      expect(calculateBest1RM(sets, { sinceDate: null })).toBe(100)
+    })
+
+    it('malformed sinceDate falls back to windowMonths', () => {
+      const sets = [
+        makeSet({ estimated1RM: 100, date: '2026-03-01T10:00:00Z' }),
+      ]
+      expect(calculateBest1RM(sets, { sinceDate: 'not-a-date' })).toBe(100)
+    })
+  })
 })
 
 // --- applyStreakMultiplier ---
