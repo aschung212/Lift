@@ -9,7 +9,7 @@ import { getLocalStorageMock } from '../../__tests__/helpers'
 const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../lib/syncQueue', () => ({
-  syncQueue: { enqueue: vi.fn() }
+  syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn() }
 }))
 vi.mock('../../lib/conflictResolver', () => ({
   mergeEntities: vi.fn(() => ({ merged: [], localOnly: [] }))

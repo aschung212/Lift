@@ -242,7 +242,7 @@ export const useWorkoutStore = defineStore('workout', {
           // Re-enqueue the delete for tombstoned sets still in remote
           const setId = s.id as string
           const userId = this._userId
-          syncQueue.enqueue(`set:${setId}`, () =>
+          syncQueue.enqueueDelete(`set:${setId}`, () =>
             supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
           )
           continue
@@ -392,10 +392,10 @@ export const useWorkoutStore = defineStore('workout', {
         const userId = this._userId
         for (const ex of tombstoneExercises) {
           const exId = ex.id as string
-          syncQueue.enqueue(`exercise-sets:${exId}`, () =>
+          syncQueue.enqueueDelete(`exercise-sets:${exId}`, () =>
             supabase!.from('sets').delete().eq('exercise_id', exId).eq('user_id', userId)
           )
-          syncQueue.enqueue(`exercise:${exId}`, () =>
+          syncQueue.enqueueDelete(`exercise:${exId}`, () =>
             supabase!.from('exercises').delete().eq('id', exId).eq('user_id', userId)
           )
         }
@@ -528,7 +528,7 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`set:${setId}`, () =>
+        syncQueue.enqueueDelete(`set:${setId}`, () =>
           supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
         )
       }
@@ -594,10 +594,10 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`exercise-sets:${exerciseId}`, () =>
+        syncQueue.enqueueDelete(`exercise-sets:${exerciseId}`, () =>
           supabase!.from('sets').delete().eq('exercise_id', exerciseId).eq('user_id', userId)
         )
-        syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+        syncQueue.enqueueDelete(`exercise:${exerciseId}`, () =>
           supabase!.from('exercises').delete().eq('id', exerciseId).eq('user_id', userId)
         )
       }
@@ -616,7 +616,7 @@ export const useWorkoutStore = defineStore('workout', {
     syncDeleteSet(setId: string) {
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`set:${setId}`, () =>
+        syncQueue.enqueueDelete(`set:${setId}`, () =>
           supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
         )
       }
@@ -625,10 +625,10 @@ export const useWorkoutStore = defineStore('workout', {
     syncDeleteExercise(exerciseId: string) {
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`exercise-sets:${exerciseId}`, () =>
+        syncQueue.enqueueDelete(`exercise-sets:${exerciseId}`, () =>
           supabase!.from('sets').delete().eq('exercise_id', exerciseId).eq('user_id', userId)
         )
-        syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+        syncQueue.enqueueDelete(`exercise:${exerciseId}`, () =>
           supabase!.from('exercises').delete().eq('id', exerciseId).eq('user_id', userId)
         )
       }

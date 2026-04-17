@@ -14,7 +14,7 @@ vi.stubGlobal('matchMedia', vi.fn(() => ({
 })))
 
 vi.mock('../../lib/syncQueue', () => ({
-  syncQueue: { enqueue: vi.fn() }
+  syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn() }
 }))
 
 // Must import after mocks are set up (module runs side effects at import)
