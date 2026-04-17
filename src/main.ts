@@ -25,6 +25,12 @@ if (sentryDsn && import.meta.env.PROD) {
       environment: import.meta.env.MODE,
       tracesSampleRate: 0.1,
       enabled: true,
+      denyUrls: [
+        // Bot probes for CMS/REST endpoints that don't exist in this SPA
+        /\/js\/rest\//,
+        /\/wp-(admin|content|includes)\//,
+        /\/xmlrpc\.php/,
+      ],
       beforeSend(event) {
         if (event.request?.cookies) delete event.request.cookies
         return event
