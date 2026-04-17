@@ -345,4 +345,56 @@ describe('CSS regression tests', () => {
       }
     })
   })
+
+  describe('.wtDateBtnWrap date subtitle tap target', () => {
+    // Regression: the date "Today" subtitle in the log modal became an
+    // inline <span> wrapper during the modal redesign (d4974c2). With
+    // display:inline, the absolutely-positioned overlay <input type="date">
+    // only covered the 44x17px inline text box — below iOS's 44pt minimum
+    // and unreliable for native picker activation. Fix (c16fc0b) requires
+    // inline-block + padding to produce a proper touch target.
+    const lines = getRuleLines('.wtDateBtnWrap')
+
+    it('is display: inline-block (not inline or flex)', () => {
+      expect(lines.some(l => l.startsWith('display: inline-block'))).toBe(true)
+    })
+
+    it('has padding to expand the touch target above 44pt', () => {
+      // Text height is ~17pt; needs at least 16px padding top+bottom to reach 44pt
+      const paddingLine = lines.find(l => l.startsWith('padding'))
+      expect(paddingLine, 'padding rule missing on .wtDateBtnWrap').toBeTruthy()
+      const match = paddingLine!.match(/padding:\s*(\d+)px/)
+      expect(match, `padding value parse failed: ${paddingLine}`).toBeTruthy()
+      expect(Number(match![1])).toBeGreaterThanOrEqual(14)
+    })
+
+    it('has negative margin to preserve visible layout', () => {
+      expect(lines.some(l => l.startsWith('margin') && l.includes('-'))).toBe(true)
+    })
+
+    it('position: relative for the absolute overlay input', () => {
+      expect(lines.some(l => l.startsWith('position: relative'))).toBe(true)
+    })
+  })
+
+  describe('.wtDateOverlayInput picker-trigger integrity', () => {
+    const lines = getRuleLines('.wtDateOverlayInput')
+
+    it('is position: absolute with inset: 0 to cover the wrap', () => {
+      expect(lines.some(l => l.startsWith('position: absolute'))).toBe(true)
+      expect(lines.some(l => l.startsWith('inset: 0'))).toBe(true)
+    })
+
+    it('has z-index to sit above the label span', () => {
+      // Without z-index, real touches on iOS may land on the static-positioned
+      // label sibling instead of the input — which never opens the picker.
+      expect(lines.some(l => l.startsWith('z-index'))).toBe(true)
+    })
+
+    it('does NOT have pointer-events: none', () => {
+      // A prior fix attempt (reverted in b437ffe) added pointer-events:none
+      // which caused iOS Safari to refuse showPicker() entirely.
+      expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
+    })
+  })
 })

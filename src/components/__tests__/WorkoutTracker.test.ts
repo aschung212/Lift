@@ -843,6 +843,36 @@ describe('WorkoutTracker', () => {
       const dateInput = wrapper.find('.repMaxModal input[type="date"]')
       expect(dateInput.exists()).toBe(true)
     })
+
+    // Regression (c16fc0b): tapping the "Today" subtitle must trigger the
+    // native date picker. After the modal redesign (d4974c2) moved the date
+    // into an inline <span>, the overlay input's click handler was missing,
+    // so desktop Chrome never opened the picker (Chrome only opens on the
+    // built-in calendar icon, not on opacity:0 input-body clicks).
+    it('date subtitle tap calls showPicker on the overlay input', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const wrap = wrapper.find('.wtDateBtnWrap')
+      expect(wrap.exists(), 'date subtitle wrap missing from log modal').toBe(true)
+
+      const dateInput = wrapper.find('.wtDateOverlayInput')
+      expect(dateInput.exists(), 'overlay date input missing').toBe(true)
+      expect(dateInput.attributes('type')).toBe('date')
+
+      // The click handler must be bound so showPicker() fires inside the
+      // user gesture on desktop Chrome and iOS 16+.
+      const el = dateInput.element as HTMLInputElement
+      let showPickerCalled = false
+      // jsdom doesn't implement showPicker; install a stub so the handler
+      // can invoke it without throwing.
+      ;(el as HTMLInputElement & { showPicker: () => void }).showPicker = () => {
+        showPickerCalled = true
+      }
+      await dateInput.trigger('click')
+      expect(showPickerCalled, '@click="tryShowDatePicker" binding missing — regression of c16fc0b').toBe(true)
+    })
   })
 
   describe('accessibility', () => {
