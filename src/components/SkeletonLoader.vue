@@ -1,5 +1,5 @@
 <template>
-  <div class="skeletonCard">
+  <div class="skeletonCard" role="status" aria-label="Loading content" aria-busy="true">
     <div class="skeletonHeader">
       <div class="skeletonBlock skeletonTitle"></div>
       <div class="skeletonBlock skeletonBtn"></div>
