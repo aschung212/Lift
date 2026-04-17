@@ -194,6 +194,7 @@
               tabindex="-1"
               class="wtDateOverlayInput"
               :aria-label="'Log date, currently ' + dateDisplay"
+              @click="tryShowDatePicker"
             />
           </span>
         </p>
@@ -258,6 +259,16 @@ const weightInputEl = ref<HTMLInputElement | null>(null)
 const dateDisplay = computed(() =>
   new Date(date.value + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 )
+
+// Trigger the native date picker from a real user-gesture click. Needed
+// because desktop Chrome doesn't open the picker on input-body clicks —
+// only on the built-in calendar icon — and our input is opacity:0. On iOS,
+// tapping the input opens its picker natively, but showPicker() within
+// the gesture is a harmless no-op if the native picker is already opening.
+function tryShowDatePicker(e: MouseEvent) {
+  const el = e.currentTarget as HTMLInputElement
+  try { el.showPicker() } catch { /* unsupported or gesture-less; native tap handles it */ }
+}
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)

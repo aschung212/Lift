@@ -4221,7 +4221,12 @@ html.theme-fading .settingsSheet {
 
 .wtDateBtnWrap {
   position: relative;
-  flex: 1;
+  display: inline-block;
+  /* Padding expands the touch target to iOS 44pt minimum around the
+     "Today" text (text is ~17pt tall; 16 * 2 = 32 of padding + 17 ≈ 49pt).
+     Negative margin keeps the visible layout unchanged. */
+  padding: 16px;
+  margin: -16px;
 }
 
 .wtDateBtn {
@@ -4242,6 +4247,10 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
   border: none;
   padding: 0;
+  /* Ensure the overlay sits above the label span so real taps (not
+     programmatic) land on the input. iOS only opens the native date
+     picker for direct user touches on a type="date" input. */
+  z-index: 1;
 }
 
 .wtModalSubtitle {
