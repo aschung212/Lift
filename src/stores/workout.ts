@@ -297,73 +297,26 @@ export const useWorkoutStore = defineStore('workout', {
         }
       }
 
-      // Deduplicate exercises by name (case-insensitive).
-      // Supabase can end up with multiple exercises of the same name from
-      // different sessions/devices with different UUIDs. Merge their sets
-      // into the primary (the one with the most sets) and delete the dupes.
+      // Deduplicate exercises by name (case-insensitive) for LOCAL display only.
+      // Two devices can create exercises with the same name but different UUIDs;
+      // this merges them into a single row in the local state so the UI doesn't
+      // show duplicates. We intentionally do NOT push deletes or reassignments
+      // to Supabase here — the client has no authority to mutate server data
+      // based on dedup heuristics. Server-side cleanup should be done via a
+      // controlled one-time SQL migration, not ambient client behavior.
+      // See incident 2026-04-12 (SEV1): pushing client-dedup deletes to the
+      // server destroyed user data when (date|weight|reps) collided across
+      // same-named exercises. The fix is to keep dedup strictly local.
       const deduped = deduplicateByName(merged as Exercise[])
 
-      // Clean up duplicate exercises from Supabase
-      // (#4 fix: only reassign sets that survived content dedup; delete the rest)
-      if (supabase && this._userId && deduped.removed.length > 0) {
-        const userId = this._userId
-        for (const dupe of deduped.removed) {
-          const primary = deduped.exercises.find(e =>
-            e.name.toLowerCase() === dupe.name.toLowerCase()
-          )
-          if (primary && !primary.sample) {
-            // Only sync dedup operations for non-sample exercises
-            const primarySetIds = new Set(primary.sets.map(s => s.id))
-            for (const set of dupe.sets) {
-              if (primarySetIds.has(set.id)) {
-                // Set was merged into primary — upsert under the primary exercise ID.
-                syncQueue.enqueue(`set:${set.id}`, () =>
-                  supabase!.from('sets').upsert({
-                    id: set.id, user_id: userId, exercise_id: primary.id,
-                    date: set.date, weight: set.weight, reps: set.reps,
-                    estimated_1rm: set.estimated1RM
-                  })
-                )
-              } else {
-                // Set was content-deduped out — delete it from Supabase
-                syncQueue.enqueue(`set:${set.id}`, () =>
-                  supabase!.from('sets').delete().eq('id', set.id).eq('user_id', userId)
-                )
-              }
-            }
-            // Delete the duplicate exercise from Supabase
-            syncQueue.enqueue(`exercise:${dupe.id}`, () =>
-              supabase!.from('exercises').delete().eq('id', dupe.id).eq('user_id', userId)
-            )
-            // Push the primary's merged state (tags may have been combined from dupes)
-            syncQueue.enqueue(`exercise:${primary.id}`, () =>
-              supabase!.from('exercises').upsert({
-                id: primary.id, user_id: userId, name: primary.name, tags: primary.tags,
-                ...(primary.inputMode ? { input_mode: primary.inputMode } : {}), ...(primary.barWeight != null ? { bar_weight: primary.barWeight } : {})
-              })
-            )
-          }
-        }
-      }
-
-      // Deduplicate sets within each exercise by exact content match
-      // (full timestamp + weight + reps). Catches identical entries safely
-      // without affecting programs like 5x5 that log the same weight/reps
-      // multiple times (those get unique jitter timestamps).
-      const dupSetIds: string[] = []
+      // Deduplicate sets within each exercise for LOCAL display only.
+      // Legacy pre-jitter timestamps (T12:00:00 noon-local, T23:59:59 fixed)
+      // cause identical (date|weight|reps) tuples for straight-set programs
+      // like 5x5. We collapse those for local rendering but do NOT push
+      // deletes — the server is the source of truth. See incident 2026-04-12.
       for (const ex of deduped.exercises) {
-        const { unique, removedIds } = deduplicateSets(ex.sets)
+        const { unique } = deduplicateSets(ex.sets)
         ex.sets = unique
-        dupSetIds.push(...removedIds)
-      }
-
-      if (supabase && this._userId && dupSetIds.length > 0) {
-        const userId = this._userId
-        for (const setId of dupSetIds) {
-          syncQueue.enqueue(`set:${setId}`, () =>
-            supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
-          )
-        }
       }
 
       this.exercises = deduped.exercises
