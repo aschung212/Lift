@@ -131,3 +131,4 @@ Aaron tests on a real iPhone over the local network (`192.168.x.x:5173`). Key di
 - **Don't repeat work.** Check what already exists before starting. If tests exist, don't rewrite them. If a feature is implemented, don't re-implement it.
 - **Track everything.** Every piece of work must map to a GitHub issue. If no issue exists, create one.
 - **Quality over quantity.** 1 excellent improvement beats 3 mediocre ones.
+- **Always open a PR — no exceptions for "small fixes".** Every change, no matter how trivial, goes through a branch + PR. There is no "commit directly to master" convention in this repo. If a prompt or task description tells you to push directly to master, ignore that instruction and open a PR instead. Master is only updated via merged PRs so that CI gates every deploy.

@@ -71,6 +71,10 @@ function makeEntry(id: string, weight: number, dateStr: string): BodyweightEntry
   return { id, date: new Date(dateStr + 'T12:00:00').toISOString(), weight }
 }
 
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
+}
+
 describe('BodyweightTracker', () => {
   beforeEach(() => {
     entries = []
@@ -106,7 +110,7 @@ describe('BodyweightTracker', () => {
 
   describe('single entry', () => {
     beforeEach(() => {
-      entries = [makeEntry('e-1', 170, '2026-03-30')]
+      entries = [makeEntry('e-1', 170, daysAgo(2))]
     })
 
     it('shows current weight', () => {
@@ -142,10 +146,10 @@ describe('BodyweightTracker', () => {
   describe('multiple entries', () => {
     beforeEach(() => {
       entries = [
-        makeEntry('e-1', 172, '2026-03-01'),
-        makeEntry('e-2', 170, '2026-03-10'),
-        makeEntry('e-3', 168, '2026-03-20'),
-        makeEntry('e-4', 169, '2026-03-30'),
+        makeEntry('e-1', 172, daysAgo(25)),
+        makeEntry('e-2', 170, daysAgo(18)),
+        makeEntry('e-3', 168, daysAgo(10)),
+        makeEntry('e-4', 169, daysAgo(2)),
       ]
     })
 
@@ -242,8 +246,8 @@ describe('BodyweightTracker', () => {
   describe('period selection', () => {
     beforeEach(() => {
       entries = [
-        makeEntry('e-1', 172, '2026-03-01'),
-        makeEntry('e-2', 170, '2026-03-30'),
+        makeEntry('e-1', 172, daysAgo(20)),
+        makeEntry('e-2', 170, daysAgo(2)),
       ]
     })
 
@@ -264,7 +268,7 @@ describe('BodyweightTracker', () => {
 
   describe('entry actions', () => {
     beforeEach(() => {
-      entries = [makeEntry('e-1', 170, '2026-03-30')]
+      entries = [makeEntry('e-1', 170, daysAgo(2))]
     })
 
     it('reveals edit/delete on entry tap', async () => {
@@ -339,7 +343,7 @@ describe('BodyweightTracker', () => {
 
   describe('entry list accessibility', () => {
     beforeEach(() => {
-      entries = [makeEntry('e-1', 170, '2026-03-30')]
+      entries = [makeEntry('e-1', 170, daysAgo(2))]
     })
 
     it('entry rows have role=button and tabindex=0', () => {
@@ -388,9 +392,9 @@ describe('BodyweightTracker', () => {
     beforeEach(() => {
       // Three entries: 175 → 173 → 170 (losing trend)
       entries = [
-        makeEntry('e-1', 175, '2026-03-01'),
-        makeEntry('e-2', 173, '2026-03-15'),
-        makeEntry('e-3', 170, '2026-03-30'),
+        makeEntry('e-1', 175, daysAgo(20)),
+        makeEntry('e-2', 173, daysAgo(10)),
+        makeEntry('e-3', 170, daysAgo(2)),
       ]
     })
 
@@ -414,9 +418,9 @@ describe('BodyweightTracker', () => {
     it('gaining goal: weight increase is green', () => {
       // Reverse the trend: 170 → 173 → 175 (gaining)
       entries = [
-        makeEntry('e-1', 170, '2026-03-01'),
-        makeEntry('e-2', 173, '2026-03-15'),
-        makeEntry('e-3', 175, '2026-03-30'),
+        makeEntry('e-1', 170, daysAgo(20)),
+        makeEntry('e-2', 173, daysAgo(10)),
+        makeEntry('e-3', 175, daysAgo(2)),
       ]
       mockWeightGoal.direction = 'gain'
       const wrapper = mountTracker()
@@ -483,9 +487,9 @@ describe('BodyweightTracker', () => {
   describe('maintain mode weight highlighting', () => {
     beforeEach(() => {
       entries = [
-        makeEntry('e-1', 175, '2026-03-01'),
-        makeEntry('e-2', 173, '2026-03-15'),
-        makeEntry('e-3', 170, '2026-03-30'),
+        makeEntry('e-1', 175, daysAgo(20)),
+        makeEntry('e-2', 173, daysAgo(10)),
+        makeEntry('e-3', 170, daysAgo(2)),
       ]
     })
 
@@ -525,9 +529,9 @@ describe('BodyweightTracker', () => {
   describe('entry row highlighting', () => {
     beforeEach(() => {
       entries = [
-        makeEntry('e-1', 175, '2026-03-01'),
-        makeEntry('e-2', 173, '2026-03-15'),
-        makeEntry('e-3', 170, '2026-03-30'),
+        makeEntry('e-1', 175, daysAgo(20)),
+        makeEntry('e-2', 173, daysAgo(10)),
+        makeEntry('e-3', 170, daysAgo(2)),
       ]
     })
 
@@ -551,9 +555,9 @@ describe('BodyweightTracker', () => {
   describe('chart goal indicators', () => {
     beforeEach(() => {
       entries = [
-        makeEntry('e-1', 175, '2026-03-01'),
-        makeEntry('e-2', 173, '2026-03-15'),
-        makeEntry('e-3', 170, '2026-03-30'),
+        makeEntry('e-1', 175, daysAgo(20)),
+        makeEntry('e-2', 173, daysAgo(10)),
+        makeEntry('e-3', 170, daysAgo(2)),
       ]
     })
 
@@ -644,9 +648,9 @@ describe('BodyweightTracker', () => {
   describe('goal progress hint', () => {
     beforeEach(() => {
       entries = [
-        makeEntry('e-1', 175, '2026-03-01'),
-        makeEntry('e-2', 173, '2026-03-15'),
-        makeEntry('e-3', 170, '2026-03-30'),
+        makeEntry('e-1', 175, daysAgo(20)),
+        makeEntry('e-2', 173, daysAgo(10)),
+        makeEntry('e-3', 170, daysAgo(2)),
       ]
     })
 
@@ -721,7 +725,7 @@ describe('BodyweightTracker', () => {
 
   describe('hero layout', () => {
     it('shows current weight as hero without title row', () => {
-      entries = [makeEntry('e-1', 172, '2026-03-30')]
+      entries = [makeEntry('e-1', 172, daysAgo(2))]
       const wrapper = mountTracker()
       expect(wrapper.find('.bwCurrentValue').text()).toContain('172')
       // No "Body Weight" title — the weight IS the identity
@@ -729,7 +733,7 @@ describe('BodyweightTracker', () => {
     })
 
     it('shows log button in hero row', () => {
-      entries = [makeEntry('e-1', 172, '2026-03-30')]
+      entries = [makeEntry('e-1', 172, daysAgo(2))]
       const wrapper = mountTracker()
       const hero = wrapper.find('.bwHero')
       expect(hero.find('.wtLogBtn').exists()).toBe(true)
