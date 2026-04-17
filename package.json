@@ -32,7 +32,7 @@
     "@capacitor/keyboard": "^8.0.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
-    "@sentry/vue": "^10.46.0",
+    "@sentry/vue": "^10.48.0",
     "@supabase/supabase-js": "^2.49.1",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
