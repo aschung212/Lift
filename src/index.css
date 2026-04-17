@@ -2485,45 +2485,6 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
 }
 
-.wtEditTagList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 12px 0 4px;
-}
-
-.wtEditTagPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-footnote);
-  font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  background: var(--accent-subtle);
-  cursor: pointer;
-  font-family: inherit;
-  transition: opacity 0.12s;
-}
-
-.wtEditTagPill:hover {
-  opacity: 0.7;
-}
-
-.wtEditTagPillRemove {
-  font-size: var(--font-footnote);
-  line-height: 1;
-  opacity: 0.6;
-}
-
-.wtTagAddRow {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  margin-bottom: 4px;
-}
 
 .wtTagManagerAddRow {
   display: flex;
@@ -2535,9 +2496,6 @@ html.theme-fading .settingsSheet {
   flex: 1;
 }
 
-.wtTagAddRow .repMaxInput {
-  flex: 1;
-}
 
 .wtTagAddBtn {
   display: flex;
