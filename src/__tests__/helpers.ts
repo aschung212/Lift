@@ -32,7 +32,7 @@ export function mockAnalytics() {
   }
 }
 
-/** Default useTheme mock — lbs, no rest timer. */
+/** Default useTheme mock — lbs, no rest timer. Glass is always on as of the 2026 refresh. */
 export function mockTheme(overrides: Record<string, unknown> = {}) {
   return {
     useTheme: () => ({
@@ -45,7 +45,6 @@ export function mockTheme(overrides: Record<string, unknown> = {}) {
       THEME_PREVIEWS: {},
       colorMode: ref('dark'),
       resolvedMode: ref('dark'),
-      glassEnabled: ref(true),
       ...overrides,
     })
   }

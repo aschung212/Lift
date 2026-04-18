@@ -91,17 +91,14 @@ describe('useTheme', () => {
     })
   })
 
-  describe('glass toggle', () => {
-    it('toggles glass morphism on and off', async () => {
-      theme.glassEnabled.value = false
-      await nextTick()
-      expect(theme.glassEnabled.value).toBe(false)
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('app-glass', 'off')
-
-      theme.glassEnabled.value = true
-      await nextTick()
-      expect(theme.glassEnabled.value).toBe(true)
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('app-glass', 'on')
+  describe('glass (always on as of 2026 refresh)', () => {
+    it('forces data-glass="on" at import time and does not expose a toggle', () => {
+      // Theme module set data-glass on import; verify it's still 'on' and
+      // that the legacy app-glass localStorage key was removed.
+      expect(document.documentElement.getAttribute('data-glass')).toBe('on')
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith('app-glass')
+      // The composable should no longer expose glassEnabled.
+      expect((theme as unknown as Record<string, unknown>).glassEnabled).toBeUndefined()
     })
   })
 
