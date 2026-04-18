@@ -63,7 +63,13 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
-  # Notify Slack on post-merge success (push to master only)
+  # Notify Slack on post-merge success (push to master only).
+  # SECURITY: commit message + URL come in via env var, NOT direct
+  # `${{ ... }}` interpolation into the bash body. Inline interpolation
+  # is a known GitHub Actions script-injection vector — any commit
+  # containing single quotes, parentheses, backticks, or `$(...)`
+  # would break the run step (and could execute attacker-controlled
+  # shell). See GitHub docs: "Understanding the risk of script injections".
   notify-deploy:
     runs-on: ubuntu-latest
     needs: [build-and-test, migrate-db]
@@ -72,14 +78,16 @@ jobs:
       - name: Notify Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          COMMIT_MSG_RAW: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
         run: |
-          COMMIT_MSG=$(echo '${{ github.event.head_commit.message }}' | head -1)
-          COMMIT_URL="${{ github.event.head_commit.url }}"
+          COMMIT_MSG=$(printf '%s' "$COMMIT_MSG_RAW" | head -1)
           MSG="✅ *Deployed to production*\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
-          payload=$(printf '{"text": %s}' "$(echo "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
+          payload=$(printf '{"text": %s}' "$(printf '%s' "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
           curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$payload"
 
-  # Notify Slack on post-merge failure (push to master only)
+  # Notify Slack on post-merge failure (push to master only). Same
+  # script-injection guard as `notify-deploy` above.
   notify-failure:
     runs-on: ubuntu-latest
     needs: [build-and-test, migrate-db]
@@ -88,9 +96,11 @@ jobs:
       - name: Notify Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          COMMIT_MSG_RAW: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          COMMIT_MSG=$(echo '${{ github.event.head_commit.message }}' | head -1)
-          COMMIT_URL="${{ github.event.head_commit.url }}"
-          MSG="🔴 *Post-merge CI failed on master*\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
-          payload=$(printf '{"text": %s}' "$(echo "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
+          COMMIT_MSG=$(printf '%s' "$COMMIT_MSG_RAW" | head -1)
+          MSG="🔴 *Post-merge CI failed on master*\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>\nRun: <${RUN_URL}|View logs>"
+          payload=$(printf '{"text": %s}' "$(printf '%s' "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
           curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$payload"
