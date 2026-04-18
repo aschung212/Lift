@@ -2353,9 +2353,9 @@ html.theme-fading .settingsSheet {
   padding: 0 8px;
   height: 20px;
   border-radius: 10px;
-  background: var(--surface);
+  background: var(--bg-elevated);
   color: var(--text-muted);
-  font-size: var(--font-caption-2);
+  font-size: var(--font-caption2);
   font-weight: 600;
 }
 
