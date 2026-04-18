@@ -3869,7 +3869,6 @@ html.theme-fading .settingsSheet {
 .wtPlateCardHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 0 4px 8px;
 }
@@ -3881,14 +3880,6 @@ html.theme-fading .settingsSheet {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-muted);
-}
-
-.wtPlateCardHeaderDelta {
-  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
 }
 
 .wtPlateGrid {

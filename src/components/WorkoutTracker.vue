@@ -685,7 +685,6 @@
           <div v-if="plateMode && !isEditMode" class="wtPlateCalc wtPlateCard">
             <div class="wtPlateCardHeader">
               <span class="wtPlateCardHeaderLabel">{{ isPerSide ? `PER SIDE · ${currentBarWeight} ${weightUnit} BAR` : `TOTAL · ${currentBarWeight} ${weightUnit} BAR` }}</span>
-              <span v-if="plateDeltaLabel" class="wtPlateCardHeaderDelta">{{ plateDeltaLabel }}</span>
             </div>
             <div class="wtPlateGrid">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
@@ -1730,37 +1729,6 @@ const plateCounts = computed(() => {
   const counts = new Map<number, number>()
   for (const p of currentPlates.value) counts.set(p, (counts.get(p) || 0) + 1)
   return counts
-})
-
-/**
- * "+1×5 vs last" / "−2×25 vs last" — the most significant change in plates
- * compared to the previous set. Shown in the plate calc card header per
- * screens/05-logset-platecalc.png. Returns null when no previous set exists
- * or plates are unchanged.
- *
- * Heuristic: pick the denomination with the largest |Δ × denom| weight
- * impact. Ties go to the larger denomination since that's typically the
- * meaningful change (e.g. swapping a 25 for a 10+10+5 is "+1×10").
- */
-const plateDeltaLabel = computed<string | null>(() => {
-  if (!plateMode.value) return null
-  if (previousPlates.value.length === 0 && currentPlates.value.length === 0) return null
-  const prevCounts = new Map<number, number>()
-  for (const p of previousPlates.value) prevCounts.set(p, (prevCounts.get(p) || 0) + 1)
-  const curCounts = plateCounts.value
-  const allDenoms = new Set<number>([...prevCounts.keys(), ...curCounts.keys()])
-  let best: { denom: number; delta: number } | null = null
-  for (const denom of allDenoms) {
-    const delta = (curCounts.get(denom) || 0) - (prevCounts.get(denom) || 0)
-    if (delta === 0) continue
-    const impact = Math.abs(delta) * denom
-    if (!best || impact > Math.abs(best.delta) * best.denom || (impact === Math.abs(best.delta) * best.denom && denom > best.denom)) {
-      best = { denom, delta }
-    }
-  }
-  if (!best) return null
-  const sign = best.delta > 0 ? '+' : '−'
-  return `${sign}${Math.abs(best.delta)}×${best.denom} vs last`
 })
 
 const plateWeightLbs = computed(() => {
