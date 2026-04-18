@@ -480,4 +480,34 @@ describe('SyncQueue — delete routing discipline (structural)', () => {
       }
     }
   })
+
+  // Gate 5 invariant: stores do not issue hard DELETEs at all.
+  // Every removal must go through UPDATE { deleted_at: ... } so data is
+  // recoverable within the grace window before the hard-delete cron runs.
+  it('stores never call .delete() on a Supabase query — all removals are soft', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const { fileURLToPath } = await import('node:url')
+    const { dirname } = await import('node:path')
+
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = dirname(__filename)
+    const storeDir = resolve(__dirname, '../../stores')
+
+    const files = ['workout.ts', 'bodyweight.ts', 'preferences.ts', 'progression.ts']
+    for (const file of files) {
+      const src = readFileSync(resolve(storeDir, file), 'utf-8')
+      // Match any supabase query builder .delete(), allowing whitespace / newlines
+      // between .from(...) and .delete(). Non-supabase .delete() (Map/Set) is not
+      // matched because the anchor requires .from(...) upstream within 200 chars.
+      const re = /\.from\(\s*['"][^'"]+['"]\s*\)[\s\S]{0,200}?\.delete\s*\(/g
+      const match = re.exec(src)
+      if (match) {
+        const offset = match.index
+        throw new Error(
+          `${file} contains a hard .delete() on a Supabase query at offset ${offset}. Gate 5 requires UPDATE { deleted_at: new Date().toISOString() } for all removals. Context:\n${src.slice(offset, offset + 200)}`,
+        )
+      }
+    }
+  })
 })

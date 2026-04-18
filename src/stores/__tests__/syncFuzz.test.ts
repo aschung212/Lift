@@ -60,6 +60,10 @@ const { fakeSupabase } = vi.hoisted(() => {
       return this.calls.filter(c => c.op === 'upsert' && c.table === table)
     }
 
+    updatesFor(table: string) {
+      return this.calls.filter(c => c.op === 'update' && c.table === table)
+    }
+
     _exec(
       op: FakeSupabase['calls'][number]['op'],
       table: string,
@@ -69,7 +73,15 @@ const { fakeSupabase } = vi.hoisted(() => {
       this.calls.push({ op, table, filters: { ...filters }, data })
       const rows = this.tables[table] || (this.tables[table] = [])
       const matches = rows.filter(r =>
-        Object.entries(filters).every(([k, v]) => r[k] === v),
+        Object.entries(filters).every(([k, v]) => {
+          // .is(col, null) sentinel: match NULL or missing
+          if (v !== null && typeof v === 'object' && v !== undefined && '__is' in v) {
+            const target = (v as { __is: unknown }).__is
+            if (target === null) return r[k] == null
+            return r[k] === target
+          }
+          return r[k] === v
+        }),
       )
 
       if (op === 'select') return matches
@@ -107,6 +119,7 @@ const { fakeSupabase } = vi.hoisted(() => {
     upsert(data: unknown) { this._op = 'upsert'; this._data = data; return this }
     update(data: unknown) { this._op = 'update'; this._data = data; return this }
     eq(col: string, val: unknown) { this._filters[col] = val; return this }
+    is(col: string, val: null | boolean) { this._filters[col] = { __is: val }; return this }
     order(_col: string) { return this }
 
     then<TResult1 = { data: Row[]; error: null }, TResult2 = never>(
@@ -156,6 +169,7 @@ vi.mock('../../lib/logger', () => ({
 import { useWorkoutStore } from '../workout'
 import { useBodyweightStore } from '../bodyweight'
 import { getLocalStorageMock } from '../../__tests__/helpers'
+import { _resetTombstones } from '../../lib/tombstones'
 
 // Helper: flush a microtask tick so any op() chained via syncQueue settles
 const tick = () => new Promise(resolve => setTimeout(resolve, 0))
@@ -165,6 +179,8 @@ describe('sync fuzz: SEV1 2026-04-12 regression', () => {
     setActivePinia(createPinia())
     fakeSupabase.reset()
     getLocalStorageMock().clear()
+    // Tombstones cache in-memory — must be reset or they leak between tests
+    _resetTombstones()
   })
 
   describe('workoutStore._fetchFromSupabase — READ path is read-only', () => {
@@ -310,8 +326,8 @@ describe('sync fuzz: SEV1 2026-04-12 regression', () => {
     })
   })
 
-  describe('user-initiated deletes still reach the server (positive control)', () => {
-    it('deleteSet issues exactly one DELETE on the sets table', async () => {
+  describe('user-initiated deletes soft-delete on the server (Gate 5)', () => {
+    it('deleteSet issues UPDATE { deleted_at } (never a hard DELETE)', async () => {
       const userId = 'test-user'
       fakeSupabase.seed('exercises', [
         { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
@@ -325,19 +341,23 @@ describe('sync fuzz: SEV1 2026-04-12 regression', () => {
       const store = useWorkoutStore()
       await store.init(userId)
       await tick()
-      // Baseline: no deletes from init
-      expect(fakeSupabase.deletesFor('sets')).toEqual([])
 
       store.deleteSet('ex-1', 's-1')
       await tick()
 
-      const deletes = fakeSupabase.deletesFor('sets')
-      expect(deletes).toHaveLength(1)
-      expect(deletes[0].filters).toMatchObject({ id: 's-1', user_id: userId })
-      expect(fakeSupabase.tables.sets).toHaveLength(0)
+      // NO hard delete
+      expect(fakeSupabase.deletesFor('sets')).toEqual([])
+      // Exactly one UPDATE with deleted_at set, scoped to id + user_id
+      const updates = fakeSupabase.updatesFor('sets')
+      expect(updates).toHaveLength(1)
+      expect(updates[0].filters).toMatchObject({ id: 's-1', user_id: userId })
+      expect((updates[0].data as Record<string, unknown>).deleted_at).toBeTypeOf('string')
+      // Server row still exists but with deleted_at populated
+      expect(fakeSupabase.tables.sets).toHaveLength(1)
+      expect(fakeSupabase.tables.sets[0].deleted_at).toBeTypeOf('string')
     })
 
-    it('bodyweight deleteEntry issues exactly one DELETE on bodyweight_entries', async () => {
+    it('bodyweight deleteEntry issues UPDATE { deleted_at } (never a hard DELETE)', async () => {
       const userId = 'test-user'
       fakeSupabase.seed('bodyweight_entries', [
         { id: 'bw-1', user_id: userId, date: '2026-01-01T12:00:00Z',
@@ -347,15 +367,159 @@ describe('sync fuzz: SEV1 2026-04-12 regression', () => {
       const store = useBodyweightStore()
       await store.init(userId)
       await tick()
-      expect(fakeSupabase.deletesFor('bodyweight_entries')).toEqual([])
 
       store.deleteEntry('bw-1')
       await tick()
 
-      const deletes = fakeSupabase.deletesFor('bodyweight_entries')
-      expect(deletes).toHaveLength(1)
-      expect(deletes[0].filters).toMatchObject({ id: 'bw-1', user_id: userId })
-      expect(fakeSupabase.tables.bodyweight_entries).toHaveLength(0)
+      expect(fakeSupabase.deletesFor('bodyweight_entries')).toEqual([])
+      const updates = fakeSupabase.updatesFor('bodyweight_entries')
+      expect(updates).toHaveLength(1)
+      expect(updates[0].filters).toMatchObject({ id: 'bw-1', user_id: userId })
+      expect((updates[0].data as Record<string, unknown>).deleted_at).toBeTypeOf('string')
+      expect(fakeSupabase.tables.bodyweight_entries).toHaveLength(1)
+      expect(fakeSupabase.tables.bodyweight_entries[0].deleted_at).toBeTypeOf('string')
+    })
+
+    it('deleteExercise soft-deletes the exercise AND its sets (cascade)', async () => {
+      const userId = 'test-user'
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ])
+      fakeSupabase.seed('sets', [
+        { id: 's-1', user_id: userId, exercise_id: 'ex-1',
+          date: '2026-01-01T12:00:00Z', weight: 225, reps: 5, estimated_1rm: 253 },
+        { id: 's-2', user_id: userId, exercise_id: 'ex-1',
+          date: '2026-01-02T12:00:00Z', weight: 235, reps: 5, estimated_1rm: 264 },
+      ])
+
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+
+      store.deleteExercise('ex-1')
+      await tick()
+
+      expect(fakeSupabase.deletesFor('sets')).toEqual([])
+      expect(fakeSupabase.deletesFor('exercises')).toEqual([])
+      // Exactly one UPDATE on each table
+      const exerciseUpdates = fakeSupabase.updatesFor('exercises')
+      const setsUpdates = fakeSupabase.updatesFor('sets')
+      expect(exerciseUpdates).toHaveLength(1)
+      expect(setsUpdates).toHaveLength(1)
+      // Sets cascade targets exercise_id, not individual set ids
+      expect(setsUpdates[0].filters).toMatchObject({ exercise_id: 'ex-1', user_id: userId })
+      // Rows still present with deleted_at populated
+      expect(fakeSupabase.tables.exercises[0].deleted_at).toBeTypeOf('string')
+      expect(fakeSupabase.tables.sets.every(s => s.deleted_at != null)).toBe(true)
+    })
+
+    it('restoreSet issues UPDATE { deleted_at: null } (undo delete)', async () => {
+      const userId = 'test-user'
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ])
+      fakeSupabase.seed('sets', [
+        { id: 's-1', user_id: userId, exercise_id: 'ex-1',
+          date: '2026-01-01T12:00:00Z', weight: 225, reps: 5, estimated_1rm: 253 },
+      ])
+
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+
+      const setToDelete = { ...store.exercises[0].sets[0] }
+      store.deleteSet('ex-1', 's-1')
+      await tick()
+      store.restoreSet('ex-1', setToDelete)
+      await tick()
+
+      const updates = fakeSupabase.updatesFor('sets')
+      // First update: deleted_at=<time>; second: deleted_at=null
+      expect(updates).toHaveLength(2)
+      expect((updates[0].data as Record<string, unknown>).deleted_at).toBeTypeOf('string')
+      expect((updates[1].data as Record<string, unknown>).deleted_at).toBeNull()
+      // Final server state: restored
+      expect(fakeSupabase.tables.sets[0].deleted_at).toBeNull()
+    })
+
+    it('restoreExercise issues UPDATE { deleted_at: null } on both exercise and sets', async () => {
+      const userId = 'test-user'
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ])
+      fakeSupabase.seed('sets', [
+        { id: 's-1', user_id: userId, exercise_id: 'ex-1',
+          date: '2026-01-01T12:00:00Z', weight: 225, reps: 5, estimated_1rm: 253 },
+      ])
+
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+      const exerciseCopy = { ...store.exercises[0] }
+
+      store.deleteExercise('ex-1')
+      await tick()
+      store.restoreExercise(exerciseCopy)
+      await tick()
+
+      const exUpdates = fakeSupabase.updatesFor('exercises')
+      const setUpdates = fakeSupabase.updatesFor('sets')
+      // Two updates each: soft-delete then restore
+      expect(exUpdates).toHaveLength(2)
+      expect(setUpdates).toHaveLength(2)
+      expect((exUpdates[1].data as Record<string, unknown>).deleted_at).toBeNull()
+      expect((setUpdates[1].data as Record<string, unknown>).deleted_at).toBeNull()
+      // Final state: all rows active
+      expect(fakeSupabase.tables.exercises[0].deleted_at).toBeNull()
+      expect(fakeSupabase.tables.sets[0].deleted_at).toBeNull()
+    })
+
+    it('_fetchFromSupabase filters soft-deleted rows (uses .is(deleted_at, null))', async () => {
+      const userId = 'test-user'
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-active', user_id: userId, name: 'Active', tags: [],
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          deleted_at: null },
+        { id: 'ex-deleted', user_id: userId, name: 'Deleted', tags: [],
+          created_at: '2026-01-02T00:00:00Z', updated_at: '2026-01-02T00:00:00Z',
+          deleted_at: '2026-04-01T00:00:00Z' },
+      ])
+      fakeSupabase.seed('sets', [
+        { id: 's-active', user_id: userId, exercise_id: 'ex-active',
+          date: '2026-01-01T12:00:00Z', weight: 225, reps: 5, estimated_1rm: 253,
+          deleted_at: null },
+        { id: 's-deleted', user_id: userId, exercise_id: 'ex-active',
+          date: '2026-01-02T12:00:00Z', weight: 235, reps: 5, estimated_1rm: 264,
+          deleted_at: '2026-04-01T00:00:00Z' },
+      ])
+
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+
+      // Only active rows should appear in local state
+      expect(store.exercises.map(e => e.id)).toEqual(['ex-active'])
+      expect(store.exercises[0].sets.map(s => s.id)).toEqual(['s-active'])
+    })
+
+    it('bodyweight _fetchFromSupabase filters soft-deleted entries', async () => {
+      const userId = 'test-user'
+      fakeSupabase.seed('bodyweight_entries', [
+        { id: 'bw-active', user_id: userId, date: '2026-01-01T12:00:00Z',
+          weight: 180, updated_at: '2026-01-01T12:00:00Z', deleted_at: null },
+        { id: 'bw-deleted', user_id: userId, date: '2026-01-02T12:00:00Z',
+          weight: 181, updated_at: '2026-01-02T12:00:00Z',
+          deleted_at: '2026-04-01T00:00:00Z' },
+      ])
+
+      const store = useBodyweightStore()
+      await store.init(userId)
+      await tick()
+
+      expect(store.entries.map(e => e.id)).toEqual(['bw-active'])
     })
   })
 })

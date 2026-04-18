@@ -43,6 +43,7 @@ export type Database = {
         Row: {
           created_at: string
           date: string
+          deleted_at: string | null
           id: string
           user_id: string
           weight: number
@@ -50,6 +51,7 @@ export type Database = {
         Insert: {
           created_at?: string
           date: string
+          deleted_at?: string | null
           id?: string
           user_id: string
           weight: number
@@ -57,6 +59,7 @@ export type Database = {
         Update: {
           created_at?: string
           date?: string
+          deleted_at?: string | null
           id?: string
           user_id?: string
           weight?: number
@@ -67,6 +70,7 @@ export type Database = {
         Row: {
           bar_weight: number
           created_at: string
+          deleted_at: string | null
           id: string
           input_mode: string | null
           name: string
@@ -77,6 +81,7 @@ export type Database = {
         Insert: {
           bar_weight?: number
           created_at?: string
+          deleted_at?: string | null
           id?: string
           input_mode?: string | null
           name: string
@@ -87,6 +92,7 @@ export type Database = {
         Update: {
           bar_weight?: number
           created_at?: string
+          deleted_at?: string | null
           id?: string
           input_mode?: string | null
           name?: string
@@ -139,6 +145,7 @@ export type Database = {
         Row: {
           created_at: string
           date: string
+          deleted_at: string | null
           estimated_1rm: number
           exercise_id: string
           id: string
@@ -150,6 +157,7 @@ export type Database = {
         Insert: {
           created_at?: string
           date: string
+          deleted_at?: string | null
           estimated_1rm: number
           exercise_id: string
           id?: string
@@ -161,6 +169,7 @@ export type Database = {
         Update: {
           created_at?: string
           date?: string
+          deleted_at?: string | null
           estimated_1rm?: number
           exercise_id?: string
           id?: string

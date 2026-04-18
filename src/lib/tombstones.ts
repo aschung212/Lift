@@ -80,3 +80,8 @@ export function cleanupTombstones(store: string, remoteIds: Set<string>) {
     setStoreSet(store, ids)
   }
 }
+
+/** Reset in-memory tombstone cache (for testing only — prod doesn't need this). */
+export function _resetTombstones() {
+  _data = null
+}

@@ -207,8 +207,8 @@ export const useWorkoutStore = defineStore('workout', {
       if (!supabase || !this._userId) return
 
       const [{ data: exercises }, { data: sets }] = await Promise.all([
-        supabase.from('exercises').select('*').eq('user_id', this._userId).order('created_at'),
-        supabase.from('sets').select('*').eq('user_id', this._userId).order('created_at')
+        supabase.from('exercises').select('*').eq('user_id', this._userId).is('deleted_at', null).order('created_at'),
+        supabase.from('sets').select('*').eq('user_id', this._userId).is('deleted_at', null).order('created_at')
       ])
 
       if (!exercises) return
@@ -239,11 +239,14 @@ export const useWorkoutStore = defineStore('workout', {
       const remoteSetsMap = new Map<string, WorkoutSet[]>()
       for (const s of (sets || []) as Record<string, unknown>[]) {
         if (isTombstoned('sets', s.id as string)) {
-          // Re-enqueue the delete for tombstoned sets still in remote
+          // Re-enqueue the soft-delete for tombstoned sets still visible on remote
           const setId = s.id as string
           const userId = this._userId
+          const deletedAt = new Date().toISOString()
           syncQueue.enqueueDelete(`set:${setId}`, () =>
-            supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
+            supabase!.from('sets')
+              .update({ deleted_at: deletedAt })
+              .eq('id', setId).eq('user_id', userId)
           )
           continue
         }
@@ -390,13 +393,18 @@ export const useWorkoutStore = defineStore('workout', {
         .filter((ex: Record<string, unknown>) => isTombstoned(TOMBSTONE_STORE, ex.id as string))
       if (tombstoneExercises.length > 0) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         for (const ex of tombstoneExercises) {
           const exId = ex.id as string
           syncQueue.enqueueDelete(`exercise-sets:${exId}`, () =>
-            supabase!.from('sets').delete().eq('exercise_id', exId).eq('user_id', userId)
+            supabase!.from('sets')
+              .update({ deleted_at: deletedAt })
+              .eq('exercise_id', exId).eq('user_id', userId)
           )
           syncQueue.enqueueDelete(`exercise:${exId}`, () =>
-            supabase!.from('exercises').delete().eq('id', exId).eq('user_id', userId)
+            supabase!.from('exercises')
+              .update({ deleted_at: deletedAt })
+              .eq('id', exId).eq('user_id', userId)
           )
         }
       }
@@ -528,8 +536,11 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         syncQueue.enqueueDelete(`set:${setId}`, () =>
-          supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
+          supabase!.from('sets')
+            .update({ deleted_at: deletedAt })
+            .eq('id', setId).eq('user_id', userId)
         )
       }
     },
@@ -540,6 +551,18 @@ export const useWorkoutStore = defineStore('workout', {
       removeTombstone('sets', set.id)
       exercise.sets.push(set)
       this._persist()
+
+      // Soft-delete restore: clear deleted_at on server. Uses the same key as
+      // deleteSet so an in-flight delete is superseded (last-write-wins). If
+      // the delete already flushed, this un-soft-deletes the row.
+      if (supabase && !isPreviewMode.value && this._userId) {
+        const userId = this._userId
+        syncQueue.enqueue(`set:${set.id}`, () =>
+          supabase!.from('sets')
+            .update({ deleted_at: null })
+            .eq('id', set.id).eq('user_id', userId)
+        )
+      }
     },
 
     renameExercise(exerciseId: string, newName: string) {
@@ -594,11 +617,16 @@ export const useWorkoutStore = defineStore('workout', {
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         syncQueue.enqueueDelete(`exercise-sets:${exerciseId}`, () =>
-          supabase!.from('sets').delete().eq('exercise_id', exerciseId).eq('user_id', userId)
+          supabase!.from('sets')
+            .update({ deleted_at: deletedAt })
+            .eq('exercise_id', exerciseId).eq('user_id', userId)
         )
         syncQueue.enqueueDelete(`exercise:${exerciseId}`, () =>
-          supabase!.from('exercises').delete().eq('id', exerciseId).eq('user_id', userId)
+          supabase!.from('exercises')
+            .update({ deleted_at: deletedAt })
+            .eq('id', exerciseId).eq('user_id', userId)
         )
       }
     },
@@ -611,13 +639,38 @@ export const useWorkoutStore = defineStore('workout', {
         this.exercises.push(exercise)
       }
       this._persist()
+
+      // Soft-delete restore: clear deleted_at on both the exercise and its sets.
+      // Uses the same keys as deleteExercise so in-flight deletes are superseded.
+      // If the delete already flushed, these un-soft-delete.
+      //
+      // Note: restoring sets by exercise_id will also resurrect sets that were
+      // individually soft-deleted before the exercise delete. Edge case; the
+      // alternative (tracking per-cascade timestamps) is complexity without
+      // matching benefit for immediate-undo UX.
+      if (supabase && !isPreviewMode.value && this._userId) {
+        const userId = this._userId
+        syncQueue.enqueue(`exercise-sets:${exercise.id}`, () =>
+          supabase!.from('sets')
+            .update({ deleted_at: null })
+            .eq('exercise_id', exercise.id).eq('user_id', userId)
+        )
+        syncQueue.enqueue(`exercise:${exercise.id}`, () =>
+          supabase!.from('exercises')
+            .update({ deleted_at: null })
+            .eq('id', exercise.id).eq('user_id', userId)
+        )
+      }
     },
 
     syncDeleteSet(setId: string) {
       if (supabase && this._userId) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         syncQueue.enqueueDelete(`set:${setId}`, () =>
-          supabase!.from('sets').delete().eq('id', setId).eq('user_id', userId)
+          supabase!.from('sets')
+            .update({ deleted_at: deletedAt })
+            .eq('id', setId).eq('user_id', userId)
         )
       }
     },
@@ -625,11 +678,16 @@ export const useWorkoutStore = defineStore('workout', {
     syncDeleteExercise(exerciseId: string) {
       if (supabase && this._userId) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         syncQueue.enqueueDelete(`exercise-sets:${exerciseId}`, () =>
-          supabase!.from('sets').delete().eq('exercise_id', exerciseId).eq('user_id', userId)
+          supabase!.from('sets')
+            .update({ deleted_at: deletedAt })
+            .eq('exercise_id', exerciseId).eq('user_id', userId)
         )
         syncQueue.enqueueDelete(`exercise:${exerciseId}`, () =>
-          supabase!.from('exercises').delete().eq('id', exerciseId).eq('user_id', userId)
+          supabase!.from('exercises')
+            .update({ deleted_at: deletedAt })
+            .eq('id', exerciseId).eq('user_id', userId)
         )
       }
     },
