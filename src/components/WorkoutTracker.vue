@@ -921,6 +921,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
+import { usePRBurst } from '../composables/usePRBurst'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
@@ -935,6 +936,7 @@ const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
 const { prBaselineDate } = usePRBaseline()
+const { presentPRBurst } = usePRBurst()
 
 // Filter sets to those on/after the user-set PR baseline.
 // When no baseline is set, returns sets unchanged (legacy all-time behavior).
@@ -2537,6 +2539,8 @@ function saveSet() {
     }
     if (hasSetData.value && weight.value !== null && reps.value !== null) {
       const wasPR = isNewPR.value
+      // Capture the pre-log baseline PR so the burst can show old → new e1RM.
+      const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       // XP: get the just-logged set (last in array) and compute XP
@@ -2548,6 +2552,16 @@ function saveSet() {
       // Haptic feedback — stronger for PRs
       if (wasPR) {
         notifySuccess()
+        // Full-bleed PR celebration (respects the PR baseline via oldE1RM,
+        // and the prCelebrations opt-out inside presentPRBurst).
+        const newE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
+        presentPRBurst({
+          exerciseName: selectedExerciseName.value,
+          oldE1RM,
+          newE1RM,
+          setWeight: toLbs(weight.value),
+          setReps: reps.value,
+        })
       } else {
         impactLight()
       }
