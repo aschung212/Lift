@@ -34,12 +34,12 @@
     <template v-if="listView === 'exercises' && store.allTags.length > 0">
       <div class="wtTagFilterBar">
         <button
-          :class="['wtTagChip', { wtTagChipActive: activeTagFilters.length === 0 }]"
-          @click="activeTagFilters = []"
+          :class="['wtTagChip', { wtTagChipActive: activeTagFilters.length === 0 && !searchQuery }]"
+          @click="clearSearchAndTags"
           aria-label="Show all exercises"
         >All</button>
         <button
-          v-for="tag in store.allTags"
+          v-for="tag in filteredTags"
           :key="tag"
           :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
           :aria-pressed="activeTagFilters.includes(tag)"
@@ -1165,13 +1165,36 @@ const visibleTimelineGroups = computed(() => {
 const searchQuery = ref('')
 const activeTagFilters = ref<string[]>([])
 
+/**
+ * Tag chips visible in the filter row. When the user is searching we narrow
+ * the row to tags that match the query (so typing "shoulders" also filters
+ * the chips), plus any currently-active tag so the user can see + toggle it
+ * back off without clearing the search first.
+ */
+const filteredTags = computed<string[]>(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return store.allTags
+  return store.allTags.filter(t =>
+    t.toLowerCase().includes(q) || activeTagFilters.value.includes(t)
+  )
+})
+
 function toggleTagFilter(tag: string) {
-  const idx = activeTagFilters.value.indexOf(tag)
-  if (idx >= 0) {
+  // Tapping a tag chip commits the user's intent: clear the search and apply
+  // the tag as a filter. If the tag was already active, tapping deactivates it.
+  const wasActive = activeTagFilters.value.includes(tag)
+  searchQuery.value = ''
+  if (wasActive) {
     activeTagFilters.value = activeTagFilters.value.filter(t => t !== tag)
   } else {
     activeTagFilters.value = [...activeTagFilters.value, tag]
   }
+}
+
+/** "All" chip — clear both the search and any active tags. */
+function clearSearchAndTags() {
+  searchQuery.value = ''
+  activeTagFilters.value = []
 }
 
 const filteredExercises = computed(() => {
