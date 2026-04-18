@@ -165,9 +165,12 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
     })
 
-    it('renders "New Exercise" button', () => {
+    it('renders the Workouts large title', () => {
+      // After the 03-workouts.png restyle, the "+ New Exercise" button moved
+      // into the exercise-picker modal. The tab itself shows an iOS large
+      // title instead.
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtLogBtn').text()).toBe('+ New Exercise')
+      expect(wrapper.find('.wtPageTitle').text()).toBe('Workouts')
     })
 
     it('does not render tag filter bar when no tags', () => {
@@ -194,28 +197,31 @@ describe('WorkoutTracker', () => {
       expect(rows[1].text()).toContain('Squat')
     })
 
-    it('displays est. 1RM with the PR set weight × reps', () => {
+    it('displays last set summary with weight × reps on the card', () => {
       const wrapper = mountTracker()
-      const meta = wrapper.findAll('.wtExerciseMeta')
-      // Bench PR set: 195 × 5 = e1RM 228
-      expect(meta[0].text()).toContain('228')
-      expect(meta[0].text()).toContain('195')
-      expect(meta[0].text()).toContain('5')
+      // The restyled card shows the most recent set + time-ago instead of
+      // an est. 1RM summary. Bench last set in the fixture is 195 × 5.
+      const stats = wrapper.findAll('.wtExerciseStat')
+      expect(stats[0].text()).toContain('195')
+      expect(stats[0].text()).toContain('× 5')
     })
 
-    it('hides meta for exercise with no sets', () => {
+    it('shows "No sets yet" placeholder for exercise with no sets', () => {
       const wrapper = mountTracker()
-      // ex-3 (Deadlift) has no sets — meta should not render
       const items = wrapper.findAll('.wtExerciseItem')
-      const deadliftMeta = items[2].find('.wtExerciseMeta')
-      expect(deadliftMeta.exists()).toBe(false)
+      // ex-3 (Deadlift) has no sets — stat line shows the empty placeholder
+      const deadliftStat = items[2].find('.wtExerciseStatEmpty')
+      expect(deadliftStat.exists()).toBe(true)
+      expect(deadliftStat.text()).toContain('No sets yet')
     })
 
-    it('shows "+ Log" button for each exercise', () => {
+    it('shows a circular quick-log button for each exercise', () => {
       const wrapper = mountTracker()
-      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      // Button is now icon-only (gold circle with a plus svg). Assert it
+      // exists with the circle modifier class and an aria-label.
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn.wtExerciseLogBtnCircle')
       expect(logBtns.length).toBe(3)
-      expect(logBtns[0].text()).toBe('+ Log')
+      expect(logBtns[0].attributes('aria-label')).toContain('Log a set')
     })
 
     it('renders drag handles for reordering', () => {
@@ -230,19 +236,31 @@ describe('WorkoutTracker', () => {
       exercises = JSON.parse(JSON.stringify(EXERCISES))
     })
 
+    function tagChips(wrapper: VueWrapper) {
+      // After the PNG restyle, chips include an "All" chip and a tag-manager
+      // chip. Skip those so tests focus on the real tag filter chips.
+      return wrapper.findAll('.wtTagChip').filter(c => {
+        if (c.classes('wtTagChipClear')) return false
+        if (c.classes('wtTagChipManage')) return false
+        const label = c.find('.wtTagChipLabel')
+        if (!label.exists()) return false
+        return true
+      })
+    }
+
     it('renders tag filter chips for all unique tags', () => {
       const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      const chipTexts = chips.map(c => c.text())
-      expect(chipTexts).toContain('Chest')
-      expect(chipTexts).toContain('Push')
-      expect(chipTexts).toContain('Legs')
+      const chips = tagChips(wrapper)
+      const chipLabels = chips.map(c => c.find('.wtTagChipLabel').text())
+      expect(chipLabels).toContain('Chest')
+      expect(chipLabels).toContain('Push')
+      expect(chipLabels).toContain('Legs')
     })
 
     it('filters exercises when tag is clicked', async () => {
       const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      const legsChip = chips.find(c => c.text() === 'Legs')!
+      const chips = tagChips(wrapper)
+      const legsChip = chips.find(c => c.find('.wtTagChipLabel').text() === 'Legs')!
       await legsChip.trigger('click')
 
       const items = wrapper.findAll('.wtExerciseItem')
@@ -250,28 +268,22 @@ describe('WorkoutTracker', () => {
       expect(wrapper.text()).toContain('Squat')
     })
 
-    it('shows clear button when filter is active', async () => {
+    it('deactivates filter by clicking the All chip', async () => {
+      // The dedicated "× Clear" button was retired in favor of the "All" chip
+      // that sits at the head of the tag-filter row.
       const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
+      const chips = tagChips(wrapper)
       await chips[0].trigger('click')
-
-      expect(wrapper.find('.wtTagChipClear').exists()).toBe(true)
-      expect(wrapper.find('.wtTagChipClear').text()).toBe('× Clear')
-    })
-
-    it('clears filters when clear button is clicked', async () => {
-      const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      await chips[0].trigger('click')
-      await wrapper.find('.wtTagChipClear').trigger('click')
+      const allChip = wrapper.findAll('.wtTagChip').find(c => c.text().trim() === 'All')!
+      await allChip.trigger('click')
 
       expect(wrapper.findAll('.wtExerciseItem').length).toBe(3)
     })
 
     it('shows exercises matching ANY active tag (OR logic)', async () => {
       const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      const pushChip = chips.find(c => c.text() === 'Push')!
+      const chips = tagChips(wrapper)
+      const pushChip = chips.find(c => c.find('.wtTagChipLabel').text() === 'Push')!
       await pushChip.trigger('click')
 
       // Push matches Bench Press and Overhead Press
@@ -281,7 +293,7 @@ describe('WorkoutTracker', () => {
 
     it('disables drag handles when filter is active', async () => {
       const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
+      const chips = tagChips(wrapper)
       await chips[0].trigger('click')
 
       expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
@@ -289,8 +301,8 @@ describe('WorkoutTracker', () => {
 
     it('deactivates tag on second click', async () => {
       const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      const legsChip = chips.find(c => c.text() === 'Legs')!
+      const chips = tagChips(wrapper)
+      const legsChip = chips.find(c => c.find('.wtTagChipLabel').text() === 'Legs')!
       await legsChip.trigger('click')
       expect(wrapper.findAll('.wtExerciseItem').length).toBe(1)
 
@@ -508,18 +520,37 @@ describe('WorkoutTracker', () => {
   })
 
   describe('new exercise modal', () => {
-    it('opens modal when "+ New Exercise" is clicked', async () => {
-      const wrapper = mountTracker()
-      await wrapper.find('.wtLogBtn').trigger('click')
+    // The top-bar "+" button in App.vue opens the exercise picker, which has
+    // a "+ New exercise" row that calls the underlying openNewExerciseModal.
+    // Component unit tests reach the modal by calling the exposed helper.
+    async function openNewExerciseModal(wrapper: VueWrapper) {
+      const cmp = wrapper.vm as unknown as { openNewExerciseModal?: () => void }
+      // openNewExerciseModal is defined at the top level of <script setup>
+      // so it's not on the instance. Invoke via defineExpose → or trigger
+      // by opening the picker and clicking the "+ New exercise" row.
+      if (typeof cmp.openNewExerciseModal === 'function') {
+        cmp.openNewExerciseModal()
+      } else {
+        // Fallback: click the picker's new-exercise row after opening the picker.
+        const trackerExpose = wrapper.vm as unknown as { openTimelineLogModal?: () => void }
+        trackerExpose.openTimelineLogModal?.()
+        await wrapper.vm.$nextTick()
+        const newRow = wrapper.find('.wtExPickerNew')
+        if (newRow.exists()) await newRow.trigger('click')
+      }
       await wrapper.vm.$nextTick()
+    }
+
+    it('opens modal via the "+ New exercise" picker row', async () => {
+      const wrapper = mountTracker()
+      await openNewExerciseModal(wrapper)
 
       expect(wrapper.find('.repMaxModal').exists()).toBe(true)
     })
 
     it('shows "New Exercise" as modal title', async () => {
       const wrapper = mountTracker()
-      await wrapper.find('.wtLogBtn').trigger('click')
-      await wrapper.vm.$nextTick()
+      await openNewExerciseModal(wrapper)
 
       expect(wrapper.find('#log-modal-title').text()).toBe('New Exercise')
     })
@@ -529,8 +560,7 @@ describe('WorkoutTracker', () => {
       mockAddExercise.mockReturnValue('ex-new')
       const wrapper = mountTracker()
 
-      await wrapper.find('.wtLogBtn').trigger('click')
-      await wrapper.vm.$nextTick()
+      await openNewExerciseModal(wrapper)
 
       // Enter exercise name
       const nameInput = wrapper.find('.repMaxModal input[type="text"]')
@@ -548,8 +578,7 @@ describe('WorkoutTracker', () => {
       mockAddExercise.mockReturnValue('ex-new')
       const wrapper = mountTracker()
 
-      await wrapper.find('.wtLogBtn').trigger('click')
-      await wrapper.vm.$nextTick()
+      await openNewExerciseModal(wrapper)
 
       // Enter exercise name
       const nameInput = wrapper.find('.repMaxModal input[type="text"]')
@@ -573,8 +602,7 @@ describe('WorkoutTracker', () => {
 
     it('disables save button when name is empty', async () => {
       const wrapper = mountTracker()
-      await wrapper.find('.wtLogBtn').trigger('click')
-      await wrapper.vm.$nextTick()
+      await openNewExerciseModal(wrapper)
 
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       expect(saveBtn.attributes('disabled')).toBeDefined()
@@ -718,9 +746,15 @@ describe('WorkoutTracker', () => {
 
     it('combined search and tag filter narrows results', async () => {
       const wrapper = mountTracker()
-      // First filter by tag 'Back'
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      const backChip = chips.find(c => c.text() === 'Back')!
+      // First filter by tag 'Back' — skip the "All" and manage chips added
+      // in the 03-workouts.png restyle.
+      const chips = wrapper.findAll('.wtTagChip').filter(c => {
+        if (c.classes('wtTagChipClear')) return false
+        if (c.classes('wtTagChipManage')) return false
+        const label = c.find('.wtTagChipLabel')
+        return label.exists()
+      })
+      const backChip = chips.find(c => c.find('.wtTagChipLabel').text() === 'Back')!
       await backChip.trigger('click')
 
       // Then search for 'row'
@@ -896,7 +930,8 @@ describe('WorkoutTracker', () => {
         { id: '5', name: 'E', tags: [], sets: [] },
       ]
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtSearchInput').attributes('aria-label')).toBe('Search exercises')
+      // Search now covers both exercise names and tags (03-workouts.png).
+      expect(wrapper.find('.wtSearchInput').attributes('aria-label')).toBe('Search exercises or tags')
     })
 
     it('log button aria-label renders exercise name dynamically', () => {
@@ -920,21 +955,21 @@ describe('WorkoutTracker', () => {
     it('tag filter buttons have aria-pressed reflecting active state', () => {
       exercises = JSON.parse(JSON.stringify(EXERCISES))
       const wrapper = mountTracker()
-      const tagBtns = wrapper.findAll('.wtTagChip:not(.wtTagChipManage)')
+      // Only actual tag chips have aria-pressed — skip "All", "× Clear",
+      // and the tag-manager chip added in the 03-workouts.png restyle.
+      const tagBtns = wrapper.findAll('.wtTagChip').filter(c => c.find('.wtTagChipLabel').exists())
       expect(tagBtns.length).toBeGreaterThan(0)
-      // Initially none are pressed
       tagBtns.forEach(btn => {
-        if (!btn.classes().includes('wtTagChipClear')) {
-          expect(btn.attributes('aria-pressed')).toBe('false')
-        }
+        expect(btn.attributes('aria-pressed')).toBe('false')
       })
     })
 
     it('tag add buttons have aria-label', async () => {
       exercises = JSON.parse(JSON.stringify(EXERCISES))
       const wrapper = mountTracker()
-      // Open new exercise modal
-      await wrapper.find('.wtLogBtn').trigger('click')
+      // Open new exercise modal via the exposed helper (retired wtLogBtn).
+      const exposed = wrapper.vm as unknown as { openNewExerciseModal?: () => void }
+      exposed.openNewExerciseModal?.()
       await wrapper.vm.$nextTick()
       const addBtn = wrapper.find('.wtTagAddChip')
       expect(addBtn.attributes('aria-label')).toBe('Add tag')
@@ -993,13 +1028,25 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtViewToggleBtn.active').text()).toBe('Timeline')
     })
 
-    it('shows "+ New Exercise" in exercises view and "+ Log Set" in timeline view', async () => {
+    it('quick-log button is driven by the app-level "+" and works from both views', async () => {
+      // The old `wtLogBtn` in the card header is gone (03-workouts.png). Both
+      // views now rely on the App.vue top-bar "+" which calls the exposed
+      // openTimelineLogModal helper to open the exercise picker.
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtLogBtn').text()).toBe('+ New Exercise')
+      const exposed = wrapper.vm as unknown as { openTimelineLogModal?: () => void }
+      expect(typeof exposed.openTimelineLogModal).toBe('function')
 
+      exposed.openTimelineLogModal!()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtExPickerNew').exists()).toBe(true)
+
+      // Switch to timeline view; the exposed helper still works.
+      await wrapper.find('.wtExPickerRow + .wtExPickerRow, .wtExPickerRow')
       await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
       await wrapper.vm.$nextTick()
-      expect(wrapper.find('.wtLogBtn').text()).toBe('+ Log Set')
+      exposed.openTimelineLogModal!()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtExPickerNew').exists()).toBe(true)
     })
 
     it('persists view selection to localStorage', async () => {

@@ -841,11 +841,23 @@ button, [role="tab"], [role="switch"], a {
 
 .appTopBar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
-  padding: 4px 0;
+  padding: 8px 4px;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.appTopBarLeft,
+.appTopBarRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
+
+.appTopBarLeft { justify-content: flex-start; }
+.appTopBarRight { justify-content: flex-end; }
 
 .tabContent {
   flex: 1;
@@ -853,7 +865,8 @@ button, [role="tab"], [role="switch"], a {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   padding-top: 12px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 110px);
+  /* Reserve room for the floating tab bar: 58h + 26 offset + 16 padding + safe area */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 120px);
 }
 
 html.modal-open .tabContent {
@@ -862,35 +875,43 @@ html.modal-open .tabContent {
 }
 
 
-/* ─── Tab bar ────────────────────────────────────────────────────────────── */
-
+/* ─── Floating glass tab bar ────────────────────────────────────────────── */
+/*
+  Geometry matches the skeleton tab bar painted on the splash screen
+  (index.html #splash), so the handoff from OS splash → Vue app is invisible:
+    left: 14px, right: 14px, bottom: calc(26px + safe-area-inset-bottom),
+    height: 58px, radius: 20px.
+*/
 .tabBar {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  left: 14px;
+  right: 14px;
+  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+  height: 58px;
   display: flex;
+  border-radius: 20px;
   background: var(--glass-bar, var(--bg-secondary));
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border-top: 1px solid var(--glass-edge, var(--border));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid var(--glass-edge, var(--border));
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
   z-index: 90;
+  /* Horizontal padding gives the active-tab pill some breathing room. */
+  padding: 0 4px;
 }
 
 .tabBarTabs {
   flex: 1;
   display: flex;
   position: relative;
+  height: 100%;
 }
 
 .tabIndicator {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  border-radius: 12px;
+  top: 6px;
+  bottom: 6px;
+  border-radius: 14px;
   background: var(--accent-subtle);
   border: none;
   backdrop-filter: blur(12px);
@@ -906,46 +927,72 @@ html.modal-open .tabContent {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 12px 0 8px;
+  gap: 2px;
+  padding: 0;
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-family: inherit;
   transition: color 0.25s;
   position: relative;
   z-index: 1;
+  height: 100%;
+  /* Minimum HIG touch target */
+  min-width: 44px;
 }
 
 .tabBtn.active {
   color: var(--accent);
 }
 
-.settingsGearBtn {
+.settingsGearBtn,
+.topBarPlusBtn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
   padding: 0;
-  background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted);
-  border-radius: 8px;
-  transition: color 0.2s, background-color 0.2s;
+  font-family: inherit;
   flex-shrink: 0;
+  border-radius: 999px;
+  transition: background-color 0.2s, color 0.2s, transform 0.1s;
+}
+
+.settingsGearBtn {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
 }
 
 .settingsGearBtn:active {
   background: var(--accent-subtle);
   color: var(--accent);
+  transform: scale(0.95);
 }
 
 .settingsGearBtn svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+}
+
+.topBarPlusBtn {
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.topBarPlusBtn:active {
+  transform: scale(0.94);
+  background: var(--accent-hover, var(--accent));
+}
+
+.topBarPlusBtn svg {
+  width: 22px;
+  height: 22px;
 }
 
 .syncIndicator {
@@ -1796,37 +1843,56 @@ html.theme-fading .settingsSheet {
 /* ─── Workout tracker card ───────────────────────────────────────────────── */
 
 .wtCard {
-  background: var(--glass-fill, var(--bg-secondary));
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border: 1px solid var(--glass-edge, var(--border));
-  box-shadow: var(--shadow), inset 0 1px 0 var(--glass-shine);
-  border-radius: 14px;
-  overflow: hidden;
-  transition: background-color 0.2s, border-color 0.2s;
+  /* After the 03-workouts.png refresh the list itself is no longer a glass
+     card — content flows directly in the tab content area with a large
+     title and grouped rows, matching iOS HIG. Keep the class so other
+     styles that key off .wtCard descendants still apply. */
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
 }
 
-.wtCardHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 16px;
-  border-bottom: 1px solid var(--border);
+/* ─── iOS-style large title + stats (03-workouts.png) ──────────────────── */
+.wtPageHeader {
+  padding: 8px 4px 16px;
 }
 
+.wtPageTitle {
+  margin: 0;
+  font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.wtPageStats {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Segmented control (Exercises / Timeline) — gold-filled active pill. */
 .wtViewToggle {
   display: flex;
-  margin: 8px 16px;
-  padding: 2px;
-  background: var(--bg-secondary);
-  border-radius: 10px;
+  margin: 0 0 12px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  gap: 4px;
 }
 
 .wtViewToggleBtn {
   flex: 1;
-  padding: 8px;
+  padding: 0;
   min-height: 32px;
-  font-size: var(--font-caption1);
+  font-size: 14px;
   font-weight: 600;
   font-family: inherit;
   color: var(--text-secondary);
@@ -1840,6 +1906,7 @@ html.theme-fading .settingsSheet {
 .wtViewToggleBtn.active {
   background: var(--accent);
   color: var(--text-on-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .wtTitle {
@@ -2046,6 +2113,15 @@ html.theme-fading .settingsSheet {
   text-align: left;
 }
 
+.wtExPickerNew {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.wtExPickerNew .wtExPickerName {
+  color: var(--accent);
+}
+
 .wtExPickerRow:last-child {
   border-bottom: none;
 }
@@ -2070,21 +2146,30 @@ html.theme-fading .settingsSheet {
 
 .wtExerciseList {
   list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
 }
 
 .wtExerciseItem {
   contain: layout style paint;
+  /* Each exercise is its own iOS-style card, not stacked row borders. */
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .wtExerciseItem + .wtExerciseItem {
-  border-top: 1px solid var(--border-strong);
+  border-top: 1px solid var(--border);
 }
 
 .wtExerciseHeader {
   display: flex;
   align-items: stretch;
-  /* Long-press picks up the row to reorder. Block iOS text selection/magnifier
-     and the callout menu so the gesture doesn't fight the system. */
+  gap: 8px;
+  padding: 12px;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -2095,43 +2180,99 @@ html.theme-fading .settingsSheet {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 16px;
-  min-height: 44px;
+  padding: 0;
+  min-height: 56px;
   background: none;
   border: none;
   cursor: pointer;
   text-align: left;
   font-family: inherit;
-  font-size: var(--font-footnote);
   color: var(--text-primary);
   transition: background-color 0.12s;
   min-width: 0;
 }
 
-.wtExerciseRow:hover { background: var(--bg-hover); }
+.wtExerciseRow:active { opacity: 0.75; }
 
 .wtExerciseNameBlock {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wtExerciseTopLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
 .wtExerciseName {
   font-weight: 600;
-  font-size: var(--font-footnote);
+  font-size: 16px;
+  line-height: 1.2;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 
-.wtExerciseMeta {
-  font-size: var(--font-caption2);
-  color: var(--text-muted);
+.wtExerciseNewPR {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 99px;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.wtExerciseNewPRIcon {
+  font-size: 10px;
+}
+
+.wtExerciseMetaLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  min-width: 0;
+}
+
+.wtExerciseTag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.wtExerciseStat {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.wtExerciseStatEmpty {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .wtChevron {
@@ -2160,23 +2301,45 @@ html.theme-fading .settingsSheet {
 .wtExerciseLogBtn:hover  { background: var(--accent-subtle); }
 .wtExerciseLogBtn:active { opacity: 0.75; }
 
+/* Circular gold "+" button on each exercise row (03-workouts.png). */
+.wtExerciseLogBtnCircle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 99px;
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  align-self: center;
+  cursor: pointer;
+  transition: transform 0.1s, background-color 0.15s;
+}
+
+.wtExerciseLogBtnCircle:hover  { background: var(--accent-hover, var(--accent)); }
+.wtExerciseLogBtnCircle:active { transform: scale(0.94); }
+
 /* ─── Drag handle ──────────────────────────────────────────────────────── */
 
 .wtDragHandle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: 16px;
   flex-shrink: 0;
-  font-size: var(--font-callout);
+  font-size: 14px;
   color: var(--text-muted);
   background: none;
   border: none;
-  border-right: 1px solid var(--border);
   user-select: none;
   -webkit-user-select: none;
   pointer-events: none;
-  transition: color 0.15s;
+  transition: color 0.15s, opacity 0.15s;
+  opacity: 0.35;
+  align-self: center;
 }
 
 .wtDragHandleDisabled {
@@ -2229,22 +2392,34 @@ html.theme-fading .settingsSheet {
 /* ─── Tag filter bar ───────────────────────────────────────────────────── */
 
 .wtSearchBar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 0 0 12px;
+}
+
+.wtSearchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(calc(-50% - 6px));
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .wtSearchInput {
   flex: 1;
-  padding: 8px 12px;
-  font-size: var(--font-footnote);
+  padding: 12px 12px 12px 32px;
+  font-size: 14px;
+  font-family: inherit;
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   outline: none;
   transition: border-color 0.15s;
+  min-height: 44px;
 }
 
 .wtSearchInput:focus {
@@ -2252,57 +2427,79 @@ html.theme-fading .settingsSheet {
 }
 
 .wtSearchInput::placeholder {
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .wtSearchCount {
-  font-size: var(--font-caption1);
+  font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
 }
 
 .wtTagFilterBar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 0 0 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
 
+.wtTagFilterBar::-webkit-scrollbar { display: none; }
+
 .wtTagChip {
-  font-size: var(--font-footnote);
+  font-size: 13px;
   font-weight: 600;
-  padding: 8px 16px;
-  min-height: 44px;
+  padding: 8px 12px;
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
-  border: 1px solid var(--border-strong);
+  gap: 8px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
   color: var(--text-secondary);
-  background: transparent;
+  background: var(--bg-elevated);
   cursor: pointer;
   font-family: inherit;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .wtTagChipActive {
-  background: var(--accent);
+  background: var(--accent-subtle);
   border-color: var(--accent);
-  color: var(--text-on-accent);
+  color: var(--accent);
+}
+
+.wtTagChipLabel {
+  font-weight: 600;
+}
+
+.wtTagChipCount {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtTagChipActive .wtTagChipCount {
+  color: var(--accent);
+  opacity: 0.7;
 }
 
 .wtTagChipClear {
   border-color: var(--danger);
   color: var(--danger);
+  background: transparent;
 }
 
 .wtTagChipManage {
   border-color: var(--border);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* ─── Tag manager modal ────────────────────────────────────────────────── */
