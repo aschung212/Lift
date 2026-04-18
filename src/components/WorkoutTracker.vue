@@ -581,18 +581,31 @@
             <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
           </div>
 
-          <!-- PR targets table (always visible when exercise has a PR) -->
-          <div v-if="!isEditMode && isLogForExercise && prTargetsTable" class="wtPrTargets">
+          <!--
+            PR Targets card per screens/07-pr-targets-expanded.png. Always
+            visible when the exercise has an established PR. Header is
+            tappable to expand/collapse the scrollable list. The row
+            matching the user's current reps value is highlighted in
+            accent so they can see at a glance "this is the weight to
+            hit at the rep count you've already chosen."
+          -->
+          <div v-if="!isEditMode && isLogForExercise && prTargetsTable" :class="['wtPrTargets', { wtPrTargetsExpanded: prTableExpanded }]">
             <button class="wtPrTargetsHeader" @click="prTableExpanded = !prTableExpanded" :aria-expanded="prTableExpanded">
-              <span class="wtPrTargetsTitle">PR Targets</span>
-              <span class="wtPrTargetsSub">Beat {{ displayWeight(store.getExercisePR(selectedExerciseId, prBaselineDate)) }} {{ weightUnit }} e1RM</span>
+              <span class="wtPrTargetsTitleCol">
+                <span class="wtPrTargetsTitle">PR Targets</span>
+                <span class="wtPrTargetsSub">
+                  Beat {{ displayWeight(store.getExercisePR(selectedExerciseId, prBaselineDate)) }} {{ weightUnit }} e1RM
+                  <span class="wtPrTargetsSubDot">·</span>
+                  <span class="wtPrTargetsSubCount">{{ prTargetsTable.length }} targets 🏆</span>
+                </span>
+              </span>
               <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: prTableExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div v-if="prTableExpanded" class="wtPrTargetsList">
               <button
                 v-for="row in prTargetsTable"
                 :key="row.reps"
-                class="wtPrTargetsRow"
+                :class="['wtPrTargetsRow', { wtPrTargetsRowActive: reps !== null && row.reps === reps }]"
                 @click="fillFromPRTable(row)"
               >
                 <span class="wtPrTargetsReps">{{ row.reps }}</span>
