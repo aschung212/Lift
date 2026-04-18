@@ -105,7 +105,7 @@
 
     <!-- Timeline view -->
     <template v-else-if="listView === 'timeline'">
-      <div v-if="timelineSets.length > 0 && timelineWarmupCount > 0" class="wtFilterBar">
+      <div v-if="timelineSets.length > 0 && timelineWarmupCount > 0 && !warmupFilterDismissed" class="wtFilterBar">
         <button
           :class="['wtFilterToggle', { wtFilterToggleActive: hideWarmups }]"
           :aria-pressed="hideWarmups"
@@ -114,6 +114,28 @@
           <svg v-if="hideWarmups" class="wtFilterCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
           <span>Hide warmups</span>
           <span class="wtFilterCount">{{ timelineWarmupCount }}</span>
+        </button>
+        <div class="wtFilterStepper" role="group" aria-label="Warmup threshold">
+          <button
+            class="wtFilterStepperBtn"
+            @click="adjustWarmupThreshold(-WARMUP_THRESHOLD_STEP)"
+            :disabled="prefs.warmupThreshold <= WARMUP_THRESHOLD_MIN + 0.001"
+            aria-label="Decrease warmup threshold"
+          >−</button>
+          <span class="wtFilterStepperValue">{{ Math.round(prefs.warmupThreshold * 100) }}%</span>
+          <button
+            class="wtFilterStepperBtn"
+            @click="adjustWarmupThreshold(WARMUP_THRESHOLD_STEP)"
+            :disabled="prefs.warmupThreshold >= WARMUP_THRESHOLD_MAX - 0.001"
+            aria-label="Increase warmup threshold"
+          >+</button>
+        </div>
+        <button
+          class="wtFilterDismiss"
+          @click="warmupFilterDismissed = true; hideWarmups = false"
+          aria-label="Dismiss warmup filter"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div v-if="timelineSets.length === 0" class="wtEmpty">
@@ -183,7 +205,7 @@
 
           <!-- All Sets view -->
           <template v-if="detailTab === 'sets'">
-            <div v-if="detailWarmupCount > 0" class="wtFilterBar wtFilterBarDetail">
+            <div v-if="detailWarmupCount > 0 && !warmupFilterDismissed" class="wtFilterBar wtFilterBarDetail">
               <button
                 :class="['wtFilterToggle', { wtFilterToggleActive: hideWarmups }]"
                 :aria-pressed="hideWarmups"
@@ -192,6 +214,28 @@
                 <svg v-if="hideWarmups" class="wtFilterCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                 <span>Hide warmups</span>
                 <span class="wtFilterCount">{{ detailWarmupCount }}</span>
+              </button>
+              <div class="wtFilterStepper" role="group" aria-label="Warmup threshold">
+                <button
+                  class="wtFilterStepperBtn"
+                  @click="adjustWarmupThreshold(-WARMUP_THRESHOLD_STEP)"
+                  :disabled="prefs.warmupThreshold <= WARMUP_THRESHOLD_MIN + 0.001"
+                  aria-label="Decrease warmup threshold"
+                >−</button>
+                <span class="wtFilterStepperValue">{{ Math.round(prefs.warmupThreshold * 100) }}%</span>
+                <button
+                  class="wtFilterStepperBtn"
+                  @click="adjustWarmupThreshold(WARMUP_THRESHOLD_STEP)"
+                  :disabled="prefs.warmupThreshold >= WARMUP_THRESHOLD_MAX - 0.001"
+                  aria-label="Increase warmup threshold"
+                >+</button>
+              </div>
+              <button
+                class="wtFilterDismiss"
+                @click="warmupFilterDismissed = true; hideWarmups = false"
+                aria-label="Dismiss warmup filter"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <div class="wtSetList">
@@ -952,7 +996,13 @@ import { usePreferencesStore } from '../stores/preferences'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
-import { classifyWarmupsByExercise, classifyExerciseWarmups } from '../lib/warmupFilter'
+import {
+  classifyWarmupsByExercise,
+  classifyExerciseWarmups,
+  WARMUP_THRESHOLD_MIN,
+  WARMUP_THRESHOLD_MAX,
+  WARMUP_THRESHOLD_STEP,
+} from '../lib/warmupFilter'
 import { logXPEvent } from '../lib/xpInstrumentation'
 import ExerciseGraph from './ExerciseGraph.vue'
 
@@ -1146,6 +1196,14 @@ const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
 // Intentionally not persisted: the filter is purely a view preference and we
 // never want to silently hide data across sessions.
 const hideWarmups = ref(false)
+
+// Session-only "hide the filter bar entirely" escape hatch. Reappears on reload.
+// Lets the user fully dismiss the feature without opening Settings.
+const warmupFilterDismissed = ref(false)
+
+function adjustWarmupThreshold(delta: number) {
+  prefs.setWarmupThreshold(prefs.warmupThreshold + delta)
+}
 
 // Warmup IDs computed across all exercises — used by the timeline view.
 // Recomputes when sets, threshold, or the filter toggle flip.
