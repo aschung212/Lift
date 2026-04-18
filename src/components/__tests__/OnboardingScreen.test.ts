@@ -61,30 +61,39 @@ describe('OnboardingScreen', () => {
       expect(options.length).toBe(3)
     })
 
-    it('shows Start Empty option', () => {
-      expect(wrapper.text()).toContain('Start Empty')
+    it('shows Start empty option', () => {
+      expect(wrapper.text()).toContain('Start empty')
       expect(wrapper.text()).toContain('Add your own exercises from scratch')
     })
 
-    it('shows Popular Exercises option', () => {
-      expect(wrapper.text()).toContain('Popular Exercises')
+    it('shows Popular exercises option', () => {
+      expect(wrapper.text()).toContain('Popular exercises')
       expect(wrapper.text()).toContain('Pre-load 6 common lifts')
     })
 
-    it('shows Explore First option', () => {
-      expect(wrapper.text()).toContain('Explore First')
+    it('shows Explore first option', () => {
+      expect(wrapper.text()).toContain('Explore first')
       expect(wrapper.text()).toContain('sample data')
+    })
+
+    it('features Popular exercises as the recommended option (gold glow)', () => {
+      // Popular exercises is now the first / featured option in the restyled
+      // onboarding per design_handoff_lift_ios_pwa/screens/01-auth.png.
+      const featured = wrapper.find('.obOptionFeatured')
+      expect(featured.exists()).toBe(true)
+      expect(featured.text()).toContain('Popular exercises')
     })
   })
 
-  describe('Start Empty', () => {
+  describe('Start empty', () => {
     async function chooseEmptyAndSkip() {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      // Order after 01-auth.png restyle: [0] Popular, [1] Empty, [2] Explore.
+      await wrapper.findAll('.obOption')[1].trigger('click')
       await wrapper.find('.spfSecondary').trigger('click')
     }
 
     it('advances to progression explainer step', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.findAll('.obOption')[1].trigger('click')
       expect(wrapper.text()).toContain('Theme Progression')
       expect(wrapper.find('.spfExplainer').exists()).toBe(true)
     })
@@ -113,9 +122,10 @@ describe('OnboardingScreen', () => {
     })
   })
 
-  describe('Popular Exercises', () => {
+  describe('Popular exercises', () => {
     it('adds 6 starter exercises with tags', async () => {
-      await wrapper.findAll('.obOption')[1].trigger('click')
+      // Popular is the featured / first option after the 01-auth.png restyle.
+      await wrapper.findAll('.obOption')[0].trigger('click')
       expect(mockAddExercise).toHaveBeenCalledTimes(6)
       expect(mockAddExercise).toHaveBeenCalledWith('Bench Press', ['Push', 'Chest'])
       expect(mockAddExercise).toHaveBeenCalledWith('Squat', ['Legs'])
@@ -126,18 +136,18 @@ describe('OnboardingScreen', () => {
     })
 
     it('emits complete event after skipping starter', async () => {
-      await wrapper.findAll('.obOption')[1].trigger('click')
+      await wrapper.findAll('.obOption')[0].trigger('click')
       await wrapper.find('.spfSecondary').trigger('click')
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
     it('does not log any sets', async () => {
-      await wrapper.findAll('.obOption')[1].trigger('click')
+      await wrapper.findAll('.obOption')[0].trigger('click')
       expect(mockLogSet).not.toHaveBeenCalled()
     })
   })
 
-  describe('Explore First (sample data)', () => {
+  describe('Explore first (sample data)', () => {
     it('adds exercises with sample sets', async () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
       expect(mockAddExercise).toHaveBeenCalled()
@@ -176,7 +186,7 @@ describe('OnboardingScreen', () => {
       // Simulate existing exercises by having addExercise return the same id
       // (the real store returns existing id for duplicates)
       mockAddExercise.mockReturnValue('existing-id')
-      await wrapper.findAll('.obOption')[1].trigger('click')
+      await wrapper.findAll('.obOption')[0].trigger('click')
       // Should still call addExercise 6 times — dedup is the store's job
       expect(mockAddExercise).toHaveBeenCalledTimes(6)
       // No sets should be logged for starter path
@@ -211,8 +221,9 @@ describe('OnboardingScreen', () => {
     })
 
     it('sets onboarding-complete even if no exercises are added', async () => {
-      // Start Empty path → skip starter
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      // Start empty path → skip starter. After 01-auth.png restyle, the "Start empty"
+      // option is the second one (index 1) — Popular exercises is featured/first.
+      await wrapper.findAll('.obOption')[1].trigger('click')
       await wrapper.find('.spfSecondary').trigger('click')
       expect(localStorageMock.setItem).toHaveBeenCalledWith('onboarding-complete', 'true')
       expect(mockAddExercise).not.toHaveBeenCalled()
