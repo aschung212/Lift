@@ -3285,15 +3285,34 @@ html.theme-fading .settingsSheet {
 .logSetSheet .wtPrTargets { margin: 8px 0; }
 .logSetSheet .logSetFieldsRow { margin: 12px 0 16px; }
 
-/* Drag handle pill at the top of the sheet. */
+/* Drag handle pill at the top of the sheet. The visible bar is 4px tall
+   (matches iOS native sheets) but the element itself reserves a 24px tall
+   touch zone via padding so the swipe-to-dismiss gesture has a generous
+   target. The bar is rendered via the ::before pseudo so the parent is
+   the actual touch surface (touch events on ::before don't fire). */
 .logSetSheetHandle {
+  position: relative;
+  width: 100%;
+  height: 24px;
+  margin: -8px auto 4px;
+  cursor: grab;
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.logSetSheetHandle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 36px;
   height: 4px;
-  margin: 0 auto 12px;
   border-radius: 99px;
   background: var(--border-strong);
-  flex-shrink: 0;
 }
+
+.logSetSheetHandle:active { cursor: grabbing; }
 
 @keyframes sheetSlideUp {
   from { transform: translateY(100%); }

@@ -276,8 +276,8 @@
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
     <div v-if="showModal" class="repMaxOverlay logSetOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
-      <div class="repMaxModal logSetSheet" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
-        <div class="logSetSheetHandle" aria-hidden="true"></div>
+      <div ref="logSheetEl" class="repMaxModal logSetSheet" :style="logSwipe.dragStyle()" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+        <div ref="logSheetHandleEl" class="logSetSheetHandle" aria-hidden="true"></div>
 
         <!-- Rest timer view -->
         <template v-if="timerActive">
@@ -1352,6 +1352,17 @@ watch(detailExerciseId, async (id) => {
     detailSwipe.detach()
     detailFocus.deactivate()
   }
+})
+
+// ── Swipe-to-dismiss for log-set sheet (step 5f) ────────────────
+// Drag the handle (or the sheet body, when not scrolled) down past
+// 100px to close the sheet. Uses the same composable as the detail
+// modal so the gesture feels consistent across the app.
+const logSheetEl = ref<HTMLElement | null>(null)
+const logSheetHandleEl = ref<HTMLElement | null>(null)
+const logSwipe = useSwipeToDismiss({
+  threshold: 100,
+  onDismiss: () => closeModal(),
 })
 
 function openDetailModal(id: string) {
@@ -2961,8 +2972,15 @@ watch(showModal, async (open) => {
     await nextTick()
     const el = document.querySelector<HTMLElement>('.repMaxModal')
     if (el) logModalFocus.activate(el)
+    // Attach swipe-to-dismiss gesture to the log-set sheet (step 5f).
+    // The handle gets touch events so the gesture doesn't compete with
+    // native scroll inside the sheet body.
+    if (logSheetEl.value && logSheetHandleEl.value) {
+      logSwipe.attach(logSheetEl.value, logSheetHandleEl.value)
+    }
   } else {
     logModalFocus.deactivate()
+    logSwipe.detach()
   }
 })
 
