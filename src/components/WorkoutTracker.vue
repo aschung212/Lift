@@ -1706,16 +1706,6 @@ function loadPRTargetReps() {
   repsStr.value = String(prTargetReps.value)
 }
 
-function onWeightInputFocus() {
-  if (plateMode.value && !plateNumpadOverride.value) {
-    plateNumpadOverride.value = true
-    // Force inputmode update synchronously so iOS shows keyboard from this tap
-    if (weightInputEl.value) {
-      weightInputEl.value.inputMode = 'decimal'
-    }
-  }
-}
-
 const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   if (ex?.barWeight !== undefined) return ex.barWeight
