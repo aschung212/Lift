@@ -222,10 +222,11 @@ describe('Accessibility', () => {
     it('option buttons have aria-label attributes', () => {
       const wrapper = mount(OnboardingScreen)
 
+      // Order after 01-auth.png restyle: [0] Popular (featured), [1] Empty, [2] Explore.
       const buttons = wrapper.findAll('.obOption')
       expect(buttons.length).toBe(3)
-      expect(buttons[0].attributes('aria-label')).toContain('Start Empty')
-      expect(buttons[1].attributes('aria-label')).toContain('Popular Exercises')
+      expect(buttons[0].attributes('aria-label')).toContain('Popular Exercises')
+      expect(buttons[1].attributes('aria-label')).toContain('Start Empty')
       expect(buttons[2].attributes('aria-label')).toContain('Explore First')
     })
 
@@ -233,8 +234,8 @@ describe('Accessibility', () => {
       const wrapper = mount(OnboardingScreen)
 
       const buttons = wrapper.findAll('.obOption')
-      expect(buttons[0].attributes('aria-label')).toContain('Add your own exercises from scratch')
-      expect(buttons[1].attributes('aria-label')).toContain('Pre-load 6 common lifts with tags')
+      expect(buttons[0].attributes('aria-label')).toContain('Pre-load 6 common lifts with tags')
+      expect(buttons[1].attributes('aria-label')).toContain('Add your own exercises from scratch')
       expect(buttons[2].attributes('aria-label')).toContain('See the app with sample data')
     })
   })

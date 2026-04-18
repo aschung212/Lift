@@ -3,31 +3,64 @@
     <div class="obCard">
       <!-- Step 1: Setup path -->
       <template v-if="step === 'setup'">
-        <div class="obLogo">Lift</div>
+        <div class="obHero">
+          <div class="obLogo">Lift</div>
+          <p class="obSubtitle">Strength tracking, quietly.</p>
+        </div>
         <p class="obTagline">How would you like to get started?</p>
 
         <div class="obOptions">
-          <button class="obOption" @click="chooseEmpty" aria-label="Start Empty — Add your own exercises from scratch">
-            <span class="obOptionIcon">🚀</span>
+          <button
+            class="obOption obOptionFeatured"
+            @click="chooseStarter"
+            aria-label="Popular Exercises — Pre-load 6 common lifts with tags, start logging in seconds"
+          >
+            <span class="obOptionIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24">
+                <rect x="2" y="10" width="4" height="4" rx="1"/>
+                <rect x="18" y="10" width="4" height="4" rx="1"/>
+                <rect x="5" y="8" width="3" height="8" rx="1"/>
+                <rect x="16" y="8" width="3" height="8" rx="1"/>
+                <line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+            </span>
             <span class="obOptionText">
-              <strong>Start Empty</strong>
-              <span>Add your own exercises from scratch</span>
+              <strong>Popular exercises</strong>
+              <span>Pre-load 6 common lifts with tags — start logging in seconds.</span>
             </span>
           </button>
 
-          <button class="obOption" @click="chooseStarter" aria-label="Popular Exercises — Pre-load 6 common lifts with tags">
-            <span class="obOptionIcon">💪</span>
+          <button
+            class="obOption"
+            @click="chooseEmpty"
+            aria-label="Start Empty — Add your own exercises from scratch"
+          >
+            <span class="obOptionIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </span>
             <span class="obOptionText">
-              <strong>Popular Exercises</strong>
-              <span>Pre-load 6 common lifts with tags</span>
+              <strong>Start empty</strong>
+              <span>Add your own exercises from scratch.</span>
             </span>
           </button>
 
-          <button class="obOption" @click="chooseExplore" aria-label="Explore First — See the app with sample data, clear it when ready">
-            <span class="obOptionIcon">👀</span>
+          <button
+            class="obOption"
+            @click="chooseExplore"
+            aria-label="Explore First — See the app with sample data, clear it when you're ready"
+          >
+            <span class="obOptionIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </span>
             <span class="obOptionText">
-              <strong>Explore First</strong>
-              <span>See the app with sample data, clear it when ready</span>
+              <strong>Explore first</strong>
+              <span>See the app with sample data — clear it when you're ready.</span>
             </span>
           </button>
         </div>
@@ -448,27 +481,47 @@ function chooseExplore() {
   align-items: center;
   justify-content: center;
   min-height: 80svh;
-  padding: 24px;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  background:
+    radial-gradient(ellipse 70% 55% at 15% 10%, var(--accent-subtle, rgba(212,175,55,0.08)) 0%, transparent 65%),
+    radial-gradient(ellipse 55% 45% at 85% 80%, var(--accent-subtle, rgba(212,175,55,0.06)) 0%, transparent 65%);
 }
 
 .obCard {
   width: 100%;
-  max-width: 380px;
+  max-width: 360px;
   text-align: center;
 }
 
+.obHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
 .obLogo {
-  font-size: 48px;
+  font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  font-size: 72px;
   font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.035em;
   color: var(--accent);
-  letter-spacing: -1.5px;
-  margin-bottom: 8px;
+}
+
+.obSubtitle {
+  font-size: var(--font-callout, 14px);
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
 }
 
 .obTagline {
-  font-size: var(--font-callout);
-  color: var(--text-secondary);
-  margin-bottom: 32px;
+  font-size: var(--font-callout, 14px);
+  color: var(--text-muted);
+  margin-bottom: 16px;
   line-height: 1.5;
 }
 
@@ -481,49 +534,71 @@ function chooseExplore() {
 .obOption {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   width: 100%;
   padding: 16px;
-  min-height: 44px;
-  background: var(--bg-secondary);
+  min-height: 72px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 14px;
+  border-radius: 16px;
   cursor: pointer;
   font-family: inherit;
   text-align: left;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.obOption:hover {
-  border-color: var(--accent);
-  background: var(--bg-hover);
+  color: var(--text-primary);
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
 }
 
 .obOption:active {
+  transform: scale(0.98);
   opacity: 0.85;
 }
 
+/* "Recommended" path — same card chrome with a gold glow + gold border. */
+.obOptionFeatured {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 4px 24px var(--accent-subtle, rgba(212,175,55,0.18));
+}
+
+.obOptionFeatured .obOptionIcon {
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  box-shadow: 0 2px 12px var(--accent-subtle, rgba(212,175,55,0.35));
+}
+
 .obOptionIcon {
-  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
+  background: var(--bg-secondary);
+  color: var(--accent);
+  border-radius: 12px;
+  border: 1px solid var(--border);
 }
 
 .obOptionText {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .obOptionText strong {
-  font-size: var(--font-callout);
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+  line-height: 1.2;
 }
 
 .obOptionText span {
-  font-size: var(--font-footnote);
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
 </style>
