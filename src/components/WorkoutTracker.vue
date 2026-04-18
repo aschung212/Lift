@@ -623,11 +623,18 @@
               </div>
             </div>
           </template>
-          <!-- Numpad / edit mode: side-by-side weight + reps -->
-          <div v-else class="wtInputRow">
-            <label class="repMaxLabel" style="flex:1">
-              Weight ({{ weightUnit }})
-              <div class="repMaxInputRow">
+          <!--
+            Primary WEIGHT + REPS cards per screens/05-logset-platecalc.png.
+            Layout: two cards side-by-side, weight (~60%) on the left with a
+            big 60px number and the unit suffix, reps (~40%) on the right
+            with a −/value/+ stepper. Keep the raw <input> mounted inside
+            the weight card so the system numeric keyboard still works
+            until the custom in-sheet numpad lands in a later PR.
+          -->
+          <div v-else class="wtInputRow logSetFieldsRow">
+            <label :class="['repMaxLabel', 'logSetField', 'logSetFieldWeight', { logSetFieldActive: weightHasValue }]">
+              <span class="logSetFieldLabel">Weight <span class="logSetFieldLabelUnit">({{ weightUnit }})</span></span>
+              <div class="logSetFieldValueRow">
                 <input
                   ref="weightInputEl"
                   v-model="weightStr"
@@ -635,24 +642,47 @@
                   inputmode="decimal"
                   autocomplete="off"
                   placeholder="135"
-                  class="repMaxInput"
+                  class="repMaxInput logSetFieldInput"
+                  aria-label="Weight"
                 />
+                <button
+                  v-if="weightHasValue"
+                  type="button"
+                  class="logSetFieldClear"
+                  aria-label="Clear weight"
+                  @click.prevent="clearWeight"
+                >×</button>
               </div>
             </label>
 
-            <label class="repMaxLabel" style="flex:1">
-              Reps
-              <div class="repMaxInputRow">
-                <input
-                  v-model="repsStr"
-                  type="text"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  placeholder="8"
-                  class="repMaxInput"
-                />
+            <div :class="['repMaxLabel', 'logSetField', 'logSetFieldReps', { logSetFieldActive: reps !== null && reps > 0 }]">
+              <span class="logSetFieldLabel">Reps</span>
+              <input
+                v-model="repsStr"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="—"
+                class="repMaxInput logSetFieldInput logSetFieldInputReps"
+                aria-label="Reps"
+              />
+              <div class="logSetFieldStepRow">
+                <button
+                  type="button"
+                  class="logSetStepBtn"
+                  :disabled="reps === null || reps <= 0"
+                  aria-label="Decrease reps"
+                  @click="adjustReps(-1)"
+                >−</button>
+                <button
+                  type="button"
+                  class="logSetStepBtn logSetStepBtnPrimary"
+                  :disabled="reps !== null && reps >= MAX_REPS"
+                  aria-label="Increase reps"
+                  @click="adjustReps(1)"
+                >+</button>
               </div>
-            </label>
+            </div>
           </div>
 
           <!-- Plate calculator (shown when exercise is in plates mode) -->
@@ -1657,6 +1687,16 @@ function adjustReps(delta: number) {
     repsStr.value = String(next)
   }
 }
+
+/** Clears the weight field from the logSetFieldClear × button (05-logset-platecalc.png). */
+function clearWeight() {
+  weightStr.value = ''
+  weightInputEl.value?.focus()
+}
+
+/** True when the weight input has a non-empty numeric value — drives the gold
+ *  border on the weight card and the visibility of the × clear button. */
+const weightHasValue = computed(() => weightStr.value.trim().length > 0)
 
 function loadPRTarget() {
   if (!prTargetWeight.value) return
