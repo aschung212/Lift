@@ -1,33 +1,53 @@
 <template>
   <!-- Main card -->
   <div class="wtCard">
-    <div class="wtCardHeader">
-      <h2 class="wtTitle">Exercise Tracker</h2>
-      <button v-if="listView === 'exercises'" class="wtLogBtn" @click="openNewExerciseModal">+ New Exercise</button>
-      <button v-else class="wtLogBtn" @click="openTimelineLogModal">+ Log Set</button>
-    </div>
+    <!-- iOS-style large title + stats subtitle (matches screens/03-workouts.png) -->
+    <header class="wtPageHeader">
+      <h1 class="wtPageTitle">Workouts</h1>
+      <p class="wtPageStats" v-if="store.exercises.length > 0">
+        {{ totalExercises }} {{ totalExercises === 1 ? 'exercise' : 'exercises' }}
+        · {{ prsThisWeek }} {{ prsThisWeek === 1 ? 'PR' : 'PRs' }} this week
+      </p>
+    </header>
 
-    <!-- View toggle -->
+    <!-- View toggle (Exercises / Timeline) -->
     <div v-if="store.exercises.length > 0" class="wtViewToggle">
       <button :class="['wtViewToggleBtn', { active: listView === 'exercises' }]" @click="listView = 'exercises'">Exercises</button>
       <button :class="['wtViewToggleBtn', { active: listView === 'timeline' }]" @click="listView = 'timeline'">Timeline</button>
     </div>
 
-    <!-- Tag filter (exercises view only) -->
+    <!-- Search bar (exercises view, shown when 5+ exercises) -->
+    <div v-if="listView === 'exercises' && store.exercises.length >= 5" class="wtSearchBar">
+      <svg class="wtSearchIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input
+        v-model="searchQuery"
+        type="search"
+        autocomplete="off"
+        class="wtSearchInput"
+        placeholder="Search exercises or tags…"
+        aria-label="Search exercises or tags"
+      />
+      <span v-if="searchQuery" class="wtSearchCount">{{ filteredExercises.length }} result{{ filteredExercises.length !== 1 ? 's' : '' }}</span>
+    </div>
+
+    <!-- Tag filter chips with counts (exercises view only) -->
     <template v-if="listView === 'exercises' && store.allTags.length > 0">
       <div class="wtTagFilterBar">
+        <button
+          :class="['wtTagChip', { wtTagChipActive: activeTagFilters.length === 0 }]"
+          @click="activeTagFilters = []"
+          aria-label="Show all exercises"
+        >All</button>
         <button
           v-for="tag in store.allTags"
           :key="tag"
           :class="['wtTagChip', { wtTagChipActive: activeTagFilters.includes(tag) }]"
           :aria-pressed="activeTagFilters.includes(tag)"
           @click="toggleTagFilter(tag)"
-        >{{ tag }}</button>
-        <button
-          v-if="activeTagFilters.length > 0"
-          class="wtTagChip wtTagChipClear"
-          @click="activeTagFilters = []"
-        >× Clear</button>
+        >
+          <span class="wtTagChipLabel">{{ tag }}</span>
+          <span v-if="tagCounts[tag]" class="wtTagChipCount">{{ tagCounts[tag] }}</span>
+        </button>
         <button
           class="wtTagChip wtTagChipManage"
           @click="openTagManager"
@@ -35,19 +55,6 @@
         ><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></button>
       </div>
     </template>
-
-    <!-- Search bar (exercises view, shown when 5+ exercises) -->
-    <div v-if="listView === 'exercises' && store.exercises.length >= 5" class="wtSearchBar">
-      <input
-        v-model="searchQuery"
-        type="search"
-        autocomplete="off"
-        class="wtSearchInput"
-        placeholder="Search exercises…"
-        aria-label="Search exercises"
-      />
-      <span v-if="searchQuery" class="wtSearchCount">{{ filteredExercises.length }} result{{ filteredExercises.length !== 1 ? 's' : '' }}</span>
-    </div>
 
     <p v-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
@@ -85,19 +92,38 @@
             @click="openDetailModal(exercise.id)"
           >
             <div class="wtExerciseNameBlock">
-              <span class="wtExerciseName">{{ exercise.name }}</span>
-              <span v-if="store.getExercisePRSet(exercise.id, prBaselineDate)" class="wtExerciseMeta">
-                Est. 1RM: {{ displayWeight(store.getExercisePRSet(exercise.id, prBaselineDate)!.estimated1RM) }} {{ weightUnit }}
-                ({{ displayWeight(store.getExercisePRSet(exercise.id, prBaselineDate)!.weight) }} × {{ store.getExercisePRSet(exercise.id, prBaselineDate)!.reps }})
-              </span>
+              <div class="wtExerciseTopLine">
+                <span class="wtExerciseName">{{ exercise.name }}</span>
+                <span v-if="getRowMeta(exercise.id).isNewPRBadge" class="wtExerciseNewPR">
+                  <span class="wtExerciseNewPRIcon" aria-hidden="true">🏆</span>
+                  <span>NEW PR</span>
+                </span>
+              </div>
+              <div class="wtExerciseMetaLine">
+                <span
+                  v-for="tag in (exercise.tags || []).slice(0, 3)"
+                  :key="tag"
+                  class="wtExerciseTag"
+                >{{ tag }}</span>
+                <span v-if="getRowMeta(exercise.id).lastSet" class="wtExerciseStat">
+                  · {{ displayWeight(getRowMeta(exercise.id).lastSet!.weight) }} {{ weightUnit }}
+                  × {{ getRowMeta(exercise.id).lastSet!.reps }}
+                  · {{ getRowMeta(exercise.id).timeAgo }}
+                </span>
+                <span v-else class="wtExerciseStat wtExerciseStatEmpty">· No sets yet</span>
+              </div>
             </div>
-            <span class="wtChevron">›</span>
           </button>
           <button
-            class="wtExerciseLogBtn"
+            class="wtExerciseLogBtn wtExerciseLogBtnCircle"
             @click="openLogForExercise(exercise.id)"
             :aria-label="`Log a set for ${exercise.name}`"
-          >+ Log</button>
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
         </div>
       </li>
     </ul>
@@ -810,6 +836,13 @@
             <span class="wtExPickerName">{{ ex.name }}</span>
             <span class="wtChevron">›</span>
           </button>
+          <button
+            class="wtExPickerRow wtExPickerNew"
+            @click="pickNewExerciseFromPicker"
+          >
+            <span class="wtExPickerName">+ New exercise</span>
+            <span class="wtChevron">›</span>
+          </button>
         </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnClose" @click="timelineLogPicking = false">Cancel</button>
@@ -1143,10 +1176,14 @@ function toggleTagFilter(tag: string) {
 
 const filteredExercises = computed(() => {
   let result = store.exercises
-  // Text search
+  // Text search — check both name and tags so "Push" matches tag-filtered rows.
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
-    result = result.filter(e => e.name.toLowerCase().includes(q))
+    result = result.filter(e => {
+      if (e.name.toLowerCase().includes(q)) return true
+      const tags = e.tags || []
+      return tags.some(t => t.toLowerCase().includes(q))
+    })
   }
   // Tag filter
   if (activeTagFilters.value.length > 0) {
@@ -1157,6 +1194,56 @@ const filteredExercises = computed(() => {
   }
   return result
 })
+
+/** Total exercise count, shown in the "Workouts" header stats. */
+const totalExercises = computed(() => store.exercises.length)
+
+/** Exercises whose baseline-relative PR was achieved in the last 7 days. */
+const prsThisWeek = computed(() => {
+  const now = Date.now()
+  const weekAgo = now - 7 * 86400000
+  let count = 0
+  for (const e of store.exercises) {
+    const pr = store.getExercisePRSet(e.id, prBaselineDate.value)
+    if (pr && new Date(pr.date).getTime() >= weekAgo) count++
+  }
+  return count
+})
+
+/** Count of exercises carrying each tag — powers the "Push 23" suffix on tag chips. */
+const tagCounts = computed<Record<string, number>>(() => {
+  const map: Record<string, number> = {}
+  for (const e of store.exercises) {
+    for (const t of e.tags || []) {
+      map[t] = (map[t] || 0) + 1
+    }
+  }
+  return map
+})
+
+/**
+ * Per-row presentation data for the main exercise list: last set summary,
+ * time-ago, and whether the current baseline-relative PR was set this week
+ * (drives the "NEW PR" gold badge in the card).
+ */
+interface ExerciseRowMeta {
+  lastSet: { weight: number; reps: number; date: string } | null
+  timeAgo: string | null
+  isNewPRBadge: boolean
+}
+
+function getRowMeta(exerciseId: string): ExerciseRowMeta {
+  const ex = store.exercises.find(e => e.id === exerciseId)
+  if (!ex || ex.sets.length === 0) return { lastSet: null, timeAgo: null, isNewPRBadge: false }
+  const last = ex.sets[ex.sets.length - 1]
+  const prSet = store.getExercisePRSet(exerciseId, prBaselineDate.value)
+  const isFreshPR = !!prSet && (Date.now() - new Date(prSet.date).getTime()) < 7 * 86400000
+  return {
+    lastSet: { weight: last.weight, reps: last.reps, date: last.date },
+    timeAgo: formatTimeAgo(last.date),
+    isNewPRBadge: isFreshPR,
+  }
+}
 
 // Remove stale tags from active filters
 watch(() => store.allTags, (tags) => {
@@ -1453,6 +1540,20 @@ const groupedSets = computed(() => {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+/** Relative time string used on the main exercise list ("today", "yesterday", "4 days ago"). */
+function formatTimeAgo(iso: string): string {
+  const now = new Date()
+  const then = new Date(iso)
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const startOfThen = new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime()
+  const days = Math.round((startOfToday - startOfThen) / 86400000)
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 7) return `${days} days ago`
+  if (days < 30) return `${Math.floor(days / 7)}w ago`
+  return formatDate(iso)
 }
 
 // Converts a stored ISO string back to the local YYYY-MM-DD for a date input
@@ -1785,6 +1886,13 @@ function openTimelineLogModal() {
 function pickExerciseForLog(exerciseId: string) {
   timelineLogPicking.value = false
   openLogForExercise(exerciseId)
+}
+
+/** "New exercise" row inside the picker — closes the picker and opens the
+ *  new-exercise flow instead of an existing exercise. */
+function pickNewExerciseFromPicker() {
+  timelineLogPicking.value = false
+  openNewExerciseModal()
 }
 
 // Open modal pre-targeted at a specific existing exercise
@@ -2833,6 +2941,9 @@ onUnmounted(() => {
 })
 
 // Exposed so the app's top-bar "+" button can trigger quick-log without
-// duplicating the exercise-picker state in App.vue.
-defineExpose({ openTimelineLogModal })
+// duplicating the exercise-picker state in App.vue. openNewExerciseModal is
+// also exposed for unit tests that previously opened the new-exercise
+// dialog via the in-card "+ New Exercise" button (retired after the
+// 03-workouts.png restyle).
+defineExpose({ openTimelineLogModal, openNewExerciseModal })
 </script>
