@@ -3846,84 +3846,49 @@ html.theme-fading .settingsSheet {
 
 /* ─── Plate calculator ────────────────────────────────────────────── */
 
+/* ─── Plate calculator card (inside log-set sheet) ─────────────────────── */
+/* Matches screens/05-logset-platecalc.png: bordered card with header
+   ("PER SIDE · 45 LB BAR" + delta vs last) and a 5-column grid where each
+   column is a gold +N pill on top, the count in the middle, and a dim −N
+   pill at the bottom (more faded when that denomination isn't currently
+   loaded). The weight value itself is rendered by the WEIGHT card above
+   the plate calc — this card is purely the picker chrome. */
+
 .wtPlateCalc {
-  padding: 4px 0 8px;
+  padding: 0;
 }
 
-.wtPlateDisplayRow {
+.wtPlateCard {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.wtPlateCardHeader {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 0 12px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 8px;
 }
 
-.wtPlateDisplaySpacer {
-  flex: 1;
-}
-
-.wtPlateDisplayAfter {
-  flex: 1;
-  display: flex;
-  align-items: center;
-}
-
-.wtPlateWeightBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 96px;
-  height: 48px;
-  padding: 0 24px;
-  font-size: var(--font-title2);
-  font-weight: 700;
-  font-family: inherit;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  cursor: pointer;
-}
-
-.wtPlateWeightUnit {
-  font-size: var(--font-body);
+.wtPlateCardHeaderLabel {
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 10px;
   font-weight: 600;
-  color: var(--text-secondary);
-  margin-left: 8px;
-}
-
-.wtPlateWeightInput {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 96px;
-  width: 120px;
-  height: 48px;
-  padding: 0 16px;
-  font-size: var(--font-title2);
-  font-weight: 700;
-  font-family: inherit;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-  background: var(--bg-primary);
-  border: 2px solid var(--accent);
-  border-radius: 12px;
-  text-align: center;
-  outline: none;
-}
-
-.wtPlateClearBtn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-title3);
-  font-family: inherit;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
+}
+
+.wtPlateCardHeaderDelta {
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 
 .wtPlateGrid {
@@ -3935,42 +3900,57 @@ html.theme-fading .settingsSheet {
 .wtPlateCol {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 4px;
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .wtPlateBtn {
   width: 100%;
   min-height: 44px;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  padding: 0 4px;
   border-radius: 12px;
-  font-size: var(--font-callout);
+  font-size: 13px;
   font-weight: 700;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.12s, color 0.12s, opacity 0.12s, transform 0.1s;
 }
 
+/* +N pill: gold-filled primary action. Dark text on gold matches the
+   stepper-primary button used in the REPS card. */
 .wtPlateBtnAdd {
-  color: var(--success);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
 }
 
+.wtPlateBtnAdd:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+/* −N pill: outlined dim. When the denomination isn't currently loaded
+   (button is disabled), fade further so the eye lands on the active
+   plates first. */
 .wtPlateBtnRemove {
-  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
 }
 
-.wtPlateBtn:active {
-  background: var(--accent-subtle);
+.wtPlateBtnRemove:not(:disabled):active {
+  background: var(--bg-hover);
+  transform: scale(0.96);
 }
 
-.wtPlateBtn:disabled {
-  opacity: 0.2;
-  cursor: default;
+.wtPlateBtnRemoveDim {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
+
+.wtPlateBtn:disabled { cursor: not-allowed; }
 
 .wtPlateCountBox {
   display: flex;
@@ -3981,14 +3961,14 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPlateCountNum {
-  font-size: var(--font-title3);
+  font-size: 18px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
 
 .wtPlateCountActive .wtPlateCountNum {
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 

@@ -685,35 +685,26 @@
             </div>
           </div>
 
-          <!-- Plate calculator (shown when exercise is in plates mode) -->
-          <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
-            <div class="wtPlateDisplayRow">
-              <span class="wtPlateDisplaySpacer"></span>
-              <button v-if="!plateNumpadOverride" class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight != null ? weight : '—' }}</button>
-              <input
-                v-else
-                ref="weightInputEl"
-                v-model="weightStr"
-                type="text"
-                inputmode="decimal"
-                autocomplete="off"
-                class="wtPlateWeightInput"
-                aria-label="Weight"
-                @focus="($event.target as HTMLInputElement)?.select()"
-                @blur="plateNumpadOverride = false"
-              />
-              <span class="wtPlateDisplayAfter">
-                <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
-                <button v-if="currentPlates.length > 0 || weight" class="wtPlateClearBtn" @click="currentPlates = []; weight = null; weightStr = ''" aria-label="Clear weight">×</button>
-              </span>
+          <!--
+            Plate calculator (shown when exercise is in plates mode).
+            Matches screens/05-logset-platecalc.png:
+            - Bordered card with header row: "PER SIDE · 45 LB BAR" + delta vs last
+            - 5-column grid: gold +N pill on top, count, dim −N pill on bottom
+            The weight value itself is rendered by the WEIGHT card above; this
+            card is purely the plate-picker chrome.
+          -->
+          <div v-if="plateMode && !isEditMode" class="wtPlateCalc wtPlateCard">
+            <div class="wtPlateCardHeader">
+              <span class="wtPlateCardHeaderLabel">{{ isPerSide ? `PER SIDE · ${currentBarWeight} ${weightUnit} BAR` : `TOTAL · ${currentBarWeight} ${weightUnit} BAR` }}</span>
+              <span v-if="plateDeltaLabel" class="wtPlateCardHeaderDelta">{{ plateDeltaLabel }}</span>
             </div>
             <div class="wtPlateGrid">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
-                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" :aria-label="`Add ${denom}`">+{{ denom }}</button>
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" :aria-label="`Add ${denom} ${weightUnit}`">+{{ denom }}</button>
                 <div class="wtPlateCountBox" :class="{ wtPlateCountActive: plateCounts.get(denom) }">
                   <span class="wtPlateCountNum">{{ plateCounts.get(denom) || 0 }}</span>
                 </div>
-                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" :aria-label="`Remove ${denom}`">−{{ denom }}</button>
+                <button class="wtPlateBtn wtPlateBtnRemove" :class="{ wtPlateBtnRemoveDim: !currentPlates.includes(denom) }" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" :aria-label="`Remove ${denom} ${weightUnit}`">−{{ denom }}</button>
               </div>
             </div>
           </div>
@@ -1760,6 +1751,37 @@ const plateCounts = computed(() => {
   const counts = new Map<number, number>()
   for (const p of currentPlates.value) counts.set(p, (counts.get(p) || 0) + 1)
   return counts
+})
+
+/**
+ * "+1×5 vs last" / "−2×25 vs last" — the most significant change in plates
+ * compared to the previous set. Shown in the plate calc card header per
+ * screens/05-logset-platecalc.png. Returns null when no previous set exists
+ * or plates are unchanged.
+ *
+ * Heuristic: pick the denomination with the largest |Δ × denom| weight
+ * impact. Ties go to the larger denomination since that's typically the
+ * meaningful change (e.g. swapping a 25 for a 10+10+5 is "+1×10").
+ */
+const plateDeltaLabel = computed<string | null>(() => {
+  if (!plateMode.value) return null
+  if (previousPlates.value.length === 0 && currentPlates.value.length === 0) return null
+  const prevCounts = new Map<number, number>()
+  for (const p of previousPlates.value) prevCounts.set(p, (prevCounts.get(p) || 0) + 1)
+  const curCounts = plateCounts.value
+  const allDenoms = new Set<number>([...prevCounts.keys(), ...curCounts.keys()])
+  let best: { denom: number; delta: number } | null = null
+  for (const denom of allDenoms) {
+    const delta = (curCounts.get(denom) || 0) - (prevCounts.get(denom) || 0)
+    if (delta === 0) continue
+    const impact = Math.abs(delta) * denom
+    if (!best || impact > Math.abs(best.delta) * best.denom || (impact === Math.abs(best.delta) * best.denom && denom > best.denom)) {
+      best = { denom, delta }
+    }
+  }
+  if (!best) return null
+  const sign = best.delta > 0 ? '+' : '−'
+  return `${sign}${Math.abs(best.delta)}×${best.denom} vs last`
 })
 
 const plateWeightLbs = computed(() => {
