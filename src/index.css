@@ -3298,6 +3298,191 @@ html.theme-fading .settingsSheet {
   .repMaxModal.logSetSheet { animation: none; }
 }
 
+/* ─── WEIGHT + REPS cards (inside the log-set sheet) ───────────────────── */
+/* Matches screens/05-logset-platecalc.png: big WEIGHT number on the left
+   with a × clear chip, -/value/+ reps stepper on the right. */
+
+/*
+  WEIGHT + REPS cards side-by-side inside the log-set sheet, matching the
+  ~60/40 split in screens/05-logset-platecalc.png. The standalone
+  .logSetFieldsRow selector below beats the late `.wtInputRow { display:
+  flex }` rule because this block appears earlier; we also `!important` it
+  to defend against any cascading surprises in Safari.
+*/
+.logSetSheet .logSetFieldsRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.logSetSheet .logSetFieldsRow > .logSetFieldWeight {
+  flex: 3 1 0;
+  min-width: 0;
+}
+
+.logSetSheet .logSetFieldsRow > .logSetFieldReps {
+  flex: 2 1 0;
+  min-width: 0;
+}
+
+.logSetSheet .logSetField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  margin: 0;
+  min-width: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.logSetSheet .logSetField.logSetFieldActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.logSetSheet .logSetFieldLabel {
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0;
+}
+
+.logSetSheet .logSetFieldLabelUnit {
+  opacity: 0.7;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0.08em;
+}
+
+.logSetSheet .logSetFieldValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.logSetSheet .logSetFieldInput {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--accent);
+  font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  outline: none;
+}
+
+.logSetSheet .logSetFieldInput::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.logSetSheet .logSetFieldInputReps {
+  text-align: center;
+  font-size: 36px;
+  width: 100%;
+}
+
+.logSetSheet .logSetFieldUnit {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.logSetSheet .logSetFieldClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 99px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.logSetSheet .logSetFieldClear:active {
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+
+/* Reps stepper row: − / value / + */
+.logSetSheet .logSetFieldStepRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logSetSheet .logSetFieldStepVal {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.logSetSheet .logSetStepBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s, transform 0.1s, opacity 0.15s;
+}
+
+.logSetSheet .logSetStepBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.logSetSheet .logSetStepBtn:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.logSetSheet .logSetStepBtnPrimary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+}
+
+.logSetSheet .logSetStepBtnPrimary:not(:disabled):active {
+  background: var(--accent-hover, var(--accent));
+}
+
 .repMaxModal h2 {
   font-size: var(--font-body);
   font-weight: 700;
