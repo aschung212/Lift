@@ -3710,19 +3710,28 @@ html.theme-fading .settingsSheet {
   margin-top: 4px;
 }
 
-/* ─── PR Targets Table ───────────────────────────────────────────────── */
+/* ─── PR Targets card ──────────────────────────────────────────────── */
+/* Matches screens/07-pr-targets-expanded.png: bordered card with a
+   tappable header that expands a scrollable list of beat-the-PR target
+   combos. The row matching the user's current reps value gets an
+   accent-tinted highlight so the next-set target is obvious. */
 
 .wtPrTargets {
   margin: 16px 0;
-  border-radius: 10px;
-  border: 1px dashed var(--accent);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
   overflow: hidden;
+}
+
+.wtPrTargets.wtPrTargetsExpanded {
+  border-color: var(--border-strong);
 }
 
 .wtPrTargetsHeader {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
   min-height: 44px;
   padding: 12px 16px;
@@ -3733,22 +3742,44 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPrTargetsHeader:active {
-  background: var(--accent-subtle);
+  background: var(--bg-hover);
+}
+
+.wtPrTargetsTitleCol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 
 .wtPrTargetsTitle {
-  font-size: var(--font-caption2);
+  font-size: var(--font-callout);
   font-weight: 700;
-  color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+  color: var(--text-primary);
+  letter-spacing: -0.1px;
 }
 
 .wtPrTargetsSub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
   font-size: var(--font-caption1);
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.wtPrTargetsSubDot {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.wtPrTargetsSubCount {
+  color: var(--accent);
   font-weight: 600;
-  margin-left: auto;
+  font-variant-numeric: tabular-nums;
 }
 
 .wtPrTargetsChevron {
@@ -3770,8 +3801,8 @@ html.theme-fading .settingsSheet {
 
 .wtPrTargetsRow {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: baseline;
+  gap: 8px;
   width: 100%;
   min-height: 44px;
   padding: 8px 16px;
@@ -3779,7 +3810,9 @@ html.theme-fading .settingsSheet {
   border: none;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
+  text-align: left;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s;
 }
 
 .wtPrTargetsRow:last-child {
@@ -3787,13 +3820,26 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPrTargetsRow:active {
+  background: var(--bg-hover);
+}
+
+/* Highlight the row whose rep count matches what the user has typed
+   into the REPS card. The accent tint + slightly stronger column
+   weights pulls the eye to "this is the weight you need to hit to
+   beat your PR at the rep count you've already chosen." */
+.wtPrTargetsRow.wtPrTargetsRowActive {
   background: var(--accent-subtle);
+}
+
+.wtPrTargetsRow.wtPrTargetsRowActive .wtPrTargetsReps,
+.wtPrTargetsRow.wtPrTargetsRowActive .wtPrTargetsWeight {
+  color: var(--accent);
 }
 
 .wtPrTargetsReps {
   font-size: var(--font-body);
   font-weight: 700;
-  color: var(--accent);
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   min-width: 24px;
   text-align: right;
