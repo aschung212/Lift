@@ -128,17 +128,22 @@ vi.mock('../../lib/supabase', () => ({
 }))
 
 // Synchronous syncQueue — invoke ops immediately so assertions don't race debounce
-vi.mock('../../lib/syncQueue', () => ({
-  syncQueue: {
-    enqueue: vi.fn((_key: string, op: () => PromiseLike<unknown>) => {
-      // Kick off the op; swallow rejection to match production behavior on best-effort sync
-      Promise.resolve(op()).catch(() => {})
-    }),
-    clear: vi.fn(),
-  },
-  syncStatus: { value: 'synced' as const },
-  _resetRateLimit: vi.fn(),
-}))
+vi.mock('../../lib/syncQueue', () => {
+  const invoke = (_key: string, op: () => PromiseLike<unknown>) => {
+    // Kick off the op; swallow rejection to match production behavior on best-effort sync
+    Promise.resolve(op()).catch(() => {})
+  }
+  return {
+    syncQueue: {
+      enqueue: vi.fn(invoke),
+      enqueueDelete: vi.fn(invoke),
+      clear: vi.fn(),
+    },
+    syncStatus: { value: 'synced' as const },
+    _resetRateLimit: vi.fn(),
+    _resetCircuitBreaker: vi.fn(),
+  }
+})
 
 // Mock analytics / logger so they don't complain in the test environment
 vi.mock('../../lib/logger', () => ({

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { SyncQueue, syncStatus, _resetRateLimit } from '../syncQueue'
+import { SyncQueue, syncStatus, _resetRateLimit, _resetCircuitBreaker, _getCircuitBreakerState } from '../syncQueue'
 
 // Mock supabase so the module loads (syncQueue checks supabase for the singleton)
 vi.mock('../supabase', () => ({ supabase: {}, isPreviewMode: { value: false } }))
@@ -294,5 +294,190 @@ describe('SyncQueue', () => {
 
     expect(queue.pending).toBe(0)
     expect(syncStatus.value).toBe('synced')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────
+// Circuit breaker: defense-in-depth for runaway delete storms.
+// Motivation: SEV1 on 2026-04-12 destroyed ~40-60% of one user's data
+// because _fetchFromSupabase broadcast DELETEs from a dedup heuristic.
+// ─────────────────────────────────────────────────────────────────
+
+describe('SyncQueue — delete circuit breaker', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    syncStatus.value = 'synced'
+    _resetRateLimit()
+    _resetCircuitBreaker()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    _resetCircuitBreaker()
+  })
+
+  it('enqueueDelete passes the op through under normal volume', async () => {
+    const queue = new SyncQueue(100)
+    const op = vi.fn().mockResolvedValue(undefined)
+
+    queue.enqueueDelete('set:1', op)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(op).toHaveBeenCalledOnce()
+    expect(_getCircuitBreakerState().deleteCount).toBe(1)
+    expect(syncStatus.value).toBe('synced')
+  })
+
+  it('19 deletes in 10s window do NOT trip the breaker (boundary)', () => {
+    const queue = new SyncQueue(100)
+    for (let i = 0; i < 19; i++) {
+      queue.enqueueDelete(`set:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    expect(_getCircuitBreakerState().deleteCount).toBe(19)
+    expect(_getCircuitBreakerState().tripCount).toBe(0)
+    expect(_getCircuitBreakerState().openUntil).toBe(0)
+  })
+
+  it('20th delete in 10s window trips the breaker', () => {
+    const queue = new SyncQueue(100)
+    // First 20 go through; the 20th is the threshold trip
+    for (let i = 0; i < 20; i++) {
+      queue.enqueueDelete(`set:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    // The 20th (index 19) is counted. The 21st would check deleteCount >= 20 and trip.
+    // Actually: check happens BEFORE push, so on the 20th call deleteCount is 19 (under
+    // threshold), push makes it 20. On the 21st call, deleteCount is 20 (>= threshold), trip.
+    queue.enqueueDelete('set:trip', vi.fn().mockResolvedValue(undefined))
+
+    const state = _getCircuitBreakerState()
+    expect(state.tripCount).toBe(1)
+    expect(state.openUntil).toBeGreaterThan(Date.now())
+    expect(syncStatus.value).toBe('error')
+  })
+
+  it('after tripping, subsequent deletes are blocked during cool-down', async () => {
+    const queue = new SyncQueue(100)
+    // Trip the breaker
+    for (let i = 0; i < 21; i++) {
+      queue.enqueueDelete(`set:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    expect(_getCircuitBreakerState().tripCount).toBe(1)
+
+    // New delete while circuit is open — should be blocked (op never called)
+    const blockedOp = vi.fn().mockResolvedValue(undefined)
+    queue.enqueueDelete('set:blocked', blockedOp)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(blockedOp).not.toHaveBeenCalled()
+  })
+
+  it('cool-down expires after 60s and deletes flow again', async () => {
+    const queue = new SyncQueue(100)
+    // Trip the breaker
+    for (let i = 0; i < 21; i++) {
+      queue.enqueueDelete(`set:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    expect(_getCircuitBreakerState().openUntil).toBeGreaterThan(Date.now())
+
+    // Fast-forward past cool-down (60s) + debounce headroom
+    await vi.advanceTimersByTimeAsync(60_001)
+
+    const postOp = vi.fn().mockResolvedValue(undefined)
+    queue.enqueueDelete('set:after-cooldown', postOp)
+    await vi.advanceTimersByTimeAsync(100)
+
+    expect(postOp).toHaveBeenCalledOnce()
+  })
+
+  it('deletes older than the 10s window do not count toward threshold', async () => {
+    const queue = new SyncQueue(100)
+    // 10 deletes now
+    for (let i = 0; i < 10; i++) {
+      queue.enqueueDelete(`old:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    // Advance 11s so those fall out of the rolling window
+    await vi.advanceTimersByTimeAsync(11_000)
+    // 15 more deletes — total "recent" is 15, under the 20 threshold
+    for (let i = 0; i < 15; i++) {
+      queue.enqueueDelete(`new:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+
+    expect(_getCircuitBreakerState().tripCount).toBe(0)
+    expect(_getCircuitBreakerState().deleteCount).toBe(15) // stale ones pruned
+  })
+
+  it('plain enqueue (non-delete) does NOT count toward the breaker', () => {
+    const queue = new SyncQueue(100)
+    // 50 upserts via plain enqueue — should not touch the breaker
+    for (let i = 0; i < 50; i++) {
+      queue.enqueue(`upsert:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    expect(_getCircuitBreakerState().deleteCount).toBe(0)
+    expect(_getCircuitBreakerState().tripCount).toBe(0)
+  })
+
+  it('breaker trip count increments on each trip', async () => {
+    const queue = new SyncQueue(100)
+    // Trip once
+    for (let i = 0; i < 21; i++) {
+      queue.enqueueDelete(`first:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    expect(_getCircuitBreakerState().tripCount).toBe(1)
+
+    // Wait past cool-down, trip again
+    await vi.advanceTimersByTimeAsync(61_000)
+    for (let i = 0; i < 21; i++) {
+      queue.enqueueDelete(`second:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    expect(_getCircuitBreakerState().tripCount).toBe(2)
+  })
+
+  it('_resetCircuitBreaker clears all state', () => {
+    const queue = new SyncQueue(100)
+    for (let i = 0; i < 21; i++) {
+      queue.enqueueDelete(`set:${i}`, vi.fn().mockResolvedValue(undefined))
+    }
+    expect(_getCircuitBreakerState().tripCount).toBe(1)
+
+    _resetCircuitBreaker()
+    const state = _getCircuitBreakerState()
+    expect(state.deleteCount).toBe(0)
+    expect(state.openUntil).toBe(0)
+    expect(state.tripCount).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────
+// Structural guard: every Supabase DELETE operation routed through
+// syncQueue must go through enqueueDelete (not plain enqueue), so
+// the circuit breaker sees it.
+// ─────────────────────────────────────────────────────────────────
+
+describe('SyncQueue — delete routing discipline (structural)', () => {
+  it('stores never wrap a .delete() in plain syncQueue.enqueue', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const { fileURLToPath } = await import('node:url')
+    const { dirname } = await import('node:path')
+
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = dirname(__filename)
+    const storeDir = resolve(__dirname, '../../stores')
+
+    const files = ['workout.ts', 'bodyweight.ts', 'preferences.ts', 'progression.ts']
+    for (const file of files) {
+      const src = readFileSync(resolve(storeDir, file), 'utf-8')
+      // Find every syncQueue.enqueue( and check a window of the following 300 chars
+      // for .delete() — if present, it should have been enqueueDelete instead.
+      const enqueueRe = /syncQueue\.enqueue\(/g
+      let match: RegExpExecArray | null
+      while ((match = enqueueRe.exec(src)) !== null) {
+        const window = src.slice(match.index, match.index + 300)
+        if (/\.delete\s*\(/.test(window)) {
+          throw new Error(
+            `${file} has syncQueue.enqueue wrapping a .delete() at offset ${match.index}. Use syncQueue.enqueueDelete so the circuit breaker sees it. Context:\n${window.slice(0, 200)}`,
+          )
+        }
+      }
+    }
   })
 })

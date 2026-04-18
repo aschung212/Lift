@@ -15,6 +15,28 @@ let _rateResetTimer: ReturnType<typeof setTimeout> | null = null
 // Deferred operations that exceeded the rate limit — processed in the next window
 const _deferredOps = new Map<string, SyncOperation>()
 
+// Circuit breaker: defense-in-depth against runaway delete storms.
+//
+// Motivation: the SEV1 on 2026-04-12 destroyed ~40-60% of one user's
+// workout data because a client dedup heuristic broadcast DELETEs from
+// _fetchFromSupabase every sync cycle. PR #338 removed that specific
+// code path; PR #354 added behavioral regression coverage. This breaker
+// is the third layer: even if a future bug reintroduces runaway deletes,
+// the breaker trips after N deletes in a short window, blocks further
+// deletes for a cool-down period, and raises a Sentry error so we find
+// out before data is lost.
+//
+// Thresholds are deliberately loose — a user deleting one set at a time
+// or one whole exercise (2 ops) never gets near 20/10s. Only bug-shaped
+// delete patterns trip the breaker.
+const CIRCUIT_BREAKER_ENABLED = true
+const CIRCUIT_BREAKER_WINDOW_MS = 10_000
+const CIRCUIT_BREAKER_THRESHOLD = 20
+const CIRCUIT_BREAKER_COOLDOWN_MS = 60_000
+let _deleteTimestamps: number[] = []
+let _circuitOpenUntil = 0
+let _circuitTripCount = 0
+
 /**
  * Batches and debounces Supabase sync operations with retry.
  *
@@ -70,6 +92,67 @@ export class SyncQueue {
     this._queue.set(key, op)
     this._retryQueue.delete(key)
     this._scheduleFlush()
+  }
+
+  /**
+   * Enqueue a server-side DELETE operation. Identical to `enqueue` except
+   * the call is counted against the delete circuit breaker — if more than
+   * CIRCUIT_BREAKER_THRESHOLD deletes are enqueued within
+   * CIRCUIT_BREAKER_WINDOW_MS, the breaker opens: subsequent deletes are
+   * blocked for CIRCUIT_BREAKER_COOLDOWN_MS and a Sentry error is raised.
+   *
+   * All delete call sites in the app should go through this method, NOT
+   * plain `enqueue`, so they are visible to the breaker. See the
+   * structural test in syncQueue.test.ts that enforces this.
+   */
+  enqueueDelete(key: string, op: SyncOperation): void {
+    if (!supabase || isPreviewMode.value) return
+
+    if (CIRCUIT_BREAKER_ENABLED) {
+      const now = Date.now()
+
+      // Circuit is currently open (in cool-down): block the delete.
+      if (now < _circuitOpenUntil) {
+        logWarn('Sync delete circuit breaker open — blocking delete', {
+          key,
+          ms_until_reset: _circuitOpenUntil - now,
+          trip_count: _circuitTripCount,
+        })
+        syncStatus.value = 'error'
+        return
+      }
+
+      // Prune timestamps outside the rolling window before counting.
+      _deleteTimestamps = _deleteTimestamps.filter(
+        t => now - t < CIRCUIT_BREAKER_WINDOW_MS,
+      )
+
+      // Trip the breaker if we're about to cross the threshold.
+      if (_deleteTimestamps.length >= CIRCUIT_BREAKER_THRESHOLD) {
+        _circuitOpenUntil = now + CIRCUIT_BREAKER_COOLDOWN_MS
+        _circuitTripCount++
+        logError(
+          new Error(
+            `Sync delete circuit breaker tripped: ${_deleteTimestamps.length} deletes in ${CIRCUIT_BREAKER_WINDOW_MS}ms (threshold ${CIRCUIT_BREAKER_THRESHOLD})`,
+          ),
+          {
+            source: 'SyncQueue.enqueueDelete',
+            count: _deleteTimestamps.length,
+            window_ms: CIRCUIT_BREAKER_WINDOW_MS,
+            threshold: CIRCUIT_BREAKER_THRESHOLD,
+            cooldown_ms: CIRCUIT_BREAKER_COOLDOWN_MS,
+            blocked_key: key,
+            trip_count: _circuitTripCount,
+          },
+        )
+        syncStatus.value = 'error'
+        return
+      }
+
+      _deleteTimestamps.push(now)
+    }
+
+    this.enqueue(key, op)
   }
 
   /** Immediately flush all pending operations. */
@@ -170,6 +253,26 @@ export function _resetRateLimit(): void {
     _rateResetTimer = null
   }
   _deferredOps.clear()
+}
+
+/** Reset circuit breaker state (for testing only). */
+export function _resetCircuitBreaker(): void {
+  _deleteTimestamps = []
+  _circuitOpenUntil = 0
+  _circuitTripCount = 0
+}
+
+/** Inspect circuit breaker state (for testing / telemetry only). */
+export function _getCircuitBreakerState(): {
+  deleteCount: number
+  openUntil: number
+  tripCount: number
+} {
+  return {
+    deleteCount: _deleteTimestamps.length,
+    openUntil: _circuitOpenUntil,
+    tripCount: _circuitTripCount,
+  }
 }
 
 /** Shared sync queue instance used by all stores (1-second debounce). */

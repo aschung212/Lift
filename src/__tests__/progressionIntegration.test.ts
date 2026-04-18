@@ -15,7 +15,7 @@ import { getLocalStorageMock } from './helpers'
 const localStorageMock = getLocalStorageMock()
 
 vi.mock('../lib/syncQueue', () => ({
-  syncQueue: { enqueue: vi.fn() }
+  syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn() }
 }))
 
 vi.mock('../lib/xpInstrumentation', () => ({
