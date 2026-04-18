@@ -38,25 +38,167 @@
   <title>Lift — Workout Tracker</title>
 </head>
 <body>
-  <!-- Splash screen: shows instantly before JS loads, fades out on Vue mount -->
+  <!--
+    Resolve persisted theme + mode before the splash paints, so the splash
+    background, accent, and skeleton tab bar match the user's real theme.
+    Mirrors the boot logic in src/composables/useTheme.ts so data-theme /
+    data-mode are set on <html> before JS modules load.
+  -->
+  <script>
+    (function () {
+      try {
+        var THEME_MIGRATION = {
+          graphite: 'amethyst', arctic: 'water', forge: 'pearl',
+          aaron: 'luck', tina: 'love', bloom: 'love', metal: 'eternal',
+          void: 'eternal', sun: 'pearl', moon: 'midnight', oak: 'earth'
+        };
+        var VALID_THEMES = ['eternal','pearl','midnight','fire','water','earth','luck','amethyst','air','love'];
+        var id = localStorage.getItem('app-theme') || 'eternal';
+        if (THEME_MIGRATION[id]) { id = THEME_MIGRATION[id]; localStorage.setItem('app-theme', id); }
+        if (VALID_THEMES.indexOf(id) === -1) id = 'eternal';
+        document.documentElement.setAttribute('data-theme', id);
+
+        var storedMode = localStorage.getItem('app-mode') || 'auto';
+        if (['dark','light','auto'].indexOf(storedMode) === -1) storedMode = 'auto';
+        var resolved = storedMode;
+        if (resolved === 'auto') {
+          resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-mode', resolved);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'eternal');
+        document.documentElement.setAttribute('data-mode', 'dark');
+      }
+    })();
+  </script>
+
+  <!--
+    Splash screen: paints instantly before JS loads, fades out on Vue mount.
+    Layout matches design_handoff_lift_ios_pwa/screens/02-splash.png so the
+    handoff to the real Workouts screen is visually seamless. Fallback token
+    values are the Luck (dark) palette, used only if the main stylesheet hasn't
+    loaded yet (dev mode). Production extracts CSS to a render-blocking <link>,
+    so the splash picks up the user's real theme on first paint.
+  -->
   <div id="splash" aria-hidden="true">
-    <img src="/icon-192.png" alt="" width="96" height="96" />
-    <span>Lift</span>
+    <div class="splashMesh"></div>
+    <div class="splashContent">
+      <div class="splashWordmark">Lift</div>
+      <div class="splashLoadingLabel">Loading local data…</div>
+    </div>
+    <div class="splashTabBar" aria-hidden="true">
+      <div class="splashTab splashTabActive">
+        <div class="splashTabIcon"></div>
+        <div class="splashTabLabel"></div>
+      </div>
+      <div class="splashTab">
+        <div class="splashTabIcon"></div>
+        <div class="splashTabLabel"></div>
+      </div>
+      <div class="splashTab">
+        <div class="splashTabIcon"></div>
+        <div class="splashTabLabel"></div>
+      </div>
+    </div>
   </div>
   <style>
     #splash {
-      position: fixed; inset: 0; z-index: 9999;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-      background: #0a0a0a;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      overflow: hidden;
+      background: var(--bg-primary, #0a1210);
       transition: opacity 0.3s ease;
     }
-    #splash img { border-radius: 16px; }
-    #splash span {
-      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
-      font-size: 20px; font-weight: 600; letter-spacing: 0.02em;
-      color: rgba(255,255,255,0.7);
-    }
     #splash.fade-out { opacity: 0; pointer-events: none; }
+
+    #splash .splashMesh {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: var(--mesh,
+        radial-gradient(ellipse 70% 55% at 15% 10%, rgba(30, 120, 70, 0.10) 0%, transparent 65%),
+        radial-gradient(ellipse 55% 45% at 85% 80%, rgba(212, 175, 55, 0.06) 0%, transparent 65%));
+    }
+
+    #splash .splashContent {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      /* Offset wordmark up 110px (README spec) so the skeleton tab bar sits below. */
+      transform: translateY(-110px);
+      gap: 8px;
+    }
+
+    #splash .splashWordmark {
+      font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+      font-size: 72px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.035em;
+      color: var(--accent, #d4af37);
+    }
+
+    #splash .splashLoadingLabel {
+      font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted, #607868);
+    }
+
+    #splash .splashTabBar {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+      height: 58px;
+      border-radius: 20px;
+      background: var(--glass-bar, rgba(10, 18, 16, 0.85));
+      border: 1px solid var(--glass-edge, rgba(212, 175, 55, 0.10));
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 12px;
+    }
+
+    #splash .splashTab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      opacity: 0.5;
+    }
+
+    #splash .splashTabIcon {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      background: var(--border-strong, #2a3e34);
+    }
+
+    #splash .splashTabLabel {
+      width: 36px;
+      height: 6px;
+      border-radius: 99px;
+      background: var(--border, #1e3028);
+    }
+
+    #splash .splashTabActive { opacity: 1; }
+    #splash .splashTabActive .splashTabIcon { background: var(--accent, #d4af37); }
+    #splash .splashTabActive .splashTabLabel { background: var(--accent-subtle, rgba(212, 175, 55, 0.12)); }
+
+    @media (prefers-reduced-motion: reduce) {
+      #splash { transition: none; }
+    }
   </style>
   <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
