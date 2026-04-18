@@ -782,6 +782,11 @@
       </div>
     </transition>
   </Teleport>
+
+  <!-- Full-screen PR celebration — triggered via usePRBurst().presentPRBurst(). -->
+  <Teleport to="body">
+    <PRBurst />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -791,6 +796,7 @@ import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import OnboardingScreen from './components/OnboardingScreen.vue'
 import StarterPickerFlow from './components/StarterPickerFlow.vue'
+import PRBurst from './components/PRBurst.vue'
 
 // Lazy-load tab content — split into separate chunks for faster initial load
 import SkeletonLoader from './components/SkeletonLoader.vue'
