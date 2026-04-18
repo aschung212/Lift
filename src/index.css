@@ -3254,6 +3254,50 @@ html.theme-fading .settingsSheet {
   animation: modalScaleIn 0.25s cubic-bezier(0.2, 0, 0, 1);
 }
 
+/* ─── Log-set bottom sheet (05-logset-platecalc.png) ─────────────────── */
+/*
+  The set-log overlay + modal opt into a 78%-viewport bottom sheet with a
+  drag handle at top. Scoped to just .logSetOverlay / .logSetSheet so the
+  detail, tag-manager, exercise-picker, and edit-exercise dialogs keep
+  the existing top-anchored centered modal layout.
+*/
+.repMaxOverlay.logSetOverlay {
+  align-items: flex-end;
+  padding: 0;
+  padding-top: 0;
+  animation: overlayFadeIn 0.2s ease-out;
+}
+
+.repMaxModal.logSetSheet {
+  max-width: 100%;
+  width: 100%;
+  height: 78dvh;
+  max-height: 78dvh;
+  padding: 16px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  border-radius: 24px 24px 0 0;
+  border-bottom: none;
+  animation: sheetSlideUp 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Drag handle pill at the top of the sheet. */
+.logSetSheetHandle {
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 12px;
+  border-radius: 99px;
+  background: var(--border-strong);
+  flex-shrink: 0;
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .repMaxModal.logSetSheet { animation: none; }
+}
+
 .repMaxModal h2 {
   font-size: var(--font-body);
   font-weight: 700;
