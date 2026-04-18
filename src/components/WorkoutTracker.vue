@@ -2831,4 +2831,8 @@ onUnmounted(() => {
   stopTimer()
   document.documentElement.classList.remove('modal-open')
 })
+
+// Exposed so the app's top-bar "+" button can trigger quick-log without
+// duplicating the exercise-picker state in App.vue.
+defineExpose({ openTimelineLogModal })
 </script>
