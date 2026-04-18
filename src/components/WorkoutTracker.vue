@@ -275,8 +275,9 @@
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
-    <div v-if="showModal" class="repMaxOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
-      <div class="repMaxModal" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+    <div v-if="showModal" class="repMaxOverlay logSetOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
+      <div class="repMaxModal logSetSheet" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+        <div class="logSetSheetHandle" aria-hidden="true"></div>
 
         <!-- Rest timer view -->
         <template v-if="timerActive">
