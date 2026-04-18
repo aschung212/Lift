@@ -140,6 +140,13 @@ vi.mock('../../stores/workout', () => ({
   })
 }))
 
+vi.mock('../../stores/preferences', () => ({
+  usePreferencesStore: () => ({
+    warmupThreshold: 0.75,
+    setWarmupThreshold: vi.fn(),
+  }),
+}))
+
 
 
 import WorkoutTracker from '../WorkoutTracker.vue'

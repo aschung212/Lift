@@ -340,6 +340,36 @@
               </div>
             </div>
 
+            <div class="settingsGroup">
+              <div class="settingsHeader">Filters</div>
+              <div class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Warmup threshold</span>
+                  <span class="settingsHint">{{ Math.round(prefs.warmupThreshold * 100) }}% of the top set</span>
+                </div>
+                <div class="iosStepper">
+                  <button
+                    class="iosStepperBtn"
+                    @click="adjustWarmupThreshold(-WARMUP_THRESHOLD_STEP)"
+                    :disabled="prefs.warmupThreshold <= WARMUP_THRESHOLD_MIN + 0.001"
+                    aria-label="Decrease warmup threshold"
+                  >−</button>
+                  <span class="iosStepperValue">{{ Math.round(prefs.warmupThreshold * 100) }}%</span>
+                  <button
+                    class="iosStepperBtn"
+                    @click="adjustWarmupThreshold(WARMUP_THRESHOLD_STEP)"
+                    :disabled="prefs.warmupThreshold >= WARMUP_THRESHOLD_MAX - 0.001"
+                    aria-label="Increase warmup threshold"
+                  >+</button>
+                </div>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsHint">
+                  Sets logged before your top set at or below this percentage are treated as warmups when the filter is on.
+                </span>
+              </div>
+            </div>
+
             <!-- Dev tools — only on localhost/LAN -->
             <div v-if="isDev" class="settingsGroup">
               <div class="settingsHeader">Dev Tools</div>
@@ -826,6 +856,11 @@ import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
 import { importCSV } from './lib/csvImport'
 import { usePreferencesStore } from './stores/preferences'
+import {
+  WARMUP_THRESHOLD_MIN,
+  WARMUP_THRESHOLD_MAX,
+  WARMUP_THRESHOLD_STEP,
+} from './lib/warmupFilter'
 import type { WeightGoalDirection } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
@@ -870,6 +905,10 @@ const effectiveWeeklyTarget = computed(() =>
 function adjustWeeklyTarget(delta: number) {
   const next = Math.max(1, Math.min(7, effectiveWeeklyTarget.value + delta))
   progressionStore.setWeeklyTarget(next)
+}
+
+function adjustWarmupThreshold(delta: number) {
+  prefs.setWarmupThreshold(prefs.warmupThreshold + delta)
 }
 
 const weeklyGoalBonusLabel = computed(() => {

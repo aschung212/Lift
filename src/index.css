@@ -2502,6 +2502,136 @@ html.theme-fading .settingsSheet {
   padding: 8px 12px;
 }
 
+/* ─── Warmup filter bar ────────────────────────────────────────────────── */
+
+.wtFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px 0;
+}
+
+.wtFilterBarDetail {
+  padding: 0 0 12px;
+}
+
+.wtFilterToggle {
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  padding: 8px 12px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.wtFilterToggleActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.wtFilterCheck {
+  flex-shrink: 0;
+}
+
+.wtFilterCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 8px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: var(--font-caption2);
+  font-weight: 600;
+}
+
+.wtFilterToggleActive .wtFilterCount {
+  background: rgba(255, 255, 255, 0.25);
+  color: var(--text-on-accent);
+}
+
+.wtFilterStepper {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  overflow: hidden;
+}
+
+.wtFilterStepperBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 44px;
+  font-size: var(--font-body);
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wtFilterStepperBtn:active {
+  background: var(--bg-hover);
+}
+
+.wtFilterStepperBtn:disabled {
+  color: var(--text-muted);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wtFilterStepperValue {
+  min-width: 48px;
+  padding: 0 8px;
+  text-align: center;
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  color: var(--text-primary);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  line-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wtFilterDismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+
+.wtFilterDismiss:active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 /* ─── Tag manager modal ────────────────────────────────────────────────── */
 
 .wtTagManagerList {
