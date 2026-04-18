@@ -29,7 +29,6 @@ vi.mock('../../composables/useTheme', () => ({
     THEMES: [],
     colorMode: { value: 'dark' },
     resolvedMode: { value: 'dark' },
-    glassEnabled: { value: true },
   }),
   THEME_PREVIEWS: {
     fire: { dark: { accent: '#ff4500', bg: '#1a0000' }, light: { accent: '#ff4500', bg: '#fff5f0' } },

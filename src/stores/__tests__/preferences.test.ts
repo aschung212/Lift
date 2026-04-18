@@ -266,4 +266,51 @@ describe('usePreferencesStore', () => {
       expect(freshStore.weightGoal.maintainMax).toBe(180)
     })
   })
+
+  describe('experience flags', () => {
+    it('defaults prCelebrations and haptics to enabled', () => {
+      expect(store.experience.prCelebrations).toBe(true)
+      expect(store.experience.haptics).toBe(true)
+    })
+
+    it('setExperienceFlag updates state and persists', () => {
+      store.setExperienceFlag('prCelebrations', false)
+      expect(store.experience.prCelebrations).toBe(false)
+
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences') as string)
+      expect(stored.experience.prCelebrations).toBe(false)
+      expect(stored.experience.haptics).toBe(true)
+    })
+
+    it('init() rehydrates experience flags from localStorage', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        experience: { prCelebrations: false, haptics: false },
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.experience.prCelebrations).toBe(false)
+      expect(freshStore.experience.haptics).toBe(false)
+    })
+
+    it('init() backfills missing experience keys with defaults', async () => {
+      // Older clients may have persisted prefs without experience — make sure
+      // init() merges defaults rather than leaving the field undefined.
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.experience.prCelebrations).toBe(true)
+      expect(freshStore.experience.haptics).toBe(true)
+    })
+  })
 })

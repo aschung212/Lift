@@ -4,7 +4,12 @@
  * Prefers Capacitor Haptics (available when wrapped as a native app),
  * falls back to the Web Vibration API (Android browsers), and silently
  * no-ops when neither is available (desktop, iOS Safari).
+ *
+ * Respects the user's `experience.haptics` preference: when the toggle is
+ * off (Settings → Experience → Haptics), impact/notification calls no-op.
  */
+
+import { usePreferencesStore } from '../stores/preferences'
 
 type ImpactStyle = 'light' | 'medium' | 'heavy'
 
@@ -15,6 +20,16 @@ interface CapacitorHaptics {
 
 let capacitorHaptics: CapacitorHaptics | null = null
 let capacitorChecked = false
+
+function hapticsAllowed(): boolean {
+  // Defensive: Pinia may not be active (e.g. some test setups).
+  try {
+    const prefs = usePreferencesStore()
+    return prefs.experience?.haptics !== false
+  } catch {
+    return true
+  }
+}
 
 async function getCapacitorHaptics(): Promise<CapacitorHaptics | null> {
   if (capacitorChecked) return capacitorHaptics
@@ -39,6 +54,7 @@ function vibrate(ms: number | number[]): void {
 }
 
 async function impact(style: ImpactStyle = 'light'): Promise<void> {
+  if (!hapticsAllowed()) return
   const haptics = await getCapacitorHaptics()
   if (haptics) {
     const styleMap: Record<ImpactStyle, string> = {
@@ -55,6 +71,7 @@ async function impact(style: ImpactStyle = 'light'): Promise<void> {
 }
 
 async function notification(type: 'success' | 'warning' | 'error' = 'success'): Promise<void> {
+  if (!hapticsAllowed()) return
   const haptics = await getCapacitorHaptics()
   if (haptics) {
     const typeMap: Record<string, string> = {

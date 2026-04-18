@@ -154,12 +154,6 @@
                 </div>
               </div>
               <div class="settingsRow">
-                <span class="settingsLabel">Liquid Glass</span>
-                <button :class="['glassToggle', { on: glassEnabled }]" @click="toggleGlass" role="switch" :aria-checked="glassEnabled" :aria-label="glassEnabled ? 'Disable liquid glass' : 'Enable liquid glass'">
-                  <span class="glassToggleThumb"></span>
-                </button>
-              </div>
-              <div class="settingsRow">
                 <span class="settingsLabel">Units</span>
                 <div class="modeSegmented">
                   <button :class="['modeSegBtn', { active: weightUnit === 'lbs' }]" @click="weightUnit = 'lbs'" aria-label="Use pounds" :aria-pressed="weightUnit === 'lbs'">lbs</button>
@@ -169,26 +163,42 @@
             </div>
 
             <div class="settingsGroup">
-              <div class="settingsHeader">Features</div>
-              <div
-                v-for="tab in TAB_DEFS"
-                :key="tab.id"
-                class="settingsRow"
-              >
-                <span class="settingsLabel">{{ tab.label }}</span>
+              <div class="settingsHeader">Experience</div>
+              <div class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Haptics</span>
+                  <span class="settingsHint">Taps, PRs, timer end</span>
+                </div>
                 <button
-                  :class="['glassToggle', { on: prefs.features[tab.id] }]"
-                  @click="toggleFeature(tab.id)"
-                  :disabled="prefs.features[tab.id] && prefs.enabledCount <= 1"
+                  :class="['glassToggle', { on: prefs.experience.haptics }]"
+                  @click="toggleExperience('haptics')"
                   role="switch"
-                  :aria-checked="prefs.features[tab.id]"
-                  :aria-label="(prefs.features[tab.id] ? 'Disable ' : 'Enable ') + tab.label"
+                  :aria-checked="prefs.experience.haptics"
+                  :aria-label="prefs.experience.haptics ? 'Disable haptics' : 'Enable haptics'"
                 >
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
               <div class="settingsRow">
-                <span class="settingsLabel">Rest Timer</span>
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">PR celebration</span>
+                  <span class="settingsHint">Full-screen burst on new PRs</span>
+                </div>
+                <button
+                  :class="['glassToggle', { on: prefs.experience.prCelebrations }]"
+                  @click="toggleExperience('prCelebrations')"
+                  role="switch"
+                  :aria-checked="prefs.experience.prCelebrations"
+                  :aria-label="prefs.experience.prCelebrations ? 'Disable PR celebrations' : 'Enable PR celebrations'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+              <div class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Rest Timer</span>
+                  <span v-if="restTimerEnabled && restTimerAutoStart" class="settingsHint">Auto-start after save</span>
+                </div>
                 <button
                   :class="['glassToggle', { on: restTimerEnabled }]"
                   @click="restTimerEnabled = !restTimerEnabled"
@@ -207,6 +217,27 @@
                   role="switch"
                   :aria-checked="restTimerAutoStart"
                   :aria-label="restTimerAutoStart ? 'Disable auto-start' : 'Enable auto-start'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="settingsGroup">
+              <div class="settingsHeader">Features</div>
+              <div
+                v-for="tab in TAB_DEFS"
+                :key="tab.id"
+                class="settingsRow"
+              >
+                <span class="settingsLabel">{{ tab.label }}</span>
+                <button
+                  :class="['glassToggle', { on: prefs.features[tab.id] }]"
+                  @click="toggleFeature(tab.id)"
+                  :disabled="prefs.features[tab.id] && prefs.enabledCount <= 1"
+                  role="switch"
+                  :aria-checked="prefs.features[tab.id]"
+                  :aria-label="(prefs.features[tab.id] ? 'Disable ' : 'Enable ') + tab.label"
                 >
                   <span class="glassToggleThumb"></span>
                 </button>
@@ -786,7 +817,7 @@ import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
 
 function formatBaselineLabel(iso: string | null): string {
@@ -1499,9 +1530,10 @@ function setMode(mode: 'light' | 'dark' | 'auto') {
   logEvent('mode_toggle', { mode })
 }
 
-function toggleGlass() {
-  glassEnabled.value = !glassEnabled.value
-  logEvent('glass_toggle', { enabled: glassEnabled.value })
+function toggleExperience(key: 'prCelebrations' | 'haptics') {
+  const next = !prefs.experience[key]
+  prefs.setExperienceFlag(key, next)
+  logEvent('experience_toggle', { key, enabled: next })
 }
 
 function showConfirm(message: string, onConfirm: () => void) {

@@ -22,6 +22,13 @@ export interface WeightGoalConfig {
   maintainMax: number | null    // optional ceiling for maintain
 }
 
+export interface ExperienceFlags {
+  /** Fire the full-screen PR burst when a set beats the user's e1RM for an exercise. */
+  prCelebrations: boolean
+  /** Allow haptic feedback on taps, PRs, and timer end. */
+  haptics: boolean
+}
+
 const DEFAULT_WEIGHT_GOAL: WeightGoalConfig = {
   direction: 'lose',
   loseTarget: null,
@@ -34,6 +41,11 @@ const DEFAULTS: FeatureFlags = {
   workouts: true,
   calendar: true,
   weight: true,
+}
+
+const DEFAULT_EXPERIENCE: ExperienceFlags = {
+  prCelebrations: true,
+  haptics: true,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,25 +68,30 @@ export const usePreferencesStore = defineStore('preferences', {
   state: () => ({
     features: { ...DEFAULTS } as FeatureFlags,
     weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
+    experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
     _userId: null as string | null,
   }),
 
   actions: {
     _persist() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience }),
+        )
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
       if (supabase && this._userId) {
         const features = { ...this.features }
         const weightGoal = this.weightGoal
+        const experience = { ...this.experience }
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
           supabase!
             .from('user_preferences')
             .upsert(
-              { user_id: userId, preferences: { features, weightGoal }, updated_at: new Date().toISOString() },
+              { user_id: userId, preferences: { features, weightGoal, experience }, updated_at: new Date().toISOString() },
               { onConflict: 'user_id' }
             )
         )
@@ -93,6 +110,9 @@ export const usePreferencesStore = defineStore('preferences', {
           if (parsed.weightGoal) {
             this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
           }
+          if (parsed.experience) {
+            this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+          }
         } catch { /* ignore corrupt data */ }
       }
 
@@ -110,7 +130,13 @@ export const usePreferencesStore = defineStore('preferences', {
             if (prefs.weightGoal) {
               this.weightGoal = _migrateWeightGoal(prefs.weightGoal as { target?: number; unit?: string })
             }
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
+            if (prefs.experience) {
+              this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
+            }
+            localStorage.setItem(
+              STORAGE_KEY,
+              JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience }),
+            )
           }
         } catch { /* table may not exist yet or no row */ }
       }
@@ -120,6 +146,11 @@ export const usePreferencesStore = defineStore('preferences', {
       // Prevent disabling the last enabled tab
       if (this.features[featureId] && this.enabledCount <= 1) return
       this.features[featureId] = !this.features[featureId]
+      this._persist()
+    },
+
+    setExperienceFlag<K extends keyof ExperienceFlags>(key: K, value: ExperienceFlags[K]) {
+      this.experience[key] = value
       this._persist()
     },
 

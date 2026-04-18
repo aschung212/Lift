@@ -109,11 +109,6 @@ function updateMetaColor(): void {
   meta.setAttribute('content', colors[mode] ?? colors.dark)
 }
 
-function applyGlass(enabled: boolean): void {
-  document.documentElement.setAttribute('data-glass', enabled ? 'on' : 'off')
-  localStorage.setItem('app-glass', enabled ? 'on' : 'off')
-}
-
 // Apply immediately at import time to prevent flash
 let storedId = localStorage.getItem('app-theme') || 'eternal'
 // Migrate old theme names
@@ -127,21 +122,23 @@ const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(store
 applyTheme(validId)
 applyMode(validMode)
 
-const storedGlass = localStorage.getItem('app-glass') !== 'off'
-applyGlass(storedGlass)
+// Glass is always on as of the 2026 iOS PWA refresh — the opt-out toggle was
+// removed after data showed no users disabling it. Set the attribute once so
+// any residual [data-glass="off"] rules still in third-party CSS resolve to
+// the glass-on state, and drop the legacy `app-glass` key from localStorage.
+document.documentElement.setAttribute('data-glass', 'on')
+try { localStorage.removeItem('app-glass') } catch { /* ignore */ }
 
 const currentTheme: Ref<string> = ref(validId)
 const colorMode: Ref<ColorMode> = ref(validMode)
 const resolvedMode: ComputedRef<'dark' | 'light'> = computed(() =>
   colorMode.value === 'auto' ? getSystemMode() : colorMode.value
 )
-const glassEnabled: Ref<boolean> = ref(storedGlass)
 const restTimerEnabled: Ref<boolean> = ref(localStorage.getItem('rest-timer') !== 'off')
 const restTimerAutoStart: Ref<boolean> = ref(localStorage.getItem('rest-timer-autostart') !== 'off')
 const weightUnit: Ref<WeightUnit> = ref((localStorage.getItem('weight-unit') || 'lbs') as WeightUnit)
 watch(currentTheme, applyTheme)
 watch(colorMode, applyMode)
-watch(glassEnabled, applyGlass)
 
 // Listen for OS theme changes when in auto mode
 const mql = window.matchMedia('(prefers-color-scheme: dark)')
@@ -235,7 +232,7 @@ export function useTheme() {
 
   return {
     currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode,
-    glassEnabled, restTimerEnabled, restTimerAutoStart, weightUnit,
+    restTimerEnabled, restTimerAutoStart, weightUnit,
     displayWeight, toLbs, selectTheme, previewTheme, revertPreview,
     isThemeUnlocked, setRestTimerEnabled,
   }
