@@ -105,8 +105,22 @@
 
     <!-- Timeline view -->
     <template v-else-if="listView === 'timeline'">
+      <div v-if="timelineSets.length > 0 && timelineWarmupCount > 0" class="wtFilterBar">
+        <button
+          :class="['wtFilterToggle', { wtFilterToggleActive: hideWarmups }]"
+          :aria-pressed="hideWarmups"
+          @click="hideWarmups = !hideWarmups"
+        >
+          <svg v-if="hideWarmups" class="wtFilterCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Hide warmups</span>
+          <span class="wtFilterCount">{{ timelineWarmupCount }}</span>
+        </button>
+      </div>
       <div v-if="timelineSets.length === 0" class="wtEmpty">
         No sets logged yet.
+      </div>
+      <div v-else-if="filteredTimelineSets.length === 0" class="wtEmpty">
+        All {{ timelineWarmupCount }} sets are warmups at your current threshold.
       </div>
       <div v-else class="wtTimeline">
         <template v-for="group in visibleTimelineGroups" :key="group.key">
@@ -132,8 +146,8 @@
             </div>
           </div>
         </template>
-        <button v-if="timelineLimit < timelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
-          Show more ({{ timelineSets.length - timelineLimit }} remaining)
+        <button v-if="timelineLimit < filteredTimelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
+          Show more ({{ filteredTimelineSets.length - timelineLimit }} remaining)
         </button>
       </div>
     </template>
@@ -169,8 +183,20 @@
 
           <!-- All Sets view -->
           <template v-if="detailTab === 'sets'">
+            <div v-if="detailWarmupCount > 0" class="wtFilterBar wtFilterBarDetail">
+              <button
+                :class="['wtFilterToggle', { wtFilterToggleActive: hideWarmups }]"
+                :aria-pressed="hideWarmups"
+                @click="hideWarmups = !hideWarmups"
+              >
+                <svg v-if="hideWarmups" class="wtFilterCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Hide warmups</span>
+                <span class="wtFilterCount">{{ detailWarmupCount }}</span>
+              </button>
+            </div>
             <div class="wtSetList">
               <p v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</p>
+              <p v-else-if="groupedSets.length === 0" class="wtSetEmpty">All sets are warmups at your current threshold.</p>
               <template v-for="group in groupedSets" :key="group.key">
                 <p class="wtSetDateHeader">{{ formatDate(group.date) }}</p>
                 <div class="wtSetCard">
@@ -922,14 +948,17 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { usePreferencesStore } from '../stores/preferences'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
+import { classifyWarmupsByExercise, classifyExerciseWarmups } from '../lib/warmupFilter'
 import { logXPEvent } from '../lib/xpInstrumentation'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
+const prefs = usePreferencesStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
@@ -1113,8 +1142,32 @@ const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
   return map
 })
 
+// Session-only toggle — shared across timeline and exercise detail modal.
+// Intentionally not persisted: the filter is purely a view preference and we
+// never want to silently hide data across sessions.
+const hideWarmups = ref(false)
+
+// Warmup IDs computed across all exercises — used by the timeline view.
+// Recomputes when sets, threshold, or the filter toggle flip.
+const timelineWarmupIds = computed<Set<string>>(() => {
+  if (!hideWarmups.value) return new Set()
+  return classifyWarmupsByExercise(store.exercises, prefs.warmupThreshold)
+})
+
+const filteredTimelineSets = computed((): TimelineEntry[] => {
+  if (!hideWarmups.value) return timelineSets.value
+  const warmups = timelineWarmupIds.value
+  return timelineSets.value.filter(e => !warmups.has(e.set.id))
+})
+
+// Total warmup count across all exercises — shown next to the toggle so the
+// user knows how many sets the filter would hide before they turn it on.
+const timelineWarmupCount = computed(() =>
+  classifyWarmupsByExercise(store.exercises, prefs.warmupThreshold).size
+)
+
 const visibleTimelineGroups = computed(() => {
-  const limited = timelineSets.value.slice(0, timelineLimit.value)
+  const limited = filteredTimelineSets.value.slice(0, timelineLimit.value)
   const groups: { key: string; label: string; sets: TimelineEntry[] }[] = []
   for (const entry of limited) {
     const k = toLocalDateKey(entry.set.date)
@@ -1435,11 +1488,24 @@ function toLocalDateKey(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Warmup IDs scoped to the currently open detail exercise.
+const detailWarmupIds = computed<Set<string>>(() => {
+  if (!hideWarmups.value || !detailExercise.value) return new Set()
+  return classifyExerciseWarmups(detailExercise.value.sets, prefs.warmupThreshold)
+})
+
+const detailWarmupCount = computed(() => {
+  if (!detailExercise.value) return 0
+  return classifyExerciseWarmups(detailExercise.value.sets, prefs.warmupThreshold).size
+})
+
 const groupedSets = computed(() => {
   if (!detailExercise.value) return []
   const sets = visibleSets(detailExercise.value)
+  const warmups = detailWarmupIds.value
+  const filtered = warmups.size > 0 ? sets.filter(s => !warmups.has(s.id)) : sets
   const groups: { date: string; key: string; sets: WorkoutSet[] }[] = []
-  for (const set of sets) {
+  for (const set of filtered) {
     const k = toLocalDateKey(set.date)
     const last = groups[groups.length - 1]
     if (last && last.key === k) {

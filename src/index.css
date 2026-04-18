@@ -2305,6 +2305,65 @@ html.theme-fading .settingsSheet {
   justify-content: center;
 }
 
+/* ─── Warmup filter toggle ─────────────────────────────────────────────── */
+
+.wtFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px 0;
+}
+
+.wtFilterBarDetail {
+  padding: 0 0 12px;
+}
+
+.wtFilterToggle {
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  padding: 8px 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.wtFilterToggleActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.wtFilterCheck {
+  flex-shrink: 0;
+}
+
+.wtFilterCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 8px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--font-caption-2);
+  font-weight: 600;
+}
+
+.wtFilterToggleActive .wtFilterCount {
+  background: rgba(255, 255, 255, 0.25);
+  color: var(--text-on-accent);
+}
+
 /* ─── Tag manager modal ────────────────────────────────────────────────── */
 
 .wtTagManagerList {

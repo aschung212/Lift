@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { normalizeWarmupThreshold, WARMUP_THRESHOLD_DEFAULT } from '../lib/warmupFilter'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -56,25 +57,31 @@ export const usePreferencesStore = defineStore('preferences', {
   state: () => ({
     features: { ...DEFAULTS } as FeatureFlags,
     weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
+    warmupThreshold: WARMUP_THRESHOLD_DEFAULT as number,
     _userId: null as string | null,
   }),
 
   actions: {
     _persist() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          features: this.features,
+          weightGoal: this.weightGoal,
+          warmupThreshold: this.warmupThreshold,
+        }))
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
       if (supabase && this._userId) {
         const features = { ...this.features }
         const weightGoal = this.weightGoal
+        const warmupThreshold = this.warmupThreshold
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
           supabase!
             .from('user_preferences')
             .upsert(
-              { user_id: userId, preferences: { features, weightGoal }, updated_at: new Date().toISOString() },
+              { user_id: userId, preferences: { features, weightGoal, warmupThreshold }, updated_at: new Date().toISOString() },
               { onConflict: 'user_id' }
             )
         )
@@ -93,6 +100,9 @@ export const usePreferencesStore = defineStore('preferences', {
           if (parsed.weightGoal) {
             this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
           }
+          if (typeof parsed.warmupThreshold === 'number') {
+            this.warmupThreshold = normalizeWarmupThreshold(parsed.warmupThreshold)
+          }
         } catch { /* ignore corrupt data */ }
       }
 
@@ -110,7 +120,14 @@ export const usePreferencesStore = defineStore('preferences', {
             if (prefs.weightGoal) {
               this.weightGoal = _migrateWeightGoal(prefs.weightGoal as { target?: number; unit?: string })
             }
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ features: this.features, weightGoal: this.weightGoal }))
+            if (typeof prefs.warmupThreshold === 'number') {
+              this.warmupThreshold = normalizeWarmupThreshold(prefs.warmupThreshold)
+            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+              features: this.features,
+              weightGoal: this.weightGoal,
+              warmupThreshold: this.warmupThreshold,
+            }))
           }
         } catch { /* table may not exist yet or no row */ }
       }
@@ -146,6 +163,11 @@ export const usePreferencesStore = defineStore('preferences', {
       this.weightGoal.gainTarget = null
       this.weightGoal.maintainMin = null
       this.weightGoal.maintainMax = null
+      this._persist()
+    },
+
+    setWarmupThreshold(value: number) {
+      this.warmupThreshold = normalizeWarmupThreshold(value)
       this._persist()
     },
   },
