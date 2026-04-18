@@ -655,8 +655,17 @@
               </div>
             </label>
 
-            <div class="repMaxLabel logSetField logSetFieldReps">
+            <div :class="['repMaxLabel', 'logSetField', 'logSetFieldReps', { logSetFieldActive: reps !== null && reps > 0 }]">
               <span class="logSetFieldLabel">Reps</span>
+              <input
+                v-model="repsStr"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="—"
+                class="repMaxInput logSetFieldInput logSetFieldInputReps"
+                aria-label="Reps"
+              />
               <div class="logSetFieldStepRow">
                 <button
                   type="button"
@@ -665,18 +674,6 @@
                   aria-label="Decrease reps"
                   @click="adjustReps(-1)"
                 >−</button>
-                <span class="logSetFieldStepVal">
-                  <input
-                    v-model="repsStr"
-                    type="text"
-                    inputmode="numeric"
-                    autocomplete="off"
-                    placeholder="—"
-                    class="repMaxInput logSetFieldInput logSetFieldInputReps"
-                    aria-label="Reps"
-                  />
-                  <span class="logSetFieldUnit">reps</span>
-                </span>
                 <button
                   type="button"
                   class="logSetStepBtn logSetStepBtnPrimary"
