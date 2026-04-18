@@ -34,3 +34,6 @@ android/
 # Claude Code worktree metadata (not part of the public repo)
 .claude/
 .vercel
+
+# Design handoff scratchpads (not source)
+design_handoff_*/
