@@ -682,6 +682,35 @@ describe('WorkoutTracker', () => {
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       expect(saveBtn.attributes('disabled')).toBeDefined()
     })
+
+    /**
+     * Regression: gemini-3.1-pro flagged a P1 in the step 5c plate-calc
+     * restyle where the WEIGHT/REPS card row had a stale `v-else` against
+     * the now-deleted standalone reps stepper. In plate mode this meant
+     * the WEIGHT card disappeared, and step 5c had also removed the
+     * in-card weight display — leaving the user with no visible weight
+     * at all while picking plates. This test pins the WEIGHT/REPS row +
+     * plate calc to *both* render in plate mode.
+     */
+    it('shows WEIGHT/REPS cards alongside the plate calc in plate mode', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      // Switch the first exercise into plate mode
+      exercises[0].inputMode = 'plates'
+      exercises[0].plateCountMode = 'per-side'
+      exercises[0].barWeight = 45
+
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Both the WEIGHT/REPS card row AND the plate calc must be present.
+      expect(wrapper.find('.logSetFieldsRow').exists()).toBe(true)
+      expect(wrapper.find('.wtPlateCalc').exists()).toBe(true)
+      // The legacy standalone reps stepper used to render in plate mode
+      // and is now gone — the REPS card covers it.
+      expect(wrapper.find('.wtRepsStepperFull').exists()).toBe(false)
+    })
   })
 
   describe('exercise search', () => {

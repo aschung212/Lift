@@ -603,35 +603,24 @@
             </div>
           </div>
 
-          <!-- Plate mode: reps stepper + weight in plate calc below -->
-          <template v-if="plateMode && !isEditMode">
-            <div class="wtRepsStepperFull">
-              <span class="wtRepsStepperLabel">Reps</span>
-              <div class="wtRepsStepperBar">
-                <button class="wtRepsStepBtnLg" @click="adjustReps(-1)" :disabled="reps === null || reps <= 0" aria-label="Decrease reps">−</button>
-                <input
-                  v-model="repsStr"
-                  type="text"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  placeholder="—"
-                  class="wtRepsStepperInput"
-                  aria-label="Reps"
-                  @focus="($event.target as HTMLInputElement)?.select()"
-                />
-                <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
-              </div>
-            </div>
-          </template>
           <!--
             Primary WEIGHT + REPS cards per screens/05-logset-platecalc.png.
             Layout: two cards side-by-side, weight (~60%) on the left with a
-            big 60px number and the unit suffix, reps (~40%) on the right
-            with a −/value/+ stepper. Keep the raw <input> mounted inside
-            the weight card so the system numeric keyboard still works
-            until the custom in-sheet numpad lands in a later PR.
+            big 44px number and the unit suffix, reps (~40%) on the right
+            with the value stacked above a [−][+] stepper.
+
+            Shown in BOTH numpad and plate modes — in plate mode the WEIGHT
+            input displays the live-computed total from the plates picker
+            below, and typing into it switches to manual override (the
+            existing `syncPlatesFromWeight` watcher reverse-syncs plates).
+            The standalone reps stepper that used to render in plate mode
+            is gone — the REPS card here covers the same job and avoids
+            the parallel input that gemini-3.1-pro flagged as a P1
+            (the v-else previously hid this row entirely in plate mode,
+            which after step 5c removed the in-card weight display would
+            leave the user with no visible weight at all).
           -->
-          <div v-else class="wtInputRow logSetFieldsRow">
+          <div class="wtInputRow logSetFieldsRow">
             <label :class="['repMaxLabel', 'logSetField', 'logSetFieldWeight', { logSetFieldActive: weightHasValue }]">
               <span class="logSetFieldLabel">Weight <span class="logSetFieldLabelUnit">({{ weightUnit }})</span></span>
               <div class="logSetFieldValueRow">
