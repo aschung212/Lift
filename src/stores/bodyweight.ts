@@ -61,6 +61,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         .from('bodyweight_entries')
         .select('*')
         .eq('user_id', this._userId)
+        .is('deleted_at', null)
         .order('created_at')
 
       if (!data) return
@@ -157,10 +158,13 @@ export const useBodyweightStore = defineStore('bodyweight', {
       )
       if (tombstoneEntries.length > 0) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         for (const e of tombstoneEntries) {
           const entryId = e.id as string
           syncQueue.enqueueDelete(`bodyweight:${entryId}`, () =>
-            supabase!.from('bodyweight_entries').delete().eq('id', entryId).eq('user_id', userId),
+            supabase!.from('bodyweight_entries')
+              .update({ deleted_at: deletedAt })
+              .eq('id', entryId).eq('user_id', userId),
           )
         }
       }
@@ -213,8 +217,11 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (sync && supabase && this._userId) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         syncQueue.enqueueDelete(`bodyweight:${id}`, () =>
-          supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId)
+          supabase!.from('bodyweight_entries')
+            .update({ deleted_at: deletedAt })
+            .eq('id', id).eq('user_id', userId)
         )
       }
     },
@@ -223,13 +230,28 @@ export const useBodyweightStore = defineStore('bodyweight', {
       removeTombstone(TOMBSTONE_STORE, entry.id)
       this.entries.push(entry)
       this._persist()
+
+      // Soft-delete restore: clear deleted_at on server. Uses the same key as
+      // deleteEntry so an in-flight delete is canceled by this enqueue's last-
+      // write-wins. If the delete already flushed, this un-soft-deletes the row.
+      if (supabase && !isPreviewMode.value && this._userId) {
+        const userId = this._userId
+        syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
+          supabase!.from('bodyweight_entries')
+            .update({ deleted_at: null })
+            .eq('id', entry.id).eq('user_id', userId)
+        )
+      }
     },
 
     syncDeleteEntry(id: string) {
       if (supabase && this._userId) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         syncQueue.enqueueDelete(`bodyweight:${id}`, () =>
-          supabase!.from('bodyweight_entries').delete().eq('id', id).eq('user_id', userId)
+          supabase!.from('bodyweight_entries')
+            .update({ deleted_at: deletedAt })
+            .eq('id', id).eq('user_id', userId)
         )
       }
     },
@@ -240,8 +262,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (supabase && this._userId) {
         const userId = this._userId
+        const deletedAt = new Date().toISOString()
         syncQueue.enqueueDelete('bodyweight:clear-all', () =>
-          supabase!.from('bodyweight_entries').delete().eq('user_id', userId)
+          supabase!.from('bodyweight_entries')
+            .update({ deleted_at: deletedAt })
+            .eq('user_id', userId)
+            .is('deleted_at', null)
         )
       }
     }
