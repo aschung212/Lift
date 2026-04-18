@@ -603,35 +603,24 @@
             </div>
           </div>
 
-          <!-- Plate mode: reps stepper + weight in plate calc below -->
-          <template v-if="plateMode && !isEditMode">
-            <div class="wtRepsStepperFull">
-              <span class="wtRepsStepperLabel">Reps</span>
-              <div class="wtRepsStepperBar">
-                <button class="wtRepsStepBtnLg" @click="adjustReps(-1)" :disabled="reps === null || reps <= 0" aria-label="Decrease reps">−</button>
-                <input
-                  v-model="repsStr"
-                  type="text"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  placeholder="—"
-                  class="wtRepsStepperInput"
-                  aria-label="Reps"
-                  @focus="($event.target as HTMLInputElement)?.select()"
-                />
-                <button class="wtRepsStepBtnLg" @click="adjustReps(1)" :disabled="reps !== null && reps >= MAX_REPS" aria-label="Increase reps">+</button>
-              </div>
-            </div>
-          </template>
           <!--
             Primary WEIGHT + REPS cards per screens/05-logset-platecalc.png.
             Layout: two cards side-by-side, weight (~60%) on the left with a
-            big 60px number and the unit suffix, reps (~40%) on the right
-            with a −/value/+ stepper. Keep the raw <input> mounted inside
-            the weight card so the system numeric keyboard still works
-            until the custom in-sheet numpad lands in a later PR.
+            big 44px number and the unit suffix, reps (~40%) on the right
+            with the value stacked above a [−][+] stepper.
+
+            Shown in BOTH numpad and plate modes — in plate mode the WEIGHT
+            input displays the live-computed total from the plates picker
+            below, and typing into it switches to manual override (the
+            existing `syncPlatesFromWeight` watcher reverse-syncs plates).
+            The standalone reps stepper that used to render in plate mode
+            is gone — the REPS card here covers the same job and avoids
+            the parallel input that gemini-3.1-pro flagged as a P1
+            (the v-else previously hid this row entirely in plate mode,
+            which after step 5c removed the in-card weight display would
+            leave the user with no visible weight at all).
           -->
-          <div v-else class="wtInputRow logSetFieldsRow">
+          <div class="wtInputRow logSetFieldsRow">
             <label :class="['repMaxLabel', 'logSetField', 'logSetFieldWeight', { logSetFieldActive: weightHasValue }]">
               <span class="logSetFieldLabel">Weight <span class="logSetFieldLabelUnit">({{ weightUnit }})</span></span>
               <div class="logSetFieldValueRow">
@@ -685,35 +674,26 @@
             </div>
           </div>
 
-          <!-- Plate calculator (shown when exercise is in plates mode) -->
-          <div v-if="plateMode && !isEditMode" class="wtPlateCalc">
-            <div class="wtPlateDisplayRow">
-              <span class="wtPlateDisplaySpacer"></span>
-              <button v-if="!plateNumpadOverride" class="wtPlateWeightBtn" @click="onWeightInputFocus(); nextTick(() => { weightInputEl?.focus(); weightInputEl?.select() })">{{ weight != null ? weight : '—' }}</button>
-              <input
-                v-else
-                ref="weightInputEl"
-                v-model="weightStr"
-                type="text"
-                inputmode="decimal"
-                autocomplete="off"
-                class="wtPlateWeightInput"
-                aria-label="Weight"
-                @focus="($event.target as HTMLInputElement)?.select()"
-                @blur="plateNumpadOverride = false"
-              />
-              <span class="wtPlateDisplayAfter">
-                <span class="wtPlateWeightUnit">{{ weightUnit }}</span>
-                <button v-if="currentPlates.length > 0 || weight" class="wtPlateClearBtn" @click="currentPlates = []; weight = null; weightStr = ''" aria-label="Clear weight">×</button>
-              </span>
+          <!--
+            Plate calculator (shown when exercise is in plates mode).
+            Matches screens/05-logset-platecalc.png:
+            - Bordered card with header row: "PER SIDE · 45 LB BAR" + delta vs last
+            - 5-column grid: gold +N pill on top, count, dim −N pill on bottom
+            The weight value itself is rendered by the WEIGHT card above; this
+            card is purely the plate-picker chrome.
+          -->
+          <div v-if="plateMode && !isEditMode" class="wtPlateCalc wtPlateCard">
+            <div class="wtPlateCardHeader">
+              <span class="wtPlateCardHeaderLabel">{{ isPerSide ? `PER SIDE · ${currentBarWeight} ${weightUnit} BAR` : `TOTAL · ${currentBarWeight} ${weightUnit} BAR` }}</span>
+              <span v-if="plateDeltaLabel" class="wtPlateCardHeaderDelta">{{ plateDeltaLabel }}</span>
             </div>
             <div class="wtPlateGrid">
               <div v-for="denom in activeDenominations" :key="denom" class="wtPlateCol">
-                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" :aria-label="`Add ${denom}`">+{{ denom }}</button>
+                <button class="wtPlateBtn wtPlateBtnAdd" @click="addPlate(denom)" :aria-label="`Add ${denom} ${weightUnit}`">+{{ denom }}</button>
                 <div class="wtPlateCountBox" :class="{ wtPlateCountActive: plateCounts.get(denom) }">
                   <span class="wtPlateCountNum">{{ plateCounts.get(denom) || 0 }}</span>
                 </div>
-                <button class="wtPlateBtn wtPlateBtnRemove" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" :aria-label="`Remove ${denom}`">−{{ denom }}</button>
+                <button class="wtPlateBtn wtPlateBtnRemove" :class="{ wtPlateBtnRemoveDim: !currentPlates.includes(denom) }" @click="removePlate(denom)" :disabled="!currentPlates.includes(denom)" :aria-label="`Remove ${denom} ${weightUnit}`">−{{ denom }}</button>
               </div>
             </div>
           </div>
@@ -1726,16 +1706,6 @@ function loadPRTargetReps() {
   repsStr.value = String(prTargetReps.value)
 }
 
-function onWeightInputFocus() {
-  if (plateMode.value && !plateNumpadOverride.value) {
-    plateNumpadOverride.value = true
-    // Force inputmode update synchronously so iOS shows keyboard from this tap
-    if (weightInputEl.value) {
-      weightInputEl.value.inputMode = 'decimal'
-    }
-  }
-}
-
 const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   if (ex?.barWeight !== undefined) return ex.barWeight
@@ -1760,6 +1730,37 @@ const plateCounts = computed(() => {
   const counts = new Map<number, number>()
   for (const p of currentPlates.value) counts.set(p, (counts.get(p) || 0) + 1)
   return counts
+})
+
+/**
+ * "+1×5 vs last" / "−2×25 vs last" — the most significant change in plates
+ * compared to the previous set. Shown in the plate calc card header per
+ * screens/05-logset-platecalc.png. Returns null when no previous set exists
+ * or plates are unchanged.
+ *
+ * Heuristic: pick the denomination with the largest |Δ × denom| weight
+ * impact. Ties go to the larger denomination since that's typically the
+ * meaningful change (e.g. swapping a 25 for a 10+10+5 is "+1×10").
+ */
+const plateDeltaLabel = computed<string | null>(() => {
+  if (!plateMode.value) return null
+  if (previousPlates.value.length === 0 && currentPlates.value.length === 0) return null
+  const prevCounts = new Map<number, number>()
+  for (const p of previousPlates.value) prevCounts.set(p, (prevCounts.get(p) || 0) + 1)
+  const curCounts = plateCounts.value
+  const allDenoms = new Set<number>([...prevCounts.keys(), ...curCounts.keys()])
+  let best: { denom: number; delta: number } | null = null
+  for (const denom of allDenoms) {
+    const delta = (curCounts.get(denom) || 0) - (prevCounts.get(denom) || 0)
+    if (delta === 0) continue
+    const impact = Math.abs(delta) * denom
+    if (!best || impact > Math.abs(best.delta) * best.denom || (impact === Math.abs(best.delta) * best.denom && denom > best.denom)) {
+      best = { denom, delta }
+    }
+  }
+  if (!best) return null
+  const sign = best.delta > 0 ? '+' : '−'
+  return `${sign}${Math.abs(best.delta)}×${best.denom} vs last`
 })
 
 const plateWeightLbs = computed(() => {
