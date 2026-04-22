@@ -1464,5 +1464,67 @@ describe('WorkoutTracker', () => {
 
       expect(mockReorderExercise).not.toHaveBeenCalled()
     })
+
+    /**
+     * Regression for #383 — the tag-filter gate above had a search-shaped
+     * hole in it. `v-for` indexes into `filteredExercises`, but
+     * `store.reorderExercise` splices the unfiltered `exercises` array,
+     * so a drag during search silently moved unrelated rows at the
+     * filtered index's position in the full list (e.g. dragging filtered
+     * row 0 would reorder absolute row 0 — often an exercise the user
+     * couldn't see). Gesture is now blocked whenever the list is
+     * filtered, matching the tag-filter case.
+     */
+    it('does not arm a long-press while a search query is active (#383)', async () => {
+      // Need ≥5 exercises for the search bar to render.
+      vi.useRealTimers()
+      exercises = [
+        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('press') // filters to 2 rows
+
+      // Sanity: list is actually filtered before we try to drag.
+      expect(wrapper.findAll('.wtExerciseItem').length).toBe(2)
+
+      vi.useFakeTimers()
+      const items = wrapper.findAll('.wtExerciseItem')
+      dispatchTouch(items[0].element, 'touchstart', 20, 100)
+      vi.advanceTimersByTime(LONG_PRESS_MS + 100)
+      // Drive a drop gesture document-wide too, to make sure even if the
+      // timer somehow fired, no reorder call escapes the gate.
+      const end = new Event('touchend', { bubbles: true, cancelable: true })
+      Object.defineProperty(end, 'touches', { value: [] })
+      document.dispatchEvent(end)
+      dispatchTouch(items[0].element, 'touchend')
+
+      expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    /**
+     * Visual affordance — handle must be rendered in the "disabled" state
+     * so users see why reorder doesn't respond. Parallel to the existing
+     * tag-filter visual test.
+     */
+    it('disables drag handles while a search query is active (#383)', async () => {
+      vi.useRealTimers()
+      exercises = [
+        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('press')
+
+      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
+    })
   })
 })
