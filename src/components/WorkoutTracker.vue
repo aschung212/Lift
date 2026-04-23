@@ -71,8 +71,8 @@
         :key="exercise.id"
         class="wtExerciseItem"
         :class="{
-          'wt-dragging': activeTagFilters.length === 0 && dragState.dragging && dragState.fromIndex === index,
-          'wt-drag-over': activeTagFilters.length === 0 && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
+          'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
+          'wt-drag-over': !isFilteringActive && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
         }"
         :data-index="index"
         @touchstart="onItemTouchStart(index, $event)"
@@ -84,7 +84,7 @@
       >
         <div class="wtExerciseHeader">
           <span
-            :class="['wtDragHandle', { wtDragHandleDisabled: activeTagFilters.length > 0 }]"
+            :class="['wtDragHandle', { wtDragHandleDisabled: isFilteringActive }]"
             aria-hidden="true"
           >⠿</span>
           <button
@@ -1243,6 +1243,22 @@ const filteredExercises = computed(() => {
   return result
 })
 
+/**
+ * True when the list is showing a filtered subset of exercises (either a
+ * text search query or one-or-more active tag filters). Long-press
+ * reorder is disabled in this state because `v-for` gives us indices
+ * into the filtered subset, and those indices are meaningless to the
+ * store, which splices the unfiltered `exercises` array. Dropping a
+ * filtered-index 0 row would move the absolute-index 0 row — usually
+ * a completely different exercise the user can't even see.
+ *
+ * Fixes: reordering while searching silently scrambled unrelated rows
+ * (previously only the tag-filter path was gated).
+ */
+const isFilteringActive = computed(() =>
+  activeTagFilters.value.length > 0 || searchQuery.value.trim() !== ''
+)
+
 /** Total exercise count, shown in the "Workouts" header stats. */
 const totalExercises = computed(() => store.exercises.length)
 
@@ -1430,7 +1446,10 @@ function clearLongPress() {
 }
 
 function shouldIgnorePressTarget(event: TouchEvent | MouseEvent): boolean {
-  if (activeTagFilters.value.length > 0) return true
+  // Block reorder whenever the list is filtered (tag filter OR search).
+  // Template indices are into the filtered subset, but the store splices
+  // the unfiltered array — a drop under a filter corrupts unrelated rows.
+  if (isFilteringActive.value) return true
   const target = event.target as HTMLElement | null
   // Never start a drag when pressing the "+ Log" affordance.
   if (target?.closest('.wtExerciseLogBtn')) return true
