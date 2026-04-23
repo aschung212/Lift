@@ -250,25 +250,29 @@ describe('calculateBest1RM', () => {
   })
 
   it('returns the highest estimated1RM within 6 months', () => {
+    const now = Date.now()
+    const daysAgo = (d: number) => new Date(now - d * 86_400_000).toISOString()
     const sets = [
-      makeSet({ estimated1RM: 100, date: '2026-03-01T10:00:00Z' }),
-      makeSet({ estimated1RM: 120, date: '2026-03-15T10:00:00Z' }),
-      makeSet({ estimated1RM: 110, date: '2026-04-01T10:00:00Z' }),
+      makeSet({ estimated1RM: 100, date: daysAgo(60) }),
+      makeSet({ estimated1RM: 120, date: daysAgo(30) }),
+      makeSet({ estimated1RM: 110, date: daysAgo(7) }),
     ]
     expect(calculateBest1RM(sets)).toBe(120)
   })
 
   it('excludes sets older than 6 months', () => {
+    const now = Date.now()
+    const daysAgo = (d: number) => new Date(now - d * 86_400_000).toISOString()
     const sets = [
-      makeSet({ estimated1RM: 200, date: '2025-01-01T10:00:00Z' }),
-      makeSet({ estimated1RM: 100, date: '2026-03-01T10:00:00Z' }),
+      makeSet({ estimated1RM: 200, date: daysAgo(365) }),
+      makeSet({ estimated1RM: 100, date: daysAgo(30) }),
     ]
     expect(calculateBest1RM(sets)).toBe(100)
   })
 
   it('returns null when all sets are outside the window', () => {
     const sets = [
-      makeSet({ estimated1RM: 200, date: '2024-01-01T10:00:00Z' }),
+      makeSet({ estimated1RM: 200, date: new Date(Date.now() - 400 * 86_400_000).toISOString() }),
     ]
     expect(calculateBest1RM(sets)).toBeNull()
   })
@@ -320,17 +324,19 @@ describe('calculateBest1RM', () => {
     })
 
     it('null sinceDate falls back to windowMonths behavior', () => {
+      const now = Date.now()
+      const daysAgo = (d: number) => new Date(now - d * 86_400_000).toISOString()
       const sets = [
-        makeSet({ estimated1RM: 300, date: '2025-01-01T10:00:00Z' }),
-        makeSet({ estimated1RM: 100, date: '2026-03-01T10:00:00Z' }),
+        makeSet({ estimated1RM: 300, date: daysAgo(365) }),
+        makeSet({ estimated1RM: 100, date: daysAgo(30) }),
       ]
-      // null → rolling window; 2025 set is outside default 6mo window
+      // null → rolling window; old set is outside default 6mo window
       expect(calculateBest1RM(sets, { sinceDate: null })).toBe(100)
     })
 
     it('malformed sinceDate falls back to windowMonths', () => {
       const sets = [
-        makeSet({ estimated1RM: 100, date: '2026-03-01T10:00:00Z' }),
+        makeSet({ estimated1RM: 100, date: new Date(Date.now() - 30 * 86_400_000).toISOString() }),
       ]
       expect(calculateBest1RM(sets, { sinceDate: 'not-a-date' })).toBe(100)
     })
