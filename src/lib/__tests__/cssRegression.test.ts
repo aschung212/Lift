@@ -397,4 +397,40 @@ describe('CSS regression tests', () => {
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
   })
+
+  describe('.wtEmptyCta empty-state CTA button', () => {
+    const lines = getRuleLines('.wtEmptyCta')
+
+    it('has min-height: 44px for iOS touch target compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('uses accent background color', () => {
+      expect(lines.some(l => l.includes('--accent'))).toBe(true)
+    })
+
+    it('uses text-on-accent for contrast', () => {
+      expect(lines.some(l => l.includes('--text-on-accent'))).toBe(true)
+    })
+
+    it('has border-radius for rounded shape', () => {
+      expect(lines.some(l => l.includes('border-radius'))).toBe(true)
+    })
+  })
+
+  describe('.wtEmptyState empty-state container', () => {
+    const lines = getRuleLines('.wtEmptyState')
+
+    it('uses flexbox column layout', () => {
+      expect(lines.some(l => l.includes('flex-direction') && l.includes('column'))).toBe(true)
+    })
+
+    it('centers content', () => {
+      expect(lines.some(l => l.includes('align-items') && l.includes('center'))).toBe(true)
+    })
+
+    it('centers text', () => {
+      expect(lines.some(l => l.includes('text-align') && l.includes('center'))).toBe(true)
+    })
+  })
 })

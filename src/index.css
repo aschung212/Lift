@@ -2018,6 +2018,57 @@ html.theme-fading .settingsSheet {
   line-height: 1.6;
 }
 
+/* ─── Enhanced empty state (first-use CTA) ─────────────────────────────── */
+
+.wtEmptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px 40px;
+  text-align: center;
+  gap: 8px;
+}
+
+.wtEmptyIcon {
+  color: var(--accent);
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+.wtEmptyTitle {
+  font-size: var(--font-title3);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.wtEmptySubtitle {
+  font-size: var(--font-subhead);
+  color: var(--text-secondary);
+  margin: 0 0 16px;
+}
+
+.wtEmptyCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--font-callout);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.15s ease;
+}
+
+.wtEmptyCta:active {
+  opacity: 0.7;
+}
+
 /* ─── Exercise list ─────────────────────────────────────────────────────── */
 
 /* ─── Timeline view ─────────────────────────────────────────────────────── */

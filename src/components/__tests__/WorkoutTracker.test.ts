@@ -160,9 +160,29 @@ describe('WorkoutTracker', () => {
   })
 
   describe('empty state', () => {
-    it('shows empty message when no exercises exist', () => {
+    it('shows enhanced empty state card when no exercises exist', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
+      expect(wrapper.find('.wtEmptyState').exists()).toBe(true)
+    })
+
+    it('empty state has title, subtitle, and CTA button', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtEmptyTitle').text()).toBe('Track your lifts')
+      expect(wrapper.find('.wtEmptySubtitle').text()).toBe('Log sets, hit PRs, earn XP.')
+      expect(wrapper.find('.wtEmptyCta').text()).toContain('Add Your First Exercise')
+    })
+
+    it('empty state CTA button has 44px min touch target', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtEmptyCta').exists()).toBe(true)
+      // CSS enforces min-height: 44px — structural test
+    })
+
+    it('empty state has decorative icon', () => {
+      const wrapper = mountTracker()
+      const icon = wrapper.find('.wtEmptyIcon')
+      expect(icon.exists()).toBe(true)
+      expect(icon.attributes('aria-hidden')).toBe('true')
     })
 
     it('renders the Workouts large title', () => {

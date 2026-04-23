@@ -56,9 +56,19 @@
       </div>
     </template>
 
-    <p v-if="store.exercises.length === 0" class="wtEmpty">
-      No exercises yet. Hit "+ New Exercise" to add your first one.
-    </p>
+    <div v-if="store.exercises.length === 0" class="wtEmptyState">
+      <div class="wtEmptyIcon" aria-hidden="true">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6.5 6.5h11v11h-11z" /><path d="M6.5 2v4.5M17.5 2v4.5M2 6.5h4.5M2 17.5h4.5M17.5 22v-4.5M6.5 22v-4.5M22 17.5h-4.5M22 6.5h-4.5" />
+        </svg>
+      </div>
+      <p class="wtEmptyTitle">Track your lifts</p>
+      <p class="wtEmptySubtitle">Log sets, hit PRs, earn XP.</p>
+      <button class="wtEmptyCta" @click="openNewExerciseModal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Your First Exercise
+      </button>
+    </div>
 
     <template v-else-if="listView === 'exercises'">
     <p v-if="filteredExercises.length === 0" class="wtEmpty">
