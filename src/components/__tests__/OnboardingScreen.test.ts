@@ -230,6 +230,60 @@ describe('OnboardingScreen', () => {
     })
   })
 
+  describe('step indicator dots', () => {
+    it('renders 4 step dots', () => {
+      const dots = wrapper.findAll('.obDot')
+      expect(dots.length).toBe(4)
+    })
+
+    it('first dot is active on setup step', () => {
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[0].classes()).toContain('obDotActive')
+      expect(dots[1].classes()).not.toContain('obDotActive')
+      expect(dots[2].classes()).not.toContain('obDotActive')
+      expect(dots[3].classes()).not.toContain('obDotActive')
+    })
+
+    it('second dot is active on explainer step', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[0].classes()).not.toContain('obDotActive')
+      expect(dots[1].classes()).toContain('obDotActive')
+    })
+
+    it('third dot is active on starter pick step', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.find('.spfPrimary').trigger('click') // → pick
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[2].classes()).toContain('obDotActive')
+    })
+
+    it('fourth dot is active on weekly goal step', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.find('.spfPrimary').trigger('click') // → pick
+      await wrapper.findAll('.spfCard')[0].trigger('click') // select Fire
+      await wrapper.findAll('.spfPrimary').at(-1)!.trigger('click') // → goal
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[3].classes()).toContain('obDotActive')
+    })
+
+    it('has progressbar role with correct aria attributes', () => {
+      const dotsContainer = wrapper.find('.obDots')
+      expect(dotsContainer.attributes('role')).toBe('progressbar')
+      expect(dotsContainer.attributes('aria-valuenow')).toBe('1')
+      expect(dotsContainer.attributes('aria-valuemin')).toBe('1')
+      expect(dotsContainer.attributes('aria-valuemax')).toBe('4')
+      expect(dotsContainer.attributes('aria-label')).toBe('Step 1 of 4')
+    })
+
+    it('aria-label updates as steps progress', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      const dotsContainer = wrapper.find('.obDots')
+      expect(dotsContainer.attributes('aria-valuenow')).toBe('2')
+      expect(dotsContainer.attributes('aria-label')).toBe('Step 2 of 4')
+    })
+  })
+
   describe('starter theme picker', () => {
     async function goToStarterPicker() {
       await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
