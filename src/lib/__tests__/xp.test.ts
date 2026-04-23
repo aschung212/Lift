@@ -274,9 +274,12 @@ describe('calculateBest1RM', () => {
   })
 
   it('respects custom window', () => {
+    const now = new Date()
+    const insideWindow = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString()
+    const outsideWindow = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString()
     const sets = [
-      makeSet({ estimated1RM: 150, date: '2026-02-01T10:00:00Z' }),
-      makeSet({ estimated1RM: 100, date: '2026-03-20T10:00:00Z' }),
+      makeSet({ estimated1RM: 150, date: outsideWindow }),
+      makeSet({ estimated1RM: 100, date: insideWindow }),
     ]
     expect(calculateBest1RM(sets, { windowMonths: 1 })).toBe(100)
   })
