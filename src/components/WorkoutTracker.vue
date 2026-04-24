@@ -976,6 +976,7 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
+import { useWakeLock } from '../composables/useWakeLock'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
@@ -991,6 +992,7 @@ const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
+const { acquire: acquireWakeLock, release: releaseWakeLock } = useWakeLock()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
 
@@ -2135,6 +2137,7 @@ function startRestTimer() {
   timerPaused.value = false
   timerSeconds.value = restDuration.value
   timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
+  acquireWakeLock()
   startInterval()
 }
 
@@ -2154,6 +2157,7 @@ function stopTimer() {
   timerSeconds.value = 0
   editingPresets.value = false
   newPresetValue.value = null
+  releaseWakeLock()
   setTimeout(() => { timerStopping.value = false }, 0)
 }
 
