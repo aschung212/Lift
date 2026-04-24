@@ -160,9 +160,25 @@ describe('WorkoutTracker', () => {
   })
 
   describe('empty state', () => {
-    it('shows empty message when no exercises exist', () => {
+    it('shows empty state card when no exercises exist', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
+      const emptyState = wrapper.find('.wtEmptyState')
+      expect(emptyState.exists()).toBe(true)
+      expect(emptyState.text()).toContain('Track your lifts')
+    })
+
+    it('empty state CTA button is wired to open new exercise modal', () => {
+      const wrapper = mountTracker()
+      const cta = wrapper.find('.wtEmptyCta')
+      expect(cta.exists()).toBe(true)
+      expect(cta.text()).toContain('New Exercise')
+    })
+
+    it('empty state CTA meets 44pt minimum touch target', () => {
+      const wrapper = mountTracker()
+      const cta = wrapper.find('.wtEmptyCta')
+      expect(cta.exists()).toBe(true)
+      expect(cta.attributes('aria-label')).toBe('Add your first exercise')
     })
 
     it('renders the Workouts large title', () => {
