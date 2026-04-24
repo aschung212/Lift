@@ -7,6 +7,11 @@ const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../stores/preferences', () => ({
+  usePreferencesStore: () => ({
+    experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
+  }),
+}))
 vi.mock('../../stores/progression', () => ({
   useProgressionStore: () => ({
     progressionEnabled: false,

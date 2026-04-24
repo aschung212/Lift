@@ -994,6 +994,12 @@ const { impactLight, notifySuccess } = useHaptics()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
 
+// Screen Wake Lock — keep display on during active workouts
+import { useWakeLock } from '../composables/useWakeLock'
+import { usePreferencesStore } from '../stores/preferences'
+const _prefs = usePreferencesStore()
+const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
+
 // Filter sets to those on/after the user-set PR baseline.
 // When no baseline is set, returns sets unchanged (legacy all-time behavior).
 function filterSetsSinceBaseline<T extends { date: string }>(sets: T[]): T[] {
@@ -2037,6 +2043,10 @@ const timerSeconds = ref(0)
 const timerAnnouncement = ref('')
 const restDuration = ref(parseInt(localStorage.getItem('rest-duration') ?? '90') || 90)
 let timerIntervalId: ReturnType<typeof setInterval> | null = null
+
+// Keep screen awake while the rest timer is running or the log-set modal is open
+const wakeLockNeeded = computed(() => timerActive.value || showModal.value)
+useWakeLock(wakeLockNeeded, wakeLockEnabled)
 
 const DEFAULT_WARNING_OPTIONS = [3, 5, 10, 15, 30]
 const warningOptions = ref<number[]>(loadWarningOptions())
