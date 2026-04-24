@@ -71,6 +71,11 @@
         </div>
       </div>
 
+      <!-- First-use empty state (no workout data at all) -->
+      <p v-if="!hasAnyData && !selectedDay" class="wtEmpty calEmptyState">
+        Log your first workout on the Workouts tab to see it here.
+      </p>
+
       <!-- Selected day detail -->
       <div v-if="selectedDay" class="calDetail">
         <div class="calDetailHeader">
@@ -189,6 +194,11 @@
           </div>
         </div>
       </div>
+
+      <!-- First-use empty state (no workout data at all) -->
+      <p v-if="!hasAnyData" class="wtEmpty calEmptyState">
+        Log your first workout on the Workouts tab to see it here.
+      </p>
 
       <MuscleGroupRecovery
         v-if="hasRecoveryData"
@@ -346,6 +356,11 @@ function toLocalDateStr(d: Date) {
 }
 
 const todayStr = toLocalDateStr(new Date())
+
+// True when the user has zero sets across all exercises (brand-new account)
+const hasAnyData = computed(() =>
+  store.exercises.some(e => e.sets.length > 0)
+)
 
 // Map YYYY-MM-DD → unique exercise names (respects tag filter)
 const trainingMap = computed(() => {

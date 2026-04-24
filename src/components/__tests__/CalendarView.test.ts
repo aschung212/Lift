@@ -45,6 +45,8 @@ vi.mock('../../stores/workout', () => ({
     getExercisePR,
     logSet: vi.fn(),
     addExercise: vi.fn(),
+    tagRecoveryDays: {},
+    tagRecoveryExcluded: [],
   })
 }))
 
@@ -201,6 +203,33 @@ describe('CalendarView', () => {
       expect(wrapper.find('.calDetailEmpty').text()).toContain('No sets logged')
     })
 
+    it('shows first-use empty state when no exercises have sets (month view)', () => {
+      exercises = []
+      const wrapper = mountCalendar()
+      const emptyState = wrapper.find('.calEmptyState')
+      expect(emptyState.exists()).toBe(true)
+      expect(emptyState.text()).toContain('Log your first workout')
+      expect(emptyState.text()).toContain('Workouts tab')
+    })
+
+    it('hides first-use empty state when exercises have sets', () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+      const wrapper = mountCalendar()
+      expect(wrapper.find('.calEmptyState').exists()).toBe(false)
+    })
+
+    it('hides first-use empty state when a day is selected', async () => {
+      exercises = []
+      const wrapper = mountCalendar()
+      expect(wrapper.find('.calEmptyState').exists()).toBe(true)
+      const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
+      await inMonthCells[0].trigger('click')
+      // When a day is selected, the per-day detail takes over
+      expect(wrapper.find('.calEmptyState').exists()).toBe(false)
+    })
+
     it('deselects day when clicked again', async () => {
       const wrapper = mountCalendar()
       const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
@@ -332,6 +361,26 @@ describe('CalendarView', () => {
       const initialLabel = wrapper.find('.calNavLabel').text()
       await wrapper.findAll('.calNavBtn')[0].trigger('click')
       expect(wrapper.find('.calNavLabel').text()).not.toBe(initialLabel)
+    })
+
+    it('shows first-use empty state when no exercises have sets (week view)', async () => {
+      exercises = []
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      const emptyState = wrapper.find('.calEmptyState')
+      expect(emptyState.exists()).toBe(true)
+      expect(emptyState.text()).toContain('Log your first workout')
+    })
+
+    it('hides first-use empty state in week view when exercises have sets', async () => {
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      exercises = makeExercises([dateStr])
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+
+      expect(wrapper.find('.calEmptyState').exists()).toBe(false)
     })
   })
 
