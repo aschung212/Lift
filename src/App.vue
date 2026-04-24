@@ -234,6 +234,11 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+              <div class="settingsRow">
+                <button class="settingsRevealBtn" @click="confirmReplayIntro">
+                  Replay intro
+                </button>
+              </div>
             </div>
 
             <div class="settingsGroup">
@@ -1217,6 +1222,17 @@ const resetConfirmVisible = ref(false)
 
 function confirmResetProgress() {
   resetConfirmVisible.value = true
+}
+
+function confirmReplayIntro() {
+  showConfirm(
+    'Replay the onboarding intro? Your exercises, data, and progression are kept.',
+    () => {
+      localStorage.removeItem('onboarding-complete')
+      logEvent('replay_intro')
+      location.reload()
+    }
+  )
 }
 
 const starterPickerVisible = ref(false)
