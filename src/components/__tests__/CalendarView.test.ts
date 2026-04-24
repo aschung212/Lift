@@ -482,7 +482,7 @@ describe('CalendarView', () => {
       expect(wrapper.find('#exercise-picker-title').text()).toBe('Choose Exercise')
     })
 
-    it('week view log buttons have aria-labels (LIFT-93)', async () => {
+    it('week view log buttons have aria-labels', async () => {
       const wrapper = mountCalendar()
       await wrapper.findAll('.calToggleBtn')[1].trigger('click')
 
