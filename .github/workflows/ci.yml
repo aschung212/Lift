@@ -101,7 +101,7 @@ jobs:
   # shell). See GitHub docs: "Understanding the risk of script injections".
   notify-deploy:
     runs-on: ubuntu-latest
-    needs: [build-and-test, migrate-db]
+    needs: [lint, typecheck, build-and-test, migrate-db]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
@@ -119,7 +119,7 @@ jobs:
   # script-injection guard as `notify-deploy` above.
   notify-failure:
     runs-on: ubuntu-latest
-    needs: [build-and-test, migrate-db]
+    needs: [lint, typecheck, build-and-test, migrate-db]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
