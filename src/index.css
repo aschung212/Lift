@@ -6350,12 +6350,6 @@ html.theme-fading .settingsSheet {
   margin: 0 0 12px;
 }
 
-.legalUpdated {
-  font-size: var(--font-caption1);
-  color: var(--text-secondary);
-  margin-bottom: 16px !important;
-}
-
 .legalH4 {
   font-size: var(--font-subhead);
   font-weight: 600;

@@ -551,7 +551,6 @@
             <div class="legalBody">
               <!-- Privacy Policy -->
               <template v-if="legalView === 'privacy'">
-                <p class="legalUpdated">Last updated: March 31, 2026</p>
                 <h4 class="legalH4">What We Collect</h4>
                 <p>Lift collects only the data you explicitly enter: exercises, sets, reps, weights, and bodyweight entries. If you create an account, we store your email address for authentication.</p>
                 <h4 class="legalH4">How Data Is Stored</h4>
@@ -570,7 +569,6 @@
               </template>
               <!-- Terms of Service -->
               <template v-else>
-                <p class="legalUpdated">Last updated: March 31, 2026</p>
                 <h4 class="legalH4">Acceptance</h4>
                 <p>By using Lift, you agree to these terms. If you do not agree, please do not use the app.</p>
                 <h4 class="legalH4">Description</h4>

@@ -188,7 +188,7 @@ describe('CSS regression tests', () => {
       })
     })
 
-    describe('.mgRow in MuscleGroupChart (LIFT-97)', () => {
+    describe('.mgRow in MuscleGroupChart', () => {
       const style = getVueStyleBlock('MuscleGroupChart.vue')
       const lines = getRuleLines('.mgRow', style)
 
@@ -198,7 +198,7 @@ describe('CSS regression tests', () => {
     })
   })
 
-  describe('.wtTimerEditResetBtn touch target (LIFT-79)', () => {
+  describe('.wtTimerEditResetBtn touch target', () => {
     const lines = getRuleLines('.wtTimerEditResetBtn')
 
     it('has min-height: 44px for iOS HIG compliance', () => {
@@ -213,7 +213,7 @@ describe('CSS regression tests', () => {
     })
   })
 
-  describe('.wtTimerPresetSm touch target (LIFT-79)', () => {
+  describe('.wtTimerPresetSm touch target', () => {
     const lines = getRuleLines('.wtTimerPresetSm')
 
     it('has min-height: 44px for iOS HIG compliance', () => {
@@ -221,7 +221,7 @@ describe('CSS regression tests', () => {
     })
   })
 
-  describe('.wtTimerEditCountdown touch target (LIFT-79)', () => {
+  describe('.wtTimerEditCountdown touch target', () => {
     const lines = getRuleLines('.wtTimerEditCountdown')
 
     it('has min-height: 44px for iOS HIG compliance', () => {
@@ -229,7 +229,7 @@ describe('CSS regression tests', () => {
     })
   })
 
-  describe('brace balance (LIFT-252)', () => {
+  describe('brace balance', () => {
     // Regression: an extra closing brace in index.css caused a CSS minifier
     // warning ("unexpected }") that could silently drop rules in production.
     it('index.css has balanced braces', () => {
@@ -271,7 +271,7 @@ describe('CSS regression tests', () => {
     })
   })
 
-  describe('.srOnly screen-reader utility (LIFT-77)', () => {
+  describe('.srOnly screen-reader utility', () => {
     it('has position: absolute and clip to hide visually', () => {
       const lines = getRuleLines('.srOnly')
       expect(lines.length).toBeGreaterThan(0)

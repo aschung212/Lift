@@ -445,7 +445,7 @@ describe('Progression Integration', () => {
     })
   })
 
-  // ── Startup streak evaluation (LIFT-142) ──────────────────────
+  // ── Startup streak evaluation ──────────────────────────────────
   describe('startup streak evaluation', () => {
     it('evaluatePendingWeeks catches up missed weeks on startup', () => {
       const store = useProgressionStore()
