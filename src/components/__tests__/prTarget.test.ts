@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { epley } from '../../lib/epley'
 
 /**
  * Tests for the inverse Epley formulas used in PR target calculations.
@@ -7,11 +8,6 @@ import { describe, it, expect } from 'vitest'
  * Inverse for weight: weight = e1RM / (1 + reps / 30)
  * Inverse for reps: reps = 30 * (e1RM / weight - 1)
  */
-
-function epley(weight: number, reps: number): number {
-  if (reps === 1) return Math.round(weight)
-  return Math.round(weight * (1 + reps / 30))
-}
 
 function prTargetWeight(currentPR: number, reps: number): number {
   const target = currentPR + 1

@@ -6,6 +6,7 @@ import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
+import { epley } from '../lib/epley'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -40,11 +41,6 @@ export interface OverloadSuggestion {
   weight: number
   reps: number
   reason: string
-}
-
-function epley(weight: number, reps: number): number {
-  if (reps === 1) return Math.round(weight)
-  return Math.round(weight * (1 + reps / 30))
 }
 
 /**
