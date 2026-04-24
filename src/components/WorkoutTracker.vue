@@ -978,6 +978,7 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useWakeLock } from '../composables/useWakeLock'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
@@ -993,6 +994,7 @@ const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayW
 const { impactLight, notifySuccess } = useHaptics()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+const { startHolding: acquireWakeLock, stopHolding: releaseWakeLock } = useWakeLock()
 
 // Filter sets to those on/after the user-set PR baseline.
 // When no baseline is set, returns sets unchanged (legacy all-time behavior).
@@ -2136,6 +2138,7 @@ function startRestTimer() {
   timerSeconds.value = restDuration.value
   timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
   startInterval()
+  acquireWakeLock()
 }
 
 function togglePause() {
@@ -2154,6 +2157,7 @@ function stopTimer() {
   timerSeconds.value = 0
   editingPresets.value = false
   newPresetValue.value = null
+  releaseWakeLock()
   setTimeout(() => { timerStopping.value = false }, 0)
 }
 
