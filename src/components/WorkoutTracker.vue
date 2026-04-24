@@ -976,6 +976,7 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
+import { useWakeLock } from '../composables/useWakeLock'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
@@ -991,6 +992,7 @@ const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
+const wakeLock = useWakeLock()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
 
@@ -2136,6 +2138,7 @@ function startRestTimer() {
   timerSeconds.value = restDuration.value
   timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
   startInterval()
+  wakeLock.acquire()
 }
 
 function togglePause() {
@@ -2154,6 +2157,7 @@ function stopTimer() {
   timerSeconds.value = 0
   editingPresets.value = false
   newPresetValue.value = null
+  wakeLock.release()
   setTimeout(() => { timerStopping.value = false }, 0)
 }
 
@@ -3032,8 +3036,20 @@ watch(
   () => showModal.value || !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value,
   (open) => { document.documentElement.classList.toggle('modal-open', open) },
 )
+// ── Re-acquire wake lock when page becomes visible again ─────
+// The Screen Wake Lock API automatically releases the lock when a
+// tab/app is hidden. Re-acquire it when the user returns while the
+// rest timer is still running.
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible' && timerActive.value && !timerPaused.value) {
+    wakeLock.acquire()
+  }
+}
+document.addEventListener('visibilitychange', handleVisibilityChange)
+
 onUnmounted(() => {
   stopTimer()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   document.documentElement.classList.remove('modal-open')
 })
 
