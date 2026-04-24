@@ -21,6 +21,29 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('manifest includes shortcuts for quick actions', () => {
+    it('has shortcuts array defined', () => {
+      expect(viteConfig).toContain('shortcuts: [')
+    })
+
+    it('has a workout shortcut with ?tab=workouts URL', () => {
+      expect(viteConfig).toContain("url: '/?tab=workouts'")
+    })
+
+    it('has a calendar shortcut with ?tab=calendar URL', () => {
+      expect(viteConfig).toContain("url: '/?tab=calendar'")
+    })
+
+    it('has a weight shortcut with ?tab=weight URL', () => {
+      expect(viteConfig).toContain("url: '/?tab=weight'")
+    })
+
+    it('shortcuts reference existing icon files', () => {
+      // All shortcuts use icon-192.png
+      expect(existsSync(resolve(publicDir, 'icon-192.png'))).toBe(true)
+    })
+  })
+
   describe('manifest includes screenshots for richer install UI', () => {
     it('has narrow (mobile) screenshot entries', () => {
       expect(viteConfig).toContain("form_factor: 'narrow'")
