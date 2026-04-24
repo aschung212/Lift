@@ -397,4 +397,38 @@ describe('CSS regression tests', () => {
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
   })
+
+  describe('.updateBanner (update-available banner)', () => {
+    const lines = getRuleLines('.updateBanner')
+
+    it('exists as a CSS rule', () => {
+      expect(lines.length).toBeGreaterThan(0)
+    })
+
+    it('uses safe-area-inset for bottom positioning', () => {
+      expect(lines.some(l => l.includes('safe-area-inset-bottom'))).toBe(true)
+    })
+
+    it('uses theme custom properties, not hardcoded colors', () => {
+      const colorProps = lines.filter(l =>
+        l.startsWith('background:') || l.startsWith('color:') || l.startsWith('border:')
+      )
+      for (const prop of colorProps) {
+        expect(prop).toMatch(/var\(--/)
+      }
+    })
+  })
+
+  describe('.updateBannerBtn', () => {
+    const lines = getRuleLines('.updateBannerBtn')
+
+    it('exists as a CSS rule', () => {
+      expect(lines.length).toBeGreaterThan(0)
+    })
+
+    it('meets 44pt minimum touch target', () => {
+      expect(lines.some(l => l.startsWith('min-height: 44px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('min-width: 44px'))).toBe(true)
+    })
+  })
 })

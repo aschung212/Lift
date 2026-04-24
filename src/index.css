@@ -6102,6 +6102,69 @@ html.theme-fading .settingsSheet {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ─── Update available banner ────────────────────────────────────────── */
+
+.updateBanner {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  z-index: 9998;
+  max-width: calc(100vw - 32px);
+}
+
+.updateBannerMsg {
+  color: var(--text-primary);
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.updateBannerBtn {
+  background: var(--accent);
+  border: none;
+  color: var(--bg-primary);
+  font-size: var(--font-footnote);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.15s;
+}
+
+.updateBannerBtn:active {
+  opacity: 0.8;
+}
+
+.updateBanner-enter-active {
+  animation: updateBannerIn 0.3s ease-out;
+}
+
+.updateBanner-leave-active {
+  animation: updateBannerOut 0.2s ease-in forwards;
+}
+
+@keyframes updateBannerIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes updateBannerOut {
+  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+  to   { opacity: 0; transform: translateX(-50%) translateY(16px); }
+}
+
 /* ─── Undo toast ─────────────────────────────────────────────────────── */
 
 .undoToastBar {

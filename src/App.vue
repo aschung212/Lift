@@ -509,6 +509,16 @@
       </Teleport>
     </template>
 
+    <!-- Update available banner -->
+    <Teleport to="body">
+      <Transition name="updateBanner">
+        <div v-if="updateAvailable" class="updateBanner" role="status" aria-live="polite">
+          <span class="updateBannerMsg">A new version is available</span>
+          <button class="updateBannerBtn" @click="applyUpdate">Update</button>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Undo toast -->
     <Teleport to="body">
       <Transition name="undoToast">
@@ -996,16 +1006,24 @@ function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
   }
 }
 
-// ── Service worker auto-update ──────────────────────────────────
+// ── Service worker update prompt ───────────────────────────────
+const updateAvailable = ref(false)
 let swRegistration: ServiceWorkerRegistration | undefined
-registerSW({
+const updateSW = registerSW({
   onRegisteredSW(_url, registration) {
     swRegistration = registration ?? undefined
     // Poll for updates every 10 minutes
     setInterval(() => registration?.update(), 10 * 60 * 1000)
   },
+  onNeedRefresh() {
+    updateAvailable.value = true
+  },
   onOfflineReady() { /* SW installed, app works offline */ },
 })
+
+function applyUpdate() {
+  updateSW(true)
+}
 
 // Check for SW update on visibility change (tab switch back, app resume)
 document.addEventListener('visibilitychange', () => {
@@ -1014,18 +1032,6 @@ document.addEventListener('visibilitychange', () => {
 
 // Expose a function components can call after meaningful user actions
 function checkForSWUpdate() { swRegistration?.update() }
-
-// Listen for the controlling SW changing — means auto-update activated.
-// On first visit currentController is null; skip reload to avoid a surprise refresh.
-// On subsequent changes a new SW took over — reload to pick up fresh chunk hashes
-// (without this, lazy-loaded tabs request old hashed filenames that no longer exist).
-let currentController = navigator.serviceWorker?.controller
-navigator.serviceWorker?.addEventListener('controllerchange', () => {
-  if (currentController) {
-    window.location.reload()
-  }
-  currentController = navigator.serviceWorker?.controller ?? null
-})
 
 // ── Onboarding ──────────────────────────────────────────────────
 const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))

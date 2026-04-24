@@ -38,4 +38,15 @@ describe('PWA manifest regression tests', () => {
       expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
     })
   })
+
+  describe('service worker uses prompt mode (not silent auto-update)', () => {
+    it('registerType is prompt, not autoUpdate', () => {
+      expect(viteConfig).toContain("registerType: 'prompt'")
+      expect(viteConfig).not.toContain("registerType: 'autoUpdate'")
+    })
+
+    it('does not use skipWaiting (user controls update timing)', () => {
+      expect(viteConfig).not.toMatch(/skipWaiting:\s*true/)
+    })
+  })
 })
