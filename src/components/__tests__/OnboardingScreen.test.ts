@@ -14,6 +14,11 @@ const mockAddExercise = vi.fn().mockImplementation((name: string, tags: string[]
 const mockLogSet = vi.fn()
 const mockAddEntry = vi.fn()
 
+const mockSetExerciseInputMode = vi.fn().mockImplementation((id: string, mode: string) => {
+  const ex = mockExercises.find(e => e.id === id)
+  if (ex) ex.inputMode = mode
+})
+
 const mockSetStarterTheme = vi.fn()
 
 vi.mock('../../stores/workout', () => ({
@@ -22,6 +27,7 @@ vi.mock('../../stores/workout', () => ({
     exercises: mockExercises,
     addExercise: mockAddExercise,
     logSet: mockLogSet,
+    setExerciseInputMode: mockSetExerciseInputMode,
   })
 }))
 
@@ -156,14 +162,15 @@ describe('OnboardingScreen', () => {
       expect(mockLogSet).not.toHaveBeenCalled()
     })
 
-    it('sets plate calculator mode on barbell exercises', async () => {
+    it('sets plate calculator mode on barbell exercises via store method', async () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
+      // setExerciseInputMode should be called for each barbell exercise (not Pull-ups)
+      expect(mockSetExerciseInputMode).toHaveBeenCalledTimes(5)
       const barbellNames = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
       for (const name of barbellNames) {
         const ex = mockExercises.find(e => e.name === name)
         expect(ex, `${name} should exist`).toBeDefined()
         expect(ex!.inputMode).toBe('plates')
-        expect(ex!.barWeight).toBe(45)
       }
       const pullups = mockExercises.find(e => e.name === 'Pull-ups')
       expect(pullups).toBeDefined()

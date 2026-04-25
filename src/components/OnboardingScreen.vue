@@ -448,7 +448,9 @@ function chooseStarter() {
   emit('started')
   for (const ex of STARTER_EXERCISES) {
     const id = workoutStore.addExercise(ex.name, ex.tags)
-    if (id) applyPlateConfig(id, ex)
+    if (id && ex.inputMode) {
+      workoutStore.setExerciseInputMode(id, ex.inputMode)
+    }
   }
   goToStarter(false)
 }
