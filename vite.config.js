@@ -45,6 +45,29 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: '/',
         categories: ['health', 'fitness', 'sports'],
+        shortcuts: [
+          {
+            name: 'Log Workout',
+            short_name: 'Workouts',
+            description: 'Jump to your workout tracker',
+            url: '/?tab=workouts',
+            icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'View Calendar',
+            short_name: 'Calendar',
+            description: 'See your training calendar',
+            url: '/?tab=calendar',
+            icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Track Weight',
+            short_name: 'Weight',
+            description: 'Log a bodyweight entry',
+            url: '/?tab=weight',
+            icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+        ],
         icons: [
           {
             src: 'icon-192.png',

@@ -1099,7 +1099,19 @@ function closeSettings() {
     settingsOpen.value = false
   }, { once: true })
 }
-const activeTab = ref(localStorage.getItem('active-tab') || 'workouts')
+// ── Tab initialization (supports PWA manifest shortcuts via ?tab= param) ──
+const VALID_TABS = ['workouts', 'calendar', 'weight'] as const
+const urlTab = new URLSearchParams(window.location.search).get('tab')
+const initialTab = urlTab && VALID_TABS.includes(urlTab as typeof VALID_TABS[number])
+  ? urlTab
+  : localStorage.getItem('active-tab') || 'workouts'
+const activeTab = ref(initialTab)
+// Clean up the query param so it doesn't persist on reload
+if (urlTab) {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('tab')
+  window.history.replaceState({}, '', url.pathname)
+}
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────
 const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeShortcuts } = useKeyboardShortcuts(() => [
