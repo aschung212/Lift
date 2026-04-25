@@ -13,14 +13,14 @@
       <div class="bsNumberRow">
         <div class="bsWeight">{{ summary.bestSet.weight }}</div>
         <div class="bsRepsBlock">
-          <div class="bsRepsLabel">LBS &times;</div>
+          <div class="bsRepsLabel">{{ summary.unitLabel.toUpperCase() }} &times;</div>
           <div class="bsReps">{{ summary.bestSet.reps }}</div>
         </div>
       </div>
     </div>
 
     <div class="bsFoot">
-      <div class="bsE1RM" v-if="summary.bestSet">~{{ summary.bestSet.e1RM }} lbs e1RM</div>
+      <div class="bsE1RM" v-if="summary.bestSet">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM</div>
       <div class="bsBrand">LIFT</div>
     </div>
   </div>

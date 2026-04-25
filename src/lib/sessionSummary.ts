@@ -33,15 +33,17 @@ export interface SessionSummary {
   rawDate: string             // YYYY-MM-DD (key used everywhere internally)
   date: string                // 'Tue, Apr 22' formatted for display
   duration: string            // 'Xh Ym' / 'Ym' / '—' when the span is unknowable
-  totalVolume: number         // Σ weight × reps for the date
+  totalVolume: number         // Σ weight × reps, in display units
   setsCompleted: number
   exercises: number           // distinct exercise count for the date
   prs: number                 // weight/e1RM PRs (one per exercise, deduped)
   repPRs: number              // rep-at-weight PRs (one per exercise, deduped)
   bestSet: SessionBestSet | null
   highlights: SessionHighlight[]
-  weekVolume: number[]        // 7 entries, Mon→Sun for the week containing rawDate
+  weekVolume: number[]        // 7 entries, Mon→Sun, in display units
   streak: number              // weeks
+  /** Display unit label for any weight field — 'lbs' or 'kg'. */
+  unitLabel: string
 }
 
 export interface SessionSummaryInput {
@@ -51,6 +53,14 @@ export interface SessionSummaryInput {
   xpPerSet?: Record<string, SetXPEntry | number>
   /** Weekly streak count from the progression store. */
   streakWeeks?: number
+  /**
+   * Convert the stored weight (always pounds) to the user's display units.
+   * Defaults to identity (no conversion). Pass `useTheme().displayWeight`
+   * when called from a Vue context so cards render the correct numbers.
+   */
+  toDisplayUnits?: (lbValue: number) => number
+  /** Label to surface alongside weight values. Defaults to 'lbs'. */
+  unitLabel?: string
 }
 
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
@@ -128,6 +138,13 @@ export function toLocalDateKey(iso: string): string {
 /** Pure: compute per-day session summary. */
 export function buildSessionSummary(input: SessionSummaryInput): SessionSummary {
   const { rawDate, exercises, xpPerSet, streakWeeks = 0 } = input
+  const toDisplay = input.toDisplayUnits ?? ((lb: number) => lb)
+  const unitLabel = input.unitLabel ?? 'lbs'
+  /** Round small per-set values nicely; volume gets the same treatment then string-formatted. */
+  const cv = (lb: number) => {
+    const v = toDisplay(lb)
+    return Number.isInteger(v) ? v : Math.round(v * 10) / 10
+  }
 
   const dayKey = rawDate
   const todaysByExercise = new Map<string, { ex: Exercise; sets: WorkoutSet[] }>()
@@ -193,19 +210,19 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
       highlights.push({
         exerciseId: ex.id,
         name: ex.name,
-        weight: topSet.weight,
+        weight: cv(topSet.weight),
         reps: topSet.reps,
-        e1RM: topSet.estimated1RM,
+        e1RM: cv(topSet.estimated1RM),
         badge,
-        volume: exVolume,
+        volume: cv(exVolume),
       })
       if (!bestSet || topSet.estimated1RM > bestSet.e1RM) {
         bestSet = {
           exerciseId: ex.id,
           name: ex.name,
-          weight: topSet.weight,
+          weight: cv(topSet.weight),
           reps: topSet.reps,
-          e1RM: topSet.estimated1RM,
+          e1RM: cv(topSet.estimated1RM),
           isPR: exerciseHasPR,
         }
       }
@@ -245,13 +262,13 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
       }
     }
   }
-  const weekVolume = week.map((d) => weekVolumeMap.get(d) ?? 0)
+  const weekVolume = week.map((d) => cv(weekVolumeMap.get(d) ?? 0))
 
   return {
     rawDate,
     date: formatSessionDate(rawDate),
     duration,
-    totalVolume,
+    totalVolume: cv(totalVolume),
     setsCompleted,
     exercises: todaysByExercise.size,
     prs: prCount,
@@ -260,5 +277,6 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     highlights,
     weekVolume,
     streak: streakWeeks,
+    unitLabel,
   }
 }

@@ -109,18 +109,20 @@ async function onSave() {
   else if (res.kind === 'error') lastResult.value = 'Save failed — try again'
 }
 
-function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
-}
+// Escape is owned by the parent (WorkoutCompleteView) — its single
+// listener routes Escape to either close-picker or close-view based on
+// whether the picker is open. Two listeners on window racing each other
+// to handle the same key is fragile with stopImmediatePropagation; one
+// owner is simpler and avoids closing the underlying summary by accident.
+//
+// `modal-open` is also owned by the parent. The picker doesn't toggle
+// it — doing so would re-enable background scroll the moment the picker
+// closes even though the parent is still up.
 onMounted(async () => {
-  document.documentElement.classList.add('modal-open')
-  window.addEventListener('keydown', onKey)
   await nextTick()
   if (overlayEl.value) focusTrap.activate(overlayEl.value)
 })
 onUnmounted(() => {
-  document.documentElement.classList.remove('modal-open')
-  window.removeEventListener('keydown', onKey)
   focusTrap.deactivate()
 })
 </script>

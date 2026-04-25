@@ -20,7 +20,7 @@
         <section class="wcHero">
           <div class="wcMicrolabel">Total volume</div>
           <div class="wcHeroNumber">{{ formattedVolume }}</div>
-          <div class="wcHeroUnit">lbs moved</div>
+          <div class="wcHeroUnit">{{ summary.unitLabel }} moved</div>
         </section>
 
         <section class="wcStatRow">
@@ -45,7 +45,7 @@
           </div>
           <div class="wcBestSetName">{{ summary.bestSet.name }}</div>
           <div class="wcBestSetWeight">{{ summary.bestSet.weight }} × {{ summary.bestSet.reps }}</div>
-          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} lbs e1RM</div>
+          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM</div>
         </section>
       </template>
 
@@ -77,6 +77,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useProgressionStore } from '../stores/progression'
 import { buildSessionSummary } from '../lib/sessionSummary'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useTheme } from '../composables/useTheme'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
@@ -92,6 +93,7 @@ const store = useWorkoutStore()
 const progression = useProgressionStore()
 const focusTrap = useFocusTrap()
 const overlayEl = ref<HTMLElement | null>(null)
+const { displayWeight, weightUnit } = useTheme()
 
 const summary = computed(() =>
   buildSessionSummary({
@@ -99,6 +101,8 @@ const summary = computed(() =>
     exercises: store.exercises,
     xpPerSet: progression.xpPerSet,
     streakWeeks: progression.streakWeeks,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value,
   })
 )
 
@@ -106,7 +110,13 @@ const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))
 
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (e.key !== 'Escape') return
+  // Single Escape owner for both layers — close the topmost open thing.
+  if (pickerOpen.value) {
+    pickerOpen.value = false
+    return
+  }
+  emit('close')
 }
 onMounted(async () => {
   document.documentElement.classList.add('modal-open')

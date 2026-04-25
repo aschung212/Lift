@@ -12,8 +12,6 @@
  */
 
 import { ref, createApp, h, type Component, nextTick } from 'vue'
-import { Share as CapacitorShare } from '@capacitor/share'
-import { isNative } from '../lib/platform'
 import {
   renderNodeToBlob,
   defaultShareFilename,
@@ -121,22 +119,14 @@ export function useWorkoutShare() {
       const filename = defaultShareFilename(req.summary.rawDate, req.format)
       const file = new File([blob], filename, { type: 'image/png' })
 
-      // Capacitor native: write blob to filesystem and hand the URL to the
-      // share plugin. Without filesystem the plugin cannot accept a Blob —
-      // for the v1 native path we fall through to download until the
-      // filesystem write is wired (out of scope for this PR).
-      if (isNative) {
-        try {
-          await CapacitorShare.share({
-            title: 'Lift workout',
-            text: `${req.summary.totalVolume.toLocaleString('en-US')} lbs · ${req.summary.setsCompleted} sets`,
-          })
-          return { kind: 'shared' }
-        } catch (err) {
-          // Fall through to web share / download
-          lastError.value = err as Error
-        }
-      }
+      // Capacitor native path needs `@capacitor/filesystem` to write the
+      // blob to disk so the iOS share plugin can attach the file URL.
+      // Until that's wired, sharing on a native build falls through to the
+      // Web Share API (works on the iOS Safari PWA which is the current
+      // install target) and then to download. Skipping the native sheet
+      // entirely is intentional — calling `CapacitorShare.share({ text })`
+      // alone would silently drop the rendered image, which is worse than
+      // surfacing the download.
 
       if (canWebShareFiles([file])) {
         try {
