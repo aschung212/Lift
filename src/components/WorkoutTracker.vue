@@ -2043,6 +2043,12 @@ const timerSeconds = ref(0)
 const timerAnnouncement = ref('')
 const restDuration = ref(parseInt(localStorage.getItem('rest-duration') ?? '90') || 90)
 let timerIntervalId: ReturnType<typeof setInterval> | null = null
+// Timestamp-based drift correction: store when the timer ends and
+// how many seconds remained when paused, so every tick recalculates
+// from wall-clock time instead of decrementing a counter.
+let timerEndTime = 0        // Date.now() ms when timer should reach 0
+let pausedRemaining = 0     // seconds left when paused
+let lastWarnedAt = -1       // last warning second we fired (avoid duplicate beeps)
 
 // Keep screen awake while the rest timer is running or the log-set modal is open
 const wakeLockNeeded = computed(() => timerActive.value || showModal.value)
@@ -2118,12 +2124,19 @@ function formatTimerAnnouncement(seconds: number): string {
 
 function startInterval() {
   if (timerIntervalId !== null) clearInterval(timerIntervalId)
+  lastWarnedAt = -1
   timerIntervalId = setInterval(() => {
     if (!timerPaused.value) {
-      timerSeconds.value--
-      if (warningTimes.value.includes(timerSeconds.value)) {
-        playWarningBeep(timerSeconds.value)
-        timerAnnouncement.value = `${formatTimerAnnouncement(timerSeconds.value)} remaining`
+      const remaining = Math.ceil((timerEndTime - Date.now()) / 1000)
+      const prev = timerSeconds.value
+      timerSeconds.value = Math.max(remaining, 0)
+      // Fire warnings for any thresholds we crossed (handles skipped seconds)
+      for (const w of warningTimes.value) {
+        if (w < prev && w >= timerSeconds.value && w !== lastWarnedAt) {
+          lastWarnedAt = w
+          playWarningBeep(w)
+          timerAnnouncement.value = `${formatTimerAnnouncement(w)} remaining`
+        }
       }
       if (timerSeconds.value <= 0) {
         playGoBeep()
@@ -2136,7 +2149,7 @@ function startInterval() {
         }
       }
     }
-  }, 1000)
+  }, 250)
 }
 
 function startRestTimer() {
@@ -2144,13 +2157,22 @@ function startRestTimer() {
   timerActive.value = true
   timerPaused.value = false
   timerSeconds.value = restDuration.value
+  timerEndTime = Date.now() + restDuration.value * 1000
   timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
   startInterval()
 }
 
 function togglePause() {
   ensureAudioCtx()
-  timerPaused.value = !timerPaused.value
+  if (!timerPaused.value) {
+    // Pausing: snapshot remaining seconds
+    pausedRemaining = Math.max(Math.ceil((timerEndTime - Date.now()) / 1000), 0)
+    timerPaused.value = true
+  } else {
+    // Resuming: recalculate end time from snapshot
+    timerEndTime = Date.now() + pausedRemaining * 1000
+    timerPaused.value = false
+  }
 }
 
 const timerStopping = ref(false)
@@ -2170,6 +2192,7 @@ function stopTimer() {
 function restartTimer() {
   ensureAudioCtx()
   timerSeconds.value = restDuration.value
+  timerEndTime = Date.now() + restDuration.value * 1000
   timerPaused.value = false
   startInterval()
 }
@@ -2245,6 +2268,7 @@ function setRestDuration(val: number) {
   restDuration.value = val
   localStorage.setItem('rest-duration', String(val))
   timerSeconds.value = val
+  timerEndTime = Date.now() + val * 1000
   timerPaused.value = false
   startInterval()
 }
@@ -2311,7 +2335,14 @@ function disableRestTimer() {
       timerActive.value = true
       timerPaused.value = wasPaused
       showModal.value = true
-      if (previousSeconds > 0) startInterval()
+      if (previousSeconds > 0) {
+        if (wasPaused) {
+          pausedRemaining = previousSeconds
+        } else {
+          timerEndTime = Date.now() + previousSeconds * 1000
+        }
+        startInterval()
+      }
     }
   }, () => { /* already disabled — no-op on commit */ })
 }
