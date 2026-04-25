@@ -57,6 +57,19 @@ describe('workout store', () => {
       expect(store.exercises).toHaveLength(1)
     })
 
+    it('sets inputMode when provided in options', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench Press', ['Push'], { inputMode: 'plates' })
+      expect(id).toBeTruthy()
+      expect(store.exercises[0].inputMode).toBe('plates')
+    })
+
+    it('does not set inputMode when not provided', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Pull-ups', ['Pull'])
+      expect(store.exercises[0].inputMode).toBeUndefined()
+    })
+
     it('persists to localStorage', () => {
       const store = useWorkoutStore()
       store.addExercise('Deadlift')

@@ -204,11 +204,33 @@ describe('OnboardingScreen', () => {
     it('chooseExplore passes sync:false to addExercise for sample data', async () => {
       mockAddExercise.mockReturnValue('mock-id')
       await wrapper.findAll('.obOption')[2].trigger('click')
-      // Every addExercise call in chooseExplore should include { sync: false }
+      // Every addExercise call in chooseExplore should include sync: false
       const exploreCalls = mockAddExercise.mock.calls
       for (const call of exploreCalls) {
-        expect(call[2]).toEqual({ sync: false })
+        expect(call[2]).toHaveProperty('sync', false)
       }
+    })
+
+    it('chooseExplore enables plate calculator on barbell sample exercises', async () => {
+      mockAddExercise.mockReturnValue('mock-id')
+      await wrapper.findAll('.obOption')[2].trigger('click')
+      const exploreCalls = mockAddExercise.mock.calls
+      const barbellExercises = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
+      for (const call of exploreCalls) {
+        const name = call[0] as string
+        if (barbellExercises.includes(name)) {
+          expect(call[2]).toHaveProperty('inputMode', 'plates')
+        }
+      }
+    })
+
+    it('chooseExplore does not enable plate calculator on bodyweight exercises', async () => {
+      mockAddExercise.mockReturnValue('mock-id')
+      await wrapper.findAll('.obOption')[2].trigger('click')
+      const exploreCalls = mockAddExercise.mock.calls
+      const pullUpsCall = exploreCalls.find((call: unknown[]) => call[0] === 'Pull-ups')
+      // Pull-ups should not have inputMode set
+      expect(pullUpsCall?.[2]).not.toHaveProperty('inputMode')
     })
 
     it('chooseStarter does NOT pass sync:false (starter data should sync)', async () => {

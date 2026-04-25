@@ -83,6 +83,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import type { ExerciseInputMode } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
 import { useTheme, type ThemeId } from '../composables/useTheme'
@@ -98,12 +99,12 @@ const { logEvent } = useAnalytics()
 const step = ref<'setup' | 'starter-flow'>('setup')
 let pendingSampleData = false
 
-const STARTER_EXERCISES = [
-  { name: 'Bench Press', tags: ['Push', 'Chest'] },
-  { name: 'Squat', tags: ['Legs'] },
-  { name: 'Deadlift', tags: ['Pull', 'Legs'] },
-  { name: 'Overhead Press', tags: ['Push', 'Shoulders'] },
-  { name: 'Barbell Row', tags: ['Pull', 'Back'] },
+const STARTER_EXERCISES: Array<{ name: string; tags: string[]; inputMode?: ExerciseInputMode }> = [
+  { name: 'Bench Press', tags: ['Push', 'Chest'], inputMode: 'plates' },
+  { name: 'Squat', tags: ['Legs'], inputMode: 'plates' },
+  { name: 'Deadlift', tags: ['Pull', 'Legs'], inputMode: 'plates' },
+  { name: 'Overhead Press', tags: ['Push', 'Shoulders'], inputMode: 'plates' },
+  { name: 'Barbell Row', tags: ['Pull', 'Back'], inputMode: 'plates' },
   { name: 'Pull-ups', tags: ['Pull', 'Back'] },
 ]
 
@@ -455,7 +456,8 @@ function chooseExplore() {
   // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
-    const id = workoutStore.addExercise(group.exercise, starter?.tags || [], noSync)
+    const opts = { sync: false, ...(starter?.inputMode ? { inputMode: starter.inputMode } : {}) }
+    const id = workoutStore.addExercise(group.exercise, starter?.tags || [], opts)
     if (!id) continue
     for (const set of group.sets) {
       workoutStore.logSet(id, set.weight, set.reps, set.date, noSync)
@@ -464,7 +466,8 @@ function chooseExplore() {
   // Add remaining starter exercises without sets
   for (const ex of STARTER_EXERCISES) {
     if (!SAMPLE_SETS.find(g => g.exercise === ex.name)) {
-      workoutStore.addExercise(ex.name, ex.tags, noSync)
+      const opts = { sync: false, ...(ex.inputMode ? { inputMode: ex.inputMode } : {}) }
+      workoutStore.addExercise(ex.name, ex.tags, opts)
     }
   }
   // Add sample bodyweight entries
