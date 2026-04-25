@@ -72,16 +72,64 @@ function downloadBlob(blob: Blob, filename: string): void {
  * Build a detached DOM container, mount the card into it, render to Blob,
  * unmount. Returns the Blob.
  */
+/**
+ * The list of theme custom properties consumed by share cards. Snapshotted
+ * from the live document at render time and inlined onto the offscreen
+ * host so theme variables resolve inside `html-to-image`'s cloned subtree
+ * (where the original `[data-theme="X"][data-mode="Y"]` selectors don't
+ * reliably match — the clone lives outside the original cascade).
+ */
+const THEME_VAR_NAMES = [
+  '--bg-primary',
+  '--bg-secondary',
+  '--bg-elevated',
+  '--bg-hover',
+  '--border',
+  '--border-strong',
+  '--text-primary',
+  '--text-secondary',
+  '--text-muted',
+  '--text-on-accent',
+  '--accent',
+  '--accent-hover',
+  '--accent-subtle',
+  '--pr',
+  '--pr-subtle',
+  '--mesh',
+  '--ff',
+  '--ff-display',
+  '--ff-mono',
+] as const
+
+function snapshotThemeVars(): string {
+  const root = getComputedStyle(document.documentElement)
+  const decls: string[] = []
+  for (const name of THEME_VAR_NAMES) {
+    const value = root.getPropertyValue(name).trim()
+    if (value) decls.push(`${name}:${value}`)
+  }
+  return decls.join(';')
+}
+
 async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
   const { width, height } = PREVIEW_SIZE[req.format]
   const host = document.createElement('div')
   // Offscreen but rendered: html-to-image needs the node in the DOM with real
-  // layout. Negative-position rather than display:none.
+  // layout. Inline the resolved theme variables onto the host so they survive
+  // html-to-image's clone-and-rehome step (the `[data-theme=…]` selectors
+  // don't reliably match in the cloned subtree, which leaves the rasterized
+  // image blank). Explicit `position: relative` on the inner provides the
+  // containing block for cards' absolute children.
   host.style.cssText =
     `position:absolute;left:-10000px;top:0;width:${width}px;height:${height}px;` +
-    'pointer-events:none;contain:layout paint;'
+    `pointer-events:none;` +
+    snapshotThemeVars()
   host.setAttribute('data-theme', req.theme)
   host.setAttribute('data-mode', req.mode)
+
+  const inner = document.createElement('div')
+  inner.style.cssText = `position:relative;width:${width}px;height:${height}px;`
+  host.appendChild(inner)
 
   document.body.appendChild(host)
   const app = createApp({
@@ -89,9 +137,9 @@ async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
   })
 
   try {
-    app.mount(host)
+    app.mount(inner)
     // Two ticks: first to flush mount, second to flush any computed/CSS
-    // recalculation triggered by the freshly-set data-theme/data-mode.
+    // recalculation triggered by the freshly-applied theme vars.
     await nextTick()
     await nextTick()
     return await renderNodeToBlob(host, { width, height, pixelRatio: EXPORT_PIXEL_RATIO })
