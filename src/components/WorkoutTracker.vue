@@ -8,6 +8,18 @@
         {{ totalExercises }} {{ totalExercises === 1 ? 'exercise' : 'exercises' }}
         · {{ prsThisWeek }} {{ prsThisWeek === 1 ? 'PR' : 'PRs' }} this week
       </p>
+      <button
+        v-if="setsLoggedToday > 0"
+        class="wtFinishWorkoutBtn"
+        @click="openWorkoutComplete"
+        aria-label="Finish workout and view today's summary"
+      >
+        <span class="wtFinishWorkoutLabel">Finish workout</span>
+        <span class="wtFinishWorkoutMeta">
+          {{ setsLoggedToday }} {{ setsLoggedToday === 1 ? 'set' : 'sets' }} today
+        </span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
     </header>
 
     <!-- View toggle (Exercises / Timeline) -->
@@ -959,11 +971,22 @@
       <span class="wtRestBarLabel">Start Rest Timer</span>
     </template>
   </button>
+
+  <Teleport to="body">
+    <WorkoutCompleteView
+      v-if="workoutCompleteDate"
+      :raw-date="workoutCompleteDate"
+      @close="workoutCompleteDate = null"
+    />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import { toLocalDateKey } from '../lib/sessionSummary'
+
+const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {
@@ -1267,6 +1290,26 @@ const isFilteringActive = computed(() =>
 
 /** Total exercise count, shown in the "Workouts" header stats. */
 const totalExercises = computed(() => store.exercises.length)
+
+/** Sets logged on the local "today" date — drives the Finish workout affordance. */
+const setsLoggedToday = computed(() => {
+  const today = todayISO()
+  let count = 0
+  for (const ex of store.exercises) {
+    for (const s of ex.sets) {
+      if (toLocalDateKey(s.date) === today) count++
+    }
+  }
+  return count
+})
+
+/** When non-null, renders the WorkoutCompleteView overlay for that date. */
+const workoutCompleteDate = ref<string | null>(null)
+function openWorkoutComplete() {
+  workoutCompleteDate.value = todayISO()
+  impactLight()
+  logEvent('workout_complete_view_opened', { sets: setsLoggedToday.value })
+}
 
 /** Exercises whose baseline-relative PR was achieved in the last 7 days. */
 const prsThisWeek = computed(() => {
@@ -1599,11 +1642,6 @@ function toggleShowAll(id: string) {
 function visibleSets(exercise: Exercise): WorkoutSet[] {
   const sorted = [...exercise.sets].sort((a, b) => b.date.slice(0, 10).localeCompare(a.date.slice(0, 10)))
   return showAllSets.value.has(exercise.id) ? sorted : sorted.slice(0, SET_LIMIT)
-}
-
-function toLocalDateKey(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 const groupedSets = computed(() => {
