@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="overlayEl"
     class="wcOverlay"
     role="dialog"
     aria-modal="true"
@@ -61,16 +62,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useProgressionStore } from '../stores/progression'
 import { buildSessionSummary } from '../lib/sessionSummary'
+import { useFocusTrap } from '../composables/useFocusTrap'
 
 const props = defineProps<{ rawDate: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const store = useWorkoutStore()
 const progression = useProgressionStore()
+const focusTrap = useFocusTrap()
+const overlayEl = ref<HTMLElement | null>(null)
 
 const summary = computed(() =>
   buildSessionSummary({
@@ -87,13 +91,16 @@ const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString(
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
-onMounted(() => {
+onMounted(async () => {
   document.documentElement.classList.add('modal-open')
   window.addEventListener('keydown', onKey)
+  await nextTick()
+  if (overlayEl.value) focusTrap.activate(overlayEl.value)
 })
 onUnmounted(() => {
   document.documentElement.classList.remove('modal-open')
   window.removeEventListener('keydown', onKey)
+  focusTrap.deactivate()
 })
 </script>
 

@@ -215,24 +215,22 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
   highlights.sort((a, b) => b.volume - a.volume)
 
   // Duration: span between earliest and latest *real-time* timestamps on the date.
-  // If every set is in the end-of-day jitter window, the span is meaningless —
-  // mark unknown.
+  // End-of-day jitter timestamps (bulk-add / legacy) are excluded entirely —
+  // including them in the max would inflate duration to ~all day when a user
+  // mixes a real-time session with a bulk-added set on the same date.
   let duration = '—'
-  const allTimestamps: number[] = []
-  let allEndOfDay = true
+  const realTimestamps: number[] = []
   for (const { sets } of todaysByExercise.values()) {
     for (const s of sets) {
+      if (isEndOfDayJitter(s.date)) continue
       const t = Date.parse(s.date)
-      if (!Number.isNaN(t)) {
-        allTimestamps.push(t)
-        if (!isEndOfDayJitter(s.date)) allEndOfDay = false
-      }
+      if (!Number.isNaN(t)) realTimestamps.push(t)
     }
   }
-  if (allTimestamps.length > 1 && !allEndOfDay) {
-    const span = Math.max(...allTimestamps) - Math.min(...allTimestamps)
+  if (realTimestamps.length > 1) {
+    const span = Math.max(...realTimestamps) - Math.min(...realTimestamps)
     duration = formatDuration(span)
-  } else if (allTimestamps.length === 1 && !allEndOfDay) {
+  } else if (realTimestamps.length === 1) {
     duration = '<1m'
   }
 

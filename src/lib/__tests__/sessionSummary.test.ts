@@ -219,6 +219,22 @@ describe('buildSessionSummary', () => {
     expect(summary.duration).toBe('30m')
   })
 
+  it('ignores end-of-day jitter sets when mixed with real-time sets (does not inflate)', () => {
+    // Regression: a user logs three real-time sets in a 30-minute window, then
+    // adds one bulk-imported set later. The bulk-add lands at 23:59Z. If we
+    // include it in the duration max, the span jumps to ~10 hours instead of 30m.
+    const exercises = [
+      makeExercise('Bench', 'ex1', [
+        { id: 's1', weight: 225, reps: 5, date: '2026-04-21T14:00:00Z' },
+        { id: 's2', weight: 225, reps: 5, date: '2026-04-21T14:15:00Z' },
+        { id: 's3', weight: 225, reps: 5, date: '2026-04-21T14:30:00Z' },
+        { id: 's4', weight: 225, reps: 5, date: '2026-04-21T23:59:33.789Z' }, // bulk-add
+      ]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.duration).toBe('30m')
+  })
+
   it('reports duration as — when every set is in the end-of-day jitter window', () => {
     const exercises = [
       makeExercise('Bulk-Add', 'ex1', [
