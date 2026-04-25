@@ -2961,7 +2961,13 @@ function confirmEditExercise() {
     }
   }
   editTarget.value = null
-  syncPlateWeight()
+  // When switching to plate mode, reverse-sync the current weight into
+  // plates so the user's entered value is preserved (LIFT-388 review fix).
+  if (editPlateMode.value && weight.value) {
+    syncPlatesFromWeight()
+  } else {
+    syncPlateWeight()
+  }
   logEvent('exercise_edit')
 }
 
