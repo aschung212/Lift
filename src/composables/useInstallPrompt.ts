@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue'
+import { ref, watch, type Ref, type WatchSource } from 'vue'
 import { isNative, isIOS } from '../lib/platform'
 
 const DISMISS_KEY = 'install-prompt-dismissed'
@@ -37,12 +37,19 @@ export interface InstallPromptState {
  * - User previously dismissed the banner
  * - User hasn't reached the engagement threshold
  */
-export function useInstallPrompt(workoutDayCount: () => number): InstallPromptState {
+export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallPromptState {
   const showBanner = ref(false)
   const isIOSPrompt = ref(false)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let deferredPrompt: any = null
+  // True when we intercepted beforeinstallprompt but haven't shown the banner yet
+  // (waiting for workout data to hydrate past the threshold).
+  let hasPendingPrompt = false
+
+  function getDayCount(): number {
+    return typeof workoutDayCount === 'function' ? workoutDayCount() : workoutDayCount.value
+  }
 
   function shouldShow(): boolean {
     // Never show in native or already-installed PWA
@@ -50,13 +57,14 @@ export function useInstallPrompt(workoutDayCount: () => number): InstallPromptSt
     // User already dismissed
     if (localStorage.getItem(DISMISS_KEY)) return false
     // Not enough engagement
-    if (workoutDayCount() < MIN_WORKOUT_DAYS) return false
+    if (getDayCount() < MIN_WORKOUT_DAYS) return false
     return true
   }
 
   function dismiss() {
     showBanner.value = false
     deferredPrompt = null
+    hasPendingPrompt = false
     localStorage.setItem(DISMISS_KEY, 'true')
   }
 
@@ -65,8 +73,9 @@ export function useInstallPrompt(workoutDayCount: () => number): InstallPromptSt
     deferredPrompt.prompt()
     const { outcome } = await deferredPrompt.userChoice
     deferredPrompt = null
+    // Hide regardless of outcome — the native prompt can only be triggered once
+    showBanner.value = false
     if (outcome === 'accepted') {
-      showBanner.value = false
       localStorage.setItem(DISMISS_KEY, 'true')
     }
   }
@@ -80,12 +89,16 @@ export function useInstallPrompt(workoutDayCount: () => number): InstallPromptSt
     if (shouldShow()) {
       isIOSPrompt.value = false
       showBanner.value = true
+    } else {
+      // Store may not be hydrated yet — mark as pending
+      hasPendingPrompt = true
     }
   }
 
   function onAppInstalled() {
     showBanner.value = false
     deferredPrompt = null
+    hasPendingPrompt = false
     localStorage.setItem(DISMISS_KEY, 'true')
   }
 
@@ -94,10 +107,33 @@ export function useInstallPrompt(workoutDayCount: () => number): InstallPromptSt
   window.addEventListener('appinstalled', onAppInstalled)
 
   // iOS Safari: no beforeinstallprompt ever fires — show manual instructions
-  if (isIOS && !isNative && !isStandalone() && shouldShow()) {
-    isIOSPrompt.value = true
-    showBanner.value = true
+  if (isIOS && !isNative && !isStandalone()) {
+    if (shouldShow()) {
+      isIOSPrompt.value = true
+      showBanner.value = true
+    } else if (!localStorage.getItem(DISMISS_KEY)) {
+      // Data may not be loaded yet — watch for threshold crossing
+      hasPendingPrompt = true
+    }
   }
+
+  // Watch for workout data hydration — the store loads asynchronously, so
+  // the day count may be 0 when listeners first fire. Re-evaluate once
+  // the threshold is crossed.
+  watch(workoutDayCount, (count) => {
+    if (!hasPendingPrompt || showBanner.value) return
+    if (count < MIN_WORKOUT_DAYS) return
+    if (!shouldShow()) return
+
+    hasPendingPrompt = false
+    if (deferredPrompt) {
+      isIOSPrompt.value = false
+      showBanner.value = true
+    } else if (isIOS && !isNative && !isStandalone()) {
+      isIOSPrompt.value = true
+      showBanner.value = true
+    }
+  })
 
   return {
     showBanner,

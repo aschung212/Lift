@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { nextTick } from 'vue'
+import { ref, nextTick } from 'vue'
 
 // Mock platform module before importing composable
 vi.mock('../../lib/platform', () => ({
@@ -7,8 +7,6 @@ vi.mock('../../lib/platform', () => ({
   isIOS: false,
   platform: 'web',
 }))
-
-import * as platformModule from '../../lib/platform'
 
 let useInstallPrompt: typeof import('../useInstallPrompt').useInstallPrompt
 let isStandalone: typeof import('../useInstallPrompt').isStandalone
@@ -28,6 +26,19 @@ function fireWindowEvent(event: string, detail?: unknown) {
   }
 }
 
+function mockMatchMedia(standalone = false) {
+  vi.spyOn(window, 'matchMedia').mockReturnValue({
+    matches: standalone,
+    media: standalone ? '(display-mode: standalone)' : '',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })
+}
+
 describe('useInstallPrompt', () => {
   let addEventSpy: ReturnType<typeof vi.spyOn>
   let removeEventSpy: ReturnType<typeof vi.spyOn>
@@ -37,7 +48,6 @@ describe('useInstallPrompt', () => {
     windowListeners = {}
     localStorage.clear()
 
-    // Re-mock platform for each test
     vi.doMock('../../lib/platform', () => ({
       isNative: false,
       isIOS: false,
@@ -48,18 +58,7 @@ describe('useInstallPrompt', () => {
       (event: string, handler: unknown) => addWindowListener(event, handler as (...args: unknown[]) => void)
     )
     removeEventSpy = vi.spyOn(window, 'removeEventListener').mockImplementation(() => {})
-
-    // Mock matchMedia for standalone check
-    vi.spyOn(window, 'matchMedia').mockReturnValue({
-      matches: false,
-      media: '',
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })
+    mockMatchMedia(false)
 
     const mod = await import('../useInstallPrompt')
     useInstallPrompt = mod.useInstallPrompt
@@ -78,16 +77,7 @@ describe('useInstallPrompt', () => {
     })
 
     it('returns true when display-mode matches standalone', () => {
-      vi.spyOn(window, 'matchMedia').mockReturnValue({
-        matches: true,
-        media: '(display-mode: standalone)',
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })
+      mockMatchMedia(true)
       expect(isStandalone()).toBe(true)
     })
 
@@ -104,14 +94,12 @@ describe('useInstallPrompt', () => {
 
   describe('banner visibility', () => {
     it('does not show banner before engagement threshold', () => {
-      const state = useInstallPrompt(() => 2) // only 2 workout days
-      // Simulate onMounted
+      const state = useInstallPrompt(() => 2)
       expect(state.showBanner.value).toBe(false)
     })
 
     it('shows banner when beforeinstallprompt fires and threshold met', async () => {
       const state = useInstallPrompt(() => 5)
-      // Simulate beforeinstallprompt
       const mockEvent = { preventDefault: vi.fn() }
       fireWindowEvent('beforeinstallprompt', mockEvent)
       await nextTick()
@@ -132,21 +120,78 @@ describe('useInstallPrompt', () => {
     })
 
     it('does not show banner when already in standalone mode', () => {
-      vi.spyOn(window, 'matchMedia').mockReturnValue({
-        matches: true,
-        media: '(display-mode: standalone)',
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })
+      mockMatchMedia(true)
 
       const state = useInstallPrompt(() => 10)
       const mockEvent = { preventDefault: vi.fn() }
       fireWindowEvent('beforeinstallprompt', mockEvent)
 
+      expect(state.showBanner.value).toBe(false)
+    })
+  })
+
+  describe('async store hydration (watch)', () => {
+    it('shows banner after data hydrates past threshold (Chromium)', async () => {
+      const dayCount = ref(0)
+      const state = useInstallPrompt(dayCount)
+
+      // beforeinstallprompt fires before store is hydrated
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+      expect(state.showBanner.value).toBe(false)
+
+      // Simulate store hydration completing
+      dayCount.value = 5
+      await nextTick()
+
+      expect(state.showBanner.value).toBe(true)
+      expect(state.isIOSPrompt.value).toBe(false)
+    })
+
+    it('shows iOS prompt after data hydrates past threshold', async () => {
+      vi.resetModules()
+      vi.doMock('../../lib/platform', () => ({
+        isNative: false,
+        isIOS: true,
+        platform: 'web',
+      }))
+
+      windowListeners = {}
+      vi.spyOn(window, 'addEventListener').mockImplementation(
+        (event: string, handler: unknown) => addWindowListener(event, handler as (...args: unknown[]) => void)
+      )
+      mockMatchMedia(false)
+
+      const mod = await import('../useInstallPrompt')
+      const dayCount = ref(0)
+      const state = mod.useInstallPrompt(dayCount)
+
+      expect(state.showBanner.value).toBe(false)
+
+      // Simulate store hydration
+      dayCount.value = 4
+      await nextTick()
+
+      expect(state.showBanner.value).toBe(true)
+      expect(state.isIOSPrompt.value).toBe(true)
+    })
+
+    it('does not re-show banner after user dismissed', async () => {
+      const dayCount = ref(0)
+      const state = useInstallPrompt(dayCount)
+
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+      dayCount.value = 5
+      await nextTick()
+
+      expect(state.showBanner.value).toBe(true)
+      state.dismiss()
+      expect(state.showBanner.value).toBe(false)
+
+      // Further changes to day count should not re-show
+      dayCount.value = 10
+      await nextTick()
       expect(state.showBanner.value).toBe(false)
     })
   })
@@ -182,7 +227,7 @@ describe('useInstallPrompt', () => {
       expect(localStorage.getItem('install-prompt-dismissed')).toBe('true')
     })
 
-    it('keeps banner visible if user declines install', async () => {
+    it('hides banner when user declines native install dialog', async () => {
       const state = useInstallPrompt(() => 5)
       const mockEvent = {
         preventDefault: vi.fn(),
@@ -190,17 +235,19 @@ describe('useInstallPrompt', () => {
         userChoice: Promise.resolve({ outcome: 'dismissed' }),
       }
       fireWindowEvent('beforeinstallprompt', mockEvent)
+      expect(state.showBanner.value).toBe(true)
 
       await state.install()
 
       expect(mockEvent.prompt).toHaveBeenCalled()
-      // User dismissed the native dialog but banner stays
-      // (they can still dismiss via X button)
+      // Banner hides regardless — native prompt can only fire once
+      expect(state.showBanner.value).toBe(false)
+      // But dismissal is NOT persisted — user can see it again next session
+      expect(localStorage.getItem('install-prompt-dismissed')).toBeNull()
     })
 
     it('no-ops when no deferred prompt exists', async () => {
       const state = useInstallPrompt(() => 5)
-      // No beforeinstallprompt fired, so install should be a no-op
       await state.install()
       expect(state.showBanner.value).toBe(false)
     })
@@ -220,7 +267,7 @@ describe('useInstallPrompt', () => {
   })
 
   describe('iOS Safari', () => {
-    it('shows iOS-specific prompt on mount when on iOS and threshold met', async () => {
+    it('shows iOS-specific prompt when on iOS and threshold met', async () => {
       vi.resetModules()
       vi.doMock('../../lib/platform', () => ({
         isNative: false,
@@ -232,16 +279,7 @@ describe('useInstallPrompt', () => {
       vi.spyOn(window, 'addEventListener').mockImplementation(
         (event: string, handler: unknown) => addWindowListener(event, handler as (...args: unknown[]) => void)
       )
-      vi.spyOn(window, 'matchMedia').mockReturnValue({
-        matches: false,
-        media: '',
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })
+      mockMatchMedia(false)
 
       const mod = await import('../useInstallPrompt')
       const state = mod.useInstallPrompt(() => 5)
@@ -262,17 +300,7 @@ describe('useInstallPrompt', () => {
       vi.spyOn(window, 'addEventListener').mockImplementation(
         (event: string, handler: unknown) => addWindowListener(event, handler as (...args: unknown[]) => void)
       )
-      // Standalone mode
-      vi.spyOn(window, 'matchMedia').mockReturnValue({
-        matches: true,
-        media: '(display-mode: standalone)',
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })
+      mockMatchMedia(true)
 
       const mod = await import('../useInstallPrompt')
       const state = mod.useInstallPrompt(() => 5)

@@ -973,9 +973,8 @@ const { toast: undoToast, performUndo } = useUndoToast()
 
 // ── PWA install prompt ──────────────────────────────────────────
 const workoutStoreForInstall = useWorkoutStore()
-const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(
-  () => workoutStoreForInstall.workoutDates.length
-)
+const installWorkoutDays = computed(() => workoutStoreForInstall.workoutDates.length)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
