@@ -139,4 +139,81 @@ describe('useWakeLock', () => {
     await new Promise(r => setTimeout(r, 20))
     expect(wakeLockActive.value).toBe(false)
   })
+
+  it('releases the just-acquired sentinel if shouldLock toggles off mid-request', async () => {
+    // Hold the request open so we can flip shouldLock before it resolves.
+    let resolveRequest!: (s: ReturnType<typeof createMockSentinel>) => void
+    const lateSentinel = createMockSentinel()
+    ;(navigator.wakeLock.request as ReturnType<typeof vi.fn>).mockImplementation(
+      () =>
+        new Promise(r => {
+          resolveRequest = r
+        }),
+    )
+
+    const shouldLock = ref(false)
+    const enabled = ref(true)
+    const { wakeLockActive } = useWakeLock(shouldLock, enabled)
+
+    // 1. Toggle on — request is now pending.
+    shouldLock.value = true
+    await nextTick()
+    expect(navigator.wakeLock.request).toHaveBeenCalledTimes(1)
+
+    // 2. Toggle off before the request resolves. Pre-fix, releaseLock
+    //    would no-op because sentinel is still null, leaving the
+    //    in-flight request unsupervised.
+    shouldLock.value = false
+    await nextTick()
+
+    // 3. Resolve the request. The cancellation signal threaded through
+    //    acquireLock should release the sentinel rather than orphan it.
+    resolveRequest(lateSentinel)
+
+    await vi.waitFor(() => {
+      expect(lateSentinel.release).toHaveBeenCalled()
+    })
+    expect(wakeLockActive.value).toBe(false)
+  })
+
+  it('does not issue a concurrent request on rapid true→false→true toggle', async () => {
+    // First request stays pending across the whole toggle dance; the
+    // second request resolves immediately so we can observe both.
+    let resolveFirst!: (s: ReturnType<typeof createMockSentinel>) => void
+    const firstSentinel = createMockSentinel()
+    const secondSentinel = createMockSentinel()
+    ;(navigator.wakeLock.request as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(
+        () =>
+          new Promise(r => {
+            resolveFirst = r
+          }),
+      )
+      .mockResolvedValueOnce(secondSentinel)
+
+    const shouldLock = ref(false)
+    const enabled = ref(true)
+    useWakeLock(shouldLock, enabled)
+
+    shouldLock.value = true
+    await nextTick()
+    shouldLock.value = false
+    await nextTick()
+    shouldLock.value = true
+    await nextTick()
+
+    // Only the first request has been issued; the third toggle waits for
+    // the in-flight acquire to settle rather than firing a duplicate.
+    expect(navigator.wakeLock.request).toHaveBeenCalledTimes(1)
+
+    resolveFirst(firstSentinel)
+
+    // The first sentinel is released (orphan prevention), then the
+    // second request fires for the still-active toggle.
+    await vi.waitFor(() => {
+      expect(firstSentinel.release).toHaveBeenCalled()
+      expect(navigator.wakeLock.request).toHaveBeenCalledTimes(2)
+    })
+    expect(secondSentinel.release).not.toHaveBeenCalled()
+  })
 })
