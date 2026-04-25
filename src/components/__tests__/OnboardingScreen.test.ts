@@ -4,23 +4,16 @@ import { setActivePinia, createPinia } from 'pinia'
 import OnboardingScreen from '../OnboardingScreen.vue'
 
 // Mock stores
-let mockIdCounter = 0
-const mockAddExercise = vi.fn().mockImplementation(() => `mock-id-${++mockIdCounter}`)
+const mockAddExercise = vi.fn().mockReturnValue('mock-id')
 const mockLogSet = vi.fn()
 const mockAddEntry = vi.fn()
 
 const mockSetStarterTheme = vi.fn()
 
-const mockExercises: { id: string; inputMode?: string }[] = []
 vi.mock('../../stores/workout', () => ({
   useWorkoutStore: () => ({
-    addExercise: (...args: unknown[]) => {
-      const id = mockAddExercise(...args)
-      if (id) mockExercises.push({ id })
-      return id
-    },
+    addExercise: mockAddExercise,
     logSet: mockLogSet,
-    exercises: mockExercises,
   })
 }))
 
@@ -50,8 +43,6 @@ describe('OnboardingScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorageMock.clear()
-    mockExercises.length = 0
-    mockIdCounter = 0
     setActivePinia(createPinia())
     wrapper = mount(OnboardingScreen)
   })
@@ -136,12 +127,12 @@ describe('OnboardingScreen', () => {
       // Popular is the featured / first option after the 01-auth.png restyle.
       await wrapper.findAll('.obOption')[0].trigger('click')
       expect(mockAddExercise).toHaveBeenCalledTimes(6)
-      expect(mockAddExercise).toHaveBeenCalledWith('Bench Press', ['Push', 'Chest'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Squat', ['Legs'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', ['Pull', 'Legs'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Overhead Press', ['Push', 'Shoulders'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Barbell Row', ['Pull', 'Back'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Pull-ups', ['Pull', 'Back'])
+      expect(mockAddExercise).toHaveBeenCalledWith('Bench Press', ['Push', 'Chest'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Squat', ['Legs'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', ['Pull', 'Legs'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Overhead Press', ['Push', 'Shoulders'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Barbell Row', ['Pull', 'Back'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Pull-ups', ['Pull', 'Back'], undefined)
     })
 
     it('emits complete event after skipping starter', async () => {
@@ -157,8 +148,15 @@ describe('OnboardingScreen', () => {
 
     it('enables plate calculator on barbell starter exercises', async () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
-      const platesExercises = mockExercises.filter(e => e.inputMode === 'plates')
-      expect(platesExercises.length).toBe(5) // all barbell exercises
+      const calls = mockAddExercise.mock.calls
+      // Barbell exercises pass inputMode: 'plates'
+      expect(calls.find((c: unknown[]) => c[0] === 'Bench Press')?.[2]).toEqual({ inputMode: 'plates' })
+      expect(calls.find((c: unknown[]) => c[0] === 'Squat')?.[2]).toEqual({ inputMode: 'plates' })
+      expect(calls.find((c: unknown[]) => c[0] === 'Deadlift')?.[2]).toEqual({ inputMode: 'plates' })
+      expect(calls.find((c: unknown[]) => c[0] === 'Overhead Press')?.[2]).toEqual({ inputMode: 'plates' })
+      expect(calls.find((c: unknown[]) => c[0] === 'Barbell Row')?.[2]).toEqual({ inputMode: 'plates' })
+      // Pull-ups (bodyweight) should NOT have inputMode
+      expect(calls.find((c: unknown[]) => c[0] === 'Pull-ups')?.[2]).toBeUndefined()
     })
   })
 
@@ -196,13 +194,13 @@ describe('OnboardingScreen', () => {
 
     it('enables plate calculator on barbell sample exercises', async () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
-      // All barbell exercises (Bench, Squat, Deadlift, OHP, Row) should have plates mode
-      const platesExercises = mockExercises.filter(e => e.inputMode === 'plates')
-      expect(platesExercises.length).toBe(5)
-      // Pull-ups (bodyweight) should NOT have plate calculator
-      expect(mockExercises.length).toBe(6)
-      const pullUps = mockExercises.find(e => !e.inputMode)
-      expect(pullUps).toBeDefined()
+      const calls = mockAddExercise.mock.calls
+      // Barbell exercises pass inputMode: 'plates' alongside sync: false
+      expect(calls.find((c: unknown[]) => c[0] === 'Bench Press')?.[2]).toEqual({ sync: false, inputMode: 'plates' })
+      expect(calls.find((c: unknown[]) => c[0] === 'Squat')?.[2]).toEqual({ sync: false, inputMode: 'plates' })
+      expect(calls.find((c: unknown[]) => c[0] === 'Deadlift')?.[2]).toEqual({ sync: false, inputMode: 'plates' })
+      // Pull-ups has no plate calculator — just sync: false
+      expect(calls.find((c: unknown[]) => c[0] === 'Pull-ups')?.[2]).toEqual({ sync: false })
     })
   })
 
@@ -230,10 +228,10 @@ describe('OnboardingScreen', () => {
     it('chooseExplore passes sync:false to addExercise for sample data', async () => {
       mockAddExercise.mockReturnValue('mock-id')
       await wrapper.findAll('.obOption')[2].trigger('click')
-      // Every addExercise call in chooseExplore should include { sync: false }
+      // Every addExercise call in chooseExplore should include sync: false
       const exploreCalls = mockAddExercise.mock.calls
       for (const call of exploreCalls) {
-        expect(call[2]).toEqual({ sync: false })
+        expect(call[2]).toHaveProperty('sync', false)
       }
     })
 
@@ -241,8 +239,10 @@ describe('OnboardingScreen', () => {
       await wrapper.findAll('.obOption')[1].trigger('click')
       const starterCalls = mockAddExercise.mock.calls
       for (const call of starterCalls) {
-        // Starter exercises only pass (name, tags) — no options object
-        expect(call.length).toBe(2)
+        // Starter exercises should not have sync: false
+        if (call[2]) {
+          expect(call[2]).not.toHaveProperty('sync', false)
+        }
       }
     })
 

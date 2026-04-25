@@ -442,11 +442,7 @@ function chooseStarter() {
   logEvent('onboarding_choice', { choice: 'starter' })
   emit('started')
   for (const ex of STARTER_EXERCISES) {
-    const id = workoutStore.addExercise(ex.name, ex.tags)
-    if (id && ex.inputMode) {
-      const exercise = workoutStore.exercises.find(e => e.id === id)
-      if (exercise) exercise.inputMode = ex.inputMode
-    }
+    workoutStore.addExercise(ex.name, ex.tags, ex.inputMode ? { inputMode: ex.inputMode } : undefined)
   }
   goToStarter(false)
 }
@@ -459,13 +455,9 @@ function chooseExplore() {
   // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
-    const id = workoutStore.addExercise(group.exercise, starter?.tags || [], noSync)
+    const opts = starter?.inputMode ? { sync: false, inputMode: starter.inputMode } as const : noSync
+    const id = workoutStore.addExercise(group.exercise, starter?.tags || [], opts)
     if (!id) continue
-    // Enable plate calculator on barbell exercises so users see the feature during exploration
-    if (starter?.inputMode) {
-      const exercise = workoutStore.exercises.find(e => e.id === id)
-      if (exercise) exercise.inputMode = starter.inputMode
-    }
     for (const set of group.sets) {
       workoutStore.logSet(id, set.weight, set.reps, set.date, noSync)
     }
@@ -473,11 +465,8 @@ function chooseExplore() {
   // Add remaining starter exercises without sets
   for (const ex of STARTER_EXERCISES) {
     if (!SAMPLE_SETS.find(g => g.exercise === ex.name)) {
-      const id = workoutStore.addExercise(ex.name, ex.tags, noSync)
-      if (id && ex.inputMode) {
-        const exercise = workoutStore.exercises.find(e => e.id === id)
-        if (exercise) exercise.inputMode = ex.inputMode
-      }
+      const opts = ex.inputMode ? { sync: false, inputMode: ex.inputMode } as const : noSync
+      workoutStore.addExercise(ex.name, ex.tags, opts)
     }
   }
   // Add sample bodyweight entries

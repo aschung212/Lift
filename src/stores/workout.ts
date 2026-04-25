@@ -406,7 +406,7 @@ export const useWorkoutStore = defineStore('workout', {
       }
     },
 
-    addExercise(name: string, tags: string[] = [], { sync = true }: { sync?: boolean } = {}): string | null {
+    addExercise(name: string, tags: string[] = [], { sync = true, inputMode }: { sync?: boolean; inputMode?: ExerciseInputMode } = {}): string | null {
       const trimmed = name.trim()
       if (!trimmed) return null
       const existing = this.exercises.find(
@@ -414,7 +414,7 @@ export const useWorkoutStore = defineStore('workout', {
       )
       if (existing) return existing.id
       const id = uuid()
-      const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) }
+      const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}), ...(inputMode ? { inputMode } : {}) }
       this.exercises.push(exercise)
       this._persist()
 
