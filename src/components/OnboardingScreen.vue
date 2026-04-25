@@ -443,7 +443,7 @@ function chooseStarter() {
   logEvent('onboarding_choice', { choice: 'starter' })
   emit('started')
   for (const ex of STARTER_EXERCISES) {
-    workoutStore.addExercise(ex.name, ex.tags)
+    workoutStore.addExercise(ex.name, ex.tags, ex.inputMode ? { inputMode: ex.inputMode } : undefined)
   }
   goToStarter(false)
 }

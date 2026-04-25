@@ -422,7 +422,8 @@ export const useWorkoutStore = defineStore('workout', {
         const userId = this._userId
         syncQueue.enqueue(`exercise:${id}`, () =>
           supabase!.from('exercises').upsert({
-            id, user_id: userId, name: trimmed, tags: [...tags]
+            id, user_id: userId, name: trimmed, tags: [...tags],
+            ...(inputMode ? { input_mode: inputMode } : {})
           })
         )
       }

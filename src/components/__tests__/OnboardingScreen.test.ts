@@ -123,16 +123,16 @@ describe('OnboardingScreen', () => {
   })
 
   describe('Popular exercises', () => {
-    it('adds 6 starter exercises with tags', async () => {
+    it('adds 6 starter exercises with tags and plate mode for barbell exercises', async () => {
       // Popular is the featured / first option after the 01-auth.png restyle.
       await wrapper.findAll('.obOption')[0].trigger('click')
       expect(mockAddExercise).toHaveBeenCalledTimes(6)
-      expect(mockAddExercise).toHaveBeenCalledWith('Bench Press', ['Push', 'Chest'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Squat', ['Legs'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', ['Pull', 'Legs'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Overhead Press', ['Push', 'Shoulders'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Barbell Row', ['Pull', 'Back'])
-      expect(mockAddExercise).toHaveBeenCalledWith('Pull-ups', ['Pull', 'Back'])
+      expect(mockAddExercise).toHaveBeenCalledWith('Bench Press', ['Push', 'Chest'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Squat', ['Legs'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', ['Pull', 'Legs'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Overhead Press', ['Push', 'Shoulders'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Barbell Row', ['Pull', 'Back'], { inputMode: 'plates' })
+      expect(mockAddExercise).toHaveBeenCalledWith('Pull-ups', ['Pull', 'Back'], undefined)
     })
 
     it('emits complete event after skipping starter', async () => {
@@ -234,11 +234,15 @@ describe('OnboardingScreen', () => {
     })
 
     it('chooseStarter does NOT pass sync:false (starter data should sync)', async () => {
-      await wrapper.findAll('.obOption')[1].trigger('click')
+      // Popular exercises is the featured / first option (index 0)
+      await wrapper.findAll('.obOption')[0].trigger('click')
       const starterCalls = mockAddExercise.mock.calls
+      expect(starterCalls.length).toBeGreaterThan(0)
       for (const call of starterCalls) {
-        // Starter exercises only pass (name, tags) — no options object
-        expect(call.length).toBe(2)
+        // Starter exercises should not have sync: false
+        if (call[2]) {
+          expect(call[2]).not.toHaveProperty('sync', false)
+        }
       }
     })
 
