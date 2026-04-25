@@ -839,6 +839,90 @@ button, [role="tab"], [role="switch"], a {
   flex-shrink: 0;
 }
 
+/* ── PWA install prompt banner ─────────────────────────────── */
+.installBanner {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.installBannerContent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.installBannerIcon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+  margin-top: 1px;
+}
+.installBannerIcon svg {
+  width: 24px;
+  height: 24px;
+}
+.installBannerText {
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.installBannerInlineIcon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  vertical-align: text-bottom;
+  color: var(--accent);
+}
+.installBannerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.installBannerBtn {
+  font-family: inherit;
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.15s;
+}
+.installBannerBtn:active {
+  opacity: 0.7;
+}
+.installBannerInstall {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+.installBannerDismiss {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.installBanner-enter-active {
+  animation: installBannerIn 0.3s ease-out;
+}
+.installBanner-leave-active {
+  animation: installBannerOut 0.2s ease-in forwards;
+}
+@keyframes installBannerIn {
+  from { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
+  to { opacity: 1; max-height: 120px; }
+}
+@keyframes installBannerOut {
+  from { opacity: 1; max-height: 120px; }
+  to { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
+}
+
 .appTopBar {
   display: flex;
   justify-content: space-between;
