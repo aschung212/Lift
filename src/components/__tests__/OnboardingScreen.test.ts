@@ -3,15 +3,23 @@ import { mount, VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import OnboardingScreen from '../OnboardingScreen.vue'
 
-// Mock stores
-const mockAddExercise = vi.fn().mockReturnValue('mock-id')
+// Mock stores — exercises array populated by mockAddExercise so applyPlateConfig can find them
+const mockExercises: { id: string; name: string; tags: string[]; inputMode?: string; barWeight?: number }[] = []
+let nextMockId = 0
+const mockAddExercise = vi.fn().mockImplementation((name: string, tags: string[]) => {
+  const id = `mock-id-${nextMockId++}`
+  mockExercises.push({ id, name, tags })
+  return id
+})
 const mockLogSet = vi.fn()
 const mockAddEntry = vi.fn()
 
 const mockSetStarterTheme = vi.fn()
 
 vi.mock('../../stores/workout', () => ({
+  ExerciseInputMode: {},
   useWorkoutStore: () => ({
+    exercises: mockExercises,
     addExercise: mockAddExercise,
     logSet: mockLogSet,
   })
@@ -42,6 +50,8 @@ describe('OnboardingScreen', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockExercises.length = 0
+    nextMockId = 0
     localStorageMock.clear()
     setActivePinia(createPinia())
     wrapper = mount(OnboardingScreen)
@@ -145,6 +155,20 @@ describe('OnboardingScreen', () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
       expect(mockLogSet).not.toHaveBeenCalled()
     })
+
+    it('sets plate calculator mode on barbell exercises', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      const barbellNames = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
+      for (const name of barbellNames) {
+        const ex = mockExercises.find(e => e.name === name)
+        expect(ex, `${name} should exist`).toBeDefined()
+        expect(ex!.inputMode).toBe('plates')
+        expect(ex!.barWeight).toBe(45)
+      }
+      const pullups = mockExercises.find(e => e.name === 'Pull-ups')
+      expect(pullups).toBeDefined()
+      expect(pullups!.inputMode).toBeUndefined()
+    })
   })
 
   describe('Explore first (sample data)', () => {
@@ -177,6 +201,21 @@ describe('OnboardingScreen', () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
       // Extended sample data: ~365 days across 5 exercises (multiple sets per session)
       expect(mockLogSet.mock.calls.length).toBe(367)
+    })
+
+    it('sets plate calculator mode on barbell exercises', async () => {
+      await wrapper.findAll('.obOption')[2].trigger('click')
+      const barbellNames = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
+      for (const name of barbellNames) {
+        const ex = mockExercises.find(e => e.name === name)
+        expect(ex, `${name} should exist`).toBeDefined()
+        expect(ex!.inputMode).toBe('plates')
+        expect(ex!.barWeight).toBe(45)
+      }
+      // Pull-ups should NOT have plate calculator
+      const pullups = mockExercises.find(e => e.name === 'Pull-ups')
+      expect(pullups).toBeDefined()
+      expect(pullups!.inputMode).toBeUndefined()
     })
   })
 
