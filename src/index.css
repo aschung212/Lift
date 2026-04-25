@@ -839,6 +839,97 @@ button, [role="tab"], [role="switch"], a {
   flex-shrink: 0;
 }
 
+/* PWA install banner */
+.installBanner {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.installBannerContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.installBannerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.installBannerTitle {
+  font-size: var(--font-subheadline);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.installBannerDesc {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.installBannerShareIcon {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.installBannerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.installBannerBtn {
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.installBannerInstall {
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  padding: 8px 16px;
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+.installBannerDismiss {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+}
+.installBannerDismiss svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Install banner transition */
+.installBanner-enter-active,
+.installBanner-leave-active {
+  transition: opacity 0.2s ease, max-height 0.2s ease;
+  max-height: 80px;
+  overflow: hidden;
+}
+.installBanner-enter-from,
+.installBanner-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .appTopBar {
   display: flex;
   justify-content: space-between;
