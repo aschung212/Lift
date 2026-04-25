@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useWorkoutStore } from '../stores/workout'
+import { useWorkoutStore, type ExerciseInputMode } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
 import { useTheme, type ThemeId } from '../composables/useTheme'
@@ -98,12 +98,12 @@ const { logEvent } = useAnalytics()
 const step = ref<'setup' | 'starter-flow'>('setup')
 let pendingSampleData = false
 
-const STARTER_EXERCISES = [
-  { name: 'Bench Press', tags: ['Push', 'Chest'] },
-  { name: 'Squat', tags: ['Legs'] },
-  { name: 'Deadlift', tags: ['Pull', 'Legs'] },
-  { name: 'Overhead Press', tags: ['Push', 'Shoulders'] },
-  { name: 'Barbell Row', tags: ['Pull', 'Back'] },
+const STARTER_EXERCISES: { name: string; tags: string[]; inputMode?: ExerciseInputMode }[] = [
+  { name: 'Bench Press', tags: ['Push', 'Chest'], inputMode: 'plates' },
+  { name: 'Squat', tags: ['Legs'], inputMode: 'plates' },
+  { name: 'Deadlift', tags: ['Pull', 'Legs'], inputMode: 'plates' },
+  { name: 'Overhead Press', tags: ['Push', 'Shoulders'], inputMode: 'plates' },
+  { name: 'Barbell Row', tags: ['Pull', 'Back'], inputMode: 'plates' },
   { name: 'Pull-ups', tags: ['Pull', 'Back'] },
 ]
 
@@ -442,7 +442,11 @@ function chooseStarter() {
   logEvent('onboarding_choice', { choice: 'starter' })
   emit('started')
   for (const ex of STARTER_EXERCISES) {
-    workoutStore.addExercise(ex.name, ex.tags)
+    const id = workoutStore.addExercise(ex.name, ex.tags)
+    if (id && ex.inputMode) {
+      const exercise = workoutStore.exercises.find(e => e.id === id)
+      if (exercise) exercise.inputMode = ex.inputMode
+    }
   }
   goToStarter(false)
 }
@@ -457,6 +461,11 @@ function chooseExplore() {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
     const id = workoutStore.addExercise(group.exercise, starter?.tags || [], noSync)
     if (!id) continue
+    // Enable plate calculator on barbell exercises so users see the feature during exploration
+    if (starter?.inputMode) {
+      const exercise = workoutStore.exercises.find(e => e.id === id)
+      if (exercise) exercise.inputMode = starter.inputMode
+    }
     for (const set of group.sets) {
       workoutStore.logSet(id, set.weight, set.reps, set.date, noSync)
     }
@@ -464,7 +473,11 @@ function chooseExplore() {
   // Add remaining starter exercises without sets
   for (const ex of STARTER_EXERCISES) {
     if (!SAMPLE_SETS.find(g => g.exercise === ex.name)) {
-      workoutStore.addExercise(ex.name, ex.tags, noSync)
+      const id = workoutStore.addExercise(ex.name, ex.tags, noSync)
+      if (id && ex.inputMode) {
+        const exercise = workoutStore.exercises.find(e => e.id === id)
+        if (exercise) exercise.inputMode = ex.inputMode
+      }
     }
   }
   // Add sample bodyweight entries

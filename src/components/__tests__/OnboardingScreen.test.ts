@@ -4,16 +4,23 @@ import { setActivePinia, createPinia } from 'pinia'
 import OnboardingScreen from '../OnboardingScreen.vue'
 
 // Mock stores
-const mockAddExercise = vi.fn().mockReturnValue('mock-id')
+let mockIdCounter = 0
+const mockAddExercise = vi.fn().mockImplementation(() => `mock-id-${++mockIdCounter}`)
 const mockLogSet = vi.fn()
 const mockAddEntry = vi.fn()
 
 const mockSetStarterTheme = vi.fn()
 
+const mockExercises: { id: string; inputMode?: string }[] = []
 vi.mock('../../stores/workout', () => ({
   useWorkoutStore: () => ({
-    addExercise: mockAddExercise,
+    addExercise: (...args: unknown[]) => {
+      const id = mockAddExercise(...args)
+      if (id) mockExercises.push({ id })
+      return id
+    },
     logSet: mockLogSet,
+    exercises: mockExercises,
   })
 }))
 
@@ -43,6 +50,8 @@ describe('OnboardingScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorageMock.clear()
+    mockExercises.length = 0
+    mockIdCounter = 0
     setActivePinia(createPinia())
     wrapper = mount(OnboardingScreen)
   })
@@ -145,6 +154,12 @@ describe('OnboardingScreen', () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
       expect(mockLogSet).not.toHaveBeenCalled()
     })
+
+    it('enables plate calculator on barbell starter exercises', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      const platesExercises = mockExercises.filter(e => e.inputMode === 'plates')
+      expect(platesExercises.length).toBe(5) // all barbell exercises
+    })
   })
 
   describe('Explore first (sample data)', () => {
@@ -177,6 +192,17 @@ describe('OnboardingScreen', () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
       // Extended sample data: ~365 days across 5 exercises (multiple sets per session)
       expect(mockLogSet.mock.calls.length).toBe(367)
+    })
+
+    it('enables plate calculator on barbell sample exercises', async () => {
+      await wrapper.findAll('.obOption')[2].trigger('click')
+      // All barbell exercises (Bench, Squat, Deadlift, OHP, Row) should have plates mode
+      const platesExercises = mockExercises.filter(e => e.inputMode === 'plates')
+      expect(platesExercises.length).toBe(5)
+      // Pull-ups (bodyweight) should NOT have plate calculator
+      expect(mockExercises.length).toBe(6)
+      const pullUps = mockExercises.find(e => !e.inputMode)
+      expect(pullUps).toBeDefined()
     })
   })
 
