@@ -265,4 +265,29 @@ describe('buildSessionSummary', () => {
     const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises: [], streakWeeks: 7 })
     expect(summary.streak).toBe(7)
   })
+
+  it('defaults to lbs and an identity converter', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [{ id: 's1', weight: 225, reps: 5, date: '2026-04-21T15:00:00Z' }]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.unitLabel).toBe('lbs')
+    expect(summary.totalVolume).toBe(225 * 5)
+    expect(summary.bestSet?.weight).toBe(225)
+  })
+
+  it('routes weight fields through toDisplayUnits when supplied', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [{ id: 's1', weight: 225, reps: 5, date: '2026-04-21T15:00:00Z' }]),
+    ]
+    const summary = buildSessionSummary({
+      rawDate: '2026-04-21',
+      exercises,
+      unitLabel: 'kg',
+      toDisplayUnits: (lb) => +(lb * 0.453592).toFixed(1),
+    })
+    expect(summary.unitLabel).toBe('kg')
+    expect(summary.bestSet?.weight).toBeCloseTo(102.1, 1)
+    expect(summary.totalVolume).toBeCloseTo(510.3, 1)
+  })
 })

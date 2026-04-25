@@ -20,7 +20,7 @@
         <section class="wcHero">
           <div class="wcMicrolabel">Total volume</div>
           <div class="wcHeroNumber">{{ formattedVolume }}</div>
-          <div class="wcHeroUnit">lbs moved</div>
+          <div class="wcHeroUnit">{{ summary.unitLabel }} moved</div>
         </section>
 
         <section class="wcStatRow">
@@ -45,7 +45,7 @@
           </div>
           <div class="wcBestSetName">{{ summary.bestSet.name }}</div>
           <div class="wcBestSetWeight">{{ summary.bestSet.weight }} × {{ summary.bestSet.reps }}</div>
-          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} lbs e1RM</div>
+          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM</div>
         </section>
       </template>
 
@@ -55,26 +55,45 @@
       </section>
 
       <footer class="wcFooter">
-        <button class="wcDone" @click="emit('close')">Done</button>
+        <button v-if="hasSets" class="wcShare" @click="openPicker">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+          Share summary
+        </button>
+        <button class="wcDone" :class="{ wcDoneSecondary: hasSets }" @click="emit('close')">Done</button>
       </footer>
     </div>
+
+    <SharePickerSheet
+      v-if="pickerOpen"
+      :summary="summary"
+      @close="pickerOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { computed, onMounted, onUnmounted, ref, nextTick, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useProgressionStore } from '../stores/progression'
 import { buildSessionSummary } from '../lib/sessionSummary'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useTheme } from '../composables/useTheme'
+
+const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
 const props = defineProps<{ rawDate: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+
+const pickerOpen = ref(false)
+function openPicker() {
+  pickerOpen.value = true
+}
 
 const store = useWorkoutStore()
 const progression = useProgressionStore()
 const focusTrap = useFocusTrap()
 const overlayEl = ref<HTMLElement | null>(null)
+const { displayWeight, weightUnit } = useTheme()
 
 const summary = computed(() =>
   buildSessionSummary({
@@ -82,6 +101,8 @@ const summary = computed(() =>
     exercises: store.exercises,
     xpPerSet: progression.xpPerSet,
     streakWeeks: progression.streakWeeks,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value,
   })
 )
 
@@ -89,7 +110,13 @@ const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))
 
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (e.key !== 'Escape') return
+  // Single Escape owner for both layers — close the topmost open thing.
+  if (pickerOpen.value) {
+    pickerOpen.value = false
+    return
+  }
+  emit('close')
 }
 onMounted(async () => {
   document.documentElement.classList.add('modal-open')
@@ -307,6 +334,25 @@ onUnmounted(() => {
 .wcFooter {
   margin-top: auto;
   padding-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wcShare {
+  width: 100%;
+  min-height: 54px;
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  border: 0;
+  border-radius: 16px;
+  font: 700 var(--font-callout) / 1 var(--ff);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .wcDone {
@@ -319,5 +365,13 @@ onUnmounted(() => {
   font: 700 var(--font-callout) / 1 var(--ff);
   letter-spacing: 0.01em;
   cursor: pointer;
+}
+
+.wcDoneSecondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  font-weight: 600;
+  min-height: 48px;
 }
 </style>
