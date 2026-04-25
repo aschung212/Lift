@@ -55,21 +55,38 @@
       </section>
 
       <footer class="wcFooter">
-        <button class="wcDone" @click="emit('close')">Done</button>
+        <button v-if="hasSets" class="wcShare" @click="openPicker">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+          Share summary
+        </button>
+        <button class="wcDone" :class="{ wcDoneSecondary: hasSets }" @click="emit('close')">Done</button>
       </footer>
     </div>
+
+    <SharePickerSheet
+      v-if="pickerOpen"
+      :summary="summary"
+      @close="pickerOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { computed, onMounted, onUnmounted, ref, nextTick, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useProgressionStore } from '../stores/progression'
 import { buildSessionSummary } from '../lib/sessionSummary'
 import { useFocusTrap } from '../composables/useFocusTrap'
 
+const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
+
 const props = defineProps<{ rawDate: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+
+const pickerOpen = ref(false)
+function openPicker() {
+  pickerOpen.value = true
+}
 
 const store = useWorkoutStore()
 const progression = useProgressionStore()
@@ -307,6 +324,25 @@ onUnmounted(() => {
 .wcFooter {
   margin-top: auto;
   padding-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wcShare {
+  width: 100%;
+  min-height: 54px;
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  border: 0;
+  border-radius: 16px;
+  font: 700 var(--font-callout) / 1 var(--ff);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .wcDone {
@@ -319,5 +355,13 @@ onUnmounted(() => {
   font: 700 var(--font-callout) / 1 var(--ff);
   letter-spacing: 0.01em;
   cursor: pointer;
+}
+
+.wcDoneSecondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  font-weight: 600;
+  min-height: 48px;
 }
 </style>
