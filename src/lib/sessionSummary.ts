@@ -41,6 +41,8 @@ export interface SessionSummary {
   bestSet: SessionBestSet | null
   highlights: SessionHighlight[]
   weekVolume: number[]        // 7 entries, Mon→Sun, in display units
+  /** Sum of the previous Mon→Sun week, in display units. Used for the % delta on the WeekChart card. */
+  priorWeekVolume: number
   streak: number              // weeks
   /** Display unit label for any weight field — 'lbs' or 'kg'. */
   unitLabel: string
@@ -251,18 +253,25 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     duration = '<1m'
   }
 
-  // Week volume — Mon→Sun, summed from all sets across all exercises.
+  // Week volume — Mon→Sun for current week + sum for prior week (used by
+  // the WeekChart card's % delta). Both built in a single pass.
   const week = weekRange(rawDate)
+  const priorWeek = weekRange(shiftDateByDays(rawDate, -7))
+  const priorWeekSet = new Set(priorWeek)
   const weekVolumeMap = new Map<string, number>(week.map((d) => [d, 0]))
+  let priorWeekTotal = 0
   for (const ex of exercises) {
     for (const s of ex.sets) {
       const k = toLocalDateKey(s.date)
       if (weekVolumeMap.has(k)) {
         weekVolumeMap.set(k, weekVolumeMap.get(k)! + s.weight * s.reps)
+      } else if (priorWeekSet.has(k)) {
+        priorWeekTotal += s.weight * s.reps
       }
     }
   }
   const weekVolume = week.map((d) => cv(weekVolumeMap.get(d) ?? 0))
+  const priorWeekVolume = cv(priorWeekTotal)
 
   return {
     rawDate,
@@ -276,7 +285,19 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     bestSet,
     highlights,
     weekVolume,
+    priorWeekVolume,
     streak: streakWeeks,
     unitLabel,
   }
+}
+
+/** Helper: add (or subtract) days to a YYYY-MM-DD, returning YYYY-MM-DD. */
+function shiftDateByDays(rawDate: string, days: number): string {
+  const [y, m, d] = rawDate.split('-').map(Number)
+  const base = new Date(y, m - 1, d)
+  base.setDate(base.getDate() + days)
+  const yy = base.getFullYear()
+  const mm = String(base.getMonth() + 1).padStart(2, '0')
+  const dd = String(base.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
 }
