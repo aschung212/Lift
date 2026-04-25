@@ -534,6 +534,28 @@
       </Transition>
     </Teleport>
 
+    <!-- PWA install banner -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="showInstallBanner" class="installBanner" role="status" aria-live="polite">
+          <div class="installBannerBody">
+            <svg class="installBannerIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <div class="installBannerText">
+              <span class="installBannerTitle">Install Lift</span>
+              <span v-if="isIOSInstall" class="installBannerHint">Tap <svg class="installBannerShareIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then "Add to Home Screen"</span>
+              <span v-else class="installBannerHint">Add to your home screen for the full experience</span>
+            </div>
+          </div>
+          <div class="installBannerActions">
+            <button v-if="!isIOSInstall" class="installBannerBtn" @click="triggerInstall">Install</button>
+            <button class="installBannerDismiss" @click="dismissInstall" aria-label="Dismiss install prompt">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Keyboard shortcuts help -->
     <Teleport to="body">
       <Transition name="undoToast">
@@ -847,6 +869,7 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useInstallPrompt } from './composables/useInstallPrompt'
 import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
@@ -1070,6 +1093,16 @@ function onOnboardingComplete() {
   onboardingComplete.value = true
   hasSampleData.value = localStorage.getItem('sample-data') === 'true'
 }
+
+// ── PWA install prompt ─────────────────────────────────────────
+const { showBanner: showInstallBanner, isIOS: isIOSInstall, checkEngagement, triggerInstall, dismiss: dismissInstall } = useInstallPrompt()
+
+// Show install banner after 3 unique training days
+watch(
+  () => workoutStoreForOnboarding.workoutDates.length,
+  (count) => checkEngagement?.(count),
+  { immediate: true },
+)
 
 function clearSampleData() {
   const workoutStore = useWorkoutStore()
