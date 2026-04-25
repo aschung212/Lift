@@ -209,6 +209,21 @@
               </div>
               <div class="settingsRow">
                 <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Keep screen on</span>
+                  <span class="settingsHint">During rest timer and logging</span>
+                </div>
+                <button
+                  :class="['glassToggle', { on: prefs.experience.screenWakeLock }]"
+                  @click="toggleExperience('screenWakeLock')"
+                  role="switch"
+                  :aria-checked="prefs.experience.screenWakeLock"
+                  :aria-label="prefs.experience.screenWakeLock ? 'Disable screen wake lock' : 'Enable screen wake lock'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+              <div class="settingsRow">
+                <div class="settingsLabelGroup">
                   <span class="settingsLabel">Rest Timer</span>
                   <span v-if="restTimerEnabled && restTimerAutoStart" class="settingsHint">Auto-start after save</span>
                 </div>
@@ -1558,7 +1573,7 @@ function setMode(mode: 'light' | 'dark' | 'auto') {
   logEvent('mode_toggle', { mode })
 }
 
-function toggleExperience(key: 'prCelebrations' | 'haptics') {
+function toggleExperience(key: 'prCelebrations' | 'haptics' | 'screenWakeLock') {
   const next = !prefs.experience[key]
   prefs.setExperienceFlag(key, next)
   logEvent('experience_toggle', { key, enabled: next })
