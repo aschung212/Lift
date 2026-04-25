@@ -687,6 +687,20 @@
             </div>
           </div>
 
+          <!-- One-time hint: plate calculator discoverability (LIFT-388) -->
+          <div
+            v-if="showPlateHint"
+            class="wtPlateHint"
+            role="button"
+            tabindex="0"
+            @click="openSettingsFromHint"
+            @keydown.enter="openSettingsFromHint"
+          >
+            <svg class="wtPlateHintIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <span class="wtPlateHintText">Tip: Enable the plate calculator in exercise settings</span>
+            <button class="wtPlateHintDismiss" @click.stop="dismissPlateHint" aria-label="Dismiss hint">×</button>
+          </div>
+
           <!--
             Plate calculator (shown when exercise is in plates mode).
             Matches screens/05-logset-platecalc.png:
@@ -1705,6 +1719,28 @@ const plateMode = computed(() => {
   return ex?.inputMode === 'plates'
 })
 const plateNumpadOverride = ref(false)
+
+// ── Plate calculator hint (LIFT-388) ────────────────────────────
+const PLATE_HINT_KEY = 'plate-calc-hint-dismissed'
+const plateHintDismissed = ref(!!localStorage.getItem(PLATE_HINT_KEY))
+
+const showPlateHint = computed(() =>
+  !plateHintDismissed.value &&
+  !plateMode.value &&
+  !isEditMode.value &&
+  isLogForExercise.value
+)
+
+function dismissPlateHint() {
+  plateHintDismissed.value = true
+  localStorage.setItem(PLATE_HINT_KEY, 'true')
+}
+
+function openSettingsFromHint() {
+  dismissPlateHint()
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  if (ex) openEditExerciseModal(ex)
+}
 
 function adjustReps(delta: number) {
   const current = reps.value ?? 0
