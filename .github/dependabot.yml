@@ -8,6 +8,11 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    groups:
+      npm-patch-and-minor:
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
       # Major version bumps need manual review
       - dependency-name: "vue"
@@ -21,3 +26,8 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+    groups:
+      actions-patch-and-minor:
+        update-types:
+          - "minor"
+          - "patch"
