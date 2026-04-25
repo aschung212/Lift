@@ -71,6 +71,13 @@ jobs:
 
       - run: npx vitest run --coverage
 
+      - name: Coverage report
+        if: always() && github.event_name == 'pull_request'
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
+          json-final-path: coverage/coverage-final.json
+
   # Push unapplied Supabase migrations on merge to master.
   # Runs before Vercel deploys so the DB schema is ready for the new code.
   migrate-db:
