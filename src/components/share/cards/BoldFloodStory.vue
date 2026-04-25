@@ -94,10 +94,11 @@ const stats = computed(() => [
 .bsNumber {
   font-family: var(--ff-display);
   font-weight: 800;
-  font-size: 130px;
-  line-height: 0.85;
-  letter-spacing: -0.06em;
+  font-size: 58px;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .bsUnit {

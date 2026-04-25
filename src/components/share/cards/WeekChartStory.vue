@@ -115,11 +115,12 @@ function barPercent(v: number): number {
 .wsDelta {
   font-family: var(--ff-display);
   font-weight: 800;
-  font-size: 96px;
+  font-size: 64px;
   line-height: 0.9;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
+  white-space: nowrap;
 }
 
 .wsCaption {

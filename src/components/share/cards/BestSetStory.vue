@@ -80,15 +80,16 @@ defineProps<{ summary: SessionSummary }>()
 }
 
 .bsWeight {
-  margin-top: 16px;
+  margin-top: 24px;
   font-family: var(--ff-display);
   font-weight: 800;
-  font-size: 160px;
-  line-height: 0.85;
-  letter-spacing: -0.06em;
+  font-size: 110px;
+  line-height: 0.9;
+  letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
   text-shadow: 0 0 80px var(--accent-subtle);
+  white-space: nowrap;
 }
 
 .bsReps {
