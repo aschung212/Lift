@@ -7,7 +7,7 @@
 
     <div class="bfHero">
       <div class="bfNumber">{{ formattedVolume }}</div>
-      <div class="bfUnit">Pounds moved</div>
+      <div class="bfUnit">{{ summary.unitLabel === 'kg' ? 'Kilograms' : 'Pounds' }} moved</div>
     </div>
 
     <div class="bfStats">
