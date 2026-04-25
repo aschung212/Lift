@@ -18,7 +18,18 @@
         <span class="spCount">{{ activeIndex + 1 }} / {{ cards.length }}</span>
       </header>
 
-      <div class="spThumbRow">
+      <div class="spFormatToggle" role="tablist">
+        <button
+          v-for="opt in FORMAT_OPTIONS"
+          :key="opt.value"
+          role="tab"
+          :aria-selected="format === opt.value"
+          :class="['spFormatBtn', { spFormatBtnActive: format === opt.value }]"
+          @click="setFormat(opt.value)"
+        >{{ opt.label }}</button>
+      </div>
+
+      <div class="spThumbRow" :class="{ spThumbRowStory: format === 'story' }">
         <button
           v-for="(card, i) in cards"
           :key="card.id"
@@ -27,8 +38,8 @@
           :aria-label="`Select ${card.label} card`"
           @click="activeIndex = i"
         >
-          <div class="spThumbCard">
-            <div class="spThumbInner">
+          <div class="spThumbCard" :class="{ spThumbCardStory: format === 'story' }">
+            <div class="spThumbInner" :class="{ spThumbInnerStory: format === 'story' }">
               <component :is="card.component" :summary="summary" />
             </div>
           </div>
@@ -60,9 +71,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { computed, onMounted, onUnmounted, ref, nextTick, watch } from 'vue'
 import type { SessionSummary } from '../../lib/sessionSummary'
-import { eligibleSquareCards } from './cardRegistry'
+import type { CardFormat } from '../../lib/shareImage'
+import { eligibleSquareCards, eligibleStoryCards } from './cardRegistry'
 import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
 import { useFocusTrap } from '../../composables/useFocusTrap'
@@ -75,10 +87,27 @@ const focusTrap = useFocusTrap()
 const { currentTheme, resolvedMode } = useTheme()
 const { shareCard, downloadCard, isSharing } = useWorkoutShare()
 
-const cards = computed(() => eligibleSquareCards(props.summary))
+const FORMAT_OPTIONS: { value: CardFormat; label: string }[] = [
+  { value: 'square', label: 'Post' },
+  { value: 'story', label: 'Story' },
+]
+const format = ref<CardFormat>('square')
+
+const cards = computed(() =>
+  format.value === 'square'
+    ? eligibleSquareCards(props.summary)
+    : eligibleStoryCards(props.summary)
+)
 const activeIndex = ref(0)
 const activeCard = computed(() => cards.value[activeIndex.value] ?? null)
 const lastResult = ref<string | null>(null)
+
+function setFormat(next: CardFormat) {
+  format.value = next
+}
+
+// Reset selection when the card list changes (e.g. format toggle).
+watch(cards, () => { activeIndex.value = 0 })
 
 async function onShare() {
   if (!activeCard.value) return
@@ -190,8 +219,37 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
+.spFormatToggle {
+  margin: 12px 20px 0;
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.spFormatBtn {
+  flex: 1;
+  min-height: 36px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-family: var(--ff);
+  font-weight: 600;
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.spFormatBtnActive {
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+}
+
 .spThumbRow {
-  margin-top: 16px;
+  margin-top: 12px;
   padding: 8px 16px 16px;
   display: flex;
   gap: 12px;
@@ -225,12 +283,20 @@ onUnmounted(() => {
   transition: border-color 120ms ease;
 }
 
+/* Story format thumbnails are taller (9:16). Width matches the square row
+   for a consistent scroll rhythm; height grows. */
+.spThumbCard.spThumbCardStory {
+  width: 180px;
+  height: 320px;
+}
+
 .spThumbActive .spThumbCard {
   border-color: var(--accent);
 }
 
-/* Cards are designed at 360x360 — render at full size and scale down for the
-   thumbnail. Same DOM the export pipeline uses, so what you see is what shares. */
+/* Cards are designed at 360x360 (square) or 360x640 (story) — render at full
+   size and scale down for the thumbnail. Same DOM the export pipeline uses,
+   so what you see is what shares. */
 .spThumbInner {
   position: absolute;
   top: 0;
@@ -239,6 +305,12 @@ onUnmounted(() => {
   height: 360px;
   transform: scale(0.6111);
   transform-origin: top left;
+}
+
+.spThumbInner.spThumbInnerStory {
+  width: 360px;
+  height: 640px;
+  transform: scale(0.5);
 }
 
 .spThumbLabel {

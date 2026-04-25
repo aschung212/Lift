@@ -276,6 +276,22 @@ describe('buildSessionSummary', () => {
     expect(summary.bestSet?.weight).toBe(225)
   })
 
+  it('aggregates priorWeekVolume from the previous Mon→Sun week', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [
+        // Prior week (Apr 13-19)
+        { id: 'p1', weight: 100, reps: 10, date: '2026-04-13T15:00:00Z' }, // 1000
+        { id: 'p2', weight: 200, reps: 5, date: '2026-04-15T15:00:00Z' },  // 1000
+        { id: 'p3', weight: 150, reps: 4, date: '2026-04-19T15:00:00Z' },  // 600
+        // Current week (Apr 20-26)
+        { id: 'c1', weight: 100, reps: 10, date: '2026-04-21T15:00:00Z' }, // 1000
+      ]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.priorWeekVolume).toBe(2600)
+    expect(summary.weekVolume[1]).toBe(1000) // Tuesday Apr 21
+  })
+
   it('routes weight fields through toDisplayUnits when supplied', () => {
     const exercises = [
       makeExercise('Bench', 'ex1', [{ id: 's1', weight: 225, reps: 5, date: '2026-04-21T15:00:00Z' }]),
