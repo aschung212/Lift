@@ -27,7 +27,7 @@
     "cap:build": "npm run build && npx cap sync"
   },
   "dependencies": {
-    "@capacitor/core": "^8.3.0",
+    "@capacitor/core": "^8.3.1",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/keyboard": "^8.0.2",
     "@capacitor/preferences": "^8.0.1",
