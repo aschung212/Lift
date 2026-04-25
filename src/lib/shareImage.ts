@@ -32,9 +32,13 @@ export const EXPORT_PIXEL_RATIO = 3 // 360 → 1080, 640 → 1920
 /**
  * Render a single DOM node to a PNG Blob at high pixel density.
  *
- * The node is expected to be already mounted in the DOM (offscreen is fine —
- * `position: absolute; left: -10000px;` is the typical setup). All assets
- * (fonts, theme variables, gradients) must be loaded before calling.
+ * The node is expected to be already mounted in the DOM. The caller's
+ * positioning (typically `position:absolute; left:-10000px` to keep it
+ * offscreen) is overridden via the `style` option below — html-to-image
+ * preserves the cloned element's positioning into its SVG foreignObject,
+ * and a clone with `left: -10000px` renders entirely outside the SVG
+ * viewport, producing a transparent PNG. Forcing the clone to render at
+ * (0,0) inside the foreignObject is what we want.
  */
 export async function renderNodeToBlob(node: HTMLElement, opts: ExportOptions): Promise<Blob> {
   const blob = await toBlob(node, {
@@ -43,6 +47,15 @@ export async function renderNodeToBlob(node: HTMLElement, opts: ExportOptions): 
     pixelRatio: opts.pixelRatio ?? EXPORT_PIXEL_RATIO,
     cacheBust: true,
     backgroundColor: undefined,
+    style: {
+      position: 'static',
+      left: 'auto',
+      top: 'auto',
+      right: 'auto',
+      bottom: 'auto',
+      transform: 'none',
+      margin: '0',
+    },
   })
   if (!blob) throw new Error('html-to-image returned null blob')
   return blob
