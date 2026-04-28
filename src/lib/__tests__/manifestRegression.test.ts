@@ -44,6 +44,12 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('workbox enables navigation preload for faster navigations', () => {
+    it('has navigationPreload: true in workbox config', () => {
+      expect(viteConfig).toContain('navigationPreload: true')
+    })
+  })
+
   describe('manifest includes screenshots for richer install UI', () => {
     it('has narrow (mobile) screenshot entries', () => {
       expect(viteConfig).toContain("form_factor: 'narrow'")
