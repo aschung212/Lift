@@ -1,4 +1,5 @@
 import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
+import { broadcastThemeUpdate } from '../lib/broadcastSync'
 
 export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'eternal' | 'amethyst' | 'pearl' | 'midnight' | 'love' | 'earth'
 export type ColorMode = 'light' | 'dark' | 'auto'
@@ -78,6 +79,7 @@ function applyTheme(id: string): void {
   document.documentElement.setAttribute('data-theme', id)
   updateMetaColor()
   localStorage.setItem('app-theme', id)
+  broadcastThemeUpdate('theme')
 }
 
 /** Apply theme visually without persisting to localStorage. */
@@ -98,6 +100,7 @@ function applyResolvedMode(resolved: string): void {
 function applyMode(preference: string): void {
   localStorage.setItem('app-mode', preference)
   applyResolvedMode(preference === 'auto' ? getSystemMode() : preference)
+  broadcastThemeUpdate('color-mode')
 }
 
 function updateMetaColor(): void {

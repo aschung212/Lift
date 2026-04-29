@@ -6,6 +6,7 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { syncQueue } from '../lib/syncQueue'
+import { broadcastSignOut } from '../lib/broadcastSync'
 import { logError } from '../lib/logger'
 import type { User, Provider } from '@supabase/supabase-js'
 
@@ -99,6 +100,7 @@ async function signOut(): Promise<void> {
     // Network errors during sign-out should not block clearing the user
   } finally {
     user.value = null
+    broadcastSignOut()
   }
 }
 

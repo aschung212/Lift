@@ -848,6 +848,7 @@ import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
+import { onBroadcast, closeBroadcastChannel, type BroadcastMessage } from './lib/broadcastSync'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
@@ -972,6 +973,34 @@ function updateOnlineStatus() {
 window.addEventListener('online', updateOnlineStatus)
 window.addEventListener('offline', updateOnlineStatus)
 if (!navigator.onLine) syncStatus.value = 'offline'
+
+// ── Cross-tab sync via BroadcastChannel ────────────────────────
+const _storeReloaders: Record<string, () => void> = {
+  workout: () => useWorkoutStore()._reloadFromLocalStorage(),
+  bodyweight: () => useBodyweightStore()._reloadFromLocalStorage(),
+  preferences: () => usePreferencesStore()._reloadFromLocalStorage(),
+  progression: () => useProgressionStore()._reloadFromLocalStorage(),
+}
+
+const _removeBroadcastListener = onBroadcast((msg: BroadcastMessage) => {
+  if (msg.type === 'store-update') {
+    _storeReloaders[msg.source]?.()
+  } else if (msg.type === 'theme-update') {
+    // Re-read theme/settings from localStorage and re-apply
+    const stored = localStorage.getItem('app-theme')
+    const storedMode = localStorage.getItem('app-mode')
+    if (stored && stored !== currentTheme.value) currentTheme.value = stored
+    if (storedMode && storedMode !== colorMode.value) colorMode.value = storedMode as 'light' | 'dark' | 'auto'
+  } else if (msg.type === 'auth-signout') {
+    // Another tab signed out — sign out here too
+    signOut()
+  }
+})
+
+onUnmounted(() => {
+  _removeBroadcastListener()
+  closeBroadcastChannel()
+})
 
 const settingsOpen = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)

@@ -8,6 +8,7 @@ import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
+import { broadcastStoreUpdate } from '../lib/broadcastSync'
 import type { Json } from '../lib/database.types'
 
 const STORAGE_KEY = 'user-progression'
@@ -235,6 +236,15 @@ export const useProgressionStore = defineStore('progression', {
   }),
 
   actions: {
+    /** Reload state from localStorage (called when another tab broadcasts an update). */
+    _reloadFromLocalStorage() {
+      const fresh = load()
+      // Preserve _userId — it's runtime-only and set during init
+      const userId = this._userId
+      this.$patch(fresh)
+      this._userId = userId
+    },
+
     _persist() {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { _userId: _omit, ...state } = this.$state
@@ -245,6 +255,7 @@ export const useProgressionStore = defineStore('progression', {
         logError(e, { source: 'progression._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('progression')
     },
 
     async init(userId: string) {
