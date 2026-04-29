@@ -61,4 +61,26 @@ describe('PWA manifest regression tests', () => {
       expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
     })
   })
+
+  describe('workbox globIgnores excludes non-essential large assets from precache', () => {
+    it('excludes screenshot PNGs from precache', () => {
+      expect(viteConfig).toContain("'screenshot-*.png'")
+    })
+
+    it('excludes og-image.png from precache', () => {
+      expect(viteConfig).toContain("'og-image.png'")
+    })
+
+    it('excludes icon-source.png from precache', () => {
+      expect(viteConfig).toContain("'icon-source.png'")
+    })
+
+    it('excludes og-preview.html from precache', () => {
+      expect(viteConfig).toContain("'og-preview.html'")
+    })
+
+    it('has globIgnores array in workbox config', () => {
+      expect(viteConfig).toContain('globIgnores:')
+    })
+  })
 })
