@@ -36,10 +36,26 @@ function openDB(): Promise<IDBDatabase> {
 export function backupToIDB(key: string, value: string): void {
   openDB().then(database => {
     const tx = database.transaction(STORE_NAME, 'readwrite')
-    tx.objectStore(STORE_NAME).put(value, key)
+    const request = tx.objectStore(STORE_NAME).put(value, key)
+    request.onerror = () => {
+      if (request.error?.name === 'QuotaExceededError') {
+        quotaExceededCallbacks.forEach(cb => cb())
+      }
+    }
   }).catch(() => {
     // IndexedDB unavailable — silently fail
   })
+}
+
+const quotaExceededCallbacks: Array<() => void> = []
+
+/** Register a callback for QuotaExceededError events. */
+export function onQuotaExceeded(cb: () => void): () => void {
+  quotaExceededCallbacks.push(cb)
+  return () => {
+    const idx = quotaExceededCallbacks.indexOf(cb)
+    if (idx >= 0) quotaExceededCallbacks.splice(idx, 1)
+  }
 }
 
 /** Clear all data from IndexedDB backup. */

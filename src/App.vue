@@ -460,6 +460,23 @@
                 <span v-if="importResult.error" class="settingsImportError">{{ importResult.error }}</span>
                 <span v-else class="settingsImportSuccess">Imported {{ importResult.exercises }} exercise{{ importResult.exercises !== 1 ? 's' : '' }} with {{ importResult.sets }} sets ({{ importResult.format }})</span>
               </div>
+              <div v-if="storageQuota" class="storageQuotaRow" role="status" :aria-label="`Storage: ${storageQuota.percent}% used`">
+                <div class="storageQuotaHeader">
+                  <span class="storageQuotaLabel">Storage</span>
+                  <span class="storageQuotaValue">{{ formatBytes(storageQuota.usage) }} of {{ formatBytes(storageQuota.quota) }}</span>
+                </div>
+                <div class="storageQuotaBar">
+                  <div
+                    class="storageQuotaFill"
+                    :class="{ storageQuotaFillWarning: storageQuota.warning }"
+                    :style="{ width: Math.min(storageQuota.percent, 100) + '%' }"
+                  ></div>
+                </div>
+                <div v-if="storageQuota.warning && !storageWarningDismissed" class="storageWarning" role="alert">
+                  <span class="storageWarningText">Storage is {{ storageQuota.percent }}% full. Export your data to avoid losing workouts.</span>
+                  <button class="storageWarningDismiss" @click="storageWarningDismissed = true" aria-label="Dismiss storage warning">Dismiss</button>
+                </div>
+              </div>
               <div class="privacyTransparency" role="region" aria-label="Data transparency">
                 <div class="privacyRow">
                   <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/></svg>
@@ -833,7 +850,8 @@ import { usePRBaseline } from './composables/usePRBaseline'
 import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration, showXPToast } from './stores/progression'
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
-import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
+import { requestPersistentStorage, ensureLocalStorage, clearIDB, onQuotaExceeded } from './lib/durableStorage'
+import { useStorageQuota, type StorageQuota } from './composables/useStorageQuota'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
@@ -945,6 +963,8 @@ const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+const { storageQuota, checkQuota, formatBytes } = useStorageQuota()
+const storageWarningDismissed = ref(false)
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -1785,6 +1805,12 @@ onMounted(async () => {
 
   // Request persistent storage to prevent browser eviction
   requestPersistentStorage()
+
+  // Listen for quota exceeded errors and refresh quota display
+  onQuotaExceeded(() => {
+    checkQuota()
+    storageWarningDismissed.value = false
+  })
 
   // Restore from IndexedDB if localStorage was cleared
   const restored = await Promise.all([
