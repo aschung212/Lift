@@ -80,6 +80,37 @@ export async function requestPersistentStorage(): Promise<boolean> {
   return false
 }
 
+/** Storage quota estimate result. */
+export interface StorageQuota {
+  usage: number
+  quota: number
+  pct: number
+}
+
+/**
+ * Estimate current storage usage via the StorageManager API.
+ * Returns null if the API is unavailable.
+ */
+export async function estimateStorageQuota(): Promise<StorageQuota | null> {
+  if (!navigator.storage?.estimate) return null
+  try {
+    const { usage = 0, quota = 0 } = await navigator.storage.estimate()
+    return { usage, quota, pct: quota > 0 ? usage / quota : 0 }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Check if a caught error is a QuotaExceededError.
+ */
+export function isQuotaExceeded(e: unknown): boolean {
+  return e instanceof DOMException && (
+    e.name === 'QuotaExceededError' ||
+    e.code === 22 // Legacy code for QuotaExceededError
+  )
+}
+
 /**
  * Check if localStorage has data for a key. If not, try restoring from IndexedDB.
  * Returns true if data was restored.

@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
-import { backupToIDB } from '../lib/durableStorage'
+import { backupToIDB, isQuotaExceeded } from '../lib/durableStorage'
 import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
@@ -243,6 +243,9 @@ export const useProgressionStore = defineStore('progression', {
         localStorage.setItem(STORAGE_KEY, data)
       } catch (e) {
         logError(e, { source: 'progression._persist', size: data.length })
+        if (isQuotaExceeded(e)) {
+          import('../composables/useStorageQuota').then(m => m.reportQuotaExceeded())
+        }
       }
       backupToIDB(STORAGE_KEY, data)
     },

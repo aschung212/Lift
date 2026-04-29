@@ -3,7 +3,7 @@ import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
-import { backupToIDB } from '../lib/durableStorage'
+import { backupToIDB, isQuotaExceeded } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
@@ -45,6 +45,9 @@ export const useBodyweightStore = defineStore('bodyweight', {
         localStorage.setItem(STORAGE_KEY, data)
       } catch (e) {
         logError(e, { source: 'bodyweight._persist', size: data.length })
+        if (isQuotaExceeded(e)) {
+          import('../composables/useStorageQuota').then(m => m.reportQuotaExceeded())
+        }
       }
       backupToIDB(STORAGE_KEY, data)
     },

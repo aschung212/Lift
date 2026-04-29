@@ -26,6 +26,9 @@
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
+        <button v-if="storageQuota.quotaExceeded" class="storageBanner" @click="settingsOpen = true" role="alert">
+          Storage full — tap to manage data
+        </button>
         <div class="appTopBar">
           <div class="appTopBarLeft">
             <button
@@ -442,6 +445,21 @@
 
             <div class="settingsGroup">
               <div class="settingsHeader">Data</div>
+              <div v-if="storageQuota.checked" class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Storage</span>
+                  <span class="settingsHint">{{ formatBytes(storageQuota.usage) }} of {{ formatBytes(storageQuota.quota) }}</span>
+                </div>
+                <div class="storageBar" role="progressbar" :aria-valuenow="Math.round(storageQuota.pct * 100)" aria-valuemin="0" aria-valuemax="100" :aria-label="`Storage usage: ${Math.round(storageQuota.pct * 100)}%`">
+                  <div class="storageBarFill" :class="{ storageBarPressure: storageQuota.pressure }" :style="{ width: Math.min(storageQuota.pct * 100, 100) + '%' }"></div>
+                </div>
+              </div>
+              <div v-if="storageQuota.quotaExceeded" class="settingsRow">
+                <span class="settingsHint settingsWarning">Storage full — export your data and clear old entries to free space</span>
+              </div>
+              <div v-else-if="storageQuota.pressure" class="settingsRow">
+                <span class="settingsHint settingsWarning">Storage almost full — consider exporting data as a backup</span>
+              </div>
               <div class="settingsRow">
                 <span class="settingsLabel">Export</span>
                 <div class="exportBtnGroup">
@@ -834,6 +852,7 @@ import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissU
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
+import { storageQuota, checkStorageQuota, formatBytes } from './composables/useStorageQuota'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
@@ -1785,6 +1804,9 @@ onMounted(async () => {
 
   // Request persistent storage to prevent browser eviction
   requestPersistentStorage()
+
+  // Check storage quota for pressure monitoring
+  checkStorageQuota()
 
   // Restore from IndexedDB if localStorage was cleared
   const restored = await Promise.all([

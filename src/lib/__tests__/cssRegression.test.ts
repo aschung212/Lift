@@ -397,4 +397,38 @@ describe('CSS regression tests', () => {
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
   })
+
+  describe('.storageBar', () => {
+    const lines = getRuleLines('.storageBar')
+    it('exists', () => {
+      expect(lines.length).toBeGreaterThan(0)
+    })
+    it('uses theme variable for background', () => {
+      expect(lines.some(l => l.includes('var(--glass-bg)'))).toBe(true)
+    })
+  })
+
+  describe('.storageBarFill', () => {
+    const lines = getRuleLines('.storageBarFill')
+    it('uses theme variable for color', () => {
+      expect(lines.some(l => l.includes('var(--success)'))).toBe(true)
+    })
+  })
+
+  describe('.storageBarPressure', () => {
+    const lines = getRuleLines('.storageBarPressure')
+    it('uses accent for pressure state', () => {
+      expect(lines.some(l => l.includes('var(--accent)'))).toBe(true)
+    })
+  })
+
+  describe('.storageBanner', () => {
+    const lines = getRuleLines('.storageBanner')
+    it('has 44pt minimum touch target', () => {
+      expect(lines.some(l => l.startsWith('min-height: 44px'))).toBe(true)
+    })
+    it('uses theme colors', () => {
+      expect(lines.some(l => l.includes('var(--accent)'))).toBe(true)
+    })
+  })
 })
