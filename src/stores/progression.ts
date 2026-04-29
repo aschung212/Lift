@@ -243,6 +243,9 @@ export const useProgressionStore = defineStore('progression', {
         localStorage.setItem(STORAGE_KEY, data)
       } catch (e) {
         logError(e, { source: 'progression._persist', size: data.length })
+        if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
+          window.dispatchEvent(new CustomEvent('lift:quota-exceeded', { detail: { source: 'progression', size: data.length } }))
+        }
       }
       backupToIDB(STORAGE_KEY, data)
     },

@@ -45,6 +45,9 @@ export const useBodyweightStore = defineStore('bodyweight', {
         localStorage.setItem(STORAGE_KEY, data)
       } catch (e) {
         logError(e, { source: 'bodyweight._persist', size: data.length })
+        if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
+          window.dispatchEvent(new CustomEvent('lift:quota-exceeded', { detail: { source: 'bodyweight', size: data.length } }))
+        }
       }
       backupToIDB(STORAGE_KEY, data)
     },

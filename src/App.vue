@@ -442,6 +442,18 @@
 
             <div class="settingsGroup">
               <div class="settingsHeader">Data</div>
+              <div v-if="storageQuota.usageLabel.value" class="settingsRow storageQuotaRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Storage</span>
+                  <span class="settingsHint">{{ storageQuota.usageLabel.value }} ({{ storageQuota.usagePercent.value }})</span>
+                </div>
+                <div class="storageBar" role="meter" :aria-valuenow="storageQuota.usageFraction.value ? Math.round(storageQuota.usageFraction.value * 100) : 0" aria-valuemin="0" aria-valuemax="100" :aria-label="`Storage usage: ${storageQuota.usagePercent.value}`">
+                  <div class="storageBarFill" :class="{ warning: storageQuota.isWarning.value, critical: storageQuota.isCritical.value }" :style="{ width: storageQuota.usagePercent.value ?? '0%' }"></div>
+                </div>
+              </div>
+              <div v-if="quotaExceeded || storageQuota.isCritical.value" class="settingsRow">
+                <span class="settingsHint settingsWarning">Storage is almost full. Export your data and clear old entries to free space.</span>
+              </div>
               <div class="settingsRow">
                 <span class="settingsLabel">Export</span>
                 <div class="exportBtnGroup">
@@ -834,6 +846,7 @@ import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissU
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
+import { useStorageQuota } from './composables/useStorageQuota'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
@@ -945,6 +958,8 @@ const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+const storageQuota = useStorageQuota()
+const quotaExceeded = ref(false)
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -992,7 +1007,10 @@ const legalFocus = useFocusTrap()
 const confirmFocus = useFocusTrap()
 
 watch(settingsOpen, (open) => {
-  if (!open) {
+  if (open) {
+    // Refresh storage quota when settings opens
+    storageQuota.checkQuota()
+  } else {
     settingsSwipe.detach()
     settingsFocus.deactivate()
   }
@@ -1785,6 +1803,12 @@ onMounted(async () => {
 
   // Request persistent storage to prevent browser eviction
   requestPersistentStorage()
+
+  // Check storage quota for warnings
+  storageQuota.checkQuota()
+
+  // Listen for quota-exceeded events from stores
+  window.addEventListener('lift:quota-exceeded', () => { quotaExceeded.value = true })
 
   // Restore from IndexedDB if localStorage was cleared
   const restored = await Promise.all([

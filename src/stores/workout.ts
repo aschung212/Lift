@@ -167,6 +167,9 @@ export const useWorkoutStore = defineStore('workout', {
         localStorage.setItem('lift-tag-recovery-excluded', JSON.stringify(this.tagRecoveryExcluded))
       } catch (e) {
         logError(e, { source: 'workout._persist', size: data.length })
+        if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
+          window.dispatchEvent(new CustomEvent('lift:quota-exceeded', { detail: { source: 'workout', size: data.length } }))
+        }
       }
       backupToIDB(STORAGE_KEY, data)
     },
