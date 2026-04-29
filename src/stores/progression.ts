@@ -8,6 +8,7 @@ import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
+import { handlePersistError } from '../lib/storageQuota'
 import type { Json } from '../lib/database.types'
 
 const STORAGE_KEY = 'user-progression'
@@ -243,6 +244,7 @@ export const useProgressionStore = defineStore('progression', {
         localStorage.setItem(STORAGE_KEY, data)
       } catch (e) {
         logError(e, { source: 'progression._persist', size: data.length })
+        handlePersistError(e)
       }
       backupToIDB(STORAGE_KEY, data)
     },

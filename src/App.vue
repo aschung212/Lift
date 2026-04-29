@@ -26,6 +26,9 @@
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
+        <div v-if="quotaExceeded" class="quotaBanner" role="alert">
+          Storage full — your last change may not have saved. Export your data in Settings.
+        </div>
         <div class="appTopBar">
           <div class="appTopBarLeft">
             <button
@@ -442,6 +445,23 @@
 
             <div class="settingsGroup">
               <div class="settingsHeader">Data</div>
+              <div v-if="storageEstimate.available" class="settingsRow settingsStorageRow" role="region" aria-label="Storage usage">
+                <div class="storageInfo">
+                  <span class="settingsLabel">Storage</span>
+                  <span class="storageValues">{{ formatBytes(storageEstimate.usage) }} of {{ formatBytes(storageEstimate.quota) }}</span>
+                </div>
+                <div class="storageBarTrack" :aria-valuenow="Math.round(storageEstimate.percent * 100)" aria-valuemin="0" aria-valuemax="100" role="progressbar" :aria-label="`Storage ${Math.round(storageEstimate.percent * 100)}% used`">
+                  <div class="storageBarFill" :class="{ 'storageBarFill--warning': isQuotaWarning() }" :style="{ width: Math.min(storageEstimate.percent * 100, 100) + '%' }" />
+                </div>
+                <div v-if="isQuotaWarning()" class="storageWarning" role="alert">
+                  Storage is over {{ Math.round(QUOTA_WARNING_THRESHOLD * 100) }}% full. Export your data to avoid losing sets.
+                </div>
+                <div class="storagePersistence">
+                  <svg v-if="isPersisted" class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <svg v-else class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <span class="privacyText">{{ isPersisted ? 'Persistent storage granted' : 'Browser may clear data under pressure' }}</span>
+                </div>
+              </div>
               <div class="settingsRow">
                 <span class="settingsLabel">Export</span>
                 <div class="exportBtnGroup">
@@ -834,6 +854,7 @@ import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissU
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
+import { storageEstimate, isPersisted, quotaExceeded, refreshStorageEstimate, isQuotaWarning, formatBytes, QUOTA_WARNING_THRESHOLD } from './lib/storageQuota'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
@@ -992,7 +1013,9 @@ const legalFocus = useFocusTrap()
 const confirmFocus = useFocusTrap()
 
 watch(settingsOpen, (open) => {
-  if (!open) {
+  if (open) {
+    refreshStorageEstimate()
+  } else {
     settingsSwipe.detach()
     settingsFocus.deactivate()
   }

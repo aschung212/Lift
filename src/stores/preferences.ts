@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { handlePersistError } from '../lib/storageQuota'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -84,6 +85,7 @@ export const usePreferencesStore = defineStore('preferences', {
         )
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
+        handlePersistError(e)
       }
       if (supabase && this._userId) {
         const features = { ...this.features }

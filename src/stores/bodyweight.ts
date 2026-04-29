@@ -5,6 +5,7 @@ import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
+import { handlePersistError } from '../lib/storageQuota'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
 const TOMBSTONE_STORE = 'bodyweight'
@@ -45,6 +46,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         localStorage.setItem(STORAGE_KEY, data)
       } catch (e) {
         logError(e, { source: 'bodyweight._persist', size: data.length })
+        handlePersistError(e)
       }
       backupToIDB(STORAGE_KEY, data)
     },
