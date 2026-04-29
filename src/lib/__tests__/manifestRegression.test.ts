@@ -44,6 +44,12 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('manifest includes launch_handler for single-window behavior', () => {
+    it('has launch_handler with navigate-existing client_mode', () => {
+      expect(viteConfig).toContain("client_mode: 'navigate-existing'")
+    })
+  })
+
   describe('manifest includes screenshots for richer install UI', () => {
     it('has narrow (mobile) screenshot entries', () => {
       expect(viteConfig).toContain("form_factor: 'narrow'")
