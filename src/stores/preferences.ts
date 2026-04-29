@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -85,6 +86,7 @@ export const usePreferencesStore = defineStore('preferences', {
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
+      broadcastStoreUpdate('preferences')
       if (supabase && this._userId) {
         const features = { ...this.features }
         const weightGoal = this.weightGoal
