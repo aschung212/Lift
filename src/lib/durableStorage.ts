@@ -80,6 +80,61 @@ export async function requestPersistentStorage(): Promise<boolean> {
   return false
 }
 
+export interface StorageEstimate {
+  usage: number      // bytes used
+  quota: number      // bytes available
+  percent: number    // 0-100
+  persisted: boolean
+}
+
+/**
+ * Estimate current storage usage via the StorageManager API.
+ * Returns null if the API is unavailable.
+ */
+export async function estimateStorageQuota(): Promise<StorageEstimate | null> {
+  if (!navigator.storage?.estimate) return null
+  try {
+    const { usage = 0, quota = 0 } = await navigator.storage.estimate()
+    const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false
+    const percent = quota > 0 ? Math.round((usage / quota) * 100) : 0
+    return { usage, quota, percent, persisted }
+  } catch {
+    return null
+  }
+}
+
+/** Check whether an error is a QuotaExceededError. */
+export function isQuotaExceededError(err: unknown): boolean {
+  if (err instanceof DOMException) {
+    return err.name === 'QuotaExceededError' || err.code === 22
+  }
+  return false
+}
+
+/**
+ * Reactive flag set when any store hits QuotaExceededError.
+ * Read by the settings UI to show a warning banner.
+ */
+let _quotaExceeded = false
+const _listeners: Array<(v: boolean) => void> = []
+
+export function setQuotaExceeded(value: boolean): void {
+  _quotaExceeded = value
+  _listeners.forEach(fn => fn(value))
+}
+
+export function getQuotaExceeded(): boolean {
+  return _quotaExceeded
+}
+
+export function onQuotaExceededChange(fn: (v: boolean) => void): () => void {
+  _listeners.push(fn)
+  return () => {
+    const idx = _listeners.indexOf(fn)
+    if (idx >= 0) _listeners.splice(idx, 1)
+  }
+}
+
 /**
  * Check if localStorage has data for a key. If not, try restoring from IndexedDB.
  * Returns true if data was restored.

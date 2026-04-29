@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { isQuotaExceededError, setQuotaExceeded } from '../lib/durableStorage'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -84,6 +85,7 @@ export const usePreferencesStore = defineStore('preferences', {
         )
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
+        if (isQuotaExceededError(e)) setQuotaExceeded(true)
       }
       if (supabase && this._userId) {
         const features = { ...this.features }

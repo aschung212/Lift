@@ -460,6 +460,27 @@
                 <span v-if="importResult.error" class="settingsImportError">{{ importResult.error }}</span>
                 <span v-else class="settingsImportSuccess">Imported {{ importResult.exercises }} exercise{{ importResult.exercises !== 1 ? 's' : '' }} with {{ importResult.sets }} sets ({{ importResult.format }})</span>
               </div>
+              <div v-if="storageEstimate" class="storageQuotaSection" role="region" aria-label="Storage usage">
+                <div class="storageQuotaRow">
+                  <span class="storageQuotaLabel">Device storage</span>
+                  <span class="storageQuotaValue">{{ formatBytes(storageEstimate.usage) }}</span>
+                </div>
+                <div class="storageQuotaBarTrack" :aria-valuenow="storageEstimate.percent" aria-valuemin="0" aria-valuemax="100" role="meter" aria-label="Storage usage percentage">
+                  <div class="storageQuotaBarFill" :class="{ storageQuotaBarWarning: storagePressure }" :style="{ width: storageEstimate.percent + '%' }"></div>
+                </div>
+                <div class="storageQuotaDetail">
+                  <span>{{ storageEstimate.percent }}% of {{ formatBytes(storageEstimate.quota) }}</span>
+                  <span v-if="storageEstimate.persisted" class="storageQuotaPersisted">Persistent</span>
+                </div>
+                <div v-if="storageQuotaExceeded" class="storageQuotaAlert" role="alert">
+                  <svg class="storageQuotaAlertIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  Storage full — export your data to avoid data loss
+                </div>
+                <div v-else-if="storagePressure" class="storageQuotaWarn" role="status">
+                  <svg class="storageQuotaAlertIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  Storage is running low — consider exporting a backup
+                </div>
+              </div>
               <div class="privacyTransparency" role="region" aria-label="Data transparency">
                 <div class="privacyRow">
                   <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/></svg>
@@ -834,6 +855,7 @@ import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissU
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
+import { useStorageQuota, formatBytes } from './composables/useStorageQuota'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
@@ -945,6 +967,7 @@ const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+const { estimate: storageEstimate, pressureWarning: storagePressure, quotaExceeded: storageQuotaExceeded } = useStorageQuota()
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {

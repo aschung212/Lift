@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
-import { backupToIDB } from '../lib/durableStorage'
+import { backupToIDB, isQuotaExceededError, setQuotaExceeded } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
@@ -167,6 +167,7 @@ export const useWorkoutStore = defineStore('workout', {
         localStorage.setItem('lift-tag-recovery-excluded', JSON.stringify(this.tagRecoveryExcluded))
       } catch (e) {
         logError(e, { source: 'workout._persist', size: data.length })
+        if (isQuotaExceededError(e)) setQuotaExceeded(true)
       }
       backupToIDB(STORAGE_KEY, data)
     },
