@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import { broadcastChange } from '../lib/crossTabSync'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import { backupToIDB } from '../lib/durableStorage'
 import type { ThemeId } from '../composables/useTheme'
@@ -245,6 +246,14 @@ export const useProgressionStore = defineStore('progression', {
         logError(e, { source: 'progression._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastChange('progression')
+    },
+
+    /** Reload state from localStorage (called when another tab mutates data). */
+    _reloadFromLocalStorage() {
+      const fresh = load()
+      const userId = this._userId
+      Object.assign(this.$state, { ...fresh, _userId: userId })
     },
 
     async init(userId: string) {

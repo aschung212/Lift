@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import { broadcastChange } from '../lib/crossTabSync'
 import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
@@ -169,6 +170,15 @@ export const useWorkoutStore = defineStore('workout', {
         logError(e, { source: 'workout._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastChange('workout')
+    },
+
+    /** Reload state from localStorage (called when another tab mutates data). */
+    _reloadFromLocalStorage() {
+      this.exercises = load()
+      this.customTags = JSON.parse(localStorage.getItem('lift-custom-tags') || '[]')
+      this.tagRecoveryDays = JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}')
+      this.tagRecoveryExcluded = JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]')
     },
 
     /** Clear sample flag and push exercise + all its sets to Supabase. */

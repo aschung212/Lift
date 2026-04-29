@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import { broadcastChange } from '../lib/crossTabSync'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
@@ -47,6 +48,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
         logError(e, { source: 'bodyweight._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastChange('bodyweight')
+    },
+
+    /** Reload state from localStorage (called when another tab mutates data). */
+    _reloadFromLocalStorage() {
+      this.entries = load()
     },
 
     async init(userId: string) {

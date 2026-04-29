@@ -973,6 +973,13 @@ window.addEventListener('online', updateOnlineStatus)
 window.addEventListener('offline', updateOnlineStatus)
 if (!navigator.onLine) syncStatus.value = 'offline'
 
+// ── Cross-tab sync ────────────────────────────────────────────
+import { onCrossTabChange } from './lib/crossTabSync'
+onCrossTabChange('workout', () => useWorkoutStore()._reloadFromLocalStorage())
+onCrossTabChange('bodyweight', () => useBodyweightStore()._reloadFromLocalStorage())
+onCrossTabChange('preferences', () => prefs._reloadFromLocalStorage())
+onCrossTabChange('progression', () => progressionStore._reloadFromLocalStorage())
+
 const settingsOpen = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)
 const settingsHandleEl = ref<HTMLElement | null>(null)
