@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
+import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL, matchPrecache } from 'workbox-precaching'
 import { clientsClaim } from 'workbox-core'
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing'
 import { NetworkFirst, NetworkOnly } from 'workbox-strategies'
@@ -51,19 +51,11 @@ registerRoute(
 // Offline fallback: serve offline.html when a navigation request fails
 // and the precached index.html is also unavailable (e.g. corrupted cache,
 // first visit without connectivity after SW install).
+// Uses matchPrecache to correctly resolve revision-hashed precache keys.
 setCatchHandler(async ({ request }) => {
   if (request.destination === 'document') {
-    const cache = await caches.open('workbox-precache-v2-' + self.registration.scope)
-    const fallback = await cache.match('/offline.html')
+    const fallback = await matchPrecache('/offline.html')
     if (fallback) return fallback
-
-    // Try alternate key format (workbox adds revision hashes to precache keys)
-    for (const key of await cache.keys()) {
-      if (key.url.endsWith('/offline.html')) {
-        const response = await cache.match(key)
-        if (response) return response
-      }
-    }
   }
   return Response.error()
 })

@@ -76,9 +76,9 @@ describe('Service worker offline fallback integration', () => {
     expect(swSource).toContain('setCatchHandler')
   })
 
-  it('SW catch handler serves offline.html for document requests', () => {
+  it('SW catch handler serves offline.html for document requests via matchPrecache', () => {
     expect(swSource).toContain("request.destination === 'document'")
-    expect(swSource).toContain('offline.html')
+    expect(swSource).toContain("matchPrecache('/offline.html')")
   })
 
   it('SW includes NavigationRoute for SPA routing', () => {
