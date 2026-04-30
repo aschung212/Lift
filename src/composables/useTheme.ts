@@ -1,4 +1,5 @@
 import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
+import { notifyPeers, onPeerUpdate } from '../lib/broadcastSync'
 
 export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'eternal' | 'amethyst' | 'pearl' | 'midnight' | 'love' | 'earth'
 export type ColorMode = 'light' | 'dark' | 'auto'
@@ -78,6 +79,7 @@ function applyTheme(id: string): void {
   document.documentElement.setAttribute('data-theme', id)
   updateMetaColor()
   localStorage.setItem('app-theme', id)
+  notifyPeers('theme')
 }
 
 /** Apply theme visually without persisting to localStorage. */
@@ -150,6 +152,16 @@ mql.addEventListener('change', () => {
 watch(restTimerEnabled, (v) => localStorage.setItem('rest-timer', v ? 'on' : 'off'))
 watch(restTimerAutoStart, (v) => localStorage.setItem('rest-timer-autostart', v ? 'on' : 'off'))
 watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
+
+// Cross-tab theme sync: reload theme/mode from localStorage when another tab changes them
+onPeerUpdate('theme', () => {
+  const newTheme = (localStorage.getItem('app-theme') || 'eternal') as ThemeId
+  const newMode = (localStorage.getItem('app-mode') || 'dark') as ColorMode
+  // Update refs without re-triggering the localStorage write (watchers fire applyTheme/applyMode
+  // which write to localStorage + broadcast — but broadcastSync ignores self-sent messages)
+  if (currentTheme.value !== newTheme) currentTheme.value = newTheme
+  if (colorMode.value !== newMode) colorMode.value = newMode
+})
 
 /**
  * Progression store accessor — set lazily after Pinia is initialized.

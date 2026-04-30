@@ -7,6 +7,7 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
+import { notifyPeers, onPeerUpdate } from '../lib/broadcastSync'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -169,6 +170,15 @@ export const useWorkoutStore = defineStore('workout', {
         logError(e, { source: 'workout._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      notifyPeers('workout')
+    },
+
+    /** Reload state from localStorage when another tab broadcasts a change. */
+    _reloadFromLocalStorage() {
+      this.exercises = load()
+      this.customTags = JSON.parse(localStorage.getItem('lift-custom-tags') || '[]')
+      this.tagRecoveryDays = JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}')
+      this.tagRecoveryExcluded = JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]')
     },
 
     /** Clear sample flag and push exercise + all its sets to Supabase. */
@@ -196,6 +206,7 @@ export const useWorkoutStore = defineStore('workout', {
 
     async init(userId: string) {
       this._userId = userId
+      onPeerUpdate('workout', () => this._reloadFromLocalStorage())
       await this._fetchFromSupabase()
     },
 

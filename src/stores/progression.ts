@@ -9,6 +9,7 @@ import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
 import type { Json } from '../lib/database.types'
+import { notifyPeers, onPeerUpdate } from '../lib/broadcastSync'
 
 const STORAGE_KEY = 'user-progression'
 
@@ -245,10 +246,19 @@ export const useProgressionStore = defineStore('progression', {
         logError(e, { source: 'progression._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      notifyPeers('progression')
+    },
+
+    /** Reload state from localStorage when another tab broadcasts a change. */
+    _reloadFromLocalStorage() {
+      const fresh = load()
+      // Preserve _userId — it's session-local, not persisted
+      Object.assign(this.$state, { ...fresh, _userId: this._userId })
     },
 
     async init(userId: string) {
       this._userId = userId
+      onPeerUpdate('progression', () => this._reloadFromLocalStorage())
       await this._fetchFromSupabase()
     },
 

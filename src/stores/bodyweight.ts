@@ -6,6 +6,7 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
+import { notifyPeers, onPeerUpdate } from '../lib/broadcastSync'
 
 const TOMBSTONE_STORE = 'bodyweight'
 
@@ -47,10 +48,17 @@ export const useBodyweightStore = defineStore('bodyweight', {
         logError(e, { source: 'bodyweight._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      notifyPeers('bodyweight')
+    },
+
+    /** Reload state from localStorage when another tab broadcasts a change. */
+    _reloadFromLocalStorage() {
+      this.entries = load()
     },
 
     async init(userId: string) {
       this._userId = userId
+      onPeerUpdate('bodyweight', () => this._reloadFromLocalStorage())
       await this._fetchFromSupabase()
     },
 
