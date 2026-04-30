@@ -4,6 +4,7 @@ import { syncQueue } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
@@ -47,6 +48,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         logError(e, { source: 'bodyweight._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('bodyweight')
     },
 
     async init(userId: string) {

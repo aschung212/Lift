@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { backupToIDB } from '../lib/durableStorage'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
@@ -169,6 +170,7 @@ export const useWorkoutStore = defineStore('workout', {
         logError(e, { source: 'workout._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('workout')
     },
 
     /** Clear sample flag and push exercise + all its sets to Supabase. */
