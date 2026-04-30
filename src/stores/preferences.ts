@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { backupToIDB } from '../lib/durableStorage'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -95,6 +96,7 @@ export const usePreferencesStore = defineStore('preferences', {
         logError(e, { source: 'preferences._persist' })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('preferences')
       if (supabase && this._userId) {
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
@@ -106,6 +108,18 @@ export const usePreferencesStore = defineStore('preferences', {
             )
         )
       }
+    },
+
+    /** Re-read state from localStorage (called by cross-tab sync listener). */
+    _reloadFromStorage() {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
+        if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
+        if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+      } catch { /* ignore corrupt data */ }
     },
 
     async init(userId: string) {

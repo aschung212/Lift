@@ -8,6 +8,7 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -172,6 +173,21 @@ export const useWorkoutStore = defineStore('workout', () => {
       logError(e, { source: 'workout._persist', size: data.length })
     }
     backupToIDB(STORAGE_KEY, data)
+    broadcastStoreUpdate('workout')
+  }
+
+  /** Re-read state from localStorage (called by cross-tab sync listener). */
+  function _reloadFromStorage() {
+    exercises.value = load()
+    try {
+      customTags.value = JSON.parse(localStorage.getItem('lift-custom-tags') || '[]')
+      tagRecoveryDays.value = JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}')
+      tagRecoveryExcluded.value = JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]')
+    } catch { /* ignore corrupt data */ }
+    triggerRef(exercises)
+    triggerRef(customTags)
+    triggerRef(tagRecoveryDays)
+    triggerRef(tagRecoveryExcluded)
   }
 
   // ── Internal helpers ─────────────────────────────────────────────
@@ -1053,6 +1069,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Actions
     $reset,
     init,
+    _reloadFromStorage,
     addExercise,
     setExercisePlateCountMode,
     setExerciseInputMode,
