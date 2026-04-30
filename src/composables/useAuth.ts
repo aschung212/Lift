@@ -7,6 +7,8 @@ import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { onCrossTabUpdate, closeSyncChannel } from '../lib/crossTabSync'
+import type { SyncableStore } from '../lib/crossTabSync'
 import type { User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
@@ -17,6 +19,7 @@ const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
 
 let _initialized = false
+let _unsubCrossTab: (() => void) | null = null
 
 async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
@@ -30,6 +33,18 @@ async function initStores(userId: string): Promise<void> {
     preferencesStore.init(userId),
     progressionStore.init(userId),
   ])
+
+  // Listen for cross-tab store updates and reload from localStorage
+  _unsubCrossTab?.()
+  _unsubCrossTab = onCrossTabUpdate((store: SyncableStore) => {
+    const handlers: Record<SyncableStore, () => void> = {
+      workout: () => workoutStore._reloadFromStorage(),
+      bodyweight: () => bodyweightStore._reloadFromStorage(),
+      preferences: () => preferencesStore._reloadFromStorage(),
+      progression: () => progressionStore._reloadFromStorage(),
+    }
+    handlers[store]?.()
+  })
 }
 
 function init(): void {
@@ -93,6 +108,9 @@ async function devSignIn(): Promise<void> {
 }
 
 async function signOut(): Promise<void> {
+  _unsubCrossTab?.()
+  _unsubCrossTab = null
+  closeSyncChannel()
   try {
     await supabase?.auth.signOut()
   } catch {
