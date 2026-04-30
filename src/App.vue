@@ -834,6 +834,7 @@ import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissU
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
+import { initCrossTabSync, destroyCrossTabSync } from './lib/crossTabSync'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
@@ -1783,6 +1784,24 @@ onMounted(async () => {
     .then(() => initAuth())
     .catch(() => initAuth())
 
+  // Cross-tab sync: reload Pinia state when another tab persists to localStorage
+  initCrossTabSync((storeKey) => {
+    switch (storeKey) {
+      case 'workout-exercises':
+        useWorkoutStore()._reloadFromLocalStorage()
+        break
+      case 'bodyweight-entries':
+        useBodyweightStore()._reloadFromLocalStorage()
+        break
+      case 'user-preferences':
+        prefs._reloadFromLocalStorage()
+        break
+      case 'user-progression':
+        progressionStore._reloadFromLocalStorage()
+        break
+    }
+  })
+
   // Request persistent storage to prevent browser eviction
   requestPersistentStorage()
 
@@ -1807,5 +1826,6 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  destroyCrossTabSync()
 })
 </script>

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import { backupToIDB } from '../lib/durableStorage'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import type { ThemeId } from '../composables/useTheme'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
@@ -245,6 +246,13 @@ export const useProgressionStore = defineStore('progression', {
         logError(e, { source: 'progression._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('user-progression')
+    },
+
+    /** Reload state from localStorage (used by cross-tab sync). */
+    _reloadFromLocalStorage() {
+      const state = load()
+      Object.assign(this, state)
     },
 
     async init(userId: string) {
