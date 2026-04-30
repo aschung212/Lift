@@ -848,6 +848,7 @@ import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
+import { initCrossTabSync, destroyCrossTabSync } from './lib/crossTabSync'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
@@ -1798,6 +1799,17 @@ onMounted(async () => {
     return
   }
 
+  // Initialize cross-tab sync: when another tab mutates a store, reload
+  // from localStorage so this tab shows fresh data without a page refresh.
+  initCrossTabSync((storeName: string) => {
+    switch (storeName) {
+      case 'workout': useWorkoutStore()._reloadFromStorage(); break
+      case 'bodyweight': useBodyweightStore()._reloadFromStorage(); break
+      case 'preferences': usePreferencesStore()._reloadFromStorage(); break
+      case 'progression': useProgressionStore()._reloadFromStorage(); break
+    }
+  })
+
   runMigrationIfNeeded()
   enforceThemeLock()
 
@@ -1807,5 +1819,6 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  destroyCrossTabSync()
 })
 </script>

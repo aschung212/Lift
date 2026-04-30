@@ -7,6 +7,7 @@ import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { broadcastAuthChange } from '../lib/crossTabSync'
 import type { User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
@@ -59,6 +60,7 @@ function init(): void {
     user.value = session?.user ?? null
     if (session?.user && !prev) {
       initStores(session.user.id)
+      broadcastAuthChange()
     }
   })
 }
@@ -99,6 +101,7 @@ async function signOut(): Promise<void> {
     // Network errors during sign-out should not block clearing the user
   } finally {
     user.value = null
+    broadcastAuthChange()
   }
 }
 
