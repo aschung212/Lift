@@ -5,6 +5,7 @@ import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
+import { broadcastStoreUpdate } from '../lib/broadcastSync'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 
 const TOMBSTONE_STORE = 'bodyweight'
@@ -47,6 +48,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         logError(e, { source: 'bodyweight._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('bodyweight')
     },
 
     async init(userId: string) {

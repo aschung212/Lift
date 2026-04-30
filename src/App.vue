@@ -842,6 +842,7 @@ import { usePreferencesStore } from './stores/preferences'
 import type { WeightGoalDirection } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
+import { onBroadcast, broadcastSWUpdate } from './lib/broadcastSync'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
@@ -973,6 +974,52 @@ window.addEventListener('online', updateOnlineStatus)
 window.addEventListener('offline', updateOnlineStatus)
 if (!navigator.onLine) syncStatus.value = 'offline'
 
+// ── Cross-tab sync via BroadcastChannel ───────────────────────
+// When another tab persists to localStorage, reload the affected store.
+// This avoids stale data when the same user has multiple tabs open.
+onBroadcast({
+  onStoreUpdate(store) {
+    const STORAGE_KEYS: Record<string, string> = {
+      workout: 'workout-exercises',
+      bodyweight: 'bodyweight-entries',
+      preferences: 'user-preferences',
+      progression: 'user-progression',
+    }
+    const key = STORAGE_KEYS[store]
+    if (!key) return
+    const raw = localStorage.getItem(key)
+    if (!raw) return
+
+    try {
+      const parsed = JSON.parse(raw)
+      if (store === 'workout') {
+        const ws = useWorkoutStore()
+        if (Array.isArray(parsed)) ws.exercises = parsed
+      } else if (store === 'bodyweight') {
+        const bs = useBodyweightStore()
+        if (Array.isArray(parsed)) bs.entries = parsed
+      } else if (store === 'preferences') {
+        const ps = usePreferencesStore()
+        if (parsed.features) ps.features = { ...ps.features, ...parsed.features }
+        if (parsed.weightGoal) ps.weightGoal = { ...ps.weightGoal, ...parsed.weightGoal }
+        if (parsed.experience) ps.experience = { ...ps.experience, ...parsed.experience }
+      } else if (store === 'progression') {
+        const prog = useProgressionStore()
+        const { _userId, ...rest } = prog.$state
+        Object.assign(prog, { ...rest, ...parsed, _userId })
+      }
+    } catch { /* ignore corrupt cross-tab data */ }
+  },
+  onSyncStatus(status) {
+    // Mirror sync status from the tab that's actively syncing
+    if (syncStatus.value !== status) syncStatus.value = status
+  },
+  onSWUpdate() {
+    // Another tab detected a new SW — check ours too
+    swRegistration?.update()
+  },
+})
+
 const settingsOpen = ref(false)
 const settingsEl = ref<HTMLElement | null>(null)
 const settingsHandleEl = ref<HTMLElement | null>(null)
@@ -1037,6 +1084,7 @@ function checkForSWUpdate() { swRegistration?.update() }
 let currentController = navigator.serviceWorker?.controller
 navigator.serviceWorker?.addEventListener('controllerchange', () => {
   if (currentController) {
+    broadcastSWUpdate()
     window.location.reload()
   }
   currentController = navigator.serviceWorker?.controller ?? null

@@ -5,6 +5,7 @@ import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
+import { broadcastStoreUpdate } from '../lib/broadcastSync'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
 
@@ -169,6 +170,7 @@ export const useWorkoutStore = defineStore('workout', {
         logError(e, { source: 'workout._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('workout')
     },
 
     /** Clear sample flag and push exercise + all its sets to Supabase. */

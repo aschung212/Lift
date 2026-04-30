@@ -1,11 +1,15 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { supabase, isPreviewMode } from './supabase'
 import { logError, logWarn } from './logger'
+import { broadcastSyncStatus } from './broadcastSync'
 
 type SyncOperation = () => PromiseLike<unknown>
 
 /** Reactive sync status for UI indicators. */
 export const syncStatus = ref<'synced' | 'syncing' | 'error' | 'offline'>('synced')
+
+// Broadcast sync status changes to other tabs
+watch(syncStatus, (status) => broadcastSyncStatus(status))
 
 // Rate limiting: max operations per window
 const RATE_LIMIT_MAX = 200
