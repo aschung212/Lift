@@ -834,6 +834,7 @@ import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissU
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
+import { onCrossTabUpdate, closeCrossTabChannel, type StoreName } from './lib/crossTabSync'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
@@ -1767,6 +1768,51 @@ function clearGoalValues() {
   showGoalInput.value = false
 }
 
+// ── Cross-tab sync ──────────────────────────────────────────────
+let cleanupCrossTab: (() => void) | null = null
+
+function reloadStoreFromLocalStorage(store: StoreName) {
+  const workoutStore = useWorkoutStore()
+  const bwStoreLocal = useBodyweightStore()
+  try {
+    if (store === 'workout') {
+      const raw = localStorage.getItem('workout-exercises')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) workoutStore.exercises = parsed
+      }
+      const tags = localStorage.getItem('lift-custom-tags')
+      if (tags) workoutStore.customTags = JSON.parse(tags)
+      const recovery = localStorage.getItem('lift-tag-recovery-days')
+      if (recovery) workoutStore.tagRecoveryDays = JSON.parse(recovery)
+      const excluded = localStorage.getItem('lift-tag-recovery-excluded')
+      if (excluded) workoutStore.tagRecoveryExcluded = JSON.parse(excluded)
+    } else if (store === 'bodyweight') {
+      const raw = localStorage.getItem('bodyweight-entries')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) bwStoreLocal.entries = parsed
+      }
+    } else if (store === 'preferences') {
+      const raw = localStorage.getItem('user-preferences')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed.features) prefs.features = { ...prefs.features, ...parsed.features }
+        if (parsed.weightGoal) prefs.weightGoal = { ...prefs.weightGoal, ...parsed.weightGoal }
+        if (parsed.experience) prefs.experience = { ...prefs.experience, ...parsed.experience }
+      }
+    } else if (store === 'progression') {
+      const raw = localStorage.getItem('user-progression')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        progressionStore.$patch(parsed)
+      }
+    }
+  } catch {
+    // Corrupt data — ignore, existing state is fine
+  }
+}
+
 // Flush engagement timing on page unload
 function onBeforeUnload() {
   flushEngagement()
@@ -1804,8 +1850,13 @@ onMounted(async () => {
   if (progressionStore.progressionEnabled) {
     catchUpStreaks()
   }
+
+  // Listen for state changes from other tabs
+  cleanupCrossTab = onCrossTabUpdate(reloadStoreFromLocalStorage)
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  cleanupCrossTab?.()
+  closeCrossTabChannel()
 })
 </script>
