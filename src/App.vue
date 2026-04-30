@@ -843,6 +843,7 @@ import type { WeightGoalDirection } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
 import { useBodyweightStore } from './stores/bodyweight'
+import { onStoreUpdate } from './lib/broadcastSync'
 import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
@@ -1805,7 +1806,18 @@ onMounted(async () => {
     catchUpStreaks()
   }
 })
+// Cross-tab sync: reload stores when another tab writes to localStorage
+const unsubBroadcast = onStoreUpdate((storeName) => {
+  switch (storeName) {
+    case 'workout': useWorkoutStore()._reloadFromStorage(); break
+    case 'bodyweight': useBodyweightStore()._reloadFromStorage(); break
+    case 'preferences': prefs._reloadFromStorage(); break
+    case 'progression': progressionStore._reloadFromStorage(); break
+  }
+})
+
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  unsubBroadcast()
 })
 </script>
