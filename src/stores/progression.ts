@@ -9,6 +9,7 @@ import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
 import type { Json } from '../lib/database.types'
+import { broadcastStoreUpdate } from '../lib/broadcastSync'
 
 const STORAGE_KEY = 'user-progression'
 
@@ -245,6 +246,25 @@ export const useProgressionStore = defineStore('progression', {
         logError(e, { source: 'progression._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('progression')
+    },
+
+    /** Reload state from localStorage (called when another tab broadcasts an update). */
+    _reloadFromStorage() {
+      const fresh = load()
+      this.totalXP = fresh.totalXP
+      this.streakWeeks = fresh.streakWeeks
+      this.weeklyTarget = fresh.weeklyTarget
+      this.pendingTargetChange = fresh.pendingTargetChange
+      this.showProgression = fresh.showProgression
+      this.progressionEnabled = fresh.progressionEnabled
+      this.epoch = fresh.epoch
+      this.unlockedThemes = fresh.unlockedThemes
+      this.starterTheme = fresh.starterTheme
+      this.starterConfirmed = fresh.starterConfirmed
+      this.streakHistory = fresh.streakHistory
+      this.xpPerSet = fresh.xpPerSet
+      this.bodyweightXPDates = fresh.bodyweightXPDates
     },
 
     async init(userId: string) {

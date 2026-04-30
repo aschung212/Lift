@@ -848,6 +848,7 @@ import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { registerSW } from 'virtual:pwa-register'
+import { initBroadcastSync, onStoreUpdate, destroyBroadcastSync } from './lib/broadcastSync'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
@@ -1776,6 +1777,13 @@ onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
   logEvent('session_start')
 
+  // Cross-tab sync: reload stores when another tab writes to localStorage
+  initBroadcastSync()
+  onStoreUpdate('workout', () => useWorkoutStore()._reloadFromStorage())
+  onStoreUpdate('bodyweight', () => useBodyweightStore()._reloadFromStorage())
+  onStoreUpdate('preferences', () => usePreferencesStore()._reloadFromStorage())
+  onStoreUpdate('progression', () => progressionStore._reloadFromStorage())
+
   // Load Supabase SDK off the critical render path, then start auth.
   // If the SDK fails to load (offline first visit, network error), fall
   // back to local-only mode so the app still renders from localStorage.
@@ -1807,5 +1815,6 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  destroyBroadcastSync()
 })
 </script>
