@@ -8,6 +8,16 @@
         {{ totalExercises }} {{ totalExercises === 1 ? 'exercise' : 'exercises' }}
         · {{ prsThisWeek }} {{ prsThisWeek === 1 ? 'PR' : 'PRs' }} this week
       </p>
+      <!-- Weekly training goal indicator (only when progression is enabled) -->
+      <div v-if="weeklyGoalInfo" :class="['wtWeeklyGoal', { wtWeeklyGoalMet: weeklyGoalInfo.met, wtWeeklyGoalAtRisk: weeklyGoalInfo.atRisk }]">
+        <!-- Flame icon (streak) -->
+        <svg class="wtWeeklyGoalIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14 0-5.5 3-7 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.5-2.5 1.5-3.5l1 1Z"/></svg>
+        <span class="wtWeeklyGoalText">
+          <template v-if="weeklyGoalInfo.met">Goal hit — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
+          <template v-else-if="weeklyGoalInfo.atRisk">Streak at risk — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
+          <template v-else>{{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days this week</template>
+        </span>
+      </div>
       <button
         v-if="setsLoggedToday > 0"
         class="wtFinishWorkoutBtn"
@@ -1006,6 +1016,7 @@ import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/pl
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
+import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
@@ -1321,6 +1332,16 @@ const prsThisWeek = computed(() => {
     if (pr && new Date(pr.date).getTime() >= weekAgo) count++
   }
   return count
+})
+
+/**
+ * Weekly goal indicator — counts unique training days in the current Mon–Sun week
+ * and compares against the user's weeklyTarget from the progression store.
+ * Returns null when progression is disabled (indicator hidden).
+ */
+const weeklyGoalInfo = computed(() => {
+  if (!progressionStore.progressionEnabled) return null
+  return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
 })
 
 /** Count of exercises carrying each tag — powers the "Push 23" suffix on tag chips. */
