@@ -97,6 +97,8 @@ const { logEvent } = useAnalytics()
 
 const step = ref<'setup' | 'starter-flow'>('setup')
 let pendingSampleData = false
+let onboardingStartMs = 0
+let chosenPath = ''
 
 const STARTER_EXERCISES = [
   { name: 'Bench Press', tags: ['Push', 'Chest'] },
@@ -424,22 +426,32 @@ function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
   revertPreview()
   progressionStore.setStarterTheme(themeId, weeklyGoal)
   currentTheme.value = themeId
+  const durationMs = onboardingStartMs ? Date.now() - onboardingStartMs : 0
+  logEvent('onboarding_complete', { path: chosenPath, theme: themeId, goal: weeklyGoal, durationMs })
   finish(pendingSampleData)
 }
 
 function handleStarterSkip() {
   revertPreview()
+  const durationMs = onboardingStartMs ? Date.now() - onboardingStartMs : 0
+  logEvent('onboarding_complete', { path: chosenPath, theme: 'default', goal: 0, durationMs, skipped: true })
   finish(pendingSampleData)
 }
 
 function chooseEmpty() {
+  onboardingStartMs = Date.now()
+  chosenPath = 'empty'
   logEvent('onboarding_choice', { choice: 'empty' })
+  logEvent('onboarding_step', { step: 'choice', value: 'empty' })
   emit('started')
   goToStarter(false)
 }
 
 function chooseStarter() {
+  onboardingStartMs = Date.now()
+  chosenPath = 'starter'
   logEvent('onboarding_choice', { choice: 'starter' })
+  logEvent('onboarding_step', { step: 'choice', value: 'starter' })
   emit('started')
   for (const ex of STARTER_EXERCISES) {
     workoutStore.addExercise(ex.name, ex.tags)
@@ -450,7 +462,10 @@ function chooseStarter() {
 const noSync = { sync: false }
 
 function chooseExplore() {
+  onboardingStartMs = Date.now()
+  chosenPath = 'explore'
   logEvent('onboarding_choice', { choice: 'explore' })
+  logEvent('onboarding_step', { step: 'choice', value: 'explore' })
   emit('started')
   // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
