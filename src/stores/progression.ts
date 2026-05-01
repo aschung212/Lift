@@ -9,6 +9,7 @@ import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
 import type { Json } from '../lib/database.types'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 
 const STORAGE_KEY = 'user-progression'
 
@@ -245,6 +246,14 @@ export const useProgressionStore = defineStore('progression', {
         logError(e, { source: 'progression._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('progression')
+    },
+
+    /** Reload state from localStorage (called when another tab updates data). */
+    _reloadFromLocalStorage() {
+      const fresh = load()
+      // Preserve _userId since it's session-specific, not persisted
+      Object.assign(this.$state, { ...fresh, _userId: this._userId })
     },
 
     async init(userId: string) {

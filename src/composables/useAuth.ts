@@ -7,6 +7,7 @@ import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { onCrossTabUpdate, closeCrossTabSync } from '../lib/crossTabSync'
 import type { User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
@@ -17,6 +18,7 @@ const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
 
 let _initialized = false
+const _crossTabUnsubs: Array<() => void> = []
 
 async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
@@ -30,6 +32,14 @@ async function initStores(userId: string): Promise<void> {
     preferencesStore.init(userId),
     progressionStore.init(userId),
   ])
+
+  // Set up cross-tab sync listeners so other tabs' changes are reflected here
+  _crossTabUnsubs.push(
+    onCrossTabUpdate('workout', () => workoutStore._reloadFromLocalStorage()),
+    onCrossTabUpdate('bodyweight', () => bodyweightStore._reloadFromLocalStorage()),
+    onCrossTabUpdate('preferences', () => preferencesStore._reloadFromLocalStorage()),
+    onCrossTabUpdate('progression', () => progressionStore._reloadFromLocalStorage()),
+  )
 }
 
 function init(): void {
@@ -93,6 +103,11 @@ async function devSignIn(): Promise<void> {
 }
 
 async function signOut(): Promise<void> {
+  // Tear down cross-tab listeners
+  for (const unsub of _crossTabUnsubs) unsub()
+  _crossTabUnsubs.length = 0
+  closeCrossTabSync()
+
   try {
     await supabase?.auth.signOut()
   } catch {
