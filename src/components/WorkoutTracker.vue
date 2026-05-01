@@ -993,7 +993,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { toLocalDateKey } from '../lib/sessionSummary'
 
@@ -1158,6 +1158,9 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
 // ── Fresh-start transition card ─────────────────────────────────
 // Shown after user clears sample data, dismissed on first exercise add
 const showFreshStart = ref(localStorage.getItem('fresh-start') === 'true')
+function onFreshStart() { showFreshStart.value = true }
+onMounted(() => { window.addEventListener('fresh-start', onFreshStart) })
+onUnmounted(() => { window.removeEventListener('fresh-start', onFreshStart) })
 watch(() => store.exercises.length, (len) => {
   if (len > 0 && showFreshStart.value) {
     localStorage.removeItem('fresh-start')

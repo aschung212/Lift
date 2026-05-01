@@ -2078,8 +2078,8 @@ html.theme-fading .settingsSheet {
   padding: 32px 24px;
   margin: 16px;
   border-radius: 16px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-edge);
   text-align: center;
   animation: wtFreshStartFadeIn 0.4s ease-out;
 }

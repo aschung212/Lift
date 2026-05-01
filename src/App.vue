@@ -1083,6 +1083,7 @@ function clearSampleData() {
   localStorage.removeItem('sample-data')
   localStorage.setItem('fresh-start', 'true')
   hasSampleData.value = false
+  window.dispatchEvent(new CustomEvent('fresh-start'))
 }
 
 function closeSettings() {
