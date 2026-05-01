@@ -2069,6 +2069,67 @@ html.theme-fading .settingsSheet {
   line-height: 1.6;
 }
 
+/* ─── Fresh-start transition card (shown after clearing sample data) ───── */
+
+.wtFreshStart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px;
+  margin: 16px;
+  border-radius: 16px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  text-align: center;
+  animation: wtFreshStartFadeIn 0.4s ease-out;
+}
+
+@keyframes wtFreshStartFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wtFreshStartIcon {
+  color: var(--accent);
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+
+.wtFreshStartTitle {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.wtFreshStartBody {
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.wtFreshStartCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  font-size: var(--font-callout);
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.15s ease;
+}
+
+.wtFreshStartCta:active {
+  opacity: 0.8;
+}
+
 /* ─── Exercise list ─────────────────────────────────────────────────────── */
 
 /* ─── Timeline view ─────────────────────────────────────────────────────── */
