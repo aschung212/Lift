@@ -465,6 +465,27 @@ describe('progression store', () => {
       // During grace period, effective is still the current target
       expect(store.effectiveTarget).toBe(4)
     })
+
+    it('totalPRCount counts sets with isPR true', () => {
+      const store = useProgressionStore()
+      expect(store.totalPRCount).toBe(0)
+
+      // Add a non-PR set (legacy number format)
+      store.xpPerSet['s1'] = 50
+      expect(store.totalPRCount).toBe(0)
+
+      // Add a non-PR set (object format)
+      store.xpPerSet['s2'] = { xp: 80, theme: 'fire', epoch: 1, zone: 'working', isPR: false, isRepPR: false }
+      expect(store.totalPRCount).toBe(0)
+
+      // Add a PR set
+      store.xpPerSet['s3'] = { xp: 200, theme: 'fire', epoch: 1, zone: 'pr', isPR: true, isRepPR: false }
+      expect(store.totalPRCount).toBe(1)
+
+      // Add another PR set
+      store.xpPerSet['s4'] = { xp: 250, theme: 'water', epoch: 1, zone: 'pr', isPR: true, isRepPR: false }
+      expect(store.totalPRCount).toBe(2)
+    })
   })
 
   // ── getTrainingDaysInWeek ─────────────────────────────────────

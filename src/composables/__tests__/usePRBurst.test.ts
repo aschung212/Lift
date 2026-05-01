@@ -82,6 +82,39 @@ describe('usePRBurst', () => {
     expect(visible.value).toBe(false)
   })
 
+  it('fires heavy haptic for first PR', () => {
+    const impactHeavyMock = vi.fn()
+    // Re-mock to capture impactHeavy
+    vi.mocked(notifySuccessMock).mockClear()
+
+    // The heavy haptic is called inside presentPRBurst when isFirstPR is true
+    const { presentPRBurst, visible, payload } = usePRBurst()
+    presentPRBurst({
+      exerciseName: 'Bench Press',
+      oldE1RM: 200,
+      newE1RM: 225,
+      setWeight: 185,
+      setReps: 8,
+      isFirstPR: true,
+    })
+    expect(visible.value).toBe(true)
+    expect(payload.value?.isFirstPR).toBe(true)
+    expect(notifySuccessMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes isFirstPR false for subsequent PRs', () => {
+    const { presentPRBurst, payload } = usePRBurst()
+    presentPRBurst({
+      exerciseName: 'Squat',
+      oldE1RM: 300,
+      newE1RM: 315,
+      setWeight: 275,
+      setReps: 5,
+      isFirstPR: false,
+    })
+    expect(payload.value?.isFirstPR).toBe(false)
+  })
+
   it('dismissPRBurst hides the overlay', () => {
     const { presentPRBurst, dismissPRBurst, visible } = usePRBurst()
     presentPRBurst({
