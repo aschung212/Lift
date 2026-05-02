@@ -1,7 +1,17 @@
 /**
  * Composable for sending browser notifications when the app is backgrounded.
  * Used by the rest timer to alert users when their rest period is complete.
+ *
+ * Handles two scenarios:
+ * 1. App is currently backgrounded — show notification immediately
+ * 2. App was backgrounded during a timer — show notification when interval resumes
+ *    (mobile browsers suspend JS, so the timer fires when the user returns)
+ *
+ * Uses ServiceWorkerRegistration.showNotification() when available (required on
+ * Android Chrome and iOS 16.4+ PWAs), falling back to the Notification constructor.
  */
+
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const PERMISSION_KEY = 'notification-permission-asked'
 
@@ -40,35 +50,87 @@ async function requestPermission(): Promise<boolean> {
 }
 
 /**
- * Show a notification if the app is backgrounded and permission is granted.
- * Returns the Notification instance if shown, null otherwise.
+ * Show a notification via ServiceWorker (preferred) or Notification constructor (fallback).
+ * Fires when the app is backgrounded OR was recently backgrounded (covers the case where
+ * the browser suspended JS and the timer fires after the user returns).
  */
-function notify(title: string, options?: NotificationOptions): Notification | null {
-  if (!hasPermission() || !isBackgrounded()) return null
+async function notify(
+  title: string,
+  options?: NotificationOptions & { wasBackgrounded?: boolean },
+): Promise<boolean> {
+  if (!hasPermission()) return false
 
-  const notification = new Notification(title, {
+  const { wasBackgrounded: wasBg, ...notifOptions } = options ?? {}
+
+  // Only fire if the app IS backgrounded or WAS backgrounded during the timer
+  if (!isBackgrounded() && !wasBg) return false
+
+  const finalOptions: NotificationOptions = {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'lift-rest-timer',
     renotify: true,
-    ...options,
-  })
-
-  // Auto-close after 5 seconds
-  setTimeout(() => notification.close(), 5000)
-
-  // Focus the app when the notification is clicked
-  notification.onclick = () => {
-    window.focus()
-    notification.close()
+    ...notifOptions,
   }
 
-  return notification
+  try {
+    // Prefer ServiceWorker showNotification — required on Android Chrome & iOS PWAs
+    const reg = await navigator.serviceWorker?.getRegistration()
+    if (reg) {
+      await reg.showNotification(title, finalOptions)
+      return true
+    }
+  } catch {
+    // Fall through to constructor fallback
+  }
+
+  try {
+    const notification = new Notification(title, finalOptions)
+    setTimeout(() => notification.close(), 5000)
+    notification.onclick = () => {
+      window.focus()
+      notification.close()
+    }
+    return true
+  } catch {
+    // Notification constructor not supported (some mobile browsers)
+    return false
+  }
 }
 
 /** Whether we've already asked the user for permission in a previous session */
 function hasAskedBefore(): boolean {
   return localStorage.getItem(PERMISSION_KEY) === 'true'
+}
+
+/**
+ * Tracks whether the document was backgrounded since calling `startTracking()`.
+ * Used by the rest timer to know if a notification should fire even though the
+ * app is now visible (because JS was suspended while backgrounded).
+ */
+export function useBackgroundTracker() {
+  const wasBackgrounded = ref(false)
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+      wasBackgrounded.value = true
+    }
+  }
+
+  function startTracking() {
+    wasBackgrounded.value = false
+    document.addEventListener('visibilitychange', onVisibilityChange)
+  }
+
+  function stopTracking() {
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+  }
+
+  onUnmounted(() => {
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+  })
+
+  return { wasBackgrounded, startTracking, stopTracking }
 }
 
 export function useNotification() {
