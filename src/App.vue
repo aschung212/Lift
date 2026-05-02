@@ -1096,7 +1096,8 @@ function clearSampleData() {
 // Re-check install prompt eligibility when total set count changes
 watch(
   () => workoutStoreForOnboarding.exercises.reduce((sum, ex) => sum + ex.sets.length, 0),
-  () => recheckInstall(),
+  (count) => recheckInstall(count),
+  { immediate: true },
 )
 
 function closeSettings() {

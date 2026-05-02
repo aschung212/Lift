@@ -888,7 +888,7 @@ button, [role="tab"], [role="switch"], a {
 }
 
 .installBannerInstall {
-  color: var(--bg);
+  color: var(--text-on-accent);
   background: var(--accent);
 }
 

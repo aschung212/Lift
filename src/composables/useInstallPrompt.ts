@@ -30,6 +30,7 @@ function isStandalone(): boolean {
 export function useInstallPrompt() {
   const canShow = ref(false)
   let deferredPrompt: BeforeInstallPromptEvent | null = null
+  let lastKnownSets = 0
 
   function isDismissed(): boolean {
     return localStorage.getItem(DISMISS_KEY) === 'true'
@@ -38,29 +39,24 @@ export function useInstallPrompt() {
   function handleBeforeInstall(e: Event) {
     e.preventDefault()
     deferredPrompt = e as BeforeInstallPromptEvent
-    evaluateVisibility()
+    evaluate()
   }
 
-  /** Re-evaluate whether the banner should be visible. */
-  function evaluateVisibility() {
+  function evaluate() {
     if (!deferredPrompt || isDismissed() || isStandalone()) {
       canShow.value = false
       return
     }
-    // Only show after the user has logged enough sets to signal engagement
-    const totalSets = countUserSets()
-    canShow.value = totalSets >= MIN_SETS_BEFORE_PROMPT
+    canShow.value = lastKnownSets >= MIN_SETS_BEFORE_PROMPT
   }
 
-  function countUserSets(): number {
-    try {
-      const raw = localStorage.getItem('exercises')
-      if (!raw) return 0
-      const exercises = JSON.parse(raw) as { sets?: unknown[] }[]
-      return exercises.reduce((sum, ex) => sum + (ex.sets?.length ?? 0), 0)
-    } catch {
-      return 0
-    }
+  /**
+   * Update the set count and re-evaluate whether the banner should show.
+   * Called by the parent component when the workout store's total set count changes.
+   */
+  function evaluateVisibility(totalSets: number) {
+    lastKnownSets = totalSets
+    evaluate()
   }
 
   async function install() {

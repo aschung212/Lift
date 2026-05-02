@@ -53,6 +53,7 @@ describe('useInstallPrompt', () => {
   it('canShow is false when user has dismissed the prompt', () => {
     localStorage.setItem('pwa-install-dismissed', 'true')
     const { api, wrapper } = mountInstallPrompt()
+    api.evaluateVisibility(10)
     expect(api.canShow.value).toBe(false)
     wrapper.unmount()
   })
@@ -65,31 +66,25 @@ describe('useInstallPrompt', () => {
   })
 
   it('canShow becomes true after beforeinstallprompt + enough sets', () => {
-    localStorage.setItem('exercises', JSON.stringify([
-      { sets: [1, 2, 3] },
-      { sets: [4, 5] },
-    ]))
-
     const { api, wrapper } = mountInstallPrompt()
     fireBeforeInstallPrompt()
+    api.evaluateVisibility(5)
     expect(api.canShow.value).toBe(true)
     wrapper.unmount()
   })
 
   it('canShow stays false when user has fewer than 3 sets', () => {
-    localStorage.setItem('exercises', JSON.stringify([{ sets: [1, 2] }]))
-
     const { api, wrapper } = mountInstallPrompt()
     fireBeforeInstallPrompt()
+    api.evaluateVisibility(2)
     expect(api.canShow.value).toBe(false)
     wrapper.unmount()
   })
 
   it('dismiss sets localStorage flag and hides the banner', () => {
-    localStorage.setItem('exercises', JSON.stringify([{ sets: [1, 2, 3, 4] }]))
-
     const { api, wrapper } = mountInstallPrompt()
     fireBeforeInstallPrompt()
+    api.evaluateVisibility(5)
     expect(api.canShow.value).toBe(true)
 
     api.dismiss()
@@ -100,11 +95,9 @@ describe('useInstallPrompt', () => {
   })
 
   it('install calls prompt() and hides banner', async () => {
-    localStorage.setItem('exercises', JSON.stringify([{ sets: [1, 2, 3, 4] }]))
-
     const { api, wrapper } = mountInstallPrompt()
-
     const { promptFn } = fireBeforeInstallPrompt('accepted')
+    api.evaluateVisibility(5)
 
     expect(api.canShow.value).toBe(true)
 
@@ -122,10 +115,8 @@ describe('useInstallPrompt', () => {
     fireBeforeInstallPrompt()
     expect(api.canShow.value).toBe(false)
 
-    // Simulate sets being added to localStorage
-    localStorage.setItem('exercises', JSON.stringify([{ sets: [1, 2, 3] }]))
-
-    api.evaluateVisibility()
+    // Simulate sets being added via the store
+    api.evaluateVisibility(3)
     expect(api.canShow.value).toBe(true)
     wrapper.unmount()
   })
@@ -150,11 +141,9 @@ describe('useInstallPrompt', () => {
   })
 
   it('install records dismissal when user declines', async () => {
-    localStorage.setItem('exercises', JSON.stringify([{ sets: [1, 2, 3, 4] }]))
-
     const { api, wrapper } = mountInstallPrompt()
-
     fireBeforeInstallPrompt('dismissed')
+    api.evaluateVisibility(5)
 
     await api.install()
 
