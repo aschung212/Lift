@@ -2814,9 +2814,16 @@ function saveSet() {
       }
       // Haptic feedback — stronger for PRs
       if (wasPR) {
-        notifySuccess()
+        // Detect if this is the user's very first PR ever (no prior PR entries in xpPerSet).
+        // The current set's entry was just recorded by computeAndLogXP, so count PR entries.
+        const prEntries = Object.values(progressionStore.xpPerSet)
+          .filter(e => typeof e === 'object' && e.isPR)
+        const isFirstPR = prEntries.length === 1
+
+        if (!isFirstPR) notifySuccess()
         // Full-bleed PR celebration (respects the PR baseline via oldE1RM,
         // and the prCelebrations opt-out inside presentPRBurst).
+        // First PR gets enhanced celebration with heavy haptic via the burst.
         const newE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
         presentPRBurst({
           exerciseName: selectedExerciseName.value,
@@ -2824,6 +2831,7 @@ function saveSet() {
           newE1RM,
           setWeight: toLbs(weight.value),
           setReps: reps.value,
+          isFirstPR,
         })
       } else {
         impactLight()

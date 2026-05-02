@@ -35,6 +35,7 @@
       </svg>
 
       <div class="prBurstContent">
+        <div v-if="payload.isFirstPR" class="prBurstFirstLabel">Your First</div>
         <div class="prBurstEyebrow">🏆 Personal Record</div>
         <div class="prBurstDelta">+{{ deltaDisplay }} {{ unit }}</div>
         <div class="prBurstSubtitle">
@@ -164,6 +165,18 @@ watch(visible, async (v) => {
   transform: translateY(-2vh);
 }
 
+.prBurstFirstLabel {
+  font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  animation: prFirstFadeIn 400ms ease-out both;
+  animation-delay: 60ms;
+}
+
 .prBurstEyebrow {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 11px;
@@ -256,9 +269,15 @@ watch(visible, async (v) => {
   to   { transform: scale(1); opacity: 1; }
 }
 
+@keyframes prFirstFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .prRing,
-  .prBurstDelta {
+  .prBurstDelta,
+  .prBurstFirstLabel {
     animation: none !important;
   }
   .prBurst-enter-active,

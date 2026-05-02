@@ -4,11 +4,12 @@ import { setActivePinia, createPinia } from 'pinia'
 // Mock useHaptics before we import the module under test so its inline
 // haptics.notifySuccess() call on present is observable.
 const notifySuccessMock = vi.fn()
+const impactHeavyMock = vi.fn()
 vi.mock('../useHaptics', () => ({
   useHaptics: () => ({
     impactLight: vi.fn(),
     impactMedium: vi.fn(),
-    impactHeavy: vi.fn(),
+    impactHeavy: impactHeavyMock,
     notifySuccess: notifySuccessMock,
     notifyWarning: vi.fn(),
     notifyError: vi.fn(),
@@ -26,6 +27,7 @@ describe('usePRBurst', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     notifySuccessMock.mockClear()
+    impactHeavyMock.mockClear()
     const { dismissPRBurst } = usePRBurst()
     dismissPRBurst()
   })
@@ -94,5 +96,46 @@ describe('usePRBurst', () => {
     expect(visible.value).toBe(true)
     dismissPRBurst()
     expect(visible.value).toBe(false)
+  })
+
+  it('fires heavy haptic for first PR instead of success', () => {
+    const { presentPRBurst } = usePRBurst()
+    presentPRBurst({
+      exerciseName: 'Bench Press',
+      oldE1RM: 0,
+      newE1RM: 135,
+      setWeight: 135,
+      setReps: 1,
+      isFirstPR: true,
+    })
+    expect(impactHeavyMock).toHaveBeenCalledTimes(1)
+    expect(notifySuccessMock).not.toHaveBeenCalled()
+  })
+
+  it('fires success haptic for subsequent PRs (isFirstPR false)', () => {
+    const { presentPRBurst } = usePRBurst()
+    presentPRBurst({
+      exerciseName: 'Bench Press',
+      oldE1RM: 135,
+      newE1RM: 145,
+      setWeight: 145,
+      setReps: 1,
+      isFirstPR: false,
+    })
+    expect(notifySuccessMock).toHaveBeenCalledTimes(1)
+    expect(impactHeavyMock).not.toHaveBeenCalled()
+  })
+
+  it('stores isFirstPR flag in the payload', () => {
+    const { presentPRBurst, payload } = usePRBurst()
+    presentPRBurst({
+      exerciseName: 'Deadlift',
+      oldE1RM: 0,
+      newE1RM: 225,
+      setWeight: 225,
+      setReps: 1,
+      isFirstPR: true,
+    })
+    expect(payload.value?.isFirstPR).toBe(true)
   })
 })
