@@ -7,6 +7,7 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -158,6 +159,18 @@ export const useWorkoutStore = defineStore('workout', {
   }),
 
   actions: {
+    /** Re-read state from localStorage (called when another tab broadcasts a change). */
+    _reloadFromStorage() {
+      this.exercises = load()
+      try {
+        this.customTags = JSON.parse(localStorage.getItem('lift-custom-tags') || '[]')
+        this.tagRecoveryDays = JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}')
+        this.tagRecoveryExcluded = JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]')
+      } catch {
+        // ignore corrupt secondary data
+      }
+    },
+
     _persist() {
       const data = JSON.stringify(this.exercises)
       try {
@@ -169,6 +182,7 @@ export const useWorkoutStore = defineStore('workout', {
         logError(e, { source: 'workout._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('workout')
     },
 
     /** Clear sample flag and push exercise + all its sets to Supabase. */

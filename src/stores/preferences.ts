@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -76,6 +77,18 @@ export const usePreferencesStore = defineStore('preferences', {
   }),
 
   actions: {
+    /** Re-read state from localStorage (called when another tab broadcasts a change). */
+    _reloadFromStorage() {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
+        if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
+        if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+      } catch { /* ignore corrupt data */ }
+    },
+
     _persist() {
       try {
         localStorage.setItem(
@@ -85,6 +98,7 @@ export const usePreferencesStore = defineStore('preferences', {
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
+      broadcastStoreUpdate('preferences')
       if (supabase && this._userId) {
         const features = { ...this.features }
         const weightGoal = this.weightGoal
