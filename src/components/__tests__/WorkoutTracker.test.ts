@@ -1631,5 +1631,14 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtEmpty').exists()).toBe(true)
       expect(localStorageMock.getItem('fresh-start-guide')).toBeNull()
     })
+
+    it('shows guide on mount when flag is set even after component was previously mounted', () => {
+      // Simulates a fresh mount after clearSampleData ran — e.g., tab switch or reload
+      localStorageMock.setItem('fresh-start-guide', 'true')
+      exercises = []
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(true)
+      expect(wrapper.find('.wtFreshStartBody').text()).toContain('Sample data cleared')
+    })
   })
 })

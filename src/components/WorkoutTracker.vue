@@ -1164,9 +1164,12 @@ function dismissFreshStartGuide() {
   showFreshStartGuide.value = false
 }
 
-// Auto-dismiss when the user adds their first exercise
+// Re-check the flag when exercises drop to 0 (catches clearSampleData()
+// setting the flag while this component is already mounted via v-show)
 watch(() => store.exercises.length, (len) => {
-  if (len > 0 && showFreshStartGuide.value) {
+  if (len === 0 && localStorage.getItem('fresh-start-guide') === 'true') {
+    showFreshStartGuide.value = true
+  } else if (len > 0 && showFreshStartGuide.value) {
     dismissFreshStartGuide()
   }
 })
