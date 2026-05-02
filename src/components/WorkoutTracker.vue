@@ -1016,7 +1016,7 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
-import { useProgressionStore, showXPToast, showUnlockCelebration, getTrainingDaysInWeek, getMonday, toDateKey } from '../stores/progression'
+import { useProgressionStore, showXPToast, showUnlockCelebration, getTrainingDaysInWeek } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
@@ -1338,18 +1338,28 @@ const prsThisWeek = computed(() => {
   return count
 })
 
-/** Weekly goal progress: days trained this week vs. target. Only computed when progression is enabled. */
+/**
+ * Weekly goal progress: days trained this week vs. target.
+ * All date math uses LOCAL time to match toLocalDateKey / todayISO.
+ * Re-triggers when setsLoggedToday changes (which depends on store.exercises).
+ */
 const weeklyGoalProgress = computed(() => {
   if (!progressionStore.progressionEnabled) return null
 
-  const now = new Date()
-  const monday = getMonday(now)
-  const mondayKey = toDateKey(monday)
-  const sunday = new Date(monday)
-  sunday.setUTCDate(sunday.getUTCDate() + 6)
-  const sundayKey = toDateKey(sunday)
+  // Use setsLoggedToday as a reactive dependency so the indicator
+  // updates when the user logs a set (also forces re-eval when store changes)
+  void setsLoggedToday.value
 
-  // Collect all set dates, sorted
+  // Compute local Monday of the current week
+  const now = new Date()
+  const dayOfWeek = now.getDay() // 0=Sun, 1=Mon..6=Sat
+  const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday)
+  const mondayKey = localDateKey(monday)
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6)
+  const sundayKey = localDateKey(sunday)
+
+  // Collect all set dates as local date keys, sorted
   const allDates: string[] = []
   for (const ex of store.exercises) {
     if (ex.sample) continue
@@ -1363,8 +1373,7 @@ const weeklyGoalProgress = computed(() => {
   const target = progressionStore.weeklyTarget
   const metGoal = daysTrained >= target
 
-  // Figure out remaining days in the week (Mon=1..Sun=7)
-  const dayOfWeek = now.getDay() // 0=Sun, 1=Mon..6=Sat
+  // Remaining days in the week (including today if not yet trained)
   const daysLeftInWeek = dayOfWeek === 0 ? 0 : 7 - dayOfWeek // Sun = 0 days left
 
   const daysNeeded = target - daysTrained
@@ -1740,7 +1749,11 @@ function isoToLocalDate(iso: string): string {
 function todayISO(): string {
   // Use local date components — toISOString() returns UTC which gives the
   // wrong date in US timezones after ~5pm (midnight UTC comes before midnight local).
-  const d = new Date()
+  return localDateKey(new Date())
+}
+
+/** Format a Date as YYYY-MM-DD using local timezone. */
+function localDateKey(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
