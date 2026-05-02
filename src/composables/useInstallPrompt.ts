@@ -60,14 +60,20 @@ export function useInstallPrompt() {
   }
 
   async function install() {
-    if (!deferredPrompt) return
-    await deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
-    if (outcome === 'dismissed') {
-      dismiss()
-    }
+    const prompt = deferredPrompt
+    if (!prompt) return
+    // Clear immediately to prevent double-click race
     deferredPrompt = null
     canShow.value = false
+    try {
+      await prompt.prompt()
+      const { outcome } = await prompt.userChoice
+      if (outcome === 'dismissed') {
+        localStorage.setItem(DISMISS_KEY, 'true')
+      }
+    } catch {
+      // prompt() throws InvalidStateError if called twice — already guarded above
+    }
   }
 
   function dismiss() {
