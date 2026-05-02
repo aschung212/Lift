@@ -8,6 +8,21 @@
         {{ totalExercises }} {{ totalExercises === 1 ? 'exercise' : 'exercises' }}
         · {{ prsThisWeek }} {{ prsThisWeek === 1 ? 'PR' : 'PRs' }} this week
       </p>
+      <p v-if="weeklyGoalProgress" class="wtWeeklyGoal" :class="{ wtWeeklyGoalMet: weeklyGoalProgress.metGoal, wtWeeklyGoalRisk: weeklyGoalProgress.atRisk }">
+        <span class="wtWeeklyGoalDots" :aria-label="`${weeklyGoalProgress.daysTrained} of ${weeklyGoalProgress.target} training days completed this week`">
+          <span
+            v-for="i in weeklyGoalProgress.target"
+            :key="i"
+            class="wtWeeklyGoalDot"
+            :class="{ wtWeeklyGoalDotFilled: i <= weeklyGoalProgress.daysTrained }"
+          />
+        </span>
+        <span class="wtWeeklyGoalText">
+          {{ weeklyGoalProgress.daysTrained }}/{{ weeklyGoalProgress.target }} days
+          <template v-if="weeklyGoalProgress.metGoal && weeklyGoalProgress.streakWeeks > 0"> · {{ weeklyGoalProgress.streakWeeks }}wk streak</template>
+          <template v-else-if="weeklyGoalProgress.atRisk"> · streak at risk</template>
+        </span>
+      </p>
       <button
         v-if="setsLoggedToday > 0"
         class="wtFinishWorkoutBtn"
@@ -1001,7 +1016,7 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
-import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { useProgressionStore, showXPToast, showUnlockCelebration, getTrainingDaysInWeek, getMonday, toDateKey } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
@@ -1321,6 +1336,41 @@ const prsThisWeek = computed(() => {
     if (pr && new Date(pr.date).getTime() >= weekAgo) count++
   }
   return count
+})
+
+/** Weekly goal progress: days trained this week vs. target. Only computed when progression is enabled. */
+const weeklyGoalProgress = computed(() => {
+  if (!progressionStore.progressionEnabled) return null
+
+  const now = new Date()
+  const monday = getMonday(now)
+  const mondayKey = toDateKey(monday)
+  const sunday = new Date(monday)
+  sunday.setUTCDate(sunday.getUTCDate() + 6)
+  const sundayKey = toDateKey(sunday)
+
+  // Collect all set dates, sorted
+  const allDates: string[] = []
+  for (const ex of store.exercises) {
+    if (ex.sample) continue
+    for (const s of ex.sets) {
+      allDates.push(toLocalDateKey(s.date))
+    }
+  }
+  allDates.sort()
+
+  const daysTrained = getTrainingDaysInWeek(allDates, mondayKey, sundayKey)
+  const target = progressionStore.weeklyTarget
+  const metGoal = daysTrained >= target
+
+  // Figure out remaining days in the week (Mon=1..Sun=7)
+  const dayOfWeek = now.getDay() // 0=Sun, 1=Mon..6=Sat
+  const daysLeftInWeek = dayOfWeek === 0 ? 0 : 7 - dayOfWeek // Sun = 0 days left
+
+  const daysNeeded = target - daysTrained
+  const atRisk = !metGoal && daysNeeded > daysLeftInWeek
+
+  return { daysTrained, target, metGoal, atRisk, streakWeeks: progressionStore.streakWeeks }
 })
 
 /** Count of exercises carrying each tag — powers the "Push 23" suffix on tag chips. */

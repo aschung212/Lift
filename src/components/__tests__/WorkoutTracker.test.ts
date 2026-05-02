@@ -31,7 +31,24 @@ vi.mock('../../stores/progression', () => ({
     progressPercent: 0,
     totalXP: 0,
     nextUnlockThreshold: 5000,
+    weeklyTarget: 3,
+    streakWeeks: 0,
   }),
+  showXPToast: vi.fn(),
+  showUnlockCelebration: vi.fn(),
+  getTrainingDaysInWeek: () => 0,
+  getMonday: (d: Date) => {
+    const copy = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+    const day = copy.getUTCDay()
+    copy.setUTCDate(copy.getUTCDate() - ((day + 6) % 7))
+    return copy
+  },
+  toDateKey: (d: Date) => {
+    const y = d.getUTCFullYear()
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+    const dd = String(d.getUTCDate()).padStart(2, '0')
+    return `${y}-${m}-${dd}`
+  },
 }))
 vi.mock('../../lib/xp', () => ({
   calculateSetXP: () => 50,

@@ -730,7 +730,7 @@ export function getTrainingDaysInWeek(
 }
 
 /** Get the Monday of the week containing the given date (UTC). */
-function getMonday(date: Date): Date {
+export function getMonday(date: Date): Date {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
   const day = d.getUTCDay()
   const diff = (day + 6) % 7
@@ -739,7 +739,7 @@ function getMonday(date: Date): Date {
 }
 
 /** Format a Date as YYYY-MM-DD (UTC). */
-function toDateKey(date: Date): string {
+export function toDateKey(date: Date): string {
   const y = date.getUTCFullYear()
   const m = String(date.getUTCMonth() + 1).padStart(2, '0')
   const d = String(date.getUTCDate()).padStart(2, '0')
