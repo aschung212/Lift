@@ -1959,7 +1959,7 @@ html.theme-fading .settingsSheet {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--glass-border);
+  background: var(--glass-edge);
   transition: background 200ms ease;
 }
 
@@ -1976,7 +1976,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtWeeklyGoalRisk .wtWeeklyGoalDot:not(.wtWeeklyGoalDotFilled) {
-  background: color-mix(in srgb, var(--danger) 30%, var(--glass-border) 70%);
+  background: color-mix(in srgb, var(--danger) 30%, var(--glass-edge) 70%);
 }
 
 /* "Finish workout" button — appears in the page header when sets exist for today.
