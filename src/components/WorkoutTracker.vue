@@ -2804,6 +2804,8 @@ function saveSet() {
       const wasPR = isNewPR.value
       // Capture the pre-log baseline PR so the burst can show old → new e1RM.
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
+      // Snapshot PR count before logging so we can detect the user's very first PR.
+      const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       // XP: get the just-logged set (last in array) and compute XP
@@ -2824,7 +2826,11 @@ function saveSet() {
           newE1RM,
           setWeight: toLbs(weight.value),
           setReps: reps.value,
+          isFirstPR: prCountBefore === 0,
         })
+        if (prCountBefore === 0) {
+          logEvent('first_pr', { exercise: selectedExerciseName.value })
+        }
       } else {
         impactLight()
       }
