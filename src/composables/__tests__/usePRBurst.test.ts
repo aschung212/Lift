@@ -107,7 +107,19 @@ describe('usePRBurst', () => {
       isFirstPR: true,
     })
     expect(payload.value?.isFirstPR).toBe(true)
-    expect(notifySuccessMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips burst haptic for first PR to avoid clobbering caller haptic', () => {
+    const { presentPRBurst } = usePRBurst()
+    presentPRBurst({
+      exerciseName: 'Bench Press',
+      oldE1RM: 0,
+      newE1RM: 135,
+      setWeight: 135,
+      setReps: 1,
+      isFirstPR: true,
+    })
+    expect(notifySuccessMock).not.toHaveBeenCalled()
   })
 
   it('defaults isFirstPR to undefined when not provided', () => {

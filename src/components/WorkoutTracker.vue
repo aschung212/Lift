@@ -2820,7 +2820,7 @@ function saveSet() {
         // metadata schema — they're a veteran, not a first-timer.
         const xpEntries = Object.values(progressionStore.xpPerSet)
         const hasLegacyEntries = xpEntries.some(e => typeof e === 'number')
-        const prEntries = xpEntries.filter(e => typeof e === 'object' && e.isPR)
+        const prEntries = xpEntries.filter(e => e != null && typeof e === 'object' && e.isPR)
         const isFirstPR = !hasLegacyEntries && prEntries.length === 1
 
         // Haptic: heavy for first PR, success for subsequent PRs.
