@@ -141,8 +141,10 @@
 
     <!-- graph placeholder handled by bwStatsSingle above -->
 
-    <p v-else-if="store.entries.length === 0" class="wtEmpty">
-      Hit "+ Log" to record your first weigh-in.
+    <p v-else-if="store.entries.length === 0" class="wtEmpty bwEmptyState">
+      Track your weight to spot trends over time.<br />
+      Weigh in at the same time each day for best accuracy.<br />
+      <span class="bwEmptyCta">Tap "+ Log" above to record your first weigh-in.</span>
     </p>
 
     <!-- Entries list (newest first) -->
