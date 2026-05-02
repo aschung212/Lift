@@ -1013,7 +1013,7 @@ const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
-const { impactLight, notifySuccess } = useHaptics()
+const { impactLight, impactHeavy, notifySuccess } = useHaptics()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
 
@@ -2814,16 +2814,25 @@ function saveSet() {
       }
       // Haptic feedback — stronger for PRs
       if (wasPR) {
-        // Detect if this is the user's very first PR ever (no prior PR entries in xpPerSet).
-        // The current set's entry was just recorded by computeAndLogXP, so count PR entries.
-        const prEntries = Object.values(progressionStore.xpPerSet)
-          .filter(e => typeof e === 'object' && e.isPR)
-        const isFirstPR = prEntries.length === 1
+        // Detect if this is the user's very first PR ever.
+        // The current set's XP entry was just recorded by computeAndLogXP.
+        // Legacy xpPerSet entries (plain numbers) mean the user predates the
+        // metadata schema — they're a veteran, not a first-timer.
+        const xpEntries = Object.values(progressionStore.xpPerSet)
+        const hasLegacyEntries = xpEntries.some(e => typeof e === 'number')
+        const prEntries = xpEntries.filter(e => typeof e === 'object' && e.isPR)
+        const isFirstPR = !hasLegacyEntries && prEntries.length === 1
 
-        if (!isFirstPR) notifySuccess()
+        // Haptic: heavy for first PR, success for subsequent PRs.
+        // This fires regardless of prCelebrations toggle — the user still
+        // deserves tactile feedback even if the visual overlay is suppressed.
+        if (isFirstPR) {
+          impactHeavy()
+        } else {
+          notifySuccess()
+        }
         // Full-bleed PR celebration (respects the PR baseline via oldE1RM,
         // and the prCelebrations opt-out inside presentPRBurst).
-        // First PR gets enhanced celebration with heavy haptic via the burst.
         const newE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
         presentPRBurst({
           exerciseName: selectedExerciseName.value,

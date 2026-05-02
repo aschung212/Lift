@@ -54,15 +54,12 @@ function presentPRBurst(p: PRBurstPayload): void {
   payload.value = p
   visible.value = true
 
-  // Haptic on present — heavier for the user's very first PR.
-  // useHaptics short-circuits if the user disabled haptics.
+  // Success haptic on present. useHaptics short-circuits if the user
+  // disabled haptics. The caller may fire a heavier haptic for first-PR
+  // before calling presentPRBurst — this is the standard feedback.
   try {
     const haptics = useHaptics()
-    if (p.isFirstPR) {
-      haptics.impactHeavy()
-    } else {
-      haptics.notifySuccess()
-    }
+    haptics.notifySuccess()
   } catch {
     /* silent — haptics are best-effort */
   }
