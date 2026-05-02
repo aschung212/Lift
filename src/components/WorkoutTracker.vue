@@ -68,7 +68,19 @@
       </div>
     </template>
 
-    <p v-if="store.exercises.length === 0" class="wtEmpty">
+    <div v-if="store.exercises.length === 0 && showFreshStartGuide" class="wtFreshStart">
+      <div class="wtFreshStartIcon" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      </div>
+      <p class="wtFreshStartTitle">You're starting fresh!</p>
+      <p class="wtFreshStartBody">Sample data cleared. Add your exercises below and every set you log will track PRs, streaks, and progression automatically.</p>
+      <button class="wtFreshStartCta" @click="openNewExerciseModal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Your First Exercise
+      </button>
+      <button class="wtFreshStartDismiss" @click="dismissFreshStartGuide" aria-label="Dismiss guide">Skip</button>
+    </div>
+    <p v-else-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
@@ -1143,6 +1155,21 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
   }
 }
+
+// ── Fresh start guide (shown after clearing sample data) ────────
+const showFreshStartGuide = ref(localStorage.getItem('fresh-start-guide') === 'true')
+
+function dismissFreshStartGuide() {
+  localStorage.removeItem('fresh-start-guide')
+  showFreshStartGuide.value = false
+}
+
+// Auto-dismiss when the user adds their first exercise
+watch(() => store.exercises.length, (len) => {
+  if (len > 0 && showFreshStartGuide.value) {
+    dismissFreshStartGuide()
+  }
+})
 
 // ── View toggle ──────────────────────────────────────────────────
 const listView = ref<'exercises' | 'timeline'>(

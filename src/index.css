@@ -2069,6 +2069,68 @@ html.theme-fading .settingsSheet {
   line-height: 1.6;
 }
 
+/* ─── Fresh start guide (post sample-data clear) ──────────────────────── */
+
+.wtFreshStart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 24px;
+  gap: 8px;
+}
+
+.wtFreshStartIcon {
+  color: var(--accent);
+  margin-bottom: 4px;
+  opacity: 0.85;
+}
+
+.wtFreshStartTitle {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.wtFreshStartBody {
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+  max-width: 280px;
+}
+
+.wtFreshStartCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px 24px;
+  min-height: 44px;
+  font-size: var(--font-body);
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--bg-primary);
+  background: var(--accent);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtFreshStartDismiss {
+  padding: 8px 16px;
+  min-height: 44px;
+  font-size: var(--font-footnote);
+  font-family: inherit;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ─── Exercise list ─────────────────────────────────────────────────────── */
 
 /* ─── Timeline view ─────────────────────────────────────────────────────── */

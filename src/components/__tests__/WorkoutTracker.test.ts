@@ -1599,4 +1599,37 @@ describe('WorkoutTracker', () => {
       expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
     })
   })
+
+  describe('fresh start guide', () => {
+    it('shows fresh start guide when localStorage flag is set and no exercises', () => {
+      localStorageMock.setItem('fresh-start-guide', 'true')
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(true)
+      expect(wrapper.find('.wtFreshStartTitle').text()).toContain('starting fresh')
+      expect(wrapper.find('.wtFreshStartCta').exists()).toBe(true)
+    })
+
+    it('shows default empty state when no fresh-start flag', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
+      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
+    })
+
+    it('does not show fresh start guide when exercises exist', () => {
+      localStorageMock.setItem('fresh-start-guide', 'true')
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
+    })
+
+    it('dismisses guide when skip button is clicked', async () => {
+      localStorageMock.setItem('fresh-start-guide', 'true')
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(true)
+      await wrapper.find('.wtFreshStartDismiss').trigger('click')
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
+      expect(wrapper.find('.wtEmpty').exists()).toBe(true)
+      expect(localStorageMock.getItem('fresh-start-guide')).toBeNull()
+    })
+  })
 })

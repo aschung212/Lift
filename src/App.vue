@@ -1081,6 +1081,7 @@ function clearSampleData() {
   }
   bwStore.clearAll()
   localStorage.removeItem('sample-data')
+  localStorage.setItem('fresh-start-guide', 'true')
   hasSampleData.value = false
 }
 
