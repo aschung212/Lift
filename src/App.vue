@@ -26,6 +26,13 @@
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
+        <div v-if="installPromptVisible" class="installBanner" role="status">
+          <span class="installBannerText">Add Lift to your home screen for the full experience</span>
+          <div class="installBannerActions">
+            <button class="installBannerBtn installBannerInstall" @click="installApp">Install</button>
+            <button class="installBannerBtn installBannerDismiss" @click="dismissInstall" aria-label="Dismiss install prompt">&times;</button>
+          </div>
+        </div>
         <div class="appTopBar">
           <div class="appTopBarLeft">
             <button
@@ -844,6 +851,7 @@ import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
+import { useInstallPrompt } from './composables/useInstallPrompt'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
@@ -945,6 +953,7 @@ const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+const { canShow: installPromptVisible, install: installApp, dismiss: dismissInstall, evaluateVisibility: recheckInstall } = useInstallPrompt()
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -1083,6 +1092,12 @@ function clearSampleData() {
   localStorage.removeItem('sample-data')
   hasSampleData.value = false
 }
+
+// Re-check install prompt eligibility when total set count changes
+watch(
+  () => workoutStoreForOnboarding.exercises.reduce((sum, ex) => sum + ex.sets.length, 0),
+  () => recheckInstall(),
+)
 
 function closeSettings() {
   if (!settingsOpen.value) return

@@ -846,6 +846,59 @@ button, [role="tab"], [role="switch"], a {
   flex-shrink: 0;
 }
 
+.installBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  min-height: 44px;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.installBannerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.installBannerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.installBannerBtn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.installBannerInstall {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+.installBannerDismiss {
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 18px;
+  padding: 8px;
+}
+
 .appTopBar {
   display: flex;
   justify-content: space-between;
