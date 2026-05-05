@@ -1211,7 +1211,7 @@ const tabIndicatorStyle = computed(() => {
 // Fall back if active tab gets disabled
 watch(() => prefs.features, () => {
   if (!prefs.features[activeTab.value]) {
-    activeTab.value = visibleTabs.value[0]?.id || 'workouts'
+    switchTab(visibleTabs.value[0]?.id || 'workouts')
   }
 }, { deep: true })
 
@@ -1232,10 +1232,10 @@ function switchTab(tabId: string) {
   localStorage.setItem('active-tab', tabId)
   tabSwitch(from, tabId)
   checkForSWUpdate()
-  // Restore scroll position of incoming tab
+  // Restore scroll position of incoming tab (default to top)
   nextTick(() => {
-    if (tabContentEl.value && tabScrollPositions[tabId] != null) {
-      tabContentEl.value.scrollTop = tabScrollPositions[tabId]
+    if (tabContentEl.value) {
+      tabContentEl.value.scrollTop = tabScrollPositions[tabId] ?? 0
     }
   })
 }
