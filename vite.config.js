@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { readFileSync } from 'fs'
+import themeStripPlugin from './vite-plugin-theme-split'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
@@ -32,6 +33,7 @@ export default defineConfig({
   },
   plugins: [
     vue(),
+    themeStripPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
