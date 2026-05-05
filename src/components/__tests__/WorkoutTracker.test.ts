@@ -170,6 +170,18 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
     })
 
+    it('shows transition card after sample data is cleared', () => {
+      localStorageMock.setItem('sample-data-just-cleared', '1')
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtTransitionCard').exists()).toBe(true)
+      expect(wrapper.find('.wtTransitionTitle').text()).toContain('starting fresh')
+    })
+
+    it('does not show transition card when flag is absent', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtTransitionCard').exists()).toBe(false)
+    })
+
     it('renders the Workouts large title', () => {
       // After the 03-workouts.png restyle, the "+ New Exercise" button moved
       // into the exercise-picker modal. The tab itself shows an iOS large

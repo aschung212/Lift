@@ -78,7 +78,12 @@
       </div>
     </template>
 
-    <p v-if="store.exercises.length === 0" class="wtEmpty">
+    <div v-if="store.exercises.length === 0 && justClearedSample" class="wtEmpty wtTransitionCard">
+      <span class="wtTransitionEmoji" aria-hidden="true">&#x1F3CB;&#xFE0F;</span>
+      <span class="wtTransitionTitle">You're starting fresh!</span>
+      <span class="wtTransitionBody">Add your exercises below to begin tracking your progress.</span>
+    </div>
+    <p v-else-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
@@ -1021,6 +1026,15 @@ import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
+
+// Contextual bridge: show a richer transition card after clearing sample data
+const justClearedSample = ref(localStorage.getItem('sample-data-just-cleared') === '1')
+watch(() => store.exercises.length, (len) => {
+  if (len > 0 && justClearedSample.value) {
+    justClearedSample.value = false
+    localStorage.removeItem('sample-data-just-cleared')
+  }
+})
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()

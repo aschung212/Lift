@@ -2111,6 +2111,27 @@ html.theme-fading .settingsSheet {
   line-height: 1.6;
 }
 
+.wtTransitionCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 24px;
+}
+.wtTransitionEmoji {
+  font-size: 32px;
+  line-height: 1;
+}
+.wtTransitionTitle {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.wtTransitionBody {
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+}
+
 /* ─── Exercise list ─────────────────────────────────────────────────────── */
 
 /* ─── Timeline view ─────────────────────────────────────────────────────── */
