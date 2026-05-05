@@ -1047,6 +1047,11 @@ const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
 const workoutStoreForOnboarding = useWorkoutStore()
 const bodyweightStoreForOnboarding = useBodyweightStore()
 
+// ── Cross-tab sync (ensures listeners are registered even in local-only mode) ──
+workoutStoreForOnboarding._setupCrossTabSync()
+bodyweightStoreForOnboarding._setupCrossTabSync()
+prefs._setupCrossTabSync()
+
 // Skip onboarding if user already has any data (exercises or bodyweight entries)
 // Reactive so it catches data that loads asynchronously after auth.
 // onboardingInProgress prevents the watcher from firing when the onboarding

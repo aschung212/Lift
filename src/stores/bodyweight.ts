@@ -6,6 +6,7 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
+import { broadcastStoreUpdate, onStoreUpdate } from '../lib/broadcastSync'
 
 const TOMBSTONE_STORE = 'bodyweight'
 
@@ -35,7 +36,8 @@ function load(): BodyweightEntry[] {
 export const useBodyweightStore = defineStore('bodyweight', {
   state: () => ({
     entries: load() as BodyweightEntry[],
-    _userId: null as string | null
+    _userId: null as string | null,
+    _crossTabSyncRegistered: false as boolean
   }),
 
   actions: {
@@ -47,10 +49,22 @@ export const useBodyweightStore = defineStore('bodyweight', {
         logError(e, { source: 'bodyweight._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('bodyweight')
+    },
+
+    _reloadFromStorage() {
+      this.entries = load()
+    },
+
+    _setupCrossTabSync() {
+      if (this._crossTabSyncRegistered) return
+      this._crossTabSyncRegistered = true
+      onStoreUpdate('bodyweight', () => this._reloadFromStorage())
     },
 
     async init(userId: string) {
       this._userId = userId
+      this._setupCrossTabSync()
       await this._fetchFromSupabase()
     },
 

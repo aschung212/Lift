@@ -9,6 +9,7 @@ import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
 import type { Json } from '../lib/database.types'
+import { broadcastStoreUpdate, onStoreUpdate } from '../lib/broadcastSync'
 
 const STORAGE_KEY = 'user-progression'
 
@@ -229,15 +230,16 @@ function load(): ProgressionState {
 // --- Store ---
 
 export const useProgressionStore = defineStore('progression', {
-  state: (): ProgressionState & { _userId: string | null } => ({
+  state: (): ProgressionState & { _userId: string | null; _crossTabSyncRegistered: boolean } => ({
     ...load(),
     _userId: null,
+    _crossTabSyncRegistered: false,
   }),
 
   actions: {
     _persist() {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { _userId: _omit, ...state } = this.$state
+      const { _userId: _omit, _crossTabSyncRegistered: _omit2, ...state } = this.$state
       const data = JSON.stringify(state)
       try {
         localStorage.setItem(STORAGE_KEY, data)
@@ -245,10 +247,23 @@ export const useProgressionStore = defineStore('progression', {
         logError(e, { source: 'progression._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('progression')
+    },
+
+    _reloadFromStorage() {
+      const fresh = load()
+      Object.assign(this.$state, fresh)
+    },
+
+    _setupCrossTabSync() {
+      if (this._crossTabSyncRegistered) return
+      this._crossTabSyncRegistered = true
+      onStoreUpdate('progression', () => this._reloadFromStorage())
     },
 
     async init(userId: string) {
       this._userId = userId
+      this._setupCrossTabSync()
       await this._fetchFromSupabase()
     },
 

@@ -7,6 +7,7 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
+import { broadcastStoreUpdate, onStoreUpdate } from '../lib/broadcastSync'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -154,7 +155,8 @@ export const useWorkoutStore = defineStore('workout', {
     customTags: JSON.parse(localStorage.getItem('lift-custom-tags') || '[]') as string[],
     tagRecoveryDays: JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}') as Record<string, number>,
     tagRecoveryExcluded: JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]') as string[],
-    _userId: null as string | null
+    _userId: null as string | null,
+    _crossTabSyncRegistered: false as boolean
   }),
 
   actions: {
@@ -169,6 +171,22 @@ export const useWorkoutStore = defineStore('workout', {
         logError(e, { source: 'workout._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('workout')
+    },
+
+    /** Reload state from localStorage (triggered by cross-tab broadcast). */
+    _reloadFromStorage() {
+      this.exercises = load()
+      this.customTags = JSON.parse(localStorage.getItem('lift-custom-tags') || '[]')
+      this.tagRecoveryDays = JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}')
+      this.tagRecoveryExcluded = JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]')
+    },
+
+    /** Register cross-tab sync listener (idempotent — safe to call multiple times). */
+    _setupCrossTabSync() {
+      if (this._crossTabSyncRegistered) return
+      this._crossTabSyncRegistered = true
+      onStoreUpdate('workout', () => this._reloadFromStorage())
     },
 
     /** Clear sample flag and push exercise + all its sets to Supabase. */
@@ -196,6 +214,7 @@ export const useWorkoutStore = defineStore('workout', {
 
     async init(userId: string) {
       this._userId = userId
+      this._setupCrossTabSync()
       await this._fetchFromSupabase()
     },
 

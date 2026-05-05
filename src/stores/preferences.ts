@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { broadcastStoreUpdate, onStoreUpdate } from '../lib/broadcastSync'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -73,6 +74,7 @@ export const usePreferencesStore = defineStore('preferences', {
     weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
     experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
     _userId: null as string | null,
+    _crossTabSyncRegistered: false as boolean,
   }),
 
   actions: {
@@ -85,6 +87,7 @@ export const usePreferencesStore = defineStore('preferences', {
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
+      broadcastStoreUpdate('preferences')
       if (supabase && this._userId) {
         const features = { ...this.features }
         const weightGoal = this.weightGoal
@@ -101,8 +104,26 @@ export const usePreferencesStore = defineStore('preferences', {
       }
     },
 
+    _reloadFromStorage() {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
+        if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
+        if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+      } catch { /* ignore corrupt data */ }
+    },
+
+    _setupCrossTabSync() {
+      if (this._crossTabSyncRegistered) return
+      this._crossTabSyncRegistered = true
+      onStoreUpdate('preferences', () => this._reloadFromStorage())
+    },
+
     async init(userId: string) {
       this._userId = userId
+      this._setupCrossTabSync()
 
       // Load from localStorage first (instant)
       const raw = localStorage.getItem(STORAGE_KEY)
