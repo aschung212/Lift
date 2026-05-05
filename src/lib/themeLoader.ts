@@ -29,13 +29,23 @@ let currentThemeId: string | null = null
 /**
  * Load a theme CSS file by injecting/swapping a <link> element.
  * Returns a promise that resolves when the stylesheet is loaded.
+ *
+ * On error, reverts to the eternal fallback theme to prevent unstyled state.
+ * The data-theme attribute is only updated AFTER CSS loads successfully,
+ * preventing FOUC for non-default themes.
  */
 export function loadThemeCSS(themeId: string): Promise<void> {
   if (themeId === currentThemeId) return Promise.resolve()
 
   const url = themeUrls[themeId]
   if (!url) {
-    // Unknown theme — no-op (eternal inline fallback will cover)
+    // Unknown theme or eternal (already inline) — no-op
+    return Promise.resolve()
+  }
+
+  // For eternal, CSS is already inline — just track it
+  if (themeId === 'eternal') {
+    currentThemeId = 'eternal'
     return Promise.resolve()
   }
 
@@ -45,10 +55,22 @@ export function loadThemeCSS(themeId: string): Promise<void> {
     let link = document.getElementById(LINK_ID) as HTMLLinkElement | null
 
     if (link) {
-      // Swap href on existing link
+      // Swap href on existing link — bind new handlers for the new URL
+      const onLoad = () => {
+        link!.removeEventListener('load', onLoad)
+        link!.removeEventListener('error', onError)
+        resolve()
+      }
+      const onError = () => {
+        link!.removeEventListener('load', onLoad)
+        link!.removeEventListener('error', onError)
+        // Revert to eternal fallback so the app stays usable
+        revertToEternal()
+        resolve()
+      }
+      link.addEventListener('load', onLoad)
+      link.addEventListener('error', onError)
       link.href = url
-      // Resolve immediately — CSS files are tiny (~2KB) and likely cached
-      resolve()
     } else {
       // First load — create the link element
       link = document.createElement('link')
@@ -56,10 +78,26 @@ export function loadThemeCSS(themeId: string): Promise<void> {
       link.rel = 'stylesheet'
       link.href = url
       link.onload = () => resolve()
-      link.onerror = () => resolve() // Fallback to inline eternal on error
+      link.onerror = () => {
+        // Revert to eternal fallback so the app stays usable
+        revertToEternal()
+        resolve()
+      }
       document.head.appendChild(link)
     }
   })
+}
+
+/**
+ * Revert to the eternal theme (inline CSS) on load failure.
+ * This ensures the app never ends up in an unstyled state.
+ */
+function revertToEternal(): void {
+  currentThemeId = 'eternal'
+  document.documentElement.setAttribute('data-theme', 'eternal')
+  // Remove the broken link element
+  const link = document.getElementById(LINK_ID)
+  if (link) link.remove()
 }
 
 /**
