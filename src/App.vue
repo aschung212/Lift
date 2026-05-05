@@ -1051,6 +1051,7 @@ const bodyweightStoreForOnboarding = useBodyweightStore()
 workoutStoreForOnboarding._setupCrossTabSync()
 bodyweightStoreForOnboarding._setupCrossTabSync()
 prefs._setupCrossTabSync()
+progressionStore._setupCrossTabSync()
 
 // Skip onboarding if user already has any data (exercises or bodyweight entries)
 // Reactive so it catches data that loads asynchronously after auth.
