@@ -362,6 +362,19 @@
               <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" aria-label="Warning alert seconds" />
               <button class="wtTimerEditAddBtn" :disabled="!newWarningValue" @click="addWarningOption">Add</button>
             </div>
+            <div v-if="editTab === 'alerts' && notificationsSupported" class="wtTimerEditRow wtTimerEditListItem" style="margin-top: var(--space-3)">
+              <span class="wtTimerEditItemLabel">Push notification</span>
+              <button
+                :class="['glassToggle', { on: _prefs.experience.restTimerNotifications }]"
+                @click="toggleRestTimerNotifications"
+                role="switch"
+                :aria-checked="_prefs.experience.restTimerNotifications"
+                :aria-label="_prefs.experience.restTimerNotifications ? 'Disable push notification' : 'Enable push notification'"
+              ><span class="glassToggleThumb"></span></button>
+            </div>
+            <p v-if="editTab === 'alerts' && notificationsSupported" class="wtTimerEditHint">
+              Notifies you when the timer finishes while the app is in the background.
+            </p>
             <button class="wtTimerEditResetBtn" @click="resetAllDefaults">Reset to defaults</button>
             <button class="wtTimerEditResetBtn wtTimerDisableBtn" @click="disableRestTimer">Disable Rest Timer</button>
             <div class="repMaxActions">
@@ -1030,6 +1043,7 @@ const { presentPRBurst } = usePRBurst()
 
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
+import { showRestTimerNotification } from '../composables/useNotifications'
 import { usePreferencesStore } from '../stores/preferences'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
@@ -2199,6 +2213,7 @@ function startInterval() {
       }
       if (timerSeconds.value <= 0) {
         playGoBeep()
+        showRestTimerNotification()
         if (timerIntervalId !== null) clearInterval(timerIntervalId)
         timerIntervalId = null
         timerSeconds.value = 0
@@ -2254,6 +2269,24 @@ function restartTimer() {
   timerEndTime = Date.now() + restDuration.value * 1000
   timerPaused.value = false
   startInterval()
+}
+
+// ── Notification support ──────────────────────────────────────────
+const notificationsSupported = typeof Notification !== 'undefined'
+
+async function toggleRestTimerNotifications() {
+  if (_prefs.experience.restTimerNotifications) {
+    // Turning off
+    _prefs.setExperienceFlag('restTimerNotifications', false)
+  } else {
+    // Turning on — request permission if needed
+    if (notificationsSupported && Notification.permission === 'default') {
+      const result = await Notification.requestPermission()
+      if (result !== 'granted') return // User denied — don't enable
+    }
+    if (notificationsSupported && Notification.permission === 'denied') return
+    _prefs.setExperienceFlag('restTimerNotifications', true)
+  }
 }
 
 function onTimerComplete() {
