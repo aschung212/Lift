@@ -15,14 +15,14 @@ const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.js'), '
 
 describe('Workbox runtime cache configuration', () => {
   describe('endpoint-specific caches exist', () => {
-    it('has a dedicated sets cache with CacheFirst strategy', () => {
+    it('has a dedicated sets cache with StaleWhileRevalidate strategy', () => {
       expect(viteConfig).toContain("cacheName: 'supabase-sets'")
-      // Sets are append-only, so CacheFirst is appropriate
+      // StaleWhileRevalidate: fast offline load + background refresh for new sets
       const setsSection = viteConfig.slice(
         viteConfig.indexOf("cacheName: 'supabase-sets'") - 200,
         viteConfig.indexOf("cacheName: 'supabase-sets'") + 100
       )
-      expect(setsSection).toContain("handler: 'CacheFirst'")
+      expect(setsSection).toContain("handler: 'StaleWhileRevalidate'")
     })
 
     it('has a dedicated exercises cache with NetworkFirst strategy', () => {

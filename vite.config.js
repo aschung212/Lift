@@ -116,9 +116,11 @@ export default defineConfig({
         skipWaiting: true,
         runtimeCaching: [
           {
-            // Sets are append-only (logged sets never change) — CacheFirst with large capacity
+            // Sets collection grows as new sets are logged — StaleWhileRevalidate
+            // serves cached response instantly for offline/fast load while updating
+            // the cache in the background so new sets from other devices appear next load
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/sets\b/i,
-            handler: 'CacheFirst',
+            handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'supabase-sets',
               expiration: {
