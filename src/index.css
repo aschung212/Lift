@@ -1103,6 +1103,31 @@ html.modal-open .tabContent {
   color: var(--text-secondary);
 }
 
+/* ─── Supporter badge ───────────────────────────────────────────── */
+
+.supporterBadgeDot {
+  background: linear-gradient(135deg, #ffd700, #ffb800) !important;
+  color: #fff !important;
+  animation: supporterGlow 2.5s ease-in-out infinite;
+}
+
+@keyframes supporterGlow {
+  0%, 100% { box-shadow: 0 0 4px rgba(255, 215, 0, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(255, 215, 0, 0.6); }
+}
+
+.supporterBadge .themePreviewLabel {
+  color: var(--accent);
+}
+
+.settingsCaption {
+  font-size: var(--font-caption2);
+  color: var(--text-secondary);
+  padding: 0 16px 8px;
+  margin: 0;
+  line-height: 1.4;
+}
+
 /* ─── Badge case header ──────────────────────────────────────────── */
 
 .badgeCaseHeader {

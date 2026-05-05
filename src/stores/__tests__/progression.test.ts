@@ -848,4 +848,41 @@ describe('progression store', () => {
       expect(lastEntry.combinedMultiplier).toBe(1.1)
     })
   })
+
+  // ── Supporter badge ─────────────────────────────────────────────
+
+  describe('supporter badge', () => {
+    it('defaults supporter to false', () => {
+      const store = useProgressionStore()
+      expect(store.supporter).toBe(false)
+    })
+
+    it('setSupporter(true) enables the badge and persists', () => {
+      const store = useProgressionStore()
+      store.setSupporter(true)
+      expect(store.supporter).toBe(true)
+
+      const saved = JSON.parse(localStorage.getItem('user-progression')!)
+      expect(saved.supporter).toBe(true)
+    })
+
+    it('setSupporter(false) disables the badge and persists', () => {
+      const store = useProgressionStore()
+      store.setSupporter(true)
+      store.setSupporter(false)
+      expect(store.supporter).toBe(false)
+
+      const saved = JSON.parse(localStorage.getItem('user-progression')!)
+      expect(saved.supporter).toBe(false)
+    })
+
+    it('loads supporter state from localStorage', () => {
+      localStorage.setItem('user-progression', JSON.stringify({
+        supporter: true,
+      }))
+      setActivePinia(createPinia())
+      const store = useProgressionStore()
+      expect(store.supporter).toBe(true)
+    })
+  })
 })

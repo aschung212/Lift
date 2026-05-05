@@ -85,6 +85,7 @@ export interface ProgressionState {
   streakHistory: StreakWeekEntry[]     // append-only
   xpPerSet: Record<string, SetXPEntry | number>  // setId → XP data (number = legacy format)
   bodyweightXPDates: string[]         // dates that earned bodyweight XP
+  supporter: boolean                   // user self-attested as a supporter (GitHub Sponsors / BuyMeACoffee)
 }
 
 // --- Unlock Thresholds (placeholder — tune with real data) ---
@@ -124,6 +125,7 @@ function defaultState(): ProgressionState {
     streakHistory: [],
     xpPerSet: {},
     bodyweightXPDates: [],
+    supporter: false,
   }
 }
 
@@ -282,6 +284,7 @@ export const useProgressionStore = defineStore('progression', {
       this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
       this.epoch = (data.epoch as number) ?? this.epoch
       this.streakHistory = (data.streak_history as unknown as StreakWeekEntry[]) ?? this.streakHistory
+      this.supporter = (data.supporter as boolean) ?? this.supporter
 
       // Merge collection fields — union strategy, no data loss
       const remoteThemes = migrateUnlockedThemes((data.unlocked_themes as unknown) ?? [])
@@ -325,6 +328,7 @@ export const useProgressionStore = defineStore('progression', {
         streak_history: this.streakHistory as unknown as Json,
         xp_per_set: this.xpPerSet as unknown as Json,
         bodyweight_xp_dates: this.bodyweightXPDates as unknown as Json,
+        supporter: this.supporter,
       }
       syncQueue.enqueue('progression-sync', () =>
         supabase!.from('user_progression').upsert(payload)
@@ -599,6 +603,12 @@ export const useProgressionStore = defineStore('progression', {
 
     setShowProgression(value: boolean) {
       this.showProgression = value
+      this._persist()
+      this._syncToSupabase()
+    },
+
+    setSupporter(value: boolean) {
+      this.supporter = value
       this._persist()
       this._syncToSupabase()
     },

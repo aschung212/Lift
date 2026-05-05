@@ -133,6 +133,13 @@
                   </span>
                   <span class="themePreviewLabel">{{ isEternalLocked(t.id) ? '???' : t.label }}</span>
                 </button>
+                <!-- Supporter badge (displayed in grid when user has self-attested) -->
+                <div v-if="progressionStore.supporter" class="themePreview supporterBadge" aria-label="Supporter badge">
+                  <span class="themePreviewDot supporterBadgeDot">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2z"/></svg>
+                  </span>
+                  <span class="themePreviewLabel">Supporter</span>
+                </div>
               </div>
               <!-- Trial period banner -->
               <div v-if="progressionActive && !progressionStore.starterConfirmed" class="trialBanner">
@@ -493,6 +500,17 @@
                 </span>
                 <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
               </a>
+              <div class="settingsRow">
+                <span class="settingsLabel">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2z"/></svg>
+                  Supporter Badge
+                </span>
+                <label class="settingsToggle" aria-label="Toggle supporter badge">
+                  <input type="checkbox" :checked="progressionStore.supporter" @change="progressionStore.setSupporter(($event.target as HTMLInputElement).checked)" />
+                  <span class="toggleTrack"><span class="toggleThumb"></span></span>
+                </label>
+              </div>
+              <p v-if="!progressionStore.supporter" class="settingsCaption">Donated? Turn this on to show your supporter badge in the theme case.</p>
             </div>
 
             <div class="settingsGroup">
