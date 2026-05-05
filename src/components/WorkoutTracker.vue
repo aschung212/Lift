@@ -91,7 +91,7 @@
       <li
         v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
-        v-memo="[exercise.name, exercise.sets.length, exercise.tags, prBaselineDate, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
+        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit, index, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
         class="wtExerciseItem"
         :class="{
           'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
