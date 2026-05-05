@@ -26,6 +26,36 @@
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
+        <!-- PWA install prompt banner -->
+        <div v-if="installPrompt.showBanner.value" class="installBanner" role="banner">
+          <div class="installBannerContent">
+            <svg class="installBannerIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="installBannerText">
+              <template v-if="installPrompt.isIOSPrompt.value">
+                Add Lift to your Home Screen for the full app experience
+              </template>
+              <template v-else>
+                Install Lift for quick access and offline use
+              </template>
+            </span>
+          </div>
+          <div class="installBannerActions">
+            <button v-if="!installPrompt.isIOSPrompt.value" class="installBannerBtn" @click="installPrompt.installApp()">Install</button>
+            <button v-else class="installBannerBtn" @click="showIOSInstallHelp = true">How</button>
+            <button class="installBannerDismiss" @click="installPrompt.dismissBanner()" aria-label="Dismiss install prompt">&times;</button>
+          </div>
+        </div>
+        <!-- iOS install help overlay -->
+        <div v-if="showIOSInstallHelp" class="installIOSOverlay" @click.self="showIOSInstallHelp = false">
+          <div class="installIOSSheet" role="dialog" aria-modal="true" aria-label="Add to Home Screen instructions">
+            <div class="installIOSContent">
+              <p class="installIOSStep"><span class="installIOSNum">1</span>Tap the <strong>Share</strong> button <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -3px"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> in Safari</p>
+              <p class="installIOSStep"><span class="installIOSNum">2</span>Scroll down and tap <strong>Add to Home Screen</strong></p>
+              <p class="installIOSStep"><span class="installIOSNum">3</span>Tap <strong>Add</strong> to confirm</p>
+            </div>
+            <button class="installIOSClose" @click="showIOSInstallHelp = false">Got it</button>
+          </div>
+        </div>
         <div class="appTopBar">
           <div class="appTopBarLeft">
             <button
@@ -847,9 +877,12 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useInstallPrompt } from './composables/useInstallPrompt'
 import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const installPrompt = useInstallPrompt()
+const showIOSInstallHelp = ref(false)
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
 
 function formatBaselineLabel(iso: string | null): string {
@@ -1064,6 +1097,17 @@ watch(
 )
 const showOnboarding = computed(() => !onboardingComplete.value)
 const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
+
+// ── PWA install prompt engagement tracking ────────────────────────
+// Track total sets across all exercises — when it increases, a set was logged
+const totalSetCount = computed(() =>
+  workoutStoreForOnboarding.exercises.reduce((sum, ex) => sum + ex.sets.length, 0)
+)
+watch(totalSetCount, (newCount, oldCount) => {
+  if (oldCount !== undefined && newCount > oldCount) {
+    installPrompt.trackSetLogged()
+  }
+})
 
 function onOnboardingComplete() {
   onboardingInProgress.value = false
