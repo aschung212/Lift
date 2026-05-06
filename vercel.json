@@ -42,11 +42,5 @@
       ]
     }
   ],
-  "redirects": [
-    {
-      "source": "/(.*).map",
-      "destination": "/",
-      "statusCode": 404
-    }
-  ]
+  "redirects": []
 }
