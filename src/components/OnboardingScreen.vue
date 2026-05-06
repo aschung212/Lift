@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useWorkoutStore } from '../stores/workout'
+import { useWorkoutStore, type ExerciseInputMode } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
 import { useTheme, type ThemeId } from '../composables/useTheme'
@@ -100,12 +100,17 @@ let pendingSampleData = false
 let onboardingStartMs = 0
 let chosenPath = ''
 
-const STARTER_EXERCISES = [
-  { name: 'Bench Press', tags: ['Push', 'Chest'] },
-  { name: 'Squat', tags: ['Legs'] },
-  { name: 'Deadlift', tags: ['Pull', 'Legs'] },
-  { name: 'Overhead Press', tags: ['Push', 'Shoulders'] },
-  { name: 'Barbell Row', tags: ['Pull', 'Back'] },
+const STARTER_EXERCISES: {
+  name: string
+  tags: string[]
+  inputMode?: ExerciseInputMode
+  barWeight?: number
+}[] = [
+  { name: 'Bench Press', tags: ['Push', 'Chest'], inputMode: 'plates', barWeight: 45 },
+  { name: 'Squat', tags: ['Legs'], inputMode: 'plates', barWeight: 45 },
+  { name: 'Deadlift', tags: ['Pull', 'Legs'], inputMode: 'plates', barWeight: 45 },
+  { name: 'Overhead Press', tags: ['Push', 'Shoulders'], inputMode: 'plates', barWeight: 45 },
+  { name: 'Barbell Row', tags: ['Pull', 'Back'], inputMode: 'plates', barWeight: 45 },
   { name: 'Pull-ups', tags: ['Pull', 'Back'] },
 ]
 
@@ -454,12 +459,24 @@ function chooseStarter() {
   logEvent('onboarding_step', { step: 'choice', value: 'starter' })
   emit('started')
   for (const ex of STARTER_EXERCISES) {
-    workoutStore.addExercise(ex.name, ex.tags)
+    const id = workoutStore.addExercise(ex.name, ex.tags)
+    if (id && ex.inputMode) {
+      workoutStore.setExerciseInputMode(id, ex.inputMode)
+    }
   }
   goToStarter(false)
 }
 
 const noSync = { sync: false }
+
+/** Apply plate calculator config to an exercise without triggering sync. */
+function applyPlateConfig(id: string, starter: typeof STARTER_EXERCISES[number]) {
+  if (!starter.inputMode) return
+  const exercise = workoutStore.exercises?.find(e => e.id === id)
+  if (!exercise) return
+  exercise.inputMode = starter.inputMode
+  if (starter.barWeight != null) exercise.barWeight = starter.barWeight
+}
 
 function chooseExplore() {
   onboardingStartMs = Date.now()
@@ -472,6 +489,7 @@ function chooseExplore() {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
     const id = workoutStore.addExercise(group.exercise, starter?.tags || [], noSync)
     if (!id) continue
+    if (starter) applyPlateConfig(id, starter)
     for (const set of group.sets) {
       workoutStore.logSet(id, set.weight, set.reps, set.date, noSync)
     }
@@ -479,7 +497,8 @@ function chooseExplore() {
   // Add remaining starter exercises without sets
   for (const ex of STARTER_EXERCISES) {
     if (!SAMPLE_SETS.find(g => g.exercise === ex.name)) {
-      workoutStore.addExercise(ex.name, ex.tags, noSync)
+      const id = workoutStore.addExercise(ex.name, ex.tags, noSync)
+      if (id) applyPlateConfig(id, ex)
     }
   }
   // Add sample bodyweight entries
