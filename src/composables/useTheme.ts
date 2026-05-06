@@ -156,7 +156,6 @@ if (storedId in THEME_MIGRATION) {
 const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'eternal'
 const storedMode = localStorage.getItem('app-mode') || 'dark'
 const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
-document.documentElement.setAttribute('data-theme', 'eternal')
 applyTheme(validId)
 applyMode(validMode)
 
