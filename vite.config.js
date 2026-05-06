@@ -124,6 +124,7 @@ export default defineConfig({
           'icon-source.png',
           'og-preview.html',
         ],
+        navigationPreload: true,
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
