@@ -92,17 +92,19 @@
         v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
         v-memo="[
+          index,
           exercise.name,
           exercise.sets.length,
           exercise.sets[exercise.sets.length - 1]?.weight,
           exercise.sets[exercise.sets.length - 1]?.reps,
           exercise.sets[exercise.sets.length - 1]?.date,
+          exercise.sets[exercise.sets.length - 1]?.estimated1RM,
           (exercise.tags || []).join(','),
+          store.getExercisePR(exercise.id, prBaselineDate),
           isFilteringActive,
           dragState.dragging && dragState.fromIndex === index,
           dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
           weightUnit,
-          prBaselineDate,
         ]"
         class="wtExerciseItem"
         :class="{
