@@ -32,6 +32,8 @@ export interface PRBurstPayload {
   setWeight: number
   /** Reps of the set that triggered the PR. */
   setReps: number
+  /** True when this is the user's very first PR ever. */
+  isFirstPR?: boolean
 }
 
 const visible: Ref<boolean> = ref(false)
@@ -52,10 +54,13 @@ function presentPRBurst(p: PRBurstPayload): void {
   payload.value = p
   visible.value = true
 
-  // Success haptic on present. useHaptics short-circuits if the user
-  // disabled haptics.
+  // Haptic on present — heavier for first PR. useHaptics short-circuits
+  // if the user disabled haptics.
   try {
     const haptics = useHaptics()
+    if (p.isFirstPR) {
+      haptics.impactHeavy()
+    }
     haptics.notifySuccess()
   } catch {
     /* silent — haptics are best-effort */

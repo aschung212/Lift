@@ -660,6 +660,15 @@ export const useProgressionStore = defineStore('progression', {
       // During grace period, the pending change hasn't taken effect yet
       return state.weeklyTarget
     },
+
+    /** Count of sets that were PRs (used for first-PR detection). */
+    totalPRCount: (state): number => {
+      let count = 0
+      for (const entry of Object.values(state.xpPerSet)) {
+        if (typeof entry === 'object' && entry.isPR) count++
+      }
+      return count
+    },
   },
 })
 

@@ -1,0 +1,73 @@
+import { describe, it, expect } from 'vitest'
+import { eligibleSquareCards, eligibleStoryCards, findCard, SQUARE_CARDS, STORY_CARDS } from '../cardRegistry'
+import type { SessionSummary } from '../../../lib/sessionSummary'
+
+function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    rawDate: '2026-04-21',
+    date: 'Tue, Apr 21',
+    duration: '1h 14m',
+    totalVolume: 24850,
+    setsCompleted: 18,
+    exercises: 5,
+    prs: 0,
+    repPRs: 0,
+    bestSet: { exerciseId: 'ex1', name: 'Bench', weight: 225, reps: 5, e1RM: 263, isPR: false },
+    highlights: [],
+    weekVolume: [0, 24850, 0, 0, 0, 0, 0],
+    priorWeekVolume: 18200,
+    streak: 4,
+    unitLabel: 'lbs',
+    ...overrides,
+  }
+}
+
+describe('cardRegistry', () => {
+  it('exposes 8 square cards and 3 story cards', () => {
+    expect(SQUARE_CARDS).toHaveLength(8)
+    expect(STORY_CARDS).toHaveLength(3)
+  })
+
+  it('hides PR Focus when no PRs were set', () => {
+    const cards = eligibleSquareCards(makeSummary({ prs: 0 }))
+    expect(cards.find((c) => c.id === 'pr-focus')).toBeUndefined()
+  })
+
+  it('shows AND promotes PR Focus to first when prs > 0', () => {
+    const cards = eligibleSquareCards(makeSummary({ prs: 2 }))
+    expect(cards[0].id).toBe('pr-focus')
+  })
+
+  it('hides PR Focus when prs > 0 but bestSet is null (defensive)', () => {
+    const cards = eligibleSquareCards(makeSummary({ prs: 1, bestSet: null }))
+    expect(cards.find((c) => c.id === 'pr-focus')).toBeUndefined()
+  })
+
+  it('returns 7 squares when no PR (the 8th is PR Focus)', () => {
+    const cards = eligibleSquareCards(makeSummary({ prs: 0 }))
+    expect(cards).toHaveLength(7)
+  })
+
+  it('returns all 8 squares when there is a PR', () => {
+    const cards = eligibleSquareCards(makeSummary({ prs: 1 }))
+    expect(cards).toHaveLength(8)
+  })
+
+  it('preserves the original ordering of the non-PR cards when promoting', () => {
+    const withoutPR = eligibleSquareCards(makeSummary({ prs: 0 })).map((c) => c.id)
+    const withPR = eligibleSquareCards(makeSummary({ prs: 1 })).map((c) => c.id)
+    expect(withPR[0]).toBe('pr-focus')
+    expect(withPR.slice(1)).toEqual(withoutPR)
+  })
+
+  it('returns all 3 story cards regardless of PR state', () => {
+    expect(eligibleStoryCards(makeSummary({ prs: 0 }))).toHaveLength(3)
+    expect(eligibleStoryCards(makeSummary({ prs: 5 }))).toHaveLength(3)
+  })
+
+  it('findCard locates entries by id from either bucket', () => {
+    expect(findCard('bold-flood')?.format).toBe('square')
+    expect(findCard('best-set-story')?.format).toBe('story')
+    expect(findCard('does-not-exist')).toBeNull()
+  })
+})

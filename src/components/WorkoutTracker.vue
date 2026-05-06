@@ -8,6 +8,28 @@
         {{ totalExercises }} {{ totalExercises === 1 ? 'exercise' : 'exercises' }}
         · {{ prsThisWeek }} {{ prsThisWeek === 1 ? 'PR' : 'PRs' }} this week
       </p>
+      <!-- Weekly training goal indicator (only when progression is enabled) -->
+      <div v-if="weeklyGoalInfo" :class="['wtWeeklyGoal', { wtWeeklyGoalMet: weeklyGoalInfo.met, wtWeeklyGoalAtRisk: weeklyGoalInfo.atRisk }]">
+        <!-- Flame icon (streak) -->
+        <svg class="wtWeeklyGoalIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14 0-5.5 3-7 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.5-2.5 1.5-3.5l1 1Z"/></svg>
+        <span class="wtWeeklyGoalText">
+          <template v-if="weeklyGoalInfo.met">Goal hit — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
+          <template v-else-if="weeklyGoalInfo.atRisk">Streak at risk — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
+          <template v-else>{{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days this week</template>
+        </span>
+      </div>
+      <button
+        v-if="setsLoggedToday > 0"
+        class="wtFinishWorkoutBtn"
+        @click="openWorkoutComplete"
+        aria-label="Finish workout and view today's summary"
+      >
+        <span class="wtFinishWorkoutLabel">Finish workout</span>
+        <span class="wtFinishWorkoutMeta">
+          {{ setsLoggedToday }} {{ setsLoggedToday === 1 ? 'set' : 'sets' }} today
+        </span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
     </header>
 
     <!-- View toggle (Exercises / Timeline) -->
@@ -56,7 +78,18 @@
       </div>
     </template>
 
-    <p v-if="store.exercises.length === 0" class="wtEmpty">
+    <div v-if="store.exercises.length === 0 && showFreshStart" class="wtFreshStart">
+      <div class="wtFreshStartIcon" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      </div>
+      <p class="wtFreshStartTitle">You're starting fresh!</p>
+      <p class="wtFreshStartBody">Add your first exercise to begin tracking your lifts.</p>
+      <button class="wtFreshStartCta" @click="openNewExerciseModal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Exercise
+      </button>
+    </div>
+    <p v-else-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
@@ -69,6 +102,7 @@
       <li
         v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
+        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit, index, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
         class="wtExerciseItem"
         :class="{
           'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
@@ -687,6 +721,20 @@
             </div>
           </div>
 
+          <!-- One-time hint: plate calculator discoverability (LIFT-388) -->
+          <div
+            v-if="showPlateHint"
+            class="wtPlateHint"
+            role="button"
+            tabindex="0"
+            @click="openSettingsFromHint"
+            @keydown.enter="openSettingsFromHint"
+          >
+            <svg class="wtPlateHintIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <span class="wtPlateHintText">Tip: Enable the plate calculator in exercise settings</span>
+            <button class="wtPlateHintDismiss" @click.stop="dismissPlateHint" aria-label="Dismiss hint">×</button>
+          </div>
+
           <!--
             Plate calculator (shown when exercise is in plates mode).
             Matches screens/05-logset-platecalc.png:
@@ -959,11 +1007,22 @@
       <span class="wtRestBarLabel">Start Rest Timer</span>
     </template>
   </button>
+
+  <Teleport to="body">
+    <WorkoutCompleteView
+      v-if="workoutCompleteDate"
+      :raw-date="workoutCompleteDate"
+      @close="workoutCompleteDate = null"
+    />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import { toLocalDateKey } from '../lib/sessionSummary'
+
+const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {
@@ -983,6 +1042,7 @@ import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/pl
 import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
+import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
@@ -1120,6 +1180,19 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
   }
 }
+
+// ── Fresh-start transition card ─────────────────────────────────
+// Shown after user clears sample data, dismissed on first exercise add
+const showFreshStart = ref(localStorage.getItem('fresh-start') === 'true')
+function onFreshStart() { showFreshStart.value = true }
+onMounted(() => { window.addEventListener('fresh-start', onFreshStart) })
+onUnmounted(() => { window.removeEventListener('fresh-start', onFreshStart) })
+watch(() => store.exercises.length, (len) => {
+  if (len > 0 && showFreshStart.value) {
+    localStorage.removeItem('fresh-start')
+    showFreshStart.value = false
+  }
+})
 
 // ── View toggle ──────────────────────────────────────────────────
 const listView = ref<'exercises' | 'timeline'>(
@@ -1268,6 +1341,26 @@ const isFilteringActive = computed(() =>
 /** Total exercise count, shown in the "Workouts" header stats. */
 const totalExercises = computed(() => store.exercises.length)
 
+/** Sets logged on the local "today" date — drives the Finish workout affordance. */
+const setsLoggedToday = computed(() => {
+  const today = todayISO()
+  let count = 0
+  for (const ex of store.exercises) {
+    for (const s of ex.sets) {
+      if (toLocalDateKey(s.date) === today) count++
+    }
+  }
+  return count
+})
+
+/** When non-null, renders the WorkoutCompleteView overlay for that date. */
+const workoutCompleteDate = ref<string | null>(null)
+function openWorkoutComplete() {
+  workoutCompleteDate.value = todayISO()
+  impactLight()
+  logEvent('workout_complete_view_opened', { sets: setsLoggedToday.value })
+}
+
 /** Exercises whose baseline-relative PR was achieved in the last 7 days. */
 const prsThisWeek = computed(() => {
   const now = Date.now()
@@ -1278,6 +1371,16 @@ const prsThisWeek = computed(() => {
     if (pr && new Date(pr.date).getTime() >= weekAgo) count++
   }
   return count
+})
+
+/**
+ * Weekly goal indicator — counts unique training days in the current Mon–Sun week
+ * and compares against the user's weeklyTarget from the progression store.
+ * Returns null when progression is disabled (indicator hidden).
+ */
+const weeklyGoalInfo = computed(() => {
+  if (!progressionStore.progressionEnabled) return null
+  return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
 })
 
 /** Count of exercises carrying each tag — powers the "Push 23" suffix on tag chips. */
@@ -1601,11 +1704,6 @@ function visibleSets(exercise: Exercise): WorkoutSet[] {
   return showAllSets.value.has(exercise.id) ? sorted : sorted.slice(0, SET_LIMIT)
 }
 
-function toLocalDateKey(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 const groupedSets = computed(() => {
   if (!detailExercise.value) return []
   const sets = visibleSets(detailExercise.value)
@@ -1705,6 +1803,28 @@ const plateMode = computed(() => {
   return ex?.inputMode === 'plates'
 })
 const plateNumpadOverride = ref(false)
+
+// ── Plate calculator hint (LIFT-388) ────────────────────────────
+const PLATE_HINT_KEY = 'plate-calc-hint-dismissed'
+const plateHintDismissed = ref(!!localStorage.getItem(PLATE_HINT_KEY))
+
+const showPlateHint = computed(() =>
+  !plateHintDismissed.value &&
+  !plateMode.value &&
+  !isEditMode.value &&
+  isLogForExercise.value
+)
+
+function dismissPlateHint() {
+  plateHintDismissed.value = true
+  localStorage.setItem(PLATE_HINT_KEY, 'true')
+}
+
+function openSettingsFromHint() {
+  dismissPlateHint()
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  if (ex) openEditExerciseModal(ex)
+}
 
 function adjustReps(delta: number) {
   const current = reps.value ?? 0
@@ -2766,6 +2886,8 @@ function saveSet() {
       const wasPR = isNewPR.value
       // Capture the pre-log baseline PR so the burst can show old → new e1RM.
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
+      // Snapshot PR count before logging so we can detect the user's very first PR.
+      const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       // XP: get the just-logged set (last in array) and compute XP
@@ -2786,7 +2908,11 @@ function saveSet() {
           newE1RM,
           setWeight: toLbs(weight.value),
           setReps: reps.value,
+          isFirstPR: prCountBefore === 0,
         })
+        if (prCountBefore === 0) {
+          logEvent('first_pr', { exercise: selectedExerciseName.value })
+        }
       } else {
         impactLight()
       }
@@ -2925,7 +3051,13 @@ function confirmEditExercise() {
     }
   }
   editTarget.value = null
-  syncPlateWeight()
+  // When switching to plate mode, reverse-sync the current weight into
+  // plates so the user's entered value is preserved (LIFT-388 review fix).
+  if (editPlateMode.value && weight.value) {
+    syncPlatesFromWeight()
+  } else {
+    syncPlateWeight()
+  }
   logEvent('exercise_edit')
 }
 
