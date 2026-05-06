@@ -1,0 +1,61 @@
+[data-theme="fire"][data-mode="dark"] {
+  --bg-primary:      #0f0f0f;
+  --bg-secondary:    #1a1a1a;
+  --bg-elevated:     #242424;
+  --bg-hover:        #2e2e2e;
+  --border:          #2a2a2a;
+  --border-strong:   #3c3c3c;
+  --text-primary:    #f2f2f2;
+  --text-secondary:  #888;
+  --text-muted:      #777;
+  --accent:          #ff6363;
+  --accent-hover:    #ff4444;
+  --accent-subtle:   rgba(255, 99, 99, 0.10);
+  --danger:          #ff5a5a;
+  --danger-subtle:   rgba(255, 90, 90, 0.12);
+  --success:         #30d158;
+  --success-subtle:  rgba(48, 209, 88, 0.12);
+  --shadow:          0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.4);
+  --glass-fill:      rgba(255,255,255,0.055);
+  --glass-edge:      rgba(255,255,255,0.10);
+  --glass-shine:     rgba(255,255,255,0.13);
+  --glass-bar:       rgba(10,10,10,0.72);
+  --glass-overlay:   rgba(0,0,0,0.55);
+  --pr:              #d4af37;
+  --pr-subtle:       rgba(212, 175, 55, 0.10);
+  --text-on-accent:  #1a0000;
+  --mesh:            radial-gradient(ellipse 70% 55% at 15% 15%, rgba(255,99,99,0.07) 0%, transparent 65%),
+                     radial-gradient(ellipse 55% 45% at 85% 80%, rgba(139,92,246,0.05) 0%, transparent 65%);
+}
+
+[data-theme="fire"][data-mode="light"] {
+  --bg-primary:      #f2eded;
+  --bg-secondary:    #ffffff;
+  --bg-elevated:     #ffffff;
+  --bg-hover:        #faf5f5;
+  --border:          #e0d4d4;
+  --border-strong:   #c8b8b8;
+  --text-primary:    #1a1212;
+  --text-secondary:  #6e5858;
+  --text-muted:      #7c6767;
+  --accent:          #ca313f;
+  --accent-hover:    #c82333;
+  --accent-subtle:   rgba(220, 53, 69, 0.08);
+  --danger:          #dc2626;
+  --danger-subtle:   rgba(220, 38, 38, 0.08);
+  --success:         #0d8a3a;
+  --success-subtle:  rgba(22, 163, 74, 0.08);
+  --shadow:          0 8px 32px rgba(26, 18, 18, 0.14);
+  --shadow-sm:       0 2px 8px rgba(26, 18, 18, 0.08);
+  --glass-fill:      rgba(255,235,235,0.82);
+  --glass-edge:      rgba(255,200,200,0.60);
+  --glass-shine:     rgba(255,255,255,0.90);
+  --glass-bar:       rgba(245,230,230,0.75);
+  --glass-overlay:   rgba(26,18,18,0.25);
+  --pr:              #9a7b1c;
+  --pr-subtle:       rgba(154, 123, 28, 0.10);
+  --text-on-accent:  #fff;
+  --mesh:            radial-gradient(ellipse 70% 55% at 15% 15%, rgba(255,99,99,0.12) 0%, transparent 60%),
+                     radial-gradient(ellipse 55% 45% at 85% 80%, rgba(139,92,246,0.08) 0%, transparent 60%);
+}

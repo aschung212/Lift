@@ -4,6 +4,7 @@
   "type": "module",
   "description": "A PWA workout tracker for logging sets, tracking progress, and hitting PRs.",
   "scripts": {
+    "css:extract-themes": "node scripts/rewrite-css.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
