@@ -112,6 +112,12 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: [
+          'screenshot-*.png',
+          'og-image.png',
+          'icon-source.png',
+          'og-preview.html',
+        ],
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
