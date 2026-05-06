@@ -2,6 +2,34 @@
   <!-- Step 1: Explainer -->
   <template v-if="step === 'explainer'">
     <div class="spfTitle">Theme Progression</div>
+
+    <!-- Visual progression preview -->
+    <div class="spfPreview" aria-hidden="true">
+      <div class="spfProgressTrack">
+        <div class="spfProgressFill"></div>
+        <div
+          v-for="dot in previewDots"
+          :key="dot.id"
+          class="spfProgressDot"
+          :class="{ unlocked: true }"
+          :style="{
+            left: dot.position + '%',
+            background: 'linear-gradient(135deg, ' + dot.accent + ', ' + dot.bg + ')',
+            animationDelay: dot.delay + 's',
+          }"
+        >
+          <svg class="spfLockIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+      </div>
+      <div class="spfPreviewLabel">
+        <span class="spfXPBadge">+{{ XP_CONFIG.newExerciseFlatXP }} XP</span>
+        per set
+      </div>
+    </div>
+
     <div class="spfExplainer">
       <div class="spfExplainerRow">Every set you log earns XP</div>
       <div class="spfExplainerRow">Hit PRs for bonus multipliers</div>
@@ -62,6 +90,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { THEME_PREVIEWS, type ThemeId } from '../composables/useTheme'
+import { XP_CONFIG } from '../lib/xp'
 import { useAnalytics } from '../composables/useAnalytics'
 
 const props = withDefaults(defineProps<{
@@ -90,6 +119,27 @@ const STARTERS: { id: ThemeId; label: string }[] = [
   { id: 'water', label: 'Flow' },
   { id: 'luck', label: 'Luck' },
 ]
+
+// Dots for the visual progression preview — shows 5 representative themes along a track
+const previewDots = computed(() => {
+  const samples: { id: ThemeId; position: number }[] = [
+    { id: 'fire', position: 15 },
+    { id: 'water', position: 35 },
+    { id: 'amethyst', position: 55 },
+    { id: 'earth', position: 75 },
+    { id: 'eternal', position: 95 },
+  ]
+  return samples.map((s, i) => {
+    const colors = THEME_PREVIEWS[s.id]?.[props.resolvedMode] || THEME_PREVIEWS[s.id]?.dark
+    return {
+      id: s.id,
+      position: s.position,
+      accent: colors.accent,
+      bg: colors.bg,
+      delay: 0.8 + i * 0.6, // staggered unlock animation
+    }
+  })
+})
 
 const bonusLabel = computed(() => {
   const t = goal.value
@@ -168,6 +218,91 @@ defineExpose({ reset })
   color: var(--text-secondary);
   padding-left: 8px;
   border-left: 3px solid var(--accent);
+}
+
+/* --- Visual progression preview --- */
+
+.spfPreview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.spfProgressTrack {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background: var(--card-bg);
+  border-radius: 4px;
+  overflow: visible;
+}
+
+.spfProgressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--text-secondary));
+  animation: spfFillBar 3.6s ease-out forwards;
+}
+
+@keyframes spfFillBar {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+.spfProgressDot {
+  position: absolute;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.spfProgressDot.unlocked {
+  animation: spfDotPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes spfDotPop {
+  0% { transform: translate(-50%, -50%) scale(0); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+.spfLockIcon {
+  width: 12px;
+  height: 12px;
+  animation: spfLockToUnlock 0.3s ease-out forwards;
+  animation-delay: inherit;
+}
+
+@keyframes spfLockToUnlock {
+  0% { opacity: 0.8; }
+  50% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.spfPreviewLabel {
+  font-size: var(--font-caption1);
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.spfXPBadge {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: var(--font-caption1);
 }
 
 .spfGrid {
