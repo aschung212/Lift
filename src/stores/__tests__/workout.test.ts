@@ -818,7 +818,9 @@ describe('workout store', () => {
 
       // Extract the _fetchFromSupabase function body. Uses brace counting
       // to handle nested braces correctly.
-      const fnStart = src.indexOf('async _fetchFromSupabase(')
+      // Support both Options API method syntax and Setup API function syntax.
+      let fnStart = src.indexOf('async _fetchFromSupabase(')
+      if (fnStart === -1) fnStart = src.indexOf('async function _fetchFromSupabase(')
       expect(fnStart).toBeGreaterThan(-1)
       const openBrace = src.indexOf('{', fnStart)
       let depth = 1
