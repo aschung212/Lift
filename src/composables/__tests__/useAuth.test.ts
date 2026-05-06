@@ -11,17 +11,21 @@ vi.stubGlobal('matchMedia', vi.fn(() => ({
 })))
 
 // Mock all stores that useAuth imports
+const mockWorkoutReset = vi.fn()
+const mockBodyweightReset = vi.fn()
+const mockPreferencesReset = vi.fn()
+const mockProgressionReset = vi.fn()
 vi.mock('../../stores/workout', () => ({
-  useWorkoutStore: () => ({ init: vi.fn() })
+  useWorkoutStore: () => ({ init: vi.fn(), $reset: mockWorkoutReset })
 }))
 vi.mock('../../stores/bodyweight', () => ({
-  useBodyweightStore: () => ({ init: vi.fn() })
+  useBodyweightStore: () => ({ init: vi.fn(), $reset: mockBodyweightReset })
 }))
 vi.mock('../../stores/preferences', () => ({
-  usePreferencesStore: () => ({ init: vi.fn() })
+  usePreferencesStore: () => ({ init: vi.fn(), $reset: mockPreferencesReset })
 }))
 vi.mock('../../stores/progression', () => ({
-  useProgressionStore: () => ({ init: vi.fn() })
+  useProgressionStore: () => ({ init: vi.fn(), $reset: mockProgressionReset })
 }))
 vi.mock('../../lib/migrate', () => ({
   migrateLocalStorageToSupabase: vi.fn()
@@ -161,6 +165,43 @@ describe('useAuth', () => {
       await signOut()
       expect(user.value).toBeNull()
     })
+
+    // Regression LIFT-497: signOut must reset all Pinia stores to prevent data leak
+    it('resets all Pinia stores on sign out', async () => {
+      const { signOut, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockWorkoutReset.mockClear()
+      mockBodyweightReset.mockClear()
+      mockPreferencesReset.mockClear()
+      mockProgressionReset.mockClear()
+
+      await signOut()
+
+      expect(mockWorkoutReset).toHaveBeenCalledOnce()
+      expect(mockBodyweightReset).toHaveBeenCalledOnce()
+      expect(mockPreferencesReset).toHaveBeenCalledOnce()
+      expect(mockProgressionReset).toHaveBeenCalledOnce()
+    })
+
+    // Regression LIFT-497: stores must reset even when supabase throws
+    it('resets stores even when supabase signOut throws', async () => {
+      mockSignOut.mockRejectedValueOnce(new Error('Network error'))
+      const { signOut, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockWorkoutReset.mockClear()
+      mockBodyweightReset.mockClear()
+      mockPreferencesReset.mockClear()
+      mockProgressionReset.mockClear()
+
+      await signOut()
+
+      expect(mockWorkoutReset).toHaveBeenCalledOnce()
+      expect(mockBodyweightReset).toHaveBeenCalledOnce()
+      expect(mockPreferencesReset).toHaveBeenCalledOnce()
+      expect(mockProgressionReset).toHaveBeenCalledOnce()
+    })
   })
 
   describe('devSignIn', () => {
@@ -177,20 +218,23 @@ describe('useAuth', () => {
       const { deleteAccount, devSignIn } = useAuth()
       await devSignIn()
 
-      // Set some localStorage keys
-      localStorage.setItem('workout-exercises', '[]')
-      localStorage.setItem('bodyweight-entries', '[]')
-      localStorage.setItem('user-progression', '{}')
-      localStorage.setItem('app-theme', 'fire')
-      localStorage.setItem('rest-duration', '90')
+      // Set all localStorage keys used by the app
+      const allKeys = [
+        'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
+        'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
+        'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
+        'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
+        'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
+      ]
+      for (const key of allKeys) {
+        localStorage.setItem(key, 'test-value')
+      }
 
       await deleteAccount()
 
-      expect(localStorage.getItem('workout-exercises')).toBeNull()
-      expect(localStorage.getItem('bodyweight-entries')).toBeNull()
-      expect(localStorage.getItem('user-progression')).toBeNull()
-      expect(localStorage.getItem('app-theme')).toBeNull()
-      expect(localStorage.getItem('rest-duration')).toBeNull()
+      for (const key of allKeys) {
+        expect(localStorage.getItem(key)).toBeNull()
+      }
     })
 
     it('signs user out after deletion', async () => {
@@ -213,6 +257,24 @@ describe('useAuth', () => {
     it('exposes deleteAccount function', () => {
       const auth = useAuth()
       expect(typeof auth.deleteAccount).toBe('function')
+    })
+
+    // Regression LIFT-497: deleteAccount must reset all Pinia stores
+    it('resets all Pinia stores on account deletion', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockWorkoutReset.mockClear()
+      mockBodyweightReset.mockClear()
+      mockPreferencesReset.mockClear()
+      mockProgressionReset.mockClear()
+
+      await deleteAccount()
+
+      expect(mockWorkoutReset).toHaveBeenCalledOnce()
+      expect(mockBodyweightReset).toHaveBeenCalledOnce()
+      expect(mockPreferencesReset).toHaveBeenCalledOnce()
+      expect(mockProgressionReset).toHaveBeenCalledOnce()
     })
 
     it('throws when Supabase deletion returns rejected promises', async () => {

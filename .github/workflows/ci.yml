@@ -58,6 +58,13 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: ${{ github.event_name == 'push' && 7 || 3 }}
+
       - name: Check bundle size budget
         run: |
           # Total JS bundle budget: 500 KB (currently ~410 KB)
