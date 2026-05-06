@@ -2983,11 +2983,7 @@ function confirmEditExercise() {
   store.setExerciseInputMode(editTarget.value, editPlateMode.value ? 'plates' : 'numpad')
   if (editPlateMode.value) {
     store.setExercisePlateCountMode(editTarget.value, editPlateCountMode.value)
-    const ex = store.exercises.find(e => e.id === editTarget.value)
-    if (ex) {
-      ex.barWeight = editBarWeight.value
-      store._persist()
-    }
+    store.setExerciseBarWeight(editTarget.value, editBarWeight.value)
   }
   editTarget.value = null
   syncPlateWeight()

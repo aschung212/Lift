@@ -444,6 +444,27 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
   }
 
+  function setExerciseBarWeight(exerciseId: string, barWeight: number) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    exercise.barWeight = barWeight
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      const userId = _userId
+      const { name, tags, inputMode } = exercise
+      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+        supabase!.from('exercises').upsert({
+          id: exerciseId, user_id: userId, name, tags,
+          ...(inputMode ? { input_mode: inputMode } : {}), bar_weight: barWeight,
+        })
+      )
+    }
+  }
+
   function setExerciseInputMode(exerciseId: string, mode: ExerciseInputMode) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
@@ -1000,6 +1021,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     addExercise,
     setExercisePlateCountMode,
     setExerciseInputMode,
+    setExerciseBarWeight,
     logSet,
     updateSet,
     deleteSet,
