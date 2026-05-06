@@ -92,12 +92,20 @@ async function devSignIn(): Promise<void> {
   await initStores('local-dev')
 }
 
+function resetStores(): void {
+  useWorkoutStore().$reset()
+  useBodyweightStore().$reset()
+  usePreferencesStore().$reset()
+  useProgressionStore().$reset()
+}
+
 async function signOut(): Promise<void> {
   try {
     await supabase?.auth.signOut()
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
+    resetStores()
     user.value = null
   }
 }
