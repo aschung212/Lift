@@ -74,7 +74,38 @@ const THEME_MIGRATION: Record<string, ThemeId> = {
 /** Track whether we're in a preview (non-persisted) state */
 let previewing = false
 
+/**
+ * Lazy-load theme CSS. Eternal is inlined in index.css; all others are
+ * loaded on demand from src/themes/*.css via Vite's dynamic import.
+ * Once imported, Vite injects a <style> tag that persists for the session.
+ * Because each theme block is scoped by [data-theme="X"], multiple loaded
+ * themes coexist safely — only the one matching the current data-theme
+ * attribute is applied.
+ */
+const themeImports: Record<string, () => Promise<unknown>> = {
+  fire:     () => import('../themes/fire.css'),
+  water:    () => import('../themes/water.css'),
+  luck:     () => import('../themes/luck.css'),
+  air:      () => import('../themes/air.css'),
+  amethyst: () => import('../themes/amethyst.css'),
+  pearl:    () => import('../themes/pearl.css'),
+  midnight: () => import('../themes/midnight.css'),
+  love:     () => import('../themes/love.css'),
+  earth:    () => import('../themes/earth.css'),
+}
+const loadedThemes = new Set<string>(['eternal'])
+
+function loadThemeCSS(id: string): void {
+  if (loadedThemes.has(id)) return
+  const loader = themeImports[id]
+  if (loader) {
+    loadedThemes.add(id)
+    loader()
+  }
+}
+
 function applyTheme(id: string): void {
+  loadThemeCSS(id)
   document.documentElement.setAttribute('data-theme', id)
   updateMetaColor()
   localStorage.setItem('app-theme', id)
@@ -82,6 +113,7 @@ function applyTheme(id: string): void {
 
 /** Apply theme visually without persisting to localStorage. */
 function applyPreview(id: string): void {
+  loadThemeCSS(id)
   document.documentElement.setAttribute('data-theme', id)
   updateMetaColor()
 }

@@ -1,0 +1,63 @@
+/* ── Earth (Stability) ──────────────────────────────────────── */
+
+[data-theme="earth"][data-mode="dark"] {
+  --bg-primary:      #141010;
+  --bg-secondary:    #1c1614;
+  --bg-elevated:     #241c18;
+  --bg-hover:        #2e2420;
+  --border:          #2c2420;
+  --border-strong:   #3e3430;
+  --text-primary:    #e8dcd0;
+  --text-secondary:  #a08878;
+  --text-muted:      #7a6858;
+  --accent:          #906040;
+  --accent-hover:    #a87050;
+  --accent-subtle:   rgba(144, 96, 64, 0.12);
+  --danger:          #ef4444;
+  --danger-subtle:   rgba(239, 68, 68, 0.12);
+  --success:         #84cc16;
+  --success-subtle:  rgba(132, 204, 22, 0.12);
+  --shadow:          0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-sm:       0 2px 8px rgba(0, 0, 0, 0.4);
+  --glass-fill:      rgba(255, 255, 255, 0.04);
+  --glass-edge:      rgba(255, 255, 255, 0.08);
+  --glass-shine:     rgba(255, 255, 255, 0.10);
+  --glass-bar:       rgba(14, 10, 10, 0.72);
+  --glass-overlay:   rgba(0, 0, 0, 0.55);
+  --pr:              #d4af37;
+  --pr-subtle:       rgba(212, 175, 55, 0.10);
+  --text-on-accent:  #ffffff;
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(144, 96, 64, 0.08) 0%, transparent 65%),
+                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(120, 80, 50, 0.05) 0%, transparent 65%);
+}
+
+[data-theme="earth"][data-mode="light"] {
+  --bg-primary:      #f5efe8;
+  --bg-secondary:    #ffffff;
+  --bg-elevated:     #ffffff;
+  --bg-hover:        #ede4d8;
+  --border:          #ddd0c0;
+  --border-strong:   #c8b8a4;
+  --text-primary:    #1a1210;
+  --text-secondary:  #6a5444;
+  --text-muted:      #7d695a;
+  --accent:          #7a5438;
+  --accent-hover:    #684428;
+  --accent-subtle:   rgba(122, 84, 56, 0.08);
+  --danger:          #dc2626;
+  --danger-subtle:   rgba(220, 38, 38, 0.08);
+  --success:         #4d7c0f;
+  --success-subtle:  rgba(77, 124, 15, 0.08);
+  --shadow:          0 8px 32px rgba(26, 18, 16, 0.12);
+  --shadow-sm:       0 2px 8px rgba(26, 18, 16, 0.06);
+  --glass-fill:      rgba(255, 240, 220, 0.82);
+  --glass-edge:      rgba(220, 200, 170, 0.55);
+  --glass-shine:     rgba(255, 255, 255, 0.90);
+  --glass-bar:       rgba(245, 239, 232, 0.82);
+  --glass-overlay:   rgba(26, 18, 16, 0.20);
+  --pr:              #9a7b1c;
+  --pr-subtle:       rgba(154, 123, 28, 0.10);
+  --text-on-accent:  #ffffff;
+  --mesh:            radial-gradient(ellipse 65% 50% at 20% 15%, rgba(160, 112, 76, 0.12) 0%, transparent 60%),
+                     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(120, 80, 50, 0.07) 0%, transparent 60%);
+}
