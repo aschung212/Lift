@@ -26,6 +26,17 @@
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
+        <!-- PWA install prompt banner -->
+        <div v-if="showInstallBanner" class="installBanner" role="alert">
+          <div class="installBannerContent">
+            <svg class="installBannerIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="installBannerText">Add Lift to your home screen for the full experience</span>
+          </div>
+          <div class="installBannerActions">
+            <button class="installBannerBtn installBannerInstall" @click="promptInstall">Install</button>
+            <button class="installBannerBtn installBannerDismiss" @click="dismissPrompt" aria-label="Dismiss install prompt">Not now</button>
+          </div>
+        </div>
         <div class="appTopBar">
           <div class="appTopBarLeft">
             <button
@@ -847,6 +858,7 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { usePWAInstall } from './composables/usePWAInstall'
 import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
@@ -945,6 +957,7 @@ const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+const { canShow: showInstallBanner, promptInstall, dismissPrompt, notifySetLogged } = usePWAInstall()
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -956,6 +969,14 @@ watch(loading, (isLoading) => {
     }
   }
 }, { immediate: true })
+
+// Notify PWA install composable when sets are logged (for contextual timing)
+const _totalSetCount = computed(() =>
+  workoutStoreForOnboarding.exercises.reduce((sum, e) => sum + e.sets.length, 0)
+)
+watch(_totalSetCount, (newCount, oldCount) => {
+  if (newCount > oldCount) notifySetLogged()
+})
 
 const syncStatusLabel = computed(() => {
   if (syncStatus.value === 'syncing') return 'Syncing...'
