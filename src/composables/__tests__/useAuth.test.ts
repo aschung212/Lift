@@ -218,20 +218,23 @@ describe('useAuth', () => {
       const { deleteAccount, devSignIn } = useAuth()
       await devSignIn()
 
-      // Set some localStorage keys
-      localStorage.setItem('workout-exercises', '[]')
-      localStorage.setItem('bodyweight-entries', '[]')
-      localStorage.setItem('user-progression', '{}')
-      localStorage.setItem('app-theme', 'fire')
-      localStorage.setItem('rest-duration', '90')
+      // Set all localStorage keys used by the app
+      const allKeys = [
+        'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
+        'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
+        'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
+        'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
+        'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
+      ]
+      for (const key of allKeys) {
+        localStorage.setItem(key, 'test-value')
+      }
 
       await deleteAccount()
 
-      expect(localStorage.getItem('workout-exercises')).toBeNull()
-      expect(localStorage.getItem('bodyweight-entries')).toBeNull()
-      expect(localStorage.getItem('user-progression')).toBeNull()
-      expect(localStorage.getItem('app-theme')).toBeNull()
-      expect(localStorage.getItem('rest-duration')).toBeNull()
+      for (const key of allKeys) {
+        expect(localStorage.getItem(key)).toBeNull()
+      }
     })
 
     it('signs user out after deletion', async () => {

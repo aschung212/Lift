@@ -141,7 +141,8 @@ async function deleteAccount(): Promise<void> {
   // Clear all localStorage keys used by the app
   const localStorageKeys = [
     'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
-    'lift-custom-tags', 'onboarding-complete', 'sample-data', 'active-tab',
+    'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
+    'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
     'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
     'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
   ]
