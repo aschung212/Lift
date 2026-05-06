@@ -1,4 +1,5 @@
 import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
+import { loadThemeCSS, preloadThemeCSS } from '../lib/themeLoader'
 
 export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'eternal' | 'amethyst' | 'pearl' | 'midnight' | 'love' | 'earth'
 export type ColorMode = 'light' | 'dark' | 'auto'
@@ -76,6 +77,7 @@ let previewing = false
 
 function applyTheme(id: string): void {
   document.documentElement.setAttribute('data-theme', id)
+  loadThemeCSS(id)
   updateMetaColor()
   localStorage.setItem('app-theme', id)
 }
@@ -83,6 +85,7 @@ function applyTheme(id: string): void {
 /** Apply theme visually without persisting to localStorage. */
 function applyPreview(id: string): void {
   document.documentElement.setAttribute('data-theme', id)
+  loadThemeCSS(id)
   updateMetaColor()
 }
 
@@ -234,6 +237,6 @@ export function useTheme() {
     currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode,
     restTimerEnabled, restTimerAutoStart, weightUnit,
     displayWeight, toLbs, selectTheme, previewTheme, revertPreview,
-    isThemeUnlocked, setRestTimerEnabled,
+    isThemeUnlocked, setRestTimerEnabled, preloadThemeCSS,
   }
 }

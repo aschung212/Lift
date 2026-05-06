@@ -8,8 +8,8 @@
       <div class="spfExplainerRow">Earn enough XP to unlock new themes</div>
       <div class="spfExplainerRow">Build streaks for even more XP</div>
     </div>
-    <button class="spfPrimary" @click="step = 'pick'">Pick a Starter Theme</button>
-    <button v-if="showSkip" class="spfSecondary" @click="emit('revert-preview'); emit('skip')">Skip — I'll use the defaults</button>
+    <button class="spfPrimary" @click="goToPick">Pick a Starter Theme</button>
+    <button v-if="showSkip" class="spfSecondary" @click="skipFlow('explainer')">Skip — I'll use the defaults</button>
   </template>
 
   <!-- Step 2: Starter pick -->
@@ -35,8 +35,8 @@
       </button>
     </div>
     <div class="spfWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</div>
-    <button class="spfPrimary" :disabled="!selection" @click="step = 'goal'">Next</button>
-    <button v-if="showSkip" class="spfSecondary" @click="emit('revert-preview'); emit('skip')">Skip</button>
+    <button class="spfPrimary" :disabled="!selection" @click="goToGoal">Next</button>
+    <button v-if="showSkip" class="spfSecondary" @click="skipFlow('pick')">Skip</button>
   </template>
 
   <!-- Step 3: Weekly goal -->
@@ -54,7 +54,7 @@
       <div class="spfGoalHint">You can increase this later without losing your streak. Decreasing it will reset your streak.</div>
       <div v-if="goal >= 7" class="spfGoalRest">Rest days are critical for recovery. 6 and 7 days earn the same bonus.</div>
     </div>
-    <button class="spfPrimary" @click="$emit('confirm', selection!, goal)">Let's Go</button>
+    <button class="spfPrimary" @click="confirmGoal">Let's Go</button>
     <button class="spfSecondary" @click="step = 'pick'">Back</button>
   </template>
 </template>
@@ -62,6 +62,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { THEME_PREVIEWS, type ThemeId } from '../composables/useTheme'
+import { useAnalytics } from '../composables/useAnalytics'
 
 const props = withDefaults(defineProps<{
   showSkip?: boolean
@@ -77,6 +78,8 @@ const emit = defineEmits<{
   preview: [themeId: ThemeId]
   'revert-preview': []
 }>()
+
+const { logEvent } = useAnalytics()
 
 const step = ref<'explainer' | 'pick' | 'goal'>('explainer')
 const selection = ref<ThemeId | null>(null)
@@ -99,6 +102,27 @@ const bonusLabel = computed(() => {
 
 function getPreview(id: ThemeId) {
   return THEME_PREVIEWS[id]?.[props.resolvedMode] || THEME_PREVIEWS[id]?.dark || { accent: '#888', bg: '#222' }
+}
+
+function goToPick() {
+  logEvent('onboarding_step', { step: 'explainer_done' })
+  step.value = 'pick'
+}
+
+function goToGoal() {
+  logEvent('onboarding_step', { step: 'pick_done', theme: selection.value })
+  step.value = 'goal'
+}
+
+function confirmGoal() {
+  logEvent('onboarding_step', { step: 'goal_done', goal: goal.value })
+  emit('confirm', selection.value!, goal.value)
+}
+
+function skipFlow(fromStep: string) {
+  logEvent('onboarding_step', { step: 'skip', from: fromStep })
+  emit('revert-preview')
+  emit('skip')
 }
 
 function selectStarter(id: ThemeId) {
