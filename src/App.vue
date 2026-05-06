@@ -26,6 +26,30 @@
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
+
+        <!-- PWA install banner -->
+        <Transition name="installBanner">
+          <div v-if="installBannerVisible" class="installBanner" role="banner">
+            <div class="installBannerContent">
+              <div class="installBannerText">
+                <strong class="installBannerTitle">Install Lift</strong>
+                <span v-if="isIOSPrompt" class="installBannerDesc">
+                  Tap
+                  <svg class="installBannerShareIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share icon"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                  then "Add to Home Screen"
+                </span>
+                <span v-else class="installBannerDesc">Add to your home screen for the full experience</span>
+              </div>
+              <div class="installBannerActions">
+                <button v-if="!isIOSPrompt" class="installBannerBtn installBannerInstall" @click="triggerInstall">Install</button>
+                <button class="installBannerBtn installBannerDismiss" @click="dismissInstallBanner" aria-label="Dismiss install banner">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+
         <div class="appTopBar">
           <div class="appTopBarLeft">
             <button
@@ -851,6 +875,7 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useInstallPrompt } from './composables/useInstallPrompt'
 import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
@@ -949,6 +974,11 @@ const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+
+// ── PWA install prompt ──────────────────────────────────────────
+const workoutStoreForInstall = useWorkoutStore()
+const installWorkoutDays = computed(() => workoutStoreForInstall.workoutDates.length)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
