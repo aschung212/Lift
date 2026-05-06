@@ -21,6 +21,12 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('manifest includes display_override for fallback chain', () => {
+    it('has display_override array with standalone and minimal-ui', () => {
+      expect(viteConfig).toContain("display_override: ['standalone', 'minimal-ui']")
+    })
+  })
+
   describe('manifest includes shortcuts for quick actions', () => {
     it('has shortcuts array defined', () => {
       expect(viteConfig).toContain('shortcuts: [')
@@ -55,6 +61,12 @@ describe('PWA manifest regression tests', () => {
 
     it('offline.html exists in public/', () => {
       expect(existsSync(resolve(publicDir, 'offline.html'))).toBe(true)
+    })
+  })
+
+  describe('manifest includes launch_handler for single-window behavior', () => {
+    it('has launch_handler with navigate-existing client_mode', () => {
+      expect(viteConfig).toContain("client_mode: 'navigate-existing'")
     })
   })
 
