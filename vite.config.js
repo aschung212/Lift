@@ -124,6 +124,8 @@ export default defineConfig({
           'icon-source.png',
           'og-preview.html',
         ],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         navigationPreload: true,
         clientsClaim: true,
         skipWaiting: true,

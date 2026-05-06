@@ -50,6 +50,20 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('workbox includes navigateFallback for offline navigation', () => {
+    it('has navigateFallback set to index.html', () => {
+      expect(viteConfig).toContain("navigateFallback: 'index.html'")
+    })
+
+    it('has navigateFallbackDenylist to exclude API routes', () => {
+      expect(viteConfig).toContain('navigateFallbackDenylist:')
+    })
+
+    it('offline.html exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'offline.html'))).toBe(true)
+    })
+  })
+
   describe('workbox enables navigation preload for faster navigations', () => {
     it('has navigationPreload: true in workbox config', () => {
       expect(viteConfig).toContain('navigationPreload: true')
