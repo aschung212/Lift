@@ -116,6 +116,72 @@ export default defineConfig({
         skipWaiting: true,
         runtimeCaching: [
           {
+            // Sets collection grows as new sets are logged — StaleWhileRevalidate
+            // serves cached response instantly for offline/fast load while updating
+            // the cache in the background so new sets from other devices appear next load
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/sets\b/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'supabase-sets',
+              expiration: {
+                maxEntries: 500,
+                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            // Exercises change infrequently (renames, tag edits) — NetworkFirst with generous capacity
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/exercises\b/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-exercises',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 60 * 12, // 12 hours
+              },
+              networkTimeoutSeconds: 3,
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            // Bodyweight entries — moderate churn, NetworkFirst
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/bodyweight_entries\b/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-bodyweight',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 60 * 12, // 12 hours
+              },
+              networkTimeoutSeconds: 3,
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            // Progression/XP data — small payload, short TTL
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/(user_progression|xp_events|progression_snapshots)\b/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-progression',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 6, // 6 hours
+              },
+              networkTimeoutSeconds: 3,
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            // Catch-all for any other Supabase REST endpoints
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
             handler: 'NetworkFirst',
             options: {
