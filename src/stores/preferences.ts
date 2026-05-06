@@ -29,6 +29,8 @@ export interface ExperienceFlags {
   haptics: boolean
   /** Keep the screen awake during rest timer and set logging. */
   screenWakeLock: boolean
+  /** Send a push notification when rest timer finishes and app is backgrounded. */
+  restTimerNotifications: boolean
 }
 
 const DEFAULT_WEIGHT_GOAL: WeightGoalConfig = {
@@ -49,6 +51,7 @@ const DEFAULT_EXPERIENCE: ExperienceFlags = {
   prCelebrations: true,
   haptics: true,
   screenWakeLock: true,
+  restTimerNotifications: true,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

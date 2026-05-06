@@ -1009,6 +1009,7 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
+import { useNotification } from '../composables/useNotification'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
@@ -1025,6 +1026,7 @@ const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
+const { notifyRestTimerComplete } = useNotification()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
 
@@ -2199,6 +2201,9 @@ function startInterval() {
       }
       if (timerSeconds.value <= 0) {
         playGoBeep()
+        if (_prefs.experience.restTimerNotifications) {
+          notifyRestTimerComplete()
+        }
         if (timerIntervalId !== null) clearInterval(timerIntervalId)
         timerIntervalId = null
         timerSeconds.value = 0

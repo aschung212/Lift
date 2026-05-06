@@ -249,6 +249,21 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+              <div v-show="restTimerEnabled" class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel settingsLabelIndented">Notify when done</span>
+                  <span class="settingsHint">Push notification when backgrounded</span>
+                </div>
+                <button
+                  :class="['glassToggle', { on: prefs.experience.restTimerNotifications }]"
+                  @click="toggleNotifications"
+                  role="switch"
+                  :aria-checked="prefs.experience.restTimerNotifications"
+                  :aria-label="prefs.experience.restTimerNotifications ? 'Disable rest timer notifications' : 'Enable rest timer notifications'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
             </div>
 
             <div class="settingsGroup">
@@ -847,6 +862,7 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useNotification } from './composables/useNotification'
 import { registerSW } from 'virtual:pwa-register'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
@@ -945,6 +961,7 @@ const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+const notificationApi = useNotification()
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -1589,6 +1606,17 @@ function toggleExperience(key: 'prCelebrations' | 'haptics' | 'screenWakeLock') 
   const next = !prefs.experience[key]
   prefs.setExperienceFlag(key, next)
   logEvent('experience_toggle', { key, enabled: next })
+}
+
+async function toggleNotifications() {
+  const current = prefs.experience.restTimerNotifications
+  if (!current) {
+    // Enabling — request permission first
+    const granted = await notificationApi.requestPermission()
+    if (!granted) return // Permission denied, don't toggle
+  }
+  prefs.setExperienceFlag('restTimerNotifications', !current)
+  logEvent('experience_toggle', { key: 'restTimerNotifications', enabled: !current })
 }
 
 function showConfirm(message: string, onConfirm: () => void) {
