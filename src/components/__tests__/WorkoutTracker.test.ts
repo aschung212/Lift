@@ -182,6 +182,20 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
     })
+
+    it('shows fresh-start transition card after clearing sample data', () => {
+      localStorageMock.setItem('fresh-start', 'true')
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(true)
+      expect(wrapper.find('.wtFreshStartTitle').text()).toContain('starting fresh')
+      expect(wrapper.find('.wtFreshStartCta').exists()).toBe(true)
+    })
+
+    it('shows default empty state when fresh-start flag is absent', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
+      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
+    })
   })
 
   describe('exercise list', () => {

@@ -78,7 +78,18 @@
       </div>
     </template>
 
-    <p v-if="store.exercises.length === 0" class="wtEmpty">
+    <div v-if="store.exercises.length === 0 && showFreshStart" class="wtFreshStart">
+      <div class="wtFreshStartIcon" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      </div>
+      <p class="wtFreshStartTitle">You're starting fresh!</p>
+      <p class="wtFreshStartBody">Add your first exercise to begin tracking your lifts.</p>
+      <button class="wtFreshStartCta" @click="openNewExerciseModal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Exercise
+      </button>
+    </div>
+    <p v-else-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
@@ -1007,7 +1018,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { toLocalDateKey } from '../lib/sessionSummary'
 
@@ -1169,6 +1180,19 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
   }
 }
+
+// ── Fresh-start transition card ─────────────────────────────────
+// Shown after user clears sample data, dismissed on first exercise add
+const showFreshStart = ref(localStorage.getItem('fresh-start') === 'true')
+function onFreshStart() { showFreshStart.value = true }
+onMounted(() => { window.addEventListener('fresh-start', onFreshStart) })
+onUnmounted(() => { window.removeEventListener('fresh-start', onFreshStart) })
+watch(() => store.exercises.length, (len) => {
+  if (len > 0 && showFreshStart.value) {
+    localStorage.removeItem('fresh-start')
+    showFreshStart.value = false
+  }
+})
 
 // ── View toggle ──────────────────────────────────────────────────
 const listView = ref<'exercises' | 'timeline'>(
