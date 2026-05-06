@@ -716,6 +716,54 @@ describe('WorkoutTracker', () => {
       // and is now gone — the REPS card covers it.
       expect(wrapper.find('.wtRepsStepperFull').exists()).toBe(false)
     })
+
+    it('shows plate calculator hint for numpad-mode exercises (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      // ex-1 is in default numpad mode (no inputMode set)
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(true)
+      expect(wrapper.find('.wtPlateHintText').text()).toContain('plate calculator')
+    })
+
+    it('hides plate calculator hint when exercise is in plate mode (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      exercises[0].inputMode = 'plates'
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
+
+    it('hides plate calculator hint after dismissal via localStorage (LIFT-388)', async () => {
+      localStorageMock.setItem('plate-calc-hint-dismissed', 'true')
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
+
+    it('dismiss button persists hint dismissal to localStorage (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.wtPlateHintDismiss').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(localStorageMock.getItem('plate-calc-hint-dismissed')).toBe('true')
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
   })
 
   describe('exercise search', () => {

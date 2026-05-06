@@ -4012,6 +4012,52 @@ html.theme-fading .settingsSheet {
    loaded). The weight value itself is rendered by the WEIGHT card above
    the plate calc — this card is purely the picker chrome. */
 
+/* Plate calculator first-use hint (LIFT-388) */
+.wtPlateHint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 8px 0;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: opacity 0.2s;
+  text-align: left;
+  font-family: inherit;
+}
+
+.wtPlateHintIcon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.wtPlateHintText {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.wtPlateHintDismiss {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  margin: -12px -8px -12px 0;
+  border-radius: 8px;
+}
+
 .wtPlateCalc {
   padding: 0;
 }
