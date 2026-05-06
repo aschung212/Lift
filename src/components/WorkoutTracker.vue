@@ -91,6 +91,19 @@
       <li
         v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
+        v-memo="[
+          exercise.name,
+          exercise.sets.length,
+          exercise.sets[exercise.sets.length - 1]?.weight,
+          exercise.sets[exercise.sets.length - 1]?.reps,
+          exercise.sets[exercise.sets.length - 1]?.date,
+          (exercise.tags || []).join(','),
+          isFilteringActive,
+          dragState.dragging && dragState.fromIndex === index,
+          dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
+          weightUnit,
+          prBaselineDate,
+        ]"
         class="wtExerciseItem"
         :class="{
           'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
@@ -163,6 +176,7 @@
             <div
               v-for="entry in group.sets"
               :key="entry.set.id"
+
               :class="['wtTimelineRow', { wtTimelineRowActive: activeSetId === entry.set.id }]"
               @click="toggleSetActions(entry.set.id)"
             >
@@ -225,6 +239,7 @@
                   <div
                     v-for="set in group.sets"
                     :key="set.id"
+
                     class="wtSetRow"
                     :class="{
                       wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id, prBaselineDate) && set.date.slice(0,10) === detailPRDate,
