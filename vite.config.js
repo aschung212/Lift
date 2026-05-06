@@ -88,6 +88,9 @@ export default defineConfig({
             purpose: 'any maskable',
           },
         ],
+        launch_handler: {
+          client_mode: 'navigate-existing',
+        },
         screenshots: [
           {
             src: 'screenshot-mobile.png',
