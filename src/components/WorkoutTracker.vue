@@ -8,6 +8,28 @@
         {{ totalExercises }} {{ totalExercises === 1 ? 'exercise' : 'exercises' }}
         · {{ prsThisWeek }} {{ prsThisWeek === 1 ? 'PR' : 'PRs' }} this week
       </p>
+      <!-- Weekly training goal indicator (only when progression is enabled) -->
+      <div v-if="weeklyGoalInfo" :class="['wtWeeklyGoal', { wtWeeklyGoalMet: weeklyGoalInfo.met, wtWeeklyGoalAtRisk: weeklyGoalInfo.atRisk }]">
+        <!-- Flame icon (streak) -->
+        <svg class="wtWeeklyGoalIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14 0-5.5 3-7 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.5-2.5 1.5-3.5l1 1Z"/></svg>
+        <span class="wtWeeklyGoalText">
+          <template v-if="weeklyGoalInfo.met">Goal hit — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
+          <template v-else-if="weeklyGoalInfo.atRisk">Streak at risk — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
+          <template v-else>{{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days this week</template>
+        </span>
+      </div>
+      <button
+        v-if="setsLoggedToday > 0"
+        class="wtFinishWorkoutBtn"
+        @click="openWorkoutComplete"
+        aria-label="Finish workout and view today's summary"
+      >
+        <span class="wtFinishWorkoutLabel">Finish workout</span>
+        <span class="wtFinishWorkoutMeta">
+          {{ setsLoggedToday }} {{ setsLoggedToday === 1 ? 'set' : 'sets' }} today
+        </span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
     </header>
 
     <!-- View toggle (Exercises / Timeline) -->
@@ -56,7 +78,18 @@
       </div>
     </template>
 
-    <p v-if="store.exercises.length === 0" class="wtEmpty">
+    <div v-if="store.exercises.length === 0 && showFreshStart" class="wtFreshStart">
+      <div class="wtFreshStartIcon" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      </div>
+      <p class="wtFreshStartTitle">You're starting fresh!</p>
+      <p class="wtFreshStartBody">Add your first exercise to begin tracking your lifts.</p>
+      <button class="wtFreshStartCta" @click="openNewExerciseModal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Exercise
+      </button>
+    </div>
+    <p v-else-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
@@ -69,10 +102,11 @@
       <li
         v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
+        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit, index, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
         class="wtExerciseItem"
         :class="{
-          'wt-dragging': activeTagFilters.length === 0 && dragState.dragging && dragState.fromIndex === index,
-          'wt-drag-over': activeTagFilters.length === 0 && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
+          'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
+          'wt-drag-over': !isFilteringActive && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
         }"
         :data-index="index"
         @touchstart="onItemTouchStart(index, $event)"
@@ -84,7 +118,7 @@
       >
         <div class="wtExerciseHeader">
           <span
-            :class="['wtDragHandle', { wtDragHandleDisabled: activeTagFilters.length > 0 }]"
+            :class="['wtDragHandle', { wtDragHandleDisabled: isFilteringActive }]"
             aria-hidden="true"
           >⠿</span>
           <button
@@ -753,6 +787,20 @@
             </div>
           </div>
 
+          <!-- One-time hint: plate calculator discoverability (LIFT-388) -->
+          <div
+            v-if="showPlateHint"
+            class="wtPlateHint"
+            role="button"
+            tabindex="0"
+            @click="openSettingsFromHint"
+            @keydown.enter="openSettingsFromHint"
+          >
+            <svg class="wtPlateHintIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <span class="wtPlateHintText">Tip: Enable the plate calculator in exercise settings</span>
+            <button class="wtPlateHintDismiss" @click.stop="dismissPlateHint" aria-label="Dismiss hint">×</button>
+          </div>
+
           <!--
             Plate calculator (shown when exercise is in plates mode).
             Matches screens/05-logset-platecalc.png:
@@ -1025,11 +1073,22 @@
       <span class="wtRestBarLabel">Start Rest Timer</span>
     </template>
   </button>
+
+  <Teleport to="body">
+    <WorkoutCompleteView
+      v-if="workoutCompleteDate"
+      :raw-date="workoutCompleteDate"
+      @close="workoutCompleteDate = null"
+    />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import { toLocalDateKey } from '../lib/sessionSummary'
+
+const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {
@@ -1057,6 +1116,7 @@ import {
   WARMUP_THRESHOLD_STEP,
 } from '../lib/warmupFilter'
 import { logXPEvent } from '../lib/xpInstrumentation'
+import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseGraph from './ExerciseGraph.vue'
 
 const store = useWorkoutStore()
@@ -1068,6 +1128,12 @@ const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayW
 const { impactLight, notifySuccess } = useHaptics()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+
+// Screen Wake Lock — keep display on during active workouts
+import { useWakeLock } from '../composables/useWakeLock'
+import { usePreferencesStore } from '../stores/preferences'
+const _prefs = usePreferencesStore()
+const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
 
 // Filter sets to those on/after the user-set PR baseline.
 // When no baseline is set, returns sets unchanged (legacy all-time behavior).
@@ -1189,6 +1255,19 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
     showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
   }
 }
+
+// ── Fresh-start transition card ─────────────────────────────────
+// Shown after user clears sample data, dismissed on first exercise add
+const showFreshStart = ref(localStorage.getItem('fresh-start') === 'true')
+function onFreshStart() { showFreshStart.value = true }
+onMounted(() => { window.addEventListener('fresh-start', onFreshStart) })
+onUnmounted(() => { window.removeEventListener('fresh-start', onFreshStart) })
+watch(() => store.exercises.length, (len) => {
+  if (len > 0 && showFreshStart.value) {
+    localStorage.removeItem('fresh-start')
+    showFreshStart.value = false
+  }
+})
 
 // ── View toggle ──────────────────────────────────────────────────
 const listView = ref<'exercises' | 'timeline'>(
@@ -1344,8 +1423,44 @@ const filteredExercises = computed(() => {
   return result
 })
 
+/**
+ * True when the list is showing a filtered subset of exercises (either a
+ * text search query or one-or-more active tag filters). Long-press
+ * reorder is disabled in this state because `v-for` gives us indices
+ * into the filtered subset, and those indices are meaningless to the
+ * store, which splices the unfiltered `exercises` array. Dropping a
+ * filtered-index 0 row would move the absolute-index 0 row — usually
+ * a completely different exercise the user can't even see.
+ *
+ * Fixes: reordering while searching silently scrambled unrelated rows
+ * (previously only the tag-filter path was gated).
+ */
+const isFilteringActive = computed(() =>
+  activeTagFilters.value.length > 0 || searchQuery.value.trim() !== ''
+)
+
 /** Total exercise count, shown in the "Workouts" header stats. */
 const totalExercises = computed(() => store.exercises.length)
+
+/** Sets logged on the local "today" date — drives the Finish workout affordance. */
+const setsLoggedToday = computed(() => {
+  const today = todayISO()
+  let count = 0
+  for (const ex of store.exercises) {
+    for (const s of ex.sets) {
+      if (toLocalDateKey(s.date) === today) count++
+    }
+  }
+  return count
+})
+
+/** When non-null, renders the WorkoutCompleteView overlay for that date. */
+const workoutCompleteDate = ref<string | null>(null)
+function openWorkoutComplete() {
+  workoutCompleteDate.value = todayISO()
+  impactLight()
+  logEvent('workout_complete_view_opened', { sets: setsLoggedToday.value })
+}
 
 /** Exercises whose baseline-relative PR was achieved in the last 7 days. */
 const prsThisWeek = computed(() => {
@@ -1357,6 +1472,16 @@ const prsThisWeek = computed(() => {
     if (pr && new Date(pr.date).getTime() >= weekAgo) count++
   }
   return count
+})
+
+/**
+ * Weekly goal indicator — counts unique training days in the current Mon–Sun week
+ * and compares against the user's weeklyTarget from the progression store.
+ * Returns null when progression is disabled (indicator hidden).
+ */
+const weeklyGoalInfo = computed(() => {
+  if (!progressionStore.progressionEnabled) return null
+  return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
 })
 
 /** Count of exercises carrying each tag — powers the "Push 23" suffix on tag chips. */
@@ -1531,7 +1656,10 @@ function clearLongPress() {
 }
 
 function shouldIgnorePressTarget(event: TouchEvent | MouseEvent): boolean {
-  if (activeTagFilters.value.length > 0) return true
+  // Block reorder whenever the list is filtered (tag filter OR search).
+  // Template indices are into the filtered subset, but the store splices
+  // the unfiltered array — a drop under a filter corrupts unrelated rows.
+  if (isFilteringActive.value) return true
   const target = event.target as HTMLElement | null
   // Never start a drag when pressing the "+ Log" affordance.
   if (target?.closest('.wtExerciseLogBtn')) return true
@@ -1677,11 +1805,6 @@ function visibleSets(exercise: Exercise): WorkoutSet[] {
   return showAllSets.value.has(exercise.id) ? sorted : sorted.slice(0, SET_LIMIT)
 }
 
-function toLocalDateKey(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 // Warmup IDs scoped to the currently open detail exercise.
 const detailWarmupIds = computed<Set<string>>(() => {
   if (!hideWarmups.value || !detailExercise.value) return new Set()
@@ -1794,6 +1917,28 @@ const plateMode = computed(() => {
   return ex?.inputMode === 'plates'
 })
 const plateNumpadOverride = ref(false)
+
+// ── Plate calculator hint (LIFT-388) ────────────────────────────
+const PLATE_HINT_KEY = 'plate-calc-hint-dismissed'
+const plateHintDismissed = ref(!!localStorage.getItem(PLATE_HINT_KEY))
+
+const showPlateHint = computed(() =>
+  !plateHintDismissed.value &&
+  !plateMode.value &&
+  !isEditMode.value &&
+  isLogForExercise.value
+)
+
+function dismissPlateHint() {
+  plateHintDismissed.value = true
+  localStorage.setItem(PLATE_HINT_KEY, 'true')
+}
+
+function openSettingsFromHint() {
+  dismissPlateHint()
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  if (ex) openEditExerciseModal(ex)
+}
 
 function adjustReps(delta: number) {
   const current = reps.value ?? 0
@@ -2132,6 +2277,16 @@ const timerSeconds = ref(0)
 const timerAnnouncement = ref('')
 const restDuration = ref(parseInt(localStorage.getItem('rest-duration') ?? '90') || 90)
 let timerIntervalId: ReturnType<typeof setInterval> | null = null
+// Timestamp-based drift correction: store when the timer ends and
+// how many seconds remained when paused, so every tick recalculates
+// from wall-clock time instead of decrementing a counter.
+let timerEndTime = 0        // Date.now() ms when timer should reach 0
+let pausedRemaining = 0     // seconds left when paused
+let lastWarnedAt = -1       // last warning second we fired (avoid duplicate beeps)
+
+// Keep screen awake while the rest timer is running or the log-set modal is open
+const wakeLockNeeded = computed(() => timerActive.value || showModal.value)
+useWakeLock(wakeLockNeeded, wakeLockEnabled)
 
 const DEFAULT_WARNING_OPTIONS = [3, 5, 10, 15, 30]
 const warningOptions = ref<number[]>(loadWarningOptions())
@@ -2203,12 +2358,19 @@ function formatTimerAnnouncement(seconds: number): string {
 
 function startInterval() {
   if (timerIntervalId !== null) clearInterval(timerIntervalId)
+  lastWarnedAt = -1
   timerIntervalId = setInterval(() => {
     if (!timerPaused.value) {
-      timerSeconds.value--
-      if (warningTimes.value.includes(timerSeconds.value)) {
-        playWarningBeep(timerSeconds.value)
-        timerAnnouncement.value = `${formatTimerAnnouncement(timerSeconds.value)} remaining`
+      const remaining = Math.ceil((timerEndTime - Date.now()) / 1000)
+      const prev = timerSeconds.value
+      timerSeconds.value = Math.max(remaining, 0)
+      // Fire warnings for any thresholds we crossed (handles skipped seconds)
+      for (const w of warningTimes.value) {
+        if (w < prev && w >= timerSeconds.value && w !== lastWarnedAt) {
+          lastWarnedAt = w
+          playWarningBeep(w)
+          timerAnnouncement.value = `${formatTimerAnnouncement(w)} remaining`
+        }
       }
       if (timerSeconds.value <= 0) {
         playGoBeep()
@@ -2221,7 +2383,7 @@ function startInterval() {
         }
       }
     }
-  }, 1000)
+  }, 250)
 }
 
 function startRestTimer() {
@@ -2229,13 +2391,22 @@ function startRestTimer() {
   timerActive.value = true
   timerPaused.value = false
   timerSeconds.value = restDuration.value
+  timerEndTime = Date.now() + restDuration.value * 1000
   timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
   startInterval()
 }
 
 function togglePause() {
   ensureAudioCtx()
-  timerPaused.value = !timerPaused.value
+  if (!timerPaused.value) {
+    // Pausing: snapshot remaining seconds
+    pausedRemaining = Math.max(Math.ceil((timerEndTime - Date.now()) / 1000), 0)
+    timerPaused.value = true
+  } else {
+    // Resuming: recalculate end time from snapshot
+    timerEndTime = Date.now() + pausedRemaining * 1000
+    timerPaused.value = false
+  }
 }
 
 const timerStopping = ref(false)
@@ -2255,6 +2426,7 @@ function stopTimer() {
 function restartTimer() {
   ensureAudioCtx()
   timerSeconds.value = restDuration.value
+  timerEndTime = Date.now() + restDuration.value * 1000
   timerPaused.value = false
   startInterval()
 }
@@ -2330,6 +2502,7 @@ function setRestDuration(val: number) {
   restDuration.value = val
   localStorage.setItem('rest-duration', String(val))
   timerSeconds.value = val
+  timerEndTime = Date.now() + val * 1000
   timerPaused.value = false
   startInterval()
 }
@@ -2396,7 +2569,14 @@ function disableRestTimer() {
       timerActive.value = true
       timerPaused.value = wasPaused
       showModal.value = true
-      if (previousSeconds > 0) startInterval()
+      if (previousSeconds > 0) {
+        if (wasPaused) {
+          pausedRemaining = previousSeconds
+        } else {
+          timerEndTime = Date.now() + previousSeconds * 1000
+        }
+        startInterval()
+      }
     }
   }, () => { /* already disabled — no-op on commit */ })
 }
@@ -2820,6 +3000,8 @@ function saveSet() {
       const wasPR = isNewPR.value
       // Capture the pre-log baseline PR so the burst can show old → new e1RM.
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
+      // Snapshot PR count before logging so we can detect the user's very first PR.
+      const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
       store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       // XP: get the just-logged set (last in array) and compute XP
@@ -2840,7 +3022,11 @@ function saveSet() {
           newE1RM,
           setWeight: toLbs(weight.value),
           setReps: reps.value,
+          isFirstPR: prCountBefore === 0,
         })
+        if (prCountBefore === 0) {
+          logEvent('first_pr', { exercise: selectedExerciseName.value })
+        }
       } else {
         impactLight()
       }
@@ -2979,7 +3165,13 @@ function confirmEditExercise() {
     }
   }
   editTarget.value = null
-  syncPlateWeight()
+  // When switching to plate mode, reverse-sync the current weight into
+  // plates so the user's entered value is preserved (LIFT-388 review fix).
+  if (editPlateMode.value && weight.value) {
+    syncPlatesFromWeight()
+  } else {
+    syncPlateWeight()
+  }
   logEvent('exercise_edit')
 }
 

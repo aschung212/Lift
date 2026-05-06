@@ -28,6 +28,8 @@ export interface ExperienceFlags {
   prCelebrations: boolean
   /** Allow haptic feedback on taps, PRs, and timer end. */
   haptics: boolean
+  /** Keep the screen awake during rest timer and set logging. */
+  screenWakeLock: boolean
 }
 
 const DEFAULT_WEIGHT_GOAL: WeightGoalConfig = {
@@ -47,6 +49,7 @@ const DEFAULTS: FeatureFlags = {
 const DEFAULT_EXPERIENCE: ExperienceFlags = {
   prCelebrations: true,
   haptics: true,
+  screenWakeLock: true,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

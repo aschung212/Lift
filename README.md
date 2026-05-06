@@ -6,10 +6,10 @@ A **mobile-first Progressive Web App** for tracking strength training, bodyweigh
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.4-42b883?logo=vue.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-6-646cff?logo=vite&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-cloud--sync-3ecf8e?logo=supabase&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-installable-5a0fc8)
-![Tests](https://img.shields.io/badge/tests-299_passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1279_passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 <p align="center">
@@ -110,7 +110,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 ### UI & Experience
 - Bottom tab bar with sliding liquid glass indicator (when glass mode is on)
 - Tab animation on switch
-- 6 themes with visual preview dots: Midnight, Graphite, Arctic, Forge, Aaron, Tina
+- 10 themes with visual preview dots: Eternal, Origin, Fortitude, Intensity, Flow, Stability, Luck, Focus, Energy, Love
 - Light / Auto / Dark mode — auto follows system `prefers-color-scheme`
 - Liquid Glass mode — frosted glass cards, tab bar, and modals with per-theme ambient mesh gradients
 - Settings bottom sheet — iOS-style grouped sections for Appearance, Features, and Account
@@ -137,7 +137,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 | **UI framework** | Vue 3 (`<script setup>`) | Fine-grained reactivity; single-file components |
 | **State** | Pinia | Lightweight store; syncs to localStorage on every mutation |
 | **Backend / Auth** | Supabase | Postgres with RLS, Google OAuth, email auth |
-| **Build** | Vite 5 | Sub-second HMR, native ESM |
+| **Build** | Vite 6 | Sub-second HMR, native ESM |
 | **PWA** | `vite-plugin-pwa` + Workbox | Pre-caches all static assets; installable on iOS & Android |
 | **Charts** | Hand-rolled SVG | `<polyline>` + `<polygon>` computed from normalized data — no chart library |
 | **Styling** | CSS custom properties | All themes + glass tokens are a single `data-theme` attribute swap |
@@ -174,14 +174,14 @@ All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 
 
 ### Unit & Component Tests (Vitest)
 
-299 tests across 18 test files, covering stores, composables, library modules, and Vue components:
+1279 tests across 54 test files, covering stores, composables, library modules, and Vue components:
 
-| Layer | Tests | What's covered |
-|---|---|---|
-| **Stores** | 76 | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, template save/load, persistence |
-| **Composables** | 43 | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection), keyboard shortcuts, undo toast |
-| **Library** | 21 | Sync queue debouncing/coalescing, conflict resolver (last-write-wins, merge strategies) |
-| **Components** | 159 | WorkoutTracker (exercise list, tag filtering, detail modal, PR history, set actions, progressive overload), BodyweightTracker (entry list, stats, SVG chart, period selection, modal), AuthScreen (sign-in/sign-up flows, OAuth, errors), ExerciseGraph (SVG rendering, PR detection, edge cases), OnboardingScreen (all 3 paths), CalendarView (month/week navigation, day selection, workout summary, PR badges), ErrorBoundary, accessibility attributes |
+| Layer | What's covered |
+|---|---|
+| **Stores** | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, progression XP and theme unlocks, sync fuzzing |
+| **Composables** | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection), keyboard shortcuts, undo toast, swipe-to-dismiss, focus trap, haptics, PR burst, tag recovery/volume |
+| **Library** | Sync queue debouncing/coalescing, conflict resolver (last-write-wins, merge strategies), CSS/meta/manifest/SEO/theme-contrast/vercel-headers regression suites, CSV import, data export, plate calculator, XP migration |
+| **Components** | WorkoutTracker, BodyweightTracker, AuthScreen, ExerciseGraph, OnboardingScreen, CalendarView, ErrorBoundary, StarterPickerFlow, SkeletonLoader, MuscleGroupChart/Recovery, PR target, accessibility attributes |
 
 ```bash
 npm test           # run all tests

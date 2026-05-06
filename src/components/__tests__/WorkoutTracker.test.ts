@@ -7,6 +7,11 @@ const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../stores/preferences', () => ({
+  usePreferencesStore: () => ({
+    experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
+  }),
+}))
 vi.mock('../../stores/progression', () => ({
   useProgressionStore: () => ({
     progressionEnabled: false,
@@ -183,6 +188,20 @@ describe('WorkoutTracker', () => {
     it('does not render tag filter bar when no tags', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+    })
+
+    it('shows fresh-start transition card after clearing sample data', () => {
+      localStorageMock.setItem('fresh-start', 'true')
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(true)
+      expect(wrapper.find('.wtFreshStartTitle').text()).toContain('starting fresh')
+      expect(wrapper.find('.wtFreshStartCta').exists()).toBe(true)
+    })
+
+    it('shows default empty state when fresh-start flag is absent', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
+      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
     })
   })
 
@@ -718,6 +737,54 @@ describe('WorkoutTracker', () => {
       // and is now gone — the REPS card covers it.
       expect(wrapper.find('.wtRepsStepperFull').exists()).toBe(false)
     })
+
+    it('shows plate calculator hint for numpad-mode exercises (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      // ex-1 is in default numpad mode (no inputMode set)
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(true)
+      expect(wrapper.find('.wtPlateHintText').text()).toContain('plate calculator')
+    })
+
+    it('hides plate calculator hint when exercise is in plate mode (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      exercises[0].inputMode = 'plates'
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
+
+    it('hides plate calculator hint after dismissal via localStorage (LIFT-388)', async () => {
+      localStorageMock.setItem('plate-calc-hint-dismissed', 'true')
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
+
+    it('dismiss button persists hint dismissal to localStorage (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.wtPlateHintDismiss').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(localStorageMock.getItem('plate-calc-hint-dismissed')).toBe('true')
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
   })
 
   describe('exercise search', () => {
@@ -1028,6 +1095,73 @@ describe('WorkoutTracker', () => {
       if (srAnnouncement.exists()) {
         expect(srAnnouncement.attributes('aria-atomic')).toBe('true')
       }
+    })
+  })
+
+  describe('rest timer drift correction', () => {
+    beforeEach(() => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      localStorage.setItem('rest-timer', 'on')
+      localStorage.setItem('rest-duration', '90')
+      const mockOsc = { connect: vi.fn(), frequency: { value: 0, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() }, start: vi.fn(), stop: vi.fn() }
+      const mockGain = { connect: vi.fn(), gain: { value: 0, setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } }
+      vi.stubGlobal('AudioContext', class {
+        state = 'running'
+        currentTime = 0
+        destination = {}
+        resume = vi.fn()
+        createOscillator = vi.fn(() => mockOsc)
+        createGain = vi.fn(() => mockGain)
+      })
+      vi.useFakeTimers({ shouldAdvanceTime: false })
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('uses wall-clock time so backgrounding the app does not cause drift', async () => {
+      const wrapper = mountTracker()
+      const vm = wrapper.vm as unknown as {
+        startRestTimer: () => void
+        timerSeconds: number
+        timerActive: boolean
+      }
+      // Start the timer with 90s duration
+      const startTime = Date.now()
+      vi.setSystemTime(startTime)
+      vm.startRestTimer()
+      expect(vm.timerSeconds).toBe(90)
+
+      // Simulate 30 real seconds passing (as if phone was backgrounded)
+      vi.setSystemTime(startTime + 30_000)
+      vi.advanceTimersByTime(250) // one tick
+      await wrapper.vm.$nextTick()
+      expect(vm.timerSeconds).toBe(60)
+
+      // Simulate 55 more seconds — only 5s should remain
+      vi.setSystemTime(startTime + 85_000)
+      vi.advanceTimersByTime(250)
+      await wrapper.vm.$nextTick()
+      expect(vm.timerSeconds).toBe(5)
+    })
+
+    it('timer reaches zero even if intervals were throttled', async () => {
+      const wrapper = mountTracker()
+      const vm = wrapper.vm as unknown as {
+        startRestTimer: () => void
+        timerSeconds: number
+        timerActive: boolean
+      }
+      const startTime = Date.now()
+      vi.setSystemTime(startTime)
+      vm.startRestTimer()
+
+      // Jump past the full duration in one step
+      vi.setSystemTime(startTime + 91_000)
+      vi.advanceTimersByTime(250)
+      await wrapper.vm.$nextTick()
+      expect(vm.timerSeconds).toBe(0)
     })
   })
 
@@ -1470,6 +1604,68 @@ describe('WorkoutTracker', () => {
       dispatchTouch(items[0].element, 'touchend')
 
       expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    /**
+     * Regression for #383 — the tag-filter gate above had a search-shaped
+     * hole in it. `v-for` indexes into `filteredExercises`, but
+     * `store.reorderExercise` splices the unfiltered `exercises` array,
+     * so a drag during search silently moved unrelated rows at the
+     * filtered index's position in the full list (e.g. dragging filtered
+     * row 0 would reorder absolute row 0 — often an exercise the user
+     * couldn't see). Gesture is now blocked whenever the list is
+     * filtered, matching the tag-filter case.
+     */
+    it('does not arm a long-press while a search query is active (#383)', async () => {
+      // Need ≥5 exercises for the search bar to render.
+      vi.useRealTimers()
+      exercises = [
+        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('press') // filters to 2 rows
+
+      // Sanity: list is actually filtered before we try to drag.
+      expect(wrapper.findAll('.wtExerciseItem').length).toBe(2)
+
+      vi.useFakeTimers()
+      const items = wrapper.findAll('.wtExerciseItem')
+      dispatchTouch(items[0].element, 'touchstart', 20, 100)
+      vi.advanceTimersByTime(LONG_PRESS_MS + 100)
+      // Drive a drop gesture document-wide too, to make sure even if the
+      // timer somehow fired, no reorder call escapes the gate.
+      const end = new Event('touchend', { bubbles: true, cancelable: true })
+      Object.defineProperty(end, 'touches', { value: [] })
+      document.dispatchEvent(end)
+      dispatchTouch(items[0].element, 'touchend')
+
+      expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    /**
+     * Visual affordance — handle must be rendered in the "disabled" state
+     * so users see why reorder doesn't respond. Parallel to the existing
+     * tag-filter visual test.
+     */
+    it('disables drag handles while a search query is active (#383)', async () => {
+      vi.useRealTimers()
+      exercises = [
+        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('press')
+
+      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
     })
   })
 })

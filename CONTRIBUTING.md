@@ -53,10 +53,10 @@ src/
    npm run build       # Vite production build
    ```
 
-4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/):
+4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/). Reference the GitHub issue being closed in the subject:
    ```
-   feat: add rest timer presets (MAS-XXX)
-   fix: correct 1RM calculation for single-rep sets
+   feat: add rest timer presets (closes #123)
+   fix: correct 1RM calculation for single-rep sets (closes #456)
    test: add CalendarView navigation tests
    ```
 
@@ -75,8 +75,8 @@ src/
 Tests live next to the code they test in `__tests__/` directories:
 
 ```
-src/stores/__tests__/workout.test.js
-src/components/__tests__/WorkoutTracker.test.js
+src/stores/__tests__/workout.test.ts
+src/components/__tests__/WorkoutTracker.test.ts
 ```
 
 We use **Vitest** with **happy-dom** and **@vue/test-utils**. Mock Supabase in every test file:
@@ -94,7 +94,7 @@ npx vitest --watch    # Watch mode
 ## Architecture Decisions
 
 - **Hand-rolled SVGs** for charts — no chart libraries. This keeps the bundle small and the rendering fast.
-- **CSS custom properties** for theming (6 themes, light/dark/auto, optional glass morphism).
+- **CSS custom properties** for theming (10 themes, light/dark/auto, always-on glass morphism).
 - **Debounced sync queue** batches rapid Supabase mutations to avoid rate limits.
 - **Last-write-wins conflict resolution** for multi-device sync.
 

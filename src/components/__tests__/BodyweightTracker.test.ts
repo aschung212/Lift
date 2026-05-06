@@ -87,9 +87,13 @@ describe('BodyweightTracker', () => {
   })
 
   describe('empty state', () => {
-    it('shows empty message when no entries', () => {
+    it('shows value proposition and CTA when no entries', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtEmpty').text()).toContain('Log')
+      const empty = wrapper.find('.bwEmptyState')
+      expect(empty.exists()).toBe(true)
+      expect(empty.text()).toContain('Track your weight to spot trends')
+      expect(empty.text()).toContain('same time each day')
+      expect(empty.find('.bwEmptyCta').text()).toContain('+ Log')
     })
 
     it('renders "+ Log" button', () => {

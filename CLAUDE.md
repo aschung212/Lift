@@ -35,7 +35,7 @@ Before committing any UI change, verify all of the following:
 - [ ] Spacing uses the 4/8/12/16/24/32 scale — no arbitrary pixel values
 - [ ] Modals use existing bottom-sheet or centered-modal pattern — no new modal paradigms
 - [ ] No new navigation patterns introduced — stay consistent with existing tab/modal structure
-- [ ] Component renders correctly in all 9 themes, both light and dark mode
+- [ ] Component renders correctly in all 10 themes, both light and dark mode
 - [ ] New interactive elements have appropriate aria attributes
 - [ ] Animations use CSS transitions/animations, not JavaScript timers
 - [ ] No layout shift when showing/hiding conditional elements — reserve space or position at end of row
@@ -61,13 +61,13 @@ This app targets iOS App Store via Capacitor. Every UI element must meet Apple's
 
 - **44pt minimum touch targets.** Buttons, toggles, tappable rows, icon buttons — all must be at least 44x44pt. Existing regression tests enforce this for known violations. When adding new interactive elements, verify and add a test.
 - **Safe area insets.** All fixed/sticky elements must use `env(safe-area-inset-*)`. The Dynamic Island on newer iPhones hides content at the top. Test in PWA standalone mode — browser mode hides this issue.
-- **WCAG 2.1 AA contrast.** All 9 themes (18 variants) are tested via `themeContrast.test.ts`. When adding or modifying theme colors, run the contrast audit. Normal text needs 4.5:1, large text needs 3:1.
+- **WCAG 2.1 AA contrast.** All 10 themes (20 variants) are tested via `themeContrast.test.ts`. When adding or modifying theme colors, run the contrast audit. Normal text needs 4.5:1, large text needs 3:1.
 - **No hover-gated interactions.** Touch-only. Hover can enhance but must never be the only way to access functionality.
 
 ## Code Standards
 
 - **TypeScript strict mode.** All new files must be `.ts` or `.vue` with `lang="ts"`. No `any` types unless absolutely necessary.
-- **Conventional commits.** Format: `type: description (LIFT-XXX)`. Types: feat, fix, test, chore, docs, perf, refactor.
+- **Conventional commits.** Format: `type: description (closes #NNN)` or `type(scope): description (#PR)`. Types: feat, fix, test, chore, docs, perf, refactor. (Project migrated from Linear to GitHub Issues on 2026-04-03; the old `LIFT-XXX` prefix is no longer used.)
 - **ESLint clean.** Run `npm run lint` before committing. Zero errors allowed, warnings should be addressed.
 - **No app-breaking changes.** Always run `npm test` and `npm run build` after changes. If tests fail, fix them before moving on.
 
@@ -95,7 +95,7 @@ These patterns were reached through multiple iterations of user testing. Do not 
 ## Architecture Notes
 
 - **Local-first.** Pinia + localStorage is the source of truth. Supabase syncs in the background. The UI never waits on the network.
-- **Theme system.** 9 elemental themes (Fire, Water, Luck, Air, Void, Amethyst, Sun, Moon, Love) with CSS custom properties, custom SVG icons, and gradient previews. Light/dark/auto modes. Glass morphism is opt-in. Void (black + gold) is the default.
+- **Theme system.** 10 elemental themes (Eternal, Origin, Fortitude, Intensity, Flow, Stability, Luck, Focus, Energy, Love; internal IDs: `eternal`, `pearl`, `midnight`, `fire`, `water`, `earth`, `luck`, `amethyst`, `air`, `love`) with CSS custom properties, custom SVG icons, and gradient previews. Light/dark/auto modes. Glass morphism is always on. Eternal (black + gold) is the default. Legacy IDs (`void`, `sun`, `moon`, `graphite`, `arctic`, `forge`, `aaron`, `tina`, `bloom`, `metal`, `oak`) are mapped to current IDs by a migration table in `useTheme.ts`.
 - **Hand-rolled SVGs.** No chart libraries. Polyline + polygon with computed point arrays.
 - **Debounced sync.** Rapid store mutations are batched before hitting Supabase.
 
