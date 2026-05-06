@@ -95,13 +95,16 @@ const themeImports: Record<string, () => Promise<unknown>> = {
 }
 const loadedThemes = new Set<string>(['eternal'])
 
-function loadThemeCSS(id: string): void {
-  if (loadedThemes.has(id)) return
+/** Load theme CSS, resolving once the styles are injected. Retries on failure. */
+function loadThemeCSS(id: string): Promise<void> {
+  if (loadedThemes.has(id)) return Promise.resolve()
   const loader = themeImports[id]
-  if (loader) {
+  if (!loader) return Promise.resolve()
+  return loader().then(() => {
     loadedThemes.add(id)
-    loader()
-  }
+  }, () => {
+    // Don't poison cache — next attempt will retry the import
+  })
 }
 
 function applyTheme(id: string): void {
@@ -141,7 +144,9 @@ function updateMetaColor(): void {
   meta.setAttribute('content', colors[mode] ?? colors.dark)
 }
 
-// Apply immediately at import time to prevent flash
+// Apply immediately at import time to prevent flash.
+// Set eternal as a synchronous fallback so CSS variables are always defined,
+// then swap to the user's stored theme once its CSS chunk loads.
 let storedId = localStorage.getItem('app-theme') || 'eternal'
 // Migrate old theme names
 if (storedId in THEME_MIGRATION) {
@@ -151,6 +156,7 @@ if (storedId in THEME_MIGRATION) {
 const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'eternal'
 const storedMode = localStorage.getItem('app-mode') || 'dark'
 const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
+document.documentElement.setAttribute('data-theme', 'eternal')
 applyTheme(validId)
 applyMode(validMode)
 
