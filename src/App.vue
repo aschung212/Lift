@@ -54,9 +54,13 @@
             </button>
           </div>
         </div>
-        <div v-show="activeTab === 'workouts'" class="tabContent"><WorkoutTracker ref="workoutTrackerRef" /></div>
-        <div v-show="activeTab === 'calendar'" class="tabContent"><CalendarView /></div>
-        <div v-show="activeTab === 'weight'" class="tabContent"><BodyweightTracker /></div>
+        <div class="tabContent" ref="tabContentRef">
+          <KeepAlive>
+            <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
+            <CalendarView v-else-if="activeTab === 'calendar'" />
+            <BodyweightTracker v-else-if="activeTab === 'weight'" />
+          </KeepAlive>
+        </div>
       </main>
 
       <!-- Tab bar -->
@@ -1106,6 +1110,8 @@ const initialTab = urlTab && VALID_TABS.includes(urlTab as typeof VALID_TABS[num
   ? urlTab
   : localStorage.getItem('active-tab') || 'workouts'
 const activeTab = ref(initialTab)
+const tabContentRef = ref<HTMLElement | null>(null)
+const tabScrollPositions = new Map<string, number>()
 // Clean up the query param so it doesn't persist on reload
 if (urlTab) {
   const url = new URL(window.location.href)
@@ -1216,10 +1222,20 @@ function switchTab(tabId: string) {
   const from = activeTab.value
   closeSettings()
   if (from === tabId) return
+  // Save scroll position of the outgoing tab
+  if (tabContentRef.value) {
+    tabScrollPositions.set(from, tabContentRef.value.scrollTop)
+  }
   activeTab.value = tabId
   localStorage.setItem('active-tab', tabId)
   tabSwitch(from, tabId)
   checkForSWUpdate()
+  // Restore scroll position of the incoming tab
+  nextTick(() => {
+    if (tabContentRef.value) {
+      tabContentRef.value.scrollTop = tabScrollPositions.get(tabId) || 0
+    }
+  })
 }
 
 function selectTheme(id: string) {
