@@ -3,8 +3,17 @@ import { mount, VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import StarterPickerFlow from '../StarterPickerFlow.vue'
 
-import { getLocalStorageMock } from '../../__tests__/helpers'
+import { getLocalStorageMock, mockAnalytics } from '../../__tests__/helpers'
 const localStorageMock = getLocalStorageMock()
+
+const mockLogEvent = vi.fn()
+vi.mock('../../composables/useAnalytics', () => ({
+  useAnalytics: () => ({
+    logEvent: mockLogEvent,
+    tabSwitch: vi.fn(),
+    flushEngagement: vi.fn(),
+  })
+}))
 
 describe('StarterPickerFlow', () => {
   let wrapper: VueWrapper
@@ -91,6 +100,47 @@ describe('StarterPickerFlow', () => {
 
       expect(wrapper.emitted('revert-preview')).toHaveLength(1)
       expect(wrapper.emitted('skip')).toHaveLength(1)
+    })
+  })
+
+  describe('onboarding step analytics', () => {
+    it('fires onboarding_step when advancing from explainer to pick', async () => {
+      mockLogEvent.mockClear()
+      await wrapper.find('.spfPrimary').trigger('click')
+      expect(mockLogEvent).toHaveBeenCalledWith('onboarding_step', { step: 'explainer_done' })
+    })
+
+    it('fires onboarding_step when advancing from pick to goal', async () => {
+      mockLogEvent.mockClear()
+      await wrapper.find('.spfPrimary').trigger('click') // explainer → pick
+      mockLogEvent.mockClear()
+
+      const cards = wrapper.findAll('.spfCard')
+      await cards[0].trigger('click') // select fire
+      await wrapper.find('.spfPrimary').trigger('click') // pick → goal
+
+      expect(mockLogEvent).toHaveBeenCalledWith('onboarding_step', { step: 'pick_done', theme: 'fire' })
+    })
+
+    it('fires onboarding_step with skip and from step when skipping from explainer', async () => {
+      mockLogEvent.mockClear()
+      await wrapper.find('.spfSecondary').trigger('click') // Skip
+      expect(mockLogEvent).toHaveBeenCalledWith('onboarding_step', { step: 'skip', from: 'explainer' })
+    })
+
+    it('fires onboarding_step with goal_done on confirm', async () => {
+      mockLogEvent.mockClear()
+      await wrapper.find('.spfPrimary').trigger('click') // explainer → pick
+      const cards = wrapper.findAll('.spfCard')
+      await cards[1].trigger('click') // select water
+      await wrapper.find('.spfPrimary').trigger('click') // pick → goal
+      mockLogEvent.mockClear()
+
+      await wrapper.find('.spfPrimary').trigger('click') // confirm
+
+      expect(mockLogEvent).toHaveBeenCalledWith('onboarding_step', { step: 'goal_done', goal: 3 })
+      expect(wrapper.emitted('confirm')).toHaveLength(1)
+      expect(wrapper.emitted('confirm')![0]).toEqual(['water', 3])
     })
   })
 
