@@ -64,6 +64,12 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('workbox enables navigation preload for faster navigations', () => {
+    it('has navigationPreload: true in workbox config', () => {
+      expect(viteConfig).toContain('navigationPreload: true')
+    })
+  })
+
   describe('manifest includes launch_handler for single-window behavior', () => {
     it('has launch_handler with navigate-existing client_mode', () => {
       expect(viteConfig).toContain("client_mode: 'navigate-existing'")

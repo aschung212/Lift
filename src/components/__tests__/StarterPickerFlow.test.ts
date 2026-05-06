@@ -31,6 +31,28 @@ describe('StarterPickerFlow', () => {
     expect(wrapper.find('.spfTitle').text()).toBe('Theme Progression')
   })
 
+  it('shows visual progression preview on explainer step', () => {
+    const preview = wrapper.find('.spfPreview')
+    expect(preview.exists()).toBe(true)
+    expect(preview.attributes('aria-hidden')).toBe('true')
+
+    // Should have the progress track with fill bar
+    expect(wrapper.find('.spfProgressTrack').exists()).toBe(true)
+    expect(wrapper.find('.spfProgressFill').exists()).toBe(true)
+
+    // Should show 5 theme dots
+    const dots = wrapper.findAll('.spfProgressDot')
+    expect(dots.length).toBe(5)
+
+    // Should show XP badge
+    expect(wrapper.find('.spfXPBadge').exists()).toBe(true)
+  })
+
+  it('hides visual preview after advancing to pick step', async () => {
+    await wrapper.find('.spfPrimary').trigger('click')
+    expect(wrapper.find('.spfPreview').exists()).toBe(false)
+  })
+
   it('advances to the pick step when clicking "Pick a Starter Theme"', async () => {
     await wrapper.find('.spfPrimary').trigger('click')
     expect(wrapper.find('.spfTitle').text()).toBe('Pick Your Starter')

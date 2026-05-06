@@ -126,6 +126,7 @@ export default defineConfig({
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
+        navigationPreload: true,
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
