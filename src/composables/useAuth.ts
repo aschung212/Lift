@@ -5,6 +5,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
+import { onCrossTabUpdate } from './useCrossTabSync'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import type { User, Provider } from '@supabase/supabase-js'
@@ -30,6 +31,12 @@ async function initStores(userId: string): Promise<void> {
     preferencesStore.init(userId),
     progressionStore.init(userId),
   ])
+
+  // Register cross-tab sync handlers so other tabs reload on data changes
+  onCrossTabUpdate('workout', () => workoutStore._reloadFromLocalStorage())
+  onCrossTabUpdate('bodyweight', () => bodyweightStore._reloadFromLocalStorage())
+  onCrossTabUpdate('preferences', () => preferencesStore._reloadFromLocalStorage())
+  onCrossTabUpdate('progression', () => progressionStore._reloadFromLocalStorage())
 }
 
 function init(): void {

@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { inject } from '@vercel/analytics'
 import { injectSpeedInsights } from '@vercel/speed-insights'
 import { initNativePlugins } from './lib/native'
+import { initCrossTabSync } from './composables/useCrossTabSync'
 import { setSentryCaptureException, logError } from './lib/logger'
 import App from './App.vue'
 import './index.css'
@@ -10,6 +11,7 @@ import './index.css'
 inject()
 injectSpeedInsights()
 initNativePlugins()
+initCrossTabSync()
 
 const app = createApp(App)
 app.use(createPinia())

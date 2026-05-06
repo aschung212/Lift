@@ -6,6 +6,7 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
+import { broadcastStoreUpdate } from '../composables/useCrossTabSync'
 
 const TOMBSTONE_STORE = 'bodyweight'
 
@@ -47,6 +48,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
         logError(e, { source: 'bodyweight._persist', size: data.length })
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('bodyweight')
+    },
+
+    /** Reload state from localStorage (used by cross-tab sync). */
+    _reloadFromLocalStorage() {
+      this.entries = load()
     },
 
     async init(userId: string) {
