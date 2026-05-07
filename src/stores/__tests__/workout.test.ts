@@ -895,4 +895,38 @@ describe('workout store', () => {
       expect(result[0].sets.map(s => s.id)).toEqual(['s1', 's2', 's3'])
     })
   })
+
+  // ── $reset (#500) ─────────────────────────────────────────────
+  describe('$reset', () => {
+    it('clears all state back to initial values', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench Press', ['Push'])
+      store.addCustomTag('Accessory')
+      expect(store.exercises.length).toBeGreaterThan(0)
+      expect(store.customTags.length).toBeGreaterThan(0)
+
+      store.$reset()
+
+      expect(store.exercises).toEqual([])
+      expect(store.customTags).toEqual([])
+      expect(store.tagRecoveryDays).toEqual({})
+      expect(store.tagRecoveryExcluded).toEqual([])
+    })
+
+    it('persists cleared state to localStorage', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Squat')
+      localStorageMock.setItem.mockClear()
+
+      store.$reset()
+
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('workout-exercises', '[]')
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('lift-custom-tags', '[]')
+    })
+
+    it('does not throw (regression: setup stores lack auto $reset)', () => {
+      const store = useWorkoutStore()
+      expect(() => store.$reset()).not.toThrow()
+    })
+  })
 })

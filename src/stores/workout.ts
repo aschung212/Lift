@@ -850,6 +850,24 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
   }
 
+  /**
+   * Reset all state to initial values. Pinia's $reset() only works with
+   * options-API stores; this setup store needs a manual implementation.
+   * Called by useAuth on sign-out and account deletion (#500).
+   */
+  function $reset() {
+    exercises.value = []
+    customTags.value = []
+    tagRecoveryDays.value = {}
+    tagRecoveryExcluded.value = []
+    _userId = null
+    triggerRef(exercises)
+    triggerRef(customTags)
+    triggerRef(tagRecoveryDays)
+    triggerRef(tagRecoveryExcluded)
+    _persist()
+  }
+
   function addCustomTag(name: string) {
     const trimmed = name.trim()
     if (!trimmed || customTags.value.includes(trimmed)) return
@@ -1039,6 +1057,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setTagRecoveryExcluded,
     addCustomTag,
     removeCustomTag,
+    $reset,
     // Getters
     allTags,
     workoutDates,
