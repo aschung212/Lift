@@ -493,6 +493,14 @@
                 </div>
               </div>
               <div class="settingsRow">
+                <span class="settingsLabel">Report</span>
+                <div class="exportBtnGroup">
+                  <button class="exportBtn" @click="generateReport('30')" aria-label="Generate 30-day training report">30 days</button>
+                  <button class="exportBtn" @click="generateReport('90')" aria-label="Generate 90-day training report">90 days</button>
+                  <button class="exportBtn" @click="generateReport('month')" aria-label="Generate monthly training report">Month</button>
+                </div>
+              </div>
+              <div class="settingsRow">
                 <span class="settingsLabel">Import</span>
                 <div class="exportBtnGroup">
                   <button class="exportBtn" @click="triggerImport" aria-label="Import workout data from CSV">CSV</button>
@@ -880,6 +888,8 @@ import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/du
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
+import { buildTrainingReport, lastNDaysPeriod, monthPeriod } from './lib/trainingReport'
+import { renderTrainingReportHtml } from './lib/trainingReportHtml'
 import { importCSV } from './lib/csvImport'
 import { usePreferencesStore } from './stores/preferences'
 import type { WeightGoalDirection } from './stores/preferences'
@@ -1726,6 +1736,24 @@ async function exportData(format: 'csv' | 'json') {
     downloadFile(`lift-export-${timestamp}.csv`, csv, 'text/csv')
   }
   logEvent('data_export', { format })
+}
+
+function generateReport(range: '30' | '90' | 'month') {
+  const workoutStore = useWorkoutStore()
+  const bwStore = useBodyweightStore()
+  const today = new Date().toISOString().slice(0, 10)
+  const period = range === 'month'
+    ? monthPeriod(new Date().getFullYear(), new Date().getMonth() + 1)
+    : lastNDaysPeriod(Number(range), today)
+
+  const report = buildTrainingReport(period, workoutStore.exercises, bwStore.sortedEntries)
+  const html = renderTrainingReportHtml(report, {
+    weightUnit: weightUnit.value as 'lbs' | 'kg',
+    displayWeight,
+  })
+  const timestamp = today
+  downloadFile(`lift-report-${timestamp}.html`, html, 'text/html')
+  logEvent('training_report', { range })
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {
