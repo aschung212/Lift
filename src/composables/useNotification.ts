@@ -11,7 +11,7 @@
  * Android Chrome and iOS 16.4+ PWAs), falling back to the Notification constructor.
  */
 
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onUnmounted } from 'vue'
 
 const PERMISSION_KEY = 'notification-permission-asked'
 
@@ -65,7 +65,11 @@ async function notify(
   // Only fire if the app IS backgrounded or WAS backgrounded during the timer
   if (!isBackgrounded() && !wasBg) return false
 
-  const finalOptions: NotificationOptions = {
+  // `renotify` is a non-standard but widely-supported Chrome/Android extension
+  // that re-fires a notification with the same tag (so a second rest-timer
+  // completion still alerts). It's missing from the standard NotificationOptions
+  // TS type, so we extend it locally rather than asserting the whole object.
+  const finalOptions: NotificationOptions & { renotify?: boolean } = {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'lift-rest-timer',
