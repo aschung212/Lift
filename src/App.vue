@@ -277,6 +277,21 @@
                   <span class="glassToggleThumb"></span>
                 </button>
               </div>
+              <div v-show="restTimerEnabled" class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel settingsLabelIndented">Notify when done</span>
+                  <span class="settingsHint">When app is in background</span>
+                </div>
+                <button
+                  :class="['glassToggle', { on: prefs.experience.restTimerNotification }]"
+                  @click="toggleExperience('restTimerNotification')"
+                  role="switch"
+                  :aria-checked="prefs.experience.restTimerNotification"
+                  :aria-label="prefs.experience.restTimerNotification ? 'Disable rest timer notification' : 'Enable rest timer notification'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
             </div>
 
             <div class="settingsGroup">
@@ -1635,7 +1650,7 @@ function setMode(mode: 'light' | 'dark' | 'auto') {
   logEvent('mode_toggle', { mode })
 }
 
-function toggleExperience(key: 'prCelebrations' | 'haptics' | 'screenWakeLock') {
+function toggleExperience(key: 'prCelebrations' | 'haptics' | 'screenWakeLock' | 'restTimerNotification') {
   const next = !prefs.experience[key]
   prefs.setExperienceFlag(key, next)
   logEvent('experience_toggle', { key, enabled: next })

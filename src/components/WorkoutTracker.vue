@@ -1037,6 +1037,7 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useNotification, useBackgroundTracker } from '../composables/useNotification'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { THEMES } from '../composables/useTheme'
@@ -1053,6 +1054,8 @@ const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayW
 const { impactLight, notifySuccess } = useHaptics()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+const { notify: sendNotification, requestPermission: requestNotificationPermission } = useNotification()
+const { wasBackgrounded, startTracking: startBgTracking, stopTracking: stopBgTracking } = useBackgroundTracker()
 
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
@@ -2264,6 +2267,13 @@ function startInterval() {
         timerIntervalId = null
         timerSeconds.value = 0
         timerAnnouncement.value = 'Rest timer done'
+        if (_prefs.experience.restTimerNotification) {
+          sendNotification('Rest Complete', {
+            body: 'Time to get back to work 💪',
+            wasBackgrounded: wasBackgrounded.value,
+          })
+        }
+        stopBgTracking()
         if (!editingPresets.value) {
           onTimerComplete()
         }
@@ -2274,6 +2284,10 @@ function startInterval() {
 
 function startRestTimer() {
   ensureAudioCtx()
+  if (_prefs.experience.restTimerNotification) {
+    requestNotificationPermission()
+    startBgTracking()
+  }
   timerActive.value = true
   timerPaused.value = false
   timerSeconds.value = restDuration.value
