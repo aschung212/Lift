@@ -9,7 +9,7 @@ test.describe('Bodyweight Tracking', () => {
     await page.goto('/')
     // Sign in via dev mode
     await page.locator('.authDevBtn').click({ timeout: 10000 })
-    await expect(page.getByText('Exercise Tracker')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Workouts', level: 1 })).toBeVisible({ timeout: 10000 })
 
     // Navigate to Weight tab
     await page.getByRole('tab', { name: 'Weight' }).click()

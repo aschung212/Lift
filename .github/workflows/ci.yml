@@ -90,6 +90,10 @@ jobs:
     needs: build-and-test
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Build-time flag: makes the dev sign-in button available in the
+      # production bundle so e2e tests can authenticate without Supabase.
+      # Real Vercel deploys do not set this, so the button stays hidden.
+      VITE_E2E: 'true'
     steps:
       - uses: actions/checkout@v6
 

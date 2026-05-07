@@ -50,7 +50,7 @@ test.describe('Auth Screen', () => {
     await expect(page.locator('.authScreen')).toBeVisible({ timeout: 10000 })
 
     await page.locator('.authDevBtn').click()
-    await expect(page.getByText('Exercise Tracker')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Workouts', level: 1 })).toBeVisible({ timeout: 10000 })
   })
 
   test('requires email and password fields for submission', async ({ page }) => {
