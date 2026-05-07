@@ -522,4 +522,93 @@ describe('sync fuzz: SEV1 2026-04-12 regression', () => {
       expect(store.entries.map(e => e.id)).toEqual(['bw-active'])
     })
   })
+
+  describe('Supabase fetch failure resilience (#503)', () => {
+    it('workout store preserves local data when Supabase fetch throws', async () => {
+      const userId = 'test-user'
+      // Seed localStorage with cached workout data
+      const cachedExercises = [{
+        id: 'local-ex-1',
+        name: 'Squat',
+        tags: ['Legs'],
+        sets: [{ id: 'local-s-1', date: '2026-01-01T12:00:00Z', weight: 315, reps: 5, estimated1RM: 354 }],
+        updated_at: '2026-01-01T00:00:00Z',
+      }]
+      localStorage.setItem('workout-exercises', JSON.stringify(cachedExercises))
+
+      // Make the fake supabase throw on .from() by temporarily replacing it
+      const originalFrom = fakeSupabase.from.bind(fakeSupabase)
+      fakeSupabase.from = (table: string) => {
+        if (table === 'exercises' || table === 'sets') {
+          // Return a thenable that rejects (simulates network failure)
+          return {
+            select: () => ({
+              eq: () => ({
+                is: () => ({
+                  order: () => Promise.reject(new Error('Network error: DNS resolution failed')),
+                }),
+              }),
+            }),
+          } as ReturnType<typeof originalFrom>
+        }
+        return originalFrom(table)
+      }
+
+      // Re-create store so it loads from the seeded localStorage
+      setActivePinia(createPinia())
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+
+      // Local data must still be intact — not replaced with empty state
+      expect(store.exercises.length).toBe(1)
+      expect(store.exercises[0].name).toBe('Squat')
+      expect(store.exercises[0].sets.length).toBe(1)
+
+      // Restore original
+      fakeSupabase.from = originalFrom
+    })
+
+    it('bodyweight store preserves local data when Supabase fetch throws', async () => {
+      const userId = 'test-user'
+      // Seed localStorage with cached bodyweight data
+      const cachedEntries = [{
+        id: 'local-bw-1',
+        date: '2026-01-15T12:00:00Z',
+        weight: 185,
+        updated_at: '2026-01-15T00:00:00Z',
+      }]
+      localStorage.setItem('bodyweight-entries', JSON.stringify(cachedEntries))
+
+      // Make the fake supabase throw
+      const originalFrom = fakeSupabase.from.bind(fakeSupabase)
+      fakeSupabase.from = (table: string) => {
+        if (table === 'bodyweight_entries') {
+          return {
+            select: () => ({
+              eq: () => ({
+                is: () => ({
+                  order: () => Promise.reject(new Error('Network error: connection refused')),
+                }),
+              }),
+            }),
+          } as ReturnType<typeof originalFrom>
+        }
+        return originalFrom(table)
+      }
+
+      // Re-create store so it loads from the seeded localStorage
+      setActivePinia(createPinia())
+      const store = useBodyweightStore()
+      await store.init(userId)
+      await tick()
+
+      // Local data must still be intact
+      expect(store.entries.length).toBe(1)
+      expect(store.entries[0].weight).toBe(185)
+
+      // Restore original
+      fakeSupabase.from = originalFrom
+    })
+  })
 })
