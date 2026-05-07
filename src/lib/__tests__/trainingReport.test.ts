@@ -275,6 +275,18 @@ describe('renderTrainingReportHtml', () => {
     expect(html).toContain('&lt;script&gt;')
   })
 
+  it('escapes HTML in tag names (volume section)', () => {
+    const xssTagExercise = makeExercise({
+      name: 'Curl',
+      tags: ['<img src=x onerror=alert(1)>'],
+      sets: [{ id: 'x2', date: '2026-04-05T10:00:00.000Z', weight: 50, reps: 10, estimated1RM: 67 }],
+    })
+    const xssReport = buildTrainingReport(APRIL_2026, [xssTagExercise], [])
+    const html = renderTrainingReportHtml(xssReport)
+    expect(html).not.toContain('<img src=x')
+    expect(html).toContain('&lt;img')
+  })
+
   it('includes print media query for page breaks', () => {
     const html = renderTrainingReportHtml(report)
     expect(html).toContain('@media print')

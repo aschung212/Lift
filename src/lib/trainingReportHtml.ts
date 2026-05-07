@@ -128,7 +128,7 @@ export function renderTrainingReportHtml(
         <h2>Volume by Tag</h2>
         <div class="volume-bars">
           ${tagVolume.map(t =>
-            volumeBar(t.totalSets, maxTagSets, t.tag, `${t.totalSets} sets`)
+            volumeBar(t.totalSets, maxTagSets, escapeHtml(t.tag), `${t.totalSets} sets`)
           ).join('')}
         </div>
       </section>`
