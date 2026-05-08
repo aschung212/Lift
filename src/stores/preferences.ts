@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { backupToIDB } from '../lib/durableStorage'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -87,11 +88,13 @@ export const usePreferencesStore = defineStore('preferences', {
         experience: this.experience,
         prBaselineDate: this.prBaselineDate,
       }
+      const data = JSON.stringify(payload)
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+        localStorage.setItem(STORAGE_KEY, data)
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
+      backupToIDB(STORAGE_KEY, data)
       if (supabase && this._userId) {
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
@@ -160,10 +163,9 @@ export const usePreferencesStore = defineStore('preferences', {
             } else if ('prBaselineDate' in prefs && prefs.prBaselineDate === null) {
               this.prBaselineDate = null
             }
-            localStorage.setItem(
-              STORAGE_KEY,
-              JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, prBaselineDate: this.prBaselineDate }),
-            )
+            const synced = JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, prBaselineDate: this.prBaselineDate })
+            localStorage.setItem(STORAGE_KEY, synced)
+            backupToIDB(STORAGE_KEY, synced)
           }
         } catch { /* table may not exist yet or no row */ }
       }

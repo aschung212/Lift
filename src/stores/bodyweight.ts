@@ -57,12 +57,23 @@ export const useBodyweightStore = defineStore('bodyweight', {
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 
-      const { data } = await supabase
-        .from('bodyweight_entries')
-        .select('*')
-        .eq('user_id', this._userId)
-        .is('deleted_at', null)
-        .order('created_at')
+      let data: Record<string, unknown>[] | null
+      try {
+        const result = await supabase
+          .from('bodyweight_entries')
+          .select('*')
+          .eq('user_id', this._userId)
+          .is('deleted_at', null)
+          .order('created_at')
+        if (result.error) {
+          logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(result.error) })
+          return
+        }
+        data = result.data
+      } catch (err) {
+        logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
+        return
+      }
 
       if (!data) return
 

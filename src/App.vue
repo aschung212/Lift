@@ -499,6 +499,13 @@
                 </div>
                 <input ref="importFileInput" type="file" accept=".csv" class="hiddenFileInput" aria-label="Import CSV file" @change="handleImportFile" />
               </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Report</span>
+                <div class="exportBtnGroup">
+                  <button v-for="p in (['month', 'quarter', 'year'] as const)" :key="p" class="exportBtn" :class="{ exportBtnActive: reportPeriod === p }" :aria-label="`${p} training report`" :aria-pressed="reportPeriod === p" @click="reportPeriod = p">{{ p === 'quarter' ? 'Quarter' : p === 'year' ? 'Year' : 'Month' }}</button>
+                  <button class="exportBtn exportBtnPrimary" aria-label="Generate training report" @click="generateReport">Generate</button>
+                </div>
+              </div>
               <div v-if="importResult" class="settingsImportResult" role="status">
                 <span v-if="importResult.error" class="settingsImportError">{{ importResult.error }}</span>
                 <span v-else class="settingsImportSuccess">Imported {{ importResult.exercises }} exercise{{ importResult.exercises !== 1 ? 's' : '' }} with {{ importResult.sets }} sets ({{ importResult.format }})</span>
@@ -880,6 +887,8 @@ import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/du
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
+import { buildTrainingReport, type ReportPeriod } from './lib/trainingReport'
+import { renderReport, openReportWindow } from './lib/reportRenderer'
 import { importCSV } from './lib/csvImport'
 import { usePreferencesStore } from './stores/preferences'
 import type { WeightGoalDirection } from './stores/preferences'
@@ -1740,6 +1749,24 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url)
 }
 
+// ── Training Report ─────────────────────────────────────────────
+const reportPeriod = ref<ReportPeriod>('month')
+
+function generateReport() {
+  const workoutStore = useWorkoutStore()
+  const bwStore = useBodyweightStore()
+  const report = buildTrainingReport({
+    exercises: workoutStore.exercises,
+    bodyweight: bwStore.sortedEntries,
+    period: reportPeriod.value,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value === 'kg' ? 'kg' : 'lbs',
+  })
+  const html = renderReport(report)
+  openReportWindow(html)
+  logEvent('training_report', { period: reportPeriod.value })
+}
+
 // ── CSV Import ──────────────────────────────────────────────────
 const importFileInput = ref<HTMLInputElement | null>(null)
 const importResult = ref<{ exercises: number; sets: number; format: string; error?: string } | null>(null)
@@ -1856,6 +1883,7 @@ onMounted(async () => {
     ensureLocalStorage('workout-exercises'),
     ensureLocalStorage('bodyweight-entries'),
     ensureLocalStorage('user-progression'),
+    ensureLocalStorage('user-preferences'),
   ])
   if (restored.some(r => r)) {
     // Data was restored from backup — reload stores
