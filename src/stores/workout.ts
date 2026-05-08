@@ -207,10 +207,19 @@ export const useWorkoutStore = defineStore('workout', () => {
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
 
-    const [{ data: remoteExData }, { data: sets }] = await Promise.all([
-      supabase.from('exercises').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at'),
-      supabase.from('sets').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at')
-    ])
+    let remoteExData: Record<string, unknown>[] | null
+    let sets: Record<string, unknown>[] | null
+    try {
+      const [exResult, setsResult] = await Promise.all([
+        supabase.from('exercises').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at'),
+        supabase.from('sets').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at')
+      ])
+      remoteExData = exResult.data
+      sets = setsResult.data
+    } catch (err) {
+      logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      return
+    }
 
     if (!remoteExData) return
 
