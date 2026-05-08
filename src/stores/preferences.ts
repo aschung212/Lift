@@ -157,6 +157,8 @@ export const usePreferencesStore = defineStore('preferences', {
             }
             if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate as string)) {
               this.prBaselineDate = prefs.prBaselineDate as string
+            } else if ('prBaselineDate' in prefs && prefs.prBaselineDate === null) {
+              this.prBaselineDate = null
             }
             localStorage.setItem(
               STORAGE_KEY,
