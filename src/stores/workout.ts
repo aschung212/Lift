@@ -207,12 +207,28 @@ export const useWorkoutStore = defineStore('workout', () => {
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
 
-    const [{ data: remoteExData }, { data: sets }] = await Promise.all([
-      supabase.from('exercises').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at'),
-      supabase.from('sets').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at')
-    ])
+    let remoteExData: Record<string, unknown>[] | null
+    let sets: Record<string, unknown>[] | null
+    try {
+      const [exResult, setsResult] = await Promise.all([
+        supabase.from('exercises').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at'),
+        supabase.from('sets').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at')
+      ])
+      if (exResult.error || setsResult.error) {
+        logWarn('Supabase fetch failed in workout store — using local data', {
+          exerciseError: String(exResult.error),
+          setsError: String(setsResult.error),
+        })
+        return
+      }
+      remoteExData = exResult.data
+      sets = setsResult.data
+    } catch (err) {
+      logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      return
+    }
 
-    if (!remoteExData) return
+    if (!remoteExData || !sets) return
 
     // Filter out tombstoned exercises (deleted offline, not yet synced)
     const remoteIds = new Set(remoteExData.map((ex: Record<string, unknown>) => ex.id as string))
