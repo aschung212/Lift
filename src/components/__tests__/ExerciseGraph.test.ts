@@ -10,6 +10,12 @@ vi.mock('../../composables/useTheme', () => ({
   })
 }))
 
+vi.mock('../../composables/usePRBaseline', () => ({
+  usePRBaseline: () => ({
+    prBaselineDate: { value: null },
+  })
+}))
+
 function makeExercise(sets: WorkoutSet[]): Exercise {
   return { id: 'ex-1', name: 'Bench Press', tags: [], sets }
 }
