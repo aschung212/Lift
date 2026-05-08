@@ -1010,6 +1010,24 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Reset all store state to defaults and clear persisted data.
+   * Required because setup/composition stores don't get auto-$reset from Pinia.
+   * Called by useAuth on sign-out and account deletion.
+   */
+  function $reset() {
+    exercises.value = []
+    customTags.value = []
+    tagRecoveryDays.value = {}
+    tagRecoveryExcluded.value = []
+    _userId = null
+    triggerRef(exercises)
+    triggerRef(customTags)
+    triggerRef(tagRecoveryDays)
+    triggerRef(tagRecoveryExcluded)
+    _persist()
+  }
+
   return {
     // State
     exercises,
@@ -1017,6 +1035,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     tagRecoveryDays,
     tagRecoveryExcluded,
     // Actions
+    $reset,
     init,
     addExercise,
     setExercisePlateCountMode,
