@@ -1883,6 +1883,7 @@ onMounted(async () => {
     ensureLocalStorage('workout-exercises'),
     ensureLocalStorage('bodyweight-entries'),
     ensureLocalStorage('user-progression'),
+    ensureLocalStorage('user-preferences'),
   ])
   if (restored.some(r => r)) {
     // Data was restored from backup — reload stores
