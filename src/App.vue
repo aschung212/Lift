@@ -901,6 +901,7 @@ import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
 import { registerSW } from 'virtual:pwa-register'
+import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
@@ -1897,8 +1898,25 @@ onMounted(async () => {
   if (progressionStore.progressionEnabled) {
     catchUpStreaks()
   }
+
+  // Cross-tab sync: reload stores when another tab persists data
+  const storeMap: Record<StoreKey, { _reloadFromStorage(): void }> = {
+    workout: useWorkoutStore(),
+    bodyweight: useBodyweightStore(),
+    preferences: usePreferencesStore(),
+    progression: progressionStore,
+  }
+  unsubCrossTab = onCrossTabMessage((msg) => {
+    if (msg.type === 'store-update') {
+      storeMap[msg.store]?._reloadFromStorage()
+    } else if (msg.type === 'sync-status') {
+      syncStatus.value = msg.status
+    }
+  })
 })
+let unsubCrossTab: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  unsubCrossTab?.()
 })
 </script>
