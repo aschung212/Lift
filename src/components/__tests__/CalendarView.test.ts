@@ -6,6 +6,11 @@ const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../composables/usePRBaseline', () => ({
+  usePRBaseline: () => ({
+    prBaselineDate: { value: null },
+  })
+}))
 
 // Build reactive mock store
 interface MockSet {

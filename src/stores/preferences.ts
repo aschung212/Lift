@@ -75,29 +75,30 @@ export const usePreferencesStore = defineStore('preferences', {
     features: { ...DEFAULTS } as FeatureFlags,
     weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
     experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
+    prBaselineDate: null as string | null,
     _userId: null as string | null,
   }),
 
   actions: {
     _persist() {
+      const payload = {
+        features: this.features,
+        weightGoal: this.weightGoal,
+        experience: this.experience,
+        prBaselineDate: this.prBaselineDate,
+      }
       try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience }),
-        )
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
       if (supabase && this._userId) {
-        const features = { ...this.features }
-        const weightGoal = this.weightGoal
-        const experience = { ...this.experience }
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
           supabase!
             .from('user_preferences')
             .upsert(
-              { user_id: userId, preferences: { features, weightGoal, experience }, updated_at: new Date().toISOString() },
+              { user_id: userId, preferences: { ...payload }, updated_at: new Date().toISOString() },
               { onConflict: 'user_id' }
             )
         )
@@ -119,7 +120,22 @@ export const usePreferencesStore = defineStore('preferences', {
           if (parsed.experience) {
             this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
           }
+          if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
+            this.prBaselineDate = parsed.prBaselineDate
+          }
         } catch { /* ignore corrupt data */ }
+      }
+
+      // Migrate from old standalone localStorage key (pre-sync era)
+      if (this.prBaselineDate === null) {
+        try {
+          const legacy = localStorage.getItem('pr-baseline-date')
+          if (legacy && /^\d{4}-\d{2}-\d{2}$/.test(legacy)) {
+            this.prBaselineDate = legacy
+            localStorage.removeItem('pr-baseline-date')
+            this._persist()
+          }
+        } catch { /* ignore */ }
       }
 
       // Then try Supabase (overrides local if exists)
@@ -139,9 +155,12 @@ export const usePreferencesStore = defineStore('preferences', {
             if (prefs.experience) {
               this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
             }
+            if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate as string)) {
+              this.prBaselineDate = prefs.prBaselineDate as string
+            }
             localStorage.setItem(
               STORAGE_KEY,
-              JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience }),
+              JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, prBaselineDate: this.prBaselineDate }),
             )
           }
         } catch { /* table may not exist yet or no row */ }
@@ -183,6 +202,26 @@ export const usePreferencesStore = defineStore('preferences', {
       this.weightGoal.gainTarget = null
       this.weightGoal.maintainMin = null
       this.weightGoal.maintainMax = null
+      this._persist()
+    },
+
+    setPRBaselineDate(date: string | null) {
+      if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return
+      this.prBaselineDate = date
+      this._persist()
+    },
+
+    startNewTrainingBlock() {
+      const d = new Date()
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      this.prBaselineDate = `${y}-${m}-${day}`
+      this._persist()
+    },
+
+    clearPRBaseline() {
+      this.prBaselineDate = null
       this._persist()
     },
   },
