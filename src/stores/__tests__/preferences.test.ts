@@ -1,7 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { usePreferencesStore } from '../preferences'
 import { getLocalStorageMock } from '../../__tests__/helpers'
+import { backupToIDB } from '../../lib/durableStorage'
+
+vi.mock('../../lib/durableStorage', () => ({
+  backupToIDB: vi.fn(),
+}))
 
 const localStorageMock = getLocalStorageMock()
 
@@ -67,6 +72,15 @@ describe('usePreferencesStore', () => {
       store.toggleFeature('calendar')
       const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
       expect(stored.features.calendar).toBe(false)
+    })
+
+    it('backs up to IndexedDB on every persist (regression: #501)', () => {
+      vi.mocked(backupToIDB).mockClear()
+      store.toggleFeature('calendar')
+      expect(backupToIDB).toHaveBeenCalledWith(
+        'user-preferences',
+        expect.stringContaining('"calendar":false'),
+      )
     })
 
     it('loads persisted state from localStorage on init', async () => {
