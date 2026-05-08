@@ -65,6 +65,10 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .eq('user_id', this._userId)
           .is('deleted_at', null)
           .order('created_at')
+        if (result.error) {
+          logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(result.error) })
+          return
+        }
         data = result.data
       } catch (err) {
         logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
