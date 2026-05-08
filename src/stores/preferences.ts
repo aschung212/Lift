@@ -139,10 +139,9 @@ export const usePreferencesStore = defineStore('preferences', {
             if (prefs.experience) {
               this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
             }
-            localStorage.setItem(
-              STORAGE_KEY,
-              JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience }),
-            )
+            const synced = JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience })
+            localStorage.setItem(STORAGE_KEY, synced)
+            backupToIDB(STORAGE_KEY, synced)
           }
         } catch { /* table may not exist yet or no row */ }
       }
