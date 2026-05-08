@@ -895,4 +895,39 @@ describe('workout store', () => {
       expect(result[0].sets.map(s => s.id)).toEqual(['s1', 's2', 's3'])
     })
   })
+
+  // ── reset ──────────────────────────────────────────────────────────
+  // Regression #500: composition-API stores don't get $reset for free.
+  // Without a custom reset(), sign-out fails to clear workout data.
+  describe('reset', () => {
+    it('clears all state back to empty defaults', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench Press', ['Push'])
+      store.addCustomTag('Hypertrophy')
+      store.setTagRecoveryDays('Push', 3)
+      expect(store.exercises.length).toBeGreaterThan(0)
+      expect(store.customTags.length).toBeGreaterThan(0)
+      expect(Object.keys(store.tagRecoveryDays).length).toBeGreaterThan(0)
+
+      store.reset()
+
+      expect(store.exercises).toEqual([])
+      expect(store.customTags).toEqual([])
+      expect(store.tagRecoveryDays).toEqual({})
+      expect(store.tagRecoveryExcluded).toEqual([])
+    })
+
+    it('persists cleared state to localStorage', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Squat', ['Legs'])
+      expect(localStorage.getItem('workout-exercises')).not.toBe('[]')
+
+      store.reset()
+
+      expect(localStorage.getItem('workout-exercises')).toBe('[]')
+      expect(localStorage.getItem('lift-custom-tags')).toBe('[]')
+      expect(localStorage.getItem('lift-tag-recovery-days')).toBe('{}')
+      expect(localStorage.getItem('lift-tag-recovery-excluded')).toBe('[]')
+    })
+  })
 })

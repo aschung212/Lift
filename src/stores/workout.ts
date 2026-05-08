@@ -160,6 +160,22 @@ export const useWorkoutStore = defineStore('workout', () => {
   const tagRecoveryExcluded = shallowRef<string[]>(JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]'))
   let _userId: string | null = null
 
+  // ── reset (composition-API stores don't get $reset for free) ────────
+  // Pinia only auto-generates $reset for options-API stores. This setup
+  // store must provide its own reset so sign-out clears workout data.
+  function reset() {
+    exercises.value = []
+    customTags.value = []
+    tagRecoveryDays.value = {}
+    tagRecoveryExcluded.value = []
+    _userId = null
+    triggerRef(exercises)
+    triggerRef(customTags)
+    triggerRef(tagRecoveryDays)
+    triggerRef(tagRecoveryExcluded)
+    _persist()
+  }
+
   // ── Persistence ────────────────────────────────────────────────────
   function _persist() {
     const data = JSON.stringify(exercises.value)
@@ -1017,6 +1033,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     tagRecoveryDays,
     tagRecoveryExcluded,
     // Actions
+    reset,
     init,
     addExercise,
     setExercisePlateCountMode,

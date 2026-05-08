@@ -16,7 +16,7 @@ const mockBodyweightReset = vi.fn()
 const mockPreferencesReset = vi.fn()
 const mockProgressionReset = vi.fn()
 vi.mock('../../stores/workout', () => ({
-  useWorkoutStore: () => ({ init: vi.fn(), $reset: mockWorkoutReset })
+  useWorkoutStore: () => ({ init: vi.fn(), reset: mockWorkoutReset })
 }))
 vi.mock('../../stores/bodyweight', () => ({
   useBodyweightStore: () => ({ init: vi.fn(), $reset: mockBodyweightReset })

@@ -93,7 +93,9 @@ async function devSignIn(): Promise<void> {
 }
 
 function resetStores(): void {
-  useWorkoutStore().$reset()
+  // Workout store uses composition API (shallowRef for perf), so Pinia
+  // can't auto-generate $reset. It exposes a custom reset() instead.
+  useWorkoutStore().reset()
   useBodyweightStore().$reset()
   usePreferencesStore().$reset()
   useProgressionStore().$reset()
