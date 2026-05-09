@@ -80,12 +80,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
 import type { Exercise } from '../stores/workout'
 
-const { weightUnit, displayWeight } = useTheme()
+const { weightUnit, displayWeight } = useWeightUnit()
 const { prBaselineDate } = usePRBaseline()
 
 const props = defineProps<{

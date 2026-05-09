@@ -235,6 +235,7 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
@@ -242,7 +243,8 @@ import { useXPCeremony } from '../composables/useXPCeremony'
 
 const store = useBodyweightStore()
 const prefs = usePreferencesStore()
-const { currentTheme, weightUnit, displayWeight, toLbs } = useTheme()
+const { currentTheme } = useTheme()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { logBodyweightXPCeremony } = useXPCeremony()

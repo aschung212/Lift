@@ -878,7 +878,8 @@ const BodyweightTracker = defineAsyncComponent({
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
-import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
+import { useTheme, connectProgressionStore } from './composables/useTheme'
+import type { ThemeId } from './lib/themes'
 import { usePRBaseline } from './composables/usePRBaseline'
 import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './stores/progression'
 import { useXPCeremony } from './composables/useXPCeremony'

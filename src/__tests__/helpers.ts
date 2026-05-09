@@ -52,6 +52,30 @@ export function mockTheme(overrides: Record<string, unknown> = {}) {
   }
 }
 
+/** Default useWeightUnit mock — lbs, identity conversion. */
+export function mockWeightUnit(overrides: Record<string, unknown> = {}) {
+  return {
+    useWeightUnit: () => ({
+      weightUnit: ref('lbs'),
+      displayWeight: (w: number) => Math.round(w),
+      toLbs: (w: number) => w,
+      ...overrides,
+    })
+  }
+}
+
+/** Default useRestTimer mock — disabled. */
+export function mockRestTimer(overrides: Record<string, unknown> = {}) {
+  return {
+    useRestTimer: () => ({
+      restTimerEnabled: ref(false),
+      restTimerAutoStart: ref(false),
+      setRestTimerEnabled: vi.fn(),
+      ...overrides,
+    })
+  }
+}
+
 /** Default useAuth mock — all methods resolve successfully. */
 export function mockAuth() {
   return {
