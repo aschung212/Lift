@@ -316,5 +316,12 @@ describe('useInstallPrompt', () => {
       expect(events).toContain('beforeinstallprompt')
       expect(events).toContain('appinstalled')
     })
+
+    it('removes event listeners when destroy() is called', () => {
+      const state = useInstallPrompt(() => 0)
+      state.destroy()
+      expect(removeEventSpy).toHaveBeenCalledWith('beforeinstallprompt', expect.any(Function))
+      expect(removeEventSpy).toHaveBeenCalledWith('appinstalled', expect.any(Function))
+    })
   })
 })

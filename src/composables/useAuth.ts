@@ -17,6 +17,7 @@ const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
 
 let _initialized = false
+let _authUnsubscribe: (() => void) | null = null
 
 async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
@@ -54,13 +55,14 @@ function init(): void {
     loading.value = false
   })
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
     const prev = user.value
     user.value = session?.user ?? null
     if (session?.user && !prev) {
       initStores(session.user.id)
     }
   })
+  _authUnsubscribe = () => subscription.unsubscribe()
 }
 
 async function signInWithProvider(provider: Provider): Promise<{ error: AuthError | null }> {
@@ -167,6 +169,12 @@ async function deleteAccount(): Promise<void> {
   await signOut()
 }
 
+function destroy(): void {
+  _authUnsubscribe?.()
+  _authUnsubscribe = null
+  _initialized = false
+}
+
 export function useAuth() {
-  return { user, loading, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount }
+  return { user, loading, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount, destroy }
 }
