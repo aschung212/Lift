@@ -1031,6 +1031,8 @@ interface PREntry extends WorkoutSet {
 }
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
+import { useRestTimer } from '../composables/useRestTimer'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
@@ -1040,7 +1042,7 @@ import { usePRBurst } from '../composables/usePRBurst'
 import { useNotification, useBackgroundTracker } from '../composables/useNotification'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
-import { THEMES } from '../composables/useTheme'
+import { THEMES } from '../lib/themes'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { logXPEvent } from '../lib/xpInstrumentation'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
@@ -1050,7 +1052,9 @@ const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
-const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
+const { currentTheme } = useTheme()
+const { restTimerEnabled, restTimerAutoStart, setRestTimerEnabled } = useRestTimer()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { impactLight, notifySuccess } = useHaptics()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()

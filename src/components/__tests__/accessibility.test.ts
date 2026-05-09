@@ -37,6 +37,13 @@ vi.mock('../../composables/useTheme', () => ({
   },
 }))
 
+vi.mock('../../composables/useWeightUnit', () => ({
+  useWeightUnit: () => ({
+    weightUnit: { value: 'lbs' },
+    displayWeight: (w: number) => w,
+    toLbs: (w: number) => w,
+  })
+}))
 import { getLocalStorageMock } from '../../__tests__/helpers'
 const localStorageMock = getLocalStorageMock()
 

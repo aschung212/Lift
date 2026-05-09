@@ -297,7 +297,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
-import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useTagVolume } from '../composables/useTagVolume'
@@ -306,7 +306,7 @@ import MuscleGroupChart from './MuscleGroupChart.vue'
 import MuscleGroupRecovery from './MuscleGroupRecovery.vue'
 
 const store = useWorkoutStore()
-const { weightUnit, displayWeight, toLbs } = useTheme()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { prBaselineDate } = usePRBaseline()
 const { logEvent } = useAnalytics()
 

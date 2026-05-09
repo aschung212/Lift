@@ -235,18 +235,20 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
-import { THEMES } from '../composables/useTheme'
+import { THEMES } from '../lib/themes'
 import { XP_CONFIG } from '../lib/xp'
 import { logBodyweightXPEvent } from '../lib/xpInstrumentation'
 
 const store = useBodyweightStore()
 const prefs = usePreferencesStore()
 const progressionStore = useProgressionStore()
-const { currentTheme, weightUnit, displayWeight, toLbs } = useTheme()
+const { currentTheme } = useTheme()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 

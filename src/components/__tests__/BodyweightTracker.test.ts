@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { BodyweightEntry } from '../../stores/bodyweight'
-import { getLocalStorageMock, mockAnalytics, mockTheme } from '../../__tests__/helpers'
+import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 vi.mock('../../stores/progression', () => ({
   useProgressionStore: () => ({
     progressionEnabled: false,

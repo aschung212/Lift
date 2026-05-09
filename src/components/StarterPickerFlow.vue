@@ -89,7 +89,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { THEME_PREVIEWS, type ThemeId } from '../composables/useTheme'
+import { THEME_PREVIEWS, type ThemeId } from '../lib/themes'
 import { XP_CONFIG } from '../lib/xp'
 import { useAnalytics } from '../composables/useAnalytics'
 
