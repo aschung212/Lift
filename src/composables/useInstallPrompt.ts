@@ -21,6 +21,8 @@ export interface InstallPromptState {
   dismiss: () => void
   /** Trigger the native install prompt (Chrome/Edge). No-op on iOS. */
   install: () => Promise<void>
+  /** Remove event listeners. Call when the consumer unmounts. */
+  destroy: () => void
 }
 
 /**
@@ -102,9 +104,14 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     localStorage.setItem(DISMISS_KEY, 'true')
   }
 
-  // Register listeners immediately — this composable lives for the app's lifetime
+  // Register listeners — cleaned up via destroy() if the consumer unmounts
   window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
   window.addEventListener('appinstalled', onAppInstalled)
+
+  function destroy() {
+    window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    window.removeEventListener('appinstalled', onAppInstalled)
+  }
 
   // iOS Safari: no beforeinstallprompt ever fires — show manual instructions
   if (isIOS && !isNative && !isStandalone()) {
@@ -140,5 +147,6 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     isIOSPrompt,
     dismiss,
     install,
+    destroy,
   }
 }

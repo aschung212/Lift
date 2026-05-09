@@ -38,6 +38,7 @@ export interface PRBurstPayload {
 
 const visible: Ref<boolean> = ref(false)
 const payload: Ref<PRBurstPayload | null> = ref(null)
+let dismissTimeoutId: ReturnType<typeof setTimeout> | null = null
 
 function presentPRBurst(p: PRBurstPayload): void {
   // Skip if the user opted out of PR celebrations (Settings → Experience).
@@ -69,10 +70,13 @@ function presentPRBurst(p: PRBurstPayload): void {
 
 function dismissPRBurst(): void {
   visible.value = false
+  // Clear any pending dismiss timeout before starting a new one
+  if (dismissTimeoutId !== null) clearTimeout(dismissTimeoutId)
   // Clear payload slightly after the fade-out so the component can animate
   // with the final values; a CSS transition handles opacity.
-  setTimeout(() => {
+  dismissTimeoutId = setTimeout(() => {
     if (!visible.value) payload.value = null
+    dismissTimeoutId = null
   }, 200)
 }
 

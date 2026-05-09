@@ -115,6 +115,38 @@ describe('usePRBurst', () => {
     expect(payload.value?.isFirstPR).toBe(false)
   })
 
+  it('dismissPRBurst clears pending timeout on re-dismiss', () => {
+    vi.useFakeTimers()
+    const { presentPRBurst, dismissPRBurst, payload } = usePRBurst()
+    presentPRBurst({
+      exerciseName: 'Hack Squat',
+      oldE1RM: 594,
+      newE1RM: 606,
+      setWeight: 505,
+      setReps: 6,
+    })
+
+    // First dismiss starts 200ms timeout
+    dismissPRBurst()
+
+    // Present again before timeout fires
+    presentPRBurst({
+      exerciseName: 'Bench Press',
+      oldE1RM: 200,
+      newE1RM: 225,
+      setWeight: 185,
+      setReps: 8,
+    })
+
+    // Second dismiss — should clear the first timeout
+    dismissPRBurst()
+
+    vi.advanceTimersByTime(200)
+    // Payload should be null (only one timeout fired)
+    expect(payload.value).toBeNull()
+    vi.useRealTimers()
+  })
+
   it('dismissPRBurst hides the overlay', () => {
     const { presentPRBurst, dismissPRBurst, visible } = usePRBurst()
     presentPRBurst({
