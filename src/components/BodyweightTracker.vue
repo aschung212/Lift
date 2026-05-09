@@ -238,17 +238,14 @@ import { useTheme } from '../composables/useTheme'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
-import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
-import { THEMES } from '../composables/useTheme'
-import { XP_CONFIG } from '../lib/xp'
-import { logBodyweightXPEvent } from '../lib/xpInstrumentation'
+import { useXPCeremony } from '../composables/useXPCeremony'
 
 const store = useBodyweightStore()
 const prefs = usePreferencesStore()
-const progressionStore = useProgressionStore()
 const { currentTheme, weightUnit, displayWeight, toLbs } = useTheme()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
+const { logBodyweightXPCeremony } = useXPCeremony()
 
 // ── Modal state ──────────────────────────────────────────────────
 const bwModalFocus = useFocusTrap()
@@ -324,25 +321,7 @@ function save() {
   } else {
     store.addEntry(toLbs(weight.value), date.value)
     logEvent('bodyweight_add')
-    // Award bodyweight logging XP
-    if (progressionStore.progressionEnabled) {
-      const dateKey = date.value.slice(0, 10)
-      const alreadyCredited = progressionStore.bodyweightXPDates.includes(dateKey)
-      progressionStore.logBodyweightXP(date.value)
-      const newUnlocks = progressionStore.checkUnlocks()
-      if (newUnlocks.length > 0) {
-        const theme = THEMES.find(t => t.id === newUnlocks[0])
-        if (theme) {
-          setTimeout(() => showUnlockCelebration(theme.id, theme.label), progressionStore.showProgression ? 1500 : 500)
-        }
-      }
-      if (!alreadyCredited) {
-        logBodyweightXPEvent(progressionStore._userId, date.value, XP_CONFIG.bodyweightXP, currentTheme.value, progressionStore.epoch)
-        if (progressionStore.showProgression) {
-          showXPToast(`+${XP_CONFIG.bodyweightXP} XP`, progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
-        }
-      }
-    }
+    logBodyweightXPCeremony({ date: date.value, activeTheme: currentTheme.value })
   }
   closeModal()
 }

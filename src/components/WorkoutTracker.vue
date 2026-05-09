@@ -1038,11 +1038,10 @@ import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
 import { useNotification, useBackgroundTracker } from '../composables/useNotification'
-import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
-import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
-import { logXPEvent } from '../lib/xpInstrumentation'
+import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseGraph from './ExerciseGraph.vue'
 
@@ -1052,6 +1051,7 @@ const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
 const { impactLight, notifySuccess } = useHaptics()
+const { logSetXPCeremony } = useXPCeremony()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
 const { notify: sendNotification, requestPermission: requestNotificationPermission } = useNotification()
@@ -1114,74 +1114,21 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
   if (xp === baseXP && mult > 1) {
     xp = Math.round(baseXP * mult)
   }
-  const setMeta = { theme: currentTheme.value, epoch: progressionStore.epoch, zone, isPR, isRepPR }
-
-  // Always record metadata (shadow ledger — enables per-theme stats even without progression)
-  progressionStore.recordSetXP(setId, xp, setMeta)
-
-  // Only credit XP and trigger progression effects when enabled
-  if (progressionStore.progressionEnabled) {
-    const wasTrialPeriod = !progressionStore.starterConfirmed
-    progressionStore.creditSetXP(setId, xp)
-
-    // Notify when starter locks in on first set
-    if (wasTrialPeriod && progressionStore.starterConfirmed) {
-      const starterLabel = THEMES.find(t => t.id === progressionStore.starterTheme)?.label
-      if (starterLabel) {
-        setTimeout(() => showXPToast(
-          `${starterLabel} locked in as your starter`,
-          progressionStore.progressPercent,
-          progressionStore.totalXP,
-          progressionStore.nextUnlockThreshold
-        ), 4500)
-      }
-    }
-    const newUnlocks = progressionStore.checkUnlocks()
-    if (newUnlocks.length > 0) {
-      const theme = THEMES.find(t => t.id === newUnlocks[0])
-      if (theme) {
-        setTimeout(() => {
-          showUnlockCelebration(theme.id, theme.label)
-          notifySuccess()
-        }, progressionStore.showProgression ? 1500 : 500)
-      }
-    }
-  }
-
-  logXPEvent({
-    userId: progressionStore._userId,
+  logSetXPCeremony({
     setId,
     exerciseId,
-    setDate: new Date().toISOString(),
+    xp,
     baseXP,
-    streakMultiplier: mult,
-    finalXP: xp,
+    zone,
     isPR,
     isTie,
     isRepPR,
-    zone,
     activeTheme: currentTheme.value,
-    epoch: progressionStore.epoch,
+    estimated1RM,
+    exerciseBest1RM: best1RM,
+    streakMultiplier: mult,
+    onUnlock: notifySuccess,
   })
-
-  if (progressionStore.progressionEnabled && progressionStore.showProgression) {
-    const parts: string[] = []
-
-    if (best1RM === null) {
-      parts.push('New Exercise')
-    } else {
-      const ratio = estimated1RM / best1RM
-      if (ratio > 1.0) parts.push(`PR! (${XP_CONFIG.prMultiplier}x)`)
-      else if (ratio === 1.0) parts.push(`Tied PR (${XP_CONFIG.tieMultiplier}x)`)
-      else if (ratio < XP_CONFIG.warmupThreshold) parts.push('Warmup')
-      else parts.push(`${Math.round(ratio * 100)}% of best`)
-    }
-    if (isRepPR) parts.push(`Rep PR (${XP_CONFIG.repPRMultiplier}x)`)
-    if (mult > 1) parts.push(`${mult}x streak`)
-    parts.push(`${xp} XP`)
-
-    showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
-  }
 }
 
 // ── Fresh-start transition card ─────────────────────────────────

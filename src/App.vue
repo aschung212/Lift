@@ -880,7 +880,8 @@ const BodyweightTracker = defineAsyncComponent({
 })
 import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
 import { usePRBaseline } from './composables/usePRBaseline'
-import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration, showXPToast } from './stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './stores/progression'
+import { useXPCeremony } from './composables/useXPCeremony'
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
@@ -927,6 +928,7 @@ function confirmStartNewTrainingBlock() {
 }
 const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
+const { celebrateUnlocks } = useXPCeremony()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
 
@@ -1512,14 +1514,8 @@ function runMigrationIfNeeded() {
       progressionStore.bodyweightXPDates = result.bodyweightXPDates
       const newUnlocks = progressionStore.checkUnlocks()
       progressionStore._persist()
-      // Show celebration for each unlocked theme sequentially
       if (newUnlocks.length > 0) {
-        newUnlocks.forEach((themeId, i) => {
-          const theme = THEMES.find(t => t.id === themeId)
-          if (theme) {
-            setTimeout(() => showUnlockCelebration(theme.id, theme.label), 500 + i * 2500)
-          }
-        })
+        celebrateUnlocks(newUnlocks)
       }
     }
     markMigrated()
