@@ -1788,6 +1788,36 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
 }
 
+.settingsRange {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.settingsRange::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.settingsRangeValue {
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  min-width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
 .exportBtnGroup {
   display: flex;
   gap: 8px;
@@ -2275,6 +2305,39 @@ html.theme-fading .settingsSheet {
 /* ─── Exercise list ─────────────────────────────────────────────────────── */
 
 /* ─── Timeline view ─────────────────────────────────────────────────────── */
+
+.wtTimelineControls {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 16px 0;
+}
+
+.wtWarmupToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  min-height: 32px;
+  font-size: var(--font-caption1);
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtWarmupToggle:active {
+  opacity: 0.7;
+}
+
+.wtWarmupToggleActive {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
 
 .wtTimeline {
   padding: 0 16px 16px;
