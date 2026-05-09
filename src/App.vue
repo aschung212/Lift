@@ -398,6 +398,37 @@
               </div>
             </div>
 
+            <div class="settingsGroup">
+              <div class="settingsHeader">Filters</div>
+              <div class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Warmup threshold</span>
+                  <span class="settingsHint">Sets below {{ Math.round(prefs.filters.warmupThreshold * 100) }}% of top e1RM are warmups</span>
+                </div>
+              </div>
+              <div class="settingsRow">
+                <input
+                  type="range"
+                  class="settingsRange"
+                  min="50"
+                  max="95"
+                  step="5"
+                  :value="Math.round(prefs.filters.warmupThreshold * 100)"
+                  @input="prefs.setWarmupThreshold(Number(($event.target as HTMLInputElement).value) / 100)"
+                  :aria-label="`Warmup threshold: ${Math.round(prefs.filters.warmupThreshold * 100)}%`"
+                  aria-valuemin="50"
+                  aria-valuemax="95"
+                  :aria-valuenow="Math.round(prefs.filters.warmupThreshold * 100)"
+                />
+                <span class="settingsRangeValue">{{ Math.round(prefs.filters.warmupThreshold * 100) }}%</span>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsHint">
+                  Use the "Hide warmups" toggle in the timeline or exercise detail to filter classified warmup sets from view.
+                </span>
+              </div>
+            </div>
+
             <!-- Dev tools — only on localhost/LAN -->
             <div v-if="isDev" class="settingsGroup">
               <div class="settingsHeader">Dev Tools</div>

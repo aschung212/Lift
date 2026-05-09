@@ -165,6 +165,18 @@
 
     <!-- Timeline view -->
     <template v-else-if="listView === 'timeline'">
+      <div class="wtTimelineControls">
+        <button
+          :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
+          @click="hideWarmups = !hideWarmups"
+          role="switch"
+          :aria-checked="hideWarmups"
+          :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+          <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
+        </button>
+      </div>
       <div v-if="timelineSets.length === 0" class="wtEmpty">
         No sets logged yet.
       </div>
@@ -192,8 +204,8 @@
             </div>
           </div>
         </template>
-        <button v-if="timelineLimit < timelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
-          Show more ({{ timelineSets.length - timelineLimit }} remaining)
+        <button v-if="timelineLimit < filteredTimelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
+          Show more ({{ filteredTimelineSets.length - timelineLimit }} remaining)
         </button>
       </div>
     </template>
@@ -229,6 +241,18 @@
 
           <!-- All Sets view -->
           <template v-if="detailTab === 'sets'">
+            <div v-if="detailExercise.sets.length > 1" class="wtTimelineControls">
+              <button
+                :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
+                @click="hideWarmups = !hideWarmups"
+                role="switch"
+                :aria-checked="hideWarmups"
+                :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+                <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
+              </button>
+            </div>
             <div class="wtSetList">
               <p v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</p>
               <template v-for="group in groupedSets" :key="group.key">
@@ -1060,8 +1084,19 @@ const { wasBackgrounded, startTracking: startBgTracking, stopTracking: stopBgTra
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
 import { usePreferencesStore } from '../stores/preferences'
+import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
+
+// ── Warmup set filtering (session-only toggle, not persisted) ───
+const hideWarmups = ref(false)
+const warmupSetIds = computed(() => {
+  if (!hideWarmups.value) return new Set<string>()
+  const exercises = store.exercises.map(ex => ({
+    sets: ex.sets.map(s => ({ id: s.id, date: s.date, estimated1RM: s.estimated1RM })),
+  }))
+  return buildWarmupSetIds(exercises, _prefs.filters.warmupThreshold)
+})
 
 // Filter sets to those on/after the user-set PR baseline.
 // When no baseline is set, returns sets unchanged (legacy all-time behavior).
@@ -1253,8 +1288,14 @@ const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
   return map
 })
 
+const filteredTimelineSets = computed(() => {
+  if (!hideWarmups.value) return timelineSets.value
+  const ids = warmupSetIds.value
+  return timelineSets.value.filter(e => !ids.has(e.set.id))
+})
+
 const visibleTimelineGroups = computed(() => {
-  const limited = timelineSets.value.slice(0, timelineLimit.value)
+  const limited = filteredTimelineSets.value.slice(0, timelineLimit.value)
   const groups: { key: string; label: string; sets: TimelineEntry[] }[] = []
   for (const entry of limited) {
     const k = toLocalDateKey(entry.set.date)
@@ -1709,7 +1750,11 @@ function visibleSets(exercise: Exercise): WorkoutSet[] {
 
 const groupedSets = computed(() => {
   if (!detailExercise.value) return []
-  const sets = visibleSets(detailExercise.value)
+  let sets = visibleSets(detailExercise.value)
+  if (hideWarmups.value) {
+    const ids = warmupSetIds.value
+    sets = sets.filter(s => !ids.has(s.id))
+  }
   const groups: { date: string; key: string; sets: WorkoutSet[] }[] = []
   for (const set of sets) {
     const k = toLocalDateKey(set.date)

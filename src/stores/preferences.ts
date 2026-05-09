@@ -56,6 +56,15 @@ const DEFAULT_EXPERIENCE: ExperienceFlags = {
   restTimerNotification: true,
 }
 
+export interface FilterSettings {
+  /** e1RM ratio threshold (0–1) below which a pre-top set is classified as warmup. Default 0.75 */
+  warmupThreshold: number
+}
+
+const DEFAULT_FILTERS: FilterSettings = {
+  warmupThreshold: 0.75,
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function _migrateWeightGoal(raw: any): WeightGoalConfig {
   // v1: string ('lose' | 'gain' | 'maintain')
@@ -77,6 +86,7 @@ export const usePreferencesStore = defineStore('preferences', {
     features: { ...DEFAULTS } as FeatureFlags,
     weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
     experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
+    filters: { ...DEFAULT_FILTERS } as FilterSettings,
     prBaselineDate: null as string | null,
     _userId: null as string | null,
   }),
@@ -87,6 +97,7 @@ export const usePreferencesStore = defineStore('preferences', {
         features: this.features,
         weightGoal: this.weightGoal,
         experience: this.experience,
+        filters: this.filters,
         prBaselineDate: this.prBaselineDate,
       }
       const data = JSON.stringify(payload)
@@ -119,6 +130,7 @@ export const usePreferencesStore = defineStore('preferences', {
         if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
         if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
         if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+        if (parsed.filters) this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
       } catch { /* ignore corrupt data */ }
     },
 
@@ -136,6 +148,9 @@ export const usePreferencesStore = defineStore('preferences', {
           }
           if (parsed.experience) {
             this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+          }
+          if (parsed.filters) {
+            this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
           }
           if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
             this.prBaselineDate = parsed.prBaselineDate
@@ -172,12 +187,15 @@ export const usePreferencesStore = defineStore('preferences', {
             if (prefs.experience) {
               this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
             }
+            if (prefs.filters) {
+              this.filters = { ...DEFAULT_FILTERS, ...(prefs.filters as Partial<FilterSettings>) }
+            }
             if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate as string)) {
               this.prBaselineDate = prefs.prBaselineDate as string
             } else if ('prBaselineDate' in prefs && prefs.prBaselineDate === null) {
               this.prBaselineDate = null
             }
-            const synced = JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, prBaselineDate: this.prBaselineDate })
+            const synced = JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, filters: this.filters, prBaselineDate: this.prBaselineDate })
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
           }
@@ -194,6 +212,11 @@ export const usePreferencesStore = defineStore('preferences', {
 
     setExperienceFlag<K extends keyof ExperienceFlags>(key: K, value: ExperienceFlags[K]) {
       this.experience[key] = value
+      this._persist()
+    },
+
+    setWarmupThreshold(threshold: number) {
+      this.filters.warmupThreshold = Math.max(0.5, Math.min(0.95, threshold))
       this._persist()
     },
 
