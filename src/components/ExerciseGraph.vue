@@ -82,6 +82,8 @@
 import { computed } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { usePRBaseline } from '../composables/usePRBaseline'
+import { useSVGTimeSeries } from '../composables/useSVGTimeSeries'
+import type { TimeSeriesPoint } from '../composables/useSVGTimeSeries'
 import type { Exercise } from '../stores/workout'
 
 const { weightUnit, displayWeight } = useTheme()
@@ -93,16 +95,6 @@ const props = defineProps<{
 }>()
 
 const mode = computed(() => props.mode ?? 'sets')
-
-// SVG layout constants
-const W = 320
-const H = 118
-const PAD_L = 56
-const PAD_R = 16
-const PAD_T = 16
-const PAD_B = 26
-const chartW = W - PAD_L - PAD_R
-const chartH = H - PAD_T - PAD_B
 
 // Best estimated1RM per calendar date, sorted chronologically.
 // Filters to sets on/after the PR baseline when set — keeps the graph aligned
@@ -133,93 +125,24 @@ const prOnly = computed((): [string, number][] => {
   return prs
 })
 
-const graphData = computed(() =>
-  mode.value === 'prs' ? prOnly.value : dailyBest.value
-)
-
-const minVal = computed(() => {
-  const vals = graphData.value.map(([, v]) => v)
-  return vals.length ? Math.min(...vals) : 0
+const graphData = computed((): TimeSeriesPoint[] => {
+  const raw = mode.value === 'prs' ? prOnly.value : dailyBest.value
+  return raw.map(([date, value]) => ({ date, value }))
 })
 
-const maxVal = computed(() => {
-  const vals = graphData.value.map(([, v]) => v)
-  return vals.length ? Math.max(...vals) : 0
-})
+const {
+  W, H, PAD_L, PAD_R, PAD_T, chartH,
+  minVal, maxVal,
+  points: basePoints,
+  linePoints, areaPoints, gridYs,
+  shouldShowLabel, formatDate,
+} = useSVGTimeSeries({ data: graphData })
 
-// Map each date → {x, y, date, e1rm, isPR}
-// Only the first date to reach the max e1RM is marked as PR
+// Extend base points with PR flag
 const points = computed(() => {
-  const entries = graphData.value
-  if (entries.length < 2) return []
-  const range = maxVal.value - minVal.value
-  const t0 = new Date(entries[0][0] + 'T12:00:00').getTime()
-  const t1 = new Date(entries[entries.length - 1][0] + 'T12:00:00').getTime()
-  const tRange = t1 - t0
-  // Find the earliest date that hit the max value
-  const prDate = entries.find(([, v]) => v === maxVal.value)?.[0] ?? ''
-
-  return entries.map(([date, e1rm]) => {
-    const t = new Date(date + 'T12:00:00').getTime()
-    const x = tRange > 0 ? PAD_L + ((t - t0) / tRange) * chartW : PAD_L + chartW / 2
-    const y = range > 0
-      ? PAD_T + chartH - ((e1rm - minVal.value) / range) * chartH
-      : PAD_T + chartH / 2
-    return { x, y, date, e1rm, isPR: date === prDate }
-  })
+  const pts = basePoints.value
+  if (!pts.length) return []
+  const prDate = graphData.value.find(d => d.value === maxVal.value)?.date ?? ''
+  return pts.map(p => ({ ...p, e1rm: p.value, isPR: p.date === prDate }))
 })
-
-// SVG polyline points string
-const linePoints = computed(() =>
-  points.value.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-)
-
-// Closed polygon for the shaded area under the line
-const areaPoints = computed(() => {
-  const pts = points.value
-  if (!pts.length) return ''
-  const bottom = PAD_T + chartH
-  return [
-    `${pts[0].x.toFixed(1)},${bottom}`,
-    ...pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`),
-    `${pts[pts.length - 1].x.toFixed(1)},${bottom}`
-  ].join(' ')
-})
-
-// Horizontal guide lines (top, middle, bottom of chart)
-const gridYs = computed(() => [
-  PAD_T,
-  PAD_T + chartH / 2,
-  PAD_T + chartH
-])
-
-const visibleLabelIndices = computed(() => {
-  const pts = points.value
-  if (pts.length === 0) return []
-  const MIN_GAP = 50
-  const indices = [0]
-  for (let i = 1; i < pts.length; i++) {
-    const lastX = pts[indices[indices.length - 1]].x
-    if (pts[i].x - lastX >= MIN_GAP) {
-      indices.push(i)
-    }
-  }
-  const last = pts.length - 1
-  if (!indices.includes(last) && pts[last].x - pts[indices[indices.length - 1]].x >= MIN_GAP) {
-    indices.push(last)
-  }
-  return indices
-})
-
-function shouldShowLabel(i: number) {
-  return visibleLabelIndices.value.includes(i)
-}
-
-function formatDate(iso: string) {
-  // Append noon to avoid off-by-one-day from UTC midnight
-  return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric'
-  })
-}
 </script>
