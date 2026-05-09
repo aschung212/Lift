@@ -480,14 +480,7 @@ function weightClass(weight: number): string {
 }
 
 // ── Graph ────────────────────────────────────────────────────────
-const W = 320
-const H = 118
-const PAD_L = 56
-const PAD_R = 16
-const PAD_T = 16
-const PAD_B = 26
-const chartW = W - PAD_L - PAD_R
-const chartH = H - PAD_T - PAD_B
+import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
 
 // Best (latest) weight per calendar date, sorted chronologically — all time
 const dailyLatest = computed(() => {
@@ -536,74 +529,44 @@ const goalValues = computed((): number[] => {
   return vals
 })
 
-const minVal = computed(() => {
-  const vals = filteredDaily.value.map(d => d.weight)
-  if (!vals.length) return 0
-  const dataMin = Math.min(...vals)
-  const dataMax = Math.max(...vals)
-  const dataRange = dataMax - dataMin || 1
-  // Expand to include goals, but cap expansion to 1x the data range
-  let min = dataMin
-  for (const g of goalValues.value) {
-    if (g < dataMin) min = Math.max(g, dataMin - dataRange)
-  }
-  return min
-})
+// Map filtered entries to the TimeSeriesEntry shape for the composable
+const graphEntries = computed((): TimeSeriesEntry[] =>
+  filteredDaily.value.map(d => ({ date: d.date, value: d.weight }))
+)
 
-const maxVal = computed(() => {
-  const vals = filteredDaily.value.map(d => d.weight)
-  if (!vals.length) return 0
-  const dataMin = Math.min(...vals)
-  const dataMax = Math.max(...vals)
-  const dataRange = dataMax - dataMin || 1
-  let max = dataMax
-  for (const g of goalValues.value) {
-    if (g > dataMax) max = Math.min(g, dataMax + dataRange)
-  }
-  return max
-})
-
-const points = computed(() => {
-  const entries = filteredDaily.value
-  if (entries.length < 2) return []
-  const range = maxVal.value - minVal.value
-  // Use the full selected period for the x-axis, not just the data range
+// Period-based time range: full selected period, not just data endpoints
+const periodTimeRange = computed(() => {
   const now = new Date()
   const periodStart = new Date()
   periodStart.setDate(now.getDate() - period.value)
-  const t0 = new Date(periodStart.toISOString().slice(0, 10) + 'T12:00:00').getTime()
-  const t1 = new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime()
-  const tRange = t1 - t0
-
-  return entries.map(({ date, weight }) => {
-    const t = new Date(date + 'T12:00:00').getTime()
-    const x = tRange > 0 ? PAD_L + ((t - t0) / tRange) * chartW : PAD_L + chartW / 2
-    const y = range > 0
-      ? PAD_T + chartH - ((weight - minVal.value) / range) * chartH
-      : PAD_T + chartH / 2
-    return { x, y, date, weight }
-  })
+  return {
+    t0: new Date(periodStart.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
+    t1: new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
+  }
 })
 
-const linePoints = computed(() =>
-  points.value.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+const {
+  W, H, PAD_L, PAD_R, PAD_T, chartH,
+  minVal, maxVal,
+  points: basePoints,
+  linePoints, gridYs,
+  shouldShowLabel, valueToY, formatDate,
+} = useSVGTimeSeries(graphEntries, {
+  timeRange: periodTimeRange,
+  extraYValues: goalValues,
+})
+
+// Extend base points with weight alias for template compatibility
+const points = computed(() =>
+  basePoints.value.map(p => ({ ...p, weight: p.value }))
 )
-
-const gridYs = computed(() => [PAD_T, PAD_T + chartH / 2, PAD_T + chartH])
-
-// Convert a weight value to a Y coordinate on the chart
-function weightToY(weight: number): number {
-  const range = maxVal.value - minVal.value
-  if (range <= 0) return PAD_T + chartH / 2
-  return PAD_T + chartH - ((weight - minVal.value) / range) * chartH
-}
 
 // Goal line for lose/gain modes — clamped to chart bounds
 const goalLine = computed((): { y: number; label: string; direction: 'above' | 'below' | 'in' } | null => {
   const { direction, loseTarget, gainTarget } = prefs.weightGoal
   const target = direction === 'lose' ? loseTarget : direction === 'gain' ? gainTarget : null
   if (target == null) return null
-  const rawY = weightToY(target)
+  const rawY = valueToY(target)
   const label = `${displayWeight(target)}`
   if (rawY < PAD_T) return { y: PAD_T, label, direction: 'above' }
   if (rawY > PAD_T + chartH) return { y: PAD_T + chartH, label, direction: 'below' }
@@ -615,8 +578,8 @@ const rangeBand = computed((): { y1: number; y2: number; topVisible: boolean; bo
   const { direction, maintainMin, maintainMax } = prefs.weightGoal
   if (direction !== 'maintain') return null
   if (maintainMin == null && maintainMax == null) return null
-  const rawTop = maintainMax != null ? weightToY(maintainMax) : null
-  const rawBottom = maintainMin != null ? weightToY(maintainMin) : null
+  const rawTop = maintainMax != null ? valueToY(maintainMax) : null
+  const rawBottom = maintainMin != null ? valueToY(maintainMin) : null
   const topVisible = rawTop != null && rawTop >= PAD_T && rawTop <= PAD_T + chartH
   const bottomVisible = rawBottom != null && rawBottom >= PAD_T && rawBottom <= PAD_T + chartH
   if (!topVisible && !bottomVisible) return null
@@ -627,36 +590,6 @@ const rangeBand = computed((): { y1: number; y2: number; topVisible: boolean; bo
     bottomVisible,
   }
 })
-
-const visibleLabelIndices = computed(() => {
-  const pts = points.value
-  if (pts.length === 0) return []
-  const MIN_GAP = 50
-  const indices = [0]
-  for (let i = 1; i < pts.length; i++) {
-    const lastX = pts[indices[indices.length - 1]].x
-    if (pts[i].x - lastX >= MIN_GAP) {
-      indices.push(i)
-    }
-  }
-  // Always include last point if it doesn't overlap
-  const last = pts.length - 1
-  if (!indices.includes(last) && pts[last].x - pts[indices[indices.length - 1]].x >= MIN_GAP) {
-    indices.push(last)
-  }
-  return indices
-})
-
-function shouldShowLabel(i: number): boolean {
-  return visibleLabelIndices.value.includes(i)
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric'
-  })
-}
 
 function formatDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
