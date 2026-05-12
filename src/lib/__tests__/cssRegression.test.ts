@@ -397,4 +397,74 @@ describe('CSS regression tests', () => {
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
   })
+
+  describe('WCAG 2.4.7/2.4.11 focus-visible indicators (#547)', () => {
+    // Regression: all form inputs had outline:none with only border-color on
+    // :focus — insufficient for WCAG 2.4.7 (Focus Visible) and 2.4.11 (Focus
+    // Appearance). Every input must have a :focus-visible rule with box-shadow.
+
+    const authStyle = getVueStyleBlock('AuthScreen.vue')
+
+    const focusInputs: { selector: string; source?: string }[] = [
+      { selector: '.settingsInput:focus-visible' },
+      { selector: '.wtSearchInput:focus-visible' },
+      { selector: '.wtTagInlineInput:focus-visible' },
+      { selector: '.logSetSheet .logSetFieldInput:focus-visible' },
+      { selector: '.wtRepsStepperInput:focus-visible' },
+      { selector: '.repMaxInput:focus-visible' },
+      { selector: '.iosStepperInput:focus-visible' },
+      { selector: '.wtTimerEditInput:focus-visible' },
+      { selector: '.deleteConfirmInput:focus-visible' },
+      { selector: '.settingsRange:focus-visible' },
+    ]
+
+    for (const { selector } of focusInputs) {
+      describe(selector, () => {
+        const lines = getRuleLines(selector)
+
+        it('exists', () => {
+          expect(lines.length, `${selector} rule missing`).toBeGreaterThan(0)
+        })
+
+        it('has box-shadow for visible focus ring', () => {
+          expect(lines.some(l => l.includes('box-shadow'))).toBe(true)
+        })
+      })
+    }
+
+    describe('.authInput:focus-visible (AuthScreen.vue)', () => {
+      const lines = getRuleLines('.authInput:focus-visible', authStyle)
+
+      it('exists', () => {
+        expect(lines.length, '.authInput:focus-visible rule missing').toBeGreaterThan(0)
+      })
+
+      it('has box-shadow for visible focus ring', () => {
+        expect(lines.some(l => l.includes('box-shadow'))).toBe(true)
+      })
+    })
+
+    it('no input :focus rules without :focus-visible in index.css (prevent regression)', () => {
+      // Ensure nobody re-adds plain :focus without the -visible suffix.
+      // Exclude :focus-visible and :focus-within which are valid.
+      const plainFocusRe = /^[^/]*:focus\s*\{/gm
+      const focusVisibleRe = /:focus-visible/
+      const focusWithinRe = /:focus-within/
+      const violations: string[] = []
+      const lines = css.split('\n')
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        if (plainFocusRe.test(line) && !focusVisibleRe.test(line) && !focusWithinRe.test(line)) {
+          // Allow non-input selectors (buttons, links, etc.) to keep :focus
+          if (/input|Input|Range/i.test(line)) {
+            violations.push(`L${i + 1}: ${line.trim()}`)
+          }
+        }
+        plainFocusRe.lastIndex = 0
+      }
+      if (violations.length > 0) {
+        expect.fail(`Found plain :focus (not :focus-visible) on input selectors:\n${violations.join('\n')}`)
+      }
+    })
+  })
 })
