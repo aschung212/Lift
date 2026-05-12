@@ -279,6 +279,35 @@ describe('CSS regression tests', () => {
       expect(lines.some(l => l.startsWith('clip: rect(0, 0, 0, 0)'))).toBe(true)
       expect(lines.some(l => l.startsWith('overflow: hidden'))).toBe(true)
     })
+
+    it('.srOnlyFocusable becomes visible on focus with proper styling', () => {
+      const lines = getRuleLines('.srOnly.srOnlyFocusable:focus')
+      expect(lines.length).toBeGreaterThan(0)
+      expect(lines.some(l => l.startsWith('position: fixed'))).toBe(true)
+      expect(lines.some(l => l.startsWith('clip: auto'))).toBe(true)
+      expect(lines.some(l => l.startsWith('overflow: visible'))).toBe(true)
+      expect(lines.some(l => l.startsWith('z-index: 10000'))).toBe(true)
+      expect(lines.some(l => l.startsWith('width: auto'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height: auto'))).toBe(true)
+    })
+  })
+
+  describe('WCAG 2.4.1 skip-to-content (LIFT-551)', () => {
+    const appVue = readFileSync(resolve(__dirname, '../../App.vue'), 'utf-8')
+
+    it('App.vue has a skip-to-content link targeting #main-content', () => {
+      expect(appVue).toContain('href="#main-content"')
+      expect(appVue).toContain('Skip to content')
+    })
+
+    it('App.vue has a main-content target element with tabindex=-1', () => {
+      expect(appVue).toContain('id="main-content"')
+      expect(appVue).toMatch(/id="main-content"[^>]*tabindex="-1"/)
+    })
+
+    it('skip link uses srOnly srOnlyFocusable classes', () => {
+      expect(appVue).toMatch(/class="srOnly srOnlyFocusable"[^>]*>Skip to content</)
+    })
   })
 
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {

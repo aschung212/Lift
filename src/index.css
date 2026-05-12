@@ -765,6 +765,28 @@ button, [role="tab"], [role="switch"], a {
   border: 0;
 }
 
+.srOnly.srOnlyFocusable:focus {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  width: auto;
+  height: auto;
+  padding: 12px 24px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: nowrap;
+  background: var(--bg-primary);
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
 /* ─── App shell ─────────────────────────────────────────────────────────── */
 
 #app {

@@ -12,6 +12,7 @@
 
     <!-- Authenticated app -->
     <template v-else>
+      <a href="#main-content" class="srOnly srOnlyFocusable">Skip to content</a>
       <main class="appContainer">
         <div v-if="isPreviewDeploy" class="previewBanner" role="status">
           <template v-if="isPreviewMode">
@@ -78,7 +79,7 @@
             </button>
           </div>
         </div>
-        <div ref="tabContentEl" class="tabContent">
+        <div id="main-content" ref="tabContentEl" class="tabContent" tabindex="-1">
           <KeepAlive>
             <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
             <CalendarView v-else-if="activeTab === 'calendar'" />
