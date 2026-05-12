@@ -372,6 +372,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         syncQueue.enqueue(`exercise:${ex.id}`, () =>
           supabase!.from('exercises').upsert({
             id: ex.id, user_id: userId, name: ex.name, tags: ex.tags,
+            archived_at: ex.archived_at ?? null,
             ...(ex.inputMode ? { input_mode: ex.inputMode } : {}), ...(ex.barWeight != null ? { bar_weight: ex.barWeight } : {})
           })
         )
@@ -398,6 +399,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         syncQueue.enqueue(`exercise:${ex.id}`, () =>
           supabase!.from('exercises').upsert({
             id: ex.id, user_id: userId, name: ex.name, tags: ex.tags,
+            archived_at: ex.archived_at ?? null,
             ...(ex.inputMode ? { input_mode: ex.inputMode } : {}), ...(ex.barWeight != null ? { bar_weight: ex.barWeight } : {})
           })
         )

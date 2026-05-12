@@ -1320,9 +1320,13 @@ const activeTagFilters = ref<string[]>([])
  * back off without clearing the search first.
  */
 const filteredTags = computed<string[]>(() => {
+  // Only surface tags that exist on at least one active (non-archived)
+  // exercise. Otherwise tapping a chip filters to an empty list because the
+  // archived section is hidden whenever a filter is active.
+  const activeTags = store.allTags.filter(t => (tagCounts.value[t] || 0) > 0)
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return store.allTags
-  return store.allTags.filter(t =>
+  if (!q) return activeTags
+  return activeTags.filter(t =>
     t.toLowerCase().includes(q) || activeTagFilters.value.includes(t)
   )
 })
@@ -1427,10 +1431,15 @@ const weeklyGoalInfo = computed(() => {
   return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
 })
 
-/** Count of exercises carrying each tag — powers the "Push 23" suffix on tag chips. */
+/**
+ * Count of exercises carrying each tag — powers the "Push 23" suffix on tag
+ * chips. Counts only active (non-archived) exercises so that the chip count
+ * matches what the tag filter will actually show. Tags that exist solely on
+ * archived exercises are filtered out by `filteredTags` below.
+ */
 const tagCounts = computed<Record<string, number>>(() => {
   const map: Record<string, number> = {}
-  for (const e of store.exercises) {
+  for (const e of store.activeExercises) {
     for (const t of e.tags || []) {
       map[t] = (map[t] || 0) + 1
     }

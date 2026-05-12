@@ -291,6 +291,19 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.wtArchivedActionBtn').trigger('click')
       expect(mockUnarchiveExercise).toHaveBeenCalledWith('ex-1')
     })
+
+    it('omits tags that exist only on archived exercises from the chip bar', () => {
+      // 'Legs' lives only on Squat. Archive Squat and 'Legs' should disappear
+      // from the chips — otherwise tapping it would filter to an empty list.
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      exercises[1].archived_at = '2026-05-01T00:00:00.000Z'
+      const wrapper = mountTracker()
+      const chips = wrapper.findAll('.wtTagChip').map(c => c.text())
+      const chipText = chips.join(' ')
+      expect(chipText).not.toContain('Legs')
+      expect(chipText).toContain('Chest')
+      expect(chipText).toContain('Push')
+    })
   })
 
   describe('tag filtering', () => {
