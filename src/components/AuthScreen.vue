@@ -68,7 +68,11 @@ import { useAnalytics } from '../composables/useAnalytics'
 
 const { signInWithProvider, signInWithEmail, signUp, devSignIn } = useAuth()
 const { logEvent } = useAnalytics()
-const isDev = import.meta.env.DEV
+// Show the dev sign-in button in local dev mode OR in CI e2e builds where
+// no Supabase backend is configured. import.meta.env values are inlined at
+// build time, so VITE_E2E is only true for the bundle produced by the
+// e2e CI job — real Vercel deploys do not set it.
+const isDev = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true'
 
 const email = ref('')
 const password = ref('')

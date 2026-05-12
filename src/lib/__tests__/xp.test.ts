@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   calculateSetXP,
   calculateBest1RM,
@@ -245,6 +245,19 @@ describe('calculateSetXP', () => {
 // --- calculateBest1RM ---
 
 describe('calculateBest1RM', () => {
+  // These tests use hardcoded 2026-01 … 2026-04 dates and rely on "now"
+  // being roughly mid-2026 for the 1- and 6-month windows to behave as
+  // written. Pin the clock so the suite doesn't silently start failing
+  // as wall-clock time drifts past those windows.
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-15T00:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('returns null for empty sets', () => {
     expect(calculateBest1RM([])).toBeNull()
   })

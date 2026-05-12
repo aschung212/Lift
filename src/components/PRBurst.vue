@@ -35,6 +35,7 @@
       </svg>
 
       <div class="prBurstContent">
+        <div v-if="payload?.isFirstPR" class="prBurstFirstBadge">Your First</div>
         <div class="prBurstEyebrow">🏆 Personal Record</div>
         <div class="prBurstDelta">+{{ deltaDisplay }} {{ unit }}</div>
         <div class="prBurstSubtitle">
@@ -56,10 +57,10 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, ref, onMounted } from 'vue'
 import { usePRBurst } from '../composables/usePRBurst'
-import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 
 const { visible, payload, presentPRBurst, dismissPRBurst } = usePRBurst()
-const { weightUnit, displayWeight } = useTheme()
+const { weightUnit, displayWeight } = useWeightUnit()
 
 // DEV-only: expose the trigger on window so we can visually verify the overlay
 // from Playwright/DevTools without needing a live PR. Stripped from prod builds
@@ -164,6 +165,18 @@ watch(visible, async (v) => {
   transform: translateY(-2vh);
 }
 
+.prBurstFirstBadge {
+  font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  text-shadow: 0 0 32px var(--accent-subtle, rgba(212, 175, 55, 0.40));
+  margin-bottom: 4px;
+  animation: prFirstBadgePop 500ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: 60ms;
+}
+
 .prBurstEyebrow {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 11px;
@@ -256,9 +269,15 @@ watch(visible, async (v) => {
   to   { transform: scale(1); opacity: 1; }
 }
 
+@keyframes prFirstBadgePop {
+  from { transform: scale(0.4) translateY(8px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .prRing,
-  .prBurstDelta {
+  .prBurstDelta,
+  .prBurstFirstBadge {
     animation: none !important;
   }
   .prBurst-enter-active,

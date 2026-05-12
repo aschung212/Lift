@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { BodyweightEntry } from '../../stores/bodyweight'
-import { getLocalStorageMock, mockAnalytics, mockTheme } from '../../__tests__/helpers'
+import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 vi.mock('../../stores/progression', () => ({
   useProgressionStore: () => ({
     progressionEnabled: false,
@@ -87,9 +88,13 @@ describe('BodyweightTracker', () => {
   })
 
   describe('empty state', () => {
-    it('shows empty message when no entries', () => {
+    it('shows value proposition and CTA when no entries', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtEmpty').text()).toContain('Log')
+      const empty = wrapper.find('.bwEmptyState')
+      expect(empty.exists()).toBe(true)
+      expect(empty.text()).toContain('Track your weight to spot trends')
+      expect(empty.text()).toContain('same time each day')
+      expect(empty.find('.bwEmptyCta').text()).toContain('+ Log')
     })
 
     it('renders "+ Log" button', () => {
@@ -737,6 +742,57 @@ describe('BodyweightTracker', () => {
       const wrapper = mountTracker()
       const hero = wrapper.find('.bwHero')
       expect(hero.find('.wtLogBtn').exists()).toBe(true)
+    })
+  })
+
+  describe('a11y: sentiment indicators (WCAG 1.4.1 — not color alone)', () => {
+    beforeEach(() => {
+      entries = [
+        makeEntry('e-1', 175, daysAgo(10)),
+        makeEntry('e-2', 172, daysAgo(7)),
+        makeEntry('e-3', 170, daysAgo(3)),
+        makeEntry('e-4', 169, daysAgo(1)),
+      ]
+    })
+
+    it('shows ✓ sentiment icon on change stat when direction is favorable', () => {
+      mockWeightGoal.direction = 'lose'
+      const wrapper = mountTracker()
+      const changeStat = wrapper.findAll('.bwStatCard')[0]
+      const sentiment = changeStat.find('.bwSentiment')
+      expect(sentiment.exists()).toBe(true)
+      expect(sentiment.text()).toBe('✓')
+      expect(sentiment.attributes('aria-label')).toBe('on track')
+    })
+
+    it('shows ✗ sentiment icon on change stat when direction is unfavorable', () => {
+      mockWeightGoal.direction = 'gain'
+      const wrapper = mountTracker()
+      const changeStat = wrapper.findAll('.bwStatCard')[0]
+      const sentiment = changeStat.find('.bwSentiment')
+      expect(sentiment.exists()).toBe(true)
+      expect(sentiment.text()).toBe('✗')
+      expect(sentiment.attributes('aria-label')).toBe('off track')
+    })
+
+    it('shows sentiment icons on entry deltas', () => {
+      mockWeightGoal.direction = 'lose'
+      const wrapper = mountTracker()
+      const sentiments = wrapper.findAll('.bwDelta .bwSentiment')
+      expect(sentiments.length).toBeGreaterThan(0)
+      // Losing weight when goal is "lose" should be on track
+      expect(sentiments.some(s => s.text() === '✓')).toBe(true)
+    })
+
+    it('does not show sentiment when goal is maintain and within range', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 165
+      mockWeightGoal.maintainMax = 180
+      const wrapper = mountTracker()
+      const changeStat = wrapper.findAll('.bwStatCard')[0]
+      const sentiment = changeStat.find('.bwSentiment')
+      // Within range → neutral → no sentiment shown
+      expect(sentiment.exists()).toBe(false)
     })
   })
 })

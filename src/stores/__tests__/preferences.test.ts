@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { usePreferencesStore } from '../preferences'
 import { getLocalStorageMock } from '../../__tests__/helpers'
+
+vi.mock('../../lib/durableStorage', () => ({
+  backupToIDB: vi.fn(),
+}))
 
 const localStorageMock = getLocalStorageMock()
 
@@ -67,6 +71,18 @@ describe('usePreferencesStore', () => {
       store.toggleFeature('calendar')
       const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
       expect(stored.features.calendar).toBe(false)
+    })
+
+    it('backs up to IndexedDB on persist', async () => {
+      const { backupToIDB } = await import('../../lib/durableStorage')
+      vi.mocked(backupToIDB).mockClear()
+
+      store.toggleFeature('calendar')
+
+      expect(backupToIDB).toHaveBeenCalledWith(
+        'user-preferences',
+        expect.stringContaining('"calendar":false'),
+      )
     })
 
     it('loads persisted state from localStorage on init', async () => {
@@ -311,6 +327,90 @@ describe('usePreferencesStore', () => {
 
       expect(freshStore.experience.prCelebrations).toBe(true)
       expect(freshStore.experience.haptics).toBe(true)
+    })
+  })
+
+  describe('prBaselineDate', () => {
+    it('defaults to null', () => {
+      expect(store.prBaselineDate).toBeNull()
+    })
+
+    it('setPRBaselineDate sets and persists a valid date', () => {
+      store.setPRBaselineDate('2026-01-15')
+      expect(store.prBaselineDate).toBe('2026-01-15')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.prBaselineDate).toBe('2026-01-15')
+    })
+
+    it('setPRBaselineDate rejects invalid dates', () => {
+      store.setPRBaselineDate('2026-01-15')
+      store.setPRBaselineDate('bad-date')
+      expect(store.prBaselineDate).toBe('2026-01-15')
+    })
+
+    it('setPRBaselineDate accepts null to clear', () => {
+      store.setPRBaselineDate('2026-01-15')
+      store.setPRBaselineDate(null)
+      expect(store.prBaselineDate).toBeNull()
+    })
+
+    it('startNewTrainingBlock sets today', () => {
+      store.startNewTrainingBlock()
+      const d = new Date()
+      const expected = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      expect(store.prBaselineDate).toBe(expected)
+    })
+
+    it('clearPRBaseline sets to null', () => {
+      store.setPRBaselineDate('2026-01-15')
+      store.clearPRBaseline()
+      expect(store.prBaselineDate).toBeNull()
+    })
+
+    it('init loads prBaselineDate from localStorage', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        prBaselineDate: '2026-04-01',
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.prBaselineDate).toBe('2026-04-01')
+    })
+
+    it('init migrates from old pr-baseline-date localStorage key', async () => {
+      localStorageMock.setItem('pr-baseline-date', '2026-03-15')
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.prBaselineDate).toBe('2026-03-15')
+      expect(localStorageMock.getItem('pr-baseline-date')).toBeNull()
+    })
+
+    it('init does not migrate invalid legacy values', async () => {
+      localStorageMock.setItem('pr-baseline-date', 'not-a-date')
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.prBaselineDate).toBeNull()
+    })
+
+    it('prBaselineDate is included in persist payload', () => {
+      store.setPRBaselineDate('2026-05-01')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.prBaselineDate).toBe('2026-05-01')
+      expect(stored.features).toBeDefined()
+      expect(stored.weightGoal).toBeDefined()
+      expect(stored.experience).toBeDefined()
     })
   })
 })

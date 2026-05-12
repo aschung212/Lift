@@ -71,6 +71,11 @@
         </div>
       </div>
 
+      <!-- First-use empty state (no workout data at all) -->
+      <p v-if="!hasAnyData && !selectedDay" class="wtEmpty calEmptyState">
+        Log your first workout on the Workouts tab to see it here.
+      </p>
+
       <!-- Selected day detail -->
       <div v-if="selectedDay" class="calDetail">
         <div class="calDetailHeader">
@@ -190,6 +195,11 @@
         </div>
       </div>
 
+      <!-- First-use empty state (no workout data at all) -->
+      <p v-if="!hasAnyData" class="wtEmpty calEmptyState">
+        Log your first workout on the Workouts tab to see it here.
+      </p>
+
       <MuscleGroupRecovery
         v-if="hasRecoveryData"
         :recovery="tagRecovery"
@@ -287,7 +297,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
-import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useTagVolume } from '../composables/useTagVolume'
@@ -296,7 +306,7 @@ import MuscleGroupChart from './MuscleGroupChart.vue'
 import MuscleGroupRecovery from './MuscleGroupRecovery.vue'
 
 const store = useWorkoutStore()
-const { weightUnit, displayWeight, toLbs } = useTheme()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { prBaselineDate } = usePRBaseline()
 const { logEvent } = useAnalytics()
 
@@ -346,6 +356,11 @@ function toLocalDateStr(d: Date) {
 }
 
 const todayStr = toLocalDateStr(new Date())
+
+// True when the user has zero sets across all exercises (brand-new account)
+const hasAnyData = computed(() =>
+  store.exercises.some(e => e.sets.length > 0)
+)
 
 // Map YYYY-MM-DD → unique exercise names (respects tag filter)
 const trainingMap = computed(() => {

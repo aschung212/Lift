@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { getLocalStorageMock } from './helpers'
+import { getLocalStorageMock, makeSet, makeExercise } from './helpers'
 
 const localStorageMock = getLocalStorageMock()
 
@@ -34,26 +34,7 @@ import {
   type StreakHistoryEntry,
 } from '../lib/xp'
 import { computeRetroactiveXP, isMigrated, markMigrated, clearMigrationFlag } from '../lib/xpMigration'
-import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
-
-// ── Helpers ─────────────────────────────────────────────────────
-
-function makeSet(overrides: Partial<WorkoutSet> & { weight: number; reps: number }): WorkoutSet {
-  const w = overrides.weight
-  const r = overrides.reps
-  return {
-    id: overrides.id || `set-${Math.random().toString(36).slice(2)}`,
-    date: overrides.date || '2026-04-01T12:00:00Z',
-    weight: w,
-    reps: r,
-    estimated1RM: overrides.estimated1RM ?? (r === 1 ? Math.round(w) : Math.round(w * (1 + r / 30))),
-  }
-}
-
-function makeExercise(name: string, sets: WorkoutSet[]): Exercise {
-  return { id: `ex-${name}`, name, tags: [], sets }
-}
 
 // ── Happy path ──────────────────────────────────────────────────
 
@@ -445,7 +426,7 @@ describe('Progression Integration', () => {
     })
   })
 
-  // ── Startup streak evaluation (LIFT-142) ──────────────────────
+  // ── Startup streak evaluation ──────────────────────────────────
   describe('startup streak evaluation', () => {
     it('evaluatePendingWeeks catches up missed weeks on startup', () => {
       const store = useProgressionStore()

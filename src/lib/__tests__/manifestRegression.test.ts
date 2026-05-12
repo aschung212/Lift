@@ -21,6 +21,61 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('manifest includes display_override for fallback chain', () => {
+    it('has display_override array with standalone and minimal-ui', () => {
+      expect(viteConfig).toContain("display_override: ['standalone', 'minimal-ui']")
+    })
+  })
+
+  describe('manifest includes shortcuts for quick actions', () => {
+    it('has shortcuts array defined', () => {
+      expect(viteConfig).toContain('shortcuts: [')
+    })
+
+    it('has a workout shortcut with ?tab=workouts URL', () => {
+      expect(viteConfig).toContain("url: '/?tab=workouts'")
+    })
+
+    it('has a calendar shortcut with ?tab=calendar URL', () => {
+      expect(viteConfig).toContain("url: '/?tab=calendar'")
+    })
+
+    it('has a weight shortcut with ?tab=weight URL', () => {
+      expect(viteConfig).toContain("url: '/?tab=weight'")
+    })
+
+    it('shortcuts reference existing icon files', () => {
+      // All shortcuts use icon-192.png
+      expect(existsSync(resolve(publicDir, 'icon-192.png'))).toBe(true)
+    })
+  })
+
+  describe('workbox includes navigateFallback for offline navigation', () => {
+    it('has navigateFallback set to index.html', () => {
+      expect(viteConfig).toContain("navigateFallback: 'index.html'")
+    })
+
+    it('has navigateFallbackDenylist to exclude API routes', () => {
+      expect(viteConfig).toContain('navigateFallbackDenylist:')
+    })
+
+    it('offline.html exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'offline.html'))).toBe(true)
+    })
+  })
+
+  describe('workbox enables navigation preload for faster navigations', () => {
+    it('has navigationPreload: true in workbox config', () => {
+      expect(viteConfig).toContain('navigationPreload: true')
+    })
+  })
+
+  describe('manifest includes launch_handler for single-window behavior', () => {
+    it('has launch_handler with navigate-existing client_mode', () => {
+      expect(viteConfig).toContain("client_mode: 'navigate-existing'")
+    })
+  })
+
   describe('manifest includes screenshots for richer install UI', () => {
     it('has narrow (mobile) screenshot entries', () => {
       expect(viteConfig).toContain("form_factor: 'narrow'")
@@ -36,6 +91,28 @@ describe('PWA manifest regression tests', () => {
 
     it('calendar screenshot file exists in public/', () => {
       expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
+    })
+  })
+
+  describe('workbox globIgnores excludes non-essential large assets from precache', () => {
+    it('excludes screenshot PNGs from precache', () => {
+      expect(viteConfig).toContain("'screenshot-*.png'")
+    })
+
+    it('excludes og-image.png from precache', () => {
+      expect(viteConfig).toContain("'og-image.png'")
+    })
+
+    it('excludes icon-source.png from precache', () => {
+      expect(viteConfig).toContain("'icon-source.png'")
+    })
+
+    it('excludes og-preview.html from precache', () => {
+      expect(viteConfig).toContain("'og-preview.html'")
+    })
+
+    it('has globIgnores array in workbox config', () => {
+      expect(viteConfig).toContain('globIgnores:')
     })
   })
 })

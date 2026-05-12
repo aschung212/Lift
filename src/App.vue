@@ -12,6 +12,7 @@
 
     <!-- Authenticated app -->
     <template v-else>
+      <a href="#main-content" class="srOnly srOnlyFocusable">Skip to content</a>
       <main class="appContainer">
         <div v-if="isPreviewDeploy" class="previewBanner" role="status">
           <template v-if="isPreviewMode">
@@ -26,6 +27,30 @@
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
+
+        <!-- PWA install banner -->
+        <Transition name="installBanner">
+          <div v-if="installBannerVisible" class="installBanner" role="banner">
+            <div class="installBannerContent">
+              <div class="installBannerText">
+                <strong class="installBannerTitle">Install Lift</strong>
+                <span v-if="isIOSPrompt" class="installBannerDesc">
+                  Tap
+                  <svg class="installBannerShareIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share icon"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                  then "Add to Home Screen"
+                </span>
+                <span v-else class="installBannerDesc">Add to your home screen for the full experience</span>
+              </div>
+              <div class="installBannerActions">
+                <button v-if="!isIOSPrompt" class="installBannerBtn installBannerInstall" @click="triggerInstall">Install</button>
+                <button class="installBannerBtn installBannerDismiss" @click="dismissInstallBanner" aria-label="Dismiss install banner">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+
         <div class="appTopBar">
           <div class="appTopBarLeft">
             <button
@@ -54,9 +79,13 @@
             </button>
           </div>
         </div>
-        <div v-show="activeTab === 'workouts'" class="tabContent"><WorkoutTracker ref="workoutTrackerRef" /></div>
-        <div v-show="activeTab === 'calendar'" class="tabContent"><CalendarView /></div>
-        <div v-show="activeTab === 'weight'" class="tabContent"><BodyweightTracker /></div>
+        <div id="main-content" ref="tabContentEl" class="tabContent" tabindex="-1">
+          <KeepAlive>
+            <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
+            <CalendarView v-else-if="activeTab === 'calendar'" />
+            <BodyweightTracker v-else-if="activeTab === 'weight'" />
+          </KeepAlive>
+        </div>
       </main>
 
       <!-- Tab bar -->
@@ -209,6 +238,21 @@
               </div>
               <div class="settingsRow">
                 <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Keep screen on</span>
+                  <span class="settingsHint">During rest timer and logging</span>
+                </div>
+                <button
+                  :class="['glassToggle', { on: prefs.experience.screenWakeLock }]"
+                  @click="toggleExperience('screenWakeLock')"
+                  role="switch"
+                  :aria-checked="prefs.experience.screenWakeLock"
+                  :aria-label="prefs.experience.screenWakeLock ? 'Disable screen wake lock' : 'Enable screen wake lock'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+              <div class="settingsRow">
+                <div class="settingsLabelGroup">
                   <span class="settingsLabel">Rest Timer</span>
                   <span v-if="restTimerEnabled && restTimerAutoStart" class="settingsHint">Auto-start after save</span>
                 </div>
@@ -230,6 +274,21 @@
                   role="switch"
                   :aria-checked="restTimerAutoStart"
                   :aria-label="restTimerAutoStart ? 'Disable auto-start' : 'Enable auto-start'"
+                >
+                  <span class="glassToggleThumb"></span>
+                </button>
+              </div>
+              <div v-show="restTimerEnabled" class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel settingsLabelIndented">Notify when done</span>
+                  <span class="settingsHint">When app is in background</span>
+                </div>
+                <button
+                  :class="['glassToggle', { on: prefs.experience.restTimerNotification }]"
+                  @click="toggleExperience('restTimerNotification')"
+                  role="switch"
+                  :aria-checked="prefs.experience.restTimerNotification"
+                  :aria-label="prefs.experience.restTimerNotification ? 'Disable rest timer notification' : 'Enable rest timer notification'"
                 >
                   <span class="glassToggleThumb"></span>
                 </button>
@@ -340,6 +399,37 @@
               </div>
             </div>
 
+            <div class="settingsGroup">
+              <div class="settingsHeader">Filters</div>
+              <div class="settingsRow">
+                <div class="settingsLabelGroup">
+                  <span class="settingsLabel">Warmup threshold</span>
+                  <span class="settingsHint">Sets below {{ Math.round(prefs.filters.warmupThreshold * 100) }}% of top e1RM are warmups</span>
+                </div>
+              </div>
+              <div class="settingsRow">
+                <input
+                  type="range"
+                  class="settingsRange"
+                  min="50"
+                  max="95"
+                  step="5"
+                  :value="Math.round(prefs.filters.warmupThreshold * 100)"
+                  @input="prefs.setWarmupThreshold(Number(($event.target as HTMLInputElement).value) / 100)"
+                  :aria-label="`Warmup threshold: ${Math.round(prefs.filters.warmupThreshold * 100)}%`"
+                  aria-valuemin="50"
+                  aria-valuemax="95"
+                  :aria-valuenow="Math.round(prefs.filters.warmupThreshold * 100)"
+                />
+                <span class="settingsRangeValue">{{ Math.round(prefs.filters.warmupThreshold * 100) }}%</span>
+              </div>
+              <div class="settingsRow">
+                <span class="settingsHint">
+                  Use the "Hide warmups" toggle in the timeline or exercise detail to filter classified warmup sets from view.
+                </span>
+              </div>
+            </div>
+
             <!-- Dev tools — only on localhost/LAN -->
             <div v-if="isDev" class="settingsGroup">
               <div class="settingsHeader">Dev Tools</div>
@@ -440,6 +530,13 @@
                   <button class="exportBtn" @click="triggerImport" aria-label="Import workout data from CSV">CSV</button>
                 </div>
                 <input ref="importFileInput" type="file" accept=".csv" class="hiddenFileInput" aria-label="Import CSV file" @change="handleImportFile" />
+              </div>
+              <div class="settingsRow">
+                <span class="settingsLabel">Report</span>
+                <div class="exportBtnGroup">
+                  <button v-for="p in (['month', 'quarter', 'year'] as const)" :key="p" class="exportBtn" :class="{ exportBtnActive: reportPeriod === p }" :aria-label="`${p} training report`" :aria-pressed="reportPeriod === p" @click="reportPeriod = p">{{ p === 'quarter' ? 'Quarter' : p === 'year' ? 'Year' : 'Month' }}</button>
+                  <button class="exportBtn exportBtnPrimary" aria-label="Generate training report" @click="generateReport">Generate</button>
+                </div>
               </div>
               <div v-if="importResult" class="settingsImportResult" role="status">
                 <span v-if="importResult.error" class="settingsImportError">{{ importResult.error }}</span>
@@ -551,7 +648,6 @@
             <div class="legalBody">
               <!-- Privacy Policy -->
               <template v-if="legalView === 'privacy'">
-                <p class="legalUpdated">Last updated: March 31, 2026</p>
                 <h4 class="legalH4">What We Collect</h4>
                 <p>Lift collects only the data you explicitly enter: exercises, sets, reps, weights, and bodyweight entries. If you create an account, we store your email address for authentication.</p>
                 <h4 class="legalH4">How Data Is Stored</h4>
@@ -570,7 +666,6 @@
               </template>
               <!-- Terms of Service -->
               <template v-else>
-                <p class="legalUpdated">Last updated: March 31, 2026</p>
                 <h4 class="legalH4">Acceptance</h4>
                 <p>By using Lift, you agree to these terms. If you do not agree, please do not use the app.</p>
                 <h4 class="legalH4">Description</h4>
@@ -815,15 +910,19 @@ const BodyweightTracker = defineAsyncComponent({
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
-import { useTheme, connectProgressionStore, type ThemeId } from './composables/useTheme'
+import { useTheme, connectProgressionStore } from './composables/useTheme'
+import type { ThemeId } from './lib/themes'
 import { usePRBaseline } from './composables/usePRBaseline'
-import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showUnlockCelebration, showXPToast } from './stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './stores/progression'
+import { useXPCeremony } from './composables/useXPCeremony'
 import { computeThemeStats, type ThemeStats } from './lib/themeStats'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage, clearIDB } from './lib/durableStorage'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from './lib/dataExport'
+import { buildTrainingReport, type ReportPeriod } from './lib/trainingReport'
+import { renderReport, openReportWindow } from './lib/reportRenderer'
 import { importCSV } from './lib/csvImport'
 import { usePreferencesStore } from './stores/preferences'
 import type { WeightGoalDirection } from './stores/preferences'
@@ -834,7 +933,9 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useSwipeToDismiss } from './composables/useSwipeToDismiss'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useInstallPrompt } from './composables/useInstallPrompt'
 import { registerSW } from 'virtual:pwa-register'
+import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
 
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
@@ -860,6 +961,7 @@ function confirmStartNewTrainingBlock() {
 }
 const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
+const { celebrateUnlocks } = useXPCeremony()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
 
@@ -932,6 +1034,11 @@ const { user, loading, init: initAuth, signOut, deleteAccount } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+
+// ── PWA install prompt ──────────────────────────────────────────
+const workoutStoreForInstall = useWorkoutStore()
+const installWorkoutDays = computed(() => workoutStoreForInstall.workoutDates.length)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -1068,7 +1175,9 @@ function clearSampleData() {
   }
   bwStore.clearAll()
   localStorage.removeItem('sample-data')
+  localStorage.setItem('fresh-start', 'true')
   hasSampleData.value = false
+  window.dispatchEvent(new CustomEvent('fresh-start'))
 }
 
 function closeSettings() {
@@ -1086,7 +1195,19 @@ function closeSettings() {
     settingsOpen.value = false
   }, { once: true })
 }
-const activeTab = ref(localStorage.getItem('active-tab') || 'workouts')
+// ── Tab initialization (supports PWA manifest shortcuts via ?tab= param) ──
+const VALID_TABS = ['workouts', 'calendar', 'weight'] as const
+const urlTab = new URLSearchParams(window.location.search).get('tab')
+const initialTab = urlTab && VALID_TABS.includes(urlTab as typeof VALID_TABS[number])
+  ? urlTab
+  : localStorage.getItem('active-tab') || 'workouts'
+const activeTab = ref(initialTab)
+// Clean up the query param so it doesn't persist on reload
+if (urlTab) {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('tab')
+  window.history.replaceState({}, '', url.pathname)
+}
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────
 const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeShortcuts } = useKeyboardShortcuts(() => [
@@ -1182,19 +1303,33 @@ const tabIndicatorStyle = computed(() => {
 // Fall back if active tab gets disabled
 watch(() => prefs.features, () => {
   if (!prefs.features[activeTab.value]) {
-    activeTab.value = visibleTabs.value[0]?.id || 'workouts'
+    switchTab(visibleTabs.value[0]?.id || 'workouts')
   }
 }, { deep: true })
+
+// ── Tab scroll position preservation ─────────────────────────────
+const tabContentEl = ref<HTMLElement | null>(null)
+const tabScrollPositions: Record<string, number> = {}
 
 // ── Analytics ────────────────────────────────────────────────────
 function switchTab(tabId: string) {
   const from = activeTab.value
   closeSettings()
   if (from === tabId) return
+  // Save scroll position of outgoing tab
+  if (tabContentEl.value) {
+    tabScrollPositions[from] = tabContentEl.value.scrollTop
+  }
   activeTab.value = tabId
   localStorage.setItem('active-tab', tabId)
   tabSwitch(from, tabId)
   checkForSWUpdate()
+  // Restore scroll position of incoming tab (default to top)
+  nextTick(() => {
+    if (tabContentEl.value) {
+      tabContentEl.value.scrollTop = tabScrollPositions[tabId] ?? 0
+    }
+  })
 }
 
 function selectTheme(id: string) {
@@ -1412,14 +1547,8 @@ function runMigrationIfNeeded() {
       progressionStore.bodyweightXPDates = result.bodyweightXPDates
       const newUnlocks = progressionStore.checkUnlocks()
       progressionStore._persist()
-      // Show celebration for each unlocked theme sequentially
       if (newUnlocks.length > 0) {
-        newUnlocks.forEach((themeId, i) => {
-          const theme = THEMES.find(t => t.id === themeId)
-          if (theme) {
-            setTimeout(() => showUnlockCelebration(theme.id, theme.label), 500 + i * 2500)
-          }
-        })
+        celebrateUnlocks(newUnlocks)
       }
     }
     markMigrated()
@@ -1560,7 +1689,7 @@ function setMode(mode: 'light' | 'dark' | 'auto') {
   logEvent('mode_toggle', { mode })
 }
 
-function toggleExperience(key: 'prCelebrations' | 'haptics') {
+function toggleExperience(key: 'prCelebrations' | 'haptics' | 'screenWakeLock' | 'restTimerNotification') {
   const next = !prefs.experience[key]
   prefs.setExperienceFlag(key, next)
   logEvent('experience_toggle', { key, enabled: next })
@@ -1648,6 +1777,24 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+// ── Training Report ─────────────────────────────────────────────
+const reportPeriod = ref<ReportPeriod>('month')
+
+function generateReport() {
+  const workoutStore = useWorkoutStore()
+  const bwStore = useBodyweightStore()
+  const report = buildTrainingReport({
+    exercises: workoutStore.exercises,
+    bodyweight: bwStore.sortedEntries,
+    period: reportPeriod.value,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value === 'kg' ? 'kg' : 'lbs',
+  })
+  const html = renderReport(report)
+  openReportWindow(html)
+  logEvent('training_report', { period: reportPeriod.value })
 }
 
 // ── CSV Import ──────────────────────────────────────────────────
@@ -1766,6 +1913,7 @@ onMounted(async () => {
     ensureLocalStorage('workout-exercises'),
     ensureLocalStorage('bodyweight-entries'),
     ensureLocalStorage('user-progression'),
+    ensureLocalStorage('user-preferences'),
   ])
   if (restored.some(r => r)) {
     // Data was restored from backup — reload stores
@@ -1779,8 +1927,25 @@ onMounted(async () => {
   if (progressionStore.progressionEnabled) {
     catchUpStreaks()
   }
+
+  // Cross-tab sync: reload stores when another tab persists data
+  const storeMap: Record<StoreKey, { _reloadFromStorage(): void }> = {
+    workout: useWorkoutStore(),
+    bodyweight: useBodyweightStore(),
+    preferences: usePreferencesStore(),
+    progression: progressionStore,
+  }
+  unsubCrossTab = onCrossTabMessage((msg) => {
+    if (msg.type === 'store-update') {
+      storeMap[msg.store]?._reloadFromStorage()
+    } else if (msg.type === 'sync-status') {
+      syncStatus.value = msg.status
+    }
+  })
 })
+let unsubCrossTab: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  unsubCrossTab?.()
 })
 </script>

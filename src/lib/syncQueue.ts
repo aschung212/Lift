@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { supabase, isPreviewMode } from './supabase'
 import { logError, logWarn } from './logger'
+import { broadcastSyncStatus } from './crossTabSync'
 
 type SyncOperation = () => PromiseLike<unknown>
 
@@ -119,6 +120,7 @@ export class SyncQueue {
           trip_count: _circuitTripCount,
         })
         syncStatus.value = 'error'
+        broadcastSyncStatus('error')
         return
       }
 
@@ -146,6 +148,7 @@ export class SyncQueue {
           },
         )
         syncStatus.value = 'error'
+        broadcastSyncStatus('error')
         return
       }
 
@@ -165,6 +168,7 @@ export class SyncQueue {
 
     this._flushing = true
     syncStatus.value = 'syncing'
+    broadcastSyncStatus('syncing')
     const entries = [...this._queue.entries()]
     this._queue.clear()
 
@@ -192,7 +196,9 @@ export class SyncQueue {
         }
       })
       if (this._retryQueue.size > 0) this._scheduleRetry()
-      syncStatus.value = hasFailure ? 'error' : 'synced'
+      const newStatus = hasFailure ? 'error' : 'synced' as const
+      syncStatus.value = newStatus
+      broadcastSyncStatus(newStatus)
     } finally {
       this._flushing = false
       if (this._queue.size > 0) this._scheduleFlush()
