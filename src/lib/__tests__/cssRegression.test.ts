@@ -279,6 +279,16 @@ describe('CSS regression tests', () => {
       expect(lines.some(l => l.startsWith('clip: rect(0, 0, 0, 0)'))).toBe(true)
       expect(lines.some(l => l.startsWith('overflow: hidden'))).toBe(true)
     })
+
+    it('has a focusable variant that becomes visible on :focus (WCAG 2.4.1)', () => {
+      const lines = getRuleLines('.srOnly.srOnlyFocusable:focus')
+      expect(lines.length).toBeGreaterThan(0)
+      expect(lines.some(l => l.startsWith('position: fixed'))).toBe(true)
+      expect(lines.some(l => l.startsWith('clip: auto'))).toBe(true)
+      expect(lines.some(l => l.startsWith('width: auto'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height: auto'))).toBe(true)
+      expect(lines.some(l => l.startsWith('overflow: visible'))).toBe(true)
+    })
   })
 
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {

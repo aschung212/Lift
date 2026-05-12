@@ -13,6 +13,7 @@
     <!-- Authenticated app -->
     <template v-else>
       <main class="appContainer">
+        <a href="#main-content" class="srOnly srOnlyFocusable">Skip to content</a>
         <div v-if="isPreviewDeploy" class="previewBanner" role="status">
           <template v-if="isPreviewMode">
             Preview mode — changes stay local
@@ -78,7 +79,7 @@
             </button>
           </div>
         </div>
-        <div ref="tabContentEl" class="tabContent">
+        <div ref="tabContentEl" id="main-content" class="tabContent" tabindex="-1">
           <KeepAlive>
             <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
             <CalendarView v-else-if="activeTab === 'calendar'" />

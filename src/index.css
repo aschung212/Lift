@@ -765,6 +765,30 @@ button, [role="tab"], [role="switch"], a {
   border: 0;
 }
 
+/* Visible when focused — used for skip-to-content link (WCAG 2.4.1) */
+.srOnly.srOnlyFocusable:focus {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  width: auto;
+  height: auto;
+  padding: 12px 24px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  background: var(--bg-primary);
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 /* ─── App shell ─────────────────────────────────────────────────────────── */
 
 #app {
