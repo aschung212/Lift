@@ -83,4 +83,26 @@ describe('useUndoToast', () => {
     const { performUndo } = useUndoToast()
     expect(() => performUndo()).not.toThrow()
   })
+
+  describe('destroy', () => {
+    it('clears the active toast and its timeout without committing or undoing', () => {
+      const undo = vi.fn()
+      const commit = vi.fn()
+      const { toast, show, destroy } = useUndoToast()
+      show('Set deleted', undo, commit)
+
+      destroy()
+      expect(toast.value).toBeNull()
+
+      // Neither undo nor commit should fire
+      vi.advanceTimersByTime(5000)
+      expect(undo).not.toHaveBeenCalled()
+      expect(commit).not.toHaveBeenCalled()
+    })
+
+    it('is safe to call with no active toast', () => {
+      const { destroy } = useUndoToast()
+      expect(() => destroy()).not.toThrow()
+    })
+  })
 })

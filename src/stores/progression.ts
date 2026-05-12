@@ -4,10 +4,11 @@ import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import { backupToIDB } from '../lib/durableStorage'
-import type { ThemeId } from '../composables/useTheme'
+import type { ThemeId } from '../lib/themes'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import type { Json } from '../lib/database.types'
 
 const STORAGE_KEY = 'user-progression'
@@ -248,6 +249,14 @@ export const useProgressionStore = defineStore('progression', {
         }
       }
       backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('progression')
+    },
+
+    /** Re-read state from localStorage (called by cross-tab sync listener). */
+    _reloadFromStorage() {
+      const fresh = load()
+      // Preserve _userId — it's tab-local, not persisted
+      this.$patch({ ...fresh })
     },
 
     async init(userId: string) {
@@ -662,6 +671,15 @@ export const useProgressionStore = defineStore('progression', {
     effectiveTarget: (state): number => {
       // During grace period, the pending change hasn't taken effect yet
       return state.weeklyTarget
+    },
+
+    /** Count of sets that were PRs (used for first-PR detection). */
+    totalPRCount: (state): number => {
+      let count = 0
+      for (const entry of Object.values(state.xpPerSet)) {
+        if (typeof entry === 'object' && entry.isPR) count++
+      }
+      return count
     },
   },
 })

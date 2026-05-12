@@ -32,10 +32,13 @@ export interface PRBurstPayload {
   setWeight: number
   /** Reps of the set that triggered the PR. */
   setReps: number
+  /** True when this is the user's very first PR ever. */
+  isFirstPR?: boolean
 }
 
 const visible: Ref<boolean> = ref(false)
 const payload: Ref<PRBurstPayload | null> = ref(null)
+let dismissTimeoutId: ReturnType<typeof setTimeout> | null = null
 
 function presentPRBurst(p: PRBurstPayload): void {
   // Skip if the user opted out of PR celebrations (Settings → Experience).
@@ -52,10 +55,13 @@ function presentPRBurst(p: PRBurstPayload): void {
   payload.value = p
   visible.value = true
 
-  // Success haptic on present. useHaptics short-circuits if the user
-  // disabled haptics.
+  // Haptic on present — heavier for first PR. useHaptics short-circuits
+  // if the user disabled haptics.
   try {
     const haptics = useHaptics()
+    if (p.isFirstPR) {
+      haptics.impactHeavy()
+    }
     haptics.notifySuccess()
   } catch {
     /* silent — haptics are best-effort */
@@ -64,10 +70,13 @@ function presentPRBurst(p: PRBurstPayload): void {
 
 function dismissPRBurst(): void {
   visible.value = false
+  // Clear any pending dismiss timeout before starting a new one
+  if (dismissTimeoutId !== null) clearTimeout(dismissTimeoutId)
   // Clear payload slightly after the fade-out so the component can animate
   // with the final values; a CSS transition handles opacity.
-  setTimeout(() => {
+  dismissTimeoutId = setTimeout(() => {
     if (!visible.value) payload.value = null
+    dismissTimeoutId = null
   }, 200)
 }
 

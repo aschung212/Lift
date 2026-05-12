@@ -1,11 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { getLocalStorageMock, mockAnalytics, mockTheme } from '../../__tests__/helpers'
+import { getLocalStorageMock, mockAnalytics, mockWeightUnit } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
-vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
+vi.mock('../../composables/usePRBaseline', () => ({
+  usePRBaseline: () => ({
+    prBaselineDate: { value: null },
+  })
+}))
 
 // Build reactive mock store
 interface MockSet {

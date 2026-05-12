@@ -818,7 +818,7 @@ describe('workout store', () => {
 
       // Extract the _fetchFromSupabase function body. Uses brace counting
       // to handle nested braces correctly.
-      const fnStart = src.indexOf('async _fetchFromSupabase(')
+      const fnStart = src.indexOf('async function _fetchFromSupabase()')
       expect(fnStart).toBeGreaterThan(-1)
       const openBrace = src.indexOf('{', fnStart)
       let depth = 1
@@ -857,7 +857,7 @@ describe('workout store', () => {
       const __dirname = dirname(__filename)
       const src = readFileSync(resolve(__dirname, '../bodyweight.ts'), 'utf-8')
 
-      const fnStart = src.indexOf('async _fetchFromSupabase(')
+      const fnStart = src.indexOf('async _fetchFromSupabase()')
       expect(fnStart).toBeGreaterThan(-1)
       const openBrace = src.indexOf('{', fnStart)
       let depth = 1

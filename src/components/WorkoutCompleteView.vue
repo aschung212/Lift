@@ -77,7 +77,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useProgressionStore } from '../stores/progression'
 import { buildSessionSummary } from '../lib/sessionSummary'
 import { useFocusTrap } from '../composables/useFocusTrap'
-import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
@@ -93,7 +93,7 @@ const store = useWorkoutStore()
 const progression = useProgressionStore()
 const focusTrap = useFocusTrap()
 const overlayEl = ref<HTMLElement | null>(null)
-const { displayWeight, weightUnit } = useTheme()
+const { displayWeight, weightUnit } = useWeightUnit()
 
 const summary = computed(() =>
   buildSessionSummary({

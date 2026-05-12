@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
-import { getLocalStorageMock, mockAnalytics, mockTheme } from '../../__tests__/helpers'
+import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
+vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
+vi.mock('../../composables/useRestTimer', () => mockRestTimer())
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
@@ -181,6 +183,20 @@ describe('WorkoutTracker', () => {
     it('does not render tag filter bar when no tags', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+    })
+
+    it('shows fresh-start transition card after clearing sample data', () => {
+      localStorageMock.setItem('fresh-start', 'true')
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(true)
+      expect(wrapper.find('.wtFreshStartTitle').text()).toContain('starting fresh')
+      expect(wrapper.find('.wtFreshStartCta').exists()).toBe(true)
+    })
+
+    it('shows default empty state when fresh-start flag is absent', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
+      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
     })
   })
 
@@ -715,6 +731,54 @@ describe('WorkoutTracker', () => {
       // The legacy standalone reps stepper used to render in plate mode
       // and is now gone — the REPS card covers it.
       expect(wrapper.find('.wtRepsStepperFull').exists()).toBe(false)
+    })
+
+    it('shows plate calculator hint for numpad-mode exercises (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      // ex-1 is in default numpad mode (no inputMode set)
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(true)
+      expect(wrapper.find('.wtPlateHintText').text()).toContain('plate calculator')
+    })
+
+    it('hides plate calculator hint when exercise is in plate mode (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      exercises[0].inputMode = 'plates'
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
+
+    it('hides plate calculator hint after dismissal via localStorage (LIFT-388)', async () => {
+      localStorageMock.setItem('plate-calc-hint-dismissed', 'true')
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
+
+    it('dismiss button persists hint dismissal to localStorage (LIFT-388)', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      await wrapper.find('.wtPlateHintDismiss').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(localStorageMock.getItem('plate-calc-hint-dismissed')).toBe('true')
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
     })
   })
 

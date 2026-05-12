@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { backupToIDB } from '../lib/durableStorage'
+import { broadcastStoreUpdate } from '../lib/crossTabSync'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -29,6 +31,8 @@ export interface ExperienceFlags {
   haptics: boolean
   /** Keep the screen awake during rest timer and set logging. */
   screenWakeLock: boolean
+  /** Show a browser notification when the rest timer completes while the app is backgrounded. */
+  restTimerNotification: boolean
 }
 
 const DEFAULT_WEIGHT_GOAL: WeightGoalConfig = {
@@ -49,6 +53,16 @@ const DEFAULT_EXPERIENCE: ExperienceFlags = {
   prCelebrations: true,
   haptics: true,
   screenWakeLock: true,
+  restTimerNotification: true,
+}
+
+export interface FilterSettings {
+  /** e1RM ratio threshold (0–1) below which a pre-top set is classified as warmup. Default 0.75 */
+  warmupThreshold: number
+}
+
+const DEFAULT_FILTERS: FilterSettings = {
+  warmupThreshold: 0.75,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,33 +86,52 @@ export const usePreferencesStore = defineStore('preferences', {
     features: { ...DEFAULTS } as FeatureFlags,
     weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
     experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
+    filters: { ...DEFAULT_FILTERS } as FilterSettings,
+    prBaselineDate: null as string | null,
     _userId: null as string | null,
   }),
 
   actions: {
     _persist() {
+      const payload = {
+        features: this.features,
+        weightGoal: this.weightGoal,
+        experience: this.experience,
+        filters: this.filters,
+        prBaselineDate: this.prBaselineDate,
+      }
+      const data = JSON.stringify(payload)
       try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience }),
-        )
+        localStorage.setItem(STORAGE_KEY, data)
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
+      backupToIDB(STORAGE_KEY, data)
+      broadcastStoreUpdate('preferences')
       if (supabase && this._userId) {
-        const features = { ...this.features }
-        const weightGoal = this.weightGoal
-        const experience = { ...this.experience }
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
           supabase!
             .from('user_preferences')
             .upsert(
-              { user_id: userId, preferences: { features, weightGoal, experience }, updated_at: new Date().toISOString() },
+              { user_id: userId, preferences: { ...payload }, updated_at: new Date().toISOString() },
               { onConflict: 'user_id' }
             )
         )
       }
+    },
+
+    /** Re-read state from localStorage (called by cross-tab sync listener). */
+    _reloadFromStorage() {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
+        if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
+        if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+        if (parsed.filters) this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
+      } catch { /* ignore corrupt data */ }
     },
 
     async init(userId: string) {
@@ -116,7 +149,25 @@ export const usePreferencesStore = defineStore('preferences', {
           if (parsed.experience) {
             this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
           }
+          if (parsed.filters) {
+            this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
+          }
+          if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
+            this.prBaselineDate = parsed.prBaselineDate
+          }
         } catch { /* ignore corrupt data */ }
+      }
+
+      // Migrate from old standalone localStorage key (pre-sync era)
+      if (this.prBaselineDate === null) {
+        try {
+          const legacy = localStorage.getItem('pr-baseline-date')
+          if (legacy && /^\d{4}-\d{2}-\d{2}$/.test(legacy)) {
+            this.prBaselineDate = legacy
+            localStorage.removeItem('pr-baseline-date')
+            this._persist()
+          }
+        } catch { /* ignore */ }
       }
 
       // Then try Supabase (overrides local if exists)
@@ -136,10 +187,17 @@ export const usePreferencesStore = defineStore('preferences', {
             if (prefs.experience) {
               this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
             }
-            localStorage.setItem(
-              STORAGE_KEY,
-              JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience }),
-            )
+            if (prefs.filters) {
+              this.filters = { ...DEFAULT_FILTERS, ...(prefs.filters as Partial<FilterSettings>) }
+            }
+            if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate as string)) {
+              this.prBaselineDate = prefs.prBaselineDate as string
+            } else if ('prBaselineDate' in prefs && prefs.prBaselineDate === null) {
+              this.prBaselineDate = null
+            }
+            const synced = JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, filters: this.filters, prBaselineDate: this.prBaselineDate })
+            localStorage.setItem(STORAGE_KEY, synced)
+            backupToIDB(STORAGE_KEY, synced)
           }
         } catch { /* table may not exist yet or no row */ }
       }
@@ -154,6 +212,11 @@ export const usePreferencesStore = defineStore('preferences', {
 
     setExperienceFlag<K extends keyof ExperienceFlags>(key: K, value: ExperienceFlags[K]) {
       this.experience[key] = value
+      this._persist()
+    },
+
+    setWarmupThreshold(threshold: number) {
+      this.filters.warmupThreshold = Math.max(0.5, Math.min(0.95, threshold))
       this._persist()
     },
 
@@ -180,6 +243,26 @@ export const usePreferencesStore = defineStore('preferences', {
       this.weightGoal.gainTarget = null
       this.weightGoal.maintainMin = null
       this.weightGoal.maintainMax = null
+      this._persist()
+    },
+
+    setPRBaselineDate(date: string | null) {
+      if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return
+      this.prBaselineDate = date
+      this._persist()
+    },
+
+    startNewTrainingBlock() {
+      const d = new Date()
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      this.prBaselineDate = `${y}-${m}-${day}`
+      this._persist()
+    },
+
+    clearPRBaseline() {
+      this.prBaselineDate = null
       this._persist()
     },
   },

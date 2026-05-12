@@ -82,10 +82,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useWorkoutStore } from '../stores/workout'
+import { useWorkoutStore, type ExerciseInputMode } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
-import { useTheme, type ThemeId } from '../composables/useTheme'
+import { useTheme } from '../composables/useTheme'
+import type { ThemeId } from '../lib/themes'
 import { useAnalytics } from '../composables/useAnalytics'
 import StarterPickerFlow from './StarterPickerFlow.vue'
 
@@ -97,13 +98,20 @@ const { logEvent } = useAnalytics()
 
 const step = ref<'setup' | 'starter-flow'>('setup')
 let pendingSampleData = false
+let onboardingStartMs = 0
+let chosenPath = ''
 
-const STARTER_EXERCISES = [
-  { name: 'Bench Press', tags: ['Push', 'Chest'] },
-  { name: 'Squat', tags: ['Legs'] },
-  { name: 'Deadlift', tags: ['Pull', 'Legs'] },
-  { name: 'Overhead Press', tags: ['Push', 'Shoulders'] },
-  { name: 'Barbell Row', tags: ['Pull', 'Back'] },
+const STARTER_EXERCISES: {
+  name: string
+  tags: string[]
+  inputMode?: ExerciseInputMode
+  barWeight?: number
+}[] = [
+  { name: 'Bench Press', tags: ['Push', 'Chest'], inputMode: 'plates', barWeight: 45 },
+  { name: 'Squat', tags: ['Legs'], inputMode: 'plates', barWeight: 45 },
+  { name: 'Deadlift', tags: ['Pull', 'Legs'], inputMode: 'plates', barWeight: 45 },
+  { name: 'Overhead Press', tags: ['Push', 'Shoulders'], inputMode: 'plates', barWeight: 45 },
+  { name: 'Barbell Row', tags: ['Pull', 'Back'], inputMode: 'plates', barWeight: 45 },
   { name: 'Pull-ups', tags: ['Pull', 'Back'] },
 ]
 
@@ -424,39 +432,65 @@ function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
   revertPreview()
   progressionStore.setStarterTheme(themeId, weeklyGoal)
   currentTheme.value = themeId
+  const durationMs = onboardingStartMs ? Date.now() - onboardingStartMs : 0
+  logEvent('onboarding_complete', { path: chosenPath, theme: themeId, goal: weeklyGoal, durationMs })
   finish(pendingSampleData)
 }
 
 function handleStarterSkip() {
   revertPreview()
+  const durationMs = onboardingStartMs ? Date.now() - onboardingStartMs : 0
+  logEvent('onboarding_complete', { path: chosenPath, theme: 'default', goal: 0, durationMs, skipped: true })
   finish(pendingSampleData)
 }
 
 function chooseEmpty() {
+  onboardingStartMs = Date.now()
+  chosenPath = 'empty'
   logEvent('onboarding_choice', { choice: 'empty' })
+  logEvent('onboarding_step', { step: 'choice', value: 'empty' })
   emit('started')
   goToStarter(false)
 }
 
 function chooseStarter() {
+  onboardingStartMs = Date.now()
+  chosenPath = 'starter'
   logEvent('onboarding_choice', { choice: 'starter' })
+  logEvent('onboarding_step', { step: 'choice', value: 'starter' })
   emit('started')
   for (const ex of STARTER_EXERCISES) {
-    workoutStore.addExercise(ex.name, ex.tags)
+    const id = workoutStore.addExercise(ex.name, ex.tags)
+    if (id && ex.inputMode) {
+      workoutStore.setExerciseInputMode(id, ex.inputMode)
+    }
   }
   goToStarter(false)
 }
 
 const noSync = { sync: false }
 
+/** Apply plate calculator config to an exercise without triggering sync. */
+function applyPlateConfig(id: string, starter: typeof STARTER_EXERCISES[number]) {
+  if (!starter.inputMode) return
+  const exercise = workoutStore.exercises?.find(e => e.id === id)
+  if (!exercise) return
+  exercise.inputMode = starter.inputMode
+  if (starter.barWeight != null) exercise.barWeight = starter.barWeight
+}
+
 function chooseExplore() {
+  onboardingStartMs = Date.now()
+  chosenPath = 'explore'
   logEvent('onboarding_choice', { choice: 'explore' })
+  logEvent('onboarding_step', { step: 'choice', value: 'explore' })
   emit('started')
   // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
     const id = workoutStore.addExercise(group.exercise, starter?.tags || [], noSync)
     if (!id) continue
+    if (starter) applyPlateConfig(id, starter)
     for (const set of group.sets) {
       workoutStore.logSet(id, set.weight, set.reps, set.date, noSync)
     }
@@ -464,7 +498,8 @@ function chooseExplore() {
   // Add remaining starter exercises without sets
   for (const ex of STARTER_EXERCISES) {
     if (!SAMPLE_SETS.find(g => g.exercise === ex.name)) {
-      workoutStore.addExercise(ex.name, ex.tags, noSync)
+      const id = workoutStore.addExercise(ex.name, ex.tags, noSync)
+      if (id) applyPlateConfig(id, ex)
     }
   }
   // Add sample bodyweight entries

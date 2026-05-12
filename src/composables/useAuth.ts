@@ -17,6 +17,7 @@ const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
 
 let _initialized = false
+let _authUnsubscribe: (() => void) | null = null
 
 async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
@@ -54,13 +55,14 @@ function init(): void {
     loading.value = false
   })
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
     const prev = user.value
     user.value = session?.user ?? null
     if (session?.user && !prev) {
       initStores(session.user.id)
     }
   })
+  _authUnsubscribe = () => subscription.unsubscribe()
 }
 
 async function signInWithProvider(provider: Provider): Promise<{ error: AuthError | null }> {
@@ -92,12 +94,20 @@ async function devSignIn(): Promise<void> {
   await initStores('local-dev')
 }
 
+function resetStores(): void {
+  useWorkoutStore().$reset()
+  useBodyweightStore().$reset()
+  usePreferencesStore().$reset()
+  useProgressionStore().$reset()
+}
+
 async function signOut(): Promise<void> {
   try {
     await supabase?.auth.signOut()
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
+    resetStores()
     user.value = null
   }
 }
@@ -133,7 +143,8 @@ async function deleteAccount(): Promise<void> {
   // Clear all localStorage keys used by the app
   const localStorageKeys = [
     'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
-    'lift-custom-tags', 'onboarding-complete', 'sample-data', 'active-tab',
+    'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
+    'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
     'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
     'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
   ]
@@ -158,6 +169,12 @@ async function deleteAccount(): Promise<void> {
   await signOut()
 }
 
+function destroy(): void {
+  _authUnsubscribe?.()
+  _authUnsubscribe = null
+  _initialized = false
+}
+
 export function useAuth() {
-  return { user, loading, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount }
+  return { user, loading, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount, destroy }
 }
