@@ -137,6 +137,76 @@ describe('renderReport', () => {
     expect(html).toContain('.print-hint { display: none; }')
   })
 
+  it('includes a "Back to Lift" button in the toolbar', () => {
+    const html = renderReport(makeReport())
+    expect(html).toContain('id="back-to-lift"')
+    expect(html).toContain('Back to Lift')
+    expect(html).toContain('aria-label="Close report and return to Lift"')
+  })
+
+  it('hides the toolbar in @media print', () => {
+    const html = renderReport(makeReport())
+    expect(html).toContain('.report-toolbar { display: none; }')
+  })
+
+  it('includes a click handler that closes the window with a navigation fallback', () => {
+    const html = renderReport(makeReport())
+    expect(html).toContain("getElementById('back-to-lift')")
+    expect(html).toContain('window.close()')
+    expect(html).toContain('window.location.replace')
+  })
+
+  it('skips navigation fallback when the document is no longer visible', () => {
+    // Prevents a race where window.close() succeeds asynchronously
+    // (iOS WKWebView, animated tab close) and the fallback reloads Lift
+    // into a tab the browser is already tearing down.
+    const html = renderReport(makeReport())
+    expect(html).toContain("document.visibilityState !== 'visible'")
+  })
+
+  it('escapes the unit label consistently throughout the report', () => {
+    const html = renderReport(makeReport({
+      unitLabel: '<img src=x onerror=alert(1)>' as 'lbs',
+      exerciseProgressions: [{
+        name: 'Bench',
+        tags: [],
+        timeline: [{ date: '2026-04-01', e1RM: 200 }],
+        peakE1RM: 200,
+        startE1RM: 200,
+        delta: 0,
+        totalSets: 1,
+        totalVolume: 200,
+      }],
+      tagVolume: [{ tag: 'chest', sets: 1, volume: 200 }],
+      prTimeline: [{
+        date: '2026-04-01',
+        exerciseName: 'Bench',
+        weight: 200,
+        reps: 1,
+        e1RM: 200,
+      }],
+      bodyweight: {
+        timeline: [{ date: '2026-04-01', weight: 180 }],
+        startWeight: 180,
+        endWeight: 180,
+        delta: 0,
+      },
+    }))
+    expect(html).not.toContain('<img src=x onerror=alert(1)>')
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('toolbar respects iOS safe-area-inset-top', () => {
+    const html = renderReport(makeReport())
+    expect(html).toContain('env(safe-area-inset-top')
+  })
+
+  it('back button meets 44pt iOS touch target minimum', () => {
+    const html = renderReport(makeReport())
+    expect(html).toMatch(/\.back-button\s*\{[^}]*min-height:\s*44px/s)
+    expect(html).toMatch(/\.back-button\s*\{[^}]*min-width:\s*44px/s)
+  })
+
   it('escapes HTML in exercise names', () => {
     const html = renderReport(makeReport({
       exerciseProgressions: [{
@@ -150,8 +220,8 @@ describe('renderReport', () => {
         totalVolume: 100,
       }],
     }))
-    expect(html).not.toContain('<script>')
-    expect(html).toContain('&lt;script&gt;')
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
   })
 
   it('uses kg unit label when provided', () => {
