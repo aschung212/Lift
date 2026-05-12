@@ -156,6 +156,46 @@ describe('renderReport', () => {
     expect(html).toContain('window.location.replace')
   })
 
+  it('skips navigation fallback when the document is no longer visible', () => {
+    // Prevents a race where window.close() succeeds asynchronously
+    // (iOS WKWebView, animated tab close) and the fallback reloads Lift
+    // into a tab the browser is already tearing down.
+    const html = renderReport(makeReport())
+    expect(html).toContain("document.visibilityState !== 'visible'")
+  })
+
+  it('escapes the unit label consistently throughout the report', () => {
+    const html = renderReport(makeReport({
+      unitLabel: '<img src=x onerror=alert(1)>' as 'lbs',
+      exerciseProgressions: [{
+        name: 'Bench',
+        tags: [],
+        timeline: [{ date: '2026-04-01', e1RM: 200 }],
+        peakE1RM: 200,
+        startE1RM: 200,
+        delta: 0,
+        totalSets: 1,
+        totalVolume: 200,
+      }],
+      tagVolume: [{ tag: 'chest', sets: 1, volume: 200 }],
+      prTimeline: [{
+        date: '2026-04-01',
+        exerciseName: 'Bench',
+        weight: 200,
+        reps: 1,
+        e1RM: 200,
+      }],
+      bodyweight: {
+        timeline: [{ date: '2026-04-01', weight: 180 }],
+        startWeight: 180,
+        endWeight: 180,
+        delta: 0,
+      },
+    }))
+    expect(html).not.toContain('<img src=x onerror=alert(1)>')
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
   it('toolbar respects iOS safe-area-inset-top', () => {
     const html = renderReport(makeReport())
     expect(html).toContain('env(safe-area-inset-top')

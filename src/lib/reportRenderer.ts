@@ -124,7 +124,11 @@ function prRow(pr: PREvent, unit: string): string {
 // ── Main render function ─────────────────────────────────────────
 
 export function renderReport(report: TrainingReport): string {
-  const u = report.unitLabel
+  // Escape the unit label once — it's interpolated into many places below as
+  // raw HTML. Today the value is hardcoded to 'kg'|'lbs' by callers, but
+  // treating it as untrusted protects against future regressions where a
+  // contributor wires user input or preference text through this field.
+  const u = escapeHtml(report.unitLabel)
   const maxConsistencyDays = Math.max(...report.weeklyConsistency.map(w => w.daysTrained), 7)
 
   const exerciseRows = report.exerciseProgressions
@@ -398,7 +402,7 @@ export function renderReport(report: TrainingReport): string {
     </div>
     <div class="summary-card">
       <span class="card-value">${formatNumber(report.totalVolume)}</span>
-      <span class="card-label">Volume (${escapeHtml(u)})</span>
+      <span class="card-label">Volume (${u})</span>
     </div>
     <div class="summary-card">
       <span class="card-value">${report.uniqueExercises}</span>
@@ -496,7 +500,13 @@ export function renderReport(report: TrainingReport): string {
           }
         } catch (_) {}
         try { window.close(); } catch (_) {}
+        // window.close() can be async on some platforms (iOS WKWebView,
+        // animated tab closes). Wait long enough for the close to take
+        // effect, then verify the document is still visible before forcing
+        // a navigation — otherwise we'd race against a pending close and
+        // reload Lift inside a tab the browser is already tearing down.
         window.setTimeout(function () {
+          if (document.visibilityState !== 'visible') return;
           if (openerUrl) {
             window.location.replace(openerUrl);
           } else if (document.referrer) {
@@ -504,7 +514,7 @@ export function renderReport(report: TrainingReport): string {
           } else {
             try { window.history.back(); } catch (_) {}
           }
-        }, 120);
+        }, 400);
       });
     })();
   </script>
