@@ -24,7 +24,8 @@
       <div class="bwStatCard">
         <span class="bwStatLabel">Change</span>
         <span :class="['bwStatValue', changeClass(periodStats.change!)]">
-          {{ displayWeight(periodStats.change!) > 0 ? '+' : '' }}{{ displayWeight(periodStats.change!) }} {{ weightUnit }}
+          {{ displayWeight(periodStats.change!) > 0 ? '+' : '' }}{{ displayWeight(periodStats.change!) }} {{ weightUnit }}{{ changeSentimentIcon(periodStats.change!) }}
+          <span v-if="changeSentimentIcon(periodStats.change!)" class="srOnly">{{ changeSentimentIcon(periodStats.change!) === ' ✓' ? '(on track)' : '(off track)' }}</span>
         </span>
       </div>
       <div class="bwStatCard">
@@ -170,7 +171,8 @@
           <span v-else-if="entry.weight === store.maxWeight" :class="['bwEntryBadge', isHighGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time high">↑ High</span>
         </span>
         <span v-if="entryDelta(entry) != null" :class="['bwDelta', deltaClass(entry)]">
-          {{ displayWeight(entryDelta(entry)!) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)!) }}
+          {{ displayWeight(entryDelta(entry)!) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)!) }}{{ deltaSentimentIcon(entry) }}
+          <span v-if="deltaSentimentIcon(entry)" class="srOnly">{{ deltaSentimentIcon(entry) === ' ✓' ? '(on track)' : '(off track)' }}</span>
         </span>
         <div v-if="activeEntryId === entry.id" class="wtSetActions">
           <button class="wtSetBtn" @click.stop="openModal(entry)" aria-label="Edit entry">Edit</button>
@@ -397,6 +399,23 @@ function changeClass(change: number): string {
   const good = isWeightGood(current, change)
   if (good == null) return ''
   return good ? 'bwStatGood' : 'bwStatBad'
+}
+
+function changeSentimentIcon(change: number): string {
+  if (change === 0) return ''
+  const current = store.latestWeight
+  if (current == null) return ''
+  const good = isWeightGood(current, change)
+  if (good == null) return ''
+  return good ? ' ✓' : ' ✗'
+}
+
+function deltaSentimentIcon(entry: BodyweightEntry): string {
+  const delta = entryDelta(entry)
+  if (delta == null || delta === 0) return ''
+  const good = isWeightGood(entry.weight, delta)
+  if (good == null) return ''
+  return good ? ' ✓' : ' ✗'
 }
 
 // Whether hitting all-time low/high is good depends on goal direction

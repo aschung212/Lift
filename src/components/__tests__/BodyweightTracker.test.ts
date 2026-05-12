@@ -744,4 +744,61 @@ describe('BodyweightTracker', () => {
       expect(hero.find('.wtLogBtn').exists()).toBe(true)
     })
   })
+
+  describe('WCAG 1.4.1 — color not sole indicator (LIFT-550)', () => {
+    beforeEach(() => {
+      mockWeightGoal.direction = 'lose'
+      entries = [
+        makeEntry('e-1', 172, daysAgo(10)),
+        makeEntry('e-2', 170, daysAgo(5)),
+        makeEntry('e-3', 169, daysAgo(2)),
+      ]
+    })
+
+    it('stats Change card includes sentiment icon when goal is set', () => {
+      const wrapper = mountTracker()
+      const changeCard = wrapper.findAll('.bwStatCard')[0]
+      const value = changeCard.find('.bwStatValue')
+      // Losing weight while direction=lose → good → ✓
+      expect(value.text()).toContain('✓')
+    })
+
+    it('stats Change card shows ✗ when change is off-track', () => {
+      mockWeightGoal.direction = 'gain'
+      const wrapper = mountTracker()
+      const changeCard = wrapper.findAll('.bwStatCard')[0]
+      const value = changeCard.find('.bwStatValue')
+      // Lost weight while direction=gain → bad → ✗
+      expect(value.text()).toContain('✗')
+    })
+
+    it('entry deltas include sentiment icon when goal is set', () => {
+      const wrapper = mountTracker()
+      const deltas = wrapper.findAll('.bwDelta')
+      // At least one delta should contain a sentiment icon
+      const textsWithIcon = deltas.filter(d => d.text().includes('✓') || d.text().includes('✗'))
+      expect(textsWithIcon.length).toBeGreaterThan(0)
+    })
+
+    it('includes sr-only on-track/off-track text for screen readers', () => {
+      const wrapper = mountTracker()
+      const srTexts = wrapper.findAll('.srOnly')
+      const sentimentTexts = srTexts.filter(s =>
+        s.text().includes('on track') || s.text().includes('off track')
+      )
+      expect(sentimentTexts.length).toBeGreaterThan(0)
+    })
+
+    it('no sentiment icon when goal direction is neutral (maintain within range)', () => {
+      mockWeightGoal.direction = 'maintain'
+      mockWeightGoal.maintainMin = 165
+      mockWeightGoal.maintainMax = 175
+      // All weights within range → neutral → no icons
+      const wrapper = mountTracker()
+      const changeCard = wrapper.findAll('.bwStatCard')[0]
+      const value = changeCard.find('.bwStatValue')
+      expect(value.text()).not.toContain('✓')
+      expect(value.text()).not.toContain('✗')
+    })
+  })
 })
