@@ -25,6 +25,9 @@
         <span class="bwStatLabel">Change</span>
         <span :class="['bwStatValue', changeClass(periodStats.change!)]">
           {{ displayWeight(periodStats.change!) > 0 ? '+' : '' }}{{ displayWeight(periodStats.change!) }} {{ weightUnit }}
+          <span v-if="changeSentimentLabel(periodStats.change!)" class="bwSentiment" :aria-label="changeSentimentLabel(periodStats.change!)">
+            {{ changeSentimentLabel(periodStats.change!) === 'on track' ? '✓' : '✗' }}
+          </span>
         </span>
       </div>
       <div class="bwStatCard">
@@ -171,6 +174,9 @@
         </span>
         <span v-if="entryDelta(entry) != null" :class="['bwDelta', deltaClass(entry)]">
           {{ displayWeight(entryDelta(entry)!) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)!) }}
+          <span v-if="deltaSentimentLabel(entry)" class="bwSentiment" :aria-label="deltaSentimentLabel(entry)">
+            {{ deltaSentimentLabel(entry) === 'on track' ? '✓' : '✗' }}
+          </span>
         </span>
         <div v-if="activeEntryId === entry.id" class="wtSetActions">
           <button class="wtSetBtn" @click.stop="openModal(entry)" aria-label="Edit entry">Edit</button>
@@ -397,6 +403,23 @@ function changeClass(change: number): string {
   const good = isWeightGood(current, change)
   if (good == null) return ''
   return good ? 'bwStatGood' : 'bwStatBad'
+}
+
+function changeSentimentLabel(change: number): string {
+  if (change === 0) return ''
+  const current = store.latestWeight
+  if (current == null) return ''
+  const good = isWeightGood(current, change)
+  if (good == null) return ''
+  return good ? 'on track' : 'off track'
+}
+
+function deltaSentimentLabel(entry: BodyweightEntry): string {
+  const delta = entryDelta(entry)
+  if (delta == null || delta === 0) return ''
+  const good = isWeightGood(entry.weight, delta)
+  if (good == null) return ''
+  return good ? 'on track' : 'off track'
 }
 
 // Whether hitting all-time low/high is good depends on goal direction

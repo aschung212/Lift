@@ -6379,6 +6379,12 @@ html.theme-fading .settingsSheet {
 .bwStatGood { color: var(--success); }
 .bwStatBad  { color: var(--danger); }
 
+.bwSentiment {
+  font-size: 0.8em;
+  margin-left: 2px;
+  font-weight: 600;
+}
+
 .bwStatsSingle {
   font-size: var(--font-caption1);
   color: var(--text-muted);
