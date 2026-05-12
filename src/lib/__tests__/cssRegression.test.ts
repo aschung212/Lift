@@ -397,4 +397,33 @@ describe('CSS regression tests', () => {
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
   })
+
+  describe('WCAG 2.4.11 focus indicators on inputs with outline:none', () => {
+    // Regression: 11 input elements had outline:none with only border-color
+    // changes as focus replacement. WCAG 2.4.7 (Focus Visible) and 2.4.11
+    // (Focus Appearance) require a clearly visible focus indicator — border-color
+    // alone is insufficient for users with low vision. Fix: box-shadow ring on
+    // :focus-visible for all affected inputs.
+
+    const focusInputs = [
+      { selector: '.settingsInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.settingsRange:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.wtSearchInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.wtTagInlineInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.logSetSheet .logSetFieldInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.wtRepsStepperInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.repMaxInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.iosStepperInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.wtTimerEditInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.deleteConfirmInput:focus-visible', shadow: '--danger-subtle' },
+    ]
+
+    for (const { selector, shadow } of focusInputs) {
+      it(`${selector} has box-shadow focus ring`, () => {
+        const lines = getRuleLines(selector)
+        expect(lines.length, `${selector} rule not found`).toBeGreaterThan(0)
+        expect(lines.some(l => l.includes('box-shadow') && l.includes(shadow))).toBe(true)
+      })
+    }
+  })
 })

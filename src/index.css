@@ -1767,6 +1767,10 @@ html.theme-fading .settingsSheet {
   border-color: var(--accent);
 }
 
+.settingsInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .settingsInput::placeholder {
   color: var(--text-muted);
 }
@@ -1796,6 +1800,11 @@ html.theme-fading .settingsSheet {
   background: var(--border);
   border-radius: 2px;
   outline: none;
+}
+
+.settingsRange:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+  border-radius: 2px;
 }
 
 .settingsRange::-webkit-slider-thumb {
@@ -2743,6 +2752,10 @@ html.theme-fading .settingsSheet {
   border-color: var(--accent);
 }
 
+.wtSearchInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .wtSearchInput::placeholder {
   color: var(--text-muted);
 }
@@ -2987,6 +3000,10 @@ html.theme-fading .settingsSheet {
   border: 1px solid var(--accent);
   border-radius: 12px;
   outline: none;
+}
+
+.wtTagInlineInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
 }
 
 .wtTagPickerChip:hover {
@@ -3730,6 +3747,10 @@ html.theme-fading .settingsSheet {
   outline: none;
 }
 
+.logSetSheet .logSetFieldInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .logSetSheet .logSetFieldInput::placeholder {
   color: var(--text-muted);
   opacity: 0.5;
@@ -3915,6 +3936,10 @@ html.theme-fading .settingsSheet {
   outline: none;
 }
 
+.wtRepsStepperInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .wtRepsStepperInput::placeholder {
   color: var(--text-muted);
   font-weight: 400;
@@ -3979,6 +4004,7 @@ html.theme-fading .settingsSheet {
 }
 
 .repMaxInput:focus { border-color: var(--accent); }
+.repMaxInput:focus-visible { box-shadow: 0 0 0 3px var(--accent-subtle); }
 
 .repMaxInput::placeholder { color: var(--text-muted); }
 
@@ -4618,6 +4644,10 @@ html.theme-fading .settingsSheet {
   height: 36px;
   font-family: inherit;
   outline: none;
+}
+
+.iosStepperInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
 }
 
 .iosSettingsFooter {
@@ -5343,6 +5373,7 @@ html.theme-fading .settingsSheet {
 .wtTimerEditInput::-webkit-inner-spin-button,
 .wtTimerEditInput::-webkit-outer-spin-button { -webkit-appearance: none; }
 .wtTimerEditInput:focus { border-color: var(--accent); }
+.wtTimerEditInput:focus-visible { box-shadow: 0 0 0 3px var(--accent-subtle); }
 
 .wtTimerEditAddBtn {
   padding: 12px 16px;
@@ -6870,6 +6901,10 @@ html.theme-fading .settingsSheet {
 .deleteConfirmInput:focus {
   outline: none;
   border-color: var(--danger);
+}
+
+.deleteConfirmInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--danger-subtle);
 }
 
 .deleteConfirmError {
