@@ -7,7 +7,7 @@
  * set, or above the threshold, are considered working sets.
  */
 
-interface SetLike {
+export interface SetLike {
   id: string
   date: string
   estimated1RM: number
@@ -69,4 +69,60 @@ export function buildWarmupSetIds(
   }
 
   return warmupIds
+}
+
+/**
+ * Classify each set as warmup (true) or working (false).
+ *
+ * Operates on a flat array of sets (single exercise). Sets are grouped by date.
+ * Within each day, sets before the top set (highest e1RM) with e1RM ≤ threshold × topE1RM
+ * are warmups; all others are working sets.
+ *
+ * @param sets       flat array of sets in chronological order
+ * @param threshold  e1RM ratio (0–1); defaults to 0.75
+ * @returns Map from set ID → isWarmup boolean
+ */
+export function classifyWarmupSets(
+  sets: SetLike[],
+  threshold = 0.75,
+): Map<string, boolean> {
+  const result = new Map<string, boolean>()
+  if (sets.length === 0) return result
+
+  // Group by session date
+  const sessions = new Map<string, number[]>()
+  sets.forEach((set, idx) => {
+    const key = sessionKey(set.date)
+    const list = sessions.get(key)
+    if (list) list.push(idx)
+    else sessions.set(key, [idx])
+  })
+
+  // Initialize all as working (false)
+  for (const set of sets) {
+    result.set(set.id, false)
+  }
+
+  for (const indices of sessions.values()) {
+    // Find the first index that achieves the session's max e1RM
+    let topIdx = indices[0]
+    let topE1RM = sets[topIdx].estimated1RM
+    for (const i of indices) {
+      if (sets[i].estimated1RM > topE1RM) {
+        topE1RM = sets[i].estimated1RM
+        topIdx = i
+      }
+    }
+    if (topE1RM <= 0) continue
+
+    const cutoff = topE1RM * threshold
+    for (const i of indices) {
+      if (i >= topIdx) break
+      if (sets[i].estimated1RM <= cutoff) {
+        result.set(sets[i].id, true)
+      }
+    }
+  }
+
+  return result
 }
