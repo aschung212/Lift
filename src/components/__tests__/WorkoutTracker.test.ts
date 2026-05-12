@@ -1214,6 +1214,20 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtExPickerNew').exists()).toBe(true)
     })
 
+    it('exercise picker dialog has aria-labelledby linked to title', async () => {
+      const wrapper = mountTracker()
+      const exposed = wrapper.vm as unknown as { openTimelineLogModal?: () => void }
+      exposed.openTimelineLogModal!()
+      await wrapper.vm.$nextTick()
+
+      const dialog = wrapper.find('[role="dialog"][aria-labelledby="timeline-picker-title"]')
+      expect(dialog.exists()).toBe(true)
+      expect(dialog.attributes('aria-modal')).toBe('true')
+      const title = wrapper.find('#timeline-picker-title')
+      expect(title.exists()).toBe(true)
+      expect(title.text()).toBe('Choose Exercise')
+    })
+
     it('persists view selection to localStorage', async () => {
       const wrapper = mountTracker()
       await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
