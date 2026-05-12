@@ -397,4 +397,58 @@ describe('CSS regression tests', () => {
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
   })
+
+  describe('WCAG 2.4.7 / 2.4.11 focus-visible indicators (#547)', () => {
+    // Regression: inputs had outline:none with only border-color as a
+    // replacement, which is insufficient for WCAG 2.4.11 Focus Appearance.
+    // Every input that suppresses the native outline must have a :focus-visible
+    // rule with a visible box-shadow or outline ring.
+
+    const authStyle = getVueStyleBlock('AuthScreen.vue')
+
+    const inputsWithFocusVisible: [string, string | undefined][] = [
+      ['.settingsInput', undefined],
+      ['.settingsRange', undefined],
+      ['.wtSearchInput', undefined],
+      ['.wtTagInlineInput', undefined],
+      ['.logSetSheet .logSetFieldInput', undefined],
+      ['.wtRepsStepperInput', undefined],
+      ['.repMaxInput', undefined],
+      ['.iosStepperInput', undefined],
+      ['.wtTimerEditInput', undefined],
+      ['.deleteConfirmInput', undefined],
+    ]
+
+    for (const [selector] of inputsWithFocusVisible) {
+      it(`${selector} has a :focus-visible rule with box-shadow or outline`, () => {
+        const focusSelector = `${selector}:focus-visible`
+        const lines = getRuleLines(focusSelector)
+        expect(lines.length, `Missing ${focusSelector} rule`).toBeGreaterThan(0)
+        const hasRing = lines.some(l => l.includes('box-shadow') || l.includes('outline'))
+        expect(hasRing, `${focusSelector} must include box-shadow or outline`).toBe(true)
+      })
+    }
+
+    it('.authInput has a :focus-visible rule with box-shadow (AuthScreen.vue)', () => {
+      const lines = getRuleLines('.authInput:focus-visible', authStyle)
+      expect(lines.length, 'Missing .authInput:focus-visible in AuthScreen.vue').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('box-shadow'))).toBe(true)
+    })
+
+    it('no input :focus rules remain that should be :focus-visible', () => {
+      // Ensure we didn't leave stale :focus rules that lack a ring
+      const staleSelectors = [
+        '.settingsInput:focus',
+        '.wtSearchInput:focus',
+        '.wtRepsStepperInput:focus',
+        '.repMaxInput:focus',
+        '.wtTimerEditInput:focus',
+        '.deleteConfirmInput:focus',
+      ]
+      for (const sel of staleSelectors) {
+        const lines = getRuleLines(sel)
+        expect(lines.length, `Stale ${sel} rule should be migrated to :focus-visible`).toBe(0)
+      }
+    })
+  })
 })
