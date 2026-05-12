@@ -397,4 +397,43 @@ describe('CSS regression tests', () => {
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
   })
+
+  describe('WCAG 2.4.7/2.4.11 focus-visible indicators (#547)', () => {
+    // Regression: 11 input elements had outline:none with only border-color
+    // changes on :focus — insufficient for low-vision users per WCAG 2.4.11.
+    // Fix: add box-shadow ring on :focus-visible for all affected inputs.
+
+    const inputsWithFocusRing = [
+      { selector: '.settingsInput:focus-visible', label: 'settingsInput' },
+      { selector: '.wtSearchInput:focus-visible', label: 'wtSearchInput' },
+      { selector: '.wtTagPickerChip:focus-visible', label: 'wtTagPickerChip' },
+      { selector: '.logSetSheet .logSetFieldInput:focus-visible', label: 'logSetFieldInput' },
+      { selector: '.wtRepsStepperInput:focus-visible', label: 'wtRepsStepperInput' },
+      { selector: '.repMaxInput:focus-visible', label: 'repMaxInput' },
+      { selector: '.iosStepperInput:focus-visible', label: 'iosStepperInput' },
+      { selector: '.wtTimerEditInput:focus-visible', label: 'wtTimerEditInput' },
+      { selector: '.deleteConfirmInput:focus-visible', label: 'deleteConfirmInput' },
+    ]
+
+    for (const { selector, label } of inputsWithFocusRing) {
+      it(`${label} has a box-shadow focus ring on :focus-visible`, () => {
+        const lines = getRuleLines(selector)
+        expect(lines.length, `${selector} rule not found`).toBeGreaterThan(0)
+        expect(lines.some(l => l.includes('box-shadow') && l.includes('0 0 0 3px'))).toBe(true)
+      })
+    }
+
+    it('settingsRange has an outline focus indicator on :focus-visible', () => {
+      const lines = getRuleLines('.settingsRange:focus-visible')
+      expect(lines.length, '.settingsRange:focus-visible rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('outline') && l.includes('var(--accent)'))).toBe(true)
+    })
+
+    it('authInput has a box-shadow focus ring on :focus-visible', () => {
+      const authStyle = getVueStyleBlock('AuthScreen.vue')
+      const lines = getRuleLines('.authInput:focus-visible', authStyle)
+      expect(lines.length, '.authInput:focus-visible rule not found in AuthScreen.vue').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('box-shadow') && l.includes('0 0 0 3px'))).toBe(true)
+    })
+  })
 })
