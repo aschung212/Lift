@@ -14,6 +14,8 @@
           aria-label="Email"
           class="authInput"
           autocomplete="email"
+          :aria-invalid="isError && !!message ? true : undefined"
+          :aria-describedby="isError && !!message ? 'auth-error' : undefined"
           required
         />
         <input
@@ -24,6 +26,8 @@
           class="authInput"
           autocomplete="current-password"
           :minlength="isSignUp ? 6 : undefined"
+          :aria-invalid="isError && !!message ? true : undefined"
+          :aria-describedby="isError && !!message ? 'auth-error' : undefined"
           required
         />
         <button class="authSubmitBtn" type="submit" :disabled="submitting">
@@ -55,7 +59,7 @@
 
       <button v-if="isDev" class="authDevBtn" @click="devSignIn">Continue as Dev</button>
 
-      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" role="status" aria-live="polite">{{ message }}</p>
+      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" :id="isError ? 'auth-error' : undefined" role="status" aria-live="polite">{{ message }}</p>
     </div>
   </div>
 </template>

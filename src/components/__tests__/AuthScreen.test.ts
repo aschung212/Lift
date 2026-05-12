@@ -166,6 +166,76 @@ describe('AuthScreen', () => {
     })
   })
 
+  describe('aria-invalid and aria-describedby (WCAG 3.3.1)', () => {
+    it('inputs have no aria-invalid or aria-describedby by default', () => {
+      const inputs = wrapper.findAll('.authInput')
+      expect(inputs[0].attributes('aria-invalid')).toBeUndefined()
+      expect(inputs[0].attributes('aria-describedby')).toBeUndefined()
+      expect(inputs[1].attributes('aria-invalid')).toBeUndefined()
+      expect(inputs[1].attributes('aria-describedby')).toBeUndefined()
+    })
+
+    it('sets aria-invalid and aria-describedby on both inputs when error occurs', async () => {
+      mockSignInWithEmail.mockResolvedValueOnce({
+        error: { message: 'Invalid login credentials' }
+      })
+      await wrapper.find('input[type="email"]').setValue('user@example.com')
+      await wrapper.find('input[type="password"]').setValue('wrong')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+
+      const inputs = wrapper.findAll('.authInput')
+      expect(inputs[0].attributes('aria-invalid')).toBe('true')
+      expect(inputs[0].attributes('aria-describedby')).toBe('auth-error')
+      expect(inputs[1].attributes('aria-invalid')).toBe('true')
+      expect(inputs[1].attributes('aria-describedby')).toBe('auth-error')
+    })
+
+    it('error message element has id="auth-error" when error is shown', async () => {
+      mockSignInWithEmail.mockResolvedValueOnce({
+        error: { message: 'Bad credentials' }
+      })
+      await wrapper.find('input[type="email"]').setValue('user@example.com')
+      await wrapper.find('input[type="password"]').setValue('wrong')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+
+      const msg = wrapper.find('.authMessage')
+      expect(msg.attributes('id')).toBe('auth-error')
+    })
+
+    it('success message does not get id="auth-error"', async () => {
+      await wrapper.find('.authModeSwitch').trigger('click')
+      mockSignUp.mockResolvedValueOnce({ error: null, needsConfirmation: true })
+      await wrapper.find('input[type="email"]').setValue('new@example.com')
+      await wrapper.find('input[type="password"]').setValue('newpass123')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+
+      const msg = wrapper.find('.authMessage')
+      expect(msg.exists()).toBe(true)
+      expect(msg.attributes('id')).toBeUndefined()
+    })
+
+    it('clears aria-invalid when a new submit starts', async () => {
+      // First: trigger an error
+      mockSignInWithEmail.mockResolvedValueOnce({
+        error: { message: 'Bad' }
+      })
+      await wrapper.find('input[type="email"]').setValue('user@example.com')
+      await wrapper.find('input[type="password"]').setValue('wrong')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(wrapper.findAll('.authInput')[0].attributes('aria-invalid')).toBe('true')
+
+      // Second: successful submit clears the error
+      mockSignInWithEmail.mockResolvedValueOnce({ error: null })
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(wrapper.findAll('.authInput')[0].attributes('aria-invalid')).toBeUndefined()
+    })
+  })
+
   describe('OAuth', () => {
     it('calls signInWithProvider when Google button is clicked', async () => {
       await wrapper.find('.authGoogle').trigger('click')
