@@ -397,4 +397,35 @@ describe('CSS regression tests', () => {
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
   })
+
+  describe('WCAG 2.4.11 focus-visible indicators (LIFT-547)', () => {
+    // Regression: 11 inputs had outline:none with only border-color as focus
+    // indicator, violating WCAG 2.4.7/2.4.11. Each must have a :focus-visible
+    // rule with box-shadow to provide a visible 3px focus ring.
+    const inputsWithAccentRing = [
+      '.settingsInput',
+      '.settingsRange',
+      '.wtSearchInput',
+      '.wtTagInlineInput',
+      '.logSetSheet .logSetFieldInput',
+      '.wtRepsStepperInput',
+      '.repMaxInput',
+      '.iosStepperInput',
+      '.wtTimerEditInput',
+    ]
+
+    for (const selector of inputsWithAccentRing) {
+      it(`${selector}:focus-visible has box-shadow ring`, () => {
+        const lines = getRuleLines(`${selector}:focus-visible`)
+        expect(lines.length, `${selector}:focus-visible rule missing`).toBeGreaterThan(0)
+        expect(lines.some(l => l.includes('box-shadow') && l.includes('var(--accent-subtle)'))).toBe(true)
+      })
+    }
+
+    it('.deleteConfirmInput:focus-visible has danger box-shadow ring', () => {
+      const lines = getRuleLines('.deleteConfirmInput:focus-visible')
+      expect(lines.length, '.deleteConfirmInput:focus-visible rule missing').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('box-shadow') && l.includes('var(--danger-subtle)'))).toBe(true)
+    })
+  })
 })
