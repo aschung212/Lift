@@ -94,11 +94,14 @@
     </p>
 
     <template v-else-if="listView === 'exercises'">
-    <p v-if="filteredExercises.length === 0" class="wtEmpty">
+    <p v-if="filteredExercises.length === 0 && !isFilteringActive && store.archivedExercises.length > 0" class="wtEmpty">
+      All your exercises are archived. Expand "Archived" below to bring one back, or tap "+ New Exercise".
+    </p>
+    <p v-else-if="filteredExercises.length === 0" class="wtEmpty">
       No exercises match your search.
     </p>
 
-    <ul v-else class="wtExerciseList" ref="exerciseListEl">
+    <ul v-if="filteredExercises.length > 0" class="wtExerciseList" ref="exerciseListEl">
       <li
         v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
@@ -161,6 +164,41 @@
         </div>
       </li>
     </ul>
+
+    <!-- Archived exercises disclosure -->
+    <div v-if="store.archivedExercises.length > 0 && !isFilteringActive" class="wtArchivedSection">
+      <button
+        class="wtArchivedToggle"
+        :aria-expanded="archivedOpen"
+        :aria-controls="archivedListId"
+        @click="archivedOpen = !archivedOpen"
+      >
+        <span class="wtArchivedToggleIcon" :class="{ expanded: archivedOpen }" aria-hidden="true">›</span>
+        <span class="wtArchivedToggleLabel">Archived</span>
+        <span class="wtArchivedToggleCount">{{ store.archivedExercises.length }}</span>
+      </button>
+      <ul v-if="archivedOpen" :id="archivedListId" class="wtArchivedList">
+        <li
+          v-for="ex in store.archivedExercises"
+          :key="ex.id"
+          class="wtArchivedItem"
+        >
+          <button
+            class="wtArchivedRow"
+            @click="openDetailModal(ex.id)"
+            :aria-label="`View ${ex.name} (archived)`"
+          >
+            <span class="wtArchivedName">{{ ex.name }}</span>
+            <span class="wtArchivedMeta">{{ ex.sets.length }} {{ ex.sets.length === 1 ? 'set' : 'sets' }}</span>
+          </button>
+          <button
+            class="wtArchivedActionBtn"
+            @click="unarchiveExerciseFromList(ex.id)"
+            :aria-label="`Unarchive ${ex.name}`"
+          >Unarchive</button>
+        </li>
+      </ul>
+    </div>
     </template>
 
     <!-- Timeline view -->
@@ -900,6 +938,17 @@
           <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
         </div>
         <button
+          v-if="editTargetIsArchived"
+          class="wtEditArchiveBtn"
+          @click="handleUnarchiveFromEdit"
+        >Unarchive Exercise</button>
+        <button
+          v-else
+          class="wtEditArchiveBtn"
+          @click="handleArchiveFromEdit"
+        >Archive Exercise</button>
+        <p class="wtEditArchiveHint">Hides this exercise from the main list — sets and PRs are preserved.</p>
+        <button
           v-if="!confirmDeleteExercise"
           class="wtEditDeleteBtn"
           @click="confirmDeleteExercise = true"
@@ -923,7 +972,7 @@
         <h2 id="timeline-picker-title">Choose Exercise</h2>
         <div class="wtExPickerList">
           <button
-            v-for="ex in store.exercises"
+            v-for="ex in store.activeExercises"
             :key="ex.id"
             class="wtExPickerRow"
             @click="pickExerciseForLog(ex.id)"
@@ -1271,9 +1320,13 @@ const activeTagFilters = ref<string[]>([])
  * back off without clearing the search first.
  */
 const filteredTags = computed<string[]>(() => {
+  // Only surface tags that exist on at least one active (non-archived)
+  // exercise. Otherwise tapping a chip filters to an empty list because the
+  // archived section is hidden whenever a filter is active.
+  const activeTags = store.allTags.filter(t => (tagCounts.value[t] || 0) > 0)
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return store.allTags
-  return store.allTags.filter(t =>
+  if (!q) return activeTags
+  return activeTags.filter(t =>
     t.toLowerCase().includes(q) || activeTagFilters.value.includes(t)
   )
 })
@@ -1297,7 +1350,7 @@ function clearSearchAndTags() {
 }
 
 const filteredExercises = computed(() => {
-  let result = store.exercises
+  let result = store.activeExercises
   // Text search — check both name and tags so "Push" matches tag-filtered rows.
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
@@ -1334,7 +1387,7 @@ const isFilteringActive = computed(() =>
 )
 
 /** Total exercise count, shown in the "Workouts" header stats. */
-const totalExercises = computed(() => store.exercises.length)
+const totalExercises = computed(() => store.activeExercises.length)
 
 /** Sets logged on the local "today" date — drives the Finish workout affordance. */
 const setsLoggedToday = computed(() => {
@@ -1378,10 +1431,15 @@ const weeklyGoalInfo = computed(() => {
   return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
 })
 
-/** Count of exercises carrying each tag — powers the "Push 23" suffix on tag chips. */
+/**
+ * Count of exercises carrying each tag — powers the "Push 23" suffix on tag
+ * chips. Counts only active (non-archived) exercises so that the chip count
+ * matches what the tag filter will actually show. Tags that exist solely on
+ * archived exercises are filtered out by `filteredTags` below.
+ */
 const tagCounts = computed<Record<string, number>>(() => {
   const map: Record<string, number> = {}
-  for (const e of store.exercises) {
+  for (const e of store.activeExercises) {
     for (const t of e.tags || []) {
       map[t] = (map[t] || 0) + 1
     }
@@ -1662,8 +1720,20 @@ function beginDrag(index: number) {
     document.removeEventListener('mouseup', onEnd)
 
     if (dragState.fromIndex !== dragState.overIndex) {
-      store.reorderExercise(dragState.fromIndex, dragState.overIndex)
-      logEvent('exercise_reorder')
+      // dragState indices are positions in `filteredExercises` (active-only),
+      // but `store.reorderExercise` operates on the full `exercises` array.
+      // Map via exercise IDs so archived rows preserve their relative position
+      // and don't get accidentally reordered.
+      const fromEx = filteredExercises.value[dragState.fromIndex]
+      const toEx = filteredExercises.value[dragState.overIndex]
+      if (fromEx && toEx) {
+        const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
+        const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
+        if (fromStoreIdx !== -1 && toStoreIdx !== -1) {
+          store.reorderExercise(fromStoreIdx, toStoreIdx)
+          logEvent('exercise_reorder')
+        }
+      }
     }
 
     dragState.dragging = false
@@ -2974,6 +3044,47 @@ function undoDeleteExercise(exercise: Exercise) {
       saved.sets.forEach(s => progressionStore.removeSetXP(s.id))
     },
   )
+}
+
+// ── Archive ────────────────────────────────────────────────────
+const archivedOpen = ref(false)
+const archivedListId = 'wt-archived-list'
+
+const editTargetIsArchived = computed(() => {
+  if (!editTarget.value) return false
+  const ex = store.exercises.find(e => e.id === editTarget.value)
+  return !!ex?.archived_at
+})
+
+function handleArchiveFromEdit() {
+  const id = editTarget.value
+  if (!id) return
+  const ex = store.exercises.find(e => e.id === id)
+  if (!ex) return
+  const name = ex.name
+  if (detailExerciseId.value === id) detailExerciseId.value = null
+  store.archiveExercise(id)
+  editTarget.value = null
+  logEvent('exercise_archive')
+  showUndo(
+    `"${name}" archived`,
+    () => store.unarchiveExercise(id),
+    () => { /* commit: archive already applied — no-op */ },
+  )
+}
+
+function handleUnarchiveFromEdit() {
+  const id = editTarget.value
+  if (!id) return
+  store.unarchiveExercise(id)
+  editTarget.value = null
+  archivedOpen.value = false
+  logEvent('exercise_unarchive')
+}
+
+function unarchiveExerciseFromList(exerciseId: string) {
+  store.unarchiveExercise(exerciseId)
+  logEvent('exercise_unarchive')
 }
 
 // ── Edit exercise state (rename + tags) ──────────────────────────

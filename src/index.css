@@ -3300,6 +3300,140 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
 }
 
+.wtEditArchiveBtn {
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  margin-top: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: var(--font-callout);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.wtEditArchiveHint {
+  margin: 8px 4px 0;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.wtArchivedSection {
+  margin-top: 24px;
+  padding: 0 4px;
+}
+
+.wtArchivedToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: var(--font-callout);
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.wtArchivedToggle:hover {
+  background: var(--bg-hover);
+}
+
+.wtArchivedToggleIcon {
+  display: inline-block;
+  width: 16px;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-secondary);
+  transition: transform 150ms ease;
+}
+
+.wtArchivedToggleIcon.expanded {
+  transform: rotate(90deg);
+}
+
+.wtArchivedToggleLabel {
+  flex: 1;
+  text-align: left;
+}
+
+.wtArchivedToggleCount {
+  padding: 2px 8px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtArchivedList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.wtArchivedItem {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wtArchivedRow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wtArchivedName {
+  font-size: var(--font-callout);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.wtArchivedMeta {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+}
+
+.wtArchivedActionBtn {
+  min-height: 44px;
+  padding: 0 16px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.wtArchivedActionBtn:hover {
+  background: var(--bg-hover);
+}
+
 .wtEditDeleteConfirm {
   margin-top: 24px;
   text-align: center;
@@ -4866,7 +5000,7 @@ html.theme-fading .settingsSheet {
   min-height: 44px;
   background: none;
   border: none;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: var(--font-footnote);
   font-weight: 500;
   font-family: inherit;
@@ -6923,7 +7057,7 @@ html.theme-fading .settingsSheet {
 }
 
 .deleteConfirmInput::placeholder {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .deleteConfirmInput:focus {

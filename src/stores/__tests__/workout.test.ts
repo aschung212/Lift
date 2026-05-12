@@ -273,6 +273,80 @@ describe('workout store', () => {
     })
   })
 
+  // ── archiveExercise / unarchiveExercise (LIFT-434) ─────────────
+  describe('archiveExercise / unarchiveExercise', () => {
+    it('marks an exercise as archived without removing it', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench')
+      const id = store.exercises[0].id
+      store.archiveExercise(id)
+      expect(store.exercises).toHaveLength(1)
+      expect(store.exercises[0].archived_at).toBeTruthy()
+    })
+
+    it('removes the exercise from activeExercises but keeps it in archivedExercises', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench')
+      store.addExercise('Squat')
+      const benchId = store.exercises[0].id
+      store.archiveExercise(benchId)
+      expect(store.activeExercises.map(e => e.name)).toEqual(['Squat'])
+      expect(store.archivedExercises.map(e => e.name)).toEqual(['Bench'])
+    })
+
+    it('preserves sets on an archived exercise', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench')
+      const id = store.exercises[0].id
+      store.logSet(id, 135, 5)
+      store.logSet(id, 145, 5)
+      store.archiveExercise(id)
+      expect(store.exercises[0].sets).toHaveLength(2)
+      expect(store.getExercisePR(id)).toBeGreaterThan(0)
+    })
+
+    it('unarchives an exercise by clearing archived_at', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench')
+      const id = store.exercises[0].id
+      store.archiveExercise(id)
+      expect(store.archivedExercises).toHaveLength(1)
+      store.unarchiveExercise(id)
+      expect(store.archivedExercises).toHaveLength(0)
+      expect(store.activeExercises).toHaveLength(1)
+      expect(store.exercises[0].archived_at).toBeUndefined()
+    })
+
+    it('is idempotent — archiving an already-archived exercise does not overwrite the timestamp', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench')
+      const id = store.exercises[0].id
+      store.archiveExercise(id)
+      const firstStamp = store.exercises[0].archived_at
+      store.archiveExercise(id)
+      expect(store.exercises[0].archived_at).toBe(firstStamp)
+    })
+
+    it('persists archive state to localStorage', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench')
+      const id = store.exercises[0].id
+      store.archiveExercise(id)
+      const raw = localStorageMock.getItem('workout-exercises')
+      expect(raw).toBeTruthy()
+      const parsed = JSON.parse(raw!) as Exercise[]
+      expect(parsed[0].archived_at).toBeTruthy()
+    })
+
+    it('no-ops on unknown exercise id', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench')
+      expect(() => store.archiveExercise('nonexistent')).not.toThrow()
+      expect(() => store.unarchiveExercise('nonexistent')).not.toThrow()
+      expect(store.exercises[0].archived_at).toBeUndefined()
+    })
+  })
+
   // ── reorderExercise ─────────────────────────────────────────────
   describe('reorderExercise', () => {
     it('reorders exercise from one index to another', () => {

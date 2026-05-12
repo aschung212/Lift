@@ -522,4 +522,65 @@ describe('sync fuzz: SEV1 2026-04-12 regression', () => {
       expect(store.entries.map(e => e.id)).toEqual(['bw-active'])
     })
   })
+
+  // ── Exercise archival (LIFT-434) ───────────────────────────────
+  describe('archive sync survives subsequent mutations and offline races', () => {
+    it('archiveExercise upsert payload includes archived_at and propagates to the server', async () => {
+      const userId = 'test-user'
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ])
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+
+      store.archiveExercise('ex-1')
+      await tick()
+
+      const upserts = fakeSupabase.upsertsFor('exercises')
+      const archivePayload = (upserts[upserts.length - 1].data as Record<string, unknown>)
+      expect(archivePayload.archived_at).toBeTypeOf('string')
+      expect(fakeSupabase.tables.exercises[0].archived_at).toBeTypeOf('string')
+    })
+
+    it('subsequent rename after archive preserves archived_at on the server', async () => {
+      // Critical regression: the syncQueue dedupes by `exercise:${id}` key, so
+      // a rename queued right after archive used to overwrite the archive
+      // upsert with a payload missing archived_at, clearing it server-side.
+      const userId = 'test-user'
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ])
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+
+      store.archiveExercise('ex-1')
+      store.renameExercise('ex-1', 'Bench Press')
+      await tick()
+
+      expect(fakeSupabase.tables.exercises[0].name).toBe('Bench Press')
+      expect(fakeSupabase.tables.exercises[0].archived_at).toBeTypeOf('string')
+    })
+
+    it('unarchiveExercise clears archived_at on the server', async () => {
+      const userId = 'test-user'
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
+          archived_at: '2026-04-15T12:00:00Z',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ])
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+      expect(store.exercises[0].archived_at).toBeTypeOf('string')
+
+      store.unarchiveExercise('ex-1')
+      await tick()
+
+      expect(fakeSupabase.tables.exercises[0].archived_at).toBeNull()
+    })
+  })
 })

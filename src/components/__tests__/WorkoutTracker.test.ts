@@ -122,10 +122,15 @@ const mockRenameExercise = vi.fn()
 const mockUpdateExerciseTags = vi.fn()
 const mockReorderExercise = vi.fn()
 
+const mockArchiveExercise = vi.fn()
+const mockUnarchiveExercise = vi.fn()
+
 vi.mock('../../stores/workout', () => ({
   useWorkoutStore: () => ({
     get exercises() { return exercises },
     set exercises(v: Exercise[]) { exercises = v },
+    get activeExercises() { return exercises.filter(e => !e.archived_at) },
+    get archivedExercises() { return exercises.filter(e => !!e.archived_at) },
     get allTags() { return getAllTags() },
     getExercisePR,
     getExercisePRSet,
@@ -139,6 +144,8 @@ vi.mock('../../stores/workout', () => ({
     syncDeleteSet: mockSyncDeleteSet,
     restoreExercise: mockRestoreExercise,
     syncDeleteExercise: mockSyncDeleteExercise,
+    archiveExercise: mockArchiveExercise,
+    unarchiveExercise: mockUnarchiveExercise,
     renameExercise: mockRenameExercise,
     updateExerciseTags: mockUpdateExerciseTags,
     reorderExercise: mockReorderExercise,
@@ -249,6 +256,53 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       const handles = wrapper.findAll('.wtDragHandle')
       expect(handles.length).toBe(3)
+    })
+  })
+
+  // ── archived exercises section (LIFT-434) ─────────────────────
+  describe('archived exercises', () => {
+    it('does not render the archived section when there are no archived exercises', () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtArchivedSection').exists()).toBe(false)
+    })
+
+    it('hides archived exercises from the main list and shows them in the Archived section', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      exercises[1].archived_at = '2026-05-01T00:00:00.000Z'
+      const wrapper = mountTracker()
+      const items = wrapper.findAll('.wtExerciseItem')
+      expect(items.length).toBe(2)
+      const section = wrapper.find('.wtArchivedSection')
+      expect(section.exists()).toBe(true)
+      expect(section.find('.wtArchivedToggleCount').text()).toBe('1')
+      // Archived list is collapsed by default — click the disclosure to reveal it.
+      await section.find('.wtArchivedToggle').trigger('click')
+      const archivedRows = wrapper.findAll('.wtArchivedRow')
+      expect(archivedRows.length).toBe(1)
+      expect(archivedRows[0].text()).toContain('Squat')
+    })
+
+    it('calls unarchiveExercise when the Unarchive button is clicked', async () => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      exercises[0].archived_at = '2026-05-01T00:00:00.000Z'
+      const wrapper = mountTracker()
+      await wrapper.find('.wtArchivedToggle').trigger('click')
+      await wrapper.find('.wtArchivedActionBtn').trigger('click')
+      expect(mockUnarchiveExercise).toHaveBeenCalledWith('ex-1')
+    })
+
+    it('omits tags that exist only on archived exercises from the chip bar', () => {
+      // 'Legs' lives only on Squat. Archive Squat and 'Legs' should disappear
+      // from the chips — otherwise tapping it would filter to an empty list.
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      exercises[1].archived_at = '2026-05-01T00:00:00.000Z'
+      const wrapper = mountTracker()
+      const chips = wrapper.findAll('.wtTagChip').map(c => c.text())
+      const chipText = chips.join(' ')
+      expect(chipText).not.toContain('Legs')
+      expect(chipText).toContain('Chest')
+      expect(chipText).toContain('Push')
     })
   })
 

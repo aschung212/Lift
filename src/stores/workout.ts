@@ -35,6 +35,7 @@ export interface Exercise {
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   updated_at?: string              // ISO 8601, used for last-write-wins merge
+  archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
 }
 
@@ -191,16 +192,34 @@ export const useWorkoutStore = defineStore('workout', () => {
   }
 
   // ── Internal helpers ─────────────────────────────────────────────
+  /**
+   * Build a comprehensive upsert payload for an exercise row.
+   *
+   * Always include every mutable column the client owns — including
+   * `archived_at` — so that the sync queue's dedup-by-key behavior cannot
+   * accidentally drop archival state. (The queue collapses repeated
+   * `exercise:${id}` enqueues into the last one; a partial payload from a
+   * later rename would otherwise silently clear archived_at on the server.)
+   */
+  function _buildExerciseUpsert(exercise: Exercise, userId: string) {
+    return {
+      id: exercise.id,
+      user_id: userId,
+      name: exercise.name,
+      tags: exercise.tags,
+      archived_at: exercise.archived_at ?? null,
+      ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}),
+      ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {}),
+    }
+  }
+
   /** Clear sample flag and push exercise + all its sets to Supabase. */
   function _adoptExercise(exercise: Exercise) {
     delete exercise.sample
     if (supabase && !isPreviewMode.value && _userId) {
       const userId = _userId
       syncQueue.enqueue(`exercise:${exercise.id}`, () =>
-        supabase!.from('exercises').upsert({
-          id: exercise.id, user_id: userId, name: exercise.name, tags: exercise.tags,
-          ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}), ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {})
-        })
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
       )
       for (const set of exercise.sets) {
         syncQueue.enqueue(`set:${set.id}`, () =>
@@ -263,6 +282,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       }
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight as number
+      if (ex.archived_at) exercise.archived_at = ex.archived_at as string
       return exercise
     })
 
@@ -368,10 +388,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       const userId = _userId
       for (const ex of filteredLocalOnly) {
         syncQueue.enqueue(`exercise:${ex.id}`, () =>
-          supabase!.from('exercises').upsert({
-            id: ex.id, user_id: userId, name: ex.name, tags: ex.tags,
-            ...(ex.inputMode ? { input_mode: ex.inputMode } : {}), ...(ex.barWeight != null ? { bar_weight: ex.barWeight } : {})
-          })
+          supabase!.from('exercises').upsert(_buildExerciseUpsert(ex, userId))
         )
         for (const set of ex.sets) {
           syncQueue.enqueue(`set:${set.id}`, () =>
@@ -394,10 +411,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       const userId = _userId
       for (const ex of filteredLocalWins) {
         syncQueue.enqueue(`exercise:${ex.id}`, () =>
-          supabase!.from('exercises').upsert({
-            id: ex.id, user_id: userId, name: ex.name, tags: ex.tags,
-            ...(ex.inputMode ? { input_mode: ex.inputMode } : {}), ...(ex.barWeight != null ? { bar_weight: ex.barWeight } : {})
-          })
+          supabase!.from('exercises').upsert(_buildExerciseUpsert(ex, userId))
         )
         // Only push sets that are new or have changed content (offline edits)
         const remoteSets = new Map(
@@ -460,9 +474,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (sync && supabase && !isPreviewMode.value && _userId) {
       const userId = _userId
       syncQueue.enqueue(`exercise:${id}`, () =>
-        supabase!.from('exercises').upsert({
-          id, user_id: userId, name: trimmed, tags: [...tags]
-        })
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
       )
     }
     return id
@@ -487,12 +499,8 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     if (supabase && _userId) {
       const userId = _userId
-      const { name, tags, inputMode } = exercise
       syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert({
-          id: exerciseId, user_id: userId, name, tags,
-          ...(inputMode ? { input_mode: inputMode } : {}), bar_weight: barWeight,
-        })
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
       )
     }
   }
@@ -508,12 +516,8 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     if (supabase && _userId) {
       const userId = _userId
-      const { name, tags, inputMode, barWeight } = exercise
       syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert({
-          id: exerciseId, user_id: userId, name, tags,
-          ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
-        })
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
       )
     }
   }
@@ -629,12 +633,8 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     if (supabase && _userId) {
       const userId = _userId
-      const { name: n, tags: t, inputMode, barWeight } = exercise
       syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert({
-          id: exerciseId, user_id: userId, name: n, tags: t,
-          ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
-        })
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
       )
     }
   }
@@ -650,13 +650,8 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     if (supabase && _userId) {
       const userId = _userId
-      const { name, inputMode, barWeight } = exercise
-      const tagsCopy = [...tags]
       syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert({
-          id: exerciseId, user_id: userId, name, tags: tagsCopy,
-          ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
-        })
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
       )
     }
   }
@@ -714,6 +709,45 @@ export const useWorkoutStore = defineStore('workout', () => {
         supabase!.from('exercises')
           .update({ deleted_at: null })
           .eq('id', exercise.id).eq('user_id', userId)
+      )
+    }
+  }
+
+  function archiveExercise(exerciseId: string) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.archived_at) return
+    if (exercise.sample) _adoptExercise(exercise)
+    const archivedAt = new Date().toISOString()
+    exercise.archived_at = archivedAt
+    exercise.updated_at = archivedAt
+    triggerRef(exercises)
+    _persist()
+
+    // Use a full upsert (not a partial update) so this enqueue is safe even
+    // when the row hasn't yet been created on the server (e.g., an adopted
+    // sample exercise whose creating upsert sits in the same queue slot).
+    if (supabase && !isPreviewMode.value && _userId) {
+      const userId = _userId
+      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
+      )
+    }
+  }
+
+  function unarchiveExercise(exerciseId: string) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (!exercise.archived_at) return
+    delete exercise.archived_at
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && !isPreviewMode.value && _userId) {
+      const userId = _userId
+      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
       )
     }
   }
@@ -811,12 +845,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (_userId && modified.length > 0) {
       const userId = _userId
       for (const e of modified.filter(e => !e.sample)) {
-        const { name, tags, inputMode, barWeight } = e
         syncQueue.enqueue(`exercise:${e.id}`, () =>
-          supabase!.from('exercises').upsert({
-            id: e.id, user_id: userId, name, tags: [...tags],
-            ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
-          })
+          supabase!.from('exercises').upsert(_buildExerciseUpsert(e, userId))
         )
       }
     }
@@ -846,12 +876,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (_userId && modified.length > 0) {
       const userId = _userId
       for (const e of modified.filter(e => !e.sample)) {
-        const { name, tags, inputMode, barWeight } = e
         syncQueue.enqueue(`exercise:${e.id}`, () =>
-          supabase!.from('exercises').upsert({
-            id: e.id, user_id: userId, name, tags: [...tags],
-            ...(inputMode ? { input_mode: inputMode } : {}), ...(barWeight != null ? { bar_weight: barWeight } : {})
-          })
+          supabase!.from('exercises').upsert(_buildExerciseUpsert(e, userId))
         )
       }
     }
@@ -903,6 +929,16 @@ export const useWorkoutStore = defineStore('workout', () => {
     customTags.value.forEach((t: string) => tagSet.add(t))
     return [...tagSet].sort()
   })
+
+  /** Exercises the user is actively training — main list and pickers use this. */
+  const activeExercises = computed((): Exercise[] =>
+    exercises.value.filter((e: Exercise) => !e.archived_at)
+  )
+
+  /** Exercises the user has archived — hidden from the main list but data is preserved. */
+  const archivedExercises = computed((): Exercise[] =>
+    exercises.value.filter((e: Exercise) => !!e.archived_at)
+  )
 
   /** Sorted unique workout dates (YYYY-MM-DD), derived from all sets. */
   const workoutDates = computed((): string[] => {
@@ -1082,6 +1118,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     updateExerciseTags,
     deleteExercise,
     restoreExercise,
+    archiveExercise,
+    unarchiveExercise,
     syncDeleteSet,
     syncDeleteExercise,
     reorderExercise,
@@ -1093,6 +1131,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     removeCustomTag,
     // Getters
     allTags,
+    activeExercises,
+    archivedExercises,
     workoutDates,
     getExercisePR,
     getExercisePRSet,
