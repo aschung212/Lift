@@ -286,7 +286,7 @@ describe('CSS regression tests', () => {
       const lines = getRuleLines('.skipLink')
       expect(lines.length).toBeGreaterThan(0)
       expect(lines.some(l => l.startsWith('position: absolute'))).toBe(true)
-      expect(lines.some(l => l.includes('top: -100%'))).toBe(true)
+      expect(lines.some(l => l.includes('top: -80px'))).toBe(true)
       expect(lines.some(l => l.includes('z-index: 10000'))).toBe(true)
     })
 

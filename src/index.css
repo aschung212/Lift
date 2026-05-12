@@ -768,7 +768,7 @@ button, [role="tab"], [role="switch"], a {
 /* ── Skip-to-content link (WCAG 2.4.1) ─────────────────────────────────── */
 .skipLink {
   position: absolute;
-  top: -100%;
+  top: -80px;
   left: 16px;
   z-index: 10000;
   padding: 8px 16px;

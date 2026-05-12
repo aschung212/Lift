@@ -1,7 +1,6 @@
 <template>
   <ErrorBoundary>
   <div id="appShell">
-    <a href="#main-content" class="skipLink">Skip to content</a>
     <!-- Nothing renders while loading — splash screen covers this -->
     <template v-if="!loading">
 
@@ -13,6 +12,7 @@
 
     <!-- Authenticated app -->
     <template v-else>
+      <a href="#main-content" class="skipLink">Skip to content</a>
       <main class="appContainer">
         <div v-if="isPreviewDeploy" class="previewBanner" role="status">
           <template v-if="isPreviewMode">
