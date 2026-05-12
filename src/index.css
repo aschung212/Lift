@@ -6880,6 +6880,7 @@ html.theme-fading .settingsSheet {
   border: 1px solid var(--border);
   border-radius: 8px;
   box-sizing: border-box;
+  outline: none;
 }
 
 .deleteConfirmInput::placeholder {
@@ -6888,7 +6889,7 @@ html.theme-fading .settingsSheet {
 
 .deleteConfirmInput:focus-visible {
   border-color: var(--danger);
-  box-shadow: 0 0 0 3px var(--accent-subtle);
+  box-shadow: 0 0 0 3px var(--danger-subtle);
 }
 
 .deleteConfirmError {
