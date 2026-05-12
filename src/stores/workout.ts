@@ -35,6 +35,7 @@ export interface Exercise {
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   updated_at?: string              // ISO 8601, used for last-write-wins merge
+  archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
 }
 
@@ -263,6 +264,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       }
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight as number
+      if (ex.archived_at) exercise.archived_at = ex.archived_at as string
       return exercise
     })
 
@@ -718,6 +720,46 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  function archiveExercise(exerciseId: string) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.archived_at) return
+    if (exercise.sample) _adoptExercise(exercise)
+    const archivedAt = new Date().toISOString()
+    exercise.archived_at = archivedAt
+    exercise.updated_at = archivedAt
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && !isPreviewMode.value && _userId) {
+      const userId = _userId
+      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+        supabase!.from('exercises')
+          .update({ archived_at: archivedAt })
+          .eq('id', exerciseId).eq('user_id', userId)
+      )
+    }
+  }
+
+  function unarchiveExercise(exerciseId: string) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (!exercise.archived_at) return
+    delete exercise.archived_at
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && !isPreviewMode.value && _userId) {
+      const userId = _userId
+      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
+        supabase!.from('exercises')
+          .update({ archived_at: null })
+          .eq('id', exerciseId).eq('user_id', userId)
+      )
+    }
+  }
+
   function syncDeleteSet(setId: string) {
     if (supabase && _userId) {
       const userId = _userId
@@ -904,6 +946,16 @@ export const useWorkoutStore = defineStore('workout', () => {
     return [...tagSet].sort()
   })
 
+  /** Exercises the user is actively training — main list and pickers use this. */
+  const activeExercises = computed((): Exercise[] =>
+    exercises.value.filter((e: Exercise) => !e.archived_at)
+  )
+
+  /** Exercises the user has archived — hidden from the main list but data is preserved. */
+  const archivedExercises = computed((): Exercise[] =>
+    exercises.value.filter((e: Exercise) => !!e.archived_at)
+  )
+
   /** Sorted unique workout dates (YYYY-MM-DD), derived from all sets. */
   const workoutDates = computed((): string[] => {
     const dates = new Set<string>()
@@ -1082,6 +1134,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     updateExerciseTags,
     deleteExercise,
     restoreExercise,
+    archiveExercise,
+    unarchiveExercise,
     syncDeleteSet,
     syncDeleteExercise,
     reorderExercise,
@@ -1093,6 +1147,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     removeCustomTag,
     // Getters
     allTags,
+    activeExercises,
+    archivedExercises,
     workoutDates,
     getExercisePR,
     getExercisePRSet,
