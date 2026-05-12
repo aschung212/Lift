@@ -281,6 +281,34 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.skipLink skip-to-content (WCAG 2.4.1)', () => {
+    it('is positioned off-screen by default', () => {
+      const lines = getRuleLines('.skipLink')
+      expect(lines.length).toBeGreaterThan(0)
+      expect(lines.some(l => l.startsWith('position: absolute'))).toBe(true)
+      expect(lines.some(l => l.includes('top: -100%'))).toBe(true)
+      expect(lines.some(l => l.includes('z-index: 10000'))).toBe(true)
+    })
+
+    it('becomes visible on focus', () => {
+      const lines = getRuleLines('.skipLink:focus')
+      expect(lines.length).toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('top:'))).toBe(true)
+      expect(lines.some(l => !l.includes('-100%'))).toBe(true)
+    })
+
+    it('uses theme custom properties for colors', () => {
+      const lines = getRuleLines('.skipLink')
+      expect(lines.some(l => l.includes('var(--accent)'))).toBe(true)
+      expect(lines.some(l => l.includes('var(--bg-primary)'))).toBe(true)
+    })
+
+    it('respects safe-area-inset-top on focus', () => {
+      const lines = getRuleLines('.skipLink:focus')
+      expect(lines.some(l => l.includes('safe-area-inset-top'))).toBe(true)
+    })
+  })
+
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {
     // Valid spacing values: 0, 1, 2, 4, 8, 12, 16, 24, 32, and multiples of 8 above 32
     const SCALE = new Set([0, 1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128])

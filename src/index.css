@@ -765,6 +765,28 @@ button, [role="tab"], [role="switch"], a {
   border: 0;
 }
 
+/* ── Skip-to-content link (WCAG 2.4.1) ─────────────────────────────────── */
+.skipLink {
+  position: absolute;
+  top: -100%;
+  left: 16px;
+  z-index: 10000;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  transition: top 0.15s ease;
+}
+
+.skipLink:focus {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+}
+
 /* ─── App shell ─────────────────────────────────────────────────────────── */
 
 #app {
@@ -965,6 +987,10 @@ button, [role="tab"], [role="switch"], a {
   padding-top: 12px;
   /* Reserve room for the floating tab bar: 58h + 26 offset + 16 padding + safe area */
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 120px);
+}
+
+#main-content:focus {
+  outline: none;
 }
 
 html.modal-open .tabContent {

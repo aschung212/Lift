@@ -1,6 +1,7 @@
 <template>
   <ErrorBoundary>
   <div id="appShell">
+    <a href="#main-content" class="skipLink">Skip to content</a>
     <!-- Nothing renders while loading — splash screen covers this -->
     <template v-if="!loading">
 
@@ -78,7 +79,7 @@
             </button>
           </div>
         </div>
-        <div ref="tabContentEl" class="tabContent">
+        <div ref="tabContentEl" id="main-content" tabindex="-1" class="tabContent">
           <KeepAlive>
             <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
             <CalendarView v-else-if="activeTab === 'calendar'" />
