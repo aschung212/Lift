@@ -78,6 +78,9 @@ jobs:
 
       - run: npx vitest run --coverage
 
+      - name: Coverage ratchet check
+        run: node scripts/check-coverage-ratchet.js
+
       - name: Coverage report
         if: always() && github.event_name == 'pull_request'
         uses: davelosert/vitest-coverage-report-action@v2
