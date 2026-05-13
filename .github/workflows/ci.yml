@@ -71,7 +71,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: bundle-sizes.json
-          key: bundle-sizes-master
+          key: bundle-sizes-master-${{ github.event.pull_request.base.sha }}
+          restore-keys: bundle-sizes-master-
 
       - name: Preserve base bundle sizes
         if: github.event_name == 'pull_request' && steps.base-bundle.outputs.cache-hit == 'true'
@@ -103,7 +104,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: bundle-sizes.json
-          key: bundle-sizes-master
+          key: bundle-sizes-master-${{ github.sha }}
 
       - name: Post bundle size delta comment
         if: github.event_name == 'pull_request'
