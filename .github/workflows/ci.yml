@@ -44,6 +44,9 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     needs: [lint, typecheck]
+    permissions:
+      contents: read
+      pull-requests: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -75,8 +78,8 @@ jobs:
           restore-keys: bundle-sizes-master-
 
       - name: Preserve base bundle sizes
-        if: github.event_name == 'pull_request' && steps.base-bundle.outputs.cache-hit == 'true'
-        run: mv bundle-sizes.json base-bundle-sizes.json
+        if: github.event_name == 'pull_request'
+        run: if [ -f bundle-sizes.json ]; then mv bundle-sizes.json base-bundle-sizes.json; fi
 
       - name: Measure bundle sizes
         id: bundle
@@ -107,7 +110,7 @@ jobs:
           key: bundle-sizes-master-${{ github.sha }}
 
       - name: Post bundle size delta comment
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && steps.bundle.outputs.js_bytes
         uses: actions/github-script@v7
         with:
           script: |
