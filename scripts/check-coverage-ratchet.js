@@ -101,9 +101,9 @@ if (failed) {
 if (shouldUpdate && Object.keys(improved).length > 0) {
   const newBaseline = { ...baseline };
   for (const [metric, value] of Object.entries(improved)) {
-    // Round down to 2 decimal places to avoid flaky failures from
-    // floating-point jitter between CI environments
-    newBaseline[metric] = Math.floor(value * 100) / 100;
+    // Round to 2 decimal places; toFixed avoids floating-point jitter
+    // (e.g., 80.14 * 100 → 8013.999... which Math.floor would truncate)
+    newBaseline[metric] = Number(value.toFixed(2));
   }
   writeFileSync(BASELINE_FILE, JSON.stringify(newBaseline, null, 2) + '\n');
   console.log('Baseline ratcheted up. New values:');
