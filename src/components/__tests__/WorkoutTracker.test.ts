@@ -1731,4 +1731,93 @@ describe('WorkoutTracker', () => {
       expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
     })
   })
+
+  // ── keyboard reorder (LIFT-546) ──────────────────────────────────
+  describe('keyboard reorder', () => {
+    beforeEach(() => {
+      exercises = JSON.parse(JSON.stringify(EXERCISES))
+    })
+
+    it('renders drag handles as buttons with aria-label', () => {
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtDragHandle')
+      expect(handles.length).toBe(3)
+      handles.forEach(h => {
+        expect(h.element.tagName).toBe('BUTTON')
+        expect(h.attributes('aria-label')).toMatch(/^Reorder .+, position \d+ of \d+$/)
+        expect(h.attributes('aria-roledescription')).toBe('sortable')
+      })
+    })
+
+    it('calls reorderExercise when ArrowDown is pressed on drag handle', async () => {
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtDragHandle')
+      await handles[0].trigger('keydown', { key: 'ArrowDown' })
+      expect(mockReorderExercise).toHaveBeenCalledTimes(1)
+    })
+
+    it('calls reorderExercise when ArrowUp is pressed on drag handle', async () => {
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtDragHandle')
+      await handles[1].trigger('keydown', { key: 'ArrowUp' })
+      expect(mockReorderExercise).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not reorder when ArrowUp is pressed on the first item', async () => {
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtDragHandle')
+      await handles[0].trigger('keydown', { key: 'ArrowUp' })
+      expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    it('does not reorder when ArrowDown is pressed on the last item', async () => {
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtDragHandle')
+      await handles[2].trigger('keydown', { key: 'ArrowDown' })
+      expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    it('sets aria-disabled and tabindex=-1 when search is active', async () => {
+      exercises = [
+        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('Press')
+
+      const handles = wrapper.findAll('.wtDragHandle')
+      expect(handles[0].attributes('aria-disabled')).toBe('true')
+      expect(handles[0].attributes('tabindex')).toBe('-1')
+    })
+
+    it('does not reorder when search is active', async () => {
+      exercises = [
+        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('Press')
+
+      const handles = wrapper.findAll('.wtDragHandle')
+      await handles[0].trigger('keydown', { key: 'ArrowDown' })
+      expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    it('announces the move to screen readers via live region', async () => {
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtDragHandle')
+      await handles[0].trigger('keydown', { key: 'ArrowDown' })
+      const liveRegion = wrapper.find('[aria-live="assertive"]')
+      expect(liveRegion.text()).toContain('Bench Press')
+      expect(liveRegion.text()).toContain('position 2')
+    })
+  })
 })

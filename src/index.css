@@ -2677,21 +2677,36 @@ html.theme-fading .settingsSheet {
   align-items: center;
   justify-content: center;
   width: 16px;
+  min-height: 44px;
   flex-shrink: 0;
   font-size: 14px;
   color: var(--text-muted);
   background: none;
   border: none;
+  padding: 0;
+  margin: 0;
+  cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  pointer-events: none;
+  pointer-events: auto;
   transition: color 0.15s, opacity 0.15s;
   opacity: 0.35;
   align-self: center;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+.wtDragHandle:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--color-primary, #c9a227);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .wtDragHandleDisabled {
   opacity: 0.25;
+  cursor: default;
 }
 
 /* Long-press pickup feedback — lifts the row while dragging */
