@@ -218,7 +218,7 @@ const BodyweightTracker = defineAsyncComponent({
 })
 import { useTheme, connectProgressionStore } from './composables/useTheme'
 import type { ThemeId } from './lib/themes'
-import { useProgressionStore, xpToast, unlockCelebration, dismissUnlockCelebration } from './stores/progression'
+import { useProgressionStore, xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './stores/progression'
 import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
 import { useAuth } from './composables/useAuth'
@@ -539,6 +539,23 @@ function catchUpStreaks() {
   applyStreakTargetCorrection()
   const streakBefore = progressionStore.streakWeeks
   progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates, new Date(), buildSetIdToDate())
+  const streakAfter = progressionStore.streakWeeks
+
+  if (progressionStore.showProgression && streakAfter > streakBefore) {
+    const MILESTONES = [12, 8, 4, 2] as const
+    for (const m of MILESTONES) {
+      if (streakAfter >= m && streakBefore < m) {
+        const mult = streakAfter >= 12 ? '1.75' : streakAfter >= 8 ? '1.5' : streakAfter >= 4 ? '1.25' : '1.1'
+        setTimeout(() => showXPToast(
+          `${streakAfter}-week streak! Duration bonus: ${mult}×`,
+          progressionStore.progressPercent,
+          progressionStore.totalXP,
+          progressionStore.nextUnlockThreshold
+        ), 1500)
+        break
+      }
+    }
+  }
 }
 
 onMounted(async () => {
