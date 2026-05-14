@@ -496,7 +496,7 @@
   <!-- Legal modal (Privacy Policy / Terms of Service) -->
   <Teleport to="body">
     <Transition name="undoToast">
-      <div v-if="legalView" class="kbOverlay" @click.self="legalView = null" @keydown.escape="legalView = null">
+      <div v-if="legalView" class="kbOverlay" @click.self="legalView = null" @keydown.escape.stop="legalView = null">
         <div class="legalSheet" role="dialog" aria-modal="true" :aria-labelledby="'legal-title'">
           <div class="legalHeader">
             <h3 id="legal-title" class="kbTitle">{{ legalView === 'privacy' ? 'Privacy Policy' : 'Terms of Service' }}</h3>
@@ -547,7 +547,7 @@
   <!-- Custom confirmation dialog -->
   <Teleport to="body">
     <Transition name="undoToast">
-      <div v-if="confirmDialog" class="confirmOverlay" @click.self="dismissConfirm" @keydown.escape="dismissConfirm">
+      <div v-if="confirmDialog" class="confirmOverlay" @click.self="dismissConfirm" @keydown.escape.stop="dismissConfirm">
         <div class="confirmSheet" role="alertdialog" aria-modal="true" aria-labelledby="confirm-msg">
           <p id="confirm-msg" class="confirmMessage">{{ confirmDialog.message }}</p>
           <div class="confirmActions">
@@ -562,7 +562,7 @@
   <!-- Delete account confirmation dialog -->
   <Teleport to="body">
     <Transition name="undoToast">
-      <div v-if="deleteAccountOpen" class="confirmOverlay" @click.self="deleteAccountOpen = false" @keydown.escape="deleteAccountOpen = false">
+      <div v-if="deleteAccountOpen" class="confirmOverlay" @click.self="deleteAccountOpen = false" @keydown.escape.stop="deleteAccountOpen = false">
         <div class="confirmSheet deleteConfirmSheet" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-desc">
           <p id="delete-title" class="confirmMessage deleteConfirmTitle">Delete Account</p>
           <p id="delete-desc" class="deleteConfirmDesc">This will permanently erase all your workout data, progression, and settings. This action cannot be undone.</p>
@@ -766,12 +766,10 @@ function onSheetMounted(el: Element | ComponentPublicInstance | null) {
 }
 
 function close() {
-  // Revert any active theme preview
+  // Always revert theme preview unconditionally
   if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
-  if (previewingThemeId.value) {
-    previewingThemeId.value = null
-    revertPreview()
-  }
+  previewingThemeId.value = null
+  revertPreview()
   const el = sheetEl.value
   if (!el) { emit('close'); return }
   el.classList.add('settingsSheetClosing')
@@ -785,12 +783,11 @@ watch(() => sheetEl.value, (el, oldEl) => {
   if (!el && oldEl) {
     swipe.detach()
     settingsFocus.deactivate()
-    // Revert any active theme preview
+    // Always revert theme preview — covers both theme grid preview and
+    // starter picker preview (which doesn't set previewingThemeId)
     if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
-    if (previewingThemeId.value) {
-      previewingThemeId.value = null
-      revertPreview()
-    }
+    previewingThemeId.value = null
+    revertPreview()
   }
 })
 
@@ -1299,6 +1296,7 @@ async function executeDeleteAccount() {
     await deleteAccount()
     deleteAccountOpen.value = false
     emit('close')
+    emit('sign-out')
     logEvent('account_deleted')
   } catch (err) {
     deleteError.value = err instanceof Error ? err.message : 'Deletion failed. Please try again.'
