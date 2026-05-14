@@ -1,8 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { createPinia, setActivePinia } from 'pinia'
 import MuscleGroupRecovery from '../MuscleGroupRecovery.vue'
-import { useWorkoutStore } from '../../stores/workout'
 import type { TagRecovery } from '../../composables/useTagRecovery'
 
 const sampleRecovery: TagRecovery[] = [
@@ -11,23 +9,17 @@ const sampleRecovery: TagRecovery[] = [
   { tag: 'Shoulders', lastTrainedDate: '2026-04-10', hoursSince: 24, daysSince: 1, recoveryDays: 2, status: 'recovering' },
 ]
 
-function mountRecovery(props?: Partial<{ recovery: TagRecovery[]; hiddenCount: number }>) {
+function mountRecovery(props?: Partial<{ recovery: TagRecovery[]; hiddenCount: number; hiddenTags: string[] }>) {
   return mount(MuscleGroupRecovery, {
     props: {
       recovery: props?.recovery ?? sampleRecovery,
       hiddenCount: props?.hiddenCount ?? 0,
-    },
-    global: {
-      plugins: [createPinia()],
+      hiddenTags: props?.hiddenTags ?? [],
     },
   })
 }
 
 describe('MuscleGroupRecovery', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-  })
-
   describe('visibility', () => {
     it('renders when recovery has data', () => {
       const wrapper = mountRecovery()
@@ -109,6 +101,40 @@ describe('MuscleGroupRecovery', () => {
     })
   })
 
+  describe('events', () => {
+    it('emits hide when hide button is clicked', async () => {
+      const wrapper = mountRecovery()
+      await wrapper.findAll('.recRow')[0].trigger('click')
+      await wrapper.find('.recActionBtn').trigger('click')
+      expect(wrapper.emitted('hide')).toEqual([['Legs']])
+    })
+
+    it('emits show when show button is clicked', async () => {
+      const wrapper = mountRecovery({ hiddenCount: 1, hiddenTags: ['Back'] })
+      await wrapper.find('.recHiddenFooter').trigger('click')
+      await wrapper.find('.recShowBtn').trigger('click')
+      expect(wrapper.emitted('show')).toEqual([['Back']])
+    })
+
+    it('emits days-change when recovery window is changed', async () => {
+      const wrapper = mountRecovery()
+      await wrapper.findAll('.recRow')[0].trigger('click')
+      const input = wrapper.find('.recDaysInput')
+      await input.setValue('5')
+      const emitted = wrapper.emitted('days-change') as [string, number | null][]
+      expect(emitted[emitted.length - 1]).toEqual(['Legs', 5])
+    })
+
+    it('emits days-change with null for empty input', async () => {
+      const wrapper = mountRecovery()
+      await wrapper.findAll('.recRow')[0].trigger('click')
+      const input = wrapper.find('.recDaysInput')
+      await input.setValue('')
+      const emitted = wrapper.emitted('days-change') as [string, number | null][]
+      expect(emitted[emitted.length - 1]).toEqual(['Legs', null])
+    })
+  })
+
   describe('hidden tags footer', () => {
     it('does not show footer when no tags are hidden', () => {
       const wrapper = mountRecovery({ hiddenCount: 0 })
@@ -128,7 +154,7 @@ describe('MuscleGroupRecovery', () => {
     })
 
     it('toggles hidden list on footer tap', async () => {
-      const wrapper = mountRecovery({ hiddenCount: 1 })
+      const wrapper = mountRecovery({ hiddenCount: 1, hiddenTags: ['Back'] })
       expect(wrapper.find('.recHiddenList').exists()).toBe(false)
 
       await wrapper.find('.recHiddenFooter').trigger('click')
@@ -136,6 +162,13 @@ describe('MuscleGroupRecovery', () => {
 
       await wrapper.find('.recHiddenFooter').trigger('click')
       expect(wrapper.find('.recHiddenList').exists()).toBe(false)
+    })
+
+    it('renders hidden tag names from prop', async () => {
+      const wrapper = mountRecovery({ hiddenCount: 2, hiddenTags: ['Back', 'Biceps'] })
+      await wrapper.find('.recHiddenFooter').trigger('click')
+      const names = wrapper.findAll('.recHiddenName')
+      expect(names.map(n => n.text())).toEqual(['Back', 'Biceps'])
     })
   })
 
