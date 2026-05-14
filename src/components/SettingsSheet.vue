@@ -755,7 +755,11 @@ const legalFocus = useFocusTrap()
 const confirmFocus = useFocusTrap()
 
 function onSheetMounted(el: Element | ComponentPublicInstance | null) {
-  if (el && el instanceof HTMLElement && el !== sheetEl.value) {
+  if (!el) {
+    sheetEl.value = null
+    return
+  }
+  if (el instanceof HTMLElement && el !== sheetEl.value) {
     sheetEl.value = el
     nextTick(() => {
       const handle = handleEl.value
