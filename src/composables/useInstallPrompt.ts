@@ -106,16 +106,19 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
   }
 
   // Register listeners — cleaned up via destroy() if the consumer unmounts
-  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-  window.addEventListener('appinstalled', onAppInstalled)
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    window.addEventListener('appinstalled', onAppInstalled)
+  }
 
   function destroy() {
+    if (typeof window === 'undefined') return
     window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
     window.removeEventListener('appinstalled', onAppInstalled)
   }
 
   // iOS Safari: no beforeinstallprompt ever fires — show manual instructions
-  if (isIOS && !isNative && !isStandalone()) {
+  if (typeof window !== 'undefined' && isIOS && !isNative && !isStandalone()) {
     if (shouldShow()) {
       isIOSPrompt.value = true
       showBanner.value = true

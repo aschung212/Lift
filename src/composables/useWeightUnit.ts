@@ -1,8 +1,15 @@
 import { ref, watch, type Ref } from 'vue'
 import type { WeightUnit } from '../lib/themes'
 
-const weightUnit: Ref<WeightUnit> = ref((localStorage.getItem('weight-unit') || 'lbs') as WeightUnit)
-watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
+const isBrowser = typeof localStorage !== 'undefined'
+
+const weightUnit: Ref<WeightUnit> = ref(
+  (isBrowser ? localStorage.getItem('weight-unit') || 'lbs' : 'lbs') as WeightUnit
+)
+
+if (isBrowser) {
+  watch(weightUnit, (v) => localStorage.setItem('weight-unit', v))
+}
 
 export function useWeightUnit() {
   function displayWeight(lbs: number): number {
