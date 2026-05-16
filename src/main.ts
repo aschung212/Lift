@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { inject } from '@vercel/analytics'
 import { injectSpeedInsights } from '@vercel/speed-insights'
 import { initNativePlugins } from './lib/native'
+import { initTheme } from './composables/useTheme'
 import { setSentryCaptureException, logError } from './lib/logger'
 import App from './App.vue'
 import './index.css'
@@ -10,6 +11,8 @@ import './index.css'
 inject()
 injectSpeedInsights()
 initNativePlugins()
+// Apply persisted theme/mode to DOM before first paint to prevent FOUC.
+initTheme()
 
 const app = createApp(App)
 app.use(createPinia())

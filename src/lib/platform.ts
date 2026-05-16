@@ -9,4 +9,4 @@ export const platform = Capacitor.getPlatform() as 'ios' | 'android' | 'web'
 /** Whether the app is running on iOS (native or Safari PWA). */
 export const isIOS =
   platform === 'ios' ||
-  (/iPad|iPhone|iPod/.test(navigator.userAgent) && !('MSStream' in window))
+  (typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && typeof window !== 'undefined' && !('MSStream' in window))

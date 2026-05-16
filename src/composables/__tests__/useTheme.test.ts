@@ -5,7 +5,7 @@ import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
-// Mock matchMedia before importing useTheme (it runs at import time)
+// Mock matchMedia before importing useTheme (initTheme reads it)
 const listeners: Array<() => void> = []
 vi.stubGlobal('matchMedia', vi.fn(() => ({
   matches: false,
@@ -17,9 +17,12 @@ vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn() }
 }))
 
-// Must import after mocks are set up (module runs side effects at import)
-const { useTheme, THEMES, THEME_PREVIEWS, connectProgressionStore } = await import('../useTheme')
+// Import the module — no side effects run at import time anymore
+const { useTheme, initTheme, THEMES, THEME_PREVIEWS, connectProgressionStore } = await import('../useTheme')
 const { useProgressionStore } = await import('../../stores/progression')
+
+// Initialize theme (replaces the old import-time side effects)
+initTheme()
 
 describe('useTheme', () => {
   let theme: ReturnType<typeof useTheme>
@@ -92,8 +95,8 @@ describe('useTheme', () => {
   })
 
   describe('glass (always on as of 2026 refresh)', () => {
-    it('forces data-glass="on" at import time and does not expose a toggle', () => {
-      // Theme module set data-glass on import; verify it's still 'on' and
+    it('forces data-glass="on" at init time and does not expose a toggle', () => {
+      // initTheme() set data-glass; verify it's still 'on' and
       // that the legacy app-glass localStorage key was removed.
       expect(document.documentElement.getAttribute('data-glass')).toBe('on')
       expect(localStorageMock.removeItem).toHaveBeenCalledWith('app-glass')

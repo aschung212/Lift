@@ -13,10 +13,13 @@ export { THEMES, THEME_PREVIEWS }
 export type { ThemeId, ColorMode, ThemeOption }
 export type { WeightUnit } from '../lib/themes'
 
+const isBrowser = typeof document !== 'undefined'
+
 /** Track whether we're in a preview (non-persisted) state */
 let previewing = false
 
 function applyTheme(id: string): void {
+  if (!isBrowser) return
   document.documentElement.setAttribute('data-theme', id)
   loadThemeCSS(id)
   updateMetaColor()
@@ -25,26 +28,31 @@ function applyTheme(id: string): void {
 
 /** Apply theme visually without persisting to localStorage. */
 function applyPreview(id: string): void {
+  if (!isBrowser) return
   document.documentElement.setAttribute('data-theme', id)
   loadThemeCSS(id)
   updateMetaColor()
 }
 
 function getSystemMode(): 'dark' | 'light' {
+  if (!isBrowser) return 'dark'
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 function applyResolvedMode(resolved: string): void {
+  if (!isBrowser) return
   document.documentElement.setAttribute('data-mode', resolved)
   updateMetaColor()
 }
 
 function applyMode(preference: string): void {
+  if (!isBrowser) return
   localStorage.setItem('app-mode', preference)
   applyResolvedMode(preference === 'auto' ? getSystemMode() : preference)
 }
 
 function updateMetaColor(): void {
+  if (!isBrowser) return
   const meta = document.querySelector('meta[name="theme-color"]')
   if (!meta) return
   const themeId = (document.documentElement.getAttribute('data-theme') || 'eternal') as ThemeId
@@ -53,41 +61,65 @@ function updateMetaColor(): void {
   meta.setAttribute('content', colors[mode] ?? colors.dark)
 }
 
-// Apply immediately at import time to prevent flash
-let storedId = localStorage.getItem('app-theme') || 'eternal'
-// Migrate old theme names
-if (storedId in THEME_MIGRATION) {
-  storedId = THEME_MIGRATION[storedId]
-  localStorage.setItem('app-theme', storedId)
-}
-const validId  = THEMES.find(t => t.id === storedId)?.id ?? 'eternal'
-const storedMode = localStorage.getItem('app-mode') || 'dark'
-const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
-applyTheme(validId)
-applyMode(validMode)
-
-// Glass is always on as of the 2026 iOS PWA refresh — the opt-out toggle was
-// removed after data showed no users disabling it. Set the attribute once so
-// any residual [data-glass="off"] rules still in third-party CSS resolve to
-// the glass-on state, and drop the legacy `app-glass` key from localStorage.
-document.documentElement.setAttribute('data-glass', 'on')
-try { localStorage.removeItem('app-glass') } catch { /* ignore */ }
-
-const currentTheme: Ref<string> = ref(validId)
-const colorMode: Ref<ColorMode> = ref(validMode)
+// Module-scope refs — safe defaults, hydrated by initTheme() in browser contexts.
+const currentTheme: Ref<string> = ref('eternal')
+const colorMode: Ref<ColorMode> = ref('dark')
 const resolvedMode: ComputedRef<'dark' | 'light'> = computed(() =>
   colorMode.value === 'auto' ? getSystemMode() : colorMode.value
 )
-watch(currentTheme, applyTheme)
-watch(colorMode, applyMode)
 
-// Listen for OS theme changes when in auto mode
-const mql = window.matchMedia('(prefers-color-scheme: dark)')
-mql.addEventListener('change', () => {
-  if (colorMode.value === 'auto') {
-    applyResolvedMode(getSystemMode())
+let _initialized = false
+
+/**
+ * Initialize theme from localStorage and apply to DOM.
+ *
+ * Must be called once from main.ts before mounting the app. Running at module
+ * import time caused browser API access (document, window, localStorage) in
+ * non-browser environments (SSR, Capacitor pre-render, Vitest node mode).
+ *
+ * This function is idempotent — calling it more than once is a no-op.
+ */
+export function initTheme(): void {
+  if (!isBrowser || _initialized) return
+  _initialized = true
+
+  // Read and migrate stored theme
+  let storedId = localStorage.getItem('app-theme') || 'eternal'
+  if (storedId in THEME_MIGRATION) {
+    storedId = THEME_MIGRATION[storedId]
+    localStorage.setItem('app-theme', storedId)
   }
-})
+  const validId = THEMES.find(t => t.id === storedId)?.id ?? 'eternal'
+  const storedMode = localStorage.getItem('app-mode') || 'dark'
+  const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
+
+  // Apply immediately to prevent FOUC
+  applyTheme(validId)
+  applyMode(validMode)
+
+  // Glass is always on as of the 2026 iOS PWA refresh — the opt-out toggle was
+  // removed after data showed no users disabling it. Set the attribute once so
+  // any residual [data-glass="off"] rules still in third-party CSS resolve to
+  // the glass-on state, and drop the legacy `app-glass` key from localStorage.
+  document.documentElement.setAttribute('data-glass', 'on')
+  try { localStorage.removeItem('app-glass') } catch { /* ignore */ }
+
+  // Hydrate refs (set before watch so watchers don't re-apply on init)
+  currentTheme.value = validId
+  colorMode.value = validMode
+
+  // Watch for future changes
+  watch(currentTheme, applyTheme)
+  watch(colorMode, applyMode)
+
+  // Listen for OS theme changes when in auto mode
+  const mql = window.matchMedia('(prefers-color-scheme: dark)')
+  mql.addEventListener('change', () => {
+    if (colorMode.value === 'auto') {
+      applyResolvedMode(getSystemMode())
+    }
+  })
+}
 
 /**
  * Progression store accessor — set lazily after Pinia is initialized.
