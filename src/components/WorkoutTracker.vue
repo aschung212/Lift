@@ -122,7 +122,11 @@
         <div class="wtExerciseHeader">
           <span
             :class="['wtDragHandle', { wtDragHandleDisabled: isFilteringActive }]"
-            aria-hidden="true"
+            role="button"
+            tabindex="0"
+            :aria-label="`Reorder ${exercise.name}, position ${index + 1} of ${filteredExercises.length}`"
+            :aria-disabled="isFilteringActive ? 'true' : undefined"
+            @keydown="onReorderKeyDown(index, $event)"
           >⠿</span>
           <button
             class="wtExerciseRow"
@@ -1695,6 +1699,37 @@ function onItemClickCapture(event: MouseEvent) {
     event.stopPropagation()
     event.preventDefault()
   }
+}
+
+function onReorderKeyDown(index: number, event: KeyboardEvent) {
+  if (isFilteringActive.value) return
+  const key = event.key
+  if (key !== 'ArrowUp' && key !== 'ArrowDown') return
+  event.preventDefault()
+
+  const newIndex = key === 'ArrowUp' ? index - 1 : index + 1
+  if (newIndex < 0 || newIndex >= filteredExercises.value.length) return
+
+  const fromEx = filteredExercises.value[index]
+  const toEx = filteredExercises.value[newIndex]
+  if (!fromEx || !toEx) return
+
+  const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
+  const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
+  if (fromStoreIdx === -1 || toStoreIdx === -1) return
+
+  store.reorderExercise(fromStoreIdx, toStoreIdx)
+  impactLight()
+  logEvent('exercise_reorder')
+
+  // After Vue re-renders, focus the drag handle at the item's new position
+  nextTick(() => {
+    const list = exerciseListEl.value
+    if (!list) return
+    const items = list.querySelectorAll('.wtExerciseItem')
+    const handle = items[newIndex]?.querySelector<HTMLElement>('.wtDragHandle')
+    handle?.focus()
+  })
 }
 
 function beginDrag(index: number) {
