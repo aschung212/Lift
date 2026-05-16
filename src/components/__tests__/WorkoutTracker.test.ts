@@ -1730,5 +1730,78 @@ describe('WorkoutTracker', () => {
 
       expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
     })
+
+    it('moves an exercise down with Alt+ArrowDown keyboard shortcut (#546)', async () => {
+      vi.useRealTimers()
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtReorderHandle')
+      expect(handles.length).toBe(3)
+
+      // Focus the first handle and press Alt+ArrowDown
+      await handles[0].trigger('keydown', { key: 'ArrowDown', altKey: true })
+
+      // Should reorder from store index 0 to store index 1
+      expect(mockReorderExercise).toHaveBeenCalledWith(0, 1)
+    })
+
+    it('moves an exercise up with Alt+ArrowUp keyboard shortcut (#546)', async () => {
+      vi.useRealTimers()
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtReorderHandle')
+
+      // Focus the last handle and press Alt+ArrowUp
+      await handles[2].trigger('keydown', { key: 'ArrowUp', altKey: true })
+
+      // Should reorder from store index 2 to store index 1
+      expect(mockReorderExercise).toHaveBeenCalledWith(2, 1)
+    })
+
+    it('does not move when Alt+ArrowUp on the first item (#546)', async () => {
+      vi.useRealTimers()
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtReorderHandle')
+
+      await handles[0].trigger('keydown', { key: 'ArrowUp', altKey: true })
+
+      expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    it('does not move when Alt+ArrowDown on the last item (#546)', async () => {
+      vi.useRealTimers()
+      const wrapper = mountTracker()
+      const handles = wrapper.findAll('.wtReorderHandle')
+
+      await handles[2].trigger('keydown', { key: 'ArrowDown', altKey: true })
+
+      expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    it('does not allow keyboard reorder while a filter is active (#546)', async () => {
+      vi.useRealTimers()
+      exercises = [
+        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('press')
+
+      const handles = wrapper.findAll('.wtReorderHandle')
+      await handles[0].trigger('keydown', { key: 'ArrowDown', altKey: true })
+
+      expect(mockReorderExercise).not.toHaveBeenCalled()
+    })
+
+    it('renders reorder handle as a button with accessible label (#546)', () => {
+      vi.useRealTimers()
+      const wrapper = mountTracker()
+      const handle = wrapper.find('.wtReorderHandle')
+      expect(handle.element.tagName).toBe('BUTTON')
+      expect(handle.attributes('aria-label')).toContain('Reorder')
+      expect(handle.attributes('aria-label')).toContain('Alt+Up')
+    })
   })
 })

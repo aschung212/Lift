@@ -120,10 +120,13 @@
         @click.capture="onItemClickCapture($event)"
       >
         <div class="wtExerciseHeader">
-          <span
-            :class="['wtDragHandle', { wtDragHandleDisabled: isFilteringActive }]"
-            aria-hidden="true"
-          >⠿</span>
+          <button
+            :class="['wtDragHandle', 'wtReorderHandle', { wtDragHandleDisabled: isFilteringActive }]"
+            :aria-label="`Reorder ${exercise.name}. Use Alt+Up or Alt+Down to move.`"
+            :aria-disabled="isFilteringActive"
+            :tabindex="isFilteringActive ? -1 : 0"
+            @keydown="onReorderKeydown(index, $event)"
+          >⠿</button>
           <button
             class="wtExerciseRow"
             @click="openDetailModal(exercise.id)"
@@ -164,6 +167,7 @@
         </div>
       </li>
     </ul>
+    <span class="srOnly" aria-live="assertive" aria-atomic="true">{{ reorderAnnouncement }}</span>
 
     <!-- Archived exercises disclosure -->
     <div v-if="store.archivedExercises.length > 0 && !isFilteringActive" class="wtArchivedSection">
@@ -1749,6 +1753,42 @@ function beginDrag(index: number) {
   document.addEventListener('touchcancel', onEnd, { once: true })
   document.addEventListener('mousemove', onMove)
   document.addEventListener('mouseup', onEnd, { once: true })
+}
+
+// ── Keyboard reorder (a11y alternative to drag-and-drop) ────────
+const reorderAnnouncement = ref('')
+
+function onReorderKeydown(index: number, event: KeyboardEvent) {
+  if (isFilteringActive.value) return
+  const isUp = event.key === 'ArrowUp' && event.altKey
+  const isDown = event.key === 'ArrowDown' && event.altKey
+  if (!isUp && !isDown) return
+
+  event.preventDefault()
+  const targetIndex = isUp ? index - 1 : index + 1
+  if (targetIndex < 0 || targetIndex >= filteredExercises.value.length) return
+
+  const fromEx = filteredExercises.value[index]
+  const toEx = filteredExercises.value[targetIndex]
+  if (!fromEx || !toEx) return
+
+  const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
+  const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
+  if (fromStoreIdx === -1 || toStoreIdx === -1) return
+
+  store.reorderExercise(fromStoreIdx, toStoreIdx)
+  logEvent('exercise_reorder')
+  impactLight()
+
+  reorderAnnouncement.value = `${fromEx.name} moved ${isUp ? 'up' : 'down'} to position ${targetIndex + 1} of ${filteredExercises.value.length}`
+
+  // Refocus the moved item after Vue re-renders
+  nextTick(() => {
+    const list = exerciseListEl.value
+    if (!list) return
+    const items = list.querySelectorAll<HTMLElement>('.wtReorderHandle')
+    items[targetIndex]?.focus()
+  })
 }
 
 // ── Set actions (tap-to-reveal) ──────────────────────────────────
