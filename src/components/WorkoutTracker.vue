@@ -126,7 +126,7 @@
             tabindex="0"
             :aria-label="`Reorder ${exercise.name}, position ${index + 1} of ${filteredExercises.length}`"
             :aria-disabled="isFilteringActive ? 'true' : undefined"
-            @keydown="onReorderKeyDown(index, $event)"
+            @keydown="onReorderKeyDown(exercise.id, $event)"
           >⠿</span>
           <button
             class="wtExerciseRow"
@@ -1701,17 +1701,23 @@ function onItemClickCapture(event: MouseEvent) {
   }
 }
 
-function onReorderKeyDown(index: number, event: KeyboardEvent) {
+function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
   if (isFilteringActive.value) return
   const key = event.key
   if (key !== 'ArrowUp' && key !== 'ArrowDown') return
   event.preventDefault()
 
-  const newIndex = key === 'ArrowUp' ? index - 1 : index + 1
-  if (newIndex < 0 || newIndex >= filteredExercises.value.length) return
+  // Compute index dynamically from the current filtered list to avoid stale
+  // template indices when the user holds a key and events fire rapidly.
+  const filtered = filteredExercises.value
+  const index = filtered.findIndex(e => e.id === exerciseId)
+  if (index === -1) return
 
-  const fromEx = filteredExercises.value[index]
-  const toEx = filteredExercises.value[newIndex]
+  const newIndex = key === 'ArrowUp' ? index - 1 : index + 1
+  if (newIndex < 0 || newIndex >= filtered.length) return
+
+  const fromEx = filtered[index]
+  const toEx = filtered[newIndex]
   if (!fromEx || !toEx) return
 
   const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)

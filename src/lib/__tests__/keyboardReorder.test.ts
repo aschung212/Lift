@@ -45,7 +45,7 @@ describe('keyboard reorder accessibility (LIFT-546)', () => {
   })
 
   it('onReorderKeyDown function exists in the script', () => {
-    expect(workoutTracker).toMatch(/function onReorderKeyDown\(index: number, event: KeyboardEvent\)/)
+    expect(workoutTracker).toMatch(/function onReorderKeyDown\(exerciseId: string, event: KeyboardEvent\)/)
   })
 
   it('keyboard reorder handles ArrowUp and ArrowDown keys', () => {
@@ -57,17 +57,21 @@ describe('keyboard reorder accessibility (LIFT-546)', () => {
     expect(workoutTracker).toMatch(/function onReorderKeyDown[\s\S]{1,100}?isFilteringActive\.value/)
   })
 
+  it('keyboard reorder computes index dynamically to avoid stale template indices', () => {
+    // Must look up the exercise by ID in the current filtered list, not use template index
+    expect(workoutTracker).toMatch(/function onReorderKeyDown[\s\S]{1,500}?filtered\.findIndex/)
+  })
+
   it('keyboard reorder calls store.reorderExercise', () => {
-    // Extract the onReorderKeyDown function body
     const fnMatch = workoutTracker.match(
-      /function onReorderKeyDown[\s\S]{1,800}?store\.reorderExercise/,
+      /function onReorderKeyDown[\s\S]{1,1000}?store\.reorderExercise/,
     )
     expect(fnMatch).not.toBeNull()
   })
 
   it('keyboard reorder moves focus to the new position after reorder', () => {
     const fnMatch = workoutTracker.match(
-      /function onReorderKeyDown[\s\S]{1,1200}?handle\?\.focus\(\)/,
+      /function onReorderKeyDown[\s\S]{1,1400}?handle\?\.focus\(\)/,
     )
     expect(fnMatch).not.toBeNull()
   })
