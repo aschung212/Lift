@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // ---------- Mocks ----------
 
 // Mock shareImage — replaces the heavy html-to-image dependency
-const mockRenderNodeToBlob = vi.fn<[], Promise<Blob>>()
+const mockRenderNodeToBlob = vi.fn<(...args: unknown[]) => Promise<Blob>>()
 vi.mock('../../lib/shareImage', () => ({
   renderNodeToBlob: (...args: unknown[]) => mockRenderNodeToBlob(...(args as [])),
   defaultShareFilename: (rawDate: string, format: string) => {
