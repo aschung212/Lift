@@ -72,6 +72,7 @@ let createObjectURLSpy: ReturnType<typeof vi.fn>
 let revokeObjectURLSpy: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
+  vi.useFakeTimers()
   mockRenderNodeToBlob.mockResolvedValue(makeBlob())
 
   // Stub URL.createObjectURL / revokeObjectURL (save originals for restore)
@@ -96,6 +97,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Flush the 1000ms revokeObjectURL timer from downloadBlob before restoring mocks
+  vi.runAllTimers()
+  vi.useRealTimers()
   vi.restoreAllMocks()
   window.getComputedStyle = originalGetComputedStyle
   globalThis.URL.createObjectURL = originalCreateObjectURL
