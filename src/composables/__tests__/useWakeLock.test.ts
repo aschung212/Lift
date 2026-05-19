@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ref, nextTick } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 
 // Re-import fresh module state for each test
 let useWakeLock: typeof import('../useWakeLock').useWakeLock
@@ -83,7 +84,7 @@ describe('useWakeLock', () => {
     const enabled = ref(false)
     useWakeLock(shouldLock, enabled)
     await nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await flushPromises()
 
     expect(navigator.wakeLock.request).not.toHaveBeenCalled()
   })
@@ -136,7 +137,7 @@ describe('useWakeLock', () => {
     const enabled = ref(true)
     const { wakeLockActive } = useWakeLock(shouldLock, enabled)
     await nextTick()
-    await new Promise(r => setTimeout(r, 20))
+    await flushPromises()
     expect(wakeLockActive.value).toBe(false)
   })
 
