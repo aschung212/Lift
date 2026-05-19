@@ -66,13 +66,17 @@ function stubComputedStyle(vars: Record<string, string>): void {
 // ---------- Setup / Teardown ----------
 
 let originalGetComputedStyle: typeof window.getComputedStyle
+let originalCreateObjectURL: typeof URL.createObjectURL
+let originalRevokeObjectURL: typeof URL.revokeObjectURL
 let createObjectURLSpy: ReturnType<typeof vi.fn>
 let revokeObjectURLSpy: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   mockRenderNodeToBlob.mockResolvedValue(makeBlob())
 
-  // Stub URL.createObjectURL / revokeObjectURL
+  // Stub URL.createObjectURL / revokeObjectURL (save originals for restore)
+  originalCreateObjectURL = globalThis.URL.createObjectURL
+  originalRevokeObjectURL = globalThis.URL.revokeObjectURL
   createObjectURLSpy = vi.fn().mockReturnValue('blob:http://localhost/fake-id')
   revokeObjectURLSpy = vi.fn()
   globalThis.URL.createObjectURL = createObjectURLSpy
@@ -94,6 +98,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   window.getComputedStyle = originalGetComputedStyle
+  globalThis.URL.createObjectURL = originalCreateObjectURL
+  globalThis.URL.revokeObjectURL = originalRevokeObjectURL
   computedStyleMap = {}
   // Clear navigator.share / canShare that individual tests may have set
   Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
