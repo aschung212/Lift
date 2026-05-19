@@ -1083,8 +1083,8 @@
 
   <Teleport to="body">
     <WorkoutCompleteView
-      v-if="workoutCompleteDate"
-      :raw-date="workoutCompleteDate"
+      v-if="workoutCompleteSummary"
+      :summary="workoutCompleteSummary"
       @close="workoutCompleteDate = null"
     />
   </Teleport>
@@ -1093,7 +1093,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
-import { toLocalDateKey } from '../lib/sessionSummary'
+import { toLocalDateKey, buildSessionSummary } from '../lib/sessionSummary'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
@@ -1403,6 +1403,18 @@ const setsLoggedToday = computed(() => {
 
 /** When non-null, renders the WorkoutCompleteView overlay for that date. */
 const workoutCompleteDate = ref<string | null>(null)
+const workoutCompleteSummary = computed(() => {
+  const d = workoutCompleteDate.value
+  if (!d) return null
+  return buildSessionSummary({
+    rawDate: d,
+    exercises: store.exercises,
+    xpPerSet: progressionStore.xpPerSet,
+    streakWeeks: progressionStore.streakWeeks,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value,
+  })
+})
 function openWorkoutComplete() {
   workoutCompleteDate.value = todayISO()
   impactLight()
