@@ -5,7 +5,8 @@ import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
-// Mock matchMedia before importing useTheme (it runs at import time)
+// Mock matchMedia — no longer required before import (side effects are deferred
+// to initTheme()), but still needed when initTheme() is called in tests.
 const listeners: Array<() => void> = []
 vi.stubGlobal('matchMedia', vi.fn(() => ({
   matches: false,
@@ -17,9 +18,9 @@ vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn() }
 }))
 
-// Must import after mocks are set up (module runs side effects at import)
-const { useTheme, THEMES, THEME_PREVIEWS, connectProgressionStore } = await import('../useTheme')
-const { useProgressionStore } = await import('../../stores/progression')
+// Module no longer runs side effects at import — safe to import directly.
+import { useTheme, initTheme, THEMES, THEME_PREVIEWS, connectProgressionStore } from '../useTheme'
+import { useProgressionStore } from '../../stores/progression'
 
 describe('useTheme', () => {
   let theme: ReturnType<typeof useTheme>
@@ -28,11 +29,15 @@ describe('useTheme', () => {
     localStorageMock.clear()
     localStorageMock.setItem.mockClear()
     localStorageMock.getItem.mockClear()
+    // initTheme() is guarded against double-init in production, but tests need
+    // fresh state. We call it here so watchers and DOM attributes are set up.
+    // The guard is tested separately below.
+    initTheme()
     theme = useTheme()
   })
 
   describe('theme switching', () => {
-    it('defaults to metal theme', () => {
+    it('defaults to eternal theme', () => {
       expect(theme.currentTheme.value).toBe('eternal')
     })
 
@@ -92,9 +97,7 @@ describe('useTheme', () => {
   })
 
   describe('glass (always on as of 2026 refresh)', () => {
-    it('forces data-glass="on" at import time and does not expose a toggle', () => {
-      // Theme module set data-glass on import; verify it's still 'on' and
-      // that the legacy app-glass localStorage key was removed.
+    it('forces data-glass="on" on initTheme() and does not expose a toggle', () => {
       expect(document.documentElement.getAttribute('data-glass')).toBe('on')
       expect(localStorageMock.removeItem).toHaveBeenCalledWith('app-glass')
       // The composable should no longer expose glassEnabled.
