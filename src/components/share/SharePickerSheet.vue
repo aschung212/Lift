@@ -71,19 +71,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, nextTick, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SessionSummary } from '../../lib/sessionSummary'
 import type { CardFormat } from '../../lib/shareImage'
 import { eligibleSquareCards, eligibleStoryCards } from './cardRegistry'
 import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
-import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModal } from '../../composables/useModal'
 
 const props = defineProps<{ summary: SessionSummary }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const overlayEl = ref<HTMLElement | null>(null)
-const focusTrap = useFocusTrap()
+const { open: activateTrap, close: deactivateTrap, trapRef: overlayEl } = useModal()
 const { currentTheme, resolvedMode } = useTheme()
 const { shareCard, downloadCard, isSharing } = useWorkoutShare()
 
@@ -147,12 +146,11 @@ async function onSave() {
 // `modal-open` is also owned by the parent. The picker doesn't toggle
 // it — doing so would re-enable background scroll the moment the picker
 // closes even though the parent is still up.
-onMounted(async () => {
-  await nextTick()
-  if (overlayEl.value) focusTrap.activate(overlayEl.value)
+onMounted(() => {
+  activateTrap()
 })
 onUnmounted(() => {
-  focusTrap.deactivate()
+  deactivateTrap()
 })
 </script>
 

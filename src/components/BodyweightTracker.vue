@@ -236,14 +236,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useUndoToast } from '../composables/useUndoToast'
-import { useFocusTrap } from '../composables/useFocusTrap'
+import { useModal } from '../composables/useModal'
 import { usePreferencesStore } from '../stores/preferences'
 import { useXPCeremony } from '../composables/useXPCeremony'
 
@@ -256,12 +256,14 @@ const { show: showUndo } = useUndoToast()
 const { logBodyweightXPCeremony } = useXPCeremony()
 
 // ── Modal state ──────────────────────────────────────────────────
-const bwModalFocus = useFocusTrap()
-const showModal = ref(false)
+const weightInputEl = ref<HTMLInputElement | null>(null)
+const { isOpen: showModal, open: openModalTrap, close: closeModalTrap } = useModal({
+  selector: '[aria-labelledby="bw-modal-title"]',
+  onOpen: () => weightInputEl.value?.focus(),
+})
 const editing = ref<string | null>(null) // entry id when editing
 const weight = ref<number | null>(null)
 const date = ref(todayISO())
-const weightInputEl = ref<HTMLInputElement | null>(null)
 
 const dateDisplay = computed(() =>
   new Date(date.value + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -299,25 +301,15 @@ function openModal(entry: BodyweightEntry | null = null) {
     weight.value = null
     date.value = todayISO()
   }
-  showModal.value = true
+  openModalTrap()
 }
 
 function closeModal() {
-  showModal.value = false
+  closeModalTrap()
   editing.value = null
   weight.value = null
   date.value = todayISO()
-  bwModalFocus.deactivate()
 }
-
-watch(showModal, async (open) => {
-  if (open) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('[aria-labelledby="bw-modal-title"]')
-    if (el) bwModalFocus.activate(el)
-    weightInputEl.value?.focus()
-  }
-})
 
 const canSave = computed(() => weight.value !== null && weight.value > 0)
 

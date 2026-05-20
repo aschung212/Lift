@@ -72,8 +72,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, nextTick, defineAsyncComponent } from 'vue'
-import { useFocusTrap } from '../composables/useFocusTrap'
+import { computed, onMounted, onUnmounted, ref, defineAsyncComponent } from 'vue'
+import { useModal } from '../composables/useModal'
 import type { SessionSummary } from '../lib/sessionSummary'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
@@ -86,8 +86,7 @@ function openPicker() {
   pickerOpen.value = true
 }
 
-const focusTrap = useFocusTrap()
-const overlayEl = ref<HTMLElement | null>(null)
+const { open: activateTrap, close: deactivateTrap, trapRef: overlayEl } = useModal()
 
 const summary = computed(() => props.summary)
 
@@ -106,13 +105,12 @@ function onKey(e: KeyboardEvent) {
 onMounted(async () => {
   document.documentElement.classList.add('modal-open')
   window.addEventListener('keydown', onKey)
-  await nextTick()
-  if (overlayEl.value) focusTrap.activate(overlayEl.value)
+  activateTrap()
 })
 onUnmounted(() => {
   document.documentElement.classList.remove('modal-open')
   window.removeEventListener('keydown', onKey)
-  focusTrap.deactivate()
+  deactivateTrap()
 })
 </script>
 
