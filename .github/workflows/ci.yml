@@ -25,7 +25,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-nm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -48,7 +48,7 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -69,7 +69,7 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -94,7 +94,7 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -111,7 +111,7 @@ jobs:
       - name: Restore base bundle sizes (PR)
         if: github.event_name == 'pull_request'
         id: base-bundle
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: bundle-sizes.json
           key: bundle-sizes-master-${{ github.event.pull_request.base.sha }}
@@ -145,7 +145,7 @@ jobs:
 
       - name: Save bundle sizes (master)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: bundle-sizes.json
           key: bundle-sizes-master-${{ github.sha }}
@@ -253,7 +253,7 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
