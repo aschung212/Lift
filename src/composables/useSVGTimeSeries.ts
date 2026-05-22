@@ -1,4 +1,4 @@
-import { computed, type Ref } from 'vue'
+import { computed, type ComputedRef, type Ref } from 'vue'
 
 /** Input data point: a date string (YYYY-MM-DD) and a numeric value. */
 export interface TimeSeriesEntry {
@@ -34,10 +34,31 @@ export interface SVGTimeSeriesOptions {
   extraYExpansionFactor?: number
 }
 
+export interface UseSVGTimeSeriesReturn {
+  W: number
+  H: number
+  PAD_L: number
+  PAD_R: number
+  PAD_T: number
+  PAD_B: number
+  chartW: number
+  chartH: number
+  minVal: ComputedRef<number>
+  maxVal: ComputedRef<number>
+  points: ComputedRef<GraphPoint[]>
+  linePoints: ComputedRef<string>
+  areaPoints: ComputedRef<string>
+  gridYs: ComputedRef<number[]>
+  visibleLabelIndices: ComputedRef<number[]>
+  shouldShowLabel: (i: number) => boolean
+  valueToY: (value: number) => number
+  formatDate: (iso: string) => string
+}
+
 export function useSVGTimeSeries(
   data: Ref<TimeSeriesEntry[]>,
   options: SVGTimeSeriesOptions = {},
-) {
+): UseSVGTimeSeriesReturn {
   const { W, H, PAD_L, PAD_R, PAD_T, PAD_B, MIN_GAP } = GRAPH_DEFAULTS
   const chartW = W - PAD_L - PAD_R
   const chartH = H - PAD_T - PAD_B

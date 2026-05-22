@@ -1,11 +1,15 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, type Ref } from 'vue'
 
 /**
  * Tracks the iOS virtual keyboard height using the visualViewport API.
  * Returns a reactive `keyboardHeight` (px) that updates when the keyboard
  * opens or closes. Returns 0 on browsers without visualViewport support.
  */
-export function useKeyboardOffset() {
+export interface UseKeyboardOffsetReturn {
+  keyboardHeight: Ref<number>
+}
+
+export function useKeyboardOffset(): UseKeyboardOffsetReturn {
   const keyboardHeight = ref(0)
 
   function update() {

@@ -1,9 +1,15 @@
-import { computed, type Ref } from 'vue'
+import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Exercise } from '../stores/workout'
 
 export interface TagVolume {
   tag: string
   sets: number
+}
+
+export interface UseTagVolumeReturn {
+  weeklyVolume: ComputedRef<TagVolume[]>
+  maxSets: ComputedRef<number>
+  totalSets: ComputedRef<number>
 }
 
 /**
@@ -13,7 +19,7 @@ export interface TagVolume {
 export function useTagVolume(
   exercises: Ref<Exercise[]>,
   weekDates: Ref<string[]>
-) {
+): UseTagVolumeReturn {
   const weeklyVolume = computed((): TagVolume[] => {
     const dateSet = new Set(weekDates.value)
     const counts: Record<string, number> = {}

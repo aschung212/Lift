@@ -29,7 +29,7 @@ export const xpToast = reactive({
   _timer: null as ReturnType<typeof setTimeout> | null,
 })
 
-export function showXPToast(text: string, progressPercent: number, totalXP: number, nextThresholdXP: number | null) {
+export function showXPToast(text: string, progressPercent: number, totalXP: number, nextThresholdXP: number | null): void {
   xpToast.text = text
   xpToast.progressPercent = progressPercent
   xpToast.totalXP = totalXP
@@ -46,13 +46,13 @@ export const unlockCelebration = reactive({
   themeName: '',
 })
 
-export function showUnlockCelebration(themeId: ThemeId, themeName: string) {
+export function showUnlockCelebration(themeId: ThemeId, themeName: string): void {
   unlockCelebration.themeId = themeId
   unlockCelebration.themeName = themeName
   unlockCelebration.visible = true
 }
 
-export function dismissUnlockCelebration() {
+export function dismissUnlockCelebration(): void {
   unlockCelebration.visible = false
 }
 

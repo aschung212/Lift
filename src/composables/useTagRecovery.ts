@@ -1,4 +1,4 @@
-import { computed, type Ref } from 'vue'
+import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Exercise } from '../stores/workout'
 
 export interface TagRecovery {
@@ -16,12 +16,19 @@ export interface TagRecovery {
  * Tags in the excluded list are omitted entirely.
  * If a recovery window (in days) is set for the tag, classifies status accordingly.
  */
+export interface UseTagRecoveryReturn {
+  recovery: ComputedRef<TagRecovery[]>
+  hasData: ComputedRef<boolean>
+  hiddenCount: ComputedRef<number>
+  totalCount: ComputedRef<number>
+}
+
 export function useTagRecovery(
   exercises: Ref<Exercise[]>,
   tagRecoveryDays: Ref<Record<string, number>>,
   excludedTags: Ref<string[]>,
   now?: Ref<Date>
-) {
+): UseTagRecoveryReturn {
   const recovery = computed((): TagRecovery[] => {
     const currentTime = now?.value ?? new Date()
     const excluded = new Set(excludedTags.value)

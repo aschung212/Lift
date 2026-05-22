@@ -80,7 +80,14 @@ function dismissPRBurst(): void {
   }, 200)
 }
 
-export function usePRBurst() {
+export interface UsePRBurstReturn {
+  visible: Ref<boolean>
+  payload: Ref<PRBurstPayload | null>
+  presentPRBurst: (p: PRBurstPayload) => void
+  dismissPRBurst: () => void
+}
+
+export function usePRBurst(): UsePRBurstReturn {
   return {
     visible,
     payload,

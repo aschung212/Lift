@@ -18,10 +18,17 @@
  * persists across devices.
  */
 
-import { computed } from 'vue'
+import { computed, type ComputedRef } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 
-export function usePRBaseline() {
+export interface UsePRBaselineReturn {
+  prBaselineDate: ComputedRef<string | null>
+  setPRBaseline: (date: string | null) => void
+  startNewTrainingBlock: () => void
+  clearPRBaseline: () => void
+}
+
+export function usePRBaseline(): UsePRBaselineReturn {
   const prefs = usePreferencesStore()
 
   const prBaselineDate = computed(() => prefs.prBaselineDate)
