@@ -255,123 +255,14 @@
   </div>
 
   <!-- Exercise detail modal -->
-  <Teleport to="body">
-    <div v-if="detailExercise" class="repMaxOverlay" @click.self="detailExerciseId = null" @keydown.escape="detailExerciseId = null">
-      <div class="wtDetailModal" ref="detailSheetEl" :style="detailSwipe.dragStyle()" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
-        <div class="sheetDragHandle" ref="detailHandleEl" aria-hidden="true"><span class="sheetDragPill"></span></div>
-        <div class="wtDetailHeader">
-          <button class="wtDetailBack" @click="detailExerciseId = null" aria-label="Back to exercise list">‹ Back</button>
-          <h2 class="wtDetailTitle" id="detail-modal-title">{{ detailExercise.name }}</h2>
-          <button class="wtDetailEditBtn" @click="openEditExerciseModal(detailExercise)" :aria-label="`Edit ${detailExercise.name}`">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-          </button>
-        </div>
-
-        <div class="wtDetailBody">
-          <!-- Progress graph -->
-          <ExerciseGraph :exercise="detailExercise" :mode="detailTab" />
-
-          <!-- Detail tabs -->
-          <div class="wtDetailTabs">
-            <button :class="['wtDetailTab', { active: detailTab === 'sets' }]" @click="detailTab = 'sets'">
-              All Sets <span class="wtDetailTabCount">{{ detailExercise.sets.length }}</span>
-            </button>
-            <button :class="['wtDetailTab', { active: detailTab === 'prs' }]" @click="detailTab = 'prs'" v-if="prHistory.length > 1">
-              PRs <span class="wtDetailTabCount">{{ prHistory.length }}</span>
-            </button>
-          </div>
-
-          <!-- All Sets view -->
-          <template v-if="detailTab === 'sets'">
-            <div v-if="detailExercise.sets.length > 1" class="wtTimelineControls">
-              <button
-                :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
-                @click="hideWarmups = !hideWarmups"
-                role="switch"
-                :aria-checked="hideWarmups"
-                :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
-                <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
-              </button>
-            </div>
-            <div class="wtSetList">
-              <p v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</p>
-              <template v-for="group in groupedSets" :key="group.key">
-                <p class="wtSetDateHeader">{{ formatDate(group.date) }}</p>
-                <div class="wtSetCard">
-                  <div
-                    v-for="set in group.sets"
-                    :key="set.id"
-                    class="wtSetRow"
-                    :class="{
-                      wtSetRowPR: set.estimated1RM === store.getExercisePR(detailExercise.id, prBaselineDate) && set.date.slice(0,10) === detailPRDate,
-                      'wtSetRowActive': activeSetId === set.id,
-                    }"
-                    @click="toggleSetActions(set.id)"
-                  >
-                    <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
-                    <span class="wtSet1RM">
-                      ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
-                      <span v-if="set.estimated1RM === store.getExercisePR(detailExercise.id, prBaselineDate) && set.date.slice(0,10) === detailPRDate" class="wtSetPR">🏆</span>
-                    </span>
-                    <div v-if="activeSetId === set.id" class="wtSetActions">
-                      <button
-                        class="wtSetBtn"
-                        @click.stop="openEditModal(detailExercise, set)"
-                        aria-label="Edit set"
-                      >Edit</button>
-                      <button
-                        class="wtSetBtn wtSetBtnDel"
-                        @click.stop="undoDeleteSet(detailExercise.id, set)"
-                        aria-label="Delete set"
-                      >Delete</button>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </div>
-            <div v-if="detailExercise.sets.length > SET_LIMIT" class="wtClearWrap">
-              <button class="wtShowAllBtn" @click="toggleShowAll(detailExercise.id)">
-                {{ showAllSets.has(detailExercise.id) ? 'Show less' : `Show all ${detailExercise.sets.length} sets` }}
-              </button>
-            </div>
-          </template>
-
-          <!-- PRs view -->
-          <template v-else-if="detailTab === 'prs'">
-            <div class="wtPRHistoryList">
-              <template v-for="(pr, i) in prHistory" :key="pr.id">
-                <div :class="['wtPRCard', { wtPRCardCurrent: i === 0 }]">
-                  <div class="wtPRCardTop">
-                    <span class="wtPRCardValue">{{ displayWeight(pr.weight) }} <span class="wtPRCardUnit">{{ weightUnit }}</span> <span class="wtPRCardReps">× {{ pr.reps }}</span></span>
-                    <span v-if="i === 0" class="wtPRCardBadge">Current</span>
-                  </div>
-                  <div class="wtPRCardBottom">
-                    <span>{{ formatDate(pr.date) }}</span>
-                    <span class="wtPRCardSep">·</span>
-                    <span>e1RM ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
-                  </div>
-                </div>
-                <div v-if="pr.e1rmDelta != null" class="wtPRConnector">
-                  <span class="wtPRConnectorArrow">↑</span>
-                  <span>+{{ displayWeight(pr.e1rmDelta) }} {{ weightUnit }}</span>
-                  <span class="wtPRConnectorSep">·</span>
-                  <span class="wtPRConnectorDays">{{ pr.daysSince }}d</span>
-                </div>
-              </template>
-            </div>
-          </template>
-
-        </div>
-
-        <!-- Fixed footer -->
-        <div class="wtDetailFooter">
-          <button class="wtDetailFooterBtn" @click="openLogForExercise(detailExercise.id)" :aria-label="`Log a set for ${detailExercise.name}`">+ Log Set</button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <ExerciseDetailModal
+    :exercise-id="detailExerciseId"
+    @close="detailExerciseId = null"
+    @open-log-set="openLogForExercise"
+    @open-edit-exercise="openEditExerciseModal"
+    @edit-set="openEditModal"
+    @delete-set="undoDeleteSet"
+  />
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
@@ -1102,10 +993,6 @@ import { toLocalDateKey, buildSessionSummary } from '../lib/sessionSummary'
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
 
-interface PREntry extends WorkoutSet {
-  daysSince: number | null
-  e1rmDelta: number | null
-}
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
@@ -1122,7 +1009,7 @@ import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/pl
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
-import ExerciseGraph from './ExerciseGraph.vue'
+import ExerciseDetailModal from './ExerciseDetailModal.vue'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
@@ -1492,61 +1379,12 @@ watch(() => store.allTags, (tags) => {
   activeTagFilters.value = activeTagFilters.value.filter(t => tags.includes(t))
 })
 
-// ── Card state ────────────────────────────────────────────────────
-const showAllSets = ref(new Set<string>())
-const SET_LIMIT = 10
-
-// Exercise detail modal
-const detailExercise = computed((): Exercise | null =>
-  detailExerciseId.value ? store.exercises.find(e => e.id === detailExerciseId.value) ?? null : null
-)
+// ── Exercise detail modal (extracted to ExerciseDetailModal.vue) ──
 const detailExerciseId = ref<string | null>(null)
 
-// Earliest date the detail exercise hit its PR — only that date gets trophies.
-// Respects baseline: searches only sets on/after the baseline when set.
-const detailPRDate = computed(() => {
-  const ex = detailExercise.value
-  if (!ex) return ''
-  const pr = store.getExercisePR(ex.id, prBaselineDate.value)
-  if (!pr) return ''
-  let earliest = ''
-  for (const set of filterSetsSinceBaseline(ex.sets)) {
-    if (set.estimated1RM === pr) {
-      const day = set.date.slice(0, 10)
-      if (!earliest || day < earliest) earliest = day
-    }
-  }
-  return earliest
-})
-
-const detailTab = ref<'sets' | 'prs'>('sets')
-
-// ── Swipe-to-dismiss for detail modal ───────────────────────────
-const detailSwipe = useSwipeToDismiss({
-  threshold: 100,
-  onDismiss: () => { detailExerciseId.value = null },
-})
-
-const detailFocus = useFocusTrap()
 const logModalFocus = useFocusTrap()
 const editExerciseFocus = useFocusTrap()
 const tagManagerFocus = useFocusTrap()
-
-const detailSheetEl = ref<HTMLElement | null>(null)
-const detailHandleEl = ref<HTMLElement | null>(null)
-
-watch(detailExerciseId, async (id) => {
-  if (id) {
-    await nextTick()
-    if (detailSheetEl.value && detailHandleEl.value) {
-      detailSwipe.attach(detailSheetEl.value, detailHandleEl.value)
-      detailFocus.activate(detailSheetEl.value)
-    }
-  } else {
-    detailSwipe.detach()
-    detailFocus.deactivate()
-  }
-})
 
 // ── Swipe-to-dismiss for log-set sheet (step 5f) ────────────────
 // Drag the handle (or the sheet body, when not scrolled) down past
@@ -1561,43 +1399,7 @@ const logSwipe = useSwipeToDismiss({
 
 function openDetailModal(id: string) {
   detailExerciseId.value = id
-  activeSetId.value = null
-  detailTab.value = 'sets'
 }
-
-const prHistory = computed((): PREntry[] => {
-  if (!detailExercise.value) return []
-  const sets = [...detailExercise.value.sets].sort((a, b) => a.date.localeCompare(b.date))
-  // Collect all new maxes
-  const raw: WorkoutSet[] = []
-  let maxSoFar = 0
-  for (const set of sets) {
-    if (set.estimated1RM > maxSoFar) {
-      maxSoFar = set.estimated1RM
-      raw.push({ ...set })
-    }
-  }
-  // Keep only the best PR per day
-  const byDay: Record<string, WorkoutSet> = {}
-  for (const pr of raw) {
-    const day = pr.date.slice(0, 10)
-    if (!byDay[day] || pr.estimated1RM > byDay[day].estimated1RM) {
-      byDay[day] = pr
-    }
-  }
-  const sorted = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date))
-  // Add daysSince and e1rmDelta
-  const prs: PREntry[] = sorted.map((pr, i) => ({
-    ...pr,
-    daysSince: i > 0
-      ? Math.round((new Date(pr.date).getTime() - new Date(sorted[i - 1].date).getTime()) / 86400000)
-      : null,
-    e1rmDelta: i > 0
-      ? +(pr.estimated1RM - sorted[i - 1].estimated1RM).toFixed(1)
-      : null,
-  }))
-  return prs.reverse()
-})
 
 // ── Long-press to reorder ──────────────────────────────────────
 // Accidental reorders were common when a touchstart on the left-edge
@@ -1810,37 +1612,6 @@ const activeSetId = ref<string | null>(null)
 function toggleSetActions(setId: string) {
   activeSetId.value = activeSetId.value === setId ? null : setId
 }
-
-function toggleShowAll(id: string) {
-  const next = new Set(showAllSets.value)
-  if (next.has(id)) next.delete(id); else next.add(id)
-  showAllSets.value = next
-}
-
-function visibleSets(exercise: Exercise): WorkoutSet[] {
-  const sorted = [...exercise.sets].sort((a, b) => b.date.slice(0, 10).localeCompare(a.date.slice(0, 10)))
-  return showAllSets.value.has(exercise.id) ? sorted : sorted.slice(0, SET_LIMIT)
-}
-
-const groupedSets = computed(() => {
-  if (!detailExercise.value) return []
-  let sets = visibleSets(detailExercise.value)
-  if (hideWarmups.value) {
-    const ids = warmupSetIds.value
-    sets = sets.filter(s => !ids.has(s.id))
-  }
-  const groups: { date: string; key: string; sets: WorkoutSet[] }[] = []
-  for (const set of sets) {
-    const k = toLocalDateKey(set.date)
-    const last = groups[groups.length - 1]
-    if (last && last.key === k) {
-      last.sets.push(set)
-    } else {
-      groups.push({ date: set.date, key: k, sets: [set] })
-    }
-  }
-  return groups
-})
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
