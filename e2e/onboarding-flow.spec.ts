@@ -30,48 +30,68 @@ test.describe('Onboarding Flow', () => {
     await expect(options).toHaveCount(3)
   })
 
-  // TODO(LIFT-345 follow-up): the option order changed (featured Starter is
-  // now index 0, not 1) AND clicking an option no longer immediately completes
-  // onboarding — it now opens a sub-flow (StarterPickerFlow / etc.) that emits
-  // `complete` only after additional steps. Update these tests to walk through
-  // the full sub-flow before asserting the main app loads.
-  test.skip('choosing "Start Empty" loads main app with no exercises', async ({ page }) => {
+  test('choosing "Start Empty" walks through StarterPickerFlow then loads main app', async ({ page }) => {
     await expect(page.locator('.authScreen')).toBeVisible({ timeout: 10000 })
     await page.locator('.authDevBtn').click()
     await expect(page.locator('.obScreen')).toBeVisible({ timeout: 10000 })
 
-    // First option: start empty (rocket emoji)
-    await page.locator('.obOption').first().click()
+    // "Start empty" is the second option (featured "Popular exercises" is first)
+    await page.locator('.obOption', { hasText: 'Start empty' }).click()
+
+    // StarterPickerFlow step 1: explainer
+    await expect(page.locator('.spfTitle', { hasText: 'Theme Progression' })).toBeVisible({ timeout: 5000 })
+
+    // Skip the starter flow to finish onboarding quickly
+    await page.locator('.spfSecondary', { hasText: 'Skip' }).click()
 
     // Main app should load
     await expect(page.getByRole('heading', { name: 'Workouts', level: 1 })).toBeVisible({ timeout: 10000 })
 
-    // No exercises should be present
-    await expect(page.locator('.wtExerciseRow')).not.toBeVisible()
+    // No exercises should be present (fresh-start CTA should show)
+    await expect(page.locator('.wtFreshStartCta')).toBeVisible()
   })
 
-  test.skip('choosing "Starter Exercises" loads main app with exercises', async ({ page }) => {
+  test('choosing "Popular Exercises" pre-loads exercises then loads main app', async ({ page }) => {
     await expect(page.locator('.authScreen')).toBeVisible({ timeout: 10000 })
     await page.locator('.authDevBtn').click()
     await expect(page.locator('.obScreen')).toBeVisible({ timeout: 10000 })
 
-    // Second option: starter exercises
-    await page.locator('.obOption').nth(1).click()
+    // "Popular exercises" is the featured (first) option
+    await page.locator('.obOptionFeatured').click()
 
-    // Main app should load with exercises
+    // StarterPickerFlow step 1: explainer
+    await expect(page.locator('.spfTitle', { hasText: 'Theme Progression' })).toBeVisible({ timeout: 5000 })
+
+    // Walk through the full flow: explainer → pick → goal
+    await page.locator('.spfPrimary', { hasText: 'Pick a Starter Theme' }).click()
+
+    // Step 2: pick a starter theme
+    await expect(page.locator('.spfTitle', { hasText: 'Pick Your Starter' })).toBeVisible({ timeout: 5000 })
+    await page.locator('.spfCard').first().click()
+    await page.locator('.spfPrimary', { hasText: 'Next' }).click()
+
+    // Step 3: weekly goal
+    await expect(page.locator('.spfTitle', { hasText: 'Set Your Weekly Goal' })).toBeVisible({ timeout: 5000 })
+    await page.locator('.spfPrimary', { hasText: "Let's Go" }).click()
+
+    // Main app should load with pre-loaded exercises
     await expect(page.getByRole('heading', { name: 'Workouts', level: 1 })).toBeVisible({ timeout: 10000 })
     await expect(page.locator('.wtExerciseRow').first()).toBeVisible({ timeout: 5000 })
   })
 
-  test.skip('choosing "Explore" loads main app with sample data', async ({ page }) => {
+  test('choosing "Explore" loads main app with sample data', async ({ page }) => {
     await expect(page.locator('.authScreen')).toBeVisible({ timeout: 10000 })
     await page.locator('.authDevBtn').click()
     await expect(page.locator('.obScreen')).toBeVisible({ timeout: 10000 })
 
-    // Third option: explore with sample data
-    await page.locator('.obOption').nth(2).click()
+    // "Explore first" is the third option
+    await page.locator('.obOption', { hasText: 'Explore first' }).click()
 
-    // Main app should load with exercises
+    // StarterPickerFlow step 1: explainer — skip to finish quickly
+    await expect(page.locator('.spfTitle', { hasText: 'Theme Progression' })).toBeVisible({ timeout: 5000 })
+    await page.locator('.spfSecondary', { hasText: 'Skip' }).click()
+
+    // Main app should load with exercises (sample data)
     await expect(page.getByRole('heading', { name: 'Workouts', level: 1 })).toBeVisible({ timeout: 10000 })
     await expect(page.locator('.wtExerciseRow').first()).toBeVisible({ timeout: 5000 })
   })
