@@ -63,6 +63,8 @@ export function bodyweightDatesToJson(dates: string[]): Json {
 /** Parse a Json value as StreakWeekEntry[], skipping invalid entries. */
 export function parseStreakHistory(value: Json | undefined, fallback: StreakWeekEntry[]): StreakWeekEntry[] {
   if (!Array.isArray(value)) return fallback
+  // Empty array is a valid remote state (cleared history) — return it, don't use fallback
+  if (value.length === 0) return []
   const result: StreakWeekEntry[] = []
   for (const item of value) {
     if (!isPlainObject(item)) {
@@ -70,20 +72,15 @@ export function parseStreakHistory(value: Json | undefined, fallback: StreakWeek
       continue
     }
     const obj = item as { [key: string]: Json | undefined }
-    if (
-      typeof obj.weekStart !== 'string' ||
-      typeof obj.streakCount !== 'number' ||
-      typeof obj.weeklyTarget !== 'number' ||
-      typeof obj.combinedMultiplier !== 'number'
-    ) {
-      logWarn('Invalid streak history entry, skipping', { item })
+    if (typeof obj.weekStart !== 'string') {
+      logWarn('Invalid streak history entry (missing weekStart), skipping', { item })
       continue
     }
     result.push({
       weekStart: obj.weekStart,
-      streakCount: obj.streakCount,
-      weeklyTarget: obj.weeklyTarget,
-      combinedMultiplier: obj.combinedMultiplier,
+      streakCount: typeof obj.streakCount === 'number' ? obj.streakCount : 0,
+      weeklyTarget: typeof obj.weeklyTarget === 'number' ? obj.weeklyTarget : 3,
+      combinedMultiplier: typeof obj.combinedMultiplier === 'number' ? obj.combinedMultiplier : 1.0,
     })
   }
   return result.length > 0 ? result : fallback
@@ -163,6 +160,8 @@ export function parseXpPerSet(
 /** Parse a Json value as string[] (bodyweight XP dates), skipping invalid entries. */
 export function parseBodyweightDates(value: Json | undefined, fallback: string[]): string[] {
   if (!Array.isArray(value)) return fallback
+  // Empty array is a valid remote state — return it, don't use fallback
+  if (value.length === 0) return []
   const result: string[] = []
   for (const item of value) {
     if (typeof item !== 'string') {

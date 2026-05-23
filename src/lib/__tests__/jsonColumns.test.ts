@@ -95,18 +95,20 @@ describe('jsonColumns', () => {
       expect(parseStreakHistory('not-an-array' as Json, [])).toEqual([])
     })
 
-    it('skips entries with missing fields, returns fallback when all invalid', () => {
-      const fallback: StreakWeekEntry[] = [
-        { weekStart: '2026-01-06', streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },
-      ]
-      const corrupt: Json = [{ weekStart: '2026-01-06' }]  // missing streakCount, weeklyTarget, combinedMultiplier
-      expect(parseStreakHistory(corrupt, fallback)).toBe(fallback)
+    it('provides defaults for entries missing numeric fields', () => {
+      const result = parseStreakHistory(
+        [{ weekStart: '2026-01-06' }] as Json,
+        [],
+      )
+      expect(result).toEqual([
+        { weekStart: '2026-01-06', streakCount: 0, weeklyTarget: 3, combinedMultiplier: 1.0 },
+      ])
     })
 
     it('skips invalid entries but keeps valid ones', () => {
       const mixed: Json = [
         { weekStart: '2026-01-06', streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },
-        { weekStart: 123, streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },  // invalid
+        { weekStart: 123, streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },  // invalid weekStart type
         { weekStart: '2026-01-20', streakCount: 3, weeklyTarget: 3, combinedMultiplier: 1.1 },
       ]
       const result = parseStreakHistory(mixed, [])
@@ -116,11 +118,18 @@ describe('jsonColumns', () => {
       ])
     })
 
-    it('returns fallback when all entries have wrong types', () => {
+    it('returns fallback when all entries have invalid weekStart', () => {
       const corrupt: Json = [
         { weekStart: 123, streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },
       ]
       expect(parseStreakHistory(corrupt, [])).toEqual([])
+    })
+
+    it('returns empty array for empty remote array (not fallback)', () => {
+      const fallback: StreakWeekEntry[] = [
+        { weekStart: '2026-01-06', streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },
+      ]
+      expect(parseStreakHistory([], fallback)).toEqual([])
     })
 
     it('parses valid empty array', () => {
@@ -219,8 +228,8 @@ describe('jsonColumns', () => {
       expect(parseBodyweightDates(corrupt, ['fallback'])).toEqual(['fallback'])
     })
 
-    it('parses valid empty array', () => {
-      expect(parseBodyweightDates([], [])).toEqual([])
+    it('returns empty array for empty remote array (not fallback)', () => {
+      expect(parseBodyweightDates([], ['2026-01-01'])).toEqual([])
     })
   })
 
