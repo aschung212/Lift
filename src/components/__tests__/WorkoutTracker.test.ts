@@ -172,6 +172,42 @@ function mountTracker(): VueWrapper {
   })
 }
 
+/**
+ * Typed accessor for WorkoutTracker's defineExpose'd methods.
+ * These are the component's public API for parent components (App.vue).
+ */
+function exposed(wrapper: VueWrapper) {
+  return wrapper.vm as unknown as {
+    openTimelineLogModal: () => void
+    openNewExerciseModal: () => void
+  }
+}
+
+/**
+ * Typed accessor for WorkoutTracker's internal timer state.
+ * Used by wall-clock timer tests that verify backgrounding behavior —
+ * these need direct access to startRestTimer / timerSeconds because
+ * the timer is internal state not exposed to parents.
+ *
+ * After #582 extracted RestTimerView, the timer lives on a controller
+ * (timerCtrl) exposed on the component instance. We unwrap the refs
+ * so call sites can read .timerSeconds directly instead of .value.
+ */
+function timerState(wrapper: VueWrapper) {
+  const vm = wrapper.vm as unknown as {
+    timerCtrl: {
+      startRestTimer: () => void
+      timerSeconds: { value: number }
+      timerActive: { value: boolean }
+    }
+  }
+  return {
+    startRestTimer: () => vm.timerCtrl.startRestTimer(),
+    get timerSeconds() { return vm.timerCtrl.timerSeconds.value },
+    get timerActive() { return vm.timerCtrl.timerActive.value },
+  }
+}
+
 describe('WorkoutTracker', () => {
   beforeEach(() => {
     mockState.exercises = []
@@ -601,24 +637,11 @@ describe('WorkoutTracker', () => {
   })
 
   describe('new exercise modal', () => {
-    // The top-bar "+" button in App.vue opens the exercise picker, which has
-    // a "+ New exercise" row that calls the underlying openNewExerciseModal.
-    // Component unit tests reach the modal by calling the exposed helper.
+    // The top-bar "+" button in App.vue calls the exposed openTimelineLogModal,
+    // which opens the exercise picker. Clicking "+ New exercise" in the picker
+    // opens the new exercise modal. Tests use the exposed API directly.
     async function openNewExerciseModal(wrapper: VueWrapper) {
-      const cmp = wrapper.vm as unknown as { openNewExerciseModal?: () => void }
-      // openNewExerciseModal is defined at the top level of <script setup>
-      // so it's not on the instance. Invoke via defineExpose → or trigger
-      // by opening the picker and clicking the "+ New exercise" row.
-      if (typeof cmp.openNewExerciseModal === 'function') {
-        cmp.openNewExerciseModal()
-      } else {
-        // Fallback: click the picker's new-exercise row after opening the picker.
-        const trackerExpose = wrapper.vm as unknown as { openTimelineLogModal?: () => void }
-        trackerExpose.openTimelineLogModal?.()
-        await wrapper.vm.$nextTick()
-        const newRow = wrapper.find('.wtExPickerNew')
-        if (newRow.exists()) await newRow.trigger('click')
-      }
+      exposed(wrapper).openNewExerciseModal()
       await wrapper.vm.$nextTick()
     }
 
@@ -1126,8 +1149,7 @@ describe('WorkoutTracker', () => {
       mockState.exercises = createExercises()
       const wrapper = mountTracker()
       // Open new exercise modal via the exposed helper (retired wtLogBtn).
-      const exposed = wrapper.vm as unknown as { openNewExerciseModal?: () => void }
-      exposed.openNewExerciseModal?.()
+      exposed(wrapper).openNewExerciseModal()
       await wrapper.vm.$nextTick()
       const addBtn = wrapper.find('.wtTagAddChip')
       expect(addBtn.attributes('aria-label')).toBe('Add tag')
@@ -1177,50 +1199,38 @@ describe('WorkoutTracker', () => {
 
     it('uses wall-clock time so backgrounding the app does not cause drift', async () => {
       const wrapper = mountTracker()
-      const vm = wrapper.vm as unknown as {
-        timerCtrl: {
-          startRestTimer: () => void
-          timerSeconds: { value: number }
-          timerActive: { value: boolean }
-        }
-      }
+      const timer = timerState(wrapper)
       // Start the timer with 90s duration
       const startTime = Date.now()
       vi.setSystemTime(startTime)
-      vm.timerCtrl.startRestTimer()
-      expect(vm.timerCtrl.timerSeconds.value).toBe(90)
+      timer.startRestTimer()
+      expect(timer.timerSeconds).toBe(90)
 
       // Simulate 30 real seconds passing (as if phone was backgrounded)
       vi.setSystemTime(startTime + 30_000)
       vi.advanceTimersByTime(250) // one tick
       await wrapper.vm.$nextTick()
-      expect(vm.timerCtrl.timerSeconds.value).toBe(60)
+      expect(timer.timerSeconds).toBe(60)
 
       // Simulate 55 more seconds — only 5s should remain
       vi.setSystemTime(startTime + 85_000)
       vi.advanceTimersByTime(250)
       await wrapper.vm.$nextTick()
-      expect(vm.timerCtrl.timerSeconds.value).toBe(5)
+      expect(timer.timerSeconds).toBe(5)
     })
 
     it('timer reaches zero even if intervals were throttled', async () => {
       const wrapper = mountTracker()
-      const vm = wrapper.vm as unknown as {
-        timerCtrl: {
-          startRestTimer: () => void
-          timerSeconds: { value: number }
-          timerActive: { value: boolean }
-        }
-      }
+      const timer = timerState(wrapper)
       const startTime = Date.now()
       vi.setSystemTime(startTime)
-      vm.timerCtrl.startRestTimer()
+      timer.startRestTimer()
 
       // Jump past the full duration in one step
       vi.setSystemTime(startTime + 91_000)
       vi.advanceTimersByTime(250)
       await wrapper.vm.$nextTick()
-      expect(vm.timerCtrl.timerSeconds.value).toBe(0)
+      expect(timer.timerSeconds).toBe(0)
     })
   })
 
@@ -1262,10 +1272,9 @@ describe('WorkoutTracker', () => {
       // views now rely on the App.vue top-bar "+" which calls the exposed
       // openTimelineLogModal helper to open the exercise picker.
       const wrapper = mountTracker()
-      const exposed = wrapper.vm as unknown as { openTimelineLogModal?: () => void }
-      expect(typeof exposed.openTimelineLogModal).toBe('function')
+      expect(typeof exposed(wrapper).openTimelineLogModal).toBe('function')
 
-      exposed.openTimelineLogModal!()
+      exposed(wrapper).openTimelineLogModal()
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.wtExPickerNew').exists()).toBe(true)
 
@@ -1273,15 +1282,14 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.wtExPickerRow + .wtExPickerRow, .wtExPickerRow')
       await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
       await wrapper.vm.$nextTick()
-      exposed.openTimelineLogModal!()
+      exposed(wrapper).openTimelineLogModal()
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.wtExPickerNew').exists()).toBe(true)
     })
 
     it('exercise picker dialog has aria-labelledby linked to title', async () => {
       const wrapper = mountTracker()
-      const exposed = wrapper.vm as unknown as { openTimelineLogModal?: () => void }
-      exposed.openTimelineLogModal!()
+      exposed(wrapper).openTimelineLogModal()
       await wrapper.vm.$nextTick()
 
       const dialog = wrapper.find('[role="dialog"][aria-labelledby="timeline-picker-title"]')
