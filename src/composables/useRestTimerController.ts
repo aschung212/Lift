@@ -1,4 +1,4 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 import { useNotification, useBackgroundTracker } from './useNotification'
 import { useRestTimer } from './useRestTimer'
@@ -127,25 +127,25 @@ export function formatDuration(s: number): string {
 
 export interface RestTimerController {
   // Reactive state
-  timerActive: ReturnType<typeof ref<boolean>>
-  timerPaused: ReturnType<typeof ref<boolean>>
-  timerSeconds: ReturnType<typeof ref<number>>
-  timerStopping: ReturnType<typeof ref<boolean>>
-  timerAnnouncement: ReturnType<typeof ref<string>>
-  timerDisplay: ReturnType<typeof computed<string>>
-  timerProgress: ReturnType<typeof computed<number>>
-  timerUrgent: ReturnType<typeof computed<boolean>>
-  restDuration: ReturnType<typeof ref<number>>
-  editingPresets: ReturnType<typeof ref<boolean>>
-  editTab: ReturnType<typeof ref<'rest' | 'alerts'>>
-  newPresetValue: ReturnType<typeof ref<number | null>>
-  newWarningValue: ReturnType<typeof ref<number | null>>
-  restPresets: ReturnType<typeof ref<number[]>>
-  disabledPresets: ReturnType<typeof ref<number[]>>
-  visiblePresets: ReturnType<typeof computed<number[]>>
-  warningOptions: ReturnType<typeof ref<number[]>>
-  warningTimes: ReturnType<typeof ref<number[]>>
-  presetInputEl: ReturnType<typeof ref<HTMLInputElement | null>>
+  timerActive: Ref<boolean>
+  timerPaused: Ref<boolean>
+  timerSeconds: Ref<number>
+  timerStopping: Ref<boolean>
+  timerAnnouncement: Ref<string>
+  timerDisplay: ComputedRef<string>
+  timerProgress: ComputedRef<number>
+  timerUrgent: ComputedRef<boolean>
+  restDuration: Ref<number>
+  editingPresets: Ref<boolean>
+  editTab: Ref<'rest' | 'alerts'>
+  newPresetValue: Ref<number | null>
+  newWarningValue: Ref<number | null>
+  restPresets: Ref<number[]>
+  disabledPresets: Ref<number[]>
+  visiblePresets: ComputedRef<number[]>
+  warningOptions: Ref<number[]>
+  warningTimes: Ref<number[]>
+  presetInputEl: Ref<HTMLInputElement | null>
 
   // Methods
   startRestTimer: () => void
