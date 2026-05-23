@@ -65,19 +65,52 @@ const DEFAULT_FILTERS: FilterSettings = {
   warmupThreshold: 0.75,
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function _migrateWeightGoal(raw: any): WeightGoalConfig {
-  // v1: string ('lose' | 'gain' | 'maintain')
+const VALID_DIRECTIONS: ReadonlySet<string> = new Set(['lose', 'gain', 'maintain'])
+
+function _isValidDirection(value: unknown): value is WeightGoalDirection {
+  return typeof value === 'string' && VALID_DIRECTIONS.has(value)
+}
+
+/**
+ * Migrate weight-goal data from any previous schema version to the current shape.
+ * Exported for testing only — not part of the public API.
+ */
+export function _migrateWeightGoal(raw: unknown): WeightGoalConfig {
+  // v1: bare string direction ('lose' | 'gain' | 'maintain')
   if (typeof raw === 'string') {
-    return { ...DEFAULT_WEIGHT_GOAL, direction: raw as WeightGoalDirection }
+    if (_isValidDirection(raw)) {
+      return { ...DEFAULT_WEIGHT_GOAL, direction: raw }
+    }
+    logError(new Error(`_migrateWeightGoal: unrecognized direction string "${raw}"`), { source: 'preferences.migrate' })
+    return { ...DEFAULT_WEIGHT_GOAL }
   }
-  const goal = { ...DEFAULT_WEIGHT_GOAL, ...raw }
+
+  // Must be a non-null object for v2/v3 shapes
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    logError(new Error(`_migrateWeightGoal: unexpected type ${raw === null ? 'null' : typeof raw}`), { source: 'preferences.migrate' })
+    return { ...DEFAULT_WEIGHT_GOAL }
+  }
+
+  const obj = raw as Record<string, unknown>
+
+  // Validate direction if present
+  const direction: WeightGoalDirection =
+    _isValidDirection(obj.direction) ? obj.direction : DEFAULT_WEIGHT_GOAL.direction
+
+  const goal: WeightGoalConfig = {
+    direction,
+    loseTarget: typeof obj.loseTarget === 'number' ? obj.loseTarget : DEFAULT_WEIGHT_GOAL.loseTarget,
+    gainTarget: typeof obj.gainTarget === 'number' ? obj.gainTarget : DEFAULT_WEIGHT_GOAL.gainTarget,
+    maintainMin: typeof obj.maintainMin === 'number' ? obj.maintainMin : DEFAULT_WEIGHT_GOAL.maintainMin,
+    maintainMax: typeof obj.maintainMax === 'number' ? obj.maintainMax : DEFAULT_WEIGHT_GOAL.maintainMax,
+  }
+
   // v2: had single targetWeight field — migrate to direction-specific
-  if ('targetWeight' in raw && raw.targetWeight != null) {
-    if (goal.direction === 'gain') goal.gainTarget = raw.targetWeight
-    else goal.loseTarget = raw.targetWeight
-    delete (goal as Record<string, unknown>).targetWeight
+  if ('targetWeight' in obj && typeof obj.targetWeight === 'number') {
+    if (goal.direction === 'gain') goal.gainTarget = obj.targetWeight
+    else goal.loseTarget = obj.targetWeight
   }
+
   return goal
 }
 
@@ -182,7 +215,7 @@ export const usePreferencesStore = defineStore('preferences', {
           if (prefs?.features) {
             this.features = { ...DEFAULTS, ...prefs.features as Record<string, boolean> }
             if (prefs.weightGoal) {
-              this.weightGoal = _migrateWeightGoal(prefs.weightGoal as { target?: number; unit?: string })
+              this.weightGoal = _migrateWeightGoal(prefs.weightGoal)
             }
             if (prefs.experience) {
               this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
