@@ -236,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'

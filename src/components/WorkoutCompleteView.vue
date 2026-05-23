@@ -1,6 +1,5 @@
 <template>
   <div
-    ref="overlayEl"
     class="wcOverlay"
     role="dialog"
     aria-modal="true"
@@ -86,7 +85,7 @@ function openPicker() {
   pickerOpen.value = true
 }
 
-const { open: activateTrap, close: deactivateTrap, trapRef: overlayEl } = useModal()
+const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.wcOverlay' })
 
 const summary = computed(() => props.summary)
 

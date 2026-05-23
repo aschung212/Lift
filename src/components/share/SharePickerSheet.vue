@@ -1,6 +1,5 @@
 <template>
   <div
-    ref="overlayEl"
     class="spOverlay"
     role="dialog"
     aria-modal="true"
@@ -82,7 +81,7 @@ import { useModal } from '../../composables/useModal'
 const props = defineProps<{ summary: SessionSummary }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const { open: activateTrap, close: deactivateTrap, trapRef: overlayEl } = useModal()
+const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay' })
 const { currentTheme, resolvedMode } = useTheme()
 const { shareCard, downloadCard, isSharing } = useWorkoutShare()
 
