@@ -188,12 +188,23 @@ function exposed(wrapper: VueWrapper) {
  * Used by wall-clock timer tests that verify backgrounding behavior —
  * these need direct access to startRestTimer / timerSeconds because
  * the timer is internal state not exposed to parents.
+ *
+ * After #582 extracted RestTimerView, the timer lives on a controller
+ * (timerCtrl) exposed on the component instance. We unwrap the refs
+ * so call sites can read .timerSeconds directly instead of .value.
  */
 function timerState(wrapper: VueWrapper) {
-  return wrapper.vm as unknown as {
-    startRestTimer: () => void
-    timerSeconds: number
-    timerActive: boolean
+  const vm = wrapper.vm as unknown as {
+    timerCtrl: {
+      startRestTimer: () => void
+      timerSeconds: { value: number }
+      timerActive: { value: boolean }
+    }
+  }
+  return {
+    startRestTimer: () => vm.timerCtrl.startRestTimer(),
+    get timerSeconds() { return vm.timerCtrl.timerSeconds.value },
+    get timerActive() { return vm.timerCtrl.timerActive.value },
   }
 }
 
