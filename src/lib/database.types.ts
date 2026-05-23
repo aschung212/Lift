@@ -68,6 +68,7 @@ export type Database = {
       }
       exercises: {
         Row: {
+          archived_at: string | null
           bar_weight: number
           created_at: string
           deleted_at: string | null
@@ -79,6 +80,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archived_at?: string | null
           bar_weight?: number
           created_at?: string
           deleted_at?: string | null
@@ -90,6 +92,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          archived_at?: string | null
           bar_weight?: number
           created_at?: string
           deleted_at?: string | null

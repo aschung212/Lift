@@ -6,6 +6,7 @@ const MIN_WORKOUT_DAYS = 3
 
 /** Whether the app is running in standalone (installed) mode. */
 export function isStandalone(): boolean {
+  if (typeof window === 'undefined') return false
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
     (navigator as unknown as { standalone?: boolean }).standalone === true

@@ -1,6 +1,5 @@
 <template>
   <div
-    ref="overlayEl"
     class="wcOverlay"
     role="dialog"
     aria-modal="true"
@@ -72,16 +71,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, nextTick, defineAsyncComponent } from 'vue'
-import { useWorkoutStore } from '../stores/workout'
-import { useProgressionStore } from '../stores/progression'
-import { buildSessionSummary } from '../lib/sessionSummary'
-import { useFocusTrap } from '../composables/useFocusTrap'
-import { useWeightUnit } from '../composables/useWeightUnit'
+import { computed, onMounted, onUnmounted, ref, defineAsyncComponent } from 'vue'
+import { useModal } from '../composables/useModal'
+import type { SessionSummary } from '../lib/sessionSummary'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
-const props = defineProps<{ rawDate: string }>()
+const props = defineProps<{ summary: SessionSummary }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const pickerOpen = ref(false)
@@ -89,22 +85,9 @@ function openPicker() {
   pickerOpen.value = true
 }
 
-const store = useWorkoutStore()
-const progression = useProgressionStore()
-const focusTrap = useFocusTrap()
-const overlayEl = ref<HTMLElement | null>(null)
-const { displayWeight, weightUnit } = useWeightUnit()
+const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.wcOverlay' })
 
-const summary = computed(() =>
-  buildSessionSummary({
-    rawDate: props.rawDate,
-    exercises: store.exercises,
-    xpPerSet: progression.xpPerSet,
-    streakWeeks: progression.streakWeeks,
-    toDisplayUnits: displayWeight,
-    unitLabel: weightUnit.value,
-  })
-)
+const summary = computed(() => props.summary)
 
 const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))
@@ -121,13 +104,12 @@ function onKey(e: KeyboardEvent) {
 onMounted(async () => {
   document.documentElement.classList.add('modal-open')
   window.addEventListener('keydown', onKey)
-  await nextTick()
-  if (overlayEl.value) focusTrap.activate(overlayEl.value)
+  activateTrap()
 })
 onUnmounted(() => {
   document.documentElement.classList.remove('modal-open')
   window.removeEventListener('keydown', onKey)
-  focusTrap.deactivate()
+  deactivateTrap()
 })
 </script>
 

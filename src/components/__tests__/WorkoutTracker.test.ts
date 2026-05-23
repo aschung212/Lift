@@ -49,63 +49,69 @@ vi.mock('../ExerciseGraph.vue', () => ({
   default: { name: 'ExerciseGraph', template: '<div class="mock-graph" />' }
 }))
 
-const EXERCISES: Exercise[] = [
-  {
-    id: 'ex-1',
-    name: 'Bench Press',
-    tags: ['Chest', 'Push'],
-    sets: [
-      { id: 's-1', date: '2026-01-15T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
-      { id: 's-2', date: '2026-01-20T12:00:00', weight: 195, reps: 5, estimated1RM: 228 },
-    ]
-  },
-  {
-    id: 'ex-2',
-    name: 'Squat',
-    tags: ['Legs'],
-    sets: [
-      { id: 's-3', date: '2026-01-16T12:00:00', weight: 225, reps: 5, estimated1RM: 263 },
-    ]
-  },
-  {
-    id: 'ex-3',
-    name: 'Overhead Press',
-    tags: ['Push'],
-    sets: []
-  },
-]
+// Fixture factories — each call returns a fresh deep copy so tests never share object references.
+function createExercises(): Exercise[] {
+  return [
+    {
+      id: 'ex-1',
+      name: 'Bench Press',
+      tags: ['Chest', 'Push'],
+      sets: [
+        { id: 's-1', date: '2026-01-15T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+        { id: 's-2', date: '2026-01-20T12:00:00', weight: 195, reps: 5, estimated1RM: 228 },
+      ]
+    },
+    {
+      id: 'ex-2',
+      name: 'Squat',
+      tags: ['Legs'],
+      sets: [
+        { id: 's-3', date: '2026-01-16T12:00:00', weight: 225, reps: 5, estimated1RM: 263 },
+      ]
+    },
+    {
+      id: 'ex-3',
+      name: 'Overhead Press',
+      tags: ['Push'],
+      sets: []
+    },
+  ]
+}
 
-const PR_EXERCISES: Exercise[] = [
-  {
-    id: 'ex-1',
-    name: 'Bench Press',
-    tags: [],
-    sets: [
-      { id: 's-1', date: '2026-01-01T12:00:00', weight: 135, reps: 5, estimated1RM: 158 },
-      { id: 's-2', date: '2026-01-15T12:00:00', weight: 155, reps: 5, estimated1RM: 181 },
-      { id: 's-3', date: '2026-02-01T12:00:00', weight: 175, reps: 5, estimated1RM: 204 },
-    ]
-  }
-]
+function createPRExercises(): Exercise[] {
+  return [
+    {
+      id: 'ex-1',
+      name: 'Bench Press',
+      tags: [],
+      sets: [
+        { id: 's-1', date: '2026-01-01T12:00:00', weight: 135, reps: 5, estimated1RM: 158 },
+        { id: 's-2', date: '2026-01-15T12:00:00', weight: 155, reps: 5, estimated1RM: 181 },
+        { id: 's-3', date: '2026-02-01T12:00:00', weight: 175, reps: 5, estimated1RM: 204 },
+      ]
+    }
+  ]
+}
 
-// Build a reactive mock store
-let exercises: Exercise[] = []
+// Mock store state — isolated in an object so tests interact with an explicit container
+// rather than a bare module-level `let` that can be accidentally shadowed or leaked.
+const mockState = { exercises: [] as Exercise[] }
 
 function getExercisePR(id: string): number {
-  const ex = exercises.find(e => e.id === id)
+  const ex = mockState.exercises.find(e => e.id === id)
   if (!ex || ex.sets.length === 0) return 0
   return Math.max(...ex.sets.map(s => s.estimated1RM))
 }
 
 function getExercisePRSet(id: string): WorkoutSet | null {
-  const ex = exercises.find(e => e.id === id)
+  const ex = mockState.exercises.find(e => e.id === id)
   if (!ex || ex.sets.length === 0) return null
   return ex.sets.reduce((best, s) => s.estimated1RM > best.estimated1RM ? s : best)
 }
 
 function getAllTags(): string[] {
   const tags = new Set<string>()
-  exercises.forEach(e => (e.tags || []).forEach(t => tags.add(t)))
+  mockState.exercises.forEach(e => (e.tags || []).forEach(t => tags.add(t)))
   return [...tags].sort()
 }
 
@@ -122,10 +128,15 @@ const mockRenameExercise = vi.fn()
 const mockUpdateExerciseTags = vi.fn()
 const mockReorderExercise = vi.fn()
 
+const mockArchiveExercise = vi.fn()
+const mockUnarchiveExercise = vi.fn()
+
 vi.mock('../../stores/workout', () => ({
   useWorkoutStore: () => ({
-    get exercises() { return exercises },
-    set exercises(v: Exercise[]) { exercises = v },
+    get exercises() { return mockState.exercises },
+    set exercises(v: Exercise[]) { mockState.exercises = v },
+    get activeExercises() { return mockState.exercises.filter(e => !e.archived_at) },
+    get archivedExercises() { return mockState.exercises.filter(e => !!e.archived_at) },
     get allTags() { return getAllTags() },
     getExercisePR,
     getExercisePRSet,
@@ -139,6 +150,8 @@ vi.mock('../../stores/workout', () => ({
     syncDeleteSet: mockSyncDeleteSet,
     restoreExercise: mockRestoreExercise,
     syncDeleteExercise: mockSyncDeleteExercise,
+    archiveExercise: mockArchiveExercise,
+    unarchiveExercise: mockUnarchiveExercise,
     renameExercise: mockRenameExercise,
     updateExerciseTags: mockUpdateExerciseTags,
     reorderExercise: mockReorderExercise,
@@ -161,7 +174,7 @@ function mountTracker(): VueWrapper {
 
 describe('WorkoutTracker', () => {
   beforeEach(() => {
-    exercises = []
+    mockState.exercises = []
     localStorageMock.clear()
     vi.clearAllMocks()
   })
@@ -202,7 +215,7 @@ describe('WorkoutTracker', () => {
 
   describe('exercise list', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
     })
 
     it('renders all exercises', () => {
@@ -252,9 +265,56 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  // ── archived exercises section (LIFT-434) ─────────────────────
+  describe('archived exercises', () => {
+    it('does not render the archived section when there are no archived exercises', () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtArchivedSection').exists()).toBe(false)
+    })
+
+    it('hides archived exercises from the main list and shows them in the Archived section', async () => {
+      mockState.exercises = createExercises()
+      mockState.exercises[1].archived_at = '2026-05-01T00:00:00.000Z'
+      const wrapper = mountTracker()
+      const items = wrapper.findAll('.wtExerciseItem')
+      expect(items.length).toBe(2)
+      const section = wrapper.find('.wtArchivedSection')
+      expect(section.exists()).toBe(true)
+      expect(section.find('.wtArchivedToggleCount').text()).toBe('1')
+      // Archived list is collapsed by default — click the disclosure to reveal it.
+      await section.find('.wtArchivedToggle').trigger('click')
+      const archivedRows = wrapper.findAll('.wtArchivedRow')
+      expect(archivedRows.length).toBe(1)
+      expect(archivedRows[0].text()).toContain('Squat')
+    })
+
+    it('calls unarchiveExercise when the Unarchive button is clicked', async () => {
+      mockState.exercises = createExercises()
+      mockState.exercises[0].archived_at = '2026-05-01T00:00:00.000Z'
+      const wrapper = mountTracker()
+      await wrapper.find('.wtArchivedToggle').trigger('click')
+      await wrapper.find('.wtArchivedActionBtn').trigger('click')
+      expect(mockUnarchiveExercise).toHaveBeenCalledWith('ex-1')
+    })
+
+    it('omits tags that exist only on archived exercises from the chip bar', () => {
+      // 'Legs' lives only on Squat. Archive Squat and 'Legs' should disappear
+      // from the chips — otherwise tapping it would filter to an empty list.
+      mockState.exercises = createExercises()
+      mockState.exercises[1].archived_at = '2026-05-01T00:00:00.000Z'
+      const wrapper = mountTracker()
+      const chips = wrapper.findAll('.wtTagChip').map(c => c.text())
+      const chipText = chips.join(' ')
+      expect(chipText).not.toContain('Legs')
+      expect(chipText).toContain('Chest')
+      expect(chipText).toContain('Push')
+    })
+  })
+
   describe('tag filtering', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
     })
 
     function tagChips(wrapper: VueWrapper) {
@@ -334,7 +394,7 @@ describe('WorkoutTracker', () => {
 
   describe('exercise detail modal', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
     })
 
     it('opens detail modal when exercise row is clicked', async () => {
@@ -402,7 +462,7 @@ describe('WorkoutTracker', () => {
 
     it('groups same-date sets into one card', async () => {
       // Add a second set on the same date as the latest (Jan 20)
-      exercises[0].sets.push(
+      mockState.exercises[0].sets.push(
         { id: 's-extra', date: '2026-01-20T14:00:00', weight: 190, reps: 3, estimated1RM: 210 }
       )
       const wrapper = mountTracker()
@@ -418,7 +478,7 @@ describe('WorkoutTracker', () => {
     it('groups sets by local date, not UTC date', async () => {
       // Two sets with the same UTC date prefix but at different times
       // Both should group under the same local date
-      exercises[0].sets = [
+      mockState.exercises[0].sets = [
         { id: 's-a', date: '2026-03-16T10:00:00', weight: 185, reps: 5, estimated1RM: 216 },
         { id: 's-b', date: '2026-03-16T14:30:00', weight: 195, reps: 5, estimated1RM: 228 },
       ]
@@ -484,7 +544,7 @@ describe('WorkoutTracker', () => {
 
   describe('PR history tab', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(PR_EXERCISES))
+      mockState.exercises = createPRExercises()
     })
 
     it('shows PRs tab when multiple PRs exist', async () => {
@@ -577,7 +637,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('calls addExercise with name and tags on save', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       mockAddExercise.mockReturnValue('ex-new')
       const wrapper = mountTracker()
 
@@ -595,7 +655,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('calls addExercise with selected tags', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       mockAddExercise.mockReturnValue('ex-new')
       const wrapper = mountTracker()
 
@@ -632,7 +692,7 @@ describe('WorkoutTracker', () => {
 
   describe('set logging flow', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
     })
 
     it('opens log modal for specific exercise via "+ Log" button', async () => {
@@ -714,11 +774,11 @@ describe('WorkoutTracker', () => {
      * plate calc to *both* render in plate mode.
      */
     it('shows WEIGHT/REPS cards alongside the plate calc in plate mode', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       // Switch the first exercise into plate mode
-      exercises[0].inputMode = 'plates'
-      exercises[0].plateCountMode = 'per-side'
-      exercises[0].barWeight = 45
+      mockState.exercises[0].inputMode = 'plates'
+      mockState.exercises[0].plateCountMode = 'per-side'
+      mockState.exercises[0].barWeight = 45
 
       const wrapper = mountTracker()
       const logBtns = wrapper.findAll('.wtExerciseLogBtn')
@@ -734,7 +794,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('shows plate calculator hint for numpad-mode exercises (LIFT-388)', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       // ex-1 is in default numpad mode (no inputMode set)
       const wrapper = mountTracker()
       const logBtns = wrapper.findAll('.wtExerciseLogBtn')
@@ -746,8 +806,8 @@ describe('WorkoutTracker', () => {
     })
 
     it('hides plate calculator hint when exercise is in plate mode (LIFT-388)', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
-      exercises[0].inputMode = 'plates'
+      mockState.exercises = createExercises()
+      mockState.exercises[0].inputMode = 'plates'
       const wrapper = mountTracker()
       const logBtns = wrapper.findAll('.wtExerciseLogBtn')
       await logBtns[0].trigger('click')
@@ -758,7 +818,7 @@ describe('WorkoutTracker', () => {
 
     it('hides plate calculator hint after dismissal via localStorage (LIFT-388)', async () => {
       localStorageMock.setItem('plate-calc-hint-dismissed', 'true')
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
       const logBtns = wrapper.findAll('.wtExerciseLogBtn')
       await logBtns[0].trigger('click')
@@ -768,7 +828,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('dismiss button persists hint dismissal to localStorage (LIFT-388)', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
       const logBtns = wrapper.findAll('.wtExerciseLogBtn')
       await logBtns[0].trigger('click')
@@ -792,7 +852,7 @@ describe('WorkoutTracker', () => {
     ]
 
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(FIVE_EXERCISES))
+      mockState.exercises = JSON.parse(JSON.stringify(FIVE_EXERCISES))
     })
 
     it('shows search bar when 5+ exercises exist', () => {
@@ -801,7 +861,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('hides search bar when fewer than 5 exercises', () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES)) // only 3
+      mockState.exercises = createExercises() // only 3
       const wrapper = mountTracker()
       expect(wrapper.find('.wtSearchBar').exists()).toBe(false)
     })
@@ -867,7 +927,7 @@ describe('WorkoutTracker', () => {
 
   describe('delete set with undo', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
     })
 
     it('calls deleteSet when delete button is clicked', async () => {
@@ -910,7 +970,7 @@ describe('WorkoutTracker', () => {
 
   describe('edit set flow', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
     })
 
     it('opens edit modal with pre-filled values when Edit is clicked', async () => {
@@ -1009,7 +1069,7 @@ describe('WorkoutTracker', () => {
 
   describe('accessibility', () => {
     it('log modal has aria-modal and role dialog', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
       await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
       await wrapper.vm.$nextTick()
@@ -1020,7 +1080,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('search input has aria-label', () => {
-      exercises = [
+      mockState.exercises = [
         { id: '1', name: 'A', tags: [], sets: [] },
         { id: '2', name: 'B', tags: [], sets: [] },
         { id: '3', name: 'C', tags: [], sets: [] },
@@ -1033,14 +1093,14 @@ describe('WorkoutTracker', () => {
     })
 
     it('log button aria-label renders exercise name dynamically', () => {
-      exercises = [{ id: '1', name: 'Bench Press', tags: [], sets: [] }]
+      mockState.exercises = [{ id: '1', name: 'Bench Press', tags: [], sets: [] }]
       const wrapper = mountTracker()
       const logBtn = wrapper.find('.wtExerciseLogBtn')
       expect(logBtn.attributes('aria-label')).toBe('Log a set for Bench Press')
     })
 
     it('detail modal has aria-modal and role dialog', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
       await wrapper.vm.$nextTick()
@@ -1051,7 +1111,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('tag filter buttons have aria-pressed reflecting active state', () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
       // Only actual tag chips have aria-pressed — skip "All", "× Clear",
       // and the tag-manager chip added in the 03-workouts.png restyle.
@@ -1063,7 +1123,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('tag add buttons have aria-label', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
       // Open new exercise modal via the exposed helper (retired wtLogBtn).
       const exposed = wrapper.vm as unknown as { openNewExerciseModal?: () => void }
@@ -1074,7 +1134,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('timer visual display has aria-hidden (not aria-live) to prevent per-second announcements', () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
       const timerInner = wrapper.find('.wtTimerRingInner')
       if (timerInner.exists()) {
@@ -1084,7 +1144,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('timer has a screen-reader-only aria-live region for milestone announcements', () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
       const srAnnouncement = wrapper.find('.srOnly[aria-live="polite"]')
       if (srAnnouncement.exists()) {
@@ -1095,7 +1155,7 @@ describe('WorkoutTracker', () => {
 
   describe('rest timer drift correction', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       localStorage.setItem('rest-timer', 'on')
       localStorage.setItem('rest-duration', '90')
       const mockOsc = { connect: vi.fn(), frequency: { value: 0, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() }, start: vi.fn(), stop: vi.fn() }
@@ -1118,51 +1178,55 @@ describe('WorkoutTracker', () => {
     it('uses wall-clock time so backgrounding the app does not cause drift', async () => {
       const wrapper = mountTracker()
       const vm = wrapper.vm as unknown as {
-        startRestTimer: () => void
-        timerSeconds: number
-        timerActive: boolean
+        timerCtrl: {
+          startRestTimer: () => void
+          timerSeconds: { value: number }
+          timerActive: { value: boolean }
+        }
       }
       // Start the timer with 90s duration
       const startTime = Date.now()
       vi.setSystemTime(startTime)
-      vm.startRestTimer()
-      expect(vm.timerSeconds).toBe(90)
+      vm.timerCtrl.startRestTimer()
+      expect(vm.timerCtrl.timerSeconds.value).toBe(90)
 
       // Simulate 30 real seconds passing (as if phone was backgrounded)
       vi.setSystemTime(startTime + 30_000)
       vi.advanceTimersByTime(250) // one tick
       await wrapper.vm.$nextTick()
-      expect(vm.timerSeconds).toBe(60)
+      expect(vm.timerCtrl.timerSeconds.value).toBe(60)
 
       // Simulate 55 more seconds — only 5s should remain
       vi.setSystemTime(startTime + 85_000)
       vi.advanceTimersByTime(250)
       await wrapper.vm.$nextTick()
-      expect(vm.timerSeconds).toBe(5)
+      expect(vm.timerCtrl.timerSeconds.value).toBe(5)
     })
 
     it('timer reaches zero even if intervals were throttled', async () => {
       const wrapper = mountTracker()
       const vm = wrapper.vm as unknown as {
-        startRestTimer: () => void
-        timerSeconds: number
-        timerActive: boolean
+        timerCtrl: {
+          startRestTimer: () => void
+          timerSeconds: { value: number }
+          timerActive: { value: boolean }
+        }
       }
       const startTime = Date.now()
       vi.setSystemTime(startTime)
-      vm.startRestTimer()
+      vm.timerCtrl.startRestTimer()
 
       // Jump past the full duration in one step
       vi.setSystemTime(startTime + 91_000)
       vi.advanceTimersByTime(250)
       await wrapper.vm.$nextTick()
-      expect(vm.timerSeconds).toBe(0)
+      expect(vm.timerCtrl.timerSeconds.value).toBe(0)
     })
   })
 
   describe('view toggle', () => {
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
     })
 
     it('renders Exercises and Timeline toggle buttons when exercises exist', () => {
@@ -1174,7 +1238,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('does not render toggle when no exercises exist', () => {
-      exercises = []
+      mockState.exercises = []
       const wrapper = mountTracker()
       expect(wrapper.find('.wtViewToggle').exists()).toBe(false)
     })
@@ -1212,6 +1276,20 @@ describe('WorkoutTracker', () => {
       exposed.openTimelineLogModal!()
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.wtExPickerNew').exists()).toBe(true)
+    })
+
+    it('exercise picker dialog has aria-labelledby linked to title', async () => {
+      const wrapper = mountTracker()
+      const exposed = wrapper.vm as unknown as { openTimelineLogModal?: () => void }
+      exposed.openTimelineLogModal!()
+      await wrapper.vm.$nextTick()
+
+      const dialog = wrapper.find('[role="dialog"][aria-labelledby="timeline-picker-title"]')
+      expect(dialog.exists()).toBe(true)
+      expect(dialog.attributes('aria-modal')).toBe('true')
+      const title = wrapper.find('#timeline-picker-title')
+      expect(title.exists()).toBe(true)
+      expect(title.text()).toBe('Choose Exercise')
     })
 
     it('persists view selection to localStorage', async () => {
@@ -1262,7 +1340,7 @@ describe('WorkoutTracker', () => {
     }
 
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(TIMELINE_EXERCISES))
+      mockState.exercises = JSON.parse(JSON.stringify(TIMELINE_EXERCISES))
     })
 
     it('renders all sets across exercises sorted by date (newest first)', async () => {
@@ -1302,7 +1380,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('shows empty message when no sets exist', async () => {
-      exercises = [{ id: 'ex-1', name: 'Bench', tags: [], sets: [] }]
+      mockState.exercises = [{ id: 'ex-1', name: 'Bench', tags: [], sets: [] }]
       const wrapper = await mountTimeline()
       expect(wrapper.text()).toContain('No sets logged yet')
     })
@@ -1325,7 +1403,7 @@ describe('WorkoutTracker', () => {
 
     it('hides search bar in timeline view', async () => {
       // Need 5+ exercises for search bar
-      exercises = [
+      mockState.exercises = [
         { id: '1', name: 'A', tags: [], sets: [{ id: 's1', date: '2026-01-01T10:00:00', weight: 100, reps: 5, estimated1RM: 117 }] },
         { id: '2', name: 'B', tags: [], sets: [] },
         { id: '3', name: 'C', tags: [], sets: [] },
@@ -1347,7 +1425,7 @@ describe('WorkoutTracker', () => {
         reps: 5,
         estimated1RM: 158 + i,
       }))
-      exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets }]
+      mockState.exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets }]
     })
 
     it('limits visible timeline entries to 50 initially', async () => {
@@ -1393,7 +1471,7 @@ describe('WorkoutTracker', () => {
         reps: 5,
         estimated1RM: 158 + i * 5,
       }))
-      exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets }]
+      mockState.exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets }]
     })
 
     it('limits visible sets to 10 initially in detail modal', async () => {
@@ -1455,7 +1533,7 @@ describe('WorkoutTracker', () => {
     })
 
     it('does not show "Show all" button when sets are within limit', async () => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES)) // 2 sets on Bench Press
+      mockState.exercises = createExercises() // 2 sets on Bench Press
       const wrapper = mountTracker()
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
       await wrapper.vm.$nextTick()
@@ -1493,7 +1571,7 @@ describe('WorkoutTracker', () => {
     }
 
     beforeEach(() => {
-      exercises = JSON.parse(JSON.stringify(EXERCISES))
+      mockState.exercises = createExercises()
       vi.useFakeTimers()
     })
 
@@ -1614,7 +1692,7 @@ describe('WorkoutTracker', () => {
     it('does not arm a long-press while a search query is active (#383)', async () => {
       // Need ≥5 exercises for the search bar to render.
       vi.useRealTimers()
-      exercises = [
+      mockState.exercises = [
         { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
         { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
         { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
@@ -1649,7 +1727,7 @@ describe('WorkoutTracker', () => {
      */
     it('disables drag handles while a search query is active (#383)', async () => {
       vi.useRealTimers()
-      exercises = [
+      mockState.exercises = [
         { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
         { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
         { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
