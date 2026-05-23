@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
+import type { Tables } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
@@ -64,6 +65,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 
+      let data: Tables<'bodyweight_entries'>[] | null
       try {
         const result = await supabase
           .from('bodyweight_entries')
@@ -75,8 +77,13 @@ export const useBodyweightStore = defineStore('bodyweight', {
           logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(result.error) })
           return
         }
-        const data = result.data
-        if (!data) return
+        data = result.data
+      } catch (err) {
+        logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
+        return
+      }
+
+      if (!data) return
 
       // Filter out tombstoned entries (deleted offline, not yet synced)
       const remoteIds = new Set(data.map(e => e.id))
@@ -179,10 +186,6 @@ export const useBodyweightStore = defineStore('bodyweight', {
               .eq('id', entryId).eq('user_id', userId),
           )
         }
-      }
-      } catch (err) {
-        logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
-        return
       }
     },
 

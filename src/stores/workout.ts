@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { shallowRef, triggerRef, computed } from 'vue'
 import { supabase, isPreviewMode } from '../lib/supabase'
+import type { Tables } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
@@ -242,6 +243,8 @@ export const useWorkoutStore = defineStore('workout', () => {
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
 
+    let remoteExData: Tables<'exercises'>[] | null
+    let sets: Tables<'sets'>[] | null
     try {
       const [exResult, setsResult] = await Promise.all([
         supabase.from('exercises').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at'),
@@ -254,8 +257,12 @@ export const useWorkoutStore = defineStore('workout', () => {
         })
         return
       }
-      const remoteExData = exResult.data
-      const sets = setsResult.data
+      remoteExData = exResult.data
+      sets = setsResult.data
+    } catch (err) {
+      logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      return
+    }
 
     if (!remoteExData || !sets) return
 
@@ -449,10 +456,6 @@ export const useWorkoutStore = defineStore('workout', () => {
             .eq('id', exId).eq('user_id', userId)
         )
       }
-    }
-    } catch (err) {
-      logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
-      return
     }
   }
 
