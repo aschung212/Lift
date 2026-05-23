@@ -806,16 +806,6 @@ watch(legalView, async (view) => {
   }
 })
 
-watch(confirmDialog, async (dialog) => {
-  if (dialog) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('.confirmSheet')
-    if (el) confirmFocus.activate(el)
-  } else {
-    confirmFocus.deactivate()
-  }
-})
-
 // ── Confirm dialog ─────────────────────────────────────────────
 const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
 
@@ -832,12 +822,22 @@ function acceptConfirm() {
   confirmDialog.value = null
 }
 
+watch(confirmDialog, async (dialog) => {
+  if (dialog) {
+    await nextTick()
+    const el = document.querySelector<HTMLElement>('.confirmSheet')
+    if (el) confirmFocus.activate(el)
+  } else {
+    confirmFocus.deactivate()
+  }
+})
+
 // ── Delete account state ──────────────────────────────────────────
 const deleteAccountOpen = ref(false)
 const deleteConfirmText = ref('')
 const deletingAccount = ref(false)
 const deleteError = ref('')
-const { signOut, deleteAccount } = useAuth()
+const { deleteAccount } = useAuth()
 
 function showDeleteAccountConfirm() {
   deleteConfirmText.value = ''
