@@ -68,9 +68,14 @@ test.describe('Exercise CRUD', () => {
   })
 
   test('creates a second exercise via top-bar picker', async ({ page }) => {
-    // Create first exercise to clear fresh-start state
+    // Create first exercise to clear fresh-start state. Save requires a set
+    // (weight + reps) — without it the modal transitions to a different
+    // state whose close button isn't .repMaxBtnClose, so mirror the
+    // first-test flow which fills weight + reps before saving.
     await page.locator('.wtFreshStartCta').click()
     await page.fill('input[placeholder="e.g. Bench Press"]', 'OHP')
+    await page.fill('[aria-label="Weight"]', '135')
+    await page.fill('[aria-label="Reps"]', '5')
     await page.locator('.repMaxBtnCalc').click()
     await page.locator('.repMaxBtnClose').click()
     await expect(page.locator('.wtExerciseName', { hasText: 'OHP' })).toBeVisible()
