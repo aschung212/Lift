@@ -896,7 +896,6 @@ import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, is
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from './ExerciseDetailModal.vue'
-import ExerciseGraph from './ExerciseGraph.vue'
 import RestTimerContent from './RestTimerContent.vue'
 
 const store = useWorkoutStore()
