@@ -6,6 +6,10 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('onboarding-complete', 'true')
     localStorage.setItem('rest-timer', 'off')
+    // wtFreshStartCta only renders when this flag is set (mirrors the
+    // 'clear sample data' Settings action). Tests below click it as the
+    // entry point for Exercise CRUD and Live 1RM.
+    localStorage.setItem('fresh-start', 'true')
   })
   await page.goto('/')
   // Sign in via dev mode

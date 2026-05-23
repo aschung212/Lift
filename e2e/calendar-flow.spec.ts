@@ -299,6 +299,8 @@ test.describe('Calendar View', () => {
     const todayLabel = new Date(todayDateStr() + 'T12:00:00').toLocaleDateString(undefined, {
       weekday: 'long', month: 'long', day: 'numeric',
     })
-    expect(detailDate).toBe(todayLabel)
+    // .innerText() returns CSS-transformed text; .calDetailDate uses
+    // text-transform: uppercase. Compare uppercased values on both sides.
+    expect(detailDate.toUpperCase()).toBe(todayLabel.toUpperCase())
   })
 })
