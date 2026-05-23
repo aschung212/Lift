@@ -242,8 +242,6 @@ export const useWorkoutStore = defineStore('workout', () => {
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
 
-    let remoteExData: Record<string, unknown>[] | null
-    let sets: Record<string, unknown>[] | null
     try {
       const [exResult, setsResult] = await Promise.all([
         supabase.from('exercises').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at'),
@@ -256,44 +254,40 @@ export const useWorkoutStore = defineStore('workout', () => {
         })
         return
       }
-      remoteExData = exResult.data
-      sets = setsResult.data
-    } catch (err) {
-      logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
-      return
-    }
+      const remoteExData = exResult.data
+      const sets = setsResult.data
 
     if (!remoteExData || !sets) return
 
     // Filter out tombstoned exercises (deleted offline, not yet synced)
-    const remoteIds = new Set(remoteExData.map((ex: Record<string, unknown>) => ex.id as string))
+    const remoteIds = new Set(remoteExData.map(ex => ex.id))
     cleanupTombstones(TOMBSTONE_STORE, remoteIds)
     const filteredExercises = remoteExData.filter(
-      (ex: Record<string, unknown>) => !isTombstoned(TOMBSTONE_STORE, ex.id as string)
+      ex => !isTombstoned(TOMBSTONE_STORE, ex.id)
     )
 
-    const remoteExercises = filteredExercises.map((ex: Record<string, unknown>) => {
+    const remoteExercises = filteredExercises.map(ex => {
       const exercise: Exercise = {
-        id: ex.id as string,
-        name: ex.name as string,
-        tags: (ex.tags as string[]) || [],
-        updated_at: (ex.updated_at as string) || (ex.created_at as string) || new Date().toISOString(),
+        id: ex.id,
+        name: ex.name,
+        tags: ex.tags || [],
+        updated_at: ex.updated_at || ex.created_at || new Date().toISOString(),
         sets: [] as WorkoutSet[],
       }
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
-      if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight as number
-      if (ex.archived_at) exercise.archived_at = ex.archived_at as string
+      if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
+      if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
     })
 
     // Build remote sets grouped by exercise, filtering tombstoned sets
-    const remoteSetIds = new Set((sets || []).map((s: Record<string, unknown>) => s.id as string))
+    const remoteSetIds = new Set(sets.map(s => s.id))
     cleanupTombstones('sets', remoteSetIds)
     const remoteSetsMap = new Map<string, WorkoutSet[]>()
-    for (const s of (sets || []) as Record<string, unknown>[]) {
-      if (isTombstoned('sets', s.id as string)) {
+    for (const s of sets) {
+      if (isTombstoned('sets', s.id)) {
         // Re-enqueue the soft-delete for tombstoned sets still visible on remote
-        const setId = s.id as string
+        const setId = s.id
         const userId = _userId
         const deletedAt = new Date().toISOString()
         syncQueue.enqueueDelete(`set:${setId}`, () =>
@@ -303,14 +297,14 @@ export const useWorkoutStore = defineStore('workout', () => {
         )
         continue
       }
-      const exerciseId = s.exercise_id as string
+      const exerciseId = s.exercise_id
       if (!remoteSetsMap.has(exerciseId)) remoteSetsMap.set(exerciseId, [])
       remoteSetsMap.get(exerciseId)!.push({
-        id: s.id as string,
-        date: s.date as string,
-        weight: s.weight as number,
-        reps: s.reps as number,
-        estimated1RM: s.estimated_1rm as number
+        id: s.id,
+        date: s.date,
+        weight: s.weight,
+        reps: s.reps,
+        estimated1RM: s.estimated_1rm
       })
     }
     remoteExercises.forEach(ex => {
@@ -438,12 +432,12 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     // Process active tombstones: ensure pending deletes are synced
     const tombstoneExercises = remoteExData
-      .filter((ex: Record<string, unknown>) => isTombstoned(TOMBSTONE_STORE, ex.id as string))
+      .filter(ex => isTombstoned(TOMBSTONE_STORE, ex.id))
     if (tombstoneExercises.length > 0) {
       const userId = _userId
       const deletedAt = new Date().toISOString()
       for (const ex of tombstoneExercises) {
-        const exId = ex.id as string
+        const exId = ex.id
         syncQueue.enqueueDelete(`exercise-sets:${exId}`, () =>
           supabase!.from('sets')
             .update({ deleted_at: deletedAt })
@@ -455,6 +449,10 @@ export const useWorkoutStore = defineStore('workout', () => {
             .eq('id', exId).eq('user_id', userId)
         )
       }
+    }
+    } catch (err) {
+      logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      return
     }
   }
 

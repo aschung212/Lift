@@ -65,6 +65,15 @@ const DEFAULT_FILTERS: FilterSettings = {
   warmupThreshold: 0.75,
 }
 
+/** Shape of the preferences JSON blob persisted to Supabase. */
+interface PersistedPreferences {
+  features?: Partial<FeatureFlags>
+  weightGoal?: Partial<WeightGoalConfig> & { targetWeight?: number }
+  experience?: Partial<ExperienceFlags>
+  filters?: Partial<FilterSettings>
+  prBaselineDate?: string | null
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function _migrateWeightGoal(raw: any): WeightGoalConfig {
   // v1: string ('lose' | 'gain' | 'maintain')
@@ -178,21 +187,21 @@ export const usePreferencesStore = defineStore('preferences', {
             .select('preferences')
             .eq('user_id', userId)
             .single()
-          const prefs = data?.preferences as Record<string, unknown> | null
+          const prefs = data?.preferences as PersistedPreferences | null
           if (prefs?.features) {
-            this.features = { ...DEFAULTS, ...prefs.features as Record<string, boolean> }
+            this.features = { ...DEFAULTS, ...prefs.features }
             if (prefs.weightGoal) {
-              this.weightGoal = _migrateWeightGoal(prefs.weightGoal as { target?: number; unit?: string })
+              this.weightGoal = _migrateWeightGoal(prefs.weightGoal)
             }
             if (prefs.experience) {
-              this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
+              this.experience = { ...DEFAULT_EXPERIENCE, ...prefs.experience }
             }
             if (prefs.filters) {
-              this.filters = { ...DEFAULT_FILTERS, ...(prefs.filters as Partial<FilterSettings>) }
+              this.filters = { ...DEFAULT_FILTERS, ...prefs.filters }
             }
-            if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate as string)) {
-              this.prBaselineDate = prefs.prBaselineDate as string
-            } else if ('prBaselineDate' in prefs && prefs.prBaselineDate === null) {
+            if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate)) {
+              this.prBaselineDate = prefs.prBaselineDate
+            } else if (prefs.prBaselineDate === null) {
               this.prBaselineDate = null
             }
             const synced = JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, filters: this.filters, prBaselineDate: this.prBaselineDate })

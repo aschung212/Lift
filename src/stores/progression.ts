@@ -282,18 +282,19 @@ export const useProgressionStore = defineStore('progression', {
       if (!data) return
 
       // Merge remote state — remote wins for simple scalar fields
-      this.streakWeeks = (data.streak_weeks as number) ?? this.streakWeeks
-      this.weeklyTarget = (data.weekly_target as number) ?? this.weeklyTarget
-      this.pendingTargetChange = (data.pending_target_change as number | null) ?? this.pendingTargetChange
-      this.showProgression = (data.show_progression as boolean) ?? this.showProgression
-      this.progressionEnabled = (data.progression_enabled as boolean) ?? this.progressionEnabled
+      this.streakWeeks = data.streak_weeks ?? this.streakWeeks
+      this.weeklyTarget = data.weekly_target ?? this.weeklyTarget
+      this.pendingTargetChange = data.pending_target_change ?? this.pendingTargetChange
+      this.showProgression = data.show_progression ?? this.showProgression
+      this.progressionEnabled = data.progression_enabled ?? this.progressionEnabled
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
-      this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
-      this.epoch = (data.epoch as number) ?? this.epoch
-      this.streakHistory = (data.streak_history as unknown as StreakWeekEntry[]) ?? this.streakHistory
+      this.starterConfirmed = data.starter_confirmed ?? this.starterConfirmed
+      this.epoch = data.epoch ?? this.epoch
+      // Json columns require runtime casts — Supabase types them as Json
+      this.streakHistory = (data.streak_history as StreakWeekEntry[]) ?? this.streakHistory
 
       // Merge collection fields — union strategy, no data loss
-      const remoteThemes = migrateUnlockedThemes((data.unlocked_themes as unknown) ?? [])
+      const remoteThemes = migrateUnlockedThemes(data.unlocked_themes ?? [])
       this.unlockedThemes = mergeUnlockedThemes(this.unlockedThemes, remoteThemes)
 
       const remoteXpPerSet = (data.xp_per_set as Record<string, SetXPEntry | number>) ?? {}

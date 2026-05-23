@@ -64,7 +64,6 @@ export const useBodyweightStore = defineStore('bodyweight', {
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 
-      let data: Record<string, unknown>[] | null
       try {
         const result = await supabase
           .from('bodyweight_entries')
@@ -76,26 +75,21 @@ export const useBodyweightStore = defineStore('bodyweight', {
           logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(result.error) })
           return
         }
-        data = result.data
-      } catch (err) {
-        logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
-        return
-      }
-
-      if (!data) return
+        const data = result.data
+        if (!data) return
 
       // Filter out tombstoned entries (deleted offline, not yet synced)
-      const remoteIds = new Set(data.map((e: Record<string, unknown>) => e.id as string))
+      const remoteIds = new Set(data.map(e => e.id))
       cleanupTombstones(TOMBSTONE_STORE, remoteIds)
       const filteredData = data.filter(
-        (e: Record<string, unknown>) => !isTombstoned(TOMBSTONE_STORE, e.id as string)
+        e => !isTombstoned(TOMBSTONE_STORE, e.id)
       )
 
-      const remoteEntries = filteredData.map((e: Record<string, unknown>) => ({
-        id: e.id as string,
-        date: e.date as string,
-        weight: e.weight as number,
-        updated_at: (e.updated_at as string) || (e.created_at as string) || new Date().toISOString(),
+      const remoteEntries = filteredData.map(e => ({
+        id: e.id,
+        date: e.date,
+        weight: e.weight,
+        updated_at: e.created_at || new Date().toISOString(),
       }))
 
       // Merge local + remote using last-write-wins
@@ -172,19 +166,23 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       // Process active tombstones: ensure pending deletes are synced
       const tombstoneEntries = data.filter(
-        (e: Record<string, unknown>) => isTombstoned(TOMBSTONE_STORE, e.id as string),
+        e => isTombstoned(TOMBSTONE_STORE, e.id),
       )
       if (tombstoneEntries.length > 0) {
         const userId = this._userId
         const deletedAt = new Date().toISOString()
         for (const e of tombstoneEntries) {
-          const entryId = e.id as string
+          const entryId = e.id
           syncQueue.enqueueDelete(`bodyweight:${entryId}`, () =>
             supabase!.from('bodyweight_entries')
               .update({ deleted_at: deletedAt })
               .eq('id', entryId).eq('user_id', userId),
           )
         }
+      }
+      } catch (err) {
+        logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
+        return
       }
     },
 
