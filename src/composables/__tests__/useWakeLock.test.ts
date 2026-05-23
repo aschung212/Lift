@@ -82,8 +82,9 @@ describe('useWakeLock', () => {
     const shouldLock = ref(true)
     const enabled = ref(false)
     useWakeLock(shouldLock, enabled)
+    // Flush the watcher (nextTick) and any resulting microtasks
     await nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await nextTick()
 
     expect(navigator.wakeLock.request).not.toHaveBeenCalled()
   })
@@ -135,9 +136,11 @@ describe('useWakeLock', () => {
     const shouldLock = ref(true)
     const enabled = ref(true)
     const { wakeLockActive } = useWakeLock(shouldLock, enabled)
+    // Flush the watcher and let the rejected promise settle
     await nextTick()
-    await new Promise(r => setTimeout(r, 20))
-    expect(wakeLockActive.value).toBe(false)
+    await vi.waitFor(() => {
+      expect(wakeLockActive.value).toBe(false)
+    })
   })
 
   it('releases the just-acquired sentinel if shouldLock toggles off mid-request', async () => {

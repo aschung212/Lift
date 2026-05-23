@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { THEME_PREVIEWS, type ThemeId } from '../lib/themes'
 import { XP_CONFIG } from '../lib/xp'
 import { useAnalytics } from '../composables/useAnalytics'
@@ -106,6 +106,7 @@ const emit = defineEmits<{
   skip: []
   preview: [themeId: ThemeId]
   'revert-preview': []
+  'step-change': [step: 'explainer' | 'pick' | 'goal']
 }>()
 
 const { logEvent } = useAnalytics()
@@ -113,6 +114,8 @@ const { logEvent } = useAnalytics()
 const step = ref<'explainer' | 'pick' | 'goal'>('explainer')
 const selection = ref<ThemeId | null>(null)
 const goal = ref(3)
+
+watch(step, (s) => emit('step-change', s))
 
 const STARTERS: { id: ThemeId; label: string }[] = [
   { id: 'fire', label: 'Intensity' },
