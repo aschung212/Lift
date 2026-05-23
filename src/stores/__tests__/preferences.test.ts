@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { usePreferencesStore } from '../preferences'
+import { usePreferencesStore, _migrateWeightGoal } from '../preferences'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
 vi.mock('../../lib/durableStorage', () => ({
@@ -327,6 +327,125 @@ describe('usePreferencesStore', () => {
 
       expect(freshStore.experience.prCelebrations).toBe(true)
       expect(freshStore.experience.haptics).toBe(true)
+    })
+  })
+
+  describe('_migrateWeightGoal runtime validation', () => {
+    it('migrates valid v1 string direction', () => {
+      expect(_migrateWeightGoal('gain')).toEqual({
+        direction: 'gain',
+        loseTarget: null,
+        gainTarget: null,
+        maintainMin: null,
+        maintainMax: null,
+      })
+    })
+
+    it('returns default for unrecognized v1 string', () => {
+      const result = _migrateWeightGoal('bulking')
+      expect(result.direction).toBe('lose') // default
+    })
+
+    it('returns default for null input', () => {
+      const result = _migrateWeightGoal(null)
+      expect(result.direction).toBe('lose')
+      expect(result.loseTarget).toBeNull()
+    })
+
+    it('returns default for undefined input', () => {
+      const result = _migrateWeightGoal(undefined)
+      expect(result.direction).toBe('lose')
+    })
+
+    it('returns default for numeric input', () => {
+      const result = _migrateWeightGoal(42)
+      expect(result.direction).toBe('lose')
+    })
+
+    it('returns default for boolean input', () => {
+      const result = _migrateWeightGoal(true)
+      expect(result.direction).toBe('lose')
+    })
+
+    it('returns default for array input', () => {
+      const result = _migrateWeightGoal([1, 2, 3])
+      expect(result.direction).toBe('lose')
+    })
+
+    it('migrates valid v3 object with all fields', () => {
+      const result = _migrateWeightGoal({
+        direction: 'maintain',
+        loseTarget: 150,
+        gainTarget: 200,
+        maintainMin: 160,
+        maintainMax: 180,
+      })
+      expect(result).toEqual({
+        direction: 'maintain',
+        loseTarget: 150,
+        gainTarget: 200,
+        maintainMin: 160,
+        maintainMax: 180,
+      })
+    })
+
+    it('fills defaults for missing fields in v3 object', () => {
+      const result = _migrateWeightGoal({ direction: 'gain' })
+      expect(result).toEqual({
+        direction: 'gain',
+        loseTarget: null,
+        gainTarget: null,
+        maintainMin: null,
+        maintainMax: null,
+      })
+    })
+
+    it('uses default direction when object has invalid direction', () => {
+      const result = _migrateWeightGoal({ direction: 'shred', loseTarget: 150 })
+      expect(result.direction).toBe('lose')
+      expect(result.loseTarget).toBe(150)
+    })
+
+    it('ignores non-number target values', () => {
+      const result = _migrateWeightGoal({
+        direction: 'lose',
+        loseTarget: 'heavy',
+        gainTarget: true,
+        maintainMin: {},
+      })
+      expect(result.loseTarget).toBeNull()
+      expect(result.gainTarget).toBeNull()
+      expect(result.maintainMin).toBeNull()
+    })
+
+    it('migrates v2 object with targetWeight to loseTarget', () => {
+      const result = _migrateWeightGoal({
+        direction: 'lose',
+        targetWeight: 165,
+      })
+      expect(result.loseTarget).toBe(165)
+    })
+
+    it('migrates v2 object with targetWeight to gainTarget when direction is gain', () => {
+      const result = _migrateWeightGoal({
+        direction: 'gain',
+        targetWeight: 200,
+      })
+      expect(result.gainTarget).toBe(200)
+    })
+
+    it('ignores non-number targetWeight in v2 migration', () => {
+      const result = _migrateWeightGoal({
+        direction: 'lose',
+        targetWeight: 'heavy',
+      })
+      expect(result.loseTarget).toBeNull()
+    })
+
+    it('handles empty object gracefully', () => {
+      const result = _migrateWeightGoal({})
+      expect(result.direction).toBe('lose')
+      expect(result.loseTarget).toBeNull()
     })
   })
 

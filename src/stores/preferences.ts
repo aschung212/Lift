@@ -65,28 +65,52 @@ const DEFAULT_FILTERS: FilterSettings = {
   warmupThreshold: 0.75,
 }
 
-/** Shape of the preferences JSON blob persisted to Supabase. */
-interface PersistedPreferences {
-  features?: Partial<FeatureFlags>
-  weightGoal?: Partial<WeightGoalConfig> & { targetWeight?: number }
-  experience?: Partial<ExperienceFlags>
-  filters?: Partial<FilterSettings>
-  prBaselineDate?: string | null
+const VALID_DIRECTIONS: ReadonlySet<string> = new Set(['lose', 'gain', 'maintain'])
+
+function _isValidDirection(value: unknown): value is WeightGoalDirection {
+  return typeof value === 'string' && VALID_DIRECTIONS.has(value)
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function _migrateWeightGoal(raw: any): WeightGoalConfig {
-  // v1: string ('lose' | 'gain' | 'maintain')
+/**
+ * Migrate weight-goal data from any previous schema version to the current shape.
+ * Exported for testing only — not part of the public API.
+ */
+export function _migrateWeightGoal(raw: unknown): WeightGoalConfig {
+  // v1: bare string direction ('lose' | 'gain' | 'maintain')
   if (typeof raw === 'string') {
-    return { ...DEFAULT_WEIGHT_GOAL, direction: raw as WeightGoalDirection }
+    if (_isValidDirection(raw)) {
+      return { ...DEFAULT_WEIGHT_GOAL, direction: raw }
+    }
+    logError(new Error(`_migrateWeightGoal: unrecognized direction string "${raw}"`), { source: 'preferences.migrate' })
+    return { ...DEFAULT_WEIGHT_GOAL }
   }
-  const goal = { ...DEFAULT_WEIGHT_GOAL, ...raw }
+
+  // Must be a non-null object for v2/v3 shapes
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    logError(new Error(`_migrateWeightGoal: unexpected type ${raw === null ? 'null' : typeof raw}`), { source: 'preferences.migrate' })
+    return { ...DEFAULT_WEIGHT_GOAL }
+  }
+
+  const obj = raw as Record<string, unknown>
+
+  // Validate direction if present
+  const direction: WeightGoalDirection =
+    _isValidDirection(obj.direction) ? obj.direction : DEFAULT_WEIGHT_GOAL.direction
+
+  const goal: WeightGoalConfig = {
+    direction,
+    loseTarget: typeof obj.loseTarget === 'number' ? obj.loseTarget : DEFAULT_WEIGHT_GOAL.loseTarget,
+    gainTarget: typeof obj.gainTarget === 'number' ? obj.gainTarget : DEFAULT_WEIGHT_GOAL.gainTarget,
+    maintainMin: typeof obj.maintainMin === 'number' ? obj.maintainMin : DEFAULT_WEIGHT_GOAL.maintainMin,
+    maintainMax: typeof obj.maintainMax === 'number' ? obj.maintainMax : DEFAULT_WEIGHT_GOAL.maintainMax,
+  }
+
   // v2: had single targetWeight field — migrate to direction-specific
-  if ('targetWeight' in raw && raw.targetWeight != null) {
-    if (goal.direction === 'gain') goal.gainTarget = raw.targetWeight
-    else goal.loseTarget = raw.targetWeight
-    delete (goal as Record<string, unknown>).targetWeight
+  if ('targetWeight' in obj && typeof obj.targetWeight === 'number') {
+    if (goal.direction === 'gain') goal.gainTarget = obj.targetWeight
+    else goal.loseTarget = obj.targetWeight
   }
+
   return goal
 }
 
@@ -187,21 +211,21 @@ export const usePreferencesStore = defineStore('preferences', {
             .select('preferences')
             .eq('user_id', userId)
             .single()
-          const prefs = data?.preferences as PersistedPreferences | null
+          const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
-            this.features = { ...DEFAULTS, ...prefs.features } as FeatureFlags
+            this.features = { ...DEFAULTS, ...prefs.features as Record<string, boolean> }
             if (prefs.weightGoal) {
               this.weightGoal = _migrateWeightGoal(prefs.weightGoal)
             }
             if (prefs.experience) {
-              this.experience = { ...DEFAULT_EXPERIENCE, ...prefs.experience }
+              this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
             }
             if (prefs.filters) {
-              this.filters = { ...DEFAULT_FILTERS, ...prefs.filters }
+              this.filters = { ...DEFAULT_FILTERS, ...(prefs.filters as Partial<FilterSettings>) }
             }
-            if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate)) {
-              this.prBaselineDate = prefs.prBaselineDate
-            } else if (prefs.prBaselineDate === null) {
+            if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate as string)) {
+              this.prBaselineDate = prefs.prBaselineDate as string
+            } else if ('prBaselineDate' in prefs && prefs.prBaselineDate === null) {
               this.prBaselineDate = null
             }
             const synced = JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, filters: this.filters, prBaselineDate: this.prBaselineDate })

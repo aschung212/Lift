@@ -6,7 +6,13 @@ type AllowedPropertyValues = string | number | boolean | null | undefined
 let _currentTab = 'workouts'
 let _tabStart = Date.now()
 
-export function useAnalytics() {
+export interface UseAnalyticsReturn {
+  logEvent: (name: string, props?: Record<string, AllowedPropertyValues>) => void
+  tabSwitch: (fromTab: string, toTab: string) => void
+  flushEngagement: () => void
+}
+
+export function useAnalytics(): UseAnalyticsReturn {
   function logEvent(name: string, props: Record<string, AllowedPropertyValues> = {}): void {
     try { track(name, props) } catch { /* offline or blocked */ }
   }

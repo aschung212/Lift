@@ -1178,45 +1178,49 @@ describe('WorkoutTracker', () => {
     it('uses wall-clock time so backgrounding the app does not cause drift', async () => {
       const wrapper = mountTracker()
       const vm = wrapper.vm as unknown as {
-        startRestTimer: () => void
-        timerSeconds: number
-        timerActive: boolean
+        timerCtrl: {
+          startRestTimer: () => void
+          timerSeconds: { value: number }
+          timerActive: { value: boolean }
+        }
       }
       // Start the timer with 90s duration
       const startTime = Date.now()
       vi.setSystemTime(startTime)
-      vm.startRestTimer()
-      expect(vm.timerSeconds).toBe(90)
+      vm.timerCtrl.startRestTimer()
+      expect(vm.timerCtrl.timerSeconds.value).toBe(90)
 
       // Simulate 30 real seconds passing (as if phone was backgrounded)
       vi.setSystemTime(startTime + 30_000)
       vi.advanceTimersByTime(250) // one tick
       await wrapper.vm.$nextTick()
-      expect(vm.timerSeconds).toBe(60)
+      expect(vm.timerCtrl.timerSeconds.value).toBe(60)
 
       // Simulate 55 more seconds — only 5s should remain
       vi.setSystemTime(startTime + 85_000)
       vi.advanceTimersByTime(250)
       await wrapper.vm.$nextTick()
-      expect(vm.timerSeconds).toBe(5)
+      expect(vm.timerCtrl.timerSeconds.value).toBe(5)
     })
 
     it('timer reaches zero even if intervals were throttled', async () => {
       const wrapper = mountTracker()
       const vm = wrapper.vm as unknown as {
-        startRestTimer: () => void
-        timerSeconds: number
-        timerActive: boolean
+        timerCtrl: {
+          startRestTimer: () => void
+          timerSeconds: { value: number }
+          timerActive: { value: boolean }
+        }
       }
       const startTime = Date.now()
       vi.setSystemTime(startTime)
-      vm.startRestTimer()
+      vm.timerCtrl.startRestTimer()
 
       // Jump past the full duration in one step
       vi.setSystemTime(startTime + 91_000)
       vi.advanceTimersByTime(250)
       await wrapper.vm.$nextTick()
-      expect(vm.timerSeconds).toBe(0)
+      expect(vm.timerCtrl.timerSeconds.value).toBe(0)
     })
   })
 

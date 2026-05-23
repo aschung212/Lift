@@ -91,7 +91,16 @@ async function notification(type: 'success' | 'warning' | 'error' = 'success'): 
   vibrate(patternMap[type])
 }
 
-export function useHaptics() {
+export interface UseHapticsReturn {
+  impactLight: () => Promise<void>
+  impactMedium: () => Promise<void>
+  impactHeavy: () => Promise<void>
+  notifySuccess: () => Promise<void>
+  notifyWarning: () => Promise<void>
+  notifyError: () => Promise<void>
+}
+
+export function useHaptics(): UseHapticsReturn {
   return {
     /** Light tap — use for routine actions like logging a set */
     impactLight: () => impact('light'),

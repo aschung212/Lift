@@ -9,7 +9,16 @@ import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
-import type { Json } from '../lib/database.types'
+import {
+  themeUnlocksToJson,
+  streakHistoryToJson,
+  xpPerSetToJson,
+  bodyweightDatesToJson,
+  parseStreakHistory,
+  parseUnlockedThemes,
+  parseXpPerSet,
+  parseBodyweightDates,
+} from '../lib/jsonColumns'
 
 const STORAGE_KEY = 'user-progression'
 
@@ -29,7 +38,7 @@ export const xpToast = reactive({
   _timer: null as ReturnType<typeof setTimeout> | null,
 })
 
-export function showXPToast(text: string, progressPercent: number, totalXP: number, nextThresholdXP: number | null) {
+export function showXPToast(text: string, progressPercent: number, totalXP: number, nextThresholdXP: number | null): void {
   xpToast.text = text
   xpToast.progressPercent = progressPercent
   xpToast.totalXP = totalXP
@@ -46,13 +55,13 @@ export const unlockCelebration = reactive({
   themeName: '',
 })
 
-export function showUnlockCelebration(themeId: ThemeId, themeName: string) {
+export function showUnlockCelebration(themeId: ThemeId, themeName: string): void {
   unlockCelebration.themeId = themeId
   unlockCelebration.themeName = themeName
   unlockCelebration.visible = true
 }
 
-export function dismissUnlockCelebration() {
+export function dismissUnlockCelebration(): void {
   unlockCelebration.visible = false
 }
 
@@ -288,19 +297,18 @@ export const useProgressionStore = defineStore('progression', {
       this.showProgression = data.show_progression ?? this.showProgression
       this.progressionEnabled = data.progression_enabled ?? this.progressionEnabled
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
-      this.starterConfirmed = data.starter_confirmed ?? this.starterConfirmed
-      this.epoch = data.epoch ?? this.epoch
-      // Json columns require runtime casts — Supabase types them as Json
-      this.streakHistory = (data.streak_history as unknown as StreakWeekEntry[]) ?? this.streakHistory
+      this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
+      this.epoch = (data.epoch as number) ?? this.epoch
+      this.streakHistory = parseStreakHistory(data.streak_history, this.streakHistory)
 
       // Merge collection fields — union strategy, no data loss
-      const remoteThemes = migrateUnlockedThemes(data.unlocked_themes ?? [])
+      const remoteThemes = parseUnlockedThemes(data.unlocked_themes) ?? migrateUnlockedThemes([])
       this.unlockedThemes = mergeUnlockedThemes(this.unlockedThemes, remoteThemes)
 
-      const remoteXpPerSet = (data.xp_per_set as Record<string, SetXPEntry | number>) ?? {}
+      const remoteXpPerSet = parseXpPerSet(data.xp_per_set, {})
       this.xpPerSet = mergeXpPerSet(this.xpPerSet, remoteXpPerSet)
 
-      const remoteBodyweightDates = (data.bodyweight_xp_dates as string[]) ?? []
+      const remoteBodyweightDates = parseBodyweightDates(data.bodyweight_xp_dates, [])
       this.bodyweightXPDates = mergeBodyweightDates(this.bodyweightXPDates, remoteBodyweightDates)
 
       // Recalculate totalXP from merged data — eliminates drift from stale overwrites
@@ -328,13 +336,13 @@ export const useProgressionStore = defineStore('progression', {
         pending_target_change: this.pendingTargetChange,
         show_progression: this.showProgression,
         progression_enabled: this.progressionEnabled,
-        unlocked_themes: this.unlockedThemes as unknown as Json,
+        unlocked_themes: themeUnlocksToJson(this.unlockedThemes),
         starter_theme: this.starterTheme,
         starter_confirmed: this.starterConfirmed,
         epoch: this.epoch,
-        streak_history: this.streakHistory as unknown as Json,
-        xp_per_set: this.xpPerSet as unknown as Json,
-        bodyweight_xp_dates: this.bodyweightXPDates as unknown as Json,
+        streak_history: streakHistoryToJson(this.streakHistory),
+        xp_per_set: xpPerSetToJson(this.xpPerSet),
+        bodyweight_xp_dates: bodyweightDatesToJson(this.bodyweightXPDates),
       }
       syncQueue.enqueue('progression-sync', () =>
         supabase!.from('user_progression').upsert(payload)

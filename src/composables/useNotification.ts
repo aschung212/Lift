@@ -11,7 +11,7 @@
  * Android Chrome and iOS 16.4+ PWAs), falling back to the Notification constructor.
  */
 
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, type Ref } from 'vue'
 
 const PERMISSION_KEY = 'notification-permission-asked'
 
@@ -112,7 +112,13 @@ function hasAskedBefore(): boolean {
  * Used by the rest timer to know if a notification should fire even though the
  * app is now visible (because JS was suspended while backgrounded).
  */
-export function useBackgroundTracker() {
+export interface UseBackgroundTrackerReturn {
+  wasBackgrounded: Ref<boolean>
+  startTracking: () => void
+  stopTracking: () => void
+}
+
+export function useBackgroundTracker(): UseBackgroundTrackerReturn {
   const wasBackgrounded = ref(false)
 
   function onVisibilityChange() {
@@ -137,7 +143,17 @@ export function useBackgroundTracker() {
   return { wasBackgrounded, startTracking, stopTracking }
 }
 
-export function useNotification() {
+export interface UseNotificationReturn {
+  isSupported: () => boolean
+  hasPermission: () => boolean
+  isDenied: () => boolean
+  isBackgrounded: () => boolean
+  hasAskedBefore: () => boolean
+  requestPermission: () => Promise<boolean>
+  notify: (title: string, options?: NotificationOptions & { wasBackgrounded?: boolean }) => Promise<boolean>
+}
+
+export function useNotification(): UseNotificationReturn {
   return {
     isSupported,
     hasPermission,

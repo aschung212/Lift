@@ -46,13 +46,13 @@ function setStoreSet(store: string, ids: Set<string>) {
   save()
 }
 
-export function addTombstone(store: string, id: string) {
+export function addTombstone(store: string, id: string): void {
   const ids = getStoreSet(store)
   ids.add(id)
   setStoreSet(store, ids)
 }
 
-export function removeTombstone(store: string, id: string) {
+export function removeTombstone(store: string, id: string): void {
   const ids = getStoreSet(store)
   if (ids.has(id)) {
     ids.delete(id)
@@ -68,7 +68,7 @@ export function isTombstoned(store: string, id: string): boolean {
  * Remove tombstones for IDs that no longer exist in remote data.
  * Only operates on the specified store's tombstones — other stores are untouched.
  */
-export function cleanupTombstones(store: string, remoteIds: Set<string>) {
+export function cleanupTombstones(store: string, remoteIds: Set<string>): void {
   const ids = getStoreSet(store)
   if (ids.size === 0) return
   const toRemove: string[] = []
@@ -82,6 +82,6 @@ export function cleanupTombstones(store: string, remoteIds: Set<string>) {
 }
 
 /** Reset in-memory tombstone cache (for testing only — prod doesn't need this). */
-export function _resetTombstones() {
+export function _resetTombstones(): void {
   _data = null
 }

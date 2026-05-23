@@ -19,7 +19,15 @@ interface SwipeToDismissOptions {
  * element while using the container for scroll checks and animation.
  * The second form avoids interfering with native scroll inside the container.
  */
-export function useSwipeToDismiss(options: SwipeToDismissOptions) {
+export interface UseSwipeToDismissReturn {
+  offsetY: Ref<number>
+  isDragging: Ref<boolean>
+  attach: (container: HTMLElement, handle?: HTMLElement) => void
+  detach: () => void
+  dragStyle: () => { transform?: string }
+}
+
+export function useSwipeToDismiss(options: SwipeToDismissOptions): UseSwipeToDismissReturn {
   const { threshold = 80, onDismiss, direction = 'down' } = options
 
   const el = ref<HTMLElement | null>(null) as Ref<HTMLElement | null>

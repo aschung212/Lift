@@ -6,7 +6,13 @@ const restTimerAutoStart: Ref<boolean> = ref(localStorage.getItem('rest-timer-au
 watch(restTimerEnabled, (v) => localStorage.setItem('rest-timer', v ? 'on' : 'off'))
 watch(restTimerAutoStart, (v) => localStorage.setItem('rest-timer-autostart', v ? 'on' : 'off'))
 
-export function useRestTimer() {
+export interface UseRestTimerReturn {
+  restTimerEnabled: Ref<boolean>
+  restTimerAutoStart: Ref<boolean>
+  setRestTimerEnabled: (enabled: boolean) => void
+}
+
+export function useRestTimer(): UseRestTimerReturn {
   function setRestTimerEnabled(enabled: boolean): void {
     restTimerEnabled.value = enabled
   }
