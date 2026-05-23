@@ -300,7 +300,8 @@ test.describe('Calendar View', () => {
       weekday: 'long', month: 'long', day: 'numeric',
     })
     // .innerText() returns CSS-transformed text; .calDetailDate uses
-    // text-transform: uppercase. Compare uppercased values on both sides.
+    // text-transform: uppercase, so compare case-insensitively to keep
+    // this assertion robust to styling changes.
     expect(detailDate.toUpperCase()).toBe(todayLabel.toUpperCase())
   })
 })
