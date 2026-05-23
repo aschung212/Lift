@@ -267,133 +267,19 @@
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
     <div v-if="showModal" class="repMaxOverlay logSetOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
-      <div ref="logSheetEl" class="repMaxModal logSetSheet" :style="logSwipe.dragStyle()" @click.self="editingPresets = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+      <div ref="logSheetEl" class="repMaxModal logSetSheet" :style="logSwipe.dragStyle()" @click.self="timerCtrl.editingPresets.value = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
         <div ref="logSheetHandleEl" class="logSetSheetHandle" aria-hidden="true"></div>
 
         <!-- Rest timer view -->
-        <template v-if="timerActive">
-          <div v-if="timerUrgent && !timerPaused && !editingPresets" class="wtTimerFlash"></div>
-
-          <template v-if="editingPresets">
-            <h2>Edit Times</h2>
-            <button class="wtTimerEditCountdown" @click="togglePause" :aria-label="timerPaused ? 'Resume timer' : 'Pause timer'">
-              {{ timerDisplay }}
-              <svg v-if="!timerPaused && timerSeconds > 0" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-              <svg v-else-if="timerPaused" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            </button>
-            <div class="wtTimerEditTabs">
-              <button :class="['wtTimerEditTab', { wtTimerEditTabActive: editTab === 'rest' }]" @click="editTab = 'rest'">Rest Times</button>
-              <button :class="['wtTimerEditTab', { wtTimerEditTabActive: editTab === 'alerts' }]" @click="editTab = 'alerts'">Alerts</button>
-            </div>
-            <div class="wtTimerEditListScroll">
-              <template v-if="editTab === 'rest'">
-                <div v-for="s in restPresets" :key="s" class="wtTimerEditRow wtTimerEditListItem">
-                  <span class="wtTimerEditItemLabel">{{ formatDuration(s) }}</span>
-                  <button
-                    :class="['glassToggle', { on: !disabledPresets.includes(s) }]"
-                    @click="togglePresetEnabled(s)"
-                    role="switch"
-                    :aria-checked="!disabledPresets.includes(s)"
-                    :aria-label="disabledPresets.includes(s) ? 'Enable ' + s : 'Disable ' + s"
-                  ><span class="glassToggleThumb"></span></button>
-                  <button
-                    class="wtTimerEditDeleteBtn"
-                    :disabled="restPresets.length <= 1"
-                    @click="removePreset(s)"
-                    :aria-label="'Remove ' + formatDuration(s) + ' preset'"
-                  >&times;</button>
-                </div>
-              </template>
-              <template v-else>
-                <div v-for="s in warningOptions" :key="s" class="wtTimerEditRow wtTimerEditListItem">
-                  <span class="wtTimerEditItemLabel">{{ s }}s before</span>
-                  <button
-                    :class="['glassToggle', { on: warningTimes.includes(s) }]"
-                    @click="toggleWarningTime(s)"
-                    role="switch"
-                    :aria-checked="warningTimes.includes(s)"
-                    :aria-label="warningTimes.includes(s) ? 'Disable ' + s + 's alert' : 'Enable ' + s + 's alert'"
-                  ><span class="glassToggleThumb"></span></button>
-                  <button
-                    class="wtTimerEditDeleteBtn"
-                    :disabled="warningOptions.length <= 1"
-                    @click="removeWarningOption(s)"
-                    :aria-label="'Remove ' + s + 's warning'"
-                  >&times;</button>
-                </div>
-              </template>
-            </div>
-            <div v-if="editTab === 'rest'" class="wtTimerEditRow" style="margin-top: var(--space-2)">
-              <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="addPreset" ref="presetInputEl" aria-label="Timer preset seconds" />
-              <button class="wtTimerEditAddBtn" :disabled="!newPresetValue" @click="addPreset">Add</button>
-            </div>
-            <div v-else class="wtTimerEditRow" style="margin-top: var(--space-2)">
-              <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="addWarningOption" aria-label="Warning alert seconds" />
-              <button class="wtTimerEditAddBtn" :disabled="!newWarningValue" @click="addWarningOption">Add</button>
-            </div>
-            <button class="wtTimerEditResetBtn" @click="resetAllDefaults">Reset to defaults</button>
-            <button class="wtTimerEditResetBtn wtTimerDisableBtn" @click="disableRestTimer">Disable Rest Timer</button>
-            <div class="repMaxActions">
-              <button class="repMaxBtn repMaxBtnCalc" @click="editingPresets = false">Done</button>
-            </div>
-          </template>
-
-          <template v-else>
-          <p v-if="selectedExerciseName" class="wtTimerExName">{{ selectedExerciseName }}</p>
-
-          <!-- Circular progress ring -->
-          <div :class="['wtTimerRingWrap', { wtTimerRingUrgent: timerUrgent }]">
-            <svg class="wtTimerRing" viewBox="0 0 200 200" aria-hidden="true">
-              <circle class="wtTimerRingBg" cx="100" cy="100" r="88" />
-              <circle
-                class="wtTimerRingFill"
-                cx="100" cy="100" r="88"
-                :stroke-dasharray="2 * Math.PI * 88"
-                :stroke-dashoffset="2 * Math.PI * 88 * (1 - timerProgress)"
-              />
-            </svg>
-            <div class="wtTimerRingInner" aria-hidden="true">
-              <span :class="['wtTimerTime', { wtTimerTimeDone: timerSeconds === 0 }]">{{ timerDisplay }}</span>
-              <span class="wtTimerLabel">{{ timerSeconds === 0 ? 'Done' : 'remaining' }}</span>
-            </div>
-            <span class="srOnly" aria-live="polite" aria-atomic="true">{{ timerAnnouncement }}</span>
-          </div>
-
-          <!-- Play / Pause / Restart -->
-          <div class="wtTimerControls">
-            <button v-if="timerSeconds === 0" class="wtTimerControlBtn" @click="restartTimer" aria-label="Restart">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-            </button>
-            <button v-else-if="timerPaused" class="wtTimerControlBtn" @click="togglePause" aria-label="Resume">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            </button>
-            <button v-else class="wtTimerControlBtn" @click="togglePause" aria-label="Pause">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-            </button>
-          </div>
-
-          <!-- Duration presets -->
-          <div class="wtTimerPresets">
-            <button
-              v-for="s in visiblePresets"
-              :key="s"
-              :class="['wtTimerPreset', { wtTimerPresetActive: restDuration === s }]"
-              @click="setRestDuration(s)"
-            >{{ formatDuration(s) }}</button>
-          </div>
-
-          <!-- Actions -->
-          <div class="repMaxActions">
-            <button v-if="selectedExerciseName" class="repMaxBtn repMaxBtnCalc" @click="skipToNextSet">Log Next</button>
-            <button class="repMaxBtn repMaxBtnClose" @click="closeModal">Done</button>
-          </div>
-          <div class="wtTimerFooter">
-            <button class="wtTimerFooterLink" @click="editingPresets = true" aria-label="Timer settings">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            </button>
-            <button class="wtTimerFooterLink wtTimerStopLink" @click="dismissTimer">Stop</button>
-          </div>
-          </template>
+        <template v-if="timerCtrl.timerActive.value">
+          <RestTimerContent
+            :exercise-name="selectedExerciseName"
+            :ctrl="timerCtrl"
+            @skip-to-next="skipToNextSet"
+            @dismiss="dismissTimer"
+            @close="closeModal"
+            @restore="showModal = true"
+          />
         </template>
 
         <!-- Log / edit form -->
@@ -961,13 +847,13 @@
   <button
     v-if="restTimerEnabled && !showModal"
     class="wtRestBar"
-    :class="{ wtRestBarActive: timerActive && !showModal, wtRestBarUrgent: timerUrgent && timerActive && !showModal }"
+    :class="{ wtRestBarActive: timerCtrl.timerActive.value && !showModal, wtRestBarUrgent: timerCtrl.timerUrgent.value && timerCtrl.timerActive.value && !showModal }"
     @click="openRestTimer"
   >
-    <template v-if="timerActive">
-      <div class="wtRestBarProgress" :style="{ width: (timerProgress * 100) + '%' }"></div>
+    <template v-if="timerCtrl.timerActive.value">
+      <div class="wtRestBarProgress" :style="{ width: (timerCtrl.timerProgress.value * 100) + '%' }"></div>
       <svg class="wtRestBarIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span class="wtRestBarTime">{{ timerDisplay }}</span>
+      <span class="wtRestBarTime">{{ timerCtrl.timerDisplay.value }}</span>
       <span class="wtRestBarLabel">remaining</span>
     </template>
     <template v-else>
@@ -997,33 +883,39 @@ import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
+import { useRestTimerController } from '../composables/useRestTimerController'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
-import { useNotification, useBackgroundTracker } from '../composables/useNotification'
 import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from './ExerciseDetailModal.vue'
+import ExerciseGraph from './ExerciseGraph.vue'
+import RestTimerContent from './RestTimerContent.vue'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme } = useTheme()
-const { restTimerEnabled, restTimerAutoStart, setRestTimerEnabled } = useRestTimer()
+const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { impactLight, notifySuccess } = useHaptics()
 const { logSetXPCeremony } = useXPCeremony()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
-const { notify: sendNotification, requestPermission: requestNotificationPermission } = useNotification()
-const { wasBackgrounded, startTracking: startBgTracking, stopTracking: stopBgTracking } = useBackgroundTracker()
+
+// Rest timer controller — all timer state and logic extracted into composable
+const timerCtrl = useRestTimerController(
+  () => { skipToNextSet() },
+  showUndo,
+)
 
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
@@ -2035,7 +1927,7 @@ function closeModal() {
     lastLogDate.value = date.value
   }
   showModal.value = false
-  editingPresets.value = false
+  timerCtrl.editingPresets.value = false
   editingSet.value = null
   selectedExerciseId.value = ''
   newExerciseName.value = ''
@@ -2049,411 +1941,34 @@ function closeModal() {
   prTableExpanded.value = false
 }
 
-// ── Rest timer ──────────────────────────────────────────────────
-const timerActive = ref(false)
-const timerPaused = ref(false)
-const timerSeconds = ref(0)
-const timerAnnouncement = ref('')
-const restDuration = ref(parseInt(localStorage.getItem('rest-duration') ?? '90') || 90)
-let timerIntervalId: ReturnType<typeof setInterval> | null = null
-// Timestamp-based drift correction: store when the timer ends and
-// how many seconds remained when paused, so every tick recalculates
-// from wall-clock time instead of decrementing a counter.
-let timerEndTime = 0        // Date.now() ms when timer should reach 0
-let pausedRemaining = 0     // seconds left when paused
-let lastWarnedAt = -1       // last warning second we fired (avoid duplicate beeps)
-
+// ── Rest timer (state lives in timerCtrl composable) ────────────
 // Keep screen awake while the rest timer is running or the log-set modal is open
-const wakeLockNeeded = computed(() => timerActive.value || showModal.value)
+const wakeLockNeeded = computed(() => timerCtrl.timerActive.value || showModal.value)
 useWakeLock(wakeLockNeeded, wakeLockEnabled)
 
-const DEFAULT_WARNING_OPTIONS = [3, 5, 10, 15, 30]
-const warningOptions = ref<number[]>(loadWarningOptions())
-const warningTimes = ref<number[]>(loadWarningTimes())
-const newWarningValue = ref<number | null>(null)
-
-function loadWarningOptions(): number[] {
-  try {
-    const raw = localStorage.getItem('rest-warning-options')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed.sort((a, b) => a - b)
-    }
-  } catch { /* ignore */ }
-  return [...DEFAULT_WARNING_OPTIONS]
-}
-
-function saveWarningOptions() {
-  localStorage.setItem('rest-warning-options', JSON.stringify(warningOptions.value))
-}
-
-function loadWarningTimes(): number[] {
-  try {
-    const raw = localStorage.getItem('rest-warnings')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed
-    }
-  } catch { /* ignore */ }
-  return [5]
-}
-
-function toggleWarningTime(val: number) {
-  if (val === 0) {
-    warningTimes.value = []
-  } else if (warningTimes.value.includes(val)) {
-    warningTimes.value = warningTimes.value.filter(v => v !== val)
-  } else {
-    warningTimes.value = [...warningTimes.value, val].sort((a, b) => a - b)
-  }
-  localStorage.setItem('rest-warnings', JSON.stringify(warningTimes.value))
-}
-
-function addWarningOption() {
-  if (newWarningValue.value === null) return
-  const val = newWarningValue.value
-  if (val >= 1 && val <= 120 && !warningOptions.value.includes(val)) {
-    warningOptions.value = [...warningOptions.value, val].sort((a, b) => a - b)
-    saveWarningOptions()
-  }
-  newWarningValue.value = null
-}
-
-function removeWarningOption(val: number) {
-  if (warningOptions.value.length <= 1) return
-  warningOptions.value = warningOptions.value.filter(v => v !== val)
-  warningTimes.value = warningTimes.value.filter(v => v !== val)
-  saveWarningOptions()
-  localStorage.setItem('rest-warnings', JSON.stringify(warningTimes.value))
-}
-
-function formatTimerAnnouncement(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  if (m > 0 && s > 0) return `${m} minute${m > 1 ? 's' : ''} ${s} second${s !== 1 ? 's' : ''}`
-  if (m > 0) return `${m} minute${m > 1 ? 's' : ''}`
-  return `${s} second${s !== 1 ? 's' : ''}`
-}
-
-function startInterval() {
-  if (timerIntervalId !== null) clearInterval(timerIntervalId)
-  lastWarnedAt = -1
-  timerIntervalId = setInterval(() => {
-    if (!timerPaused.value) {
-      const remaining = Math.ceil((timerEndTime - Date.now()) / 1000)
-      const prev = timerSeconds.value
-      timerSeconds.value = Math.max(remaining, 0)
-      // Fire warnings for any thresholds we crossed (handles skipped seconds)
-      for (const w of warningTimes.value) {
-        if (w < prev && w >= timerSeconds.value && w !== lastWarnedAt) {
-          lastWarnedAt = w
-          playWarningBeep(w)
-          timerAnnouncement.value = `${formatTimerAnnouncement(w)} remaining`
-        }
-      }
-      if (timerSeconds.value <= 0) {
-        playGoBeep()
-        if (timerIntervalId !== null) clearInterval(timerIntervalId)
-        timerIntervalId = null
-        timerSeconds.value = 0
-        timerAnnouncement.value = 'Rest timer done'
-        if (_prefs.experience.restTimerNotification) {
-          sendNotification('Rest Complete', {
-            body: 'Time to get back to work 💪',
-            wasBackgrounded: wasBackgrounded.value,
-          })
-        }
-        stopBgTracking()
-        if (!editingPresets.value) {
-          onTimerComplete()
-        }
-      }
-    }
-  }, 250)
-}
-
-function startRestTimer() {
-  ensureAudioCtx()
-  if (_prefs.experience.restTimerNotification) {
-    requestNotificationPermission()
-    startBgTracking()
-  }
-  timerActive.value = true
-  timerPaused.value = false
-  timerSeconds.value = restDuration.value
-  timerEndTime = Date.now() + restDuration.value * 1000
-  timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
-  startInterval()
-}
-
-function togglePause() {
-  ensureAudioCtx()
-  if (!timerPaused.value) {
-    // Pausing: snapshot remaining seconds
-    pausedRemaining = Math.max(Math.ceil((timerEndTime - Date.now()) / 1000), 0)
-    timerPaused.value = true
-  } else {
-    // Resuming: recalculate end time from snapshot
-    timerEndTime = Date.now() + pausedRemaining * 1000
-    timerPaused.value = false
-  }
-}
-
-const timerStopping = ref(false)
-
-function stopTimer() {
-  timerStopping.value = true
-  if (timerIntervalId !== null) clearInterval(timerIntervalId)
-  timerIntervalId = null
-  timerActive.value = false
-  timerPaused.value = false
-  timerSeconds.value = 0
-  editingPresets.value = false
-  newPresetValue.value = null
-  setTimeout(() => { timerStopping.value = false }, 0)
-}
-
-function restartTimer() {
-  ensureAudioCtx()
-  timerSeconds.value = restDuration.value
-  timerEndTime = Date.now() + restDuration.value * 1000
-  timerPaused.value = false
-  startInterval()
-}
-
-function onTimerComplete() {
-  skipToNextSet()
-}
-
 function skipToNextSet() {
-  stopTimer()
+  timerCtrl.stopTimer()
   date.value = lastLogDate.value
 }
 
-const DEFAULT_PRESETS = [30, 60, 90, 120, 180, 300]
-const editingPresets = ref(false)
-const editTab = ref<'rest' | 'alerts'>('rest')
-const newPresetValue = ref<number | null>(null)
-
-const restPresets = ref<number[]>(loadPresets())
-const disabledPresets = ref<number[]>(loadDisabledPresets())
-
-const visiblePresets = computed(() =>
-  restPresets.value.filter(s => !disabledPresets.value.includes(s))
-)
-
-function loadDisabledPresets(): number[] {
-  try {
-    const raw = localStorage.getItem('rest-presets-disabled')
-    if (raw) return JSON.parse(raw)
-  } catch { /* ignore */ }
-  return []
-}
-
-function saveDisabledPresets() {
-  localStorage.setItem('rest-presets-disabled', JSON.stringify(disabledPresets.value))
-}
-
-function togglePresetEnabled(val: number) {
-  if (disabledPresets.value.includes(val)) {
-    disabledPresets.value = disabledPresets.value.filter(v => v !== val)
-  } else {
-    // Don't disable the last visible preset
-    if (visiblePresets.value.length <= 1) return
-    disabledPresets.value = [...disabledPresets.value, val]
-  }
-  saveDisabledPresets()
-}
-
-function loadPresets(): number[] {
-  try {
-    const raw = localStorage.getItem('rest-presets')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed.sort((a, b) => a - b)
-    }
-  } catch { /* ignore */ }
-  return [...DEFAULT_PRESETS]
-}
-
-function savePresets() {
-  localStorage.setItem('rest-presets', JSON.stringify(restPresets.value))
-}
-
-function formatDuration(s: number): string {
-  if (s < 60) return s + 's'
-  const m = Math.floor(s / 60)
-  const rem = s % 60
-  return rem ? `${m}:${rem.toString().padStart(2, '0')}` : `${m}m`
-}
-
-function setRestDuration(val: number) {
-  ensureAudioCtx()
-  restDuration.value = val
-  localStorage.setItem('rest-duration', String(val))
-  timerSeconds.value = val
-  timerEndTime = Date.now() + val * 1000
-  timerPaused.value = false
-  startInterval()
-}
-
-function addPreset() {
-  if (newPresetValue.value === null) return
-  const val = newPresetValue.value
-  if (val >= 5 && val <= 600 && !restPresets.value.includes(val)) {
-    restPresets.value = [...restPresets.value, val].sort((a, b) => a - b)
-    savePresets()
-  }
-  newPresetValue.value = null
-}
-
-const presetInputEl = ref<HTMLInputElement | null>(null)
-watch(editingPresets, (v) => {
-  if (v) setTimeout(() => presetInputEl.value?.focus(), 0)
-})
-
-function removePreset(val: number) {
-  if (restPresets.value.length <= 1) return
-  restPresets.value = restPresets.value.filter(v => v !== val)
-  savePresets()
-  if (restDuration.value === val) {
-    setRestDuration(restPresets.value[0])
-  }
-}
-
-
-function resetAllDefaults() {
-  restPresets.value = [...DEFAULT_PRESETS]
-  savePresets()
-  warningOptions.value = [...DEFAULT_WARNING_OPTIONS]
-  saveWarningOptions()
-  warningTimes.value = [5]
-  localStorage.setItem('rest-warnings', JSON.stringify(warningTimes.value))
-}
-
 function onOverlayClick() {
-  if (editingPresets.value) {
-    editingPresets.value = false
+  if (timerCtrl.editingPresets.value) {
+    timerCtrl.editingPresets.value = false
   } else {
     closeModal()
   }
 }
 
 function dismissTimer() {
-  stopTimer()
+  timerCtrl.stopTimer()
   closeModal()
-}
-
-function disableRestTimer() {
-  const hadActiveTimer = timerActive.value
-  const wasPaused = timerPaused.value
-  const previousSeconds = timerSeconds.value
-  const previousDuration = restDuration.value
-  setRestTimerEnabled(false)
-  dismissTimer()
-  showUndo('Rest timer disabled', () => {
-    setRestTimerEnabled(true)
-    if (hadActiveTimer) {
-      timerSeconds.value = previousSeconds
-      restDuration.value = previousDuration
-      timerActive.value = true
-      timerPaused.value = wasPaused
-      showModal.value = true
-      if (previousSeconds > 0) {
-        if (wasPaused) {
-          pausedRemaining = previousSeconds
-        } else {
-          timerEndTime = Date.now() + previousSeconds * 1000
-        }
-        startInterval()
-      }
-    }
-  }, () => { /* already disabled — no-op on commit */ })
 }
 
 function openRestTimer() {
   showModal.value = true
-  if (!timerActive.value) {
-    startRestTimer()
+  if (!timerCtrl.timerActive.value) {
+    timerCtrl.startRestTimer()
   }
-}
-
-
-const timerDisplay = computed(() => {
-  const m = Math.floor(timerSeconds.value / 60)
-  const s = timerSeconds.value % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-})
-
-const timerProgress = computed(() => {
-  if (restDuration.value <= 0) return 0
-  return timerSeconds.value / restDuration.value
-})
-
-const maxWarning = computed(() => warningTimes.value.length ? Math.max(...warningTimes.value) : 0)
-const timerUrgent = computed(() => maxWarning.value > 0 && timerSeconds.value <= maxWarning.value && timerSeconds.value > 0)
-
-let audioCtx: AudioContext | null = null
-
-function ensureAudioCtx() {
-  if (!audioCtx) {
-    audioCtx = new AudioContext()
-  }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume()
-  }
-  // Play a short quiet tick to unlock iOS audio on user gesture
-  const osc = audioCtx.createOscillator()
-  const gain = audioCtx.createGain()
-  osc.connect(gain)
-  gain.connect(audioCtx.destination)
-  osc.frequency.value = 1
-  gain.gain.setValueAtTime(0.001, audioCtx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.05)
-  osc.start(audioCtx.currentTime)
-  osc.stop(audioCtx.currentTime + 0.05)
-}
-
-// Warning tone — pitch rises as time gets closer to zero
-function playWarningBeep(secondsLeft: number) {
-  if (!audioCtx) return
-  if (audioCtx.state === 'suspended') audioCtx.resume()
-  try {
-    const t = audioCtx.currentTime
-    // Higher pitch for closer warnings: 30s→550Hz, 10s→700Hz, 5s→850Hz, 3s→1000Hz
-    const freq = Math.min(1100, 500 + (30 - Math.min(secondsLeft, 30)) * 20)
-    const osc = audioCtx.createOscillator()
-    const gain = audioCtx.createGain()
-    osc.connect(gain)
-    gain.connect(audioCtx.destination)
-    osc.frequency.setValueAtTime(freq, t)
-    osc.frequency.linearRampToValueAtTime(freq + 120, t + 0.2)
-    gain.gain.setValueAtTime(0.2, t)
-    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.25)
-    osc.start(t)
-    osc.stop(t + 0.25)
-  } catch { /* audio not available */ }
-}
-
-// Bright double chirp — "time's up, go"
-function playGoBeep() {
-  if (!audioCtx) return
-  if (audioCtx.state === 'suspended') audioCtx.resume()
-  try {
-    const t = audioCtx.currentTime
-    for (let i = 0; i < 2; i++) {
-      const offset = i * 0.18
-      const osc = audioCtx.createOscillator()
-      const gain = audioCtx.createGain()
-      osc.connect(gain)
-      gain.connect(audioCtx.destination)
-      osc.frequency.value = 1320
-      gain.gain.setValueAtTime(0.35, t + offset)
-      gain.gain.exponentialRampToValueAtTime(0.01, t + offset + 0.1)
-      osc.start(t + offset)
-      osc.stop(t + offset + 0.1)
-    }
-  } catch { /* audio not available */ }
 }
 
 
@@ -2821,7 +2336,7 @@ function saveSet() {
         impactLight()
       }
       if (restTimerEnabled.value && restTimerAutoStart.value) {
-        startRestTimer()
+        timerCtrl.startRestTimer()
       }
       // Clear fields and stay on the modal for the next set
       plateNumpadOverride.value = false
@@ -3147,7 +2662,7 @@ watch(
   (open) => { document.documentElement.classList.toggle('modal-open', open) },
 )
 onUnmounted(() => {
-  stopTimer()
+  timerCtrl.stopTimer()
   document.documentElement.classList.remove('modal-open')
 })
 
@@ -3156,5 +2671,5 @@ onUnmounted(() => {
 // also exposed for unit tests that previously opened the new-exercise
 // dialog via the in-card "+ New Exercise" button (retired after the
 // 03-workouts.png restyle).
-defineExpose({ openTimelineLogModal, openNewExerciseModal })
+defineExpose({ openTimelineLogModal, openNewExerciseModal, timerCtrl })
 </script>
