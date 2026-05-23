@@ -224,7 +224,7 @@
 
   <!-- Exercise Picker Modal -->
   <Teleport to="body">
-    <div v-if="exercisePickerDate" class="repMaxOverlay" @click.self="exercisePickerDate = null" @keydown.escape="exercisePickerDate = null">
+    <div v-if="pickerOpen" class="repMaxOverlay" @click.self="closeExercisePicker" @keydown.escape="closeExercisePicker">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="exercise-picker-title">
         <h2 id="exercise-picker-title">Choose Exercise</h2>
         <div class="wtExPickerList">
@@ -239,7 +239,7 @@
           </button>
         </div>
         <div class="repMaxActions">
-          <button class="repMaxBtn repMaxBtnClose" @click="exercisePickerDate = null">Cancel</button>
+          <button class="repMaxBtn repMaxBtnClose" @click="closeExercisePicker">Cancel</button>
         </div>
       </div>
     </div>
@@ -247,7 +247,7 @@
 
   <!-- Log Set Modal -->
   <Teleport to="body">
-    <div v-if="logModal.open" class="repMaxOverlay" @click.self="closeLogModal" @keydown.escape="closeLogModal">
+    <div v-if="logModalOpen" class="repMaxOverlay" @click.self="closeLogModal" @keydown.escape="closeLogModal">
       <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title">
         <h2 id="cal-modal-title">{{ store.exercises.find(e => e.id === logModal.exerciseId)?.name || 'Log a Set' }}</h2>
         <p class="wtModalSubtitle">{{ formatSelectedDay(logModal.date) }}</p>
@@ -298,12 +298,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
-import { useFocusTrap } from '../composables/useFocusTrap'
+import { useModal } from '../composables/useModal'
 import { useTagVolume } from '../composables/useTagVolume'
 import { useTagRecovery } from '../composables/useTagRecovery'
 import MuscleGroupChart from './MuscleGroupChart.vue'
@@ -642,44 +642,38 @@ function formatSelectedDay(dateStr: string) {
 }
 
 // ── Log modal ─────────────────────────────────────────────────────
-const calModalFocus = useFocusTrap()
-const pickerFocus = useFocusTrap()
-const logModal = ref<{ open: boolean; date: string; exerciseId: string; weight: number | null; reps: number | null }>({ open: false, date: '', exerciseId: '', weight: null, reps: null })
+const { isOpen: pickerOpen, open: openPicker, close: closePicker } = useModal({
+  selector: '[aria-labelledby="exercise-picker-title"]',
+})
+const { isOpen: logModalOpen, open: openLogTrap, close: closeLogTrap } = useModal({
+  selector: '[aria-labelledby="cal-modal-title"]',
+})
+const logModal = ref<{ date: string; exerciseId: string; weight: number | null; reps: number | null }>({ date: '', exerciseId: '', weight: null, reps: null })
 
 const exercisePickerDate = ref<string | null>(null)
 
 function openLogModal(dateStr: string) {
   exercisePickerDate.value = dateStr
+  openPicker()
 }
-
-watch(exercisePickerDate, async (val) => {
-  if (val) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('[aria-labelledby="exercise-picker-title"]')
-    if (el) pickerFocus.activate(el)
-  } else {
-    pickerFocus.deactivate()
-  }
-})
 
 function pickExercise(exerciseId: string) {
   const dateStr = exercisePickerDate.value!
   exercisePickerDate.value = null
-  logModal.value = { open: true, date: dateStr, exerciseId, weight: null, reps: null }
+  closePicker()
+  logModal.value = { date: dateStr, exerciseId, weight: null, reps: null }
+  openLogTrap()
 }
 
 function closeLogModal() {
-  logModal.value = { open: false, date: '', exerciseId: '', weight: null, reps: null }
-  calModalFocus.deactivate()
+  closeLogTrap()
+  logModal.value = { date: '', exerciseId: '', weight: null, reps: null }
 }
 
-watch(() => logModal.value.open, async (open) => {
-  if (open) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('[aria-labelledby="cal-modal-title"]')
-    if (el) calModalFocus.activate(el)
-  }
-})
+function closeExercisePicker() {
+  exercisePickerDate.value = null
+  closePicker()
+}
 
 const logModalEstimate = computed(() => {
   const { weight, reps } = logModal.value

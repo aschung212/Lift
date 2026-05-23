@@ -13,6 +13,9 @@ export default defineConfig({
       reporter: ['text', 'json-summary', 'json'],
       include: ['src/**/*.{ts,vue}'],
       exclude: ['src/**/__tests__/**', 'src/main.ts', 'src/App.vue'],
+      // Static floor — the ratchet in .coverage-baseline.json enforces
+      // the actual high-water mark via scripts/check-coverage-ratchet.js.
+      // These are kept as a safety net in case the ratchet script is bypassed.
       thresholds: {
         statements: 60,
         branches: 50,
