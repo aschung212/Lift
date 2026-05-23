@@ -223,6 +223,7 @@ export type Database = {
           starter_theme: string | null
           streak_history: Json
           streak_weeks: number
+          supporter: boolean
           total_xp: number
           unlocked_themes: Json
           updated_at: string
@@ -240,6 +241,7 @@ export type Database = {
           starter_theme?: string | null
           streak_history?: Json
           streak_weeks?: number
+          supporter?: boolean
           total_xp?: number
           unlocked_themes?: Json
           updated_at?: string
@@ -257,6 +259,7 @@ export type Database = {
           starter_theme?: string | null
           streak_history?: Json
           streak_weeks?: number
+          supporter?: boolean
           total_xp?: number
           unlocked_themes?: Json
           updated_at?: string
