@@ -291,11 +291,11 @@ export const useProgressionStore = defineStore('progression', {
       if (!data) return
 
       // Merge remote state — remote wins for simple scalar fields
-      this.streakWeeks = (data.streak_weeks as number) ?? this.streakWeeks
-      this.weeklyTarget = (data.weekly_target as number) ?? this.weeklyTarget
-      this.pendingTargetChange = (data.pending_target_change as number | null) ?? this.pendingTargetChange
-      this.showProgression = (data.show_progression as boolean) ?? this.showProgression
-      this.progressionEnabled = (data.progression_enabled as boolean) ?? this.progressionEnabled
+      this.streakWeeks = data.streak_weeks ?? this.streakWeeks
+      this.weeklyTarget = data.weekly_target ?? this.weeklyTarget
+      this.pendingTargetChange = data.pending_target_change ?? this.pendingTargetChange
+      this.showProgression = data.show_progression ?? this.showProgression
+      this.progressionEnabled = data.progression_enabled ?? this.progressionEnabled
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
       this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
       this.epoch = (data.epoch as number) ?? this.epoch
