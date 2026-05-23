@@ -60,12 +60,15 @@ export function bodyweightDatesToJson(dates: string[]): Json {
 
 // ── Read helpers (Json → domain) ──────────────────────────────────
 
-/** Parse a Json value as StreakWeekEntry[], returning fallback on invalid shape. */
+/** Parse a Json value as StreakWeekEntry[], skipping invalid entries. */
 export function parseStreakHistory(value: Json | undefined, fallback: StreakWeekEntry[]): StreakWeekEntry[] {
   if (!Array.isArray(value)) return fallback
   const result: StreakWeekEntry[] = []
   for (const item of value) {
-    if (!isPlainObject(item)) return fallback
+    if (!isPlainObject(item)) {
+      logWarn('Invalid streak history entry, skipping', { item })
+      continue
+    }
     const obj = item as { [key: string]: Json | undefined }
     if (
       typeof obj.weekStart !== 'string' ||
@@ -73,8 +76,8 @@ export function parseStreakHistory(value: Json | undefined, fallback: StreakWeek
       typeof obj.weeklyTarget !== 'number' ||
       typeof obj.combinedMultiplier !== 'number'
     ) {
-      logWarn('Invalid streak history entry, using fallback', { item })
-      return fallback
+      logWarn('Invalid streak history entry, skipping', { item })
+      continue
     }
     result.push({
       weekStart: obj.weekStart,
@@ -83,7 +86,7 @@ export function parseStreakHistory(value: Json | undefined, fallback: StreakWeek
       combinedMultiplier: obj.combinedMultiplier,
     })
   }
-  return result
+  return result.length > 0 ? result : fallback
 }
 
 /** Parse a Json value as ThemeUnlock[] (handles legacy string[] format). */
@@ -95,9 +98,15 @@ export function parseUnlockedThemes(value: Json | undefined): ThemeUnlock[] | nu
   if (isPlainObject(value[0]) && 'id' in (value[0] as Record<string, unknown>)) {
     const result: ThemeUnlock[] = []
     for (const item of value) {
-      if (!isPlainObject(item)) return null
+      if (!isPlainObject(item)) {
+        logWarn('Invalid theme unlock entry, skipping', { item })
+        continue
+      }
       const obj = item as { [key: string]: Json | undefined }
-      if (typeof obj.id !== 'string' || typeof obj.unlockedAt !== 'string') return null
+      if (typeof obj.id !== 'string' || typeof obj.unlockedAt !== 'string') {
+        logWarn('Invalid theme unlock entry, skipping', { item })
+        continue
+      }
       result.push({
         id: obj.id as ThemeId,
         unlockedAt: obj.unlockedAt,
@@ -105,7 +114,7 @@ export function parseUnlockedThemes(value: Json | undefined): ThemeUnlock[] | nu
         ...(typeof obj.totalSetsAtUnlock === 'number' ? { totalSetsAtUnlock: obj.totalSetsAtUnlock } : {}),
       })
     }
-    return result
+    return result.length > 0 ? result : null
   }
 
   // Legacy string[] format
@@ -133,42 +142,36 @@ export function parseXpPerSet(
       result[key] = entry
     } else if (isPlainObject(entry)) {
       const e = entry as { [key: string]: Json | undefined }
-      if (
-        typeof e.xp === 'number' &&
-        typeof e.theme === 'string' &&
-        typeof e.epoch === 'number' &&
-        typeof e.zone === 'string' &&
-        typeof e.isPR === 'boolean' &&
-        typeof e.isRepPR === 'boolean'
-      ) {
-        result[key] = {
-          xp: e.xp,
-          theme: e.theme,
-          epoch: e.epoch,
-          zone: e.zone,
-          isPR: e.isPR,
-          isRepPR: e.isRepPR,
-        }
-      } else {
-        logWarn('Invalid xpPerSet entry, skipping', { key, entry })
+      // xp is the only required field; other fields may be absent in legacy data
+      if (typeof e.xp !== 'number') {
+        logWarn('Invalid xpPerSet entry (missing xp), skipping', { key, entry })
+        continue
+      }
+      result[key] = {
+        xp: e.xp,
+        theme: typeof e.theme === 'string' ? e.theme : '',
+        epoch: typeof e.epoch === 'number' ? e.epoch : 1,
+        zone: typeof e.zone === 'string' ? e.zone : '',
+        isPR: typeof e.isPR === 'boolean' ? e.isPR : false,
+        isRepPR: typeof e.isRepPR === 'boolean' ? e.isRepPR : false,
       }
     }
   }
   return result
 }
 
-/** Parse a Json value as string[] (bodyweight XP dates). */
+/** Parse a Json value as string[] (bodyweight XP dates), skipping invalid entries. */
 export function parseBodyweightDates(value: Json | undefined, fallback: string[]): string[] {
   if (!Array.isArray(value)) return fallback
   const result: string[] = []
   for (const item of value) {
     if (typeof item !== 'string') {
-      logWarn('Invalid bodyweight date entry, using fallback', { item })
-      return fallback
+      logWarn('Invalid bodyweight date entry, skipping', { item })
+      continue
     }
     result.push(item)
   }
-  return result
+  return result.length > 0 ? result : fallback
 }
 
 // ── Internal ──────────────────────────────────────────────────────

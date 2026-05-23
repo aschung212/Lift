@@ -95,13 +95,28 @@ describe('jsonColumns', () => {
       expect(parseStreakHistory('not-an-array' as Json, [])).toEqual([])
     })
 
-    it('returns fallback for entries with missing fields', () => {
-      const fallback: StreakWeekEntry[] = []
+    it('skips entries with missing fields, returns fallback when all invalid', () => {
+      const fallback: StreakWeekEntry[] = [
+        { weekStart: '2026-01-06', streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },
+      ]
       const corrupt: Json = [{ weekStart: '2026-01-06' }]  // missing streakCount, weeklyTarget, combinedMultiplier
       expect(parseStreakHistory(corrupt, fallback)).toBe(fallback)
     })
 
-    it('returns fallback for entries with wrong types', () => {
+    it('skips invalid entries but keeps valid ones', () => {
+      const mixed: Json = [
+        { weekStart: '2026-01-06', streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },
+        { weekStart: 123, streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },  // invalid
+        { weekStart: '2026-01-20', streakCount: 3, weeklyTarget: 3, combinedMultiplier: 1.1 },
+      ]
+      const result = parseStreakHistory(mixed, [])
+      expect(result).toEqual([
+        { weekStart: '2026-01-06', streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },
+        { weekStart: '2026-01-20', streakCount: 3, weeklyTarget: 3, combinedMultiplier: 1.1 },
+      ])
+    })
+
+    it('returns fallback when all entries have wrong types', () => {
       const corrupt: Json = [
         { weekStart: 123, streakCount: 1, weeklyTarget: 3, combinedMultiplier: 1.0 },
       ]
@@ -130,13 +145,17 @@ describe('jsonColumns', () => {
       expect(result![0].unlockedAt).toBeDefined()
     })
 
-    it('returns null for entries with missing id', () => {
-      const corrupt: Json = [{ unlockedAt: '2026-01-01T00:00:00Z' }]
-      expect(parseUnlockedThemes(corrupt)).toBeNull()
+    it('skips entries with missing id but keeps valid ones', () => {
+      const mixed: Json = [
+        { id: 'pearl', unlockedAt: '2026-01-01T00:00:00Z' },
+        { unlockedAt: '2026-02-01T00:00:00Z' },  // missing id
+      ]
+      const result = parseUnlockedThemes(mixed)
+      expect(result).toEqual([{ id: 'pearl', unlockedAt: '2026-01-01T00:00:00Z' }])
     })
 
-    it('returns null for entries with missing unlockedAt', () => {
-      const corrupt: Json = [{ id: 'pearl' }]
+    it('returns null when all entries are invalid', () => {
+      const corrupt: Json = [{ unlockedAt: '2026-01-01T00:00:00Z' }]
       expect(parseUnlockedThemes(corrupt)).toBeNull()
     })
   })
@@ -154,10 +173,22 @@ describe('jsonColumns', () => {
       expect(parseXpPerSet([] as Json, {})).toEqual({})
     })
 
-    it('skips entries with invalid SetXPEntry shape', () => {
-      const corrupt: Json = {
+    it('provides defaults for legacy SetXPEntry missing newer fields', () => {
+      const legacy: Json = {
         'set-1': { xp: 50, theme: 'fire' },  // missing epoch, zone, isPR, isRepPR
-        'set-2': 25,  // valid legacy
+        'set-2': 25,  // valid legacy number
+      }
+      const result = parseXpPerSet(legacy, {})
+      expect(result).toEqual({
+        'set-1': { xp: 50, theme: 'fire', epoch: 1, zone: '', isPR: false, isRepPR: false },
+        'set-2': 25,
+      })
+    })
+
+    it('skips object entries missing xp field', () => {
+      const corrupt: Json = {
+        'set-1': { theme: 'fire', epoch: 1 },  // missing xp
+        'set-2': 25,
       }
       const result = parseXpPerSet(corrupt, {})
       expect(result).toEqual({ 'set-2': 25 })
@@ -178,9 +209,14 @@ describe('jsonColumns', () => {
       expect(parseBodyweightDates('not-array' as Json, ['fallback'])).toEqual(['fallback'])
     })
 
-    it('returns fallback if any entry is not a string', () => {
+    it('skips non-string entries and keeps valid ones', () => {
       const corrupt: Json = ['2026-01-01', 42, '2026-01-03']
-      expect(parseBodyweightDates(corrupt, [])).toEqual([])
+      expect(parseBodyweightDates(corrupt, [])).toEqual(['2026-01-01', '2026-01-03'])
+    })
+
+    it('returns fallback when all entries are invalid', () => {
+      const corrupt: Json = [42, true, null]
+      expect(parseBodyweightDates(corrupt, ['fallback'])).toEqual(['fallback'])
     })
 
     it('parses valid empty array', () => {
