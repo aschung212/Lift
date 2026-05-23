@@ -122,7 +122,11 @@
         <div class="wtExerciseHeader">
           <span
             :class="['wtDragHandle', { wtDragHandleDisabled: isFilteringActive }]"
-            aria-hidden="true"
+            role="button"
+            tabindex="0"
+            :aria-label="`Reorder ${exercise.name}, position ${index + 1} of ${filteredExercises.length}`"
+            :aria-disabled="isFilteringActive ? 'true' : undefined"
+            @keydown="onReorderKeyDown(exercise.id, $event)"
           >⠿</span>
           <button
             class="wtExerciseRow"
@@ -969,8 +973,8 @@
 
   <Teleport to="body">
     <WorkoutCompleteView
-      v-if="workoutCompleteDate"
-      :raw-date="workoutCompleteDate"
+      v-if="workoutCompleteSummary"
+      :summary="workoutCompleteSummary"
       @close="workoutCompleteDate = null"
     />
   </Teleport>
@@ -979,7 +983,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
-import { toLocalDateKey } from '../lib/sessionSummary'
+import { toLocalDateKey, buildSessionSummary } from '../lib/sessionSummary'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
@@ -1294,6 +1298,18 @@ const setsLoggedToday = computed(() => {
 
 /** When non-null, renders the WorkoutCompleteView overlay for that date. */
 const workoutCompleteDate = ref<string | null>(null)
+const workoutCompleteSummary = computed(() => {
+  const d = workoutCompleteDate.value
+  if (!d) return null
+  return buildSessionSummary({
+    rawDate: d,
+    exercises: store.exercises,
+    xpPerSet: progressionStore.xpPerSet,
+    streakWeeks: progressionStore.streakWeeks,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value,
+  })
+})
 function openWorkoutComplete() {
   workoutCompleteDate.value = todayISO()
   impactLight()
@@ -1586,6 +1602,43 @@ function onItemClickCapture(event: MouseEvent) {
     event.stopPropagation()
     event.preventDefault()
   }
+}
+
+function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
+  if (isFilteringActive.value) return
+  const key = event.key
+  if (key !== 'ArrowUp' && key !== 'ArrowDown') return
+  event.preventDefault()
+
+  // Compute index dynamically from the current filtered list to avoid stale
+  // template indices when the user holds a key and events fire rapidly.
+  const filtered = filteredExercises.value
+  const index = filtered.findIndex(e => e.id === exerciseId)
+  if (index === -1) return
+
+  const newIndex = key === 'ArrowUp' ? index - 1 : index + 1
+  if (newIndex < 0 || newIndex >= filtered.length) return
+
+  const fromEx = filtered[index]
+  const toEx = filtered[newIndex]
+  if (!fromEx || !toEx) return
+
+  const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
+  const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
+  if (fromStoreIdx === -1 || toStoreIdx === -1) return
+
+  store.reorderExercise(fromStoreIdx, toStoreIdx)
+  impactLight()
+  logEvent('exercise_reorder')
+
+  // After Vue re-renders, focus the drag handle at the item's new position
+  nextTick(() => {
+    const list = exerciseListEl.value
+    if (!list) return
+    const items = list.querySelectorAll('.wtExerciseItem')
+    const handle = items[newIndex]?.querySelector<HTMLElement>('.wtDragHandle')
+    handle?.focus()
+  })
 }
 
 function beginDrag(index: number) {

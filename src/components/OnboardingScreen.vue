@@ -1,6 +1,11 @@
 <template>
   <div class="obScreen">
     <div class="obCard">
+      <!-- Step indicator dots -->
+      <div class="obDots" role="progressbar" :aria-valuenow="currentStep" aria-valuemin="1" aria-valuemax="4" :aria-label="`Step ${currentStep} of 4`">
+        <span v-for="i in 4" :key="i" :class="['obDot', { obDotActive: i === currentStep }]" />
+      </div>
+
       <!-- Step 1: Setup path -->
       <template v-if="step === 'setup'">
         <div class="obHero">
@@ -74,6 +79,7 @@
           @skip="handleStarterSkip"
           @preview="handleStarterPreview"
           @revert-preview="handleStarterRevertPreview"
+          @step-change="onStarterStepChange"
         />
       </template>
     </div>
@@ -81,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useWorkoutStore, type ExerciseInputMode } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
@@ -97,9 +103,19 @@ const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 
 const step = ref<'setup' | 'starter-flow'>('setup')
+const starterStep = ref<'explainer' | 'pick' | 'goal'>('explainer')
 let pendingSampleData = false
 let onboardingStartMs = 0
 let chosenPath = ''
+
+const STEP_MAP = { explainer: 2, pick: 3, goal: 4 } as const
+const currentStep = computed(() =>
+  step.value === 'setup' ? 1 : STEP_MAP[starterStep.value]
+)
+
+function onStarterStepChange(s: 'explainer' | 'pick' | 'goal') {
+  starterStep.value = s
+}
 
 const STARTER_EXERCISES: {
   name: string
@@ -511,6 +527,26 @@ function chooseExplore() {
 </script>
 
 <style scoped>
+.obDots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.obDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted, rgba(255,255,255,0.2));
+  transition: background 0.2s, transform 0.2s;
+}
+
+.obDotActive {
+  background: var(--accent);
+  transform: scale(1.25);
+}
+
 .obScreen {
   display: flex;
   align-items: center;

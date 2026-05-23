@@ -72,34 +72,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import type { TagRecovery } from '../composables/useTagRecovery'
-import { useWorkoutStore } from '../stores/workout'
 
 defineProps<{
   recovery: TagRecovery[]
   hiddenCount: number
+  hiddenTags: string[]
 }>()
 
-const store = useWorkoutStore()
+const emit = defineEmits<{
+  hide: [tag: string]
+  show: [tag: string]
+  'days-change': [tag: string, days: number | null]
+}>()
+
 const expandedTag = ref<string | null>(null)
 const showHidden = ref(false)
-
-const hiddenTags = computed(() => {
-  // Return excluded tags that actually have sets logged
-  const tagsWithSets = new Set<string>()
-  for (const exercise of store.exercises) {
-    if (!exercise.tags || exercise.tags.length === 0) continue
-    for (const set of exercise.sets) {
-      if (set.date) {
-        for (const tag of exercise.tags) {
-          tagsWithSets.add(tag)
-        }
-      }
-    }
-  }
-  return store.tagRecoveryExcluded.filter(t => tagsWithSets.has(t)).sort()
-})
 
 function formatDaysAgo(days: number): string {
   if (days === 0) return 'Today'
@@ -111,16 +100,16 @@ function onDaysChange(tag: string, event: Event) {
   const input = event.target as HTMLInputElement
   const val = input.value.trim()
   const parsed = parseInt(val, 10)
-  store.setTagRecoveryDays(tag, val && !Number.isNaN(parsed) ? parsed : null)
+  emit('days-change', tag, val && !Number.isNaN(parsed) ? parsed : null)
 }
 
 function onHide(tag: string) {
-  store.setTagRecoveryExcluded(tag, true)
+  emit('hide', tag)
   expandedTag.value = null
 }
 
 function onShow(tag: string) {
-  store.setTagRecoveryExcluded(tag, false)
+  emit('show', tag)
 }
 </script>
 
