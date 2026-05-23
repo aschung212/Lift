@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted, readonly } from 'vue'
+import { ref, onMounted, onUnmounted, readonly, type DeepReadonly, type Ref } from 'vue'
 
 export interface Shortcut {
   key: string
@@ -10,7 +10,13 @@ export interface Shortcut {
 
 const helpOpen = ref(false)
 
-export function useKeyboardShortcuts(shortcuts: () => Shortcut[]) {
+export interface UseKeyboardShortcutsReturn {
+  helpOpen: DeepReadonly<Ref<boolean>>
+  toggleHelp: () => void
+  closeHelp: () => void
+}
+
+export function useKeyboardShortcuts(shortcuts: () => Shortcut[]): UseKeyboardShortcutsReturn {
   function handler(e: KeyboardEvent) {
     // Ignore when modifier keys are held (except Shift for ?)
     if (e.ctrlKey || e.metaKey || e.altKey) return

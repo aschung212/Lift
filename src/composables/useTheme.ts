@@ -4,8 +4,8 @@ import {
   THEMES, THEME_PREVIEWS, THEME_META_COLORS, THEME_MIGRATION,
   type ThemeId, type ColorMode, type ThemeOption,
 } from '../lib/themes'
-import { useWeightUnit } from './useWeightUnit'
-import { useRestTimer } from './useRestTimer'
+import { useWeightUnit, type UseWeightUnitReturn } from './useWeightUnit'
+import { useRestTimer, type UseRestTimerReturn } from './useRestTimer'
 
 // Re-export types and constants so existing `import { … } from 'useTheme'` still works.
 // New code should import from the specific module instead.
@@ -161,7 +161,20 @@ function isThemeUnlocked(id: ThemeId): boolean {
   return store.unlockedThemes.some(t => t.id === id)
 }
 
-export function useTheme() {
+export interface UseThemeReturn extends UseWeightUnitReturn, UseRestTimerReturn {
+  currentTheme: Ref<string>
+  THEMES: typeof THEMES
+  THEME_PREVIEWS: typeof THEME_PREVIEWS
+  colorMode: Ref<ColorMode>
+  resolvedMode: ComputedRef<'dark' | 'light'>
+  selectTheme: (id: ThemeId) => boolean
+  previewTheme: (id: ThemeId) => void
+  revertPreview: () => void
+  isThemeUnlocked: (id: ThemeId) => boolean
+  preloadThemeCSS: typeof preloadThemeCSS
+}
+
+export function useTheme(): UseThemeReturn {
   // Delegate to focused composables
   const { weightUnit, displayWeight, toLbs } = useWeightUnit()
   const { restTimerEnabled, restTimerAutoStart, setRestTimerEnabled } = useRestTimer()

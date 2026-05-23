@@ -36,7 +36,13 @@ export interface BodyweightXPCeremonyInput {
   onUnlock?: () => void
 }
 
-export function useXPCeremony() {
+export interface UseXPCeremonyReturn {
+  logSetXPCeremony: (input: SetXPCeremonyInput) => void
+  logBodyweightXPCeremony: (input: BodyweightXPCeremonyInput) => void
+  celebrateUnlocks: (themeIds: ThemeId[]) => void
+}
+
+export function useXPCeremony(): UseXPCeremonyReturn {
   const progressionStore = useProgressionStore()
 
   /**

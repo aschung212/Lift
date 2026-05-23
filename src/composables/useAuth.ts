@@ -13,6 +13,19 @@ interface AuthError {
   message: string
 }
 
+export interface UseAuthReturn {
+  user: Ref<User | { id: string; email: string } | null>
+  loading: Ref<boolean>
+  init: () => void
+  signInWithProvider: (provider: Provider) => Promise<{ error: AuthError | null }>
+  signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>
+  signUp: (email: string, password: string) => Promise<{ error: AuthError | null; needsConfirmation?: boolean }>
+  signOut: () => Promise<void>
+  devSignIn: () => Promise<void>
+  deleteAccount: () => Promise<void>
+  destroy: () => void
+}
+
 const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
 
@@ -175,6 +188,6 @@ function destroy(): void {
   _initialized = false
 }
 
-export function useAuth() {
+export function useAuth(): UseAuthReturn {
   return { user, loading, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount, destroy }
 }

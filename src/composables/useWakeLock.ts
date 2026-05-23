@@ -97,7 +97,11 @@ async function releaseLock(): Promise<void> {
  * @param shouldLock — reactive boolean indicating whether the lock is needed
  * @param enabled — reactive boolean for the user's preference toggle
  */
-export function useWakeLock(shouldLock: Ref<boolean>, enabled: Ref<boolean>) {
+export interface UseWakeLockReturn {
+  wakeLockActive: Ref<boolean>
+}
+
+export function useWakeLock(shouldLock: Ref<boolean>, enabled: Ref<boolean>): UseWakeLockReturn {
   function onVisibilityChange() {
     if (document.visibilityState === 'visible' && shouldLock.value && enabled.value) {
       // If shouldLock/enabled flip back to false while the request is
