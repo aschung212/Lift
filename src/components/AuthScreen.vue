@@ -14,6 +14,8 @@
           aria-label="Email"
           class="authInput"
           autocomplete="email"
+          :aria-invalid="isError && !!message ? true : undefined"
+          :aria-describedby="isError && !!message ? 'auth-error' : undefined"
           required
         />
         <input
@@ -24,6 +26,8 @@
           class="authInput"
           autocomplete="current-password"
           :minlength="isSignUp ? 6 : undefined"
+          :aria-invalid="isError && !!message ? true : undefined"
+          :aria-describedby="isError && !!message ? 'auth-error' : undefined"
           required
         />
         <button class="authSubmitBtn" type="submit" :disabled="submitting">
@@ -55,7 +59,7 @@
 
       <button v-if="isDev" class="authDevBtn" @click="devSignIn">Continue as Dev</button>
 
-      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" role="status" aria-live="polite">{{ message }}</p>
+      <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" :id="isError ? 'auth-error' : undefined" role="status" aria-live="polite">{{ message }}</p>
     </div>
   </div>
 </template>
@@ -68,7 +72,11 @@ import { useAnalytics } from '../composables/useAnalytics'
 
 const { signInWithProvider, signInWithEmail, signUp, devSignIn } = useAuth()
 const { logEvent } = useAnalytics()
-const isDev = import.meta.env.DEV
+// Show the dev sign-in button in local dev mode OR in CI e2e builds where
+// no Supabase backend is configured. import.meta.env values are inlined at
+// build time, so VITE_E2E is only true for the bundle produced by the
+// e2e CI job — real Vercel deploys do not set it.
+const isDev = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true'
 
 const email = ref('')
 const password = ref('')

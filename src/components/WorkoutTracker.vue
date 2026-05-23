@@ -78,19 +78,34 @@
       </div>
     </template>
 
-    <p v-if="store.exercises.length === 0" class="wtEmpty">
+    <div v-if="store.exercises.length === 0 && showFreshStart" class="wtFreshStart">
+      <div class="wtFreshStartIcon" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      </div>
+      <p class="wtFreshStartTitle">You're starting fresh!</p>
+      <p class="wtFreshStartBody">Add your first exercise to begin tracking your lifts.</p>
+      <button class="wtFreshStartCta" @click="openNewExerciseModal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Exercise
+      </button>
+    </div>
+    <p v-else-if="store.exercises.length === 0" class="wtEmpty">
       No exercises yet. Hit "+ New Exercise" to add your first one.
     </p>
 
     <template v-else-if="listView === 'exercises'">
-    <p v-if="filteredExercises.length === 0" class="wtEmpty">
+    <p v-if="filteredExercises.length === 0 && !isFilteringActive && store.archivedExercises.length > 0" class="wtEmpty">
+      All your exercises are archived. Expand "Archived" below to bring one back, or tap "+ New Exercise".
+    </p>
+    <p v-else-if="filteredExercises.length === 0" class="wtEmpty">
       No exercises match your search.
     </p>
 
-    <ul v-else class="wtExerciseList" ref="exerciseListEl">
+    <ul v-if="filteredExercises.length > 0" class="wtExerciseList" ref="exerciseListEl">
       <li
         v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
+        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit, index, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
         class="wtExerciseItem"
         :class="{
           'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
@@ -107,7 +122,11 @@
         <div class="wtExerciseHeader">
           <span
             :class="['wtDragHandle', { wtDragHandleDisabled: isFilteringActive }]"
-            aria-hidden="true"
+            role="button"
+            tabindex="0"
+            :aria-label="`Reorder ${exercise.name}, position ${index + 1} of ${filteredExercises.length}`"
+            :aria-disabled="isFilteringActive ? 'true' : undefined"
+            @keydown="onReorderKeyDown(exercise.id, $event)"
           >⠿</span>
           <button
             class="wtExerciseRow"
@@ -149,10 +168,57 @@
         </div>
       </li>
     </ul>
+
+    <!-- Archived exercises disclosure -->
+    <div v-if="store.archivedExercises.length > 0 && !isFilteringActive" class="wtArchivedSection">
+      <button
+        class="wtArchivedToggle"
+        :aria-expanded="archivedOpen"
+        :aria-controls="archivedListId"
+        @click="archivedOpen = !archivedOpen"
+      >
+        <span class="wtArchivedToggleIcon" :class="{ expanded: archivedOpen }" aria-hidden="true">›</span>
+        <span class="wtArchivedToggleLabel">Archived</span>
+        <span class="wtArchivedToggleCount">{{ store.archivedExercises.length }}</span>
+      </button>
+      <ul v-if="archivedOpen" :id="archivedListId" class="wtArchivedList">
+        <li
+          v-for="ex in store.archivedExercises"
+          :key="ex.id"
+          class="wtArchivedItem"
+        >
+          <button
+            class="wtArchivedRow"
+            @click="openDetailModal(ex.id)"
+            :aria-label="`View ${ex.name} (archived)`"
+          >
+            <span class="wtArchivedName">{{ ex.name }}</span>
+            <span class="wtArchivedMeta">{{ ex.sets.length }} {{ ex.sets.length === 1 ? 'set' : 'sets' }}</span>
+          </button>
+          <button
+            class="wtArchivedActionBtn"
+            @click="unarchiveExerciseFromList(ex.id)"
+            :aria-label="`Unarchive ${ex.name}`"
+          >Unarchive</button>
+        </li>
+      </ul>
+    </div>
     </template>
 
     <!-- Timeline view -->
     <template v-else-if="listView === 'timeline'">
+      <div class="wtTimelineControls">
+        <button
+          :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
+          @click="hideWarmups = !hideWarmups"
+          role="switch"
+          :aria-checked="hideWarmups"
+          :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+          <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
+        </button>
+      </div>
       <div v-if="timelineSets.length === 0" class="wtEmpty">
         No sets logged yet.
       </div>
@@ -180,8 +246,8 @@
             </div>
           </div>
         </template>
-        <button v-if="timelineLimit < timelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
-          Show more ({{ timelineSets.length - timelineLimit }} remaining)
+        <button v-if="timelineLimit < filteredTimelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
+          Show more ({{ filteredTimelineSets.length - timelineLimit }} remaining)
         </button>
       </div>
     </template>
@@ -217,6 +283,18 @@
 
           <!-- All Sets view -->
           <template v-if="detailTab === 'sets'">
+            <div v-if="detailExercise.sets.length > 1" class="wtTimelineControls">
+              <button
+                :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
+                @click="hideWarmups = !hideWarmups"
+                role="switch"
+                :aria-checked="hideWarmups"
+                :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+                <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
+              </button>
+            </div>
             <div class="wtSetList">
               <p v-if="detailExercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</p>
               <template v-for="group in groupedSets" :key="group.key">
@@ -709,6 +787,20 @@
             </div>
           </div>
 
+          <!-- One-time hint: plate calculator discoverability (LIFT-388) -->
+          <div
+            v-if="showPlateHint"
+            class="wtPlateHint"
+            role="button"
+            tabindex="0"
+            @click="openSettingsFromHint"
+            @keydown.enter="openSettingsFromHint"
+          >
+            <svg class="wtPlateHintIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <span class="wtPlateHintText">Tip: Enable the plate calculator in exercise settings</span>
+            <button class="wtPlateHintDismiss" @click.stop="dismissPlateHint" aria-label="Dismiss hint">×</button>
+          </div>
+
           <!--
             Plate calculator (shown when exercise is in plates mode).
             Matches screens/05-logset-platecalc.png:
@@ -850,6 +942,17 @@
           <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
         </div>
         <button
+          v-if="editTargetIsArchived"
+          class="wtEditArchiveBtn"
+          @click="handleUnarchiveFromEdit"
+        >Unarchive Exercise</button>
+        <button
+          v-else
+          class="wtEditArchiveBtn"
+          @click="handleArchiveFromEdit"
+        >Archive Exercise</button>
+        <p class="wtEditArchiveHint">Hides this exercise from the main list — sets and PRs are preserved.</p>
+        <button
           v-if="!confirmDeleteExercise"
           class="wtEditDeleteBtn"
           @click="confirmDeleteExercise = true"
@@ -869,11 +972,11 @@
   <!-- Exercise Picker (timeline + Log Set) -->
   <Teleport to="body">
     <div v-if="timelineLogPicking" class="repMaxOverlay" @click.self="timelineLogPicking = false" @keydown.escape="timelineLogPicking = false">
-      <div class="repMaxModal" role="dialog" aria-modal="true">
-        <h2>Choose Exercise</h2>
+      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="timeline-picker-title">
+        <h2 id="timeline-picker-title">Choose Exercise</h2>
         <div class="wtExPickerList">
           <button
-            v-for="ex in store.exercises"
+            v-for="ex in store.activeExercises"
             :key="ex.id"
             class="wtExPickerRow"
             @click="pickExerciseForLog(ex.id)"
@@ -984,17 +1087,17 @@
 
   <Teleport to="body">
     <WorkoutCompleteView
-      v-if="workoutCompleteDate"
-      :raw-date="workoutCompleteDate"
+      v-if="workoutCompleteSummary"
+      :summary="workoutCompleteSummary"
       @close="workoutCompleteDate = null"
     />
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
-import { toLocalDateKey } from '../lib/sessionSummary'
+import { toLocalDateKey, buildSessionSummary } from '../lib/sessionSummary'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
@@ -1005,17 +1108,19 @@ interface PREntry extends WorkoutSet {
 }
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
+import { useRestTimer } from '../composables/useRestTimer'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
-import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { useNotification, useBackgroundTracker } from '../composables/useNotification'
+import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
-import { THEMES } from '../composables/useTheme'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
-import { logXPEvent } from '../lib/xpInstrumentation'
+import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseGraph from './ExerciseGraph.vue'
 
@@ -1023,16 +1128,32 @@ const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
-const { currentTheme, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, setRestTimerEnabled } = useTheme()
+const { currentTheme } = useTheme()
+const { restTimerEnabled, restTimerAutoStart, setRestTimerEnabled } = useRestTimer()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { impactLight, notifySuccess } = useHaptics()
+const { logSetXPCeremony } = useXPCeremony()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+const { notify: sendNotification, requestPermission: requestNotificationPermission } = useNotification()
+const { wasBackgrounded, startTracking: startBgTracking, stopTracking: stopBgTracking } = useBackgroundTracker()
 
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
 import { usePreferencesStore } from '../stores/preferences'
+import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
+
+// ── Warmup set filtering (session-only toggle, not persisted) ───
+const hideWarmups = ref(false)
+const warmupSetIds = computed(() => {
+  if (!hideWarmups.value) return new Set<string>()
+  const exercises = store.exercises.map(ex => ({
+    sets: ex.sets.map(s => ({ id: s.id, date: s.date, estimated1RM: s.estimated1RM })),
+  }))
+  return buildWarmupSetIds(exercises, _prefs.filters.warmupThreshold)
+})
 
 // Filter sets to those on/after the user-set PR baseline.
 // When no baseline is set, returns sets unchanged (legacy all-time behavior).
@@ -1085,75 +1206,35 @@ function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number
   if (xp === baseXP && mult > 1) {
     xp = Math.round(baseXP * mult)
   }
-  const setMeta = { theme: currentTheme.value, epoch: progressionStore.epoch, zone, isPR, isRepPR }
-
-  // Always record metadata (shadow ledger — enables per-theme stats even without progression)
-  progressionStore.recordSetXP(setId, xp, setMeta)
-
-  // Only credit XP and trigger progression effects when enabled
-  if (progressionStore.progressionEnabled) {
-    const wasTrialPeriod = !progressionStore.starterConfirmed
-    progressionStore.creditSetXP(setId, xp)
-
-    // Notify when starter locks in on first set
-    if (wasTrialPeriod && progressionStore.starterConfirmed) {
-      const starterLabel = THEMES.find(t => t.id === progressionStore.starterTheme)?.label
-      if (starterLabel) {
-        setTimeout(() => showXPToast(
-          `${starterLabel} locked in as your starter`,
-          progressionStore.progressPercent,
-          progressionStore.totalXP,
-          progressionStore.nextUnlockThreshold
-        ), 4500)
-      }
-    }
-    const newUnlocks = progressionStore.checkUnlocks()
-    if (newUnlocks.length > 0) {
-      const theme = THEMES.find(t => t.id === newUnlocks[0])
-      if (theme) {
-        setTimeout(() => {
-          showUnlockCelebration(theme.id, theme.label)
-          notifySuccess()
-        }, progressionStore.showProgression ? 1500 : 500)
-      }
-    }
-  }
-
-  logXPEvent({
-    userId: progressionStore._userId,
+  logSetXPCeremony({
     setId,
     exerciseId,
-    setDate: new Date().toISOString(),
+    xp,
     baseXP,
-    streakMultiplier: mult,
-    finalXP: xp,
+    zone,
     isPR,
     isTie,
     isRepPR,
-    zone,
     activeTheme: currentTheme.value,
-    epoch: progressionStore.epoch,
+    estimated1RM,
+    exerciseBest1RM: best1RM,
+    streakMultiplier: mult,
+    onUnlock: notifySuccess,
   })
-
-  if (progressionStore.progressionEnabled && progressionStore.showProgression) {
-    const parts: string[] = []
-
-    if (best1RM === null) {
-      parts.push('New Exercise')
-    } else {
-      const ratio = estimated1RM / best1RM
-      if (ratio > 1.0) parts.push(`PR! (${XP_CONFIG.prMultiplier}x)`)
-      else if (ratio === 1.0) parts.push(`Tied PR (${XP_CONFIG.tieMultiplier}x)`)
-      else if (ratio < XP_CONFIG.warmupThreshold) parts.push('Warmup')
-      else parts.push(`${Math.round(ratio * 100)}% of best`)
-    }
-    if (isRepPR) parts.push(`Rep PR (${XP_CONFIG.repPRMultiplier}x)`)
-    if (mult > 1) parts.push(`${mult}x streak`)
-    parts.push(`${xp} XP`)
-
-    showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
-  }
 }
+
+// ── Fresh-start transition card ─────────────────────────────────
+// Shown after user clears sample data, dismissed on first exercise add
+const showFreshStart = ref(localStorage.getItem('fresh-start') === 'true')
+function onFreshStart() { showFreshStart.value = true }
+onMounted(() => { window.addEventListener('fresh-start', onFreshStart) })
+onUnmounted(() => { window.removeEventListener('fresh-start', onFreshStart) })
+watch(() => store.exercises.length, (len) => {
+  if (len > 0 && showFreshStart.value) {
+    localStorage.removeItem('fresh-start')
+    showFreshStart.value = false
+  }
+})
 
 // ── View toggle ──────────────────────────────────────────────────
 const listView = ref<'exercises' | 'timeline'>(
@@ -1211,8 +1292,14 @@ const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
   return map
 })
 
+const filteredTimelineSets = computed(() => {
+  if (!hideWarmups.value) return timelineSets.value
+  const ids = warmupSetIds.value
+  return timelineSets.value.filter(e => !ids.has(e.set.id))
+})
+
 const visibleTimelineGroups = computed(() => {
-  const limited = timelineSets.value.slice(0, timelineLimit.value)
+  const limited = filteredTimelineSets.value.slice(0, timelineLimit.value)
   const groups: { key: string; label: string; sets: TimelineEntry[] }[] = []
   for (const entry of limited) {
     const k = toLocalDateKey(entry.set.date)
@@ -1237,9 +1324,13 @@ const activeTagFilters = ref<string[]>([])
  * back off without clearing the search first.
  */
 const filteredTags = computed<string[]>(() => {
+  // Only surface tags that exist on at least one active (non-archived)
+  // exercise. Otherwise tapping a chip filters to an empty list because the
+  // archived section is hidden whenever a filter is active.
+  const activeTags = store.allTags.filter(t => (tagCounts.value[t] || 0) > 0)
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return store.allTags
-  return store.allTags.filter(t =>
+  if (!q) return activeTags
+  return activeTags.filter(t =>
     t.toLowerCase().includes(q) || activeTagFilters.value.includes(t)
   )
 })
@@ -1263,7 +1354,7 @@ function clearSearchAndTags() {
 }
 
 const filteredExercises = computed(() => {
-  let result = store.exercises
+  let result = store.activeExercises
   // Text search — check both name and tags so "Push" matches tag-filtered rows.
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
@@ -1300,7 +1391,7 @@ const isFilteringActive = computed(() =>
 )
 
 /** Total exercise count, shown in the "Workouts" header stats. */
-const totalExercises = computed(() => store.exercises.length)
+const totalExercises = computed(() => store.activeExercises.length)
 
 /** Sets logged on the local "today" date — drives the Finish workout affordance. */
 const setsLoggedToday = computed(() => {
@@ -1316,6 +1407,18 @@ const setsLoggedToday = computed(() => {
 
 /** When non-null, renders the WorkoutCompleteView overlay for that date. */
 const workoutCompleteDate = ref<string | null>(null)
+const workoutCompleteSummary = computed(() => {
+  const d = workoutCompleteDate.value
+  if (!d) return null
+  return buildSessionSummary({
+    rawDate: d,
+    exercises: store.exercises,
+    xpPerSet: progressionStore.xpPerSet,
+    streakWeeks: progressionStore.streakWeeks,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value,
+  })
+})
 function openWorkoutComplete() {
   workoutCompleteDate.value = todayISO()
   impactLight()
@@ -1344,10 +1447,15 @@ const weeklyGoalInfo = computed(() => {
   return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
 })
 
-/** Count of exercises carrying each tag — powers the "Push 23" suffix on tag chips. */
+/**
+ * Count of exercises carrying each tag — powers the "Push 23" suffix on tag
+ * chips. Counts only active (non-archived) exercises so that the chip count
+ * matches what the tag filter will actually show. Tags that exist solely on
+ * archived exercises are filtered out by `filteredTags` below.
+ */
 const tagCounts = computed<Record<string, number>>(() => {
   const map: Record<string, number> = {}
-  for (const e of store.exercises) {
+  for (const e of store.activeExercises) {
     for (const t of e.tags || []) {
       map[t] = (map[t] || 0) + 1
     }
@@ -1605,6 +1713,43 @@ function onItemClickCapture(event: MouseEvent) {
   }
 }
 
+function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
+  if (isFilteringActive.value) return
+  const key = event.key
+  if (key !== 'ArrowUp' && key !== 'ArrowDown') return
+  event.preventDefault()
+
+  // Compute index dynamically from the current filtered list to avoid stale
+  // template indices when the user holds a key and events fire rapidly.
+  const filtered = filteredExercises.value
+  const index = filtered.findIndex(e => e.id === exerciseId)
+  if (index === -1) return
+
+  const newIndex = key === 'ArrowUp' ? index - 1 : index + 1
+  if (newIndex < 0 || newIndex >= filtered.length) return
+
+  const fromEx = filtered[index]
+  const toEx = filtered[newIndex]
+  if (!fromEx || !toEx) return
+
+  const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
+  const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
+  if (fromStoreIdx === -1 || toStoreIdx === -1) return
+
+  store.reorderExercise(fromStoreIdx, toStoreIdx)
+  impactLight()
+  logEvent('exercise_reorder')
+
+  // After Vue re-renders, focus the drag handle at the item's new position
+  nextTick(() => {
+    const list = exerciseListEl.value
+    if (!list) return
+    const items = list.querySelectorAll('.wtExerciseItem')
+    const handle = items[newIndex]?.querySelector<HTMLElement>('.wtDragHandle')
+    handle?.focus()
+  })
+}
+
 function beginDrag(index: number) {
   // Haptic confirms pickup — Capacitor Haptics on native, Vibration API on web.
   impactLight()
@@ -1628,8 +1773,20 @@ function beginDrag(index: number) {
     document.removeEventListener('mouseup', onEnd)
 
     if (dragState.fromIndex !== dragState.overIndex) {
-      store.reorderExercise(dragState.fromIndex, dragState.overIndex)
-      logEvent('exercise_reorder')
+      // dragState indices are positions in `filteredExercises` (active-only),
+      // but `store.reorderExercise` operates on the full `exercises` array.
+      // Map via exercise IDs so archived rows preserve their relative position
+      // and don't get accidentally reordered.
+      const fromEx = filteredExercises.value[dragState.fromIndex]
+      const toEx = filteredExercises.value[dragState.overIndex]
+      if (fromEx && toEx) {
+        const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
+        const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
+        if (fromStoreIdx !== -1 && toStoreIdx !== -1) {
+          store.reorderExercise(fromStoreIdx, toStoreIdx)
+          logEvent('exercise_reorder')
+        }
+      }
     }
 
     dragState.dragging = false
@@ -1667,7 +1824,11 @@ function visibleSets(exercise: Exercise): WorkoutSet[] {
 
 const groupedSets = computed(() => {
   if (!detailExercise.value) return []
-  const sets = visibleSets(detailExercise.value)
+  let sets = visibleSets(detailExercise.value)
+  if (hideWarmups.value) {
+    const ids = warmupSetIds.value
+    sets = sets.filter(s => !ids.has(s.id))
+  }
   const groups: { date: string; key: string; sets: WorkoutSet[] }[] = []
   for (const set of sets) {
     const k = toLocalDateKey(set.date)
@@ -1764,6 +1925,28 @@ const plateMode = computed(() => {
   return ex?.inputMode === 'plates'
 })
 const plateNumpadOverride = ref(false)
+
+// ── Plate calculator hint (LIFT-388) ────────────────────────────
+const PLATE_HINT_KEY = 'plate-calc-hint-dismissed'
+const plateHintDismissed = ref(!!localStorage.getItem(PLATE_HINT_KEY))
+
+const showPlateHint = computed(() =>
+  !plateHintDismissed.value &&
+  !plateMode.value &&
+  !isEditMode.value &&
+  isLogForExercise.value
+)
+
+function dismissPlateHint() {
+  plateHintDismissed.value = true
+  localStorage.setItem(PLATE_HINT_KEY, 'true')
+}
+
+function openSettingsFromHint() {
+  dismissPlateHint()
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  if (ex) openEditExerciseModal(ex)
+}
 
 function adjustReps(delta: number) {
   const current = reps.value ?? 0
@@ -2203,6 +2386,13 @@ function startInterval() {
         timerIntervalId = null
         timerSeconds.value = 0
         timerAnnouncement.value = 'Rest timer done'
+        if (_prefs.experience.restTimerNotification) {
+          sendNotification('Rest Complete', {
+            body: 'Time to get back to work 💪',
+            wasBackgrounded: wasBackgrounded.value,
+          })
+        }
+        stopBgTracking()
         if (!editingPresets.value) {
           onTimerComplete()
         }
@@ -2213,6 +2403,10 @@ function startInterval() {
 
 function startRestTimer() {
   ensureAudioCtx()
+  if (_prefs.experience.restTimerNotification) {
+    requestNotificationPermission()
+    startBgTracking()
+  }
   timerActive.value = true
   timerPaused.value = false
   timerSeconds.value = restDuration.value
@@ -2905,6 +3099,47 @@ function undoDeleteExercise(exercise: Exercise) {
   )
 }
 
+// ── Archive ────────────────────────────────────────────────────
+const archivedOpen = ref(false)
+const archivedListId = 'wt-archived-list'
+
+const editTargetIsArchived = computed(() => {
+  if (!editTarget.value) return false
+  const ex = store.exercises.find(e => e.id === editTarget.value)
+  return !!ex?.archived_at
+})
+
+function handleArchiveFromEdit() {
+  const id = editTarget.value
+  if (!id) return
+  const ex = store.exercises.find(e => e.id === id)
+  if (!ex) return
+  const name = ex.name
+  if (detailExerciseId.value === id) detailExerciseId.value = null
+  store.archiveExercise(id)
+  editTarget.value = null
+  logEvent('exercise_archive')
+  showUndo(
+    `"${name}" archived`,
+    () => store.unarchiveExercise(id),
+    () => { /* commit: archive already applied — no-op */ },
+  )
+}
+
+function handleUnarchiveFromEdit() {
+  const id = editTarget.value
+  if (!id) return
+  store.unarchiveExercise(id)
+  editTarget.value = null
+  archivedOpen.value = false
+  logEvent('exercise_unarchive')
+}
+
+function unarchiveExerciseFromList(exerciseId: string) {
+  store.unarchiveExercise(exerciseId)
+  logEvent('exercise_unarchive')
+}
+
 // ── Edit exercise state (rename + tags) ──────────────────────────
 const editTarget = ref<string | null>(null)
 const confirmDeleteExercise = ref(false)
@@ -2983,14 +3218,16 @@ function confirmEditExercise() {
   store.setExerciseInputMode(editTarget.value, editPlateMode.value ? 'plates' : 'numpad')
   if (editPlateMode.value) {
     store.setExercisePlateCountMode(editTarget.value, editPlateCountMode.value)
-    const ex = store.exercises.find(e => e.id === editTarget.value)
-    if (ex) {
-      ex.barWeight = editBarWeight.value
-      store._persist()
-    }
+    store.setExerciseBarWeight(editTarget.value, editBarWeight.value)
   }
   editTarget.value = null
-  syncPlateWeight()
+  // When switching to plate mode, reverse-sync the current weight into
+  // plates so the user's entered value is preserved (LIFT-388 review fix).
+  if (editPlateMode.value && weight.value) {
+    syncPlatesFromWeight()
+  } else {
+    syncPlateWeight()
+  }
   logEvent('exercise_edit')
 }
 

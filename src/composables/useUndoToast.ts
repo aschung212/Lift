@@ -42,11 +42,19 @@ function dismiss() {
   activeToast.value = null
 }
 
+/** Clear the active toast and its timeout without committing or undoing. */
+function destroy() {
+  if (!activeToast.value) return
+  clearTimeout(activeToast.value.timeoutId)
+  activeToast.value = null
+}
+
 export function useUndoToast() {
   return {
     toast: readonly(activeToast),
     show,
     performUndo,
     dismiss,
+    destroy,
   }
 }

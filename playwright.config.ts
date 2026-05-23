@@ -1,20 +1,22 @@
 import { defineConfig } from '@playwright/test'
 
+const isCI = !!process.env.CI
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30000,
-  retries: 1,
+  retries: isCI ? 2 : 1,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: isCI ? 'http://localhost:4173' : 'http://localhost:5173',
     headless: true,
     viewport: { width: 390, height: 844 }, // iPhone 14 Pro
     actionTimeout: 10000,
   },
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 15000,
+    command: isCI ? 'npm run preview' : 'npm run dev',
+    url: isCI ? 'http://localhost:4173' : 'http://localhost:5173',
+    reuseExistingServer: !isCI,
+    timeout: isCI ? 30000 : 15000,
   },
   projects: [
     {

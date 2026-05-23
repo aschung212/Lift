@@ -15,8 +15,15 @@ interface HeaderRule {
   headers: Array<{ key: string; value: string }>
 }
 
+interface RedirectRule {
+  source: string
+  destination: string
+  statusCode?: number
+}
+
 interface VercelConfig {
   headers?: HeaderRule[]
+  redirects?: RedirectRule[]
 }
 
 function loadVercelConfig(): VercelConfig {
@@ -41,6 +48,7 @@ describe('vercel.json security headers', () => {
 
   describe('baseline headers still present', () => {
     it.each([
+      ['Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload'],
       ['X-Content-Type-Options', 'nosniff'],
       ['X-Frame-Options', 'DENY'],
       ['Referrer-Policy', 'strict-origin-when-cross-origin'],
@@ -113,6 +121,22 @@ describe('vercel.json security headers', () => {
       expect(csp).toMatch(/img-src\s+[^;]*'self'/)
       expect(csp).toMatch(/img-src\s+[^;]*data:/)
       expect(csp).toMatch(/img-src\s+[^;]*blob:/)
+    })
+  })
+
+  describe('source map exposure prevention (LIFT-341)', () => {
+    it('does not redirect .map requests with a 404 (leaks bundler info)', () => {
+      const mapRedirect = (config.redirects || []).find(
+        r => r.source.includes('.map') && r.statusCode === 404
+      )
+      expect(mapRedirect).toBeUndefined()
+    })
+
+    it('does not serve .map files via any redirect rule', () => {
+      const mapRedirects = (config.redirects || []).filter(r =>
+        r.source.includes('.map')
+      )
+      expect(mapRedirects).toHaveLength(0)
     })
   })
 })

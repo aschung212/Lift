@@ -57,10 +57,10 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, ref, onMounted } from 'vue'
 import { usePRBurst } from '../composables/usePRBurst'
-import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 
 const { visible, payload, presentPRBurst, dismissPRBurst } = usePRBurst()
-const { weightUnit, displayWeight } = useTheme()
+const { weightUnit, displayWeight } = useWeightUnit()
 
 // DEV-only: expose the trigger on window so we can visually verify the overlay
 // from Playwright/DevTools without needing a live PR. Stripped from prod builds

@@ -3,17 +3,31 @@ import { mount, VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import OnboardingScreen from '../OnboardingScreen.vue'
 
-// Mock stores
-const mockAddExercise = vi.fn().mockReturnValue('mock-id')
+// Mock stores — exercises array populated by mockAddExercise so applyPlateConfig can find them
+const mockExercises: { id: string; name: string; tags: string[]; inputMode?: string; barWeight?: number }[] = []
+let nextMockId = 0
+const mockAddExercise = vi.fn().mockImplementation((name: string, tags: string[]) => {
+  const id = `mock-id-${nextMockId++}`
+  mockExercises.push({ id, name, tags })
+  return id
+})
 const mockLogSet = vi.fn()
 const mockAddEntry = vi.fn()
+
+const mockSetExerciseInputMode = vi.fn().mockImplementation((id: string, mode: string) => {
+  const ex = mockExercises.find(e => e.id === id)
+  if (ex) ex.inputMode = mode
+})
 
 const mockSetStarterTheme = vi.fn()
 
 vi.mock('../../stores/workout', () => ({
+  ExerciseInputMode: {},
   useWorkoutStore: () => ({
+    exercises: mockExercises,
     addExercise: mockAddExercise,
     logSet: mockLogSet,
+    setExerciseInputMode: mockSetExerciseInputMode,
   })
 }))
 
@@ -42,6 +56,8 @@ describe('OnboardingScreen', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockExercises.length = 0
+    nextMockId = 0
     localStorageMock.clear()
     setActivePinia(createPinia())
     wrapper = mount(OnboardingScreen)
@@ -145,6 +161,21 @@ describe('OnboardingScreen', () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
       expect(mockLogSet).not.toHaveBeenCalled()
     })
+
+    it('sets plate calculator mode on barbell exercises via store method', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      // setExerciseInputMode should be called for each barbell exercise (not Pull-ups)
+      expect(mockSetExerciseInputMode).toHaveBeenCalledTimes(5)
+      const barbellNames = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
+      for (const name of barbellNames) {
+        const ex = mockExercises.find(e => e.name === name)
+        expect(ex, `${name} should exist`).toBeDefined()
+        expect(ex!.inputMode).toBe('plates')
+      }
+      const pullups = mockExercises.find(e => e.name === 'Pull-ups')
+      expect(pullups).toBeDefined()
+      expect(pullups!.inputMode).toBeUndefined()
+    })
   })
 
   describe('Explore first (sample data)', () => {
@@ -177,6 +208,21 @@ describe('OnboardingScreen', () => {
       await wrapper.findAll('.obOption')[2].trigger('click')
       // Extended sample data: ~365 days across 5 exercises (multiple sets per session)
       expect(mockLogSet.mock.calls.length).toBe(367)
+    })
+
+    it('sets plate calculator mode on barbell exercises', async () => {
+      await wrapper.findAll('.obOption')[2].trigger('click')
+      const barbellNames = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
+      for (const name of barbellNames) {
+        const ex = mockExercises.find(e => e.name === name)
+        expect(ex, `${name} should exist`).toBeDefined()
+        expect(ex!.inputMode).toBe('plates')
+        expect(ex!.barWeight).toBe(45)
+      }
+      // Pull-ups should NOT have plate calculator
+      const pullups = mockExercises.find(e => e.name === 'Pull-ups')
+      expect(pullups).toBeDefined()
+      expect(pullups!.inputMode).toBeUndefined()
     })
   })
 
@@ -227,6 +273,60 @@ describe('OnboardingScreen', () => {
       await wrapper.find('.spfSecondary').trigger('click')
       expect(localStorageMock.setItem).toHaveBeenCalledWith('onboarding-complete', 'true')
       expect(mockAddExercise).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('step indicator dots', () => {
+    it('renders 4 step dots', () => {
+      const dots = wrapper.findAll('.obDot')
+      expect(dots.length).toBe(4)
+    })
+
+    it('first dot is active on setup step', () => {
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[0].classes()).toContain('obDotActive')
+      expect(dots[1].classes()).not.toContain('obDotActive')
+      expect(dots[2].classes()).not.toContain('obDotActive')
+      expect(dots[3].classes()).not.toContain('obDotActive')
+    })
+
+    it('second dot is active on explainer step', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[0].classes()).not.toContain('obDotActive')
+      expect(dots[1].classes()).toContain('obDotActive')
+    })
+
+    it('third dot is active on starter pick step', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.find('.spfPrimary').trigger('click') // → pick
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[2].classes()).toContain('obDotActive')
+    })
+
+    it('fourth dot is active on weekly goal step', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.find('.spfPrimary').trigger('click') // → pick
+      await wrapper.findAll('.spfCard')[0].trigger('click') // select Fire
+      await wrapper.findAll('.spfPrimary').at(-1)!.trigger('click') // → goal
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[3].classes()).toContain('obDotActive')
+    })
+
+    it('has progressbar role with correct aria attributes', () => {
+      const dotsContainer = wrapper.find('.obDots')
+      expect(dotsContainer.attributes('role')).toBe('progressbar')
+      expect(dotsContainer.attributes('aria-valuenow')).toBe('1')
+      expect(dotsContainer.attributes('aria-valuemin')).toBe('1')
+      expect(dotsContainer.attributes('aria-valuemax')).toBe('4')
+      expect(dotsContainer.attributes('aria-label')).toBe('Step 1 of 4')
+    })
+
+    it('aria-label updates as steps progress', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      const dotsContainer = wrapper.find('.obDots')
+      expect(dotsContainer.attributes('aria-valuenow')).toBe('2')
+      expect(dotsContainer.attributes('aria-label')).toBe('Step 2 of 4')
     })
   })
 

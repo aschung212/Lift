@@ -279,6 +279,35 @@ describe('CSS regression tests', () => {
       expect(lines.some(l => l.startsWith('clip: rect(0, 0, 0, 0)'))).toBe(true)
       expect(lines.some(l => l.startsWith('overflow: hidden'))).toBe(true)
     })
+
+    it('.srOnlyFocusable becomes visible on focus with proper styling', () => {
+      const lines = getRuleLines('.srOnly.srOnlyFocusable:focus')
+      expect(lines.length).toBeGreaterThan(0)
+      expect(lines.some(l => l.startsWith('position: fixed'))).toBe(true)
+      expect(lines.some(l => l.startsWith('clip: auto'))).toBe(true)
+      expect(lines.some(l => l.startsWith('overflow: visible'))).toBe(true)
+      expect(lines.some(l => l.startsWith('z-index: 10000'))).toBe(true)
+      expect(lines.some(l => l.startsWith('width: auto'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height: auto'))).toBe(true)
+    })
+  })
+
+  describe('WCAG 2.4.1 skip-to-content (LIFT-551)', () => {
+    const appVue = readFileSync(resolve(__dirname, '../../App.vue'), 'utf-8')
+
+    it('App.vue has a skip-to-content link targeting #main-content', () => {
+      expect(appVue).toContain('href="#main-content"')
+      expect(appVue).toContain('Skip to content')
+    })
+
+    it('App.vue has a main-content target element with tabindex=-1', () => {
+      expect(appVue).toContain('id="main-content"')
+      expect(appVue).toMatch(/id="main-content"[^>]*tabindex="-1"/)
+    })
+
+    it('skip link uses srOnly srOnlyFocusable classes', () => {
+      expect(appVue).toMatch(/class="srOnly srOnlyFocusable"[^>]*>Skip to content</)
+    })
   })
 
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {
@@ -396,5 +425,34 @@ describe('CSS regression tests', () => {
       // which caused iOS Safari to refuse showPicker() entirely.
       expect(lines.every(l => !l.startsWith('pointer-events: none'))).toBe(true)
     })
+  })
+
+  describe('WCAG 2.4.11 focus indicators on inputs with outline:none', () => {
+    // Regression: 11 input elements had outline:none with only border-color
+    // changes as focus replacement. WCAG 2.4.7 (Focus Visible) and 2.4.11
+    // (Focus Appearance) require a clearly visible focus indicator — border-color
+    // alone is insufficient for users with low vision. Fix: box-shadow ring on
+    // :focus-visible for all affected inputs.
+
+    const focusInputs = [
+      { selector: '.settingsInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.settingsRange:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.wtSearchInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.wtTagInlineInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.logSetSheet .logSetFieldInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.wtRepsStepperInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.repMaxInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.iosStepperInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.wtTimerEditInput:focus-visible', shadow: '--accent-subtle' },
+      { selector: '.deleteConfirmInput:focus-visible', shadow: '--danger-subtle' },
+    ]
+
+    for (const { selector, shadow } of focusInputs) {
+      it(`${selector} has box-shadow focus ring`, () => {
+        const lines = getRuleLines(selector)
+        expect(lines.length, `${selector} rule not found`).toBeGreaterThan(0)
+        expect(lines.some(l => l.includes('box-shadow') && l.includes(shadow))).toBe(true)
+      })
+    }
   })
 })

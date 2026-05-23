@@ -204,6 +204,10 @@
         v-if="hasRecoveryData"
         :recovery="tagRecovery"
         :hidden-count="recoveryHiddenCount"
+        :hidden-tags="recoveryHiddenTags"
+        @hide="onRecoveryHide"
+        @show="onRecoveryShow"
+        @days-change="onRecoveryDaysChange"
       />
 
       <!-- Weekly muscle group volume chart (collapsible) -->
@@ -297,7 +301,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
-import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useTagVolume } from '../composables/useTagVolume'
@@ -306,7 +310,7 @@ import MuscleGroupChart from './MuscleGroupChart.vue'
 import MuscleGroupRecovery from './MuscleGroupRecovery.vue'
 
 const store = useWorkoutStore()
-const { weightUnit, displayWeight, toLbs } = useTheme()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { prBaselineDate } = usePRBaseline()
 const { logEvent } = useAnalytics()
 
@@ -601,6 +605,34 @@ const allExercisesRef = computed(() => store.exercises)
 const tagRecoveryDaysRef = computed(() => store.tagRecoveryDays)
 const tagRecoveryExcludedRef = computed(() => store.tagRecoveryExcluded)
 const { recovery: tagRecovery, hasData: hasRecoveryData, hiddenCount: recoveryHiddenCount } = useTagRecovery(allExercisesRef, tagRecoveryDaysRef, tagRecoveryExcludedRef)
+
+const recoveryHiddenTags = computed(() => {
+  const tagsWithSets = new Set<string>()
+  for (const exercise of store.exercises) {
+    if (!exercise.tags || exercise.tags.length === 0) continue
+    for (const set of exercise.sets) {
+      if (set.date) {
+        for (const tag of exercise.tags) {
+          tagsWithSets.add(tag)
+        }
+      }
+    }
+  }
+  return store.tagRecoveryExcluded.filter(t => tagsWithSets.has(t)).sort()
+})
+
+function onRecoveryHide(tag: string) {
+  store.setTagRecoveryExcluded(tag, true)
+}
+
+function onRecoveryShow(tag: string) {
+  store.setTagRecoveryExcluded(tag, false)
+}
+
+function onRecoveryDaysChange(tag: string, days: number | null) {
+  store.setTagRecoveryDays(tag, days)
+}
+
 const volumeCollapsed = ref(false)
 
 function formatSelectedDay(dateStr: string) {

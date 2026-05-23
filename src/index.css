@@ -765,6 +765,28 @@ button, [role="tab"], [role="switch"], a {
   border: 0;
 }
 
+.srOnly.srOnlyFocusable:focus {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  width: auto;
+  height: auto;
+  padding: 12px 24px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: nowrap;
+  background: var(--bg-primary);
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
 /* ─── App shell ─────────────────────────────────────────────────────────── */
 
 #app {
@@ -844,6 +866,97 @@ button, [role="tab"], [role="switch"], a {
   cursor: pointer;
   text-align: center;
   flex-shrink: 0;
+}
+
+/* PWA install banner */
+.installBanner {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.installBannerContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.installBannerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.installBannerTitle {
+  font-size: var(--font-subheadline);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.installBannerDesc {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.installBannerShareIcon {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.installBannerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.installBannerBtn {
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.installBannerInstall {
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  padding: 8px 16px;
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+.installBannerDismiss {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+}
+.installBannerDismiss svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Install banner transition */
+.installBanner-enter-active,
+.installBanner-leave-active {
+  transition: opacity 0.2s ease, max-height 0.2s ease;
+  max-height: 80px;
+  overflow: hidden;
+}
+.installBanner-enter-from,
+.installBanner-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .appTopBar {
@@ -1701,6 +1814,10 @@ html.theme-fading .settingsSheet {
   border-color: var(--accent);
 }
 
+.settingsInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .settingsInput::placeholder {
   color: var(--text-muted);
 }
@@ -1722,6 +1839,41 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
 }
 
+.settingsRange {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.settingsRange:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+  border-radius: 2px;
+}
+
+.settingsRange::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.settingsRangeValue {
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  min-width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
 .exportBtnGroup {
   display: flex;
   gap: 8px;
@@ -1739,6 +1891,15 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
 }
 .exportBtn:active { opacity: 0.6; }
+.exportBtnActive {
+  background: var(--accent);
+  color: var(--bg);
+}
+.exportBtnPrimary {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
 
 .hiddenFileInput {
   position: absolute;
@@ -2136,9 +2297,103 @@ html.theme-fading .settingsSheet {
   line-height: 1.6;
 }
 
+/* ─── Fresh-start transition card (shown after clearing sample data) ───── */
+
+.wtFreshStart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px;
+  margin: 16px;
+  border-radius: 16px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-edge);
+  text-align: center;
+  animation: wtFreshStartFadeIn 0.4s ease-out;
+}
+
+@keyframes wtFreshStartFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wtFreshStartIcon {
+  color: var(--accent);
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+
+.wtFreshStartTitle {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.wtFreshStartBody {
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.wtFreshStartCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  font-size: var(--font-callout);
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.15s ease;
+}
+
+.wtFreshStartCta:active {
+  opacity: 0.8;
+}
+
 /* ─── Exercise list ─────────────────────────────────────────────────────── */
 
 /* ─── Timeline view ─────────────────────────────────────────────────────── */
+
+.wtTimelineControls {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 16px 0;
+}
+
+.wtWarmupToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  min-height: 32px;
+  font-size: var(--font-caption1);
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtWarmupToggle:active {
+  opacity: 0.7;
+}
+
+.wtWarmupToggleActive {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
 
 .wtTimeline {
   padding: 0 16px 16px;
@@ -2544,6 +2799,10 @@ html.theme-fading .settingsSheet {
   border-color: var(--accent);
 }
 
+.wtSearchInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .wtSearchInput::placeholder {
   color: var(--text-muted);
 }
@@ -2788,6 +3047,10 @@ html.theme-fading .settingsSheet {
   border: 1px solid var(--accent);
   border-radius: 12px;
   outline: none;
+}
+
+.wtTagInlineInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
 }
 
 .wtTagPickerChip:hover {
@@ -3060,6 +3323,140 @@ html.theme-fading .settingsSheet {
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
+}
+
+.wtEditArchiveBtn {
+  width: 100%;
+  padding: 12px;
+  min-height: 44px;
+  margin-top: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: var(--font-callout);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.wtEditArchiveHint {
+  margin: 8px 4px 0;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.wtArchivedSection {
+  margin-top: 24px;
+  padding: 0 4px;
+}
+
+.wtArchivedToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: var(--font-callout);
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.wtArchivedToggle:hover {
+  background: var(--bg-hover);
+}
+
+.wtArchivedToggleIcon {
+  display: inline-block;
+  width: 16px;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-secondary);
+  transition: transform 150ms ease;
+}
+
+.wtArchivedToggleIcon.expanded {
+  transform: rotate(90deg);
+}
+
+.wtArchivedToggleLabel {
+  flex: 1;
+  text-align: left;
+}
+
+.wtArchivedToggleCount {
+  padding: 2px 8px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtArchivedList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.wtArchivedItem {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wtArchivedRow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wtArchivedName {
+  font-size: var(--font-callout);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.wtArchivedMeta {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+}
+
+.wtArchivedActionBtn {
+  min-height: 44px;
+  padding: 0 16px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.wtArchivedActionBtn:hover {
+  background: var(--bg-hover);
 }
 
 .wtEditDeleteConfirm {
@@ -3531,6 +3928,10 @@ html.theme-fading .settingsSheet {
   outline: none;
 }
 
+.logSetSheet .logSetFieldInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .logSetSheet .logSetFieldInput::placeholder {
   color: var(--text-muted);
   opacity: 0.5;
@@ -3716,6 +4117,10 @@ html.theme-fading .settingsSheet {
   outline: none;
 }
 
+.wtRepsStepperInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .wtRepsStepperInput::placeholder {
   color: var(--text-muted);
   font-weight: 400;
@@ -3780,6 +4185,7 @@ html.theme-fading .settingsSheet {
 }
 
 .repMaxInput:focus { border-color: var(--accent); }
+.repMaxInput:focus-visible { box-shadow: 0 0 0 3px var(--accent-subtle); }
 
 .repMaxInput::placeholder { color: var(--text-muted); }
 
@@ -4036,6 +4442,52 @@ html.theme-fading .settingsSheet {
    pill at the bottom (more faded when that denomination isn't currently
    loaded). The weight value itself is rendered by the WEIGHT card above
    the plate calc — this card is purely the picker chrome. */
+
+/* Plate calculator first-use hint (LIFT-388) */
+.wtPlateHint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 8px 0;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: opacity 0.2s;
+  text-align: left;
+  font-family: inherit;
+}
+
+.wtPlateHintIcon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.wtPlateHintText {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.wtPlateHintDismiss {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  margin: -12px -8px -12px 0;
+  border-radius: 8px;
+}
 
 .wtPlateCalc {
   padding: 0;
@@ -4375,6 +4827,10 @@ html.theme-fading .settingsSheet {
   outline: none;
 }
 
+.iosStepperInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .iosSettingsFooter {
   display: block;
   font-size: var(--font-caption2);
@@ -4569,7 +5025,7 @@ html.theme-fading .settingsSheet {
   min-height: 44px;
   background: none;
   border: none;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: var(--font-footnote);
   font-weight: 500;
   font-family: inherit;
@@ -5098,6 +5554,7 @@ html.theme-fading .settingsSheet {
 .wtTimerEditInput::-webkit-inner-spin-button,
 .wtTimerEditInput::-webkit-outer-spin-button { -webkit-appearance: none; }
 .wtTimerEditInput:focus { border-color: var(--accent); }
+.wtTimerEditInput:focus-visible { box-shadow: 0 0 0 3px var(--accent-subtle); }
 
 .wtTimerEditAddBtn {
   padding: 12px 16px;
@@ -6134,6 +6591,12 @@ html.theme-fading .settingsSheet {
 .bwStatGood { color: var(--success); }
 .bwStatBad  { color: var(--danger); }
 
+.bwSentiment {
+  font-size: 0.8em;
+  margin-left: 2px;
+  font-weight: 600;
+}
+
 .bwStatsSingle {
   font-size: var(--font-caption1);
   color: var(--text-muted);
@@ -6619,12 +7082,16 @@ html.theme-fading .settingsSheet {
 }
 
 .deleteConfirmInput::placeholder {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .deleteConfirmInput:focus {
   outline: none;
   border-color: var(--danger);
+}
+
+.deleteConfirmInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--danger-subtle);
 }
 
 .deleteConfirmError {
