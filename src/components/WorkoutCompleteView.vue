@@ -73,15 +73,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, nextTick, defineAsyncComponent } from 'vue'
-import { useWorkoutStore } from '../stores/workout'
-import { useProgressionStore } from '../stores/progression'
-import { buildSessionSummary } from '../lib/sessionSummary'
 import { useFocusTrap } from '../composables/useFocusTrap'
-import { useWeightUnit } from '../composables/useWeightUnit'
+import type { SessionSummary } from '../lib/sessionSummary'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
-const props = defineProps<{ rawDate: string }>()
+const props = defineProps<{ summary: SessionSummary }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const pickerOpen = ref(false)
@@ -89,22 +86,10 @@ function openPicker() {
   pickerOpen.value = true
 }
 
-const store = useWorkoutStore()
-const progression = useProgressionStore()
 const focusTrap = useFocusTrap()
 const overlayEl = ref<HTMLElement | null>(null)
-const { displayWeight, weightUnit } = useWeightUnit()
 
-const summary = computed(() =>
-  buildSessionSummary({
-    rawDate: props.rawDate,
-    exercises: store.exercises,
-    xpPerSet: progression.xpPerSet,
-    streakWeeks: progression.streakWeeks,
-    toDisplayUnits: displayWeight,
-    unitLabel: weightUnit.value,
-  })
-)
+const summary = computed(() => props.summary)
 
 const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))

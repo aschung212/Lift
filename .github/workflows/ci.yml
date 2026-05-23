@@ -6,13 +6,53 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-3.0, AGPL-3.0
+          comment-summary-in-pr: always
+
+  install:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-nm
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: npm ci
+
   lint:
     runs-on: ubuntu-latest
+    needs: install
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -23,58 +63,184 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm run lint
 
   typecheck:
     runs-on: ubuntu-latest
+    needs: install
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm run typecheck
 
   build-and-test:
     runs-on: ubuntu-latest
     needs: [lint, typecheck]
+    permissions:
+      contents: read
+      pull-requests: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm run build
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dist
           path: dist/
           retention-days: ${{ github.event_name == 'push' && 7 || 3 }}
 
-      - name: Check bundle size budget
+      - name: Restore base bundle sizes (PR)
+        if: github.event_name == 'pull_request'
+        id: base-bundle
+        uses: actions/cache/restore@v4
+        with:
+          path: bundle-sizes.json
+          key: bundle-sizes-master-${{ github.event.pull_request.base.sha }}
+          restore-keys: bundle-sizes-master-
+
+      - name: Preserve base bundle sizes
+        if: github.event_name == 'pull_request'
+        run: if [ -f bundle-sizes.json ]; then mv bundle-sizes.json base-bundle-sizes.json; fi
+
+      - name: Measure bundle sizes
+        id: bundle
         run: |
           # Total JS bundle budget: 500 KB (currently ~410 KB)
           TOTAL_JS=$(find dist/assets -name '*.js' ! -name 'workbox-*' ! -name 'sw.*' -exec wc -c {} + | tail -1 | awk '{print $1}')
+          TOTAL_CSS=$(find dist/assets -name '*.css' -exec wc -c {} + | tail -1 | awk '{print $1}')
+          TOTAL_CSS=${TOTAL_CSS:-0}
           BUDGET=512000
+
+          echo "js_bytes=$TOTAL_JS" >> "$GITHUB_OUTPUT"
+          echo "css_bytes=$TOTAL_CSS" >> "$GITHUB_OUTPUT"
           echo "JS bundle size: $(( TOTAL_JS / 1024 )) KB (budget: $(( BUDGET / 1024 )) KB)"
+          echo "CSS bundle size: $(( TOTAL_CSS / 1024 )) KB"
+
           if [ "$TOTAL_JS" -gt "$BUDGET" ]; then
             echo "::error::Bundle size ($((TOTAL_JS / 1024)) KB) exceeds budget ($((BUDGET / 1024)) KB)"
             exit 1
           fi
+
+          # Save sizes for cross-build comparison
+          echo "{\"js\": $TOTAL_JS, \"css\": $TOTAL_CSS}" > bundle-sizes.json
+
+      - name: Save bundle sizes (master)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/cache/save@v4
+        with:
+          path: bundle-sizes.json
+          key: bundle-sizes-master-${{ github.sha }}
+
+      - name: Post bundle size delta comment
+        if: always() && github.event_name == 'pull_request' && steps.bundle.outputs.js_bytes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const jsBytes = parseInt('${{ steps.bundle.outputs.js_bytes }}', 10);
+            const cssBytes = parseInt('${{ steps.bundle.outputs.css_bytes }}', 10);
+            const budget = 512000;
+
+            let body = '## 📦 Bundle Size Report\n\n';
+
+            // Try to load base branch sizes
+            let baseJs = null, baseCss = null;
+            try {
+              const base = JSON.parse(fs.readFileSync('base-bundle-sizes.json', 'utf8'));
+              baseJs = base.js;
+              baseCss = base.css;
+            } catch {
+              // No cached baseline — first run or cache expired
+            }
+
+            const fmt = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+            const delta = (cur, prev) => {
+              const diff = cur - prev;
+              const sign = diff > 0 ? '+' : '';
+              const icon = diff > 0 ? '🔺' : diff < 0 ? '🔽' : '✅';
+              return `${icon} ${sign}${fmt(diff)}`;
+            };
+
+            body += '| Asset | Size | Budget | Delta |\n';
+            body += '|-------|------|--------|-------|\n';
+
+            const jsDelta = baseJs != null ? delta(jsBytes, baseJs) : '—';
+            const cssDelta = baseCss != null ? delta(cssBytes, baseCss) : '—';
+            const jsPct = ((jsBytes / budget) * 100).toFixed(0);
+
+            body += `| JS | ${fmt(jsBytes)} | ${fmt(budget)} (${jsPct}%) | ${jsDelta} |\n`;
+            body += `| CSS | ${fmt(cssBytes)} | — | ${cssDelta} |\n`;
+
+            if (baseJs == null) {
+              body += '\n> _No baseline from master yet. Delta will appear after the next master build._\n';
+            }
+
+            // Upsert: find existing comment by marker, update or create
+            const marker = '<!-- bundle-size-report -->';
+            body = marker + '\n' + body;
+
+            try {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              });
+
+              const existing = comments.find(c => c.body.startsWith(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body,
+                });
+              }
+            } catch (err) {
+              // Fork PRs have read-only tokens — log but don't fail the build
+              core.warning(`Could not post bundle size comment: ${err.message}`);
+            }
 
       - run: npx vitest run --coverage
 
@@ -83,7 +249,7 @@ jobs:
 
       - name: Coverage report
         if: always() && github.event_name == 'pull_request'
-        uses: davelosert/vitest-coverage-report-action@v2
+        uses: davelosert/vitest-coverage-report-action@02f3c2e641286b7fa308cd3e430783103ce6103b # v2
         with:
           json-summary-path: coverage/coverage-summary.json
           json-final-path: coverage/coverage-final.json
@@ -98,14 +264,18 @@ jobs:
       # Real Vercel deploys do not set this, so the button stays hidden.
       VITE_E2E: 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -117,7 +287,7 @@ jobs:
         run: npx playwright test
 
       - name: Upload test report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: ${{ !cancelled() }}
         with:
           name: playwright-report
@@ -131,9 +301,9 @@ jobs:
     needs: [build-and-test, e2e]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: supabase/setup-cli@v2
+      - uses: supabase/setup-cli@df56b21da46c98abb12a9804e4fb1f657773e333 # v2
         with:
           version: latest
 
