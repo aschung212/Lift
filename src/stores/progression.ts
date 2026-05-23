@@ -291,7 +291,7 @@ export const useProgressionStore = defineStore('progression', {
       this.starterConfirmed = data.starter_confirmed ?? this.starterConfirmed
       this.epoch = data.epoch ?? this.epoch
       // Json columns require runtime casts — Supabase types them as Json
-      this.streakHistory = (data.streak_history as StreakWeekEntry[]) ?? this.streakHistory
+      this.streakHistory = (data.streak_history as unknown as StreakWeekEntry[]) ?? this.streakHistory
 
       // Merge collection fields — union strategy, no data loss
       const remoteThemes = migrateUnlockedThemes(data.unlocked_themes ?? [])

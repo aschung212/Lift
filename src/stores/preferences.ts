@@ -189,7 +189,7 @@ export const usePreferencesStore = defineStore('preferences', {
             .single()
           const prefs = data?.preferences as PersistedPreferences | null
           if (prefs?.features) {
-            this.features = { ...DEFAULTS, ...prefs.features }
+            this.features = { ...DEFAULTS, ...prefs.features } as FeatureFlags
             if (prefs.weightGoal) {
               this.weightGoal = _migrateWeightGoal(prefs.weightGoal)
             }
