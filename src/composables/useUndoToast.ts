@@ -1,4 +1,4 @@
-import { ref, readonly } from 'vue'
+import { ref, readonly, type DeepReadonly, type Ref } from 'vue'
 
 export interface UndoToast {
   id: number
@@ -49,7 +49,15 @@ function destroy() {
   activeToast.value = null
 }
 
-export function useUndoToast() {
+export interface UseUndoToastReturn {
+  toast: DeepReadonly<Ref<UndoToast | null>>
+  show: (message: string, undo: () => void, commit: () => void) => void
+  performUndo: () => void
+  dismiss: () => void
+  destroy: () => void
+}
+
+export function useUndoToast(): UseUndoToastReturn {
   return {
     toast: readonly(activeToast),
     show,

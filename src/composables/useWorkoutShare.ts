@@ -11,7 +11,7 @@
  *   4. Always unmount and revoke the object URL.
  */
 
-import { ref, createApp, h, type Component, nextTick } from 'vue'
+import { ref, createApp, h, type Component, type Ref, nextTick } from 'vue'
 import {
   renderNodeToBlob,
   defaultShareFilename,
@@ -149,7 +149,14 @@ async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
   }
 }
 
-export function useWorkoutShare() {
+export interface UseWorkoutShareReturn {
+  shareCard: (req: ShareCardRequest) => Promise<ShareResult>
+  downloadCard: (req: ShareCardRequest) => Promise<ShareResult>
+  isSharing: Ref<boolean>
+  lastError: Ref<Error | null>
+}
+
+export function useWorkoutShare(): UseWorkoutShareReturn {
   const isSharing = ref(false)
   const lastError = ref<Error | null>(null)
 

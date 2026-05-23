@@ -18,7 +18,12 @@ const FOCUSABLE = [
  *   // When modal mounts:  focusTrap.activate(el)
  *   // When modal closes:  focusTrap.deactivate()
  */
-export function useFocusTrap() {
+export interface UseFocusTrapReturn {
+  activate: (el: HTMLElement) => void
+  deactivate: () => void
+}
+
+export function useFocusTrap(): UseFocusTrapReturn {
   let trapEl: HTMLElement | null = null
   let previouslyFocused: HTMLElement | null = null
 
