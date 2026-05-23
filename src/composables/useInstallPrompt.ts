@@ -1,6 +1,17 @@
 import { ref, watch, type Ref, type WatchSource } from 'vue'
 import { isNative, isIOS } from '../lib/platform'
 
+/**
+ * The `beforeinstallprompt` event fired by Chromium browsers.
+ * Not included in TypeScript's lib.dom.d.ts because it is non-standard.
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/BeforeInstallPromptEvent
+ */
+export interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[]
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+  prompt(): Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
 const DISMISS_KEY = 'install-prompt-dismissed'
 const MIN_WORKOUT_DAYS = 3
 
@@ -44,8 +55,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
   const showBanner = ref(false)
   const isIOSPrompt = ref(false)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let deferredPrompt: any = null
+  let deferredPrompt: BeforeInstallPromptEvent | null = null
   // True when we intercepted beforeinstallprompt but haven't shown the banner yet
   // (waiting for workout data to hydrate past the threshold).
   let hasPendingPrompt = false
@@ -83,8 +93,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function onBeforeInstallPrompt(e: any) {
+  function onBeforeInstallPrompt(e: BeforeInstallPromptEvent) {
     // Prevent the browser's mini-infobar
     e.preventDefault()
     deferredPrompt = e
@@ -105,12 +114,14 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     localStorage.setItem(DISMISS_KEY, 'true')
   }
 
-  // Register listeners — cleaned up via destroy() if the consumer unmounts
-  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+  // Register listeners — cleaned up via destroy() if the consumer unmounts.
+  // 'beforeinstallprompt' is not in WindowEventMap, so we cast the handler.
+  const promptHandler = onBeforeInstallPrompt as EventListener
+  window.addEventListener('beforeinstallprompt', promptHandler)
   window.addEventListener('appinstalled', onAppInstalled)
 
   function destroy() {
-    window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    window.removeEventListener('beforeinstallprompt', promptHandler)
     window.removeEventListener('appinstalled', onAppInstalled)
   }
 

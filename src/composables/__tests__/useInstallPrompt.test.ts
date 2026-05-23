@@ -87,8 +87,7 @@ describe('useInstallPrompt', () => {
         configurable: true,
       })
       expect(isStandalone()).toBe(true)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (navigator as any).standalone
+      delete (navigator as unknown as { standalone?: boolean }).standalone
     })
   })
 
