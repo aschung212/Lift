@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Coverage ratchet: prevents coverage from dropping below the committed baseline.
+ * Coverage ratchet CLI: prevents coverage from dropping below the committed baseline.
  *
  * Reads coverage-summary.json (produced by vitest --coverage) and compares it
  * against .coverage-baseline.json. Fails if any metric drops by more than
@@ -17,13 +17,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compareBaseline, formatResults } from './coverage-ratchet.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const COVERAGE_SUMMARY = resolve(root, 'coverage/coverage-summary.json');
 const BASELINE_FILE = resolve(root, '.coverage-baseline.json');
-const METRICS = ['statements', 'branches', 'functions', 'lines'];
 
 // Parse CLI args
 const args = process.argv.slice(2);
@@ -54,62 +54,15 @@ try {
   process.exit(1);
 }
 
-// Compare
-const current = {};
-for (const metric of METRICS) {
-  current[metric] = summary.total[metric].pct;
+// Compare and report
+const result = compareBaseline(summary, baseline, { margin, update: shouldUpdate });
+console.log(formatResults(result, { margin }));
+
+// Write updated baseline if ratcheted
+if (result.updatedBaseline) {
+  writeFileSync(BASELINE_FILE, JSON.stringify(result.updatedBaseline, null, 2) + '\n');
 }
 
-let failed = false;
-const improved = {};
-
-console.log('Coverage ratchet check:');
-console.log(`  Margin: ${margin}%\n`);
-console.log('  Metric       Baseline   Current    Delta');
-console.log('  ──────────── ────────── ────────── ──────');
-
-for (const metric of METRICS) {
-  const base = baseline[metric];
-  const cur = current[metric];
-  const delta = cur - base;
-  const sign = delta >= 0 ? '+' : '';
-  const status = delta < -margin ? ' ✗ REGRESSION' : delta > 0 ? ' ↑ improved' : '';
-
-  console.log(
-    `  ${metric.padEnd(12)} ${base.toFixed(2).padStart(8)}%  ${cur.toFixed(2).padStart(8)}%  ${sign}${delta.toFixed(2)}%${status}`
-  );
-
-  if (delta < -margin) {
-    failed = true;
-  }
-  if (delta > 0) {
-    improved[metric] = cur;
-  }
-}
-
-console.log();
-
-if (failed) {
-  console.error(
-    `Coverage dropped below baseline (margin: ${margin}%). ` +
-    'Add tests to restore coverage before merging.'
-  );
+if (result.failed) {
   process.exit(1);
-}
-
-// Ratchet up if any metric improved and --update was passed
-if (shouldUpdate && Object.keys(improved).length > 0) {
-  const newBaseline = { ...baseline };
-  for (const [metric, value] of Object.entries(improved)) {
-    // Round to 2 decimal places; toFixed avoids floating-point jitter
-    // (e.g., 80.14 * 100 → 8013.999... which Math.floor would truncate)
-    newBaseline[metric] = Number(value.toFixed(2));
-  }
-  writeFileSync(BASELINE_FILE, JSON.stringify(newBaseline, null, 2) + '\n');
-  console.log('Baseline ratcheted up. New values:');
-  console.log(JSON.stringify(newBaseline, null, 2));
-} else if (Object.keys(improved).length > 0) {
-  console.log('Coverage improved! Run with --update to ratchet up the baseline.');
-} else {
-  console.log('Coverage matches baseline. No changes needed.');
 }
