@@ -242,6 +242,19 @@ jobs:
               core.warning(`Could not post bundle size comment: ${err.message}`);
             }
 
+      - name: Restore base coverage summary (PR)
+        if: github.event_name == 'pull_request'
+        id: base-coverage
+        uses: actions/cache/restore@v5
+        with:
+          path: coverage/coverage-summary.json
+          key: coverage-summary-master-${{ github.event.pull_request.base.sha }}
+          restore-keys: coverage-summary-master-
+
+      - name: Preserve base coverage summary
+        if: github.event_name == 'pull_request'
+        run: if [ -f coverage/coverage-summary.json ]; then mv coverage/coverage-summary.json base-coverage-summary.json; fi
+
       - run: npx vitest run --coverage
 
       - name: Coverage ratchet check
@@ -253,15 +266,6 @@ jobs:
         with:
           path: coverage/coverage-summary.json
           key: coverage-summary-master-${{ github.sha }}
-
-      - name: Restore base coverage summary (PR)
-        if: github.event_name == 'pull_request'
-        id: base-coverage
-        uses: actions/cache/restore@v5
-        with:
-          path: base-coverage-summary.json
-          key: coverage-summary-master-${{ github.event.pull_request.base.sha }}
-          restore-keys: coverage-summary-master-
 
       - name: Post coverage delta comment
         if: always() && github.event_name == 'pull_request' && hashFiles('coverage/coverage-summary.json') != ''
