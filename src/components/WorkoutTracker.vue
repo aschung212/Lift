@@ -1754,9 +1754,13 @@ const reps = computed<number | null>({
   get: () => { const n = parseInt(repsStr.value); return isNaN(n) ? null : n },
   set: (v) => { repsStr.value = v === null ? '' : String(v) },
 })
-// Sync plate display when weight changes from input/chips (not from plate buttons)
+// Sync plate display when weight changes from input/chips (not from plate buttons).
+// Debounced to avoid recalculating plate combinations on every keystroke (LIFT-634).
+let _plateSyncTimer: ReturnType<typeof setTimeout> | null = null
 watch(weightStr, () => {
-  if (plateMode.value && !_plateSync) syncPlatesFromWeight()
+  if (!plateMode.value || _plateSync) return
+  if (_plateSyncTimer) clearTimeout(_plateSyncTimer)
+  _plateSyncTimer = setTimeout(syncPlatesFromWeight, 250)
 })
 
 const date = ref(todayISO())
@@ -2662,6 +2666,7 @@ watch(
 )
 onUnmounted(() => {
   timerCtrl.stopTimer()
+  if (_plateSyncTimer) clearTimeout(_plateSyncTimer)
   document.documentElement.classList.remove('modal-open')
 })
 
