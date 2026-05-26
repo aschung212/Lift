@@ -94,6 +94,7 @@ These patterns were reached through multiple iterations of user testing. Do not 
 
 ## Architecture Notes
 
+- **Component layer convention.** `src/views/` holds container-level components that access stores directly (AuthScreen, OnboardingScreen, CalendarView, BodyweightTracker, ExerciseDetailModal). `src/components/` holds reusable, prop-driven presentational components (ExerciseGraph, MuscleGroupChart, SkeletonLoader, PRBurst, etc.). WorkoutTracker and SettingsSheet are planned to move to `src/views/` once their remaining sub-component extractions are complete. When creating new top-level pages or screens that access stores, put them in `src/views/`. When creating reusable UI pieces that receive data via props, put them in `src/components/`.
 - **Local-first.** Pinia + localStorage is the source of truth. Supabase syncs in the background. The UI never waits on the network.
 - **Theme system.** 10 elemental themes (Eternal, Origin, Fortitude, Intensity, Flow, Stability, Luck, Focus, Energy, Love; internal IDs: `eternal`, `pearl`, `midnight`, `fire`, `water`, `earth`, `luck`, `amethyst`, `air`, `love`) with CSS custom properties, custom SVG icons, and gradient previews. Light/dark/auto modes. Glass morphism is always on. Eternal (black + gold) is the default. Legacy IDs (`void`, `sun`, `moon`, `graphite`, `arctic`, `forge`, `aaron`, `tina`, `bloom`, `metal`, `oak`) are mapped to current IDs by a migration table in `useTheme.ts`.
 - **Hand-rolled SVGs.** No chart libraries. Polyline + polygon with computed point arrays.

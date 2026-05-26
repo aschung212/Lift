@@ -194,8 +194,8 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { isPreviewDeploy, isPreviewMode, initSupabase } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary.vue'
-import AuthScreen from './components/AuthScreen.vue'
-import OnboardingScreen from './components/OnboardingScreen.vue'
+import AuthScreen from './views/AuthScreen.vue'
+import OnboardingScreen from './views/OnboardingScreen.vue'
 import SettingsSheet from './components/SettingsSheet.vue'
 import PRBurst from './components/PRBurst.vue'
 
@@ -207,12 +207,12 @@ const WorkoutTracker = defineAsyncComponent({
   delay: 100,
 })
 const CalendarView = defineAsyncComponent({
-  loader: () => import('./components/CalendarView.vue'),
+  loader: () => import('./views/CalendarView.vue'),
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
 const BodyweightTracker = defineAsyncComponent({
-  loader: () => import('./components/BodyweightTracker.vue'),
+  loader: () => import('./views/BodyweightTracker.vue'),
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
