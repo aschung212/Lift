@@ -427,6 +427,27 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('content-visibility: auto for off-screen rendering skip (LIFT-633)', () => {
+    const targets = [
+      { selector: '.wtSetCard', hint: 'timeline date group' },
+      { selector: '.wtTimelineRow', hint: 'timeline set row' },
+      { selector: '.calWeekRow', hint: 'calendar week row' },
+      { selector: '.calExGroup', hint: 'calendar exercise group' },
+    ]
+
+    for (const { selector, hint } of targets) {
+      it(`${selector} (${hint}) has content-visibility: auto`, () => {
+        const lines = getRuleLines(selector)
+        expect(lines.some(l => l.includes('content-visibility') && l.includes('auto'))).toBe(true)
+      })
+
+      it(`${selector} (${hint}) has contain-intrinsic-size`, () => {
+        const lines = getRuleLines(selector)
+        expect(lines.some(l => l.includes('contain-intrinsic-size'))).toBe(true)
+      })
+    }
+  })
+
   describe('WCAG 2.4.11 focus indicators on inputs with outline:none', () => {
     // Regression: 11 input elements had outline:none with only border-color
     // changes as focus replacement. WCAG 2.4.7 (Focus Visible) and 2.4.11
