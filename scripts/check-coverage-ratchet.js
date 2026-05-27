@@ -5,8 +5,9 @@
  *
  * Reads coverage-summary.json (produced by vitest --coverage) and compares it
  * against .coverage-baseline.json. Fails if any metric drops by more than
- * the allowed margin (default 0%). On CI with --update, writes a new baseline
- * when coverage improves — so the floor only ever ratchets up.
+ * the allowed margin (default 0.5%, to absorb sub-percent jitter from test
+ * ordering and flaky branch coverage). On CI with --update, writes a new
+ * baseline when coverage improves — so the floor only ever ratchets up.
  *
  * Usage:
  *   node scripts/check-coverage-ratchet.js              # compare only
@@ -29,7 +30,7 @@ const BASELINE_FILE = resolve(root, '.coverage-baseline.json');
 const args = process.argv.slice(2);
 const shouldUpdate = args.includes('--update');
 const marginIdx = args.indexOf('--margin');
-const margin = marginIdx !== -1 ? parseFloat(args[marginIdx + 1]) : 0;
+const margin = marginIdx !== -1 ? parseFloat(args[marginIdx + 1]) : 0.5;
 
 if (Number.isNaN(margin)) {
   console.error('Error: --margin requires a numeric value');

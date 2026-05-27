@@ -1,13 +1,18 @@
-import { ref, type Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 import { supabase } from '../lib/supabase'
 import { migrateLocalStorageToSupabase } from '../lib/migrate'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
+import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
+import { useRestTimer } from '../composables/useRestTimer'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import type { User, Provider } from '@supabase/supabase-js'
+import type { ColorMode } from '../lib/themes'
+import type { WeightUnit } from '../lib/themes'
 
 interface AuthError {
   message: string
@@ -32,6 +37,32 @@ const loading: Ref<boolean> = ref(true)
 let _initialized = false
 let _authUnsubscribe: (() => void) | null = null
 
+/**
+ * Push synced settings from the preferences store to the composable module-scope
+ * refs, then set up one-directional watchers so future UI changes flow back into
+ * the store (and from there to Supabase). Called once after all stores are hydrated.
+ */
+function syncSettingsWithComposables(): void {
+  const prefs = usePreferencesStore()
+  const { currentTheme, colorMode } = useTheme()
+  const { weightUnit } = useWeightUnit()
+  const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
+
+  // Push store → composable refs (Supabase values override local)
+  currentTheme.value = prefs.theme
+  colorMode.value = prefs.colorMode as ColorMode
+  weightUnit.value = prefs.weightUnit as WeightUnit
+  restTimerEnabled.value = prefs.restTimerEnabled
+  restTimerAutoStart.value = prefs.restTimerAutoStart
+
+  // Composable refs → store (user interactions sync to Supabase)
+  watch(currentTheme, (v) => { prefs.setTheme(v) })
+  watch(colorMode, (v) => { prefs.setColorMode(v) })
+  watch(weightUnit, (v) => { prefs.setWeightUnit(v) })
+  watch(restTimerEnabled, (v) => { prefs.setRestTimer(v) })
+  watch(restTimerAutoStart, (v) => { prefs.setRestTimerAutoStart(v) })
+}
+
 async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
@@ -44,6 +75,7 @@ async function initStores(userId: string): Promise<void> {
     preferencesStore.init(userId),
     progressionStore.init(userId),
   ])
+  syncSettingsWithComposables()
 }
 
 function init(): void {
