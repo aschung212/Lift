@@ -532,4 +532,137 @@ describe('usePreferencesStore', () => {
       expect(stored.experience).toBeDefined()
     })
   })
+
+  describe('synced settings (theme, colorMode, weightUnit, restTimer)', () => {
+    it('defaults to expected values', () => {
+      expect(store.theme).toBe('eternal')
+      expect(store.colorMode).toBe('dark')
+      expect(store.weightUnit).toBe('lbs')
+      expect(store.restTimerEnabled).toBe(true)
+      expect(store.restTimerAutoStart).toBe(true)
+    })
+
+    it('setTheme updates and persists', () => {
+      store.setTheme('fire')
+      expect(store.theme).toBe('fire')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.theme).toBe('fire')
+    })
+
+    it('setColorMode updates and persists', () => {
+      store.setColorMode('light')
+      expect(store.colorMode).toBe('light')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.colorMode).toBe('light')
+    })
+
+    it('setWeightUnit updates and persists', () => {
+      store.setWeightUnit('kg')
+      expect(store.weightUnit).toBe('kg')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.weightUnit).toBe('kg')
+    })
+
+    it('setRestTimer updates and persists', () => {
+      store.setRestTimer(false)
+      expect(store.restTimerEnabled).toBe(false)
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.restTimerEnabled).toBe(false)
+    })
+
+    it('setRestTimerAutoStart updates and persists', () => {
+      store.setRestTimerAutoStart(false)
+      expect(store.restTimerAutoStart).toBe(false)
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.restTimerAutoStart).toBe(false)
+    })
+
+    it('_persist writes individual localStorage keys for FOUC prevention', () => {
+      store.setTheme('water')
+      store.setColorMode('auto')
+      store.setWeightUnit('kg')
+      store.setRestTimer(false)
+      store.setRestTimerAutoStart(false)
+
+      expect(localStorageMock.getItem('app-theme')).toBe('water')
+      expect(localStorageMock.getItem('app-mode')).toBe('auto')
+      expect(localStorageMock.getItem('weight-unit')).toBe('kg')
+      expect(localStorageMock.getItem('rest-timer')).toBe('off')
+      expect(localStorageMock.getItem('rest-timer-autostart')).toBe('off')
+    })
+
+    it('init loads synced settings from JSON blob', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        theme: 'midnight',
+        colorMode: 'light',
+        weightUnit: 'kg',
+        restTimerEnabled: false,
+        restTimerAutoStart: false,
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.theme).toBe('midnight')
+      expect(freshStore.colorMode).toBe('light')
+      expect(freshStore.weightUnit).toBe('kg')
+      expect(freshStore.restTimerEnabled).toBe(false)
+      expect(freshStore.restTimerAutoStart).toBe(false)
+    })
+
+    it('init migrates from standalone localStorage keys when JSON blob lacks them', async () => {
+      // Simulate an old client that stored settings as individual keys
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+      }))
+      localStorageMock.setItem('app-theme', 'fire')
+      localStorageMock.setItem('app-mode', 'light')
+      localStorageMock.setItem('weight-unit', 'kg')
+      localStorageMock.setItem('rest-timer', 'off')
+      localStorageMock.setItem('rest-timer-autostart', 'off')
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.theme).toBe('fire')
+      expect(freshStore.colorMode).toBe('light')
+      expect(freshStore.weightUnit).toBe('kg')
+      expect(freshStore.restTimerEnabled).toBe(false)
+      expect(freshStore.restTimerAutoStart).toBe(false)
+    })
+
+    it('_reloadFromStorage picks up synced settings', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        theme: 'love',
+        colorMode: 'auto',
+        weightUnit: 'kg',
+        restTimerEnabled: false,
+        restTimerAutoStart: false,
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.theme).toBe('love')
+      expect(store.colorMode).toBe('auto')
+      expect(store.weightUnit).toBe('kg')
+      expect(store.restTimerEnabled).toBe(false)
+      expect(store.restTimerAutoStart).toBe(false)
+    })
+
+    it('synced settings are included in persist payload alongside existing fields', () => {
+      store.setTheme('earth')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.theme).toBe('earth')
+      expect(stored.features).toBeDefined()
+      expect(stored.weightGoal).toBeDefined()
+      expect(stored.experience).toBeDefined()
+      expect(stored.filters).toBeDefined()
+    })
+  })
 })

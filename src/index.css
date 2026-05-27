@@ -5214,6 +5214,12 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
 }
 
+.wtPrevSessionChipUsed {
+  opacity: 0.45;
+  text-decoration: line-through;
+  border-style: dashed;
+}
+
 .wtInputRow {
   display: flex;
   gap: 12px;
