@@ -989,6 +989,29 @@ export const useWorkoutStore = defineStore('workout', () => {
   }
 
   /**
+   * Returns the sets from the most recent session (day) for an exercise,
+   * excluding today. Used for "Last Session" quick-fill in the log modal.
+   * Returns { date, sets } or null if no prior session exists.
+   */
+  function getLastSession(exerciseId: string, today?: string): { date: string; sets: WorkoutSet[] } | null {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise || exercise.sets.length === 0) return null
+    const todayStr = today ?? new Date().toISOString().slice(0, 10)
+    // Group sets by day
+    const byDay = new Map<string, WorkoutSet[]>()
+    for (const set of exercise.sets) {
+      const day = set.date.slice(0, 10)
+      if (day === todayStr) continue
+      if (!byDay.has(day)) byDay.set(day, [])
+      byDay.get(day)!.push(set)
+    }
+    if (byDay.size === 0) return null
+    // Find the most recent day
+    const latestDay = [...byDay.keys()].sort().pop()!
+    return { date: latestDay, sets: byDay.get(latestDay)! }
+  }
+
+  /**
    * Progressive overload suggestion for an exercise.
    * Analyzes recent sessions to suggest the next weight × reps.
    *
@@ -1138,6 +1161,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     getExercisePR,
     getExercisePRSet,
     getRecentSets,
+    getLastSession,
     getOverloadSuggestion
   }
 })
