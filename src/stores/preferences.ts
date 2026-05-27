@@ -121,6 +121,12 @@ export const usePreferencesStore = defineStore('preferences', {
     experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
     filters: { ...DEFAULT_FILTERS } as FilterSettings,
     prBaselineDate: null as string | null,
+    /** Synced appearance/behavior settings (previously standalone localStorage keys). */
+    theme: 'eternal' as string,
+    colorMode: 'dark' as string,
+    weightUnit: 'lbs' as string,
+    restTimerEnabled: true,
+    restTimerAutoStart: true,
     _userId: null as string | null,
   }),
 
@@ -132,10 +138,22 @@ export const usePreferencesStore = defineStore('preferences', {
         experience: this.experience,
         filters: this.filters,
         prBaselineDate: this.prBaselineDate,
+        theme: this.theme,
+        colorMode: this.colorMode,
+        weightUnit: this.weightUnit,
+        restTimerEnabled: this.restTimerEnabled,
+        restTimerAutoStart: this.restTimerAutoStart,
       }
       const data = JSON.stringify(payload)
       try {
         localStorage.setItem(STORAGE_KEY, data)
+        // Write individual keys so initTheme() can read them before Pinia
+        // for FOUC prevention on the next page load.
+        localStorage.setItem('app-theme', this.theme)
+        localStorage.setItem('app-mode', this.colorMode)
+        localStorage.setItem('weight-unit', this.weightUnit)
+        localStorage.setItem('rest-timer', this.restTimerEnabled ? 'on' : 'off')
+        localStorage.setItem('rest-timer-autostart', this.restTimerAutoStart ? 'on' : 'off')
       } catch (e) {
         logError(e, { source: 'preferences._persist' })
       }
@@ -164,6 +182,11 @@ export const usePreferencesStore = defineStore('preferences', {
         if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
         if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
         if (parsed.filters) this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
+        if (typeof parsed.theme === 'string') this.theme = parsed.theme
+        if (typeof parsed.colorMode === 'string') this.colorMode = parsed.colorMode
+        if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
+        if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
+        if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
       } catch { /* ignore corrupt data */ }
     },
 
@@ -188,8 +211,36 @@ export const usePreferencesStore = defineStore('preferences', {
           if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
             this.prBaselineDate = parsed.prBaselineDate
           }
+          // Load synced settings from JSON blob
+          if (typeof parsed.theme === 'string') this.theme = parsed.theme
+          if (typeof parsed.colorMode === 'string') this.colorMode = parsed.colorMode
+          if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
+          if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
+          if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
         } catch { /* ignore corrupt data */ }
       }
+
+      // Migrate standalone localStorage keys into the synced payload.
+      // These keys predate the preferences store — read them as fallbacks
+      // when the JSON blob doesn't contain them yet.
+      try {
+        if (this.theme === 'eternal') {
+          const legacy = localStorage.getItem('app-theme')
+          if (legacy && legacy !== 'eternal') this.theme = legacy
+        }
+        if (this.colorMode === 'dark') {
+          const legacy = localStorage.getItem('app-mode')
+          if (legacy && legacy !== 'dark') this.colorMode = legacy
+        }
+        if (this.weightUnit === 'lbs') {
+          const legacy = localStorage.getItem('weight-unit')
+          if (legacy && legacy !== 'lbs') this.weightUnit = legacy
+        }
+        const legacyTimer = localStorage.getItem('rest-timer')
+        if (legacyTimer === 'off') this.restTimerEnabled = false
+        const legacyAutoStart = localStorage.getItem('rest-timer-autostart')
+        if (legacyAutoStart === 'off') this.restTimerAutoStart = false
+      } catch { /* ignore */ }
 
       // Migrate from old standalone localStorage key (pre-sync era)
       if (this.prBaselineDate === null) {
@@ -228,7 +279,20 @@ export const usePreferencesStore = defineStore('preferences', {
             } else if ('prBaselineDate' in prefs && prefs.prBaselineDate === null) {
               this.prBaselineDate = null
             }
-            const synced = JSON.stringify({ features: this.features, weightGoal: this.weightGoal, experience: this.experience, filters: this.filters, prBaselineDate: this.prBaselineDate })
+            // Sync appearance/behavior settings from Supabase
+            if (typeof prefs.theme === 'string') this.theme = prefs.theme as string
+            if (typeof prefs.colorMode === 'string') this.colorMode = prefs.colorMode as string
+            if (typeof prefs.weightUnit === 'string') this.weightUnit = prefs.weightUnit as string
+            if (typeof prefs.restTimerEnabled === 'boolean') this.restTimerEnabled = prefs.restTimerEnabled as boolean
+            if (typeof prefs.restTimerAutoStart === 'boolean') this.restTimerAutoStart = prefs.restTimerAutoStart as boolean
+            const synced = JSON.stringify({
+              features: this.features, weightGoal: this.weightGoal,
+              experience: this.experience, filters: this.filters,
+              prBaselineDate: this.prBaselineDate,
+              theme: this.theme, colorMode: this.colorMode,
+              weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
+              restTimerAutoStart: this.restTimerAutoStart,
+            })
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
           }
@@ -296,6 +360,31 @@ export const usePreferencesStore = defineStore('preferences', {
 
     clearPRBaseline() {
       this.prBaselineDate = null
+      this._persist()
+    },
+
+    setTheme(id: string) {
+      this.theme = id
+      this._persist()
+    },
+
+    setColorMode(mode: string) {
+      this.colorMode = mode
+      this._persist()
+    },
+
+    setWeightUnit(unit: string) {
+      this.weightUnit = unit
+      this._persist()
+    },
+
+    setRestTimer(enabled: boolean) {
+      this.restTimerEnabled = enabled
+      this._persist()
+    },
+
+    setRestTimerAutoStart(autoStart: boolean) {
+      this.restTimerAutoStart = autoStart
       this._persist()
     },
   },

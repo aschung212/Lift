@@ -141,6 +141,7 @@ vi.mock('../../stores/workout', () => ({
     getExercisePR,
     getExercisePRSet,
     getOverloadSuggestion: () => null,
+    getLastSession: () => null,
     addExercise: mockAddExercise,
     logSet: mockLogSet,
     updateSet: mockUpdateSet,

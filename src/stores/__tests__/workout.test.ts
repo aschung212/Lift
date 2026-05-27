@@ -566,6 +566,62 @@ describe('workout store', () => {
     })
   })
 
+  describe('getLastSession', () => {
+    it('returns sets from the most recent prior day', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat')!
+      store.logSet(id, 135, 10, '2026-05-20')
+      store.logSet(id, 185, 8, '2026-05-20')
+      store.logSet(id, 225, 5, '2026-05-22')
+      const session = store.getLastSession(id, '2026-05-25')
+      expect(session).not.toBeNull()
+      expect(session!.date).toBe('2026-05-22')
+      expect(session!.sets).toHaveLength(1)
+      expect(session!.sets[0].weight).toBe(225)
+    })
+
+    it('returns multiple sets from the same day', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      store.logSet(id, 135, 10, '2026-05-20')
+      store.logSet(id, 155, 8, '2026-05-20')
+      store.logSet(id, 175, 5, '2026-05-20')
+      const session = store.getLastSession(id, '2026-05-25')
+      expect(session).not.toBeNull()
+      expect(session!.date).toBe('2026-05-20')
+      expect(session!.sets).toHaveLength(3)
+    })
+
+    it('excludes today from last session', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Deadlift')!
+      store.logSet(id, 315, 5, '2026-05-25')
+      store.logSet(id, 275, 8, '2026-05-23')
+      const session = store.getLastSession(id, '2026-05-25')
+      expect(session).not.toBeNull()
+      expect(session!.date).toBe('2026-05-23')
+      expect(session!.sets).toHaveLength(1)
+    })
+
+    it('returns null for non-existent exercise', () => {
+      const store = useWorkoutStore()
+      expect(store.getLastSession('fake')).toBeNull()
+    })
+
+    it('returns null when all sets are from today', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('OHP')!
+      store.logSet(id, 95, 10, '2026-05-25')
+      expect(store.getLastSession(id, '2026-05-25')).toBeNull()
+    })
+
+    it('returns null for exercise with no sets', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Rows')!
+      expect(store.getLastSession(id, '2026-05-25')).toBeNull()
+    })
+  })
+
   describe('getOverloadSuggestion', () => {
     function addSetsOnDays(store: ReturnType<typeof useWorkoutStore>, exId: string, entries: Array<{ date: string; weight: number; reps: number }>) {
       for (const e of entries) {

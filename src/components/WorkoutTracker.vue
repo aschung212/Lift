@@ -408,15 +408,16 @@
             </span>
           </p>
 
-          <!-- Recent sets (quick-fill) -->
-          <div v-if="!isEditMode && isLogForExercise && recentSets.length > 0" class="wtPrevSession">
-            <span class="wtPrevSessionLabel">Recent</span>
+          <!-- Last session sets (quick-fill) -->
+          <div v-if="!isEditMode && isLogForExercise && lastSession" class="wtPrevSession">
+            <span class="wtPrevSessionLabel">Last session · {{ formatDate(lastSession.date + 'T12:00:00') }}</span>
             <div class="wtPrevSessionChips">
               <button
-                v-for="(s, i) in recentSets"
+                v-for="(s, i) in lastSession.sets"
                 :key="i"
                 class="wtPrevSessionChip"
-                @click="fillFromPrevious(s)"
+                :class="{ wtPrevSessionChipUsed: lastSessionUsed[i] }"
+                @click="fillFromLastSession(s, i)"
               >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
             </div>
           </div>
@@ -1548,34 +1549,18 @@ const showModal = ref(false)
 const editingSet = ref<{ exerciseId: string; setId: string } | null>(null)
 const selectedExerciseId = ref('')
 
-// ── Previous sets for quick-fill ─────────────────────────────────
-const RECENT_SET_LIMIT = 5
-
-const recentSets = computed(() => {
-  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
-  if (!ex || ex.sets.length === 0) return []
-  // Sort by date descending, skip today
-  const today = todayISO()
-  const prior = [...ex.sets]
-    .filter(s => toLocalDateKey(s.date) !== today)
-    .sort((a, b) => b.date.localeCompare(a.date))
-  // Deduplicate by weight×reps, keep most recent of each
-  const seen = new Set<string>()
-  const result: { weight: number; reps: number }[] = []
-  for (const s of prior) {
-    const key = `${s.weight}x${s.reps}`
-    if (!seen.has(key)) {
-      seen.add(key)
-      result.push({ weight: s.weight, reps: s.reps })
-    }
-    if (result.length >= RECENT_SET_LIMIT) break
-  }
-  return result
+// ── Last session for quick-fill ──────────────────────────────────
+const lastSession = computed(() => {
+  return store.getLastSession(selectedExerciseId.value, todayISO())
 })
 
-function fillFromPrevious(set: { weight: number; reps: number }) {
+// Track which last-session sets the user has already tapped (visual feedback)
+const lastSessionUsed = ref<Record<number, boolean>>({})
+
+function fillFromLastSession(set: { weight: number; reps: number }, index: number) {
   weightStr.value = String(displayWeight(set.weight))
   repsStr.value = String(set.reps)
+  lastSessionUsed.value = { ...lastSessionUsed.value, [index]: true }
 }
 
 // ── Plate calculator state ──────────────────────────────────────
@@ -1891,6 +1876,7 @@ function pickNewExerciseFromPicker() {
 function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
+  lastSessionUsed.value = {}
   date.value = lastLogDate.value
   // Initialize plate calculator from last set if plate-loaded
   const exercise = store.exercises.find(e => e.id === exerciseId)
