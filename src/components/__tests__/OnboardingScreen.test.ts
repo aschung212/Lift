@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
-import OnboardingScreen from '../OnboardingScreen.vue'
+import OnboardingScreen from '../../views/OnboardingScreen.vue'
 
 // Mock stores — exercises array populated by mockAddExercise so applyPlateConfig can find them
 const mockExercises: { id: string; name: string; tags: string[]; inputMode?: string; barWeight?: number }[] = []

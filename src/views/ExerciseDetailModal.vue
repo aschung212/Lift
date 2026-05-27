@@ -128,7 +128,7 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
 import { toLocalDateKey } from '../lib/sessionSummary'
 import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
-import ExerciseGraph from './ExerciseGraph.vue'
+import ExerciseGraph from '../components/ExerciseGraph.vue'
 import type { Exercise, WorkoutSet } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {

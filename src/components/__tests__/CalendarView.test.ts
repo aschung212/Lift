@@ -55,7 +55,7 @@ vi.mock('../../stores/workout', () => ({
   })
 }))
 
-import CalendarView from '../CalendarView.vue'
+import CalendarView from '../../views/CalendarView.vue'
 
 function mountCalendar() {
   return mount(CalendarView, {

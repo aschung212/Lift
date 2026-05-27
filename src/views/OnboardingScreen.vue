@@ -94,7 +94,7 @@ import { useProgressionStore } from '../stores/progression'
 import { useTheme } from '../composables/useTheme'
 import type { ThemeId } from '../lib/themes'
 import { useAnalytics } from '../composables/useAnalytics'
-import StarterPickerFlow from './StarterPickerFlow.vue'
+import StarterPickerFlow from '../components/StarterPickerFlow.vue'
 
 const emit = defineEmits<{ complete: []; started: [] }>()
 const workoutStore = useWorkoutStore()

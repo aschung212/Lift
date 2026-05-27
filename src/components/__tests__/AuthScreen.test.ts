@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
-import AuthScreen from '../AuthScreen.vue'
+import AuthScreen from '../../views/AuthScreen.vue'
 
 // Mock auth composable
 const mockSignInWithProvider = vi.fn().mockResolvedValue({ error: null })

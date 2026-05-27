@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import AuthScreen from '../AuthScreen.vue'
-import BodyweightTracker from '../BodyweightTracker.vue'
-import OnboardingScreen from '../OnboardingScreen.vue'
+import AuthScreen from '../../views/AuthScreen.vue'
+import BodyweightTracker from '../../views/BodyweightTracker.vue'
+import OnboardingScreen from '../../views/OnboardingScreen.vue'
 import { useBodyweightStore } from '../../stores/bodyweight'
 vi.mock('../../composables/useAuth', () => ({
   useAuth: () => ({

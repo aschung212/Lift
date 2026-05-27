@@ -307,8 +307,8 @@ import { useModal } from '../composables/useModal'
 import { useTagVolume } from '../composables/useTagVolume'
 import { useTagRecovery } from '../composables/useTagRecovery'
 
-const MuscleGroupChart = defineAsyncComponent(() => import('./MuscleGroupChart.vue'))
-const MuscleGroupRecovery = defineAsyncComponent(() => import('./MuscleGroupRecovery.vue'))
+const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
+const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/MuscleGroupRecovery.vue'))
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()

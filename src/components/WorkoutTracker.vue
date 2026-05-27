@@ -896,7 +896,7 @@ import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/pl
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
-import ExerciseDetailModal from './ExerciseDetailModal.vue'
+import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
 import RestTimerContent from './RestTimerContent.vue'
 
 const store = useWorkoutStore()

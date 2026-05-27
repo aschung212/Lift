@@ -58,7 +58,7 @@ vi.mock('../../stores/bodyweight', () => ({
   })
 }))
 
-import BodyweightTracker from '../BodyweightTracker.vue'
+import BodyweightTracker from '../../views/BodyweightTracker.vue'
 
 function mountTracker(): VueWrapper {
   return mount(BodyweightTracker, {
