@@ -8,8 +8,22 @@ import { setSentryCaptureException, logError } from './lib/logger'
 import App from './App.vue'
 import './index.css'
 
-inject()
-injectSpeedInsights()
+// Defer analytics injection to after first paint — analytics should never
+// compete with rendering.  Sentry already uses a lazy import().then() pattern;
+// Vercel Analytics and Speed Insights follow the same principle here.
+const deferAfterPaint = (fn: () => void): void => {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(fn)
+  } else {
+    setTimeout(fn, 0)
+  }
+}
+
+deferAfterPaint(() => {
+  inject()
+  injectSpeedInsights()
+})
+
 initNativePlugins()
 
 // Initialize theme before mounting to prevent FOUC (flash of unstyled content).
