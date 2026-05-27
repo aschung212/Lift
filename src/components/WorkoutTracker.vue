@@ -348,7 +348,7 @@
                     :aria-checked="newExercisePlateMode"
                     @click="newExercisePlateMode = !newExercisePlateMode"
                   >
-                    <span class="iosToggleKnob" />
+                    <span class="iosToggleKnob"></span>
                   </button>
                 </div>
                 <template v-if="newExercisePlateMode">
@@ -424,9 +424,9 @@
 
           <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
           <div v-if="selectedExerciseId === '__new__'" class="wtSectionDivider">
-            <span class="wtSectionDividerLine" />
+            <span class="wtSectionDividerLine"></span>
             <span class="wtSectionDividerText">Log a set (optional)</span>
-            <span class="wtSectionDividerLine" />
+            <span class="wtSectionDividerLine"></span>
           </div>
           <!-- Live 1RM estimate / PR target -->
           <div v-if="liveEstimate" class="repMaxResult">
@@ -675,7 +675,7 @@
                 :aria-checked="editPlateMode"
                 @click="editPlateMode = !editPlateMode"
               >
-                <span class="iosToggleKnob" />
+                <span class="iosToggleKnob"></span>
               </button>
             </div>
             <template v-if="editPlateMode">
@@ -2010,7 +2010,15 @@ const prTargetWeight = computed<number | null>(() => {
 })
 
 // ── Live XP preview (shown when both weight and reps are filled) ──
-const liveXPPreview = computed(() => {
+// Debounced XP preview — the underlying calculation is expensive (1RM, rep PR,
+// streak multiplier) and triggers on every keystroke in weight/reps inputs.
+// We debounce by 150ms so the preview updates after the user pauses typing,
+// keeping INP low during rapid input. (#632)
+type XPPreviewResult = { xp: number; zone: string; best1RM: number | null; isRepPR: boolean; isNewWeight: boolean }
+const liveXPPreview = ref<XPPreviewResult | null>(null)
+let _xpPreviewTimer: ReturnType<typeof setTimeout> | undefined
+
+function _computeXPPreview(): XPPreviewResult | null {
   if (!progressionStore.progressionEnabled || !progressionStore.showProgression) return null
   if (!liveEstimateLbs.value || isEditMode.value) return null
   const id = selectedExerciseId.value
@@ -2060,7 +2068,21 @@ const liveXPPreview = computed(() => {
     isRepPR,
     isNewWeight,
   }
-})
+}
+
+watch(
+  () => [weight.value, reps.value, selectedExerciseId.value, isEditMode.value,
+         progressionStore.progressionEnabled, progressionStore.showProgression] as const,
+  () => {
+    clearTimeout(_xpPreviewTimer)
+    // Fast-clear when inputs are obviously invalid (no flicker of stale data)
+    if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) {
+      liveXPPreview.value = null
+      return
+    }
+    _xpPreviewTimer = setTimeout(() => { liveXPPreview.value = _computeXPPreview() }, 150)
+  },
+)
 
 const prTargetReps = computed<number | null>(() => {
   if (isEditMode.value || !weight.value || weight.value <= 0) return null
@@ -2652,6 +2674,7 @@ watch(
 )
 onUnmounted(() => {
   timerCtrl.stopTimer()
+  clearTimeout(_xpPreviewTimer)
   if (_plateSyncTimer) clearTimeout(_plateSyncTimer)
   document.documentElement.classList.remove('modal-open')
 })
