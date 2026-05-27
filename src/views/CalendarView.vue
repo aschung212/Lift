@@ -298,7 +298,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useWeightUnit } from '../composables/useWeightUnit'
@@ -306,8 +306,9 @@ import { usePRBaseline } from '../composables/usePRBaseline'
 import { useModal } from '../composables/useModal'
 import { useTagVolume } from '../composables/useTagVolume'
 import { useTagRecovery } from '../composables/useTagRecovery'
-import MuscleGroupChart from '../components/MuscleGroupChart.vue'
-import MuscleGroupRecovery from '../components/MuscleGroupRecovery.vue'
+
+const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
+const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/MuscleGroupRecovery.vue'))
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()

@@ -49,7 +49,7 @@
                     :key="set.id"
                     class="wtSetRow"
                     :class="{
-                      wtSetRowPR: set.estimated1RM === store.getExercisePR(exercise.id, prBaselineDate) && set.date.slice(0,10) === prDate,
+                      wtSetRowPR: set.estimated1RM === detailExercisePR && set.date.slice(0,10) === prDate,
                       'wtSetRowActive': activeSetId === set.id,
                     }"
                     @click="toggleSetActions(set.id)"
@@ -57,7 +57,7 @@
                     <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
                     <span class="wtSet1RM">
                       ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
-                      <span v-if="set.estimated1RM === store.getExercisePR(exercise.id, prBaselineDate) && set.date.slice(0,10) === prDate" class="wtSetPR">🏆</span>
+                      <span v-if="set.estimated1RM === detailExercisePR && set.date.slice(0,10) === prDate" class="wtSetPR">🏆</span>
                     </span>
                     <div v-if="activeSetId === set.id" class="wtSetActions">
                       <button
@@ -214,11 +214,18 @@ function filterSetsSinceBaseline<T extends { date: string }>(sets: T[]): T[] {
   return sets.filter(s => s.date.slice(0, 10) >= baseline)
 }
 
+// Cached PR value — called once per exercise instead of twice per set row.
+const detailExercisePR = computed((): number => {
+  const ex = exercise.value
+  if (!ex) return 0
+  return store.getExercisePR(ex.id, prBaselineDate.value)
+})
+
 // Earliest date the exercise hit its PR — only that date gets trophies.
 const prDate = computed(() => {
   const ex = exercise.value
   if (!ex) return ''
-  const pr = store.getExercisePR(ex.id, prBaselineDate.value)
+  const pr = detailExercisePR.value
   if (!pr) return ''
   let earliest = ''
   for (const set of filterSetsSinceBaseline(ex.sets)) {
