@@ -2010,7 +2010,7 @@ const prTargetWeight = computed<number | null>(() => {
 // streak multiplier) and triggers on every keystroke in weight/reps inputs.
 // We debounce by 150ms so the preview updates after the user pauses typing,
 // keeping INP low during rapid input. (#632)
-type XPPreviewResult = { xp: number; zone: string; best1RM: string | null; isRepPR: boolean; isNewWeight: boolean }
+type XPPreviewResult = { xp: number; zone: string; best1RM: number | null; isRepPR: boolean; isNewWeight: boolean }
 const liveXPPreview = ref<XPPreviewResult | null>(null)
 let _xpPreviewTimer: ReturnType<typeof setTimeout> | undefined
 
