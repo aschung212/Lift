@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { dirname } from 'node:path'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
@@ -928,87 +924,8 @@ describe('workout store', () => {
       expect(removed[0].id).toBe('x2')
     })
 
-    it('SEV1 regression 2026-04-12 — dedup must never push server DELETEs (READ path is read-only)', () => {
-      // Incident: client-side dedup in _fetchFromSupabase broadcast DELETE ops
-      // to Supabase every sync. For users with backdated straight-set programs
-      // (5x5 with T12:00:00 noon-local or T23:59:59 fixed timestamps), identical
-      // (date|weight|reps) tuples collapsed to one survivor and the rest were
-      // permanently deleted server-side. ~11 sets/session lost. No PITR on free
-      // tier = unrecoverable.
-      //
-      // Root cause: client treated its dedup heuristic as authoritative over
-      // server data. Fix: dedup is purely local; server is source of truth.
-      //
-      // This structural test prevents the exact anti-patterns from returning.
-      // Functional behavior is covered by the deduplicateSets / deduplicateByName
-      // unit tests above — those verify the local pruning still works.
-      const __filename = fileURLToPath(import.meta.url)
-      const __dirname = dirname(__filename)
-      const src = readFileSync(resolve(__dirname, '../workout.ts'), 'utf-8')
-
-      // Extract the _fetchFromSupabase function body. Uses brace counting
-      // to handle nested braces correctly.
-      const fnStart = src.indexOf('async function _fetchFromSupabase()')
-      expect(fnStart).toBeGreaterThan(-1)
-      const openBrace = src.indexOf('{', fnStart)
-      let depth = 1
-      let i = openBrace + 1
-      while (i < src.length && depth > 0) {
-        if (src[i] === '{') depth++
-        else if (src[i] === '}') depth--
-        i++
-      }
-      const body = src.slice(openBrace + 1, i - 1)
-
-      // Every .delete(...) call in this function MUST be part of tombstone
-      // processing (syncing pending USER-initiated deletes). Non-tombstone
-      // deletes in the read path are the bug we shipped a SEV1 for.
-      //
-      // Heuristic: for each .delete( match, the prior 10 lines must mention
-      // "tombstone" (either the import or the branch condition isTombstoned).
-      const deletePattern = /\.delete\s*\(/g
-      let match: RegExpExecArray | null
-      while ((match = deletePattern.exec(body)) !== null) {
-        const before = body.slice(Math.max(0, match.index - 400), match.index)
-        expect(before).toMatch(/tombstone/i)
-      }
-
-      // Guard against the specific variable names and comment fragments that
-      // existed before the fix. If these reappear, the bug is back.
-      expect(body).not.toMatch(/dupSetIds/)
-      expect(body).not.toMatch(/Set was content-deduped out/)
-      expect(body).not.toMatch(/Delete the duplicate exercise from Supabase/)
-    })
-
-    it('SEV1 regression 2026-04-12 — bodyweight read path is also read-only', () => {
-      // Bodyweight store had the same anti-pattern as workout: date-level dedup
-      // broadcast deletes to Supabase. Same fix applied.
-      const __filename = fileURLToPath(import.meta.url)
-      const __dirname = dirname(__filename)
-      const src = readFileSync(resolve(__dirname, '../bodyweight.ts'), 'utf-8')
-
-      const fnStart = src.indexOf('async _fetchFromSupabase()')
-      expect(fnStart).toBeGreaterThan(-1)
-      const openBrace = src.indexOf('{', fnStart)
-      let depth = 1
-      let i = openBrace + 1
-      while (i < src.length && depth > 0) {
-        if (src[i] === '{') depth++
-        else if (src[i] === '}') depth--
-        i++
-      }
-      const body = src.slice(openBrace + 1, i - 1)
-
-      const deletePattern = /\.delete\s*\(/g
-      let match: RegExpExecArray | null
-      while ((match = deletePattern.exec(body)) !== null) {
-        const before = body.slice(Math.max(0, match.index - 400), match.index)
-        expect(before).toMatch(/tombstone/i)
-      }
-
-      expect(body).not.toMatch(/dupIds/)
-      expect(body).not.toMatch(/Clean up duplicate entries from Supabase/)
-    })
+    // SEV1 2026-04-12 structural tests (READ path is read-only) consolidated
+    // into architecturalInvariants.test.ts (LIFT-653).
 
     it('sorts merged sets chronologically (regression: out-of-order after dedup)', () => {
       const exercises: Exercise[] = [
