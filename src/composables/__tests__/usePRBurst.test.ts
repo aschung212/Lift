@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
 // Mock useHaptics before we import the module under test so its inline
@@ -24,10 +24,17 @@ import { usePreferencesStore } from '../../stores/preferences'
 
 describe('usePRBurst', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     setActivePinia(createPinia())
     notifySuccessMock.mockClear()
     const { dismissPRBurst } = usePRBurst()
     dismissPRBurst()
+    // Flush the 200ms dismiss timeout so it doesn't leak across tests
+    vi.advanceTimersByTime(200)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('presents when new e1RM beats old and celebrations are enabled', () => {
@@ -116,7 +123,6 @@ describe('usePRBurst', () => {
   })
 
   it('dismissPRBurst clears pending timeout on re-dismiss', () => {
-    vi.useFakeTimers()
     const { presentPRBurst, dismissPRBurst, payload } = usePRBurst()
     presentPRBurst({
       exerciseName: 'Hack Squat',
@@ -144,7 +150,6 @@ describe('usePRBurst', () => {
     vi.advanceTimersByTime(200)
     // Payload should be null (only one timeout fired)
     expect(payload.value).toBeNull()
-    vi.useRealTimers()
   })
 
   it('dismissPRBurst hides the overlay', () => {
