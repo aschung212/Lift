@@ -1,0 +1,678 @@
+/**
+ * Supabase Integration Tests (LIFT-651)
+ *
+ * Validates the exact PostgREST query shapes used by the workout and bodyweight
+ * stores against a real Supabase instance. Every other sync test in this repo
+ * uses in-memory fakes — those prove behavioral contracts (no data loss, no
+ * runaway deletes) but can't detect schema drift. If a column is renamed,
+ * a type changed, or an RLS policy tightened, the fakes won't notice.
+ *
+ * These tests hit the real PostgREST API, validating:
+ *   1. Upsert exercises and sets (INSERT + ON CONFLICT UPDATE)
+ *   2. Soft-delete via UPDATE { deleted_at }
+ *   3. Fetch with `.is('deleted_at', null)` filtering
+ *   4. Archived_at upsert and unarchive
+ *   5. Bodyweight entry upsert and soft-delete
+ *
+ * ## Running locally
+ *
+ *   1. Start local Supabase: `npx supabase start`
+ *   2. Run:
+ *      ```
+ *      SUPABASE_INT_URL=http://127.0.0.1:54321 \
+ *      SUPABASE_INT_SERVICE_ROLE_KEY=<service_role key from `supabase status`> \
+ *      npx vitest run src/stores/__tests__/supabaseIntegration.test.ts
+ *      ```
+ *
+ * ## Running in CI
+ *
+ * The nightly workflow starts a local Supabase instance and sets the env vars
+ * automatically. See `.github/workflows/integration.yml`.
+ *
+ * ## Design decisions
+ *
+ * - Uses the **service_role** key (bypasses RLS) so tests can insert rows
+ *   with any user_id without needing auth.users entries. This tests query
+ *   shapes, not auth policies — RLS is a separate concern.
+ * - Each test uses a unique `user_id` (UUID v4) and cleans up via hard DELETE
+ *   in afterEach, so tests are hermetic and parallelizable.
+ * - Tests are gated behind env vars and excluded from the default vitest run
+ *   via the `exclude` pattern in vitest.config.js.
+ */
+
+import { describe, it, expect, beforeAll, afterEach } from 'vitest'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '../../lib/database.types'
+
+// ── Gate: skip entire suite if env vars are missing ────────────────
+const SUPABASE_URL = process.env.SUPABASE_INT_URL
+const SUPABASE_KEY = process.env.SUPABASE_INT_SERVICE_ROLE_KEY
+
+const describeIntegration = SUPABASE_URL && SUPABASE_KEY
+  ? describe
+  : describe.skip
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+function uuid(): string {
+  return crypto.randomUUID()
+}
+
+const now = () => new Date().toISOString()
+
+// Tracks all user IDs created in tests for cleanup
+const testUserIds: string[] = []
+
+// ── Suite ──────────────────────────────────────────────────────────
+
+describeIntegration('Supabase integration: PostgREST query shape validation', () => {
+  let supabase: SupabaseClient<Database>
+
+  beforeAll(() => {
+    supabase = createClient<Database>(SUPABASE_URL!, SUPABASE_KEY!)
+  })
+
+  afterEach(async () => {
+    // Hard-delete all test data (service_role bypasses RLS)
+    for (const userId of testUserIds) {
+      // Delete in FK order: sets → exercises, bodyweight_entries
+      await supabase.from('sets').delete().eq('user_id', userId)
+      await supabase.from('exercises').delete().eq('user_id', userId)
+      await supabase.from('bodyweight_entries').delete().eq('user_id', userId)
+    }
+    testUserIds.length = 0
+  })
+
+  // ── Exercise + Set upsert ──────────────────────────────────────
+
+  describe('exercise and set upsert', () => {
+    it('upserts an exercise with all fields the store sends', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const ts = now()
+
+      // This is the exact shape _buildExerciseUpsert produces
+      const { error } = await supabase.from('exercises').upsert({
+        id: exerciseId,
+        user_id: userId,
+        name: 'Bench Press',
+        tags: ['Push', 'Chest'],
+        created_at: ts,
+        updated_at: ts,
+        archived_at: null,
+        input_mode: 'numpad',
+        bar_weight: 45,
+      })
+
+      expect(error).toBeNull()
+
+      // Verify round-trip
+      const { data, error: fetchErr } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('id', exerciseId)
+
+      expect(fetchErr).toBeNull()
+      expect(data).toHaveLength(1)
+      expect(data![0]).toMatchObject({
+        id: exerciseId,
+        user_id: userId,
+        name: 'Bench Press',
+        tags: ['Push', 'Chest'],
+        bar_weight: 45,
+        input_mode: 'numpad',
+        deleted_at: null,
+        archived_at: null,
+      })
+    })
+
+    it('upserts a set with all fields the store sends', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const setId = uuid()
+      const ts = now()
+
+      // Insert parent exercise first (FK constraint)
+      await supabase.from('exercises').upsert({
+        id: exerciseId,
+        user_id: userId,
+        name: 'Squat',
+        tags: [],
+        created_at: ts,
+        updated_at: ts,
+      })
+
+      // Exact shape the store sends for set upsert
+      const { error } = await supabase.from('sets').upsert({
+        id: setId,
+        user_id: userId,
+        exercise_id: exerciseId,
+        date: ts,
+        weight: 315,
+        reps: 5,
+        estimated_1rm: 354,
+      })
+
+      expect(error).toBeNull()
+
+      const { data, error: fetchErr } = await supabase
+        .from('sets')
+        .select('*')
+        .eq('id', setId)
+
+      expect(fetchErr).toBeNull()
+      expect(data).toHaveLength(1)
+      expect(data![0]).toMatchObject({
+        id: setId,
+        user_id: userId,
+        exercise_id: exerciseId,
+        weight: 315,
+        reps: 5,
+        estimated_1rm: 354,
+        deleted_at: null,
+      })
+    })
+
+    it('upsert updates existing exercise on conflict (last-write-wins)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId,
+        user_id: userId,
+        name: 'Original Name',
+        tags: [],
+        created_at: ts,
+        updated_at: ts,
+      })
+
+      // Second upsert with same ID — should update, not duplicate
+      const ts2 = now()
+      const { error } = await supabase.from('exercises').upsert({
+        id: exerciseId,
+        user_id: userId,
+        name: 'Renamed Exercise',
+        tags: ['Push'],
+        created_at: ts,
+        updated_at: ts2,
+      })
+
+      expect(error).toBeNull()
+
+      const { data } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('id', exerciseId)
+
+      expect(data).toHaveLength(1)
+      expect(data![0].name).toBe('Renamed Exercise')
+      expect(data![0].tags).toEqual(['Push'])
+    })
+  })
+
+  // ── Soft-delete ────────────────────────────────────────────────
+
+  describe('soft-delete via UPDATE { deleted_at }', () => {
+    it('soft-deletes a set by setting deleted_at (exact store query shape)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const setId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Deadlift',
+        tags: [], created_at: ts, updated_at: ts,
+      })
+      await supabase.from('sets').upsert({
+        id: setId, user_id: userId, exercise_id: exerciseId,
+        date: ts, weight: 405, reps: 3, estimated_1rm: 446,
+      })
+
+      // Exact query shape from store.deleteSet → syncQueue.enqueueDelete
+      const deletedAt = now()
+      const { error } = await supabase
+        .from('sets')
+        .update({ deleted_at: deletedAt })
+        .eq('id', setId)
+        .eq('user_id', userId)
+
+      expect(error).toBeNull()
+
+      // Row still exists but with deleted_at populated
+      const { data } = await supabase
+        .from('sets')
+        .select('*')
+        .eq('id', setId)
+
+      expect(data).toHaveLength(1)
+      expect(data![0].deleted_at).not.toBeNull()
+    })
+
+    it('soft-deletes all sets for an exercise (cascade pattern)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'OHP',
+        tags: [], created_at: ts, updated_at: ts,
+      })
+
+      // Insert 3 sets
+      for (let i = 0; i < 3; i++) {
+        await supabase.from('sets').upsert({
+          id: uuid(), user_id: userId, exercise_id: exerciseId,
+          date: ts, weight: 135 + i * 10, reps: 5, estimated_1rm: 150 + i * 10,
+        })
+      }
+
+      // Exact query shape from store.deleteExercise for cascade set soft-delete
+      const deletedAt = now()
+      const { error: setErr } = await supabase
+        .from('sets')
+        .update({ deleted_at: deletedAt })
+        .eq('exercise_id', exerciseId)
+        .eq('user_id', userId)
+
+      expect(setErr).toBeNull()
+
+      // Soft-delete the exercise itself
+      const { error: exErr } = await supabase
+        .from('exercises')
+        .update({ deleted_at: deletedAt })
+        .eq('id', exerciseId)
+        .eq('user_id', userId)
+
+      expect(exErr).toBeNull()
+
+      // All rows still exist, all have deleted_at
+      const { data: sets } = await supabase
+        .from('sets')
+        .select('*')
+        .eq('exercise_id', exerciseId)
+
+      expect(sets).toHaveLength(3)
+      expect(sets!.every(s => s.deleted_at !== null)).toBe(true)
+    })
+
+    it('restores a soft-deleted set by nulling deleted_at', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const setId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Row',
+        tags: [], created_at: ts, updated_at: ts,
+      })
+      await supabase.from('sets').upsert({
+        id: setId, user_id: userId, exercise_id: exerciseId,
+        date: ts, weight: 225, reps: 8, estimated_1rm: 281,
+      })
+
+      // Soft-delete then restore
+      await supabase.from('sets')
+        .update({ deleted_at: now() })
+        .eq('id', setId).eq('user_id', userId)
+
+      const { error } = await supabase.from('sets')
+        .update({ deleted_at: null })
+        .eq('id', setId).eq('user_id', userId)
+
+      expect(error).toBeNull()
+
+      const { data } = await supabase
+        .from('sets')
+        .select('*')
+        .eq('id', setId)
+
+      expect(data![0].deleted_at).toBeNull()
+    })
+  })
+
+  // ── Fetch with deleted_at filter ──────────────────────────────
+
+  describe('fetch with .is(deleted_at, null) filtering', () => {
+    it('returns only active exercises (exact _fetchFromSupabase query)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const ts = now()
+
+      const activeId = uuid()
+      const deletedId = uuid()
+
+      await supabase.from('exercises').upsert({
+        id: activeId, user_id: userId, name: 'Active Exercise',
+        tags: [], created_at: ts, updated_at: ts, deleted_at: null,
+      })
+      await supabase.from('exercises').upsert({
+        id: deletedId, user_id: userId, name: 'Deleted Exercise',
+        tags: [], created_at: ts, updated_at: ts, deleted_at: ts,
+      })
+
+      // Exact query shape from _fetchFromSupabase
+      const { data, error } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .order('created_at')
+
+      expect(error).toBeNull()
+      expect(data).toHaveLength(1)
+      expect(data![0].id).toBe(activeId)
+      expect(data![0].name).toBe('Active Exercise')
+    })
+
+    it('returns only active sets (exact _fetchFromSupabase query)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Curl',
+        tags: [], created_at: ts, updated_at: ts,
+      })
+
+      const activeSetId = uuid()
+      const deletedSetId = uuid()
+
+      await supabase.from('sets').upsert({
+        id: activeSetId, user_id: userId, exercise_id: exerciseId,
+        date: ts, weight: 50, reps: 12, estimated_1rm: 71,
+      })
+      await supabase.from('sets').upsert({
+        id: deletedSetId, user_id: userId, exercise_id: exerciseId,
+        date: ts, weight: 50, reps: 10, estimated_1rm: 67,
+        deleted_at: ts,
+      })
+
+      // Exact query shape from _fetchFromSupabase
+      const { data, error } = await supabase
+        .from('sets')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .order('created_at')
+
+      expect(error).toBeNull()
+      expect(data).toHaveLength(1)
+      expect(data![0].id).toBe(activeSetId)
+    })
+  })
+
+  // ── Archived_at ───────────────────────────────────────────────
+
+  describe('archived_at lifecycle', () => {
+    it('upserts archived_at on exercises (archive flow)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Leg Press',
+        tags: [], created_at: ts, updated_at: ts,
+      })
+
+      // Archive: upsert with archived_at set (exact store pattern)
+      const archivedAt = now()
+      const { error } = await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Leg Press',
+        tags: [], created_at: ts, updated_at: now(),
+        archived_at: archivedAt,
+      })
+
+      expect(error).toBeNull()
+
+      const { data } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('id', exerciseId)
+
+      expect(data![0].archived_at).not.toBeNull()
+    })
+
+    it('unarchives by upserting archived_at: null', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Calf Raise',
+        tags: [], created_at: ts, updated_at: ts,
+        archived_at: ts,
+      })
+
+      const { error } = await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Calf Raise',
+        tags: [], created_at: ts, updated_at: now(),
+        archived_at: null,
+      })
+
+      expect(error).toBeNull()
+
+      const { data } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('id', exerciseId)
+
+      expect(data![0].archived_at).toBeNull()
+    })
+
+    it('archived exercises are still visible in active-row fetch (not soft-deleted)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Archived But Active',
+        tags: [], created_at: ts, updated_at: ts,
+        archived_at: ts, deleted_at: null,
+      })
+
+      // The store's _fetchFromSupabase filters on deleted_at, NOT archived_at
+      const { data, error } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .order('created_at')
+
+      expect(error).toBeNull()
+      expect(data).toHaveLength(1)
+      expect(data![0].archived_at).not.toBeNull()
+    })
+  })
+
+  // ── Bodyweight entries ────────────────────────────────────────
+
+  describe('bodyweight entry operations', () => {
+    it('upserts a bodyweight entry (exact store query shape)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const entryId = uuid()
+      const ts = now()
+
+      const { error } = await supabase.from('bodyweight_entries').upsert({
+        id: entryId,
+        user_id: userId,
+        date: ts,
+        weight: 185.5,
+      })
+
+      expect(error).toBeNull()
+
+      const { data } = await supabase
+        .from('bodyweight_entries')
+        .select('*')
+        .eq('id', entryId)
+
+      expect(data).toHaveLength(1)
+      expect(data![0]).toMatchObject({
+        id: entryId,
+        user_id: userId,
+        weight: 185.5,
+        deleted_at: null,
+      })
+    })
+
+    it('soft-deletes a bodyweight entry (exact store query shape)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const entryId = uuid()
+      const ts = now()
+
+      await supabase.from('bodyweight_entries').upsert({
+        id: entryId, user_id: userId, date: ts, weight: 180,
+      })
+
+      const deletedAt = now()
+      const { error } = await supabase
+        .from('bodyweight_entries')
+        .update({ deleted_at: deletedAt })
+        .eq('id', entryId)
+        .eq('user_id', userId)
+
+      expect(error).toBeNull()
+
+      const { data } = await supabase
+        .from('bodyweight_entries')
+        .select('*')
+        .eq('id', entryId)
+
+      expect(data![0].deleted_at).not.toBeNull()
+    })
+
+    it('fetch filters out soft-deleted bodyweight entries', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const ts = now()
+
+      const activeId = uuid()
+      const deletedId = uuid()
+
+      await supabase.from('bodyweight_entries').upsert({
+        id: activeId, user_id: userId, date: ts, weight: 180,
+      })
+      await supabase.from('bodyweight_entries').upsert({
+        id: deletedId, user_id: userId, date: ts, weight: 181,
+        deleted_at: ts,
+      })
+
+      // Exact query shape from bodyweight store _fetchFromSupabase
+      const { data, error } = await supabase
+        .from('bodyweight_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .order('created_at')
+
+      expect(error).toBeNull()
+      expect(data).toHaveLength(1)
+      expect(data![0].id).toBe(activeId)
+    })
+  })
+
+  // ── Edge cases / conflict resolution ──────────────────────────
+
+  describe('conflict resolution and edge cases', () => {
+    it('upsert with session_id column (sets table)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const setId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Bench',
+        tags: [], created_at: ts, updated_at: ts,
+      })
+
+      // session_id is an optional field added in a later migration
+      const { error } = await supabase.from('sets').upsert({
+        id: setId, user_id: userId, exercise_id: exerciseId,
+        date: ts, weight: 225, reps: 5, estimated_1rm: 253,
+        session_id: 'sess-abc123',
+      })
+
+      expect(error).toBeNull()
+
+      const { data } = await supabase.from('sets').select('*').eq('id', setId)
+      expect(data![0].session_id).toBe('sess-abc123')
+    })
+
+    it('concurrent upserts to the same exercise resolve without error', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const ts = now()
+
+      // Seed the exercise
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Initial',
+        tags: [], created_at: ts, updated_at: ts,
+      })
+
+      // Simulate two concurrent upserts (e.g. from two tabs)
+      const [r1, r2] = await Promise.all([
+        supabase.from('exercises').upsert({
+          id: exerciseId, user_id: userId, name: 'Tab 1 Name',
+          tags: ['Push'], created_at: ts, updated_at: now(),
+        }),
+        supabase.from('exercises').upsert({
+          id: exerciseId, user_id: userId, name: 'Tab 2 Name',
+          tags: ['Pull'], created_at: ts, updated_at: now(),
+        }),
+      ])
+
+      // Neither should error — last-write-wins at DB level
+      expect(r1.error).toBeNull()
+      expect(r2.error).toBeNull()
+
+      // Exactly one row should exist
+      const { data } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('id', exerciseId)
+
+      expect(data).toHaveLength(1)
+    })
+
+    it('float precision is preserved through round-trip (weight, estimated_1rm)', async () => {
+      const userId = uuid()
+      testUserIds.push(userId)
+      const exerciseId = uuid()
+      const setId = uuid()
+      const ts = now()
+
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Precision Test',
+        tags: [], created_at: ts, updated_at: ts,
+      })
+
+      // Real columns use `real` (float4) — verify no silent truncation
+      const { error } = await supabase.from('sets').upsert({
+        id: setId, user_id: userId, exercise_id: exerciseId,
+        date: ts, weight: 132.5, reps: 8, estimated_1rm: 166.25,
+      })
+
+      expect(error).toBeNull()
+
+      const { data } = await supabase.from('sets').select('*').eq('id', setId)
+      expect(data![0].weight).toBe(132.5)
+      // float4 has ~7 digits of precision — 166.25 is exact in float4
+      expect(data![0].estimated_1rm).toBe(166.25)
+    })
+  })
+})
