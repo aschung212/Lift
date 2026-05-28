@@ -305,6 +305,19 @@
                   autocomplete="off"
                 />
               </div>
+              <ul v-if="exerciseSuggestions.length > 0" class="wtExerciseSuggestions" role="listbox" aria-label="Exercise suggestions">
+                <li
+                  v-for="entry in exerciseSuggestions"
+                  :key="entry.name"
+                  class="wtExerciseSuggestionItem"
+                  role="option"
+                  @mousedown.prevent="selectExerciseSuggestion(entry)"
+                  @touchstart.prevent="selectExerciseSuggestion(entry)"
+                >
+                  <span class="wtSuggestionName">{{ entry.name }}</span>
+                  <span class="wtSuggestionTags">{{ entry.tags.join(' · ') }}</span>
+                </li>
+              </ul>
             </label>
             <div class="repMaxLabel">
               Tags
@@ -921,6 +934,8 @@ const timerCtrl = useRestTimerController(
 import { useWakeLock } from '../composables/useWakeLock'
 import { usePreferencesStore } from '../stores/preferences'
 import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
+import { searchExerciseDatabase } from '../lib/exerciseDatabase'
+import type { ExerciseEntry } from '../lib/exerciseDatabase'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
 
@@ -1723,6 +1738,23 @@ const newExerciseTagInput = ref('')
 const newExercisePlateMode = ref(false)
 const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
 const newExerciseBarWeight = ref(45)
+
+// ── Exercise database suggestions ──────────────────────────────────
+const exerciseSuggestions = computed(() =>
+  searchExerciseDatabase(
+    newExerciseName.value,
+    store.exercises.map(e => e.name),
+  ),
+)
+
+function selectExerciseSuggestion(entry: ExerciseEntry) {
+  newExerciseName.value = entry.name
+  newExerciseTags.value = [...entry.tags]
+  if (entry.inputMode === 'plates') {
+    newExercisePlateMode.value = true
+    newExerciseBarWeight.value = entry.barWeight ?? 45
+  }
+}
 const newBarWeightEditing = ref(false)
 const prTableExpanded = ref(false)
 const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
