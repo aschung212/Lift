@@ -21,6 +21,7 @@ export interface WorkoutSet {
   weight: number
   reps: number
   estimated1RM: number
+  rpe?: number  // Rate of Perceived Exertion (6–10, half-step)
 }
 
 export type ExerciseInputMode = 'numpad' | 'plates'
@@ -523,7 +524,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
+  function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true, rpe }: { sync?: boolean; rpe?: number } = {}) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
     // Real user action on a sample exercise adopts it (makes it syncable).
@@ -536,7 +537,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       : new Date().toISOString()
     const id = uuid()
     const estimated1RM = epley(weight, reps)
-    exercise.sets.push({ id, date, weight, reps, estimated1RM })
+    const set: WorkoutSet = { id, date, weight, reps, estimated1RM }
+    if (rpe != null) set.rpe = rpe
+    exercise.sets.push(set)
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
@@ -552,7 +555,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function updateSet(exerciseId: string, setId: string, weight: number, reps: number, dateStr?: string) {
+  function updateSet(exerciseId: string, setId: string, weight: number, reps: number, dateStr?: string, rpe?: number | null) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
     const set = exercise.sets.find((s: WorkoutSet) => s.id === setId)
@@ -563,6 +566,10 @@ export const useWorkoutStore = defineStore('workout', () => {
     set.estimated1RM = epley(weight, reps)
     if (dateStr) {
       set.date = endOfDayISO(dateStr)
+    }
+    if (rpe !== undefined) {
+      if (rpe === null) delete set.rpe
+      else set.rpe = rpe
     }
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)

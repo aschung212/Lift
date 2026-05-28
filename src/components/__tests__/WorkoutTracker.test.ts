@@ -745,7 +745,7 @@ describe('WorkoutTracker', () => {
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       await saveBtn.trigger('click')
 
-      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String))
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String), expect.objectContaining({}))
     })
 
     it('keeps modal open with cleared fields after saving a set', async () => {
@@ -1083,7 +1083,7 @@ describe('WorkoutTracker', () => {
 
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
 
-      expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String))
+      expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String), null)
     })
 
     it('shows date picker in edit mode', async () => {

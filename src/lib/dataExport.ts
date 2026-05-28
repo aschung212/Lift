@@ -25,7 +25,7 @@ export interface JsonExportData extends ExportMetadata {
   exercises: {
     name: string
     tags: string[]
-    sets: { date: string; weight: number; reps: number; estimated1RM: number }[]
+    sets: { date: string; weight: number; reps: number; estimated1RM: number; rpe?: number }[]
   }[]
   bodyweight: { date: string; weight: number }[]
   progression: ProgressionSnapshot
@@ -53,6 +53,7 @@ export function buildJsonExport(
         weight: s.weight,
         reps: s.reps,
         estimated1RM: s.estimated1RM,
+        ...(s.rpe != null ? { rpe: s.rpe } : {}),
       })),
     })),
     bodyweight: bodyweight.map(e => ({
@@ -78,13 +79,14 @@ export function buildCsvExport(
   const timestamp = metadata.exportDate.slice(0, 10)
   const lines = [
     `# Lift Export — ${timestamp} — v${metadata.appVersion} — ${metadata.userIdHash}`,
-    'Exercise,Date,Weight,Reps,Estimated 1RM,Tags',
+    'Exercise,Date,Weight,Reps,Estimated 1RM,Tags,RPE',
   ]
   for (const ex of exercises) {
     for (const s of ex.sets) {
       const date = s.date.slice(0, 10)
       const tags = ex.tags.join(';')
-      lines.push(`${csvEscape(ex.name)},${date},${s.weight},${s.reps},${s.estimated1RM},${csvEscape(tags)}`)
+      const rpe = s.rpe != null ? String(s.rpe) : ''
+      lines.push(`${csvEscape(ex.name)},${date},${s.weight},${s.reps},${s.estimated1RM},${csvEscape(tags)},${rpe}`)
     }
   }
   if (bodyweight.length > 0) {

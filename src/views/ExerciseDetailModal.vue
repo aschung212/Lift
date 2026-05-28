@@ -55,6 +55,7 @@
                     @click="toggleSetActions(set.id)"
                   >
                     <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
+                    <span v-if="set.rpe" class="wtSetRPE">RPE {{ set.rpe }}</span>
                     <span class="wtSet1RM">
                       ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
                       <span v-if="set.estimated1RM === detailExercisePR && set.date.slice(0,10) === prDate" class="wtSetPR">🏆</span>

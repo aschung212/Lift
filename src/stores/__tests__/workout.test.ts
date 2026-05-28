@@ -120,6 +120,20 @@ describe('workout store', () => {
       store.logSet(id, 225, 5)
       expect(store.exercises[0].sets).toHaveLength(3)
     })
+
+    it('stores RPE when provided', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat')!
+      store.logSet(id, 225, 5, undefined, { rpe: 8.5 })
+      expect(store.exercises[0].sets[0].rpe).toBe(8.5)
+    })
+
+    it('omits rpe field when not provided', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat')!
+      store.logSet(id, 225, 5)
+      expect(store.exercises[0].sets[0]).not.toHaveProperty('rpe')
+    })
   })
 
   // ── updateSet ──────────────────────────────────────────────────
@@ -159,6 +173,34 @@ describe('workout store', () => {
       store.updateSet('fake-ex', 'fake-set', 200, 5)
       // No crash, no changes
       expect(store.exercises[0].sets).toHaveLength(0)
+    })
+
+    it('sets RPE when provided', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 10)
+      const setId = store.exercises[0].sets[0].id
+      store.updateSet(exId, setId, 135, 10, undefined, 9)
+      expect(store.exercises[0].sets[0].rpe).toBe(9)
+    })
+
+    it('removes RPE when set to null', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 10, undefined, { rpe: 8 })
+      const setId = store.exercises[0].sets[0].id
+      expect(store.exercises[0].sets[0].rpe).toBe(8)
+      store.updateSet(exId, setId, 135, 10, undefined, null)
+      expect(store.exercises[0].sets[0]).not.toHaveProperty('rpe')
+    })
+
+    it('leaves RPE unchanged when rpe param is undefined', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 10, undefined, { rpe: 7.5 })
+      const setId = store.exercises[0].sets[0].id
+      store.updateSet(exId, setId, 185, 5)
+      expect(store.exercises[0].sets[0].rpe).toBe(7.5)
     })
   })
 

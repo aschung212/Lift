@@ -235,6 +235,7 @@
               <div class="wtTimelineRowMain">
                 <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
                 <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
+                <span v-if="entry.set.rpe" class="wtTimelineRPE">RPE {{ entry.set.rpe }}</span>
                 <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
                 <span v-if="timelinePRMap[entry.set.id] === 'pr'" class="wtTimelineBadge" aria-label="Personal record">🏆</span>
                 <span v-else-if="timelinePRMap[entry.set.id] === 'repPR'" class="wtTimelineBadge" aria-label="Rep personal record">🔥</span>
@@ -563,6 +564,35 @@
                 >+</button>
               </div>
             </div>
+          </div>
+
+          <!-- RPE selector (optional, progressive disclosure) -->
+          <div class="wtRPERow">
+            <button
+              v-if="selectedRPE === null"
+              type="button"
+              class="wtRPEToggle"
+              @click="selectedRPE = 7"
+              aria-label="Add RPE rating"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+              <span>RPE</span>
+            </button>
+            <template v-else>
+              <span class="wtRPELabel">RPE</span>
+              <div class="wtRPEChips" role="radiogroup" aria-label="Rate of Perceived Exertion">
+                <button
+                  v-for="v in RPE_VALUES"
+                  :key="v"
+                  type="button"
+                  :class="['wtRPEChip', { wtRPEChipActive: selectedRPE === v }]"
+                  role="radio"
+                  :aria-checked="selectedRPE === v"
+                  :aria-label="`RPE ${v}`"
+                  @click="selectedRPE = selectedRPE === v ? null : v"
+                >{{ Number.isInteger(v) ? v : v.toFixed(1) }}</button>
+              </div>
+            </template>
           </div>
 
           <!-- One-time hint: plate calculator discoverability (LIFT-388) -->
@@ -1749,6 +1779,8 @@ watch(weightStr, () => {
 })
 
 const date = ref(todayISO())
+const selectedRPE = ref<number | null>(null)
+const RPE_VALUES = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10] as const
 // Remembers the last date the user manually set when logging, so the modal
 // re-opens to that date rather than always resetting to today.
 const lastLogDate = ref(todayISO())
@@ -1876,6 +1908,7 @@ function pickNewExerciseFromPicker() {
 function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
+  selectedRPE.value = null
   lastSessionUsed.value = {}
   date.value = lastLogDate.value
   // Initialize plate calculator from last set if plate-loaded
@@ -1906,6 +1939,7 @@ function openEditModal(exercise: Exercise, set: WorkoutSet) {
   date.value = isoToLocalDate(set.date)
   weight.value = displayWeight(set.weight)
   reps.value = set.reps
+  selectedRPE.value = set.rpe ?? null
   showModal.value = true
 }
 
@@ -1925,6 +1959,7 @@ function closeModal() {
   newExerciseTagInput.value = ''
   weight.value = null
   reps.value = null
+  selectedRPE.value = null
   date.value = todayISO()
   plateNumpadOverride.value = false
   prTableExpanded.value = false
@@ -2252,7 +2287,7 @@ function saveSet() {
   if (isEditMode.value && editingSet.value && weight.value !== null && reps.value !== null) {
     const editExId = editingSet.value.exerciseId
     const editSetId = editingSet.value.setId
-    store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value)
+    store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value, selectedRPE.value)
     logEvent('set_edit')
     // Recalc XP for the edited set
     if (progressionStore.progressionEnabled) {
@@ -2318,7 +2353,7 @@ function saveSet() {
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
       // Snapshot PR count before logging so we can detect the user's very first PR.
       const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
-      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
+      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value, { rpe: selectedRPE.value ?? undefined })
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       // XP: get the just-logged set (last in array) and compute XP
       const exercise = store.exercises.find(e => e.id === exerciseId)
@@ -2351,6 +2386,7 @@ function saveSet() {
       }
       // Clear fields and stay on the modal for the next set
       plateNumpadOverride.value = false
+      selectedRPE.value = null
       if (plateMode.value) {
         // Keep plate config for next set (user adjusts, not reloads)
         previousPlates.value = [...currentPlates.value]
