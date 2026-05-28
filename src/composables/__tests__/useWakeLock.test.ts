@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ref, nextTick } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 
 // Re-import fresh module state for each test
 let useWakeLock: typeof import('../useWakeLock').useWakeLock
@@ -73,9 +74,8 @@ describe('useWakeLock', () => {
 
     shouldLock.value = true
     await nextTick()
-    await vi.waitFor(() => {
-      expect(navigator.wakeLock.request).toHaveBeenCalledWith('screen')
-    })
+    await flushPromises()
+    expect(navigator.wakeLock.request).toHaveBeenCalledWith('screen')
   })
 
   it('does not acquire when enabled is false', async () => {
@@ -94,15 +94,13 @@ describe('useWakeLock', () => {
     const enabled = ref(true)
     useWakeLock(shouldLock, enabled)
     await nextTick()
-    await vi.waitFor(() => {
-      expect(navigator.wakeLock.request).toHaveBeenCalled()
-    })
+    await flushPromises()
+    expect(navigator.wakeLock.request).toHaveBeenCalled()
 
     shouldLock.value = false
     await nextTick()
-    await vi.waitFor(() => {
-      expect(mockSentinel.release).toHaveBeenCalled()
-    })
+    await flushPromises()
+    expect(mockSentinel.release).toHaveBeenCalled()
   })
 
   it('releases wake lock when enabled becomes false', async () => {
@@ -110,15 +108,13 @@ describe('useWakeLock', () => {
     const enabled = ref(true)
     useWakeLock(shouldLock, enabled)
     await nextTick()
-    await vi.waitFor(() => {
-      expect(navigator.wakeLock.request).toHaveBeenCalled()
-    })
+    await flushPromises()
+    expect(navigator.wakeLock.request).toHaveBeenCalled()
 
     enabled.value = false
     await nextTick()
-    await vi.waitFor(() => {
-      expect(mockSentinel.release).toHaveBeenCalled()
-    })
+    await flushPromises()
+    expect(mockSentinel.release).toHaveBeenCalled()
   })
 
   it('exposes wakeLockActive as reactive state', async () => {
@@ -126,9 +122,8 @@ describe('useWakeLock', () => {
     const enabled = ref(true)
     const { wakeLockActive } = useWakeLock(shouldLock, enabled)
     await nextTick()
-    await vi.waitFor(() => {
-      expect(wakeLockActive.value).toBe(true)
-    })
+    await flushPromises()
+    expect(wakeLockActive.value).toBe(true)
   })
 
   it('handles request failure gracefully', async () => {
@@ -138,9 +133,8 @@ describe('useWakeLock', () => {
     const { wakeLockActive } = useWakeLock(shouldLock, enabled)
     // Flush the watcher and let the rejected promise settle
     await nextTick()
-    await vi.waitFor(() => {
-      expect(wakeLockActive.value).toBe(false)
-    })
+    await flushPromises()
+    expect(wakeLockActive.value).toBe(false)
   })
 
   it('releases the just-acquired sentinel if shouldLock toggles off mid-request', async () => {
@@ -172,10 +166,9 @@ describe('useWakeLock', () => {
     // 3. Resolve the request. The cancellation signal threaded through
     //    acquireLock should release the sentinel rather than orphan it.
     resolveRequest(lateSentinel)
+    await flushPromises()
 
-    await vi.waitFor(() => {
-      expect(lateSentinel.release).toHaveBeenCalled()
-    })
+    expect(lateSentinel.release).toHaveBeenCalled()
     expect(wakeLockActive.value).toBe(false)
   })
 
@@ -210,13 +203,12 @@ describe('useWakeLock', () => {
     expect(navigator.wakeLock.request).toHaveBeenCalledTimes(1)
 
     resolveFirst(firstSentinel)
+    await flushPromises()
 
     // The first sentinel is released (orphan prevention), then the
     // second request fires for the still-active toggle.
-    await vi.waitFor(() => {
-      expect(firstSentinel.release).toHaveBeenCalled()
-      expect(navigator.wakeLock.request).toHaveBeenCalledTimes(2)
-    })
+    expect(firstSentinel.release).toHaveBeenCalled()
+    expect(navigator.wakeLock.request).toHaveBeenCalledTimes(2)
     expect(secondSentinel.release).not.toHaveBeenCalled()
   })
 })
