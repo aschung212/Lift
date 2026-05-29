@@ -62,6 +62,50 @@ export async function renderNodeToBlob(node: HTMLElement, opts: ExportOptions): 
 }
 
 /**
+ * Free-tier branding stamped onto share cards (issue #601). Supporters get
+ * clean cards; everyone else gets this small mark in the corner. Keeping the
+ * text and styling here (rather than in each of the 11 card templates) means
+ * there is a single injection point shared by the export pipeline and the
+ * picker preview, so what the user previews is exactly what ships.
+ */
+export const WATERMARK_TEXT = 'Made with Lift'
+
+/**
+ * Build the watermark element used by the offscreen export pipeline.
+ *
+ * Styles are inlined (not class-based) so they survive `html-to-image`'s
+ * clone-and-rehome step, which strips selectors that don't match in the
+ * cloned subtree. Positioned absolute in the bottom-right corner of the
+ * card's `position:relative` host.
+ *
+ * The color is intentionally a fixed semi-transparent white with a drop
+ * shadow rather than a theme variable: this mark is baked into an exported
+ * image that sits over arbitrary (often bold/dark) card backgrounds, so it
+ * needs to read on anything. A theme var like `--text-on-accent` can resolve
+ * to a dark color on light themes and vanish. This is the conventional
+ * social-watermark treatment, not app chrome.
+ */
+export function createWatermarkElement(): HTMLDivElement {
+  const el = document.createElement('div')
+  el.textContent = WATERMARK_TEXT
+  el.setAttribute('data-share-watermark', '')
+  el.style.cssText = [
+    'position:absolute',
+    'right:14px',
+    'bottom:12px',
+    'z-index:10',
+    'pointer-events:none',
+    'font-family:var(--ff-mono, ui-monospace, monospace)',
+    'font-size:11px',
+    'font-weight:600',
+    'letter-spacing:0.06em',
+    'color:rgba(255,255,255,0.85)',
+    'text-shadow:0 1px 3px rgba(0,0,0,0.5)',
+  ].join(';')
+  return el
+}
+
+/**
  * Build a default `share-summary-YYYY-MM-DD.png` filename.
  * Used for the download fallback path on browsers without `navigator.share`.
  */

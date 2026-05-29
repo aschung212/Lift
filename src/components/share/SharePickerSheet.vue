@@ -40,6 +40,7 @@
           <div class="spThumbCard" :class="{ spThumbCardStory: format === 'story' }">
             <div class="spThumbInner" :class="{ spThumbInnerStory: format === 'story' }">
               <component :is="card.component" :summary="summary" />
+              <span v-if="showWatermark" class="spWatermark" aria-hidden="true">{{ WATERMARK_TEXT }}</span>
             </div>
           </div>
           <span class="spThumbLabel">{{ card.label }}</span>
@@ -72,11 +73,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SessionSummary } from '../../lib/sessionSummary'
-import type { CardFormat } from '../../lib/shareImage'
+import { WATERMARK_TEXT, type CardFormat } from '../../lib/shareImage'
 import { eligibleSquareCards, eligibleStoryCards } from './cardRegistry'
 import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
 import { useModal } from '../../composables/useModal'
+import { useSupporter } from '../../composables/useSupporter'
 
 const props = defineProps<{ summary: SessionSummary }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -84,6 +86,10 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay' })
 const { currentTheme, resolvedMode } = useTheme()
 const { shareCard, downloadCard, isSharing } = useWorkoutShare()
+const { isSupporter } = useSupporter()
+
+// Free tier gets the "Made with Lift" watermark; supporters get clean cards.
+const showWatermark = computed(() => !isSupporter.value)
 
 const FORMAT_OPTIONS: { value: CardFormat; label: string }[] = [
   { value: 'square', label: 'Post' },
@@ -116,6 +122,7 @@ async function onShare() {
     summary: props.summary,
     theme: currentTheme.value,
     mode: resolvedMode.value,
+    watermark: showWatermark.value,
   })
   if (res.kind === 'downloaded') lastResult.value = `Saved ${res.filename}`
   else if (res.kind === 'shared') emit('close')
@@ -131,6 +138,7 @@ async function onSave() {
     summary: props.summary,
     theme: currentTheme.value,
     mode: resolvedMode.value,
+    watermark: showWatermark.value,
   })
   if (res.kind === 'downloaded') lastResult.value = `Saved ${res.filename}`
   else if (res.kind === 'error') lastResult.value = 'Save failed — try again'
@@ -308,6 +316,23 @@ onUnmounted(() => {
   width: 360px;
   height: 640px;
   transform: scale(0.5);
+}
+
+/* Mirrors createWatermarkElement() in shareImage.ts so the preview matches
+   the exported PNG exactly. Lives inside .spThumbInner (the 360px card
+   surface) so it scales down with the thumbnail. */
+.spWatermark {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 10;
+  pointer-events: none;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 .spThumbLabel {

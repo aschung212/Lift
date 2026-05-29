@@ -14,6 +14,7 @@
 import { ref, createApp, h, type Component, type Ref, nextTick } from 'vue'
 import {
   renderNodeToBlob,
+  createWatermarkElement,
   defaultShareFilename,
   PREVIEW_SIZE,
   EXPORT_PIXEL_RATIO,
@@ -31,6 +32,12 @@ export interface ShareCardRequest {
   /** Used to scope the offscreen container's data-theme/data-mode. */
   theme: string
   mode: 'dark' | 'light'
+  /**
+   * Stamp the free-tier "Made with Lift" watermark onto the rendered card.
+   * Set by the caller from the supporter entitlement (#601). Defaults to
+   * off so callers must opt in explicitly.
+   */
+  watermark?: boolean
 }
 
 export type ShareResult =
@@ -138,6 +145,10 @@ async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
 
   try {
     app.mount(inner)
+    // Stamp the watermark on top of the mounted card. `inner` is the
+    // position:relative containing block, so the absolute watermark anchors
+    // to the card's bottom-right corner.
+    if (req.watermark) inner.appendChild(createWatermarkElement())
     // Two ticks: first to flush mount, second to flush any computed/CSS
     // recalculation triggered by the freshly-applied theme vars.
     await nextTick()
