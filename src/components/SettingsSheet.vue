@@ -731,9 +731,9 @@ import { ref, computed, watch, nextTick, type ComponentPublicInstance } from 'vu
 import { useTheme } from '../composables/useTheme'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
-import { useProgressionStore, UNLOCK_TIERS, showXPToast, getUnlockedThemeIds } from '../stores/progression'
+import { useProgressionStore, UNLOCK_TIERS, showXPToast } from '../stores/progression'
 import { isNative } from '../lib/platform'
-import { APP_ICONS, getAppIcon, isAppIconUnlocked, type AppIconId } from '../lib/appIcons'
+import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
 import { setNativeAppIcon } from '../lib/nativeAppIcon'
 import { computeThemeStats, type ThemeStats } from '../lib/themeStats'
 import { useXPCeremony } from '../composables/useXPCeremony'
@@ -775,7 +775,11 @@ const progressionActive = computed(() => progressionStore.progressionEnabled)
 
 // ── App icon picker (native iOS only) ──────────────────────────
 const showAppIconPicker = isNative
-const unlockedThemeIds = computed(() => getUnlockedThemeIds(progressionStore.unlockedThemes))
+// Mirror the theme-grid unlock rules (incl. the trial period) so a starter's
+// matching icon unlocks exactly when its theme does.
+const unlockedThemeIds = computed<ThemeId[]>(() =>
+  THEMES.filter(t => isThemeUnlocked(t.id)).map(t => t.id)
+)
 const appIconOptions = computed(() =>
   APP_ICONS.map(icon => ({
     id: icon.id,
@@ -786,13 +790,32 @@ const appIconOptions = computed(() =>
   }))
 )
 
-async function selectAppIcon(id: AppIconId) {
+function selectAppIcon(id: AppIconId) {
   const icon = getAppIcon(id)
   if (!isAppIconUnlocked(icon, unlockedThemeIds.value)) return
   if (prefs.appIcon === id) return
+  // Local-first: persist the choice; the reconcile watcher applies it to the OS.
   prefs.setAppIcon(id)
   logEvent('app_icon_change', { icon: id })
-  await setNativeAppIcon(icon.nativeName)
+}
+
+// Keep the native OS icon in sync with the stored preference. Runs on mount
+// (immediate) so a preference synced from another device is applied, and on any
+// change — including reverting to the default icon if its theme was re-locked by
+// a progression/prestige reset (resolveAppIconId handles the fallback).
+if (isNative) {
+  watch(
+    () => [prefs.appIcon, unlockedThemeIds.value.join(',')] as const,
+    () => {
+      const resolved = resolveAppIconId(prefs.appIcon, unlockedThemeIds.value)
+      if (resolved !== prefs.appIcon) {
+        prefs.setAppIcon(resolved) // reverts a now-locked icon; re-triggers this watcher
+        return
+      }
+      void setNativeAppIcon(getAppIcon(resolved).nativeName)
+    },
+    { immediate: true }
+  )
 }
 
 // ── Swipe-to-dismiss for settings sheet ────────────────────────
