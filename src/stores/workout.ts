@@ -35,6 +35,7 @@ export interface Exercise {
   inputMode?: ExerciseInputMode    // remembered per exercise, default 'numpad'
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
+  groupId?: string                 // superset/circuit grouping; exercises sharing a groupId alternate sets
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -209,6 +210,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       name: exercise.name,
       tags: exercise.tags,
       archived_at: exercise.archived_at ?? null,
+      group_id: exercise.groupId ?? null,
       ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}),
       ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {}),
     }
@@ -284,6 +286,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
       if (ex.archived_at) exercise.archived_at = ex.archived_at
+      if (ex.group_id) exercise.groupId = ex.group_id
       return exercise
     })
 
@@ -753,6 +756,99 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  // ── Supersets / circuits ───────────────────────────────────────────
+  // Exercises sharing a `groupId` form a superset (alternating sets). A
+  // group is only meaningful with 2+ members — a lone member is dissolved
+  // automatically so orphaned group ids never linger.
+
+  /** All active members of a group, in display (array) order. */
+  function _membersOfGroup(groupId: string): Exercise[] {
+    return exercises.value.filter((e: Exercise) => !e.archived_at && e.groupId === groupId)
+  }
+
+  /** Assign or clear an exercise's groupId and enqueue a metadata sync. Does not persist/trigger. */
+  function _assignGroup(exercise: Exercise, groupId: string | undefined) {
+    if (exercise.sample) _adoptExercise(exercise)
+    if (groupId) exercise.groupId = groupId
+    else delete exercise.groupId
+    exercise.updated_at = new Date().toISOString()
+    if (supabase && !isPreviewMode.value && _userId) {
+      const userId = _userId
+      syncQueue.enqueue(`exercise:${exercise.id}`, () =>
+        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
+      )
+    }
+  }
+
+  /** Dissolve a group that has dropped to a single member (no superset of one). */
+  function _dissolveIfOrphan(groupId: string | undefined) {
+    if (!groupId) return
+    const members = _membersOfGroup(groupId)
+    if (members.length === 1) _assignGroup(members[0], undefined)
+  }
+
+  /**
+   * Set the complete superset membership for `exerciseId`. The resulting
+   * group contains the exercise plus every valid id in `partnerIds`.
+   *
+   * - Passing fewer than one partner removes the exercise from any superset.
+   * - Partners already in a different superset are pulled into this one
+   *   (their old group is dissolved if it drops below two members).
+   * - The exercise's existing groupId is reused when present so the visual
+   *   label stays stable across edits.
+   */
+  function setSupersetMembers(exerciseId: string, partnerIds: string[]) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+
+    const desired = new Set<string>([exerciseId])
+    for (const pid of partnerIds) {
+      if (pid !== exerciseId && exercises.value.some((e: Exercise) => e.id === pid && !e.archived_at)) {
+        desired.add(pid)
+      }
+    }
+
+    const oldGroupId = exercise.groupId
+
+    // Drop members of the current group that are no longer desired.
+    if (oldGroupId) {
+      for (const m of _membersOfGroup(oldGroupId)) {
+        if (!desired.has(m.id)) _assignGroup(m, undefined)
+      }
+    }
+
+    if (desired.size < 2) {
+      if (exercise.groupId) _assignGroup(exercise, undefined)
+      _dissolveIfOrphan(oldGroupId)
+      triggerRef(exercises)
+      _persist()
+      return
+    }
+
+    const groupId = oldGroupId || uuid()
+    for (const id of desired) {
+      const m = exercises.value.find((e: Exercise) => e.id === id)
+      if (!m || m.groupId === groupId) continue
+      const priorGroup = m.groupId
+      _assignGroup(m, groupId)
+      if (priorGroup && priorGroup !== groupId) _dissolveIfOrphan(priorGroup)
+    }
+    _dissolveIfOrphan(oldGroupId)
+    triggerRef(exercises)
+    _persist()
+  }
+
+  /** Remove a single exercise from its superset, dissolving the group if it orphans. */
+  function removeFromSuperset(exerciseId: string) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise || !exercise.groupId) return
+    const groupId = exercise.groupId
+    _assignGroup(exercise, undefined)
+    _dissolveIfOrphan(groupId)
+    triggerRef(exercises)
+    _persist()
+  }
+
   function syncDeleteSet(setId: string) {
     if (supabase && _userId) {
       const userId = _userId
@@ -940,6 +1036,33 @@ export const useWorkoutStore = defineStore('workout', () => {
   const archivedExercises = computed((): Exercise[] =>
     exercises.value.filter((e: Exercise) => !!e.archived_at)
   )
+
+  /**
+   * Active supersets — groups of 2+ active exercises sharing a groupId.
+   * Each group gets a short display label (A, B, C…) assigned in the order
+   * the groups first appear in the exercise list, so the badge a user sees
+   * is stable and matches reading order.
+   */
+  const supersets = computed((): { groupId: string; exerciseIds: string[]; label: string }[] => {
+    const groups = new Map<string, string[]>()
+    for (const e of exercises.value) {
+      if (e.archived_at || !e.groupId) continue
+      if (!groups.has(e.groupId)) groups.set(e.groupId, [])
+      groups.get(e.groupId)!.push(e.id)
+    }
+    const result: { groupId: string; exerciseIds: string[]; label: string }[] = []
+    let i = 0
+    for (const [groupId, exerciseIds] of groups) {
+      if (exerciseIds.length < 2) continue
+      result.push({
+        groupId,
+        exerciseIds,
+        label: i < 26 ? String.fromCharCode(65 + i) : String(i + 1),
+      })
+      i++
+    }
+    return result
+  })
 
   /** Sorted unique workout dates (YYYY-MM-DD), derived from all sets. */
   const workoutDates = computed((): string[] => {
@@ -1144,6 +1267,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     restoreExercise,
     archiveExercise,
     unarchiveExercise,
+    setSupersetMembers,
+    removeFromSuperset,
     syncDeleteSet,
     syncDeleteExercise,
     reorderExercise,
@@ -1157,6 +1282,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     allTags,
     activeExercises,
     archivedExercises,
+    supersets,
     workoutDates,
     getExercisePR,
     getExercisePRSet,

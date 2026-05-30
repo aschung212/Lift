@@ -138,6 +138,24 @@ vi.mock('../../stores/workout', () => ({
     get activeExercises() { return mockState.exercises.filter(e => !e.archived_at) },
     get archivedExercises() { return mockState.exercises.filter(e => !!e.archived_at) },
     get allTags() { return getAllTags() },
+    get supersets() {
+      const groups = new Map<string, string[]>()
+      for (const e of mockState.exercises) {
+        if (e.archived_at || !e.groupId) continue
+        if (!groups.has(e.groupId)) groups.set(e.groupId, [])
+        groups.get(e.groupId)!.push(e.id)
+      }
+      const result: { groupId: string; exerciseIds: string[]; label: string }[] = []
+      let i = 0
+      for (const [groupId, exerciseIds] of groups) {
+        if (exerciseIds.length < 2) continue
+        result.push({ groupId, exerciseIds, label: String.fromCharCode(65 + i) })
+        i++
+      }
+      return result
+    },
+    setSupersetMembers: vi.fn(),
+    removeFromSuperset: vi.fn(),
     getExercisePR,
     getExercisePRSet,
     getOverloadSuggestion: () => null,

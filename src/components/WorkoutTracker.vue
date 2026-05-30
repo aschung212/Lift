@@ -105,7 +105,7 @@
       <li
         v-for="(exercise, index) in filteredExercises"
         :key="exercise.id"
-        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit, index, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
+        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, supersetLabelMap[exercise.id], prBaselineDate, weightUnit, index, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
         class="wtExerciseItem"
         :class="{
           'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
@@ -134,6 +134,11 @@
           >
             <div class="wtExerciseNameBlock">
               <div class="wtExerciseTopLine">
+                <span
+                  v-if="supersetLabelMap[exercise.id]"
+                  class="wtSupersetChip"
+                  :aria-label="`Superset ${supersetLabelMap[exercise.id]}`"
+                >SS {{ supersetLabelMap[exercise.id] }}</span>
                 <span class="wtExerciseName">{{ exercise.name }}</span>
                 <span v-if="getRowMeta(exercise.id).isNewPRBadge" class="wtExerciseNewPR">
                   <span class="wtExerciseNewPRIcon" aria-hidden="true">🏆</span>
@@ -715,6 +720,31 @@
             </template>
           </div>
         </div>
+        <!-- Superset grouping (iOS grouped style) -->
+        <div v-if="supersetCandidates.length > 0" class="iosSettingsSection">
+          <span class="iosSettingsHeader">Superset</span>
+          <div class="iosSettingsGroup">
+            <button
+              v-for="cand in supersetCandidates"
+              :key="cand.id"
+              type="button"
+              class="iosSettingsRow wtSupersetRow"
+              role="checkbox"
+              :aria-checked="editSupersetPartners.includes(cand.id)"
+              @click="toggleSupersetPartner(cand.id)"
+            >
+              <span class="iosSettingsRowLabel">{{ cand.name }}</span>
+              <span
+                class="wtSupersetCheck"
+                :class="{ wtSupersetCheckOn: editSupersetPartners.includes(cand.id) }"
+                aria-hidden="true"
+              >
+                <svg v-if="editSupersetPartners.includes(cand.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+            </button>
+          </div>
+          <p class="wtEditArchiveHint">Pair this with other exercises to alternate sets.</p>
+        </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
@@ -1252,6 +1282,19 @@ interface ExerciseRowMeta {
   timeAgo: string | null
   isNewPRBadge: boolean
 }
+
+/**
+ * Maps an exercise id to its superset display label (A, B, C…), or undefined
+ * when the exercise isn't part of an active superset. Drives the "SS A" chip
+ * on grouped cards so the user can see at a glance which lifts are paired.
+ */
+const supersetLabelMap = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {}
+  for (const group of store.supersets) {
+    for (const id of group.exerciseIds) map[id] = group.label
+  }
+  return map
+})
 
 function getRowMeta(exerciseId: string): ExerciseRowMeta {
   const ex = store.exercises.find(e => e.id === exerciseId)
@@ -2448,6 +2491,8 @@ const editPlateCountMode = ref<'per-side' | 'total'>('per-side')
 const editBarWeight = ref<number>(45)
 const editBarWeightEditing = ref(false)
 const editBarWeightInputEl = ref<HTMLInputElement | null>(null)
+/** Ids of the other exercises the edit target should be supersetted with. */
+const editSupersetPartners = ref<string[]>([])
 
 
 function openEditExerciseModal(exercise: Exercise) {
@@ -2459,6 +2504,25 @@ function openEditExerciseModal(exercise: Exercise) {
   editPlateCountMode.value = exercise.plateCountMode || 'per-side'
   editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
   newTagInput.value = ''
+  // Seed superset partners from the exercise's current group.
+  editSupersetPartners.value = exercise.groupId
+    ? store.activeExercises
+        .filter(e => e.groupId === exercise.groupId && e.id !== exercise.id)
+        .map(e => e.id)
+    : []
+}
+
+/** Active exercises (excluding the edit target) that can be added to its superset. */
+const supersetCandidates = computed(() =>
+  store.activeExercises
+    .filter(e => e.id !== editTarget.value)
+    .map(e => ({ id: e.id, name: e.name }))
+)
+
+function toggleSupersetPartner(id: string) {
+  const idx = editSupersetPartners.value.indexOf(id)
+  if (idx === -1) editSupersetPartners.value.push(id)
+  else editSupersetPartners.value.splice(idx, 1)
 }
 
 const editTagInputEl = ref<HTMLInputElement | null>(null)
@@ -2517,6 +2581,7 @@ function confirmEditExercise() {
     store.setExercisePlateCountMode(editTarget.value, editPlateCountMode.value)
     store.setExerciseBarWeight(editTarget.value, editBarWeight.value)
   }
+  store.setSupersetMembers(editTarget.value, editSupersetPartners.value)
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).

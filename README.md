@@ -54,6 +54,13 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Multi-tag filtering on both Workouts and Calendar tabs (ANY match)
 - Inline "× Clear" chip at end of tag row when filters are active — no layout shift
 
+### Supersets & Circuits
+- Pair two or more exercises into a superset from the Edit Exercise sheet
+- Grouped exercises show a themed "SS A" / "SS B" badge so paired lifts are obvious at a glance
+- Supports supersets, tri-sets, and giant sets (any number of members per group)
+- A group always needs 2+ members — dropping to one dissolves it automatically, so no orphaned groups linger
+- Grouping is a per-exercise `groupId` that syncs through the normal exercise upsert path (no extra round-trips)
+
 ### Progressive Overload Suggestions
 - Analyzes recent training history per exercise
 - Suggests weight or rep increases when performance plateaus

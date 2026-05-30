@@ -72,6 +72,7 @@ export type Database = {
           bar_weight: number
           created_at: string
           deleted_at: string | null
+          group_id: string | null
           id: string
           input_mode: string | null
           name: string
@@ -84,6 +85,7 @@ export type Database = {
           bar_weight?: number
           created_at?: string
           deleted_at?: string | null
+          group_id?: string | null
           id?: string
           input_mode?: string | null
           name: string
@@ -96,6 +98,7 @@ export type Database = {
           bar_weight?: number
           created_at?: string
           deleted_at?: string | null
+          group_id?: string | null
           id?: string
           input_mode?: string | null
           name?: string
