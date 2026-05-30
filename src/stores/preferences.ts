@@ -127,6 +127,7 @@ export const usePreferencesStore = defineStore('preferences', {
     weightUnit: 'lbs' as string,
     restTimerEnabled: true,
     restTimerAutoStart: true,
+    appIcon: 'default' as string,
     _userId: null as string | null,
   }),
 
@@ -143,6 +144,7 @@ export const usePreferencesStore = defineStore('preferences', {
         weightUnit: this.weightUnit,
         restTimerEnabled: this.restTimerEnabled,
         restTimerAutoStart: this.restTimerAutoStart,
+        appIcon: this.appIcon,
       }
       const data = JSON.stringify(payload)
       try {
@@ -187,6 +189,7 @@ export const usePreferencesStore = defineStore('preferences', {
         if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
         if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
         if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
+        if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
       } catch { /* ignore corrupt data */ }
     },
 
@@ -217,6 +220,7 @@ export const usePreferencesStore = defineStore('preferences', {
           if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
           if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
           if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
+          if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
         } catch { /* ignore corrupt data */ }
       }
 
@@ -285,13 +289,14 @@ export const usePreferencesStore = defineStore('preferences', {
             if (typeof prefs.weightUnit === 'string') this.weightUnit = prefs.weightUnit as string
             if (typeof prefs.restTimerEnabled === 'boolean') this.restTimerEnabled = prefs.restTimerEnabled as boolean
             if (typeof prefs.restTimerAutoStart === 'boolean') this.restTimerAutoStart = prefs.restTimerAutoStart as boolean
+            if (typeof prefs.appIcon === 'string') this.appIcon = prefs.appIcon as string
             const synced = JSON.stringify({
               features: this.features, weightGoal: this.weightGoal,
               experience: this.experience, filters: this.filters,
               prBaselineDate: this.prBaselineDate,
               theme: this.theme, colorMode: this.colorMode,
               weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
-              restTimerAutoStart: this.restTimerAutoStart,
+              restTimerAutoStart: this.restTimerAutoStart, appIcon: this.appIcon,
             })
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
@@ -385,6 +390,11 @@ export const usePreferencesStore = defineStore('preferences', {
 
     setRestTimerAutoStart(autoStart: boolean) {
       this.restTimerAutoStart = autoStart
+      this._persist()
+    },
+
+    setAppIcon(id: string) {
+      this.appIcon = id
       this._persist()
     },
   },

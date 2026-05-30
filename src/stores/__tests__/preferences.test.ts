@@ -664,5 +664,41 @@ describe('usePreferencesStore', () => {
       expect(stored.experience).toBeDefined()
       expect(stored.filters).toBeDefined()
     })
+
+    it('appIcon defaults to "default"', () => {
+      expect(store.appIcon).toBe('default')
+    })
+
+    it('setAppIcon updates and persists', () => {
+      store.setAppIcon('fire')
+      expect(store.appIcon).toBe('fire')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.appIcon).toBe('fire')
+    })
+
+    it('init loads appIcon from JSON blob', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        appIcon: 'midnight',
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.appIcon).toBe('midnight')
+    })
+
+    it('_reloadFromStorage picks up appIcon', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        appIcon: 'love',
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.appIcon).toBe('love')
+    })
   })
 })

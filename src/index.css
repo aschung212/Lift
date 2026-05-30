@@ -1163,6 +1163,14 @@ html.modal-open .tabContent {
   padding: 4px 16px 12px;
 }
 
+.appIconHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px 0;
+}
+
 .themePreview {
   display: flex;
   flex-direction: column;
