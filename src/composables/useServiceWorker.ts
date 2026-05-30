@@ -17,13 +17,28 @@ import { isNative } from '../lib/platform'
  * @returns `checkForSWUpdate` — call after meaningful user actions to poll for
  *          a new version. A no-op on native.
  */
+// Module-scoped singleton state. The SW must be registered exactly once per
+// document; guarding here keeps the composable safe to call from multiple
+// components without leaking duplicate listeners or overlapping update polls.
+let swRegistration: ServiceWorkerRegistration | undefined
+let registered = false
+
 export function useServiceWorker(): { checkForSWUpdate: () => void } {
   // Native Capacitor build: no service worker at all.
   if (isNative) {
     return { checkForSWUpdate: () => {} }
   }
 
-  let swRegistration: ServiceWorkerRegistration | undefined
+  // Expose a function components can call after meaningful user actions.
+  // Reads the module-scoped registration so it stays valid across callers.
+  const checkForSWUpdate = () => swRegistration?.update()
+
+  // Already wired up by an earlier caller — reuse the existing registration.
+  if (registered) {
+    return { checkForSWUpdate }
+  }
+  registered = true
+
   registerSW({
     onRegisteredSW(_url, registration) {
       swRegistration = registration ?? undefined
@@ -49,9 +64,6 @@ export function useServiceWorker(): { checkForSWUpdate: () => void } {
     }
     currentController = navigator.serviceWorker?.controller ?? null
   })
-
-  // Expose a function components can call after meaningful user actions
-  function checkForSWUpdate() { swRegistration?.update() }
 
   return { checkForSWUpdate }
 }

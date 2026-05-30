@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-// vitest.config.js aliases `virtual:pwa-register` to a stub, so the composable
-// and this test share the same `registerSW` spy instance.
-import { registerSW } from 'virtual:pwa-register'
-
-const registerSWMock = vi.mocked(registerSW)
+import type { Mock } from 'vitest'
 
 // Mutable platform mock — flipped per test via the `setNative` helper below.
 let nativeFlag = false
@@ -15,14 +11,21 @@ function setNative(value: boolean) {
   nativeFlag = value
 }
 
-// `isNative` is read through the mocked getter on each access (ESM live binding),
-// so no module reset is needed — flipping `nativeFlag` is enough between tests.
-import { useServiceWorker } from '../useServiceWorker'
+// vitest.config.js aliases `virtual:pwa-register` to a stub. The composable holds
+// module-scoped singleton state (it registers the SW exactly once), so each test
+// resets the module graph and re-grabs the freshly evaluated stub spik so the
+// composable and the test share the same `registerSW` spy instance.
+let useServiceWorker: typeof import('../useServiceWorker').useServiceWorker
+let registerSWMock: Mock
 
 describe('useServiceWorker', () => {
-  beforeEach(() => {
-    registerSWMock.mockReset()
+  beforeEach(async () => {
     setNative(false)
+    vi.resetModules()
+    const pwa = await import('virtual:pwa-register')
+    registerSWMock = vi.mocked(pwa.registerSW) as unknown as Mock
+    registerSWMock.mockReset()
+    ;({ useServiceWorker } = await import('../useServiceWorker'))
   })
 
   afterEach(() => {
@@ -56,6 +59,22 @@ describe('useServiceWorker', () => {
     // visibilitychange listener is registered to poll for updates on resume.
     expect(addDocListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
     expect(typeof checkForSWUpdate).toBe('function')
+  })
+
+  it('registers the SW only once even when called from multiple components (web)', () => {
+    setNative(false)
+    const addDocListener = vi.spyOn(document, 'addEventListener')
+
+    useServiceWorker()
+    useServiceWorker()
+    useServiceWorker()
+
+    // Singleton guard: registration + listeners are wired exactly once.
+    expect(registerSWMock).toHaveBeenCalledTimes(1)
+    const visibilityCalls = addDocListener.mock.calls.filter(
+      ([event]) => event === 'visibilitychange'
+    )
+    expect(visibilityCalls).toHaveLength(1)
   })
 
   it('checkForSWUpdate triggers a registration update once the SW is registered (web)', () => {
