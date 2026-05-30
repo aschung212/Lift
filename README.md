@@ -248,6 +248,29 @@ npm run preview  # preview production build locally
 
 Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard. Enable Google as an OAuth provider in Supabase and add your Vercel domain to the allowed redirect URLs.
 
+### Native iOS build (Capacitor)
+
+The PWA is wrapped with [Capacitor 8](https://capacitorjs.com) for the App Store. The
+shared config lives in `capacitor.config.ts` (`appId: com.aschung212.lift`). The native
+`ios/` project is generated per-machine and is **not** committed — it depends on a local
+Xcode + CocoaPods toolchain. Generate and run it on the Simulator with:
+
+```bash
+# One-time: generate the native Xcode project (requires Xcode + CocoaPods)
+npx cap add ios
+
+# Build the web bundle and sync it into the native project
+npm run cap:build        # = npm run build && npx cap sync
+
+# Open the project in Xcode, then build & run on a Simulator (e.g. iPhone 15 Pro)
+npm run cap:open:ios
+```
+
+In Xcode, set the **iOS Deployment Target to 16.0** (App target → General → Minimum
+Deployments) for broad device coverage with modern APIs. The app should launch to the
+auth screen with no white screen. Re-run `npm run cap:build` after any web change to
+re-sync the `dist/` bundle into the native shell.
+
 ---
 
 ## Project Structure
