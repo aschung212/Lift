@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Mutation testing (LIFT-667). Scoped to high-value, deterministic, DOM-free pure logic in src/lib/. Coverage measures execution; mutation testing measures assertion strength — it mutates source (flips conditionals, swaps operators, strips returns) and reports which mutants the suite fails to kill. Run on demand with `npm run test:mutation`; it is intentionally NOT part of CI (too slow for every PR). Keep the mutate list narrow so a full run stays fast and deterministic.",
+  "packageManager": "npm",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.config.js"
+  },
+  "coverageAnalysis": "perTest",
+  "reporters": ["html", "clear-text", "progress"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
+  },
+  "mutate": [
+    "src/lib/xp.ts",
+    "src/lib/epley.ts",
+    "src/lib/conflictResolver.ts",
+    "src/lib/classifyWarmupSets.ts",
+    "src/lib/weeklyGoal.ts",
+    "src/lib/plateCalculator.ts"
+  ],
+  "thresholds": {
+    "high": 90,
+    "low": 75,
+    "break": 70
+  },
+  "ignorePatterns": [
+    "dist",
+    "coverage",
+    "reports",
+    "ios",
+    "android",
+    "supabase",
+    "e2e"
+  ]
+}

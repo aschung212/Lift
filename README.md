@@ -188,6 +188,30 @@ npm test           # run all tests
 npx vitest --ui    # interactive test explorer
 ```
 
+### Mutation Testing (Stryker)
+
+Line coverage measures whether code *executes* during tests — not whether the
+tests would *catch a regression* in it. [Stryker](https://stryker-mutator.io/)
+closes that gap: it mutates the source (flips conditionals, swaps arithmetic
+operators, strips `return` statements) and reports which mutants the suite
+fails to kill, exposing weak assertions that coverage alone can't see.
+
+It's scoped to the highest-value, deterministic, DOM-free pure logic — XP
+math (`xp.ts`), Epley 1RM (`epley.ts`), sync conflict resolution
+(`conflictResolver.ts`), warmup-set classification (`classifyWarmupSets.ts`),
+weekly-goal computation (`weeklyGoal.ts`), and the plate calculator
+(`plateCalculator.ts`) — so a full run stays fast. It's an on-demand rigor
+tool, intentionally **not** wired into CI (mutation runs are too slow for every
+PR).
+
+```bash
+npm run test:mutation   # mutate src/lib/ pure logic, report surviving mutants
+```
+
+The mutation score and an interactive HTML report are written to
+`reports/mutation/` (git-ignored). The Stryker config and its mutate scope are
+pinned by `strykerConfigRegression.test.ts` so the wiring can't silently rot.
+
 ### CI Pipeline
 
 GitHub Actions runs on every push and PR to `master`:
