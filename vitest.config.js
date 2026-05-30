@@ -7,7 +7,10 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['src/__tests__/setup.ts'],
-    exclude: ['e2e/**', 'node_modules/**', 'dist/**', '.claude/**', '**/node_modules/**', '**/supabaseIntegration.test.ts'],
+    // *.browser.test.ts run in real Chromium via vitest.browser.config.js — they
+    // rely on genuine layout (offsetHeight, scrollTop, visualViewport) that
+    // happy-dom stubs to 0/undefined, so they must NOT run in this suite.
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**', '.claude/**', '**/node_modules/**', '**/supabaseIntegration.test.ts', '**/*.browser.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'json'],
