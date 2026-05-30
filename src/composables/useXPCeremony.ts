@@ -12,6 +12,7 @@ import { THEMES } from './useTheme'
 import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
 import { XP_CONFIG } from '../lib/xp'
 import { logXPEvent, logBodyweightXPEvent } from '../lib/xpInstrumentation'
+import { useAppReview } from './useAppReview'
 import type { ThemeId } from './useTheme'
 
 export interface SetXPCeremonyInput {
@@ -44,6 +45,7 @@ export interface UseXPCeremonyReturn {
 
 export function useXPCeremony(): UseXPCeremonyReturn {
   const progressionStore = useProgressionStore()
+  const { requestReviewAtMoment } = useAppReview()
 
   /**
    * Run the full XP ceremony for a logged workout set.
@@ -121,6 +123,13 @@ export function useXPCeremony(): UseXPCeremonyReturn {
 
       showXPToast(parts.join(' · '), progressionStore.progressPercent, progressionStore.totalXP, progressionStore.nextUnlockThreshold)
     }
+
+    // High-satisfaction moment: hitting a real PR is a peak moment to ask for
+    // an App Store rating. The composable enforces Apple's per-year caps and
+    // no-ops on web; a tie is not celebratory enough to prompt.
+    if (isPR && !isTie) {
+      requestReviewAtMoment('pr')
+    }
   }
 
   /**
@@ -160,6 +169,9 @@ export function useXPCeremony(): UseXPCeremonyReturn {
         setTimeout(() => {
           showUnlockCelebration(theme.id, theme.label)
           onUnlock?.()
+          // Unlocking a new theme is a high-satisfaction moment — ask for a
+          // rating once the celebration is on screen. Rate-limited + web no-op.
+          requestReviewAtMoment('theme_unlock')
         }, progressionStore.showProgression ? 1500 : 500)
       }
     }
