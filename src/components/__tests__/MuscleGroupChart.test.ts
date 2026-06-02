@@ -116,6 +116,16 @@ describe('MuscleGroupChart', () => {
       await wrapper.find('.mgHeader').trigger('click')
       expect(wrapper.emitted('toggleCollapsed')).toHaveLength(1)
     })
+
+    it('sets aria-expanded="true" on the toggle when expanded', () => {
+      const wrapper = mountChart({ collapsed: false })
+      expect(wrapper.find('.mgHeader').attributes('aria-expanded')).toBe('true')
+    })
+
+    it('sets aria-expanded="false" on the toggle when collapsed', () => {
+      const wrapper = mountChart({ collapsed: true })
+      expect(wrapper.find('.mgHeader').attributes('aria-expanded')).toBe('false')
+    })
   })
 
   describe('touch target compliance', () => {
