@@ -748,6 +748,23 @@ describe('WorkoutTracker', () => {
       expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String))
     })
 
+    // LIFT-683: the set-logging inputs declare enterkeyhint so iOS labels the
+    // keyboard return key for the weight -> reps -> done flow. Without these,
+    // the return key shows a generic label and breaks the native flow that is
+    // central to the app. Pin the hints so they cannot silently regress.
+    it('sets enterkeyhint on weight (next) and reps (done) inputs for iOS keyboard flow', async () => {
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const inputs = wrapper.findAll('.repMaxModal input')
+      const weightInput = inputs.find(i => i.attributes('inputmode') === 'decimal')!
+      const repsInput = inputs.find(i => i.attributes('inputmode') === 'numeric')!
+      expect(weightInput.attributes('enterkeyhint')).toBe('next')
+      expect(repsInput.attributes('enterkeyhint')).toBe('done')
+    })
+
     it('keeps modal open with cleared fields after saving a set', async () => {
       const wrapper = mountTracker()
       const logBtns = wrapper.findAll('.wtExerciseLogBtn')
