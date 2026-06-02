@@ -477,6 +477,70 @@ describe('CSS regression tests', () => {
     }
   })
 
+  describe('forced-colors / High Contrast Mode glass borders (LIFT-682)', () => {
+    // Regression: in forced-colors mode the UA drops backdrop-filter and
+    // translucent backgrounds, so glass surfaces that rely on blur for
+    // separation blend into adjacent content (WCAG 2.2 SC 1.4.11). A
+    // @media (forced-colors: active) block must pin explicit system-color
+    // borders on every glass surface so boundaries stay visible.
+
+    function getAtRuleBody(query: string): string {
+      const needle = '@media (' + query + ') {'
+      const idx = css.indexOf(needle)
+      if (idx === -1) return ''
+      const start = css.indexOf('{', idx) + 1
+      let depth = 1
+      let end = start
+      while (depth > 0 && end < css.length) {
+        if (css[end] === '{') depth++
+        if (css[end] === '}') depth--
+        end++
+      }
+      return css.slice(start, end - 1)
+    }
+
+    const forcedBody = getAtRuleBody('forced-colors: active')
+
+    it('has a @media (forced-colors: active) block', () => {
+      expect(forcedBody.length).toBeGreaterThan(0)
+    })
+
+    const glassSurfaces = [
+      '.tabBar',
+      '.repMaxModal',
+      '.kbSheet',
+      '.legalSheet',
+      '.confirmSheet',
+      '.settingsSheet',
+      '.wtCard',
+      '.calCard',
+      '.wtSetCard',
+      '.wtGraphWrap',
+    ]
+
+    for (const selector of glassSurfaces) {
+      it(`forced-colors block targets ${selector}`, () => {
+        expect(forcedBody).toContain(selector)
+      })
+    }
+
+    it('uses a system color keyword (CanvasText) for the border', () => {
+      expect(forcedBody).toMatch(/border:\s*1px solid CanvasText/)
+    })
+
+    it('outlines the active-tab indicator with the Highlight system color', () => {
+      expect(forcedBody).toContain('.tabIndicator')
+      expect(forcedBody).toMatch(/border:\s*1px solid Highlight/)
+    })
+
+    it('has a @media (prefers-contrast: more) block strengthening glass edges', () => {
+      const contrastBody = getAtRuleBody('prefers-contrast: more')
+      expect(contrastBody.length).toBeGreaterThan(0)
+      expect(contrastBody).toContain('.tabBar')
+      expect(contrastBody).toContain('--border-strong')
+    })
+  })
+
   describe('.logSetFieldClear 44pt touch target (LIFT-685)', () => {
     // Regression: the inline "clear weight" × chip was a bare 24x24px button
     // with padding:0 — exactly the WCAG 2.2 SC 2.5.8 floor but well below the

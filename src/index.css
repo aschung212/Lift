@@ -7177,3 +7177,52 @@ html.theme-fading .settingsSheet {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─── Forced colors / Windows High Contrast Mode (LIFT-682) ─────────────── */
+/* In forced-colors mode the browser drops backdrop-filter and translucent
+   backgrounds, so glass surfaces that lean on blur for separation can blend
+   into adjacent content and lose their visible boundaries. Pin explicit
+   borders using CSS system color keywords so every glass surface keeps a
+   distinct edge. WCAG 2.2 SC 1.4.11 Non-text Contrast. */
+
+@media (forced-colors: active) {
+  .tabBar,
+  .repMaxModal,
+  .kbSheet,
+  .legalSheet,
+  .confirmSheet,
+  .settingsSheet,
+  .wtCard,
+  .calCard,
+  .wtSetCard,
+  .wtGraphWrap,
+  .unlockModal {
+    border: 1px solid CanvasText;
+  }
+
+  /* The active-tab pill carries no border and signals selection only through
+     its translucent accent fill, which forced-colors strips. Outline it with
+     the system Highlight color so the current tab stays identifiable. */
+  .tabIndicator {
+    border: 1px solid Highlight;
+  }
+}
+
+/* ─── Increased contrast ────────────────────────────────────────────────── */
+/* Users who request more contrast get stronger, fully-opaque glass edges so
+   surface boundaries read clearly over busy backgrounds. */
+
+@media (prefers-contrast: more) {
+  .tabBar,
+  .repMaxModal,
+  .kbSheet,
+  .legalSheet,
+  .confirmSheet,
+  .settingsSheet,
+  .wtCard,
+  .calCard,
+  .wtSetCard,
+  .wtGraphWrap {
+    border-color: var(--border-strong);
+  }
+}
