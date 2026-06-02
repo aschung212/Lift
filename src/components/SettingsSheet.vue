@@ -89,6 +89,32 @@
               <button :class="['modeSegBtn', { active: weightUnit === 'kg' }]" @click="weightUnit = 'kg'" aria-label="Use kilograms" :aria-pressed="weightUnit === 'kg'">kg</button>
             </div>
           </div>
+          <!-- App icon picker (native iOS only — alternate icons can't be set on web) -->
+          <template v-if="showAppIconPicker">
+            <div class="appIconHeader">
+              <span class="settingsLabel">App Icon</span>
+              <span class="settingsHint">Unlocks with matching themes</span>
+            </div>
+            <div class="settingsThemeGrid">
+              <button
+                v-for="icon in appIconOptions"
+                :key="icon.id"
+                :class="['themePreview', { active: icon.active, locked: !icon.unlocked }]"
+                @click="icon.unlocked ? selectAppIcon(icon.id) : undefined"
+                :aria-label="icon.unlocked ? 'Use ' + icon.label + ' app icon' : icon.label + ' app icon — locked'"
+                :aria-pressed="icon.active"
+              >
+                <span
+                  class="themePreviewDot"
+                  :style="{ background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[icon.previewTheme]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[icon.previewTheme]?.[resolvedMode]?.bg + ')' }"
+                >
+                  <svg v-if="!icon.unlocked" class="themePreviewLock" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <svg v-else-if="icon.active" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <span class="themePreviewLabel">{{ icon.label }}</span>
+              </button>
+            </div>
+          </template>
         </div>
 
         <div class="settingsGroup">
@@ -706,6 +732,9 @@ import { useTheme } from '../composables/useTheme'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useProgressionStore, UNLOCK_TIERS, showXPToast } from '../stores/progression'
+import { isNative } from '../lib/platform'
+import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
+import { setNativeAppIcon } from '../lib/nativeAppIcon'
 import { computeThemeStats, type ThemeStats } from '../lib/themeStats'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from '../lib/xpMigration'
@@ -743,6 +772,51 @@ const workoutStore = useWorkoutStore()
 const bodyweightStore = useBodyweightStore()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+// ── App icon picker (native iOS only) ──────────────────────────
+const showAppIconPicker = isNative
+// Mirror the theme-grid unlock rules (incl. the trial period) so a starter's
+// matching icon unlocks exactly when its theme does.
+const unlockedThemeIds = computed<ThemeId[]>(() =>
+  THEMES.filter(t => isThemeUnlocked(t.id)).map(t => t.id)
+)
+const appIconOptions = computed(() =>
+  APP_ICONS.map(icon => ({
+    id: icon.id,
+    label: icon.label,
+    previewTheme: icon.previewTheme,
+    unlocked: isAppIconUnlocked(icon, unlockedThemeIds.value),
+    active: prefs.appIcon === icon.id,
+  }))
+)
+
+function selectAppIcon(id: AppIconId) {
+  const icon = getAppIcon(id)
+  if (!isAppIconUnlocked(icon, unlockedThemeIds.value)) return
+  if (prefs.appIcon === id) return
+  // Local-first: persist the choice; the reconcile watcher applies it to the OS.
+  prefs.setAppIcon(id)
+  logEvent('app_icon_change', { icon: id })
+}
+
+// Keep the native OS icon in sync with the stored preference. Runs on mount
+// (immediate) so a preference synced from another device is applied, and on any
+// change — including reverting to the default icon if its theme was re-locked by
+// a progression/prestige reset (resolveAppIconId handles the fallback).
+if (isNative) {
+  watch(
+    () => [prefs.appIcon, unlockedThemeIds.value.join(',')] as const,
+    () => {
+      const resolved = resolveAppIconId(prefs.appIcon, unlockedThemeIds.value)
+      if (resolved !== prefs.appIcon) {
+        prefs.setAppIcon(resolved) // reverts a now-locked icon; re-triggers this watcher
+        return
+      }
+      void setNativeAppIcon(getAppIcon(resolved).nativeName)
+    },
+    { immediate: true }
+  )
+}
 
 // ── Swipe-to-dismiss for settings sheet ────────────────────────
 const settingsEl = ref<HTMLElement | null>(null)
