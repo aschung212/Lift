@@ -7173,6 +7173,55 @@ html.theme-fading .settingsSheet {
   }
 }
 
+/* ─── Reduced transparency (LIFT-680) ───────────────────────────────────── */
+/*
+  Glass morphism is always on (see CLAUDE.md), but iOS/macOS users who enable
+  Settings → Accessibility → Display & Text Size → Reduce Transparency (and the
+  equivalent on Windows/Android) expect blur and translucency to be replaced
+  with solid surfaces — translucent glass over busy mesh backgrounds hurts text
+  legibility. Honor `prefers-reduced-transparency: reduce` by swapping the
+  backdrop blur for opaque theme fills, mirroring the retired [data-glass="off"]
+  treatment. Placed after the mobile reduction block so it wins when both match.
+  CSS-only; no visual change in the default (no-preference) state.
+*/
+@media (prefers-reduced-transparency: reduce) {
+  /* Floating tab bar + content cards → solid secondary fill, no blur. */
+  .tabBar,
+  .wtCard,
+  .calCard {
+    background: var(--bg-secondary);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--border);
+  }
+
+  /* The active-tab pill blurs the bar behind it — drop the blur. */
+  .tabIndicator {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* Modals & bottom sheets → solid elevated fill, no blur. */
+  .repMaxModal,
+  .kbSheet,
+  .legalSheet,
+  .confirmSheet {
+    background: var(--bg-elevated);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--border-strong);
+  }
+
+  /* Scrim overlays keep their dim tint but lose the blur that made them glass. */
+  .settingsOverlay,
+  .repMaxOverlay,
+  .kbOverlay,
+  .confirmOverlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 /* ─── Reduced motion ────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {

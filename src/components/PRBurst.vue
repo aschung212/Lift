@@ -140,6 +140,18 @@ watch(visible, async (v) => {
   pointer-events: none;
 }
 
+/* Reduce Transparency (LIFT-680): swap the blur for a near-opaque dim so the
+   celebration still reads but the busy app behind it isn't shown through glass. */
+@media (prefers-reduced-transparency: reduce) {
+  .prBurstBackdrop {
+    background:
+      radial-gradient(ellipse 90% 70% at 50% 48%, var(--accent-subtle, rgba(212, 175, 55, 0.12)) 0%, transparent 70%),
+      rgba(0, 0, 0, 0.92);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 .prBurstRings {
   position: absolute;
   top: 48%;
