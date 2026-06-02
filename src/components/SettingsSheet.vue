@@ -431,11 +431,18 @@
         <div class="settingsGroup">
           <div class="settingsHeader">Data</div>
           <div class="settingsRow">
-            <span class="settingsLabel">Export</span>
+            <span class="settingsLabel">
+              Export
+              <span v-if="!isSupporter" class="supporterPill">Supporter</span>
+            </span>
             <div class="exportBtnGroup">
-              <button class="exportBtn" @click="exportData('csv')" aria-label="Export data as CSV">CSV</button>
-              <button class="exportBtn" @click="exportData('json')" aria-label="Export data as JSON">JSON</button>
+              <button class="exportBtn" @click="exportData('csv')" :aria-label="isSupporter ? 'Export data as CSV' : 'Export data as CSV (Supporter perk)'">CSV</button>
+              <button class="exportBtn" @click="exportData('json')" :aria-label="isSupporter ? 'Export data as JSON' : 'Export data as JSON (Supporter perk)'">JSON</button>
             </div>
+          </div>
+          <div v-if="exportUpsellVisible && !isSupporter" class="settingsExportUpsell" role="status">
+            <p class="settingsExportUpsellText">Raw CSV &amp; JSON export is a Supporter perk — your full training log, portable and yours. Free training reports stay available below.</p>
+            <button type="button" class="exportBtn exportBtnPrimary" @click="scrollToSupport">Become a Supporter</button>
           </div>
           <div class="settingsRow">
             <span class="settingsLabel">Import</span>
@@ -472,7 +479,7 @@
         </div>
 
 
-        <div class="settingsGroup">
+        <div class="settingsGroup" ref="supportSectionEl">
           <div class="settingsHeader">Support</div>
           <a class="settingsRow settingsRowBtn settingsLink" href="https://github.com/sponsors/aschung212" target="_blank" rel="noopener">
             <span class="settingsLabel">
@@ -542,7 +549,7 @@
                 <li><strong>Vercel</strong> — hosting and anonymous analytics</li>
               </ul>
               <h4 class="legalH4">Data Deletion</h4>
-              <p>You can export or delete your data at any time. Use the Export feature in Settings to download your data as CSV or JSON. To delete your account and all associated data, contact us at the email below.</p>
+              <p>You can export or delete your data at any time. Generate a training report from Settings, or — as a Supporter — download your full data as CSV or JSON. To request a copy of your data or to delete your account and all associated data, contact us at the email below.</p>
               <h4 class="legalH4">Contact</h4>
               <p>For privacy questions, email <strong>aaronschung@gmail.com</strong>.</p>
             </template>
@@ -751,6 +758,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useSupporter } from '../composables/useSupporter'
 
 const props = defineProps<{
   modelValue: boolean
@@ -766,6 +774,7 @@ const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } 
 const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
 const { user } = useAuth()
+const { isSupporter } = useSupporter()
 const { logEvent } = useAnalytics()
 const prefs = usePreferencesStore()
 const workoutStore = useWorkoutStore()
@@ -1086,6 +1095,17 @@ function scrollToProgressionToggle() {
   setTimeout(() => el.classList.remove('settingsRowHighlight'), 2000)
 }
 
+const supportSectionEl = ref<HTMLElement | null>(null)
+
+function scrollToSupport() {
+  const el = supportSectionEl.value
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('settingsRowHighlight')
+  setTimeout(() => el.classList.remove('settingsRowHighlight'), 2000)
+  logEvent('supporter_upsell_tap', { source: 'data_export' })
+}
+
 const resetConfirmVisible = ref(false)
 
 function confirmResetProgress() {
@@ -1360,7 +1380,16 @@ function clearGoalValues() {
 }
 
 // ── Data export/import ─────────────────────────────────────────
+// Raw CSV/JSON export of the full training log is a Supporter perk (#603).
+// Free users keep the training report below; supporters get portable data.
+const exportUpsellVisible = ref(false)
+
 async function exportData(format: 'csv' | 'json') {
+  if (!isSupporter.value) {
+    exportUpsellVisible.value = true
+    logEvent('data_export_blocked', { format })
+    return
+  }
   const timestamp = new Date().toISOString().slice(0, 10)
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown'
   const userIdHash = user.value?.id ? await hashUserId(user.value.id) : 'anonymous'

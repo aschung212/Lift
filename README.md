@@ -118,7 +118,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Undo toast for destructive actions (delete exercise, delete set, clear data)
 - Service worker update prompt — "New version available" banner with one-tap update
 - Keyboard shortcuts for power users — press `?` to view the shortcut help dialog
-- CSV and JSON data export from settings
+- CSV and JSON data export from settings (Supporter perk; free tier gets the training report)
 - Active tab persisted across sessions
 - All touch targets meet iOS 44pt minimum
 - All text meets 11pt minimum font size
