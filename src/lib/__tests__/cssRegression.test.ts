@@ -503,4 +503,70 @@ describe('CSS regression tests', () => {
       expect(beforeLines.some(l => l.startsWith('height: 44px'))).toBe(true)
     })
   })
+
+  describe('prefers-reduced-transparency fallback (LIFT-680)', () => {
+    // Regression: glass morphism is always on, but users who enable Reduce
+    // Transparency (iOS/macOS/Windows) expect blur/translucency swapped for
+    // solid surfaces. Without this media query, text over the always-on glass
+    // stays hard to read on busy mesh backgrounds.
+
+    // Extract the @media (prefers-reduced-transparency: reduce) block body.
+    function getMediaBlock(query: string, source = css): string {
+      const needle = '@media (' + query + ')'
+      const idx = source.indexOf(needle)
+      if (idx === -1) return ''
+      const start = source.indexOf('{', idx) + 1
+      let depth = 1
+      let end = start
+      while (depth > 0 && end < source.length) {
+        if (source[end] === '{') depth++
+        if (source[end] === '}') depth--
+        end++
+      }
+      return source.slice(start, end - 1)
+    }
+
+    const block = getMediaBlock('prefers-reduced-transparency: reduce')
+
+    it('declares a prefers-reduced-transparency: reduce media query', () => {
+      expect(block.length, 'media block not found in index.css').toBeGreaterThan(0)
+    })
+
+    it('disables backdrop-filter on the glass surfaces', () => {
+      // Every backdrop-filter declaration inside the block must be `none`.
+      const filters = block.match(/(?<!-webkit-)backdrop-filter:[^;]+;/g) || []
+      expect(filters.length).toBeGreaterThan(0)
+      for (const f of filters) {
+        expect(f).toContain('none')
+      }
+    })
+
+    it('gives the tab bar and content cards a solid background', () => {
+      expect(block).toMatch(/\.tabBar,[\s\S]*?\.calCard\s*\{[\s\S]*?background:\s*var\(--bg-secondary\)/)
+    })
+
+    it('gives modals and sheets a solid elevated background', () => {
+      expect(block).toMatch(/\.confirmSheet\s*\{[\s\S]*?background:\s*var\(--bg-elevated\)/)
+    })
+
+    it('removes blur from scrim overlays', () => {
+      for (const sel of ['.settingsOverlay', '.repMaxOverlay', '.kbOverlay', '.confirmOverlay']) {
+        expect(block, `${sel} missing from reduced-transparency block`).toContain(sel)
+      }
+    })
+
+    it('comes after the mobile backdrop-filter reduction block so it wins', () => {
+      const mobileIdx = css.indexOf('@media (max-width: 768px)')
+      const reduceIdx = css.indexOf('@media (prefers-reduced-transparency: reduce)')
+      expect(mobileIdx).toBeGreaterThan(-1)
+      expect(reduceIdx).toBeGreaterThan(mobileIdx)
+    })
+
+    it('PRBurst celebration backdrop has a reduced-transparency fallback', () => {
+      const vue = getVueStyleBlock('PRBurst.vue')
+      const prBlock = getMediaBlock('prefers-reduced-transparency: reduce', vue)
+      expect(prBlock.length, 'PRBurst reduced-transparency block not found').toBeGreaterThan(0)
+      expect(prBlock).toContain('backdrop-filter: none')
+    })
+  })
 })
