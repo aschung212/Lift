@@ -5,6 +5,7 @@ import { injectSpeedInsights } from '@vercel/speed-insights'
 import { initNativePlugins } from './lib/native'
 import { initTheme } from './composables/useTheme'
 import { setSentryCaptureException, logError } from './lib/logger'
+import { isNative } from './lib/platform'
 import App from './App.vue'
 import './index.css'
 
@@ -20,8 +21,13 @@ const deferAfterPaint = (fn: () => void): void => {
 }
 
 deferAfterPaint(() => {
-  inject()
-  injectSpeedInsights()
+  // Vercel Analytics + Speed Insights are web-only (LIFT-533): keep them out of
+  // the iOS Capacitor build so the native app makes no analytics network calls,
+  // simplifying any future App Store privacy declarations.
+  if (!isNative) {
+    inject()
+    injectSpeedInsights()
+  }
 })
 
 initNativePlugins()
@@ -42,8 +48,12 @@ if (sentryDsn && import.meta.env.PROD) {
       app,
       dsn: sentryDsn,
       environment: import.meta.env.MODE,
+      // Distinguish web vs. iOS crashes in Sentry releases (LIFT-533).
+      release: `${isNative ? 'ios' : 'web'}@${__APP_VERSION__}`,
       tracesSampleRate: 0.1,
       enabled: true,
+      // Never attach default PII (IP, headers, cookies) on web or native (LIFT-533).
+      sendDefaultPii: false,
       denyUrls: [
         // Bot probes for CMS/REST endpoints that don't exist in this SPA
         /\/js\/rest\//,
@@ -52,6 +62,8 @@ if (sentryDsn && import.meta.env.PROD) {
       ],
       beforeSend(event) {
         if (event.request?.cookies) delete event.request.cookies
+        // Scrub IP address — defensive even with sendDefaultPii:false (LIFT-533).
+        if (event.user) delete event.user.ip_address
         return event
       },
     })
