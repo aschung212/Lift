@@ -52,6 +52,17 @@ describe('CSS regression tests', () => {
     it('has overflow-y: auto for scrolling', () => {
       expect(lines.some(l => l.includes('overflow-y') && l.includes('auto'))).toBe(true)
     })
+
+    // Regression: keyboard/screen-reader focus must clear the fixed tab bar
+    // (WCAG 2.2 SC 2.4.11 Focus Not Obscured). Without scroll-padding-bottom the
+    // browser scrolls focused rows flush to the viewport edge, tucking them
+    // under the floating glass bar (LIFT-681).
+    it('has scroll-padding-bottom so focus clears the fixed tab bar', () => {
+      const rule = lines.find(l => l.startsWith('scroll-padding-bottom'))
+      expect(rule).toBeTruthy()
+      // Must account for the safe-area inset on notched devices
+      expect(rule).toContain('safe-area-inset-bottom')
+    })
   })
 
   describe('html.modal-open .tabContent override', () => {

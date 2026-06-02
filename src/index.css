@@ -987,6 +987,13 @@ button, [role="tab"], [role="switch"], a {
   padding-top: 12px;
   /* Reserve room for the floating tab bar: 58h + 26 offset + 16 padding + safe area */
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 120px);
+  /*
+    Keep keyboard/screen-reader focus clear of the fixed tab bar (WCAG 2.2 SC
+    2.4.11 Focus Not Obscured). The bar's top edge sits at 26 + 58 = 84px above
+    the bottom (plus safe area); add a 16px gap so focused rows scroll fully
+    into view rather than tucking under the glass bar.
+  */
+  scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
 }
 
 html.modal-open .tabContent {
