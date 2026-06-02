@@ -3946,7 +3946,25 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
   flex-shrink: 0;
   align-self: center;
+  /*
+    The visible chip stays a compact 24px circle so it doesn't crowd the
+    44px weight value, but the actual tap target is expanded to a full 44pt
+    iOS-compliant hit area via the ::before overlay below. position: relative
+    anchors that overlay; it adds no box of its own, so layout never shifts.
+  */
+  position: relative;
   transition: background-color 0.15s, color 0.15s;
+}
+
+/* Invisible 44x44pt hit area centered over the 24px chip (LIFT-685). */
+.logSetSheet .logSetFieldClear::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
 }
 
 .logSetSheet .logSetFieldClear:active {
