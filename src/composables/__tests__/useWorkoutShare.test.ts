@@ -388,4 +388,42 @@ describe('useWorkoutShare', () => {
       expect(hostNode.style.position).toBe('absolute')
     })
   })
+
+  // ── Watermark (#601) ───────────────────────────────────────────────
+
+  describe('watermark', () => {
+    it('injects the "Made with Lift" watermark when watermark is true', async () => {
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest({ watermark: true }))
+
+      const hostNode = mockRenderNodeToBlob.mock.calls[0][0]
+      const mark = hostNode.querySelector('[data-share-watermark]')
+      expect(mark).not.toBeNull()
+      expect(mark?.textContent).toBe('Made with Lift')
+    })
+
+    it('omits the watermark when watermark is false', async () => {
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest({ watermark: false }))
+
+      const hostNode = mockRenderNodeToBlob.mock.calls[0][0]
+      expect(hostNode.querySelector('[data-share-watermark]')).toBeNull()
+    })
+
+    it('omits the watermark by default (no opt-in)', async () => {
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest())
+
+      const hostNode = mockRenderNodeToBlob.mock.calls[0][0]
+      expect(hostNode.querySelector('[data-share-watermark]')).toBeNull()
+    })
+
+    it('injects the watermark on the download path too', async () => {
+      const { downloadCard } = await getComposable()
+      await downloadCard(makeRequest({ watermark: true }))
+
+      const hostNode = mockRenderNodeToBlob.mock.calls[0][0]
+      expect(hostNode.querySelector('[data-share-watermark]')).not.toBeNull()
+    })
+  })
 })

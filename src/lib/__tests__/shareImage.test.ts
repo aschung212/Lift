@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { defaultShareFilename, PREVIEW_SIZE, EXPORT_PIXEL_RATIO } from '../shareImage'
+import {
+  defaultShareFilename,
+  PREVIEW_SIZE,
+  EXPORT_PIXEL_RATIO,
+  WATERMARK_TEXT,
+  createWatermarkElement,
+} from '../shareImage'
 
 describe('shareImage', () => {
   describe('defaultShareFilename', () => {
@@ -23,6 +29,26 @@ describe('shareImage', () => {
       expect(PREVIEW_SIZE.story.width).toBe(360)
       expect(PREVIEW_SIZE.story.height).toBe(640)
       expect(PREVIEW_SIZE.story.height * EXPORT_PIXEL_RATIO).toBe(1920)
+    })
+  })
+
+  describe('createWatermarkElement', () => {
+    it('renders the watermark text', () => {
+      expect(createWatermarkElement().textContent).toBe(WATERMARK_TEXT)
+    })
+
+    it('tags the element with a data attribute for lookup', () => {
+      expect(createWatermarkElement().hasAttribute('data-share-watermark')).toBe(true)
+    })
+
+    it('inlines positioning styles so they survive html-to-image cloning', () => {
+      // Class-based styles are stripped in the cloned subtree; inline styles
+      // are not. The watermark must be anchored bottom-right and non-interactive.
+      const { style } = createWatermarkElement()
+      expect(style.position).toBe('absolute')
+      expect(style.right).toBe('14px')
+      expect(style.bottom).toBe('12px')
+      expect(style.pointerEvents).toBe('none')
     })
   })
 })
