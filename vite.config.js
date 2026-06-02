@@ -35,6 +35,11 @@ export default defineConfig({
     vue(),
     themeStripPlugin(),
     VitePWA({
+      // Disable the service worker entirely for the native Capacitor build (#532).
+      // WKWebView serves the web assets bundled in the .ipa and refreshes them via
+      // `cap sync`, so a Workbox SW is redundant and can cause reload loops / stale
+      // caches. `npm run cap:build` sets CAPACITOR_BUILD=true.
+      disable: process.env.CAPACITOR_BUILD === 'true',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {

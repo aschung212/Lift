@@ -1,8 +1,18 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
   plugins: [vue()],
+  resolve: {
+    alias: {
+      // vite-plugin-pwa injects `virtual:pwa-register` only during a real build.
+      // Alias it to a test stub so composables that register the SW are testable.
+      'virtual:pwa-register': fileURLToPath(
+        new URL('./src/__tests__/stubs/pwaRegister.ts', import.meta.url)
+      ),
+    },
+  },
   test: {
     environment: 'happy-dom',
     globals: true,

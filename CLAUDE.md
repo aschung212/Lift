@@ -52,7 +52,7 @@ This app will be wrapped with Capacitor for the App Store. Keep all code compati
 - Use `env(safe-area-inset-*)` for notch and home indicator spacing on all fixed/sticky elements
 - No hard dependencies on browser URL bar, back button, or browser navigation
 - localStorage and IndexedDB are available in Capacitor — these are safe to use
-- Test that service worker behavior degrades gracefully when running in Capacitor (native apps handle caching differently)
+- The service worker is **disabled entirely on the native Capacitor build** (#532). WKWebView serves the web assets bundled in the `.ipa` and refreshes them via `cap sync`, so a Workbox SW is redundant and risks reload loops / stale caches. This is enforced in two layers: `useServiceWorker` skips `registerSW` at runtime when `isNative`, and `vite.config.js` sets `VitePWA({ disable: true })` when `CAPACITOR_BUILD=true`. **Always build the native bundle with `npm run cap:build`** (it sets that env var) — a plain `npm run build` would bundle a SW into the native app.
 - Avoid `position: fixed` layouts that break when the iOS keyboard opens — use `visualViewport` API or bottom-sheet patterns that account for keyboard
 
 ## iOS Compliance
