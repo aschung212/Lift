@@ -1,6 +1,6 @@
 <template>
   <div v-if="weeklyVolume.length > 0" class="mgChart">
-    <button class="mgHeader" @click="$emit('toggleCollapsed')">
+    <button class="mgHeader" :aria-expanded="!collapsed" @click="$emit('toggleCollapsed')">
       <p class="mgTitle">Weekly Volume by Tag</p>
       <div class="mgHeaderRight">
         <span v-if="collapsed" class="mgCollapsedSummary">{{ totalSets }} sets</span>
