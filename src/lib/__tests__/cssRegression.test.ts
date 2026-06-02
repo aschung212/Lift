@@ -476,4 +476,31 @@ describe('CSS regression tests', () => {
       })
     }
   })
+
+  describe('.logSetFieldClear 44pt touch target (LIFT-685)', () => {
+    // Regression: the inline "clear weight" × chip was a bare 24x24px button
+    // with padding:0 — exactly the WCAG 2.2 SC 2.5.8 floor but well below the
+    // project's own 44pt iOS standard, making it easy to mis-tap during fast
+    // set entry. Fix: keep the compact 24px visible chip but extend the tap
+    // target to 44x44pt via an absolutely-positioned ::before overlay so the
+    // layout (and the 44px weight value next to it) never shifts.
+    const lines = getRuleLines('.logSetSheet .logSetFieldClear')
+    const beforeLines = getRuleLines('.logSetSheet .logSetFieldClear::before')
+
+    it('keeps the visible chip at a compact 24px (no layout growth)', () => {
+      expect(lines.some(l => l.startsWith('width: 24px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height: 24px'))).toBe(true)
+    })
+
+    it('is position: relative to anchor the hit-area overlay', () => {
+      expect(lines.some(l => l.startsWith('position: relative'))).toBe(true)
+    })
+
+    it('has a ::before overlay sized to the 44pt iOS minimum', () => {
+      expect(beforeLines.length, '::before rule not found').toBeGreaterThan(0)
+      expect(beforeLines.some(l => l.startsWith('position: absolute'))).toBe(true)
+      expect(beforeLines.some(l => l.startsWith('width: 44px'))).toBe(true)
+      expect(beforeLines.some(l => l.startsWith('height: 44px'))).toBe(true)
+    })
+  })
 })
