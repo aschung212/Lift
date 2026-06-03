@@ -21,6 +21,43 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('manifest description aligns with meta description and leads with differentiators', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../../../index.html'), 'utf-8')
+
+    it('uses the unified discoverability-focused description', () => {
+      expect(viteConfig).toContain(
+        "description: 'Free, offline-capable PWA workout tracker. Log sets, track estimated 1RM progress, visualize training history, and hit new PRs.'"
+      )
+    })
+
+    it('no longer uses the generic keyword-poor description', () => {
+      expect(viteConfig).not.toContain(
+        'Track your sets, monitor progress, and hit personal records.'
+      )
+    })
+
+    it('includes the high-value discoverability keywords surfaced in install UI', () => {
+      const manifestDescMatch = viteConfig.match(/description: '([^']+)'/)
+      expect(manifestDescMatch).not.toBeNull()
+      const manifestDesc = (manifestDescMatch as RegExpMatchArray)[1]
+      expect(manifestDesc).toContain('Free')
+      expect(manifestDesc).toContain('offline')
+      expect(manifestDesc).toContain('1RM')
+      expect(manifestDesc).toContain('PWA')
+    })
+
+    it('shares the same value props as the index.html meta description', () => {
+      // Both descriptions must lead with the free/offline/PWA/1RM differentiators
+      // so the install prompt and search snippet tell a consistent story.
+      const metaMatch = indexHtml.match(/<meta name="description" content="([^"]+)"/)
+      expect(metaMatch).not.toBeNull()
+      const metaDesc = (metaMatch as RegExpMatchArray)[1]
+      for (const keyword of ['free', 'PWA', '1RM', 'offline']) {
+        expect(metaDesc.toLowerCase()).toContain(keyword.toLowerCase())
+      }
+    })
+  })
+
   describe('manifest includes display_override for fallback chain', () => {
     it('has display_override array with standalone and minimal-ui', () => {
       expect(viteConfig).toContain("display_override: ['standalone', 'minimal-ui']")
