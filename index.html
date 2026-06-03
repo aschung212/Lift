@@ -19,6 +19,31 @@
   <meta name="description" content="A free, open-source PWA workout tracker. Log sets, track estimated 1RM progress, visualize training history, and hit new PRs — all offline-capable." />
   <link rel="canonical" href="https://spa-rho-sandy.vercel.app" />
 
+  <!--
+    Structured data (schema.org SoftwareApplication) so Google can render a
+    rich app result for "Lift workout tracker" searches. price:0 marks it free;
+    no aggregateRating is included because we have no authentic review data and
+    fabricating one violates Google's policy (and the SEV1 no-fabrication rule).
+    URL/name are pinned to the real deployment domain via metaRegression test.
+  -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Lift",
+    "description": "A free, open-source PWA workout tracker. Log sets, track estimated 1RM progress, visualize training history, and hit new PRs — all offline-capable.",
+    "url": "https://spa-rho-sandy.vercel.app",
+    "applicationCategory": "HealthApplication",
+    "operatingSystem": "iOS, Android, Web",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "isAccessibleForFree": true
+  }
+  </script>
+
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Lift — Workout Tracker" />

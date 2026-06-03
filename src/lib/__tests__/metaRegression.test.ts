@@ -44,6 +44,43 @@ describe('index.html meta tag regression tests', () => {
     })
   })
 
+  describe('SoftwareApplication JSON-LD structured data', () => {
+    const match = html.match(
+      /<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/
+    )
+
+    it('includes a JSON-LD structured-data block', () => {
+      expect(match).not.toBeNull()
+    })
+
+    it('is valid, parseable JSON', () => {
+      expect(() => JSON.parse(match![1])).not.toThrow()
+    })
+
+    it('declares the schema.org SoftwareApplication type', () => {
+      const data = JSON.parse(match![1])
+      expect(data['@context']).toBe('https://schema.org')
+      expect(data['@type']).toBe('SoftwareApplication')
+    })
+
+    it('pins name and url to the real deployment domain', () => {
+      const data = JSON.parse(match![1])
+      expect(data.name).toBe('Lift')
+      expect(data.url).toContain(DEPLOYMENT_DOMAIN)
+    })
+
+    it('marks the app as free via a price:0 offer', () => {
+      const data = JSON.parse(match![1])
+      expect(data.offers.price).toBe('0')
+      expect(data.offers.priceCurrency).toBe('USD')
+    })
+
+    it('does not fabricate an aggregateRating', () => {
+      const data = JSON.parse(match![1])
+      expect(data.aggregateRating).toBeUndefined()
+    })
+  })
+
   describe('no references to domains we do not own', () => {
     it('does not reference liftracker.app (competitor domain)', () => {
       expect(html).not.toContain('liftracker.app')
