@@ -43,6 +43,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
+        // Explicit manifest id pins the PWA's install identity. Without it, Chromium
+        // derives identity from start_url ('/'), so any future start_url change would
+        // orphan existing installs and spawn a duplicate app. Pinning id to the current
+        // derived value ('/') keeps identity stable regardless of start_url changes.
+        id: '/',
         name: 'Lift — Workout Tracker',
         short_name: 'Lift',
         description: 'Track your sets, monitor progress, and hit personal records.',
