@@ -9,6 +9,7 @@ import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
 import { syncQueue } from '../lib/syncQueue'
+import { purgeSupabaseRuntimeCaches } from '../lib/swCaches'
 import { logError } from '../lib/logger'
 import type { User, Provider } from '@supabase/supabase-js'
 import type { ColorMode } from '../lib/themes'
@@ -153,6 +154,9 @@ async function signOut(): Promise<void> {
     // Network errors during sign-out should not block clearing the user
   } finally {
     resetStores()
+    // Purge cached Supabase REST responses so personal data isn't left at rest
+    // in Cache Storage on a shared device (localStorage/IDB are cleared elsewhere).
+    await purgeSupabaseRuntimeCaches()
     user.value = null
   }
 }

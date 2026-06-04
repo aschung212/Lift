@@ -61,6 +61,12 @@ vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { clear: () => mockSyncQueueClear() }
 }))
 
+// Mock the Supabase runtime cache purge so we can assert it's invoked
+const mockPurgeSupabaseRuntimeCaches = vi.fn().mockResolvedValue(undefined)
+vi.mock('../../lib/swCaches', () => ({
+  purgeSupabaseRuntimeCaches: () => mockPurgeSupabaseRuntimeCaches(),
+}))
+
 // Need to reset modules to get fresh state for useAuth
 // since it runs init() at module level
 let useAuth: typeof import('../useAuth').useAuth
@@ -69,6 +75,7 @@ beforeEach(async () => {
   vi.resetModules()
   // Re-setup mocks that resetModules clears
   mockGetSession.mockResolvedValue({ data: { session: null } })
+  mockPurgeSupabaseRuntimeCaches.mockClear()
   const mod = await import('../useAuth')
   useAuth = mod.useAuth
 })
@@ -184,6 +191,30 @@ describe('useAuth', () => {
       expect(mockProgressionReset).toHaveBeenCalledOnce()
     })
 
+    // Regression LIFT-704: signOut must purge cached Supabase REST responses so
+    // personal data isn't left at rest in Cache Storage on a shared device
+    it('purges Supabase runtime caches on sign out', async () => {
+      const { signOut, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockPurgeSupabaseRuntimeCaches.mockClear()
+      await signOut()
+
+      expect(mockPurgeSupabaseRuntimeCaches).toHaveBeenCalledOnce()
+    })
+
+    // Regression LIFT-704: cache purge must still run when supabase throws
+    it('purges Supabase runtime caches even when supabase signOut throws', async () => {
+      mockSignOut.mockRejectedValueOnce(new Error('Network error'))
+      const { signOut, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockPurgeSupabaseRuntimeCaches.mockClear()
+      await signOut()
+
+      expect(mockPurgeSupabaseRuntimeCaches).toHaveBeenCalledOnce()
+    })
+
     // Regression LIFT-497: stores must reset even when supabase throws
     it('resets stores even when supabase signOut throws', async () => {
       mockSignOut.mockRejectedValueOnce(new Error('Network error'))
@@ -260,6 +291,18 @@ describe('useAuth', () => {
 
       await deleteAccount()
       expect(user.value).toBeNull()
+    })
+
+    // Regression LIFT-704: account deletion must purge cached Supabase REST
+    // responses, mirroring the localStorage/IndexedDB cleanup
+    it('purges Supabase runtime caches on account deletion', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockPurgeSupabaseRuntimeCaches.mockClear()
+      await deleteAccount()
+
+      expect(mockPurgeSupabaseRuntimeCaches).toHaveBeenCalledOnce()
     })
 
     it('cancels pending sync operations before deleting', async () => {
