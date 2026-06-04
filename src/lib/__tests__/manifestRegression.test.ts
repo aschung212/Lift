@@ -15,6 +15,12 @@ const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.js'), '
 const publicDir = resolve(__dirname, '../../../public')
 
 describe('PWA manifest regression tests', () => {
+  describe('manifest includes explicit id for stable install identity', () => {
+    it("has id set to '/' so start_url changes never orphan existing installs", () => {
+      expect(viteConfig).toContain("id: '/'")
+    })
+  })
+
   describe('manifest includes categories for app store classification', () => {
     it('has categories array with health/fitness/sports', () => {
       expect(viteConfig).toContain("categories: ['health', 'fitness', 'sports']")
