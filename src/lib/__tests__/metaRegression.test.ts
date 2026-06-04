@@ -44,6 +44,26 @@ describe('index.html meta tag regression tests', () => {
     })
   })
 
+  describe('social preview accessibility and locale metadata', () => {
+    it('og:image has descriptive alt text for screen readers on social unfurls', () => {
+      const match = html.match(/<meta property="og:image:alt" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1].trim().length).toBeGreaterThan(0)
+    })
+
+    it('twitter:image has descriptive alt text for screen readers on social unfurls', () => {
+      const match = html.match(/<meta name="twitter:image:alt" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1].trim().length).toBeGreaterThan(0)
+    })
+
+    it('og:locale gives crawlers an explicit language signal', () => {
+      const match = html.match(/<meta property="og:locale" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1]).toBe('en_US')
+    })
+  })
+
   describe('no references to domains we do not own', () => {
     it('does not reference liftracker.app (competitor domain)', () => {
       expect(html).not.toContain('liftracker.app')
