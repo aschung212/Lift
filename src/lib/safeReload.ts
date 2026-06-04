@@ -48,6 +48,8 @@ export function reloadWhenSafe(reload: () => void = () => window.location.reload
   if (reloadScheduled) return
   reloadScheduled = true
 
+  let pending: ReturnType<typeof setTimeout> | null = null
+
   const tryReload = () => {
     if (!isSafeToReload()) return
     cleanup()
@@ -55,19 +57,36 @@ export function reloadWhenSafe(reload: () => void = () => window.location.reload
     reload()
   }
 
+  // Re-check on the next macrotask rather than synchronously. `focusout` fires
+  // during the `mousedown`/`touchstart` that moves focus off an input — e.g.
+  // tapping a Save button — so a synchronous reload would unload the page before
+  // the ensuing `click` handler runs, swallowing that action and losing the
+  // user's data. Deferring lets the queued pointer/click events flush first.
+  const scheduleCheck = () => {
+    if (pending !== null) return
+    pending = setTimeout(() => {
+      pending = null
+      tryReload()
+    }, 0)
+  }
+
   // Modal close toggles the `modal-open` class on <html>; an attribute observer
   // re-checks the moment that class changes.
   const observer = typeof MutationObserver !== 'undefined'
-    ? new MutationObserver(tryReload)
+    ? new MutationObserver(scheduleCheck)
     : null
 
   function cleanup() {
     observer?.disconnect()
-    document.removeEventListener('focusout', tryReload)
+    document.removeEventListener('focusout', scheduleCheck)
+    if (pending !== null) {
+      clearTimeout(pending)
+      pending = null
+    }
   }
 
   observer?.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
   // Blurring out of an input fires a bubbling focusout — re-check then too,
   // since losing focus isn't a class mutation.
-  document.addEventListener('focusout', tryReload)
+  document.addEventListener('focusout', scheduleCheck)
 }

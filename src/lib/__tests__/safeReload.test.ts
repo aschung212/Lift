@@ -12,9 +12,13 @@ async function freshImport() {
   reloadWhenSafe = mod.reloadWhenSafe
 }
 
-/** Wait a macrotask so MutationObserver microtasks have flushed. */
-function flush() {
-  return new Promise((resolve) => setTimeout(resolve, 0))
+/**
+ * Wait two macrotasks so the MutationObserver microtask and the deferred
+ * (setTimeout-scheduled) safety re-check both flush.
+ */
+async function flush() {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 describe('safeReload', () => {
@@ -86,6 +90,10 @@ describe('safeReload', () => {
 
       input.blur()
       input.dispatchEvent(new Event('focusout', { bubbles: true }))
+      // Must NOT reload synchronously — focusout fires during the mousedown
+      // that moves focus off the input (e.g. tapping Save); a sync reload would
+      // unload the page before the click handler runs and lose the action.
+      expect(reload).not.toHaveBeenCalled()
       await flush()
       expect(reload).toHaveBeenCalledTimes(1)
     })
