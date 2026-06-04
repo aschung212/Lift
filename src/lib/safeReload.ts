@@ -10,8 +10,19 @@
  * weight/reps fields open, and a silent refresh would discard them. That
  * contradicts the app's local-first, never-interrupt-the-UI ethos.
  *
- * This module defers the reload until the user is back in a safe state — no
- * modal open, no input focused — instead of reloading immediately.
+ * This module defers the reload until a genuinely safe moment instead of
+ * reloading immediately. The two trigger moments are deliberately chosen to
+ * avoid racing with user input:
+ *   1. The page becomes hidden (backgrounded or navigated away) — the safest
+ *      possible moment: nothing on screen to interrupt, and the user gets the
+ *      fresh version when they return.
+ *   2. An open modal closes (its scroll-lock class is removed) and nothing else
+ *      blocks — re-checked via a class MutationObserver.
+ *
+ * We deliberately do NOT trigger off `focusout`: it fires synchronously during
+ * the `mousedown`/`touchstart` that moves focus off an input (e.g. tapping a
+ * Save button), so reloading then would unload the page before the ensuing
+ * `click` handler runs and silently swallow the user's action.
  */
 
 /** True when reloading now would not interrupt the user. */
@@ -33,9 +44,9 @@ export function isSafeToReload(): boolean {
 let reloadScheduled = false
 
 /**
- * Reload immediately if it's safe, otherwise defer until the user returns to a
- * safe state — a modal closes or focus leaves an input. Idempotent: a second
- * call while a reload is already pending is a no-op.
+ * Reload immediately if it's safe, otherwise defer until the next safe moment —
+ * the page is hidden, or an open modal closes. Idempotent: a second call while a
+ * reload is already pending is a no-op.
  *
  * @param reload Injectable reload action (defaults to `window.location.reload`);
  *               parameterised so tests don't have to navigate the document.
@@ -48,45 +59,33 @@ export function reloadWhenSafe(reload: () => void = () => window.location.reload
   if (reloadScheduled) return
   reloadScheduled = true
 
-  let pending: ReturnType<typeof setTimeout> | null = null
-
-  const tryReload = () => {
-    if (!isSafeToReload()) return
+  const finish = () => {
     cleanup()
     reloadScheduled = false
     reload()
   }
 
-  // Re-check on the next macrotask rather than synchronously. `focusout` fires
-  // during the `mousedown`/`touchstart` that moves focus off an input — e.g.
-  // tapping a Save button — so a synchronous reload would unload the page before
-  // the ensuing `click` handler runs, swallowing that action and losing the
-  // user's data. Deferring lets the queued pointer/click events flush first.
-  const scheduleCheck = () => {
-    if (pending !== null) return
-    pending = setTimeout(() => {
-      pending = null
-      tryReload()
-    }, 0)
+  // (1) Page hidden: the user left/backgrounded the app — reload unconditionally,
+  //     it's the safest possible moment and there is nothing to interrupt.
+  const onVisibility = () => {
+    if (document.visibilityState === 'hidden') finish()
   }
 
-  // Modal close toggles the `modal-open` class on <html>; an attribute observer
-  // re-checks the moment that class changes.
+  // (2) A class changed on <html> — if that cleared the modal-open block and we
+  //     are now safe, reload. The class only flips on a deliberate open/close,
+  //     so this never preempts an in-flight click.
+  const onMutation = () => {
+    if (isSafeToReload()) finish()
+  }
   const observer = typeof MutationObserver !== 'undefined'
-    ? new MutationObserver(scheduleCheck)
+    ? new MutationObserver(onMutation)
     : null
 
   function cleanup() {
     observer?.disconnect()
-    document.removeEventListener('focusout', scheduleCheck)
-    if (pending !== null) {
-      clearTimeout(pending)
-      pending = null
-    }
+    document.removeEventListener('visibilitychange', onVisibility)
   }
 
   observer?.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-  // Blurring out of an input fires a bubbling focusout — re-check then too,
-  // since losing focus isn't a class mutation.
-  document.addEventListener('focusout', scheduleCheck)
+  document.addEventListener('visibilitychange', onVisibility)
 }

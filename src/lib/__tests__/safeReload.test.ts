@@ -12,25 +12,32 @@ async function freshImport() {
   reloadWhenSafe = mod.reloadWhenSafe
 }
 
-/**
- * Wait two macrotasks so the MutationObserver microtask and the deferred
- * (setTimeout-scheduled) safety re-check both flush.
- */
-async function flush() {
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  await new Promise((resolve) => setTimeout(resolve, 0))
+/** Wait a macrotask so the MutationObserver microtask has flushed. */
+function flush() {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+/** Force document.visibilityState and fire the matching visibilitychange. */
+function setVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => state,
+  })
+  document.dispatchEvent(new Event('visibilitychange'))
 }
 
 describe('safeReload', () => {
   beforeEach(async () => {
     document.documentElement.className = ''
     document.body.innerHTML = ''
+    setVisibility('visible')
     await freshImport()
   })
 
   afterEach(() => {
     document.documentElement.className = ''
     document.body.innerHTML = ''
+    setVisibility('visible')
   })
 
   describe('isSafeToReload', () => {
@@ -79,7 +86,7 @@ describe('safeReload', () => {
       expect(reload).toHaveBeenCalledTimes(1)
     })
 
-    it('does NOT reload while an input is focused, then reloads on focusout', async () => {
+    it('defers while an input is focused and does not reload on its blur', async () => {
       const input = document.createElement('input')
       document.body.appendChild(input)
       input.focus()
@@ -88,13 +95,26 @@ describe('safeReload', () => {
       reloadWhenSafe(reload)
       expect(reload).not.toHaveBeenCalled()
 
+      // Blurring/focusout must NOT trigger a reload — it fires synchronously
+      // during the mousedown that moves focus (e.g. tapping Save) and would
+      // unload the page before the click handler runs, losing the action.
       input.blur()
       input.dispatchEvent(new Event('focusout', { bubbles: true }))
-      // Must NOT reload synchronously — focusout fires during the mousedown
-      // that moves focus off the input (e.g. tapping Save); a sync reload would
-      // unload the page before the click handler runs and lose the action.
-      expect(reload).not.toHaveBeenCalled()
       await flush()
+      expect(reload).not.toHaveBeenCalled()
+    })
+
+    it('reloads when the page becomes hidden (backgrounded / navigated away)', () => {
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      input.focus()
+      const reload = vi.fn()
+
+      reloadWhenSafe(reload)
+      expect(reload).not.toHaveBeenCalled()
+
+      // User backgrounds the app — the safest possible moment to reload.
+      setVisibility('hidden')
       expect(reload).toHaveBeenCalledTimes(1)
     })
 
