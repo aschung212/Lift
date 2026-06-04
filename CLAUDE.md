@@ -99,6 +99,7 @@ These patterns were reached through multiple iterations of user testing. Do not 
 - **Theme system.** 10 elemental themes (Eternal, Origin, Fortitude, Intensity, Flow, Stability, Luck, Focus, Energy, Love; internal IDs: `eternal`, `pearl`, `midnight`, `fire`, `water`, `earth`, `luck`, `amethyst`, `air`, `love`) with CSS custom properties, custom SVG icons, and gradient previews. Light/dark/auto modes. Glass morphism is always on. Eternal (black + gold) is the default. Legacy IDs (`void`, `sun`, `moon`, `graphite`, `arctic`, `forge`, `aaron`, `tina`, `bloom`, `metal`, `oak`) are mapped to current IDs by a migration table in `useTheme.ts`.
 - **Hand-rolled SVGs.** No chart libraries. Polyline + polygon with computed point arrays.
 - **Debounced sync.** Rapid store mutations are batched before hitting Supabase.
+- **Durable write queue.** Workout writes enqueued via `syncQueue` can carry a serializable `SyncDescriptor` (upsert/update only — idempotent for safe replay). Descriptors are journaled to IndexedDB so pending offline writes survive a tab close and are replayed on next launch via `syncQueue.rehydrate()` (called from `useAuth.initStores`). The journal is wiped on sign-out so a shared device never replays the previous user's writes. Reconciliation in `_fetchFromSupabase` is the second line of defense: it re-pushes local sets missing from the server even on remote-winning exercises (union-then-push). The Background Sync API is intentionally not used — iOS/WKWebView, the App Store target, lacks it.
 
 ## Documentation Mandate
 

@@ -57,8 +57,12 @@ vi.mock('../../lib/supabase', () => ({
 
 // Mock syncQueue
 const mockSyncQueueClear = vi.fn()
+const mockSyncQueueRehydrate = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../lib/syncQueue', () => ({
-  syncQueue: { clear: () => mockSyncQueueClear() }
+  syncQueue: {
+    clear: () => mockSyncQueueClear(),
+    rehydrate: () => mockSyncQueueRehydrate(),
+  }
 }))
 
 // Need to reset modules to get fresh state for useAuth

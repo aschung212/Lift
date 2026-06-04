@@ -219,19 +219,74 @@ export const useWorkoutStore = defineStore('workout', () => {
     delete exercise.sample
     if (supabase && !isPreviewMode.value && _userId) {
       const userId = _userId
-      syncQueue.enqueue(`exercise:${exercise.id}`, () =>
-        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
-      )
+      _enqueueExerciseUpsert(exercise, userId)
       for (const set of exercise.sets) {
-        syncQueue.enqueue(`set:${set.id}`, () =>
-          supabase!.from('sets').upsert({
-            id: set.id, user_id: userId, exercise_id: exercise.id,
-            date: set.date, weight: set.weight, reps: set.reps,
-            estimated_1rm: set.estimated1RM
-          })
-        )
+        _enqueueSetUpsert(set, exercise.id, userId)
       }
     }
+  }
+
+  /**
+   * Durable exercise upsert. Builds the row once and journals a serializable
+   * descriptor alongside the closure so the write survives a reload (LIFT-706).
+   */
+  function _enqueueExerciseUpsert(exercise: Exercise, userId: string) {
+    const row = _buildExerciseUpsert(exercise, userId)
+    syncQueue.enqueue(
+      `exercise:${exercise.id}`,
+      () => supabase!.from('exercises').upsert(row),
+      { op: 'upsert', table: 'exercises', row },
+    )
+  }
+
+  /** Durable set upsert with a journaled descriptor (LIFT-706). */
+  function _enqueueSetUpsert(
+    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number },
+    exerciseId: string,
+    userId: string,
+  ) {
+    const row = {
+      id: set.id, user_id: userId, exercise_id: exerciseId,
+      date: set.date, weight: set.weight, reps: set.reps,
+      estimated_1rm: set.estimated1RM,
+    }
+    syncQueue.enqueue(
+      `set:${set.id}`,
+      () => supabase!.from('sets').upsert(row),
+      { op: 'upsert', table: 'sets', row },
+    )
+  }
+
+  /**
+   * Durable soft-delete (UPDATE { deleted_at }). Routed through enqueueDelete
+   * so the circuit breaker sees it, with a journaled descriptor (LIFT-706).
+   */
+  function _enqueueSoftDelete(key: string, table: 'sets' | 'exercises', match: Record<string, string>) {
+    const deletedAt = new Date().toISOString()
+    const values = { deleted_at: deletedAt }
+    syncQueue.enqueueDelete(
+      key,
+      () => {
+        let q = supabase!.from(table).update(values)
+        for (const [col, val] of Object.entries(match)) q = q.eq(col, val)
+        return q
+      },
+      { op: 'update', table, values, match },
+    )
+  }
+
+  /** Durable soft-delete restore (UPDATE { deleted_at: null }) (LIFT-706). */
+  function _enqueueRestore(key: string, table: 'sets' | 'exercises', match: Record<string, string>) {
+    const values = { deleted_at: null }
+    syncQueue.enqueue(
+      key,
+      () => {
+        let q = supabase!.from(table).update(values)
+        for (const [col, val] of Object.entries(match)) q = q.eq(col, val)
+        return q
+      },
+      { op: 'update', table, values, match },
+    )
   }
 
   // ── Actions ────────────────────────────────────────────────────────
@@ -294,14 +349,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     for (const s of sets) {
       if (isTombstoned('sets', s.id)) {
         // Re-enqueue the soft-delete for tombstoned sets still visible on remote
-        const setId = s.id
-        const userId = _userId
-        const deletedAt = new Date().toISOString()
-        syncQueue.enqueueDelete(`set:${setId}`, () =>
-          supabase!.from('sets')
-            .update({ deleted_at: deletedAt })
-            .eq('id', setId).eq('user_id', userId)
-        )
+        _enqueueSoftDelete(`set:${s.id}`, 'sets', { id: s.id, user_id: _userId })
         continue
       }
       const exerciseId = s.exercise_id
@@ -388,17 +436,9 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (filteredLocalOnly.length > 0) {
       const userId = _userId
       for (const ex of filteredLocalOnly) {
-        syncQueue.enqueue(`exercise:${ex.id}`, () =>
-          supabase!.from('exercises').upsert(_buildExerciseUpsert(ex, userId))
-        )
+        _enqueueExerciseUpsert(ex, userId)
         for (const set of ex.sets) {
-          syncQueue.enqueue(`set:${set.id}`, () =>
-            supabase!.from('sets').upsert({
-              id: set.id, user_id: userId, exercise_id: ex.id,
-              date: set.date, weight: set.weight, reps: set.reps,
-              estimated_1rm: set.estimated1RM
-            })
-          )
+          _enqueueSetUpsert(set, ex.id, userId)
         }
       }
     }
@@ -411,9 +451,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (filteredLocalWins.length > 0) {
       const userId = _userId
       for (const ex of filteredLocalWins) {
-        syncQueue.enqueue(`exercise:${ex.id}`, () =>
-          supabase!.from('exercises').upsert(_buildExerciseUpsert(ex, userId))
-        )
+        _enqueueExerciseUpsert(ex, userId)
         // Only push sets that are new or have changed content (offline edits)
         const remoteSets = new Map(
           (remoteExMap.get(ex.id)?.sets || []).map(s => [s.id, s])
@@ -425,14 +463,38 @@ export const useWorkoutStore = defineStore('workout', () => {
             || remote.reps !== set.reps
             || remote.date !== set.date
           if (needsPush) {
-            syncQueue.enqueue(`set:${set.id}`, () =>
-              supabase!.from('sets').upsert({
-                id: set.id, user_id: userId, exercise_id: ex.id,
-                date: set.date, weight: set.weight, reps: set.reps,
-                estimated_1rm: set.estimated1RM
-              })
-            )
+            _enqueueSetUpsert(set, ex.id, userId)
           }
+        }
+      }
+    }
+
+    // Reconciliation gap (LIFT-706): when a DIFFERENT device updated an
+    // exercise after this device added sets to it offline, the remote copy
+    // WINS the last-write-wins merge — so the exercise is neither localOnly
+    // nor localWins. Its offline-added sets are unioned into local state above
+    // (so they render), but the old push logic only covered localOnly/localWins
+    // exercises, leaving those sets stranded locally and silently diverged from
+    // the server. Push any local set on a both-sides exercise that the remote
+    // doesn't have (and isn't tombstoned). Idempotent upsert + key dedup makes
+    // overlap with the pushes above harmless.
+    {
+      const userId = _userId
+      const alreadyPushedIds = new Set([
+        ...filteredLocalOnly.map(e => e.id),
+        ...filteredLocalWins.map(e => e.id),
+      ])
+      for (const ex of deduped.exercises) {
+        if (ex.sample || alreadyPushedIds.has(ex.id)) continue
+        // Only both-sides exercises reach here; localOnly/localWins are handled
+        // above. Use the pre-merge `remoteSetIds` snapshot — the union step
+        // mutates remote exercises' `.sets` arrays in place, so checking
+        // `remoteEx.sets` here would wrongly treat the just-unioned local set
+        // as already present on the server.
+        if (!remoteExMap.has(ex.id)) continue
+        for (const set of ex.sets) {
+          if (remoteSetIds.has(set.id) || isTombstoned('sets', set.id)) continue
+          _enqueueSetUpsert(set, ex.id, userId)
         }
       }
     }
@@ -442,19 +504,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       .filter(ex => isTombstoned(TOMBSTONE_STORE, ex.id))
     if (tombstoneExercises.length > 0) {
       const userId = _userId
-      const deletedAt = new Date().toISOString()
       for (const ex of tombstoneExercises) {
-        const exId = ex.id
-        syncQueue.enqueueDelete(`exercise-sets:${exId}`, () =>
-          supabase!.from('sets')
-            .update({ deleted_at: deletedAt })
-            .eq('exercise_id', exId).eq('user_id', userId)
-        )
-        syncQueue.enqueueDelete(`exercise:${exId}`, () =>
-          supabase!.from('exercises')
-            .update({ deleted_at: deletedAt })
-            .eq('id', exId).eq('user_id', userId)
-        )
+        _enqueueSoftDelete(`exercise-sets:${ex.id}`, 'sets', { exercise_id: ex.id, user_id: userId })
+        _enqueueSoftDelete(`exercise:${ex.id}`, 'exercises', { id: ex.id, user_id: userId })
       }
     }
   }
@@ -473,10 +525,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`exercise:${id}`, () =>
-        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
-      )
+      _enqueueExerciseUpsert(exercise, _userId)
     }
     return id
   }
@@ -499,10 +548,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (supabase && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
-      )
+      _enqueueExerciseUpsert(exercise, _userId)
     }
   }
 
@@ -516,10 +562,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (supabase && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
-      )
+      _enqueueExerciseUpsert(exercise, _userId)
     }
   }
 
@@ -542,13 +585,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`set:${id}`, () =>
-        supabase!.from('sets').upsert({
-          id, user_id: userId, exercise_id: exerciseId,
-          date, weight, reps, estimated_1rm: estimated1RM
-        })
-      )
+      _enqueueSetUpsert({ id, date, weight, reps, estimated1RM }, exerciseId, _userId)
     }
   }
 
@@ -569,14 +606,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (supabase && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`set:${setId}`, () =>
-        supabase!.from('sets').upsert({
-          id: setId, user_id: userId, exercise_id: exerciseId,
-          date: set.date, weight: set.weight, reps: set.reps,
-          estimated_1rm: set.estimated1RM
-        })
-      )
+      _enqueueSetUpsert(set, exerciseId, _userId)
     }
   }
 
@@ -590,13 +620,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
-      const userId = _userId
-      const deletedAt = new Date().toISOString()
-      syncQueue.enqueueDelete(`set:${setId}`, () =>
-        supabase!.from('sets')
-          .update({ deleted_at: deletedAt })
-          .eq('id', setId).eq('user_id', userId)
-      )
+      _enqueueSoftDelete(`set:${setId}`, 'sets', { id: setId, user_id: _userId })
     }
   }
 
@@ -612,12 +636,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // deleteSet so an in-flight delete is superseded (last-write-wins). If
     // the delete already flushed, this un-soft-deletes the row.
     if (supabase && !isPreviewMode.value && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`set:${set.id}`, () =>
-        supabase!.from('sets')
-          .update({ deleted_at: null })
-          .eq('id', set.id).eq('user_id', userId)
-      )
+      _enqueueRestore(`set:${set.id}`, 'sets', { id: set.id, user_id: _userId })
     }
   }
 
@@ -633,10 +652,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (supabase && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
-      )
+      _enqueueExerciseUpsert(exercise, _userId)
     }
   }
 
@@ -650,10 +666,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (supabase && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
-      )
+      _enqueueExerciseUpsert(exercise, _userId)
     }
   }
 
@@ -666,18 +679,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
-      const userId = _userId
-      const deletedAt = new Date().toISOString()
-      syncQueue.enqueueDelete(`exercise-sets:${exerciseId}`, () =>
-        supabase!.from('sets')
-          .update({ deleted_at: deletedAt })
-          .eq('exercise_id', exerciseId).eq('user_id', userId)
-      )
-      syncQueue.enqueueDelete(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises')
-          .update({ deleted_at: deletedAt })
-          .eq('id', exerciseId).eq('user_id', userId)
-      )
+      _enqueueSoftDelete(`exercise-sets:${exerciseId}`, 'sets', { exercise_id: exerciseId, user_id: _userId })
+      _enqueueSoftDelete(`exercise:${exerciseId}`, 'exercises', { id: exerciseId, user_id: _userId })
     }
   }
 
@@ -700,17 +703,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     // alternative (tracking per-cascade timestamps) is complexity without
     // matching benefit for immediate-undo UX.
     if (supabase && !isPreviewMode.value && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`exercise-sets:${exercise.id}`, () =>
-        supabase!.from('sets')
-          .update({ deleted_at: null })
-          .eq('exercise_id', exercise.id).eq('user_id', userId)
-      )
-      syncQueue.enqueue(`exercise:${exercise.id}`, () =>
-        supabase!.from('exercises')
-          .update({ deleted_at: null })
-          .eq('id', exercise.id).eq('user_id', userId)
-      )
+      _enqueueRestore(`exercise-sets:${exercise.id}`, 'sets', { exercise_id: exercise.id, user_id: _userId })
+      _enqueueRestore(`exercise:${exercise.id}`, 'exercises', { id: exercise.id, user_id: _userId })
     }
   }
 
@@ -729,10 +723,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // when the row hasn't yet been created on the server (e.g., an adopted
     // sample exercise whose creating upsert sits in the same queue slot).
     if (supabase && !isPreviewMode.value && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
-      )
+      _enqueueExerciseUpsert(exercise, _userId)
     }
   }
 
@@ -746,39 +737,20 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
 
     if (supabase && !isPreviewMode.value && _userId) {
-      const userId = _userId
-      syncQueue.enqueue(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises').upsert(_buildExerciseUpsert(exercise, userId))
-      )
+      _enqueueExerciseUpsert(exercise, _userId)
     }
   }
 
   function syncDeleteSet(setId: string) {
     if (supabase && _userId) {
-      const userId = _userId
-      const deletedAt = new Date().toISOString()
-      syncQueue.enqueueDelete(`set:${setId}`, () =>
-        supabase!.from('sets')
-          .update({ deleted_at: deletedAt })
-          .eq('id', setId).eq('user_id', userId)
-      )
+      _enqueueSoftDelete(`set:${setId}`, 'sets', { id: setId, user_id: _userId })
     }
   }
 
   function syncDeleteExercise(exerciseId: string) {
     if (supabase && _userId) {
-      const userId = _userId
-      const deletedAt = new Date().toISOString()
-      syncQueue.enqueueDelete(`exercise-sets:${exerciseId}`, () =>
-        supabase!.from('sets')
-          .update({ deleted_at: deletedAt })
-          .eq('exercise_id', exerciseId).eq('user_id', userId)
-      )
-      syncQueue.enqueueDelete(`exercise:${exerciseId}`, () =>
-        supabase!.from('exercises')
-          .update({ deleted_at: deletedAt })
-          .eq('id', exerciseId).eq('user_id', userId)
-      )
+      _enqueueSoftDelete(`exercise-sets:${exerciseId}`, 'sets', { exercise_id: exerciseId, user_id: _userId })
+      _enqueueSoftDelete(`exercise:${exerciseId}`, 'exercises', { id: exerciseId, user_id: _userId })
     }
   }
 
@@ -846,9 +818,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (_userId && modified.length > 0) {
       const userId = _userId
       for (const e of modified.filter(e => !e.sample)) {
-        syncQueue.enqueue(`exercise:${e.id}`, () =>
-          supabase!.from('exercises').upsert(_buildExerciseUpsert(e, userId))
-        )
+        _enqueueExerciseUpsert(e, userId)
       }
     }
   }
@@ -877,9 +847,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (_userId && modified.length > 0) {
       const userId = _userId
       for (const e of modified.filter(e => !e.sample)) {
-        syncQueue.enqueue(`exercise:${e.id}`, () =>
-          supabase!.from('exercises').upsert(_buildExerciseUpsert(e, userId))
-        )
+        _enqueueExerciseUpsert(e, userId)
       }
     }
   }

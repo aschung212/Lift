@@ -69,6 +69,10 @@ async function initStores(userId: string): Promise<void> {
   const preferencesStore = usePreferencesStore()
   const progressionStore = useProgressionStore()
   await migrateLocalStorageToSupabase(userId)
+  // Replay any writes that were journaled to IndexedDB but never reached the
+  // server before the app last closed (LIFT-706). Safe + idempotent; runs
+  // before store fetches so recovered writes are in flight during sync.
+  await syncQueue.rehydrate()
   await Promise.all([
     workoutStore.init(userId),
     bodyweightStore.init(userId),
@@ -152,6 +156,9 @@ async function signOut(): Promise<void> {
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
+    // Cancel pending syncs and wipe the durable journal so the next user on a
+    // shared device never replays this user's writes (LIFT-706).
+    syncQueue.clear()
     resetStores()
     user.value = null
   }
