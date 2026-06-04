@@ -1,5 +1,6 @@
 import { registerSW } from 'virtual:pwa-register'
 import { isNative } from '../lib/platform'
+import { reloadWhenSafe } from '../lib/safeReload'
 
 /**
  * Service worker lifecycle management for the web (PWA) build.
@@ -57,10 +58,12 @@ export function useServiceWorker(): { checkForSWUpdate: () => void } {
   // On first visit currentController is null; skip reload to avoid a surprise refresh.
   // On subsequent changes a new SW took over — reload to pick up fresh chunk hashes
   // (without this, lazy-loaded tabs request old hashed filenames that no longer exist).
+  // Reload is deferred until the user is in a safe state (no modal open, no input
+  // focused) so it never discards an in-progress set entry — see reloadWhenSafe (LIFT-707).
   let currentController = navigator.serviceWorker?.controller
   navigator.serviceWorker?.addEventListener('controllerchange', () => {
     if (currentController) {
-      window.location.reload()
+      reloadWhenSafe()
     }
     currentController = navigator.serviceWorker?.controller ?? null
   })
