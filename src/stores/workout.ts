@@ -478,6 +478,13 @@ export const useWorkoutStore = defineStore('workout', () => {
     // the server. Push any local set on a both-sides exercise that the remote
     // doesn't have (and isn't tombstoned). Idempotent upsert + key dedup makes
     // overlap with the pushes above harmless.
+    //
+    // Known limitation (shared with the localOnly/localWins pushes above): the
+    // fetch filters out rows where deleted_at IS NOT NULL, so a set another
+    // device soft-deleted looks identical to a never-synced local set. Both get
+    // re-pushed. This favors "don't lose hard-won data" over silent removal, but
+    // means cross-device deletes don't propagate through this path — that needs
+    // the server to surface tombstones (a sync-protocol change, see LIFT-705).
     {
       const userId = _userId
       const alreadyPushedIds = new Set([

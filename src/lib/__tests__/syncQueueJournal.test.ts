@@ -179,6 +179,40 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     await queue.rehydrate()
     expect(queue.pending).toBe(0)
   })
+
+  it('rehydrate() does not clobber a newer in-session write for the same key', async () => {
+    idbStore.set('lift-sync-journal', JSON.stringify([
+      { key: 'set:s1', isDelete: false, descriptor: UPSERT },
+    ]))
+
+    const queue = new SyncQueue(100)
+    // User logs a fresher version of the same set before rehydrate resolves
+    const fresher: SyncDescriptor = { op: 'upsert', table: 'sets', row: { id: 's1', weight: 999 } }
+    queue.enqueue('set:s1', () => executeDescriptor(fresher), fresher)
+
+    await queue.rehydrate()
+    await vi.advanceTimersByTimeAsync(100)
+
+    // The fresher write won — only weight:999 reached the server
+    const upserts = fakeSupabase.calls.filter(c => c.op === 'upsert')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toEqual({ id: 's1', weight: 999 })
+  })
+
+  // Regression for the rehydrate + tombstone-resync double-count that would
+  // otherwise falsely trip the SEV1 delete circuit breaker (LIFT-706 review).
+  it('re-enqueuing a delete for an already-pending key does not double-count the breaker', () => {
+    const queue = new SyncQueue(500)
+    const deleteDescriptor: SyncDescriptor = {
+      op: 'update', table: 'sets', values: { deleted_at: 'x' }, match: { id: 's1' },
+    }
+    queue.enqueueDelete('set:s1', () => Promise.resolve(), deleteDescriptor)
+    queue.enqueueDelete('set:s1', () => Promise.resolve(), deleteDescriptor)
+    queue.enqueueDelete('set:s1', () => Promise.resolve(), deleteDescriptor)
+
+    // Same key three times — counts once toward the breaker, not three times.
+    expect(_getCircuitBreakerState().deleteCount).toBe(1)
+  })
 })
 
 describe('executeDescriptor (LIFT-706)', () => {

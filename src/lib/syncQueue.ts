@@ -193,7 +193,16 @@ export class SyncQueue {
   enqueueDelete(key: string, op: SyncOperation, descriptor?: SyncDescriptor): void {
     if (!supabase || isPreviewMode.value) return
 
-    if (CIRCUIT_BREAKER_ENABLED) {
+    // Re-enqueuing a delete for a key that's already pending is the SAME logical
+    // delete being refreshed (e.g. rehydrate() replays a journaled delete and
+    // then _fetchFromSupabase's tombstone pass re-enqueues it before the queue
+    // flushes). Those must NOT each push a fresh timestamp into the breaker, or
+    // a handful of pending offline deletes would falsely trip the SEV1 guard.
+    // The breaker only needs to see genuinely NEW (distinct-key) deletes — a
+    // real delete storm still has distinct keys and still trips.
+    const alreadyPending = this._queue.has(key) || this._retryQueue.has(key)
+
+    if (CIRCUIT_BREAKER_ENABLED && !alreadyPending) {
       const now = Date.now()
 
       // Circuit is currently open (in cool-down): block the delete.
@@ -356,6 +365,10 @@ export class SyncQueue {
     for (const entry of entries) {
       if (!entry || typeof entry.key !== 'string' || !entry.descriptor) continue
       const { key, descriptor, isDelete } = entry
+      // Don't clobber a newer in-session write: if the user acted on this key
+      // while the (async) journal read was in flight, the live queue/retry entry
+      // is fresher than the persisted snapshot and must win.
+      if (this._queue.has(key) || this._retryQueue.has(key)) continue
       if (isDelete) {
         this.enqueueDelete(key, () => executeDescriptor(descriptor), descriptor)
       } else {

@@ -9,6 +9,7 @@ import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
 import { syncQueue } from '../lib/syncQueue'
+import { closeDB } from '../lib/durableStorage'
 import { logError } from '../lib/logger'
 import type { User, Provider } from '@supabase/supabase-js'
 import type { ColorMode } from '../lib/themes'
@@ -204,7 +205,10 @@ async function deleteAccount(): Promise<void> {
     localStorage.removeItem(key)
   }
 
-  // Delete IndexedDB backup database
+  // Delete IndexedDB backup database. Close the cached connection first —
+  // deleteDatabase() blocks indefinitely while a connection is still open,
+  // which would otherwise leave the durable backup (and sync journal) on disk.
+  closeDB()
   if (typeof indexedDB !== 'undefined') {
     try {
       const dbs = await indexedDB.databases()
