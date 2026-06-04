@@ -12,9 +12,13 @@ async function freshImport() {
   reloadWhenSafe = mod.reloadWhenSafe
 }
 
-/** Wait a macrotask so the MutationObserver microtask has flushed. */
-function flush() {
-  return new Promise((resolve) => setTimeout(resolve, 0))
+/**
+ * Wait two macrotasks so the MutationObserver microtask and the deferred
+ * macrotask safety re-check both flush.
+ */
+async function flush() {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 /** Force document.visibilityState and fire the matching visibilitychange. */
@@ -115,6 +119,27 @@ describe('safeReload', () => {
 
       // User backgrounds the app — the safest possible moment to reload.
       setVisibility('hidden')
+      expect(reload).toHaveBeenCalledTimes(1)
+    })
+
+    it('reloads after a modal closes even if its input is still focused when the class flips', async () => {
+      // Simulates the Vue timing race: the modal-open class is removed before
+      // the framework unmounts the focused input. The deferred macrotask check
+      // must still fire once activeElement settles, not skip the reload.
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      document.documentElement.classList.add('modal-open')
+      input.focus()
+      const reload = vi.fn()
+
+      reloadWhenSafe(reload)
+      expect(reload).not.toHaveBeenCalled()
+
+      // Class flips synchronously; the input is still focused at this instant.
+      document.documentElement.classList.remove('modal-open')
+      // The macrotask re-check runs after activeElement settles (input blurred).
+      input.blur()
+      await flush()
       expect(reload).toHaveBeenCalledTimes(1)
     })
 

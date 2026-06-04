@@ -73,9 +73,18 @@ export function reloadWhenSafe(reload: () => void = () => window.location.reload
 
   // (2) A class changed on <html> — if that cleared the modal-open block and we
   //     are now safe, reload. The class only flips on a deliberate open/close,
-  //     so this never preempts an in-flight click.
+  //     so this never preempts an in-flight click. The re-check is deferred to a
+  //     macrotask: the MutationObserver microtask fires before Vue flushes its
+  //     render, so a just-closed modal's focused input is still mounted and
+  //     document.activeElement would read as "still typing" — wrongly skipping
+  //     the reload. setTimeout(0) runs after Vue's microtasks settle the DOM.
+  let pending: ReturnType<typeof setTimeout> | null = null
   const onMutation = () => {
-    if (isSafeToReload()) finish()
+    if (pending !== null) return
+    pending = setTimeout(() => {
+      pending = null
+      if (isSafeToReload()) finish()
+    }, 0)
   }
   const observer = typeof MutationObserver !== 'undefined'
     ? new MutationObserver(onMutation)
@@ -84,6 +93,10 @@ export function reloadWhenSafe(reload: () => void = () => window.location.reload
   function cleanup() {
     observer?.disconnect()
     document.removeEventListener('visibilitychange', onVisibility)
+    if (pending !== null) {
+      clearTimeout(pending)
+      pending = null
+    }
   }
 
   observer?.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
