@@ -45,7 +45,7 @@ export default defineConfig({
       manifest: {
         name: 'Lift — Workout Tracker',
         short_name: 'Lift',
-        description: 'Track your sets, monitor progress, and hit personal records.',
+        description: 'Free, offline-capable PWA workout tracker. Log sets, track estimated 1RM progress, visualize training history, and hit new PRs.',
         theme_color: '#0f0f0f',
         background_color: '#0f0f0f',
         display: 'standalone',
