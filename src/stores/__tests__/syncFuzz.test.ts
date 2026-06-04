@@ -583,4 +583,79 @@ describe('sync fuzz: SEV1 2026-04-12 regression', () => {
       expect(fakeSupabase.tables.exercises[0].archived_at).toBeNull()
     })
   })
+
+  // ── Reconciliation gap (LIFT-706) ──────────────────────────────
+  // A set added offline to an exercise that ANOTHER device later updated:
+  // the remote exercise wins last-write-wins, so it is neither localOnly nor
+  // localWins. Before the fix, its offline-added set rendered locally but was
+  // never pushed — silently diverging from the server. Now it must be pushed.
+  describe('reconciliation pushes offline sets on remote-winning exercises', () => {
+    it('upserts a local-only set even when the remote exercise wins the merge', async () => {
+      const userId = 'test-user'
+      // Local state (loaded from localStorage): older exercise timestamp, but
+      // it holds an extra set ('s-local') that was logged offline.
+      getLocalStorageMock().setItem('workout-exercises', JSON.stringify([
+        {
+          id: 'ex-1', name: 'Bench', tags: [],
+          updated_at: '2026-01-01T00:00:00Z',
+          sets: [
+            { id: 's-local', date: '2026-01-15T12:00:00Z', weight: 200, reps: 5, estimated1RM: 233 },
+          ],
+        },
+      ]))
+      // Remote state: NEWER exercise timestamp (so remote wins the merge) and a
+      // different set the server already knows about.
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-02-01T00:00:00Z' },
+      ])
+      fakeSupabase.seed('sets', [
+        { id: 's-remote', user_id: userId, exercise_id: 'ex-1',
+          date: '2026-01-20T12:00:00Z', weight: 225, reps: 5, estimated_1rm: 253 },
+      ])
+
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+
+      // The offline set was pushed to the server (the gap fix)…
+      const setUpserts = fakeSupabase.upsertsFor('sets')
+      const pushedIds = setUpserts.map(u => (u.data as { id: string }).id)
+      expect(pushedIds).toContain('s-local')
+      // …and the server now holds BOTH sets, no deletes anywhere.
+      expect(fakeSupabase.tables.sets.map(s => s.id).sort()).toEqual(['s-local', 's-remote'])
+      expect(fakeSupabase.deletesFor('sets')).toEqual([])
+      // The already-synced remote set is not redundantly re-pushed.
+      expect(pushedIds).not.toContain('s-remote')
+    })
+
+    it('does not re-push sets that already exist on the remote exercise', async () => {
+      const userId = 'test-user'
+      getLocalStorageMock().setItem('workout-exercises', JSON.stringify([
+        {
+          id: 'ex-1', name: 'Bench', tags: [],
+          updated_at: '2026-01-01T00:00:00Z',
+          sets: [
+            { id: 's-shared', date: '2026-01-20T12:00:00Z', weight: 225, reps: 5, estimated1RM: 253 },
+          ],
+        },
+      ]))
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-1', user_id: userId, name: 'Bench', tags: [],
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-02-01T00:00:00Z' },
+      ])
+      fakeSupabase.seed('sets', [
+        { id: 's-shared', user_id: userId, exercise_id: 'ex-1',
+          date: '2026-01-20T12:00:00Z', weight: 225, reps: 5, estimated_1rm: 253 },
+      ])
+
+      const store = useWorkoutStore()
+      await store.init(userId)
+      await tick()
+
+      // Nothing new to push — the set is already on the remote.
+      expect(fakeSupabase.upsertsFor('sets')).toEqual([])
+      expect(fakeSupabase.deletesFor('sets')).toEqual([])
+    })
+  })
 })

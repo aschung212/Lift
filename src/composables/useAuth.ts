@@ -9,6 +9,7 @@ import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
 import { syncQueue } from '../lib/syncQueue'
+import { closeDB } from '../lib/durableStorage'
 import { logError } from '../lib/logger'
 import type { User, Provider } from '@supabase/supabase-js'
 import type { ColorMode } from '../lib/themes'
@@ -69,6 +70,10 @@ async function initStores(userId: string): Promise<void> {
   const preferencesStore = usePreferencesStore()
   const progressionStore = useProgressionStore()
   await migrateLocalStorageToSupabase(userId)
+  // Replay any writes that were journaled to IndexedDB but never reached the
+  // server before the app last closed (LIFT-706). Safe + idempotent; runs
+  // before store fetches so recovered writes are in flight during sync.
+  await syncQueue.rehydrate()
   await Promise.all([
     workoutStore.init(userId),
     bodyweightStore.init(userId),
@@ -152,6 +157,9 @@ async function signOut(): Promise<void> {
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
+    // Cancel pending syncs and wipe the durable journal so the next user on a
+    // shared device never replays this user's writes (LIFT-706).
+    syncQueue.clear()
     resetStores()
     user.value = null
   }
@@ -197,7 +205,10 @@ async function deleteAccount(): Promise<void> {
     localStorage.removeItem(key)
   }
 
-  // Delete IndexedDB backup database
+  // Delete IndexedDB backup database. Close the cached connection first —
+  // deleteDatabase() blocks indefinitely while a connection is still open,
+  // which would otherwise leave the durable backup (and sync journal) on disk.
+  closeDB()
   if (typeof indexedDB !== 'undefined') {
     try {
       const dbs = await indexedDB.databases()
