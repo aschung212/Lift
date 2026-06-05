@@ -474,6 +474,16 @@
 
         <div class="settingsGroup">
           <div class="settingsHeader">Support</div>
+          <button class="settingsRow settingsRowBtn" :disabled="appShareInFlight" @click="shareLift">
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+              Share Lift
+            </span>
+            <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div v-if="appShareFeedback" class="settingsImportResult" role="status">
+            <span class="settingsImportSuccess">{{ appShareFeedback }}</span>
+          </div>
           <a class="settingsRow settingsRowBtn settingsLink" href="https://github.com/sponsors/aschung212" target="_blank" rel="noopener">
             <span class="settingsLabel">
               <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
@@ -751,6 +761,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useAppShare } from '../composables/useAppShare'
 
 const props = defineProps<{
   modelValue: boolean
@@ -772,6 +783,26 @@ const workoutStore = useWorkoutStore()
 const bodyweightStore = useBodyweightStore()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+// ── Share the app (word-of-mouth loop, #713) ───────────────────
+const { shareApp, isSharing: appShareInFlight } = useAppShare()
+const appShareFeedback = ref<string | null>(null)
+let appShareFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+async function shareLift() {
+  appShareFeedback.value = null
+  const res = await shareApp()
+  logEvent('app_share', { outcome: res.kind })
+  // The native/Web Share sheet is its own confirmation; only the clipboard
+  // fallback and error paths need an inline status line.
+  if (res.kind === 'copied') appShareFeedback.value = 'Link copied to clipboard'
+  else if (res.kind === 'unavailable') appShareFeedback.value = 'Sharing unavailable on this device'
+  else if (res.kind === 'error') appShareFeedback.value = 'Could not share — try again'
+  if (appShareFeedback.value) {
+    if (appShareFeedbackTimer) clearTimeout(appShareFeedbackTimer)
+    appShareFeedbackTimer = setTimeout(() => { appShareFeedback.value = null }, 3000)
+  }
+}
 
 // ── App icon picker (native iOS only) ──────────────────────────
 const showAppIconPicker = isNative
