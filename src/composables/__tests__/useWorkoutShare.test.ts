@@ -19,6 +19,16 @@ vi.mock('../../lib/shareImage', async (importOriginal) => {
   }
 })
 
+// Capture analytics so the share-funnel events (#712) can be asserted.
+const mockLogEvent = vi.fn()
+vi.mock('../useAnalytics', () => ({
+  useAnalytics: () => ({
+    logEvent: mockLogEvent,
+    tabSwitch: vi.fn(),
+    flushEngagement: vi.fn(),
+  }),
+}))
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 const DummyCard = defineComponent({ name: 'DummyCard', template: '<div>card</div>' })
@@ -64,6 +74,7 @@ describe('useWorkoutShare', () => {
 
   beforeEach(() => {
     vi.useFakeTimers()
+    mockLogEvent.mockClear()
     mockRenderNodeToBlob.mockResolvedValue(fakeBlob)
 
     createObjectURLSpy = vi.fn().mockReturnValue('blob:mock-url')
@@ -424,6 +435,76 @@ describe('useWorkoutShare', () => {
 
       const hostNode = mockRenderNodeToBlob.mock.calls[0][0]
       expect(hostNode.querySelector('[data-share-watermark]')).not.toBeNull()
+    })
+  })
+
+  // ── Share-funnel analytics (#712) ──────────────────────────────────
+  describe('share-funnel analytics', () => {
+    it('logs share_completed with outcome "shared" when Web Share succeeds', async () => {
+      const shareFn = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'share', { value: shareFn, writable: true, configurable: true })
+      Object.defineProperty(navigator, 'canShare', { value: vi.fn().mockReturnValue(true), writable: true, configurable: true })
+
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest({ format: 'story' }))
+
+      expect(mockLogEvent).toHaveBeenCalledWith('share_completed', {
+        format: 'story',
+        method: 'share',
+        outcome: 'shared',
+      })
+    })
+
+    it('logs share_completed with outcome "downloaded" when sharing falls back to download', async () => {
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest())
+
+      expect(mockLogEvent).toHaveBeenCalledWith('share_completed', {
+        format: 'square',
+        method: 'share',
+        outcome: 'downloaded',
+      })
+    })
+
+    it('does NOT log a completed/failed event when the user cancels the share sheet', async () => {
+      const abortError = new DOMException('User cancelled', 'AbortError')
+      Object.defineProperty(navigator, 'share', { value: vi.fn().mockRejectedValue(abortError), writable: true, configurable: true })
+      Object.defineProperty(navigator, 'canShare', { value: vi.fn().mockReturnValue(true), writable: true, configurable: true })
+
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest())
+
+      expect(mockLogEvent).not.toHaveBeenCalledWith('share_completed', expect.anything())
+      expect(mockLogEvent).not.toHaveBeenCalledWith('share_failed', expect.anything())
+    })
+
+    it('logs share_failed with method "share" when rendering fails', async () => {
+      mockRenderNodeToBlob.mockRejectedValueOnce(new Error('boom'))
+
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest({ format: 'story' }))
+
+      expect(mockLogEvent).toHaveBeenCalledWith('share_failed', { format: 'story', method: 'share' })
+    })
+
+    it('logs share_completed with method "save" on the download path', async () => {
+      const { downloadCard } = await getComposable()
+      await downloadCard(makeRequest())
+
+      expect(mockLogEvent).toHaveBeenCalledWith('share_completed', {
+        format: 'square',
+        method: 'save',
+        outcome: 'downloaded',
+      })
+    })
+
+    it('logs share_failed with method "save" when download rendering fails', async () => {
+      mockRenderNodeToBlob.mockRejectedValueOnce(new Error('download fail'))
+
+      const { downloadCard } = await getComposable()
+      await downloadCard(makeRequest())
+
+      expect(mockLogEvent).toHaveBeenCalledWith('share_failed', { format: 'square', method: 'save' })
     })
   })
 })

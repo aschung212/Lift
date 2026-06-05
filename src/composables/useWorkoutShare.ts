@@ -21,6 +21,7 @@ import {
   type CardFormat,
 } from '../lib/shareImage'
 import type { SessionSummary } from '../lib/sessionSummary'
+import { useAnalytics } from './useAnalytics'
 
 export interface ShareCardRequest {
   /** The Vue component that renders the card. */
@@ -170,6 +171,7 @@ export interface UseWorkoutShareReturn {
 export function useWorkoutShare(): UseWorkoutShareReturn {
   const isSharing = ref(false)
   const lastError = ref<Error | null>(null)
+  const { logEvent } = useAnalytics()
 
   /**
    * Render → share. Resolves with the outcome; never throws on user-cancel.
@@ -197,6 +199,7 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
       if (canWebShareFiles([file])) {
         try {
           await navigator.share({ files: [file], title: 'Lift workout' })
+          logEvent('share_completed', { format: req.format, method: 'share', outcome: 'shared' })
           return { kind: 'shared' }
         } catch (err) {
           // AbortError = user dismissed sheet. Anything else falls to download.
@@ -205,9 +208,11 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
       }
 
       downloadBlob(blob, filename)
+      logEvent('share_completed', { format: req.format, method: 'share', outcome: 'downloaded' })
       return { kind: 'downloaded', filename }
     } catch (err) {
       lastError.value = err as Error
+      logEvent('share_failed', { format: req.format, method: 'share' })
       return { kind: 'error', error: err as Error }
     } finally {
       isSharing.value = false
@@ -223,9 +228,11 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
       const blob = await renderCardOffscreen(req)
       const filename = defaultShareFilename(req.summary.rawDate, req.format)
       downloadBlob(blob, filename)
+      logEvent('share_completed', { format: req.format, method: 'save', outcome: 'downloaded' })
       return { kind: 'downloaded', filename }
     } catch (err) {
       lastError.value = err as Error
+      logEvent('share_failed', { format: req.format, method: 'save' })
       return { kind: 'error', error: err as Error }
     } finally {
       isSharing.value = false
