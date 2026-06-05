@@ -82,3 +82,23 @@ export function eligibleStoryCards(summary: SessionSummary): CardEntry[] {
 export function findCard(id: string): CardEntry | null {
   return SQUARE_CARDS.find((c) => c.id === id) || STORY_CARDS.find((c) => c.id === id) || null
 }
+
+/**
+ * Resolve a card id to the format bucket and active index the picker should
+ * open on. Used by the contextual share entry points (e.g. the "Share this PR"
+ * button on the PR celebration overlay, #716) to pre-select a specific card.
+ *
+ * Returns null when the id is unknown, or when the card exists but isn't
+ * eligible for this summary (so callers fall back to the default first card).
+ */
+export function resolveInitialCard(
+  summary: SessionSummary,
+  cardId: string,
+): { format: CardFormat; index: number } | null {
+  const card = findCard(cardId)
+  if (!card) return null
+  const list = card.format === 'square' ? eligibleSquareCards(summary) : eligibleStoryCards(summary)
+  const index = list.findIndex((c) => c.id === cardId)
+  if (index < 0) return null
+  return { format: card.format, index }
+}

@@ -2341,6 +2341,7 @@ function saveSet() {
           setWeight: toLbs(weight.value),
           setReps: reps.value,
           isFirstPR: prCountBefore === 0,
+          rawDate: date.value || todayISO(),
         })
         if (prCountBefore === 0) {
           logEvent('first_pr', { exercise: selectedExerciseName.value })

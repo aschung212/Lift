@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { eligibleSquareCards, eligibleStoryCards, findCard, SQUARE_CARDS, STORY_CARDS } from '../cardRegistry'
+import { eligibleSquareCards, eligibleStoryCards, findCard, resolveInitialCard, SQUARE_CARDS, STORY_CARDS } from '../cardRegistry'
 import type { SessionSummary } from '../../../lib/sessionSummary'
 
 function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
@@ -69,5 +69,34 @@ describe('cardRegistry', () => {
     expect(findCard('bold-flood')?.format).toBe('square')
     expect(findCard('best-set-story')?.format).toBe('story')
     expect(findCard('does-not-exist')).toBeNull()
+  })
+
+  describe('resolveInitialCard (#716)', () => {
+    it('resolves pr-focus to square format at index 0 when a PR is present', () => {
+      // PR Focus is promoted to the front of the eligible square list.
+      const res = resolveInitialCard(makeSummary({ prs: 1 }), 'pr-focus')
+      expect(res).toEqual({ format: 'square', index: 0 })
+    })
+
+    it('resolves a non-promoted square card to its eligible index', () => {
+      const res = resolveInitialCard(makeSummary({ prs: 0 }), 'receipt')
+      const expectedIdx = eligibleSquareCards(makeSummary({ prs: 0 })).findIndex((c) => c.id === 'receipt')
+      expect(res).toEqual({ format: 'square', index: expectedIdx })
+    })
+
+    it('resolves a story card to its story-bucket index', () => {
+      const res = resolveInitialCard(makeSummary(), 'best-set-story')
+      const expectedIdx = eligibleStoryCards(makeSummary()).findIndex((c) => c.id === 'best-set-story')
+      expect(res).toEqual({ format: 'story', index: expectedIdx })
+    })
+
+    it('returns null for an unknown card id', () => {
+      expect(resolveInitialCard(makeSummary({ prs: 1 }), 'does-not-exist')).toBeNull()
+    })
+
+    it('returns null when the card exists but is ineligible for this summary', () => {
+      // pr-focus is hidden when there are no PRs — caller should fall back.
+      expect(resolveInitialCard(makeSummary({ prs: 0 }), 'pr-focus')).toBeNull()
+    })
   })
 })

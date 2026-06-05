@@ -74,13 +74,21 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SessionSummary } from '../../lib/sessionSummary'
 import { WATERMARK_TEXT, type CardFormat } from '../../lib/shareImage'
-import { eligibleSquareCards, eligibleStoryCards } from './cardRegistry'
+import { eligibleSquareCards, eligibleStoryCards, resolveInitialCard } from './cardRegistry'
 import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
 import { useModal } from '../../composables/useModal'
 import { useSupporter } from '../../composables/useSupporter'
 
-const props = defineProps<{ summary: SessionSummary }>()
+const props = defineProps<{
+  summary: SessionSummary
+  /**
+   * Pre-select a specific card by id when opening (e.g. 'pr-focus' from the
+   * "Share this PR" peak-moment entry point, #716). Falls back to the default
+   * first card when the id is unknown or not eligible for this summary.
+   */
+  initialCardId?: string
+}>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay' })
@@ -95,14 +103,22 @@ const FORMAT_OPTIONS: { value: CardFormat; label: string }[] = [
   { value: 'square', label: 'Post' },
   { value: 'story', label: 'Story' },
 ]
-const format = ref<CardFormat>('square')
+
+// Resolve the optional pre-selected card up front so both the format toggle
+// and the active thumbnail open on it. `cards` is derived from `format`, so
+// initializing `format` correctly means the cards list is right from the
+// first render and the watch(cards) reset below never fires on mount.
+const initialSelection = props.initialCardId
+  ? resolveInitialCard(props.summary, props.initialCardId)
+  : null
+const format = ref<CardFormat>(initialSelection?.format ?? 'square')
 
 const cards = computed(() =>
   format.value === 'square'
     ? eligibleSquareCards(props.summary)
     : eligibleStoryCards(props.summary)
 )
-const activeIndex = ref(0)
+const activeIndex = ref(initialSelection?.index ?? 0)
 const activeCard = computed(() => cards.value[activeIndex.value] ?? null)
 const lastResult = ref<string | null>(null)
 

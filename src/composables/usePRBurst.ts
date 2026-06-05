@@ -34,6 +34,12 @@ export interface PRBurstPayload {
   setReps: number
   /** True when this is the user's very first PR ever. */
   isFirstPR?: boolean
+  /**
+   * Local calendar date (YYYY-MM-DD) of the set that triggered the PR. Used by
+   * the "Share this PR" entry point (#716) to build the session summary for the
+   * correct day. Defaults to today when omitted.
+   */
+  rawDate?: string
 }
 
 const visible: Ref<boolean> = ref(false)
