@@ -2,7 +2,10 @@
   <div class="wsRoot">
     <div class="wsHead">
       <div class="wsEyebrow">Week {{ weekdayLabel }}</div>
-      <div class="wsBrand">LIFT</div>
+      <div class="wsBrand">
+        <span class="wsMark">LIFT</span>
+        <span class="wsHandle">{{ SHARE_CARD_HANDLE }}</span>
+      </div>
     </div>
 
     <div class="wsHero">
@@ -41,6 +44,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 const props = defineProps<{ summary: SessionSummary }>()
 
@@ -100,11 +104,27 @@ function barPercent(v: number): number {
 }
 
 .wsBrand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.wsMark {
   font-family: var(--ff-mono);
   font-weight: 500;
   font-size: 11px;
   line-height: 1;
   letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+
+.wsHandle {
+  font-family: var(--ff-mono);
+  font-weight: 500;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
 }
 

@@ -28,12 +28,14 @@
     </div>
 
     <div class="rcThanks">— THANK YOU —</div>
+    <div class="rcHandle">{{ SHARE_CARD_HANDLE }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 const props = defineProps<{ summary: SessionSummary }>()
 
@@ -134,5 +136,13 @@ const formattedVolume = computed(() => props.summary.totalVolume.toLocaleString(
   font-size: 10px;
   letter-spacing: 0.3em;
   opacity: 0.6;
+}
+
+.rcHandle {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
 }
 </style>
