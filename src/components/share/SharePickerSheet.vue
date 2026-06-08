@@ -35,7 +35,7 @@
           :class="['spThumb', { spThumbActive: i === activeIndex }]"
           :aria-pressed="i === activeIndex"
           :aria-label="`Select ${card.label} card`"
-          @click="activeIndex = i"
+          @click="selectCard(i)"
         >
           <div class="spThumbCard" :class="{ spThumbCardStory: format === 'story' }">
             <div class="spThumbInner" :class="{ spThumbInnerStory: format === 'story' }">
@@ -79,6 +79,7 @@ import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
 import { useModal } from '../../composables/useModal'
 import { useSupporter } from '../../composables/useSupporter'
+import { useAnalytics } from '../../composables/useAnalytics'
 
 const props = defineProps<{
   summary: SessionSummary
@@ -95,6 +96,7 @@ const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spO
 const { currentTheme, resolvedMode } = useTheme()
 const { shareCard, downloadCard, isSharing } = useWorkoutShare()
 const { isSupporter } = useSupporter()
+const { logEvent } = useAnalytics()
 
 // Free tier gets the "Made with Lift" watermark; supporters get clean cards.
 const showWatermark = computed(() => !isSupporter.value)
@@ -123,7 +125,15 @@ const activeCard = computed(() => cards.value[activeIndex.value] ?? null)
 const lastResult = ref<string | null>(null)
 
 function setFormat(next: CardFormat) {
+  if (next === format.value) return
   format.value = next
+  logEvent('share_card_selected', { format: next, card: cards.value[0]?.id ?? null })
+}
+
+function selectCard(i: number) {
+  if (i === activeIndex.value) return
+  activeIndex.value = i
+  logEvent('share_card_selected', { format: format.value, card: cards.value[i]?.id ?? null })
 }
 
 // Reset selection when the card list changes (e.g. format toggle).
@@ -171,6 +181,7 @@ async function onSave() {
 // closes even though the parent is still up.
 onMounted(() => {
   activateTrap()
+  logEvent('share_opened', { format: format.value })
 })
 onUnmounted(() => {
   deactivateTrap()
