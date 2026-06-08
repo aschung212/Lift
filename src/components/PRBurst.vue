@@ -47,20 +47,107 @@
         <div class="prBurstChip">
           {{ payload.exerciseName }} · {{ setDisplay }}
         </div>
+
+        <!-- Peak-moment share affordance (#716): one tap opens the share sheet
+             pre-selected to the PR card. Stop propagation so the surrounding
+             tap-to-dismiss doesn't fire. -->
+        <button type="button" class="prBurstShare" @click.stop="onShareThisPR">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+          Share this PR
+        </button>
       </div>
 
       <div class="prBurstHint" aria-hidden="true">Tap to dismiss</div>
     </div>
   </Transition>
+
+  <Teleport to="body">
+    <SharePickerSheet
+      v-if="pickerOpen && shareSummary"
+      :summary="shareSummary"
+      initial-card-id="pr-focus"
+      @close="closePicker"
+    />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, watch, nextTick, ref, onMounted } from 'vue'
+import { computed, watch, nextTick, ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { usePRBurst } from '../composables/usePRBurst'
 import { useWeightUnit } from '../composables/useWeightUnit'
+import { useWorkoutStore } from '../stores/workout'
+import { useProgressionStore } from '../stores/progression'
+import { useAnalytics } from '../composables/useAnalytics'
+import { buildSessionSummary, type SessionSummary } from '../lib/sessionSummary'
+
+const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
 const { visible, payload, presentPRBurst, dismissPRBurst } = usePRBurst()
 const { weightUnit, displayWeight } = useWeightUnit()
+const workoutStore = useWorkoutStore()
+const progressionStore = useProgressionStore()
+const { logEvent } = useAnalytics()
+
+// ── "Share this PR" peak-moment flow (#716) ───────────────────────────────
+const pickerOpen = ref(false)
+const shareSummary = ref<SessionSummary | null>(null)
+
+/** Local calendar date (YYYY-MM-DD), matching WorkoutTracker.todayISO(). */
+function localTodayKey(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function onShareThisPR(): void {
+  const p = payload.value
+  if (!p) return
+  // Build the session summary for the PR's day so the share sheet (pre-selected
+  // to the PR card) renders the right numbers. The set is already persisted by
+  // the time the burst shows, so the summary reflects it.
+  shareSummary.value = buildSessionSummary({
+    rawDate: p.rawDate ?? localTodayKey(),
+    exercises: workoutStore.exercises,
+    xpPerSet: progressionStore.xpPerSet,
+    streakWeeks: progressionStore.streakWeeks,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value,
+  })
+  logEvent('pr_share_opened', {
+    exercise: p.exerciseName,
+    firstPr: p.isFirstPR === true,
+  })
+  pickerOpen.value = true
+  // Hand off from the celebration to the share sheet — dismiss the burst so the
+  // two overlays don't stack (the picker sits at a lower z-index by design).
+  dismissPRBurst()
+}
+
+function closePicker(): void {
+  pickerOpen.value = false
+  shareSummary.value = null
+}
+
+// The share sheet's Escape/scroll-lock are normally owned by its parent view.
+// Opened from the burst there is no such parent, so own them here while it's up.
+function onPickerKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closePicker()
+}
+watch(pickerOpen, (open) => {
+  if (open) {
+    document.documentElement.classList.add('modal-open')
+    window.addEventListener('keydown', onPickerKey)
+  } else {
+    document.documentElement.classList.remove('modal-open')
+    window.removeEventListener('keydown', onPickerKey)
+  }
+})
+onUnmounted(() => {
+  document.documentElement.classList.remove('modal-open')
+  window.removeEventListener('keydown', onPickerKey)
+})
 
 // DEV-only: expose the trigger on window so we can visually verify the overlay
 // from Playwright/DevTools without needing a live PR. Stripped from prod builds
@@ -237,6 +324,33 @@ watch(visible, async (v) => {
   font-variant-numeric: tabular-nums;
 }
 
+.prBurstShare {
+  margin-top: 24px;
+  min-height: 48px;
+  padding: 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  border: 0;
+  border-radius: 99px;
+  font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 0 32px var(--accent-subtle, rgba(212, 175, 55, 0.30));
+  animation: prShareIn 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: 220ms;
+}
+
+@keyframes prShareIn {
+  from { transform: scale(0.8); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
 .prBurstHint {
   position: absolute;
   left: 0;
@@ -289,7 +403,8 @@ watch(visible, async (v) => {
 @media (prefers-reduced-motion: reduce) {
   .prRing,
   .prBurstDelta,
-  .prBurstFirstBadge {
+  .prBurstFirstBadge,
+  .prBurstShare {
     animation: none !important;
   }
   .prBurst-enter-active,
