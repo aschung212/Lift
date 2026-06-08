@@ -12,12 +12,16 @@
       <div class="bsE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM</div>
     </div>
 
-    <div class="bsBrand">LIFT</div>
+    <div class="bsBrand">
+      <span class="bsMark">LIFT</span>
+      <span class="bsHandle">{{ SHARE_CARD_HANDLE }}</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 defineProps<{ summary: SessionSummary }>()
 </script>
@@ -113,11 +117,27 @@ defineProps<{ summary: SessionSummary }>()
 }
 
 .bsBrand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.bsMark {
   font-family: var(--ff-mono);
   font-weight: 700;
   font-size: 11px;
   line-height: 1;
   letter-spacing: 0.26em;
   color: var(--accent);
+}
+
+.bsHandle {
+  font-family: var(--ff-mono);
+  font-weight: 500;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 </style>

@@ -71,6 +71,18 @@ export async function renderNodeToBlob(node: HTMLElement, opts: ExportOptions): 
 export const WATERMARK_TEXT = 'Made with Lift'
 
 /**
+ * The app's public URL, stamped onto every share card so a viewer who sees a
+ * card on social has a path to find and install the app (issue #714). This
+ * closes the organic-acquisition loop: the supporter-gated watermark (#601)
+ * establishes attribution, this handle is the actual conversion mechanism, so
+ * unlike the watermark it appears on every card regardless of entitlement.
+ *
+ * Single source of truth — the real deployment domain per CLAUDE.md. Never
+ * fabricate or guess this value; the metaRegression suite pins it.
+ */
+export const SHARE_CARD_HANDLE = 'spa-rho-sandy.vercel.app'
+
+/**
  * Build the watermark element used by the offscreen export pipeline.
  *
  * Styles are inlined (not class-based) so they survive `html-to-image`'s

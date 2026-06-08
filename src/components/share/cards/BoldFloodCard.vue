@@ -1,7 +1,10 @@
 <template>
   <div class="bfRoot">
     <div class="bfHead">
-      <div class="bfBrand">Lift</div>
+      <div class="bfBrand">
+        <span class="bfMark">Lift</span>
+        <span class="bfHandle">{{ SHARE_CARD_HANDLE }}</span>
+      </div>
       <div class="bfDate">{{ summary.date }}</div>
     </div>
 
@@ -30,6 +33,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 const props = defineProps<{ summary: SessionSummary }>()
 
@@ -56,12 +60,27 @@ const formattedVolume = computed(() => props.summary.totalVolume.toLocaleString(
 }
 
 .bfBrand {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bfMark {
   font-family: var(--ff-mono);
   font-weight: 700;
   font-size: 11px;
   line-height: 1;
   letter-spacing: 0.22em;
   text-transform: uppercase;
+}
+
+.bfHandle {
+  font-family: var(--ff-mono);
+  font-weight: 600;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
 }
 
 .bfDate {
