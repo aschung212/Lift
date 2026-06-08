@@ -224,6 +224,7 @@ import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigratio
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
+import { captureAcquisitionSource } from './composables/useAcquisitionSource'
 import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
@@ -342,6 +343,13 @@ function handleSignOut() {
   onboardingComplete.value = false
   signOut()
 }
+
+// ── Acquisition attribution ─────────────────────────────────────
+// Capture the inbound ?ref= / ?utm_*= source once, before the ?tab= cleanup
+// below strips the query string. Logs a single acquisition_source event and
+// remembers it so launch channels (Product Hunt, Reddit, link-in-bio) are
+// measurable without a backend.
+captureAcquisitionSource()
 
 // ── Tab initialization (supports PWA manifest shortcuts via ?tab= param) ──
 const VALID_TABS = ['workouts', 'calendar', 'weight'] as const
