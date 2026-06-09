@@ -1797,11 +1797,22 @@ function resetWarmupRamp() {
 }
 
 // Prefill the weight/reps fields with a warmup step for one-tap logging.
-// Setting weight reverse-syncs the plate display via the weightStr watcher.
+// We assign the plate breakdown directly (guarded by _plateSync) rather than
+// letting the debounced weightStr watcher recompute it: the debounce would
+// briefly desync the displayed plates from the weight, and syncPlatesFromWeight
+// halves plates for per-side bars — which is wrong for total/machine loading.
+// step.plates is already in the correct representation for the current mode.
 function applyWarmupStep(step: WarmupStep) {
   impactLight()
-  weight.value = step.weight
+  _plateSync = true
+  if (_plateSyncTimer) {
+    clearTimeout(_plateSyncTimer)
+    _plateSyncTimer = null
+  }
   reps.value = step.reps
+  weight.value = step.weight
+  currentPlates.value = step.plates ? [...step.plates] : []
+  nextTick(() => { _plateSync = false })
 }
 
 function warmupStepLabel(step: WarmupStep): string {

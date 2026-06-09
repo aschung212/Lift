@@ -83,6 +83,9 @@ function loadFor(
   const plates: PlateSet = []
   let remaining = remainder
   for (const denom of denominations) {
+    // Skip non-positive denominations defensively — a 0/negative value would
+    // otherwise spin the greedy loop forever and soft-lock the UI thread.
+    if (denom <= 0) continue
     while (remaining >= denom - 0.001) {
       plates.push(denom)
       remaining -= denom
@@ -116,6 +119,8 @@ export function generateWarmupRamp(
 
   if (!Number.isFinite(workingWeight) || workingWeight <= 0) return []
   if (workingWeight <= barWeight) return []
+  // Without denominations there is no achievable load to round to.
+  if (denominations.length === 0) return []
 
   const increment = smallestIncrement(denominations, perSide)
 
@@ -154,5 +159,7 @@ export function generateWarmupRamp(
     })
   }
 
+  // Guarantee ascending order even if a caller passes an unsorted scheme.
+  steps.sort((a, b) => a.weight - b.weight)
   return steps
 }

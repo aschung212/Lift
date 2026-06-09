@@ -84,6 +84,20 @@ describe('generateWarmupRamp', () => {
       expect(ramp.every(s => s.pct > 0)).toBe(true)
     })
 
+    it('returns no ramp when there are no denominations to round to', () => {
+      expect(generateWarmupRamp(225, { barWeight: 45, denominations: [] })).toEqual([])
+    })
+
+    it('returns ascending steps even when the scheme is unsorted', () => {
+      const ramp = generateWarmupRamp(200, {
+        barWeight: 45,
+        includeBarSet: false,
+        scheme: [{ pct: 0.8, reps: 2 }, { pct: 0.4, reps: 5 }, { pct: 0.6, reps: 3 }],
+      })
+      const ws = weights(ramp)
+      expect([...ws].sort((a, b) => a - b)).toEqual(ws)
+    })
+
     it('honours a custom percentage/rep scheme', () => {
       const ramp = generateWarmupRamp(200, {
         barWeight: 45,
