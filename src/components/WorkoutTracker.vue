@@ -604,6 +604,43 @@
             </div>
           </div>
 
+          <!--
+            Warmup ramp generator (LIFT-725). Progressive-disclosure card that
+            ramps the empty bar up to the working weight currently entered. Each
+            row is tappable to prefill the weight/reps fields for one-tap logging.
+            Sits below the plate calculator and above the actions (buttons last).
+          -->
+          <div v-if="canGenerateWarmup" class="wtWarmupRamp">
+            <button
+              type="button"
+              class="wtWarmupRampToggle"
+              :class="{ wtWarmupRampToggleActive: warmupExpanded }"
+              :aria-expanded="warmupExpanded"
+              @click="toggleWarmupRamp"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2c1 3-1 4-1 6a3 3 0 0 0 6 0c0-1 0-2-.5-3 2 2 3.5 4.5 3.5 8a8 8 0 0 1-16 0c0-4 3-7 4-9 .5 2 2 3 4 3"/></svg>
+              <span>{{ warmupExpanded ? 'Hide warmup ramp' : 'Warmup ramp' }}</span>
+              <svg class="wtWarmupRampChevron" :class="{ wtWarmupRampChevronOpen: warmupExpanded }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div v-if="warmupExpanded" class="wtWarmupRampList" role="list">
+              <button
+                v-for="(step, i) in warmupRamp"
+                :key="i"
+                type="button"
+                class="wtWarmupRampRow"
+                role="listitem"
+                :aria-label="warmupStepLabel(step)"
+                @click="applyWarmupStep(step)"
+              >
+                <span class="wtWarmupRampPct">{{ step.pct === 0 ? 'Bar' : `${Math.round(step.pct * 100)}%` }}</span>
+                <span class="wtWarmupRampWeight">{{ step.weight }}<span class="wtWarmupRampUnit"> {{ weightUnit }}</span></span>
+                <span class="wtWarmupRampPlates">{{ step.plates && step.plates.length ? formatPlates(step.plates) : '—' }}</span>
+                <span class="wtWarmupRampReps">×{{ step.reps }}</span>
+              </button>
+              <p v-if="warmupRamp.length === 0" class="wtWarmupRampEmpty">No warmup needed for this weight.</p>
+            </div>
+          </div>
+
           <!-- Actions (always last) -->
           <div class="repMaxActions">
             <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
@@ -894,7 +931,8 @@ import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
 import { useProgressionStore } from '../stores/progression'
-import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { generateWarmupRamp, type WarmupStep } from '../lib/generateWarmupRamp'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
@@ -1719,6 +1757,61 @@ function removePlate(denom: number) {
   currentPlates.value = updated
   syncPlateWeight()
 }
+
+// ── Warmup ramp generator (LIFT-725) ───────────────────────────────
+// Auto-ramp to the working weight currently in the field. The ramp is frozen
+// against the weight captured when the user expands it (`warmupBaseWeight`) so
+// tapping a step to prefill the weight/reps fields doesn't collapse the ramp.
+const warmupExpanded = ref(false)
+const warmupBaseWeight = ref<number | null>(null)
+
+// Whether the working weight is high enough to offer a meaningful ramp.
+const canGenerateWarmup = computed(() => {
+  if (!plateMode.value || isEditMode.value) return false
+  const w = weight.value
+  return w !== null && w > currentBarWeight.value
+})
+
+const warmupRamp = computed<WarmupStep[]>(() => {
+  const base = warmupBaseWeight.value
+  if (base === null || base <= 0) return []
+  return generateWarmupRamp(base, {
+    barWeight: currentBarWeight.value,
+    denominations: activeDenominations.value,
+    perSide: isPerSide.value,
+  })
+})
+
+function toggleWarmupRamp() {
+  if (warmupExpanded.value) {
+    warmupExpanded.value = false
+    return
+  }
+  warmupBaseWeight.value = weight.value
+  warmupExpanded.value = true
+}
+
+function resetWarmupRamp() {
+  warmupExpanded.value = false
+  warmupBaseWeight.value = null
+}
+
+// Prefill the weight/reps fields with a warmup step for one-tap logging.
+// Setting weight reverse-syncs the plate display via the weightStr watcher.
+function applyWarmupStep(step: WarmupStep) {
+  impactLight()
+  weight.value = step.weight
+  reps.value = step.reps
+}
+
+function warmupStepLabel(step: WarmupStep): string {
+  const tier = step.pct === 0 ? 'empty bar' : `${Math.round(step.pct * 100)}%`
+  return `Load ${tier} warmup: ${step.weight} ${weightUnit.value} for ${step.reps} reps`
+}
+
+// Collapse the ramp when the exercise changes — bar weight and loading mode
+// differ, so a ramp captured for the previous exercise no longer applies.
+watch(selectedExerciseId, () => resetWarmupRamp())
 const newExerciseName = ref('')
 const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
@@ -1930,6 +2023,7 @@ function closeModal() {
   date.value = todayISO()
   plateNumpadOverride.value = false
   prTableExpanded.value = false
+  resetWarmupRamp()
 }
 
 // ── Rest timer (state lives in timerCtrl composable) ────────────

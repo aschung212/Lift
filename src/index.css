@@ -4633,6 +4633,130 @@ html.theme-fading .settingsSheet {
   font-style: italic;
 }
 
+/* Warmup ramp generator (LIFT-725) — progressive-disclosure card below the
+   plate calculator. Tappable rows ramp the bar up to the working weight. */
+.wtWarmupRamp {
+  margin: 12px 0 0;
+}
+
+.wtWarmupRampToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtWarmupRampToggle:active {
+  opacity: 0.7;
+}
+
+.wtWarmupRampToggleActive {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.wtWarmupRampChevron {
+  margin-left: auto;
+  transition: transform 0.2s ease;
+}
+
+.wtWarmupRampChevronOpen {
+  transform: rotate(180deg);
+}
+
+.wtWarmupRampList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.wtWarmupRampRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  font-family: inherit;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtWarmupRampRow:active {
+  background: var(--bg-hover);
+  transform: scale(0.99);
+}
+
+.wtWarmupRampPct {
+  flex: 0 0 auto;
+  min-width: 40px;
+  font-size: var(--font-caption1);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.wtWarmupRampWeight {
+  flex: 0 0 auto;
+  min-width: 56px;
+  font-size: var(--font-subhead);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.wtWarmupRampUnit {
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.wtWarmupRampPlates {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-size: var(--font-caption1);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtWarmupRampReps {
+  flex: 0 0 auto;
+  min-width: 32px;
+  text-align: right;
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.wtWarmupRampEmpty {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  font-style: italic;
+}
 
 .wtPlateCountToggle {
   display: flex;
