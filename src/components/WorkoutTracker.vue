@@ -610,7 +610,7 @@
             row is tappable to prefill the weight/reps fields for one-tap logging.
             Sits below the plate calculator and above the actions (buttons last).
           -->
-          <div v-if="canGenerateWarmup" class="wtWarmupRamp">
+          <div v-if="canGenerateWarmup || warmupExpanded" class="wtWarmupRamp">
             <button
               type="button"
               class="wtWarmupRampToggle"
@@ -1764,8 +1764,11 @@ function removePlate(denom: number) {
 // tapping a step to prefill the weight/reps fields doesn't collapse the ramp.
 const warmupExpanded = ref(false)
 const warmupBaseWeight = ref<number | null>(null)
+// Set while applyWarmupStep mutates the weight so the re-base watcher below
+// doesn't mistake a step prefill for a manual working-weight edit.
+let _warmupApplying = false
 
-// Whether the working weight is high enough to offer a meaningful ramp.
+// Whether the working weight is high enough to offer the ramp toggle.
 const canGenerateWarmup = computed(() => {
   if (!plateMode.value || isEditMode.value) return false
   const w = weight.value
@@ -1809,10 +1812,11 @@ function applyWarmupStep(step: WarmupStep) {
     clearTimeout(_plateSyncTimer)
     _plateSyncTimer = null
   }
+  _warmupApplying = true
   reps.value = step.reps
   weight.value = step.weight
   currentPlates.value = step.plates ? [...step.plates] : []
-  nextTick(() => { _plateSync = false })
+  nextTick(() => { _plateSync = false; _warmupApplying = false })
 }
 
 function warmupStepLabel(step: WarmupStep): string {
@@ -1852,6 +1856,20 @@ watch(weightStr, () => {
   if (!plateMode.value || _plateSync) return
   if (_plateSyncTimer) clearTimeout(_plateSyncTimer)
   _plateSyncTimer = setTimeout(syncPlatesFromWeight, 250)
+})
+
+// Keep the frozen warmup ramp (LIFT-725) in sync with manual working-weight
+// edits. Re-base while expanded so the steps never go stale; collapse if the
+// weight is cleared or drops to/below the bar. Step prefills (which lower the
+// weight intentionally) are excluded via _warmupApplying so tapping the
+// empty-bar step doesn't reset the ramp.
+watch(weight, (w) => {
+  if (_warmupApplying || !warmupExpanded.value) return
+  if (w !== null && w > currentBarWeight.value) {
+    warmupBaseWeight.value = w
+  } else {
+    resetWarmupRamp()
+  }
 })
 
 const date = ref(todayISO())
