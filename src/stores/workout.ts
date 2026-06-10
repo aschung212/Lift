@@ -10,6 +10,7 @@ import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { todayISO } from '../lib/dates'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -978,7 +979,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   function getLastSession(exerciseId: string, today?: string): { date: string; sets: WorkoutSet[] } | null {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise || exercise.sets.length === 0) return null
-    const todayStr = today ?? new Date().toISOString().slice(0, 10)
+    const todayStr = today ?? todayISO()
     // Group sets by day
     const byDay = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
@@ -1019,7 +1020,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   function getUsualLadder(exerciseId: string, today?: string): UsualLadder | null {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise || exercise.sets.length === 0) return null
-    const todayStr = today ?? new Date().toISOString().slice(0, 10)
+    const todayStr = today ?? todayISO()
 
     // Group sets by day preserving in-day insertion order — end-of-day
     // timestamps carry random jitter, so array order is the only reliable

@@ -440,7 +440,7 @@
               </div>
             </template>
             <template v-else-if="lastSession">
-              <span class="wtPrevSessionLabel">Last session · {{ formatDate(lastSession.date + 'T12:00:00') }}</span>
+              <span class="wtPrevSessionLabel">Last session · {{ formatShortDate(lastSession.date + 'T12:00:00') }}</span>
               <div class="wtPrevSessionChips">
                 <button
                   v-for="(s, i) in lastSession.sets"
@@ -921,7 +921,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
-import { toLocalDateKey, buildSessionSummary } from '../lib/sessionSummary'
+import { buildSessionSummary } from '../lib/sessionSummary'
+import { todayISO, toLocalDateKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode, UsualLadder, UsualLadderRung } from '../stores/workout'
@@ -1132,7 +1133,7 @@ const visibleTimelineGroups = computed(() => {
     if (last && last.key === k) {
       last.sets.push(entry)
     } else {
-      groups.push({ key: k, label: formatDate(entry.set.date), sets: [entry] })
+      groups.push({ key: k, label: formatShortDate(entry.set.date), sets: [entry] })
     }
   }
   return groups
@@ -1551,10 +1552,6 @@ function toggleSetActions(setId: string) {
   activeSetId.value = activeSetId.value === setId ? null : setId
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
 /** Relative time string used on the main exercise list ("today", "yesterday", "4 days ago"). */
 function formatTimeAgo(iso: string): string {
   const now = new Date()
@@ -1566,26 +1563,7 @@ function formatTimeAgo(iso: string): string {
   if (days === 1) return 'yesterday'
   if (days < 7) return `${days} days ago`
   if (days < 30) return `${Math.floor(days / 7)}w ago`
-  return formatDate(iso)
-}
-
-// Converts a stored ISO string back to the local YYYY-MM-DD for a date input
-function isoToLocalDate(iso: string): string {
-  const d = new Date(iso)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function todayISO(): string {
-  // Use local date components — toISOString() returns UTC which gives the
-  // wrong date in US timezones after ~5pm (midnight UTC comes before midnight local).
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return formatShortDate(iso)
 }
 
 // ── Log / Edit modal state ────────────────────────────────────────
@@ -1773,10 +1751,6 @@ function readNudgeState(): NudgeState {
 function writeNudgeState(state: NudgeState) {
   localStorage.setItem(NUDGE_STORAGE_KEY, JSON.stringify(state))
   nudgeStateVersion.value++
-}
-
-function daysBetweenISO(a: string, b: string): number {
-  return Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000)
 }
 
 /**
@@ -2270,7 +2244,7 @@ function openLogForExercise(exerciseId: string) {
 function openEditModal(exercise: Exercise, set: WorkoutSet) {
   editingSet.value = { exerciseId: exercise.id, setId: set.id }
   selectedExerciseId.value = exercise.id
-  date.value = isoToLocalDate(set.date)
+  date.value = toLocalDateKey(set.date)
   weight.value = displayWeight(set.weight)
   reps.value = set.reps
   showModal.value = true

@@ -1,4 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
+import { formatShortDate } from '../lib/dates'
 
 /** Input data point: a date string (YYYY-MM-DD) and a numeric value. */
 export interface TimeSeriesEntry {
@@ -190,12 +191,10 @@ export function useSVGTimeSeries(
     return PAD_T + chartH - ((value - minVal.value) / range) * chartH
   }
 
-  /** Format an ISO date string for x-axis labels (e.g. "Jan 5"). */
+  /** Format a YYYY-MM-DD key for x-axis labels (e.g. "Jan 5"). Noon-anchored
+   *  so the rendered day can't roll over at the timezone boundary. */
   function formatDate(iso: string): string {
-    return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    })
+    return formatShortDate(iso + 'T12:00:00')
   }
 
   /**

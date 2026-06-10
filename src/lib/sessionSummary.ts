@@ -9,6 +9,7 @@
 
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
+import { toLocalDateKey } from './dates'
 
 export interface SessionHighlight {
   exerciseId: string
@@ -117,24 +118,6 @@ export function formatDuration(ms: number): string {
  */
 function isEndOfDayJitter(iso: string): boolean {
   return iso.slice(11, 16) === '23:59'
-}
-
-/**
- * Convert a set's stored ISO timestamp to its *local* calendar date (YYYY-MM-DD).
- *
- * The workout store stores UTC ISO strings via `Date.toISOString()`, but the
- * user's mental model — and the rest of the UI like `formatTimeAgo` — operates
- * on the local calendar day. Comparing `iso.slice(0, 10)` to a local-derived
- * "today" key drops late-night sets whose UTC date has already rolled over.
- */
-export function toLocalDateKey(iso: string): string {
-  const t = Date.parse(iso)
-  if (Number.isNaN(t)) return iso.slice(0, 10)
-  const d = new Date(t)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
 }
 
 /** Pure: compute per-day session summary. */

@@ -189,12 +189,12 @@
         role="button"
         tabindex="0"
         :aria-expanded="activeEntryId === entry.id"
-        :aria-label="`${formatDateShort(entry.date)}: ${displayWeight(entry.weight)} ${weightUnit}`"
+        :aria-label="`${formatShortDate(entry.date)}: ${displayWeight(entry.weight)} ${weightUnit}`"
         @click="toggleEntryActions(entry.id)"
         @keydown.enter="toggleEntryActions(entry.id)"
         @keydown.space.prevent="toggleEntryActions(entry.id)"
       >
-        <span class="wtSetDate">{{ formatDateShort(entry.date) }}</span>
+        <span class="wtSetDate">{{ formatShortDate(entry.date) }}</span>
         <span :class="['wtSetDetail', weightClass(entry.weight)]">
           {{ displayWeight(entry.weight) }} {{ weightUnit }}
           <span v-if="entry.weight === store.minWeight" :class="['bwEntryBadge', isLowGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time low">↓ Low</span>
@@ -266,6 +266,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
+import { todayISO, toLocalDateKey, formatShortDate } from '../lib/dates'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
@@ -307,23 +308,11 @@ function tryShowDatePicker(e: MouseEvent) {
   try { el.showPicker() } catch { /* unsupported or gesture-less; native tap handles it */ }
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function isoToLocalDate(iso: string): string {
-  const d = new Date(iso)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 function openModal(entry: BodyweightEntry | null = null) {
   if (entry) {
     editing.value = entry.id
     weight.value = displayWeight(entry.weight)
-    date.value = isoToLocalDate(entry.date)
+    date.value = toLocalDateKey(entry.date)
   } else {
     editing.value = null
     weight.value = null
@@ -629,7 +618,4 @@ const rangeBand = computed((): { y1: number; y2: number; topVisible: boolean; bo
   }
 })
 
-function formatDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
 </script>

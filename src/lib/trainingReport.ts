@@ -7,7 +7,7 @@
 
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
-import { toLocalDateKey } from './sessionSummary'
+import { toLocalDateKey } from './dates'
 
 // ── Types ────────────────────────────────────────────────────────
 
