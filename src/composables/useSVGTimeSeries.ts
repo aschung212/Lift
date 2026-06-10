@@ -54,6 +54,23 @@ export interface UseSVGTimeSeriesReturn {
   shouldShowLabel: (i: number) => boolean
   valueToY: (value: number) => number
   formatDate: (iso: string) => string
+  readoutBox: (point: { x: number; y: number }, label: string) => ReadoutBox
+}
+
+/** Geometry for a floating value-readout bubble anchored to a chart point. */
+export interface ReadoutBox {
+  /** Top-left x of the bubble rect. */
+  x: number
+  /** Top-left y of the bubble rect. */
+  y: number
+  /** Bubble width. */
+  w: number
+  /** Bubble height. */
+  h: number
+  /** Centre x for the label text. */
+  tx: number
+  /** Baseline y for the label text. */
+  ty: number
 }
 
 export function useSVGTimeSeries(
@@ -181,6 +198,24 @@ export function useSVGTimeSeries(
     })
   }
 
+  /**
+   * Compute geometry for a floating value-readout bubble anchored above a point
+   * (used by the touch scrubber). The bubble is centred on the point, clamped
+   * horizontally to the chart bounds, and flips below the point when it would
+   * otherwise clip the top of the chart.
+   */
+  function readoutBox(point: { x: number; y: number }, label: string): ReadoutBox {
+    const charW = 5.6
+    const padX = 7
+    const h = 17
+    const w = Math.min(label.length * charW + padX * 2, chartW)
+    let x = point.x - w / 2
+    x = Math.max(PAD_L, Math.min(x, W - PAD_R - w))
+    let y = point.y - h - 9
+    if (y < PAD_T) y = point.y + 9
+    return { x, y, w, h, tx: x + w / 2, ty: y + h / 2 + 3.4 }
+  }
+
   return {
     // Layout constants
     W,
@@ -204,5 +239,6 @@ export function useSVGTimeSeries(
     shouldShowLabel,
     valueToY,
     formatDate,
+    readoutBox,
   }
 }

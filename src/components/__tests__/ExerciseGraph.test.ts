@@ -190,6 +190,36 @@ describe('ExerciseGraph', () => {
     })
   })
 
+  describe('touch-scrub readout', () => {
+    const exercise = makeExercise([
+      makeSet(135, 8, '2026-01-01'),
+      makeSet(155, 6, '2026-01-15'),
+      makeSet(175, 4, '2026-02-01'),
+    ])
+
+    it('shows no readout until the user scrubs', () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      expect(wrapper.find('.wtGScrub').exists()).toBe(false)
+    })
+
+    it('reveals a crosshair and value bubble on pointer down, and clears on release', async () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      const svg = wrapper.find('svg')
+      // happy-dom has no layout; map client px 1:1 onto the 320-wide viewBox.
+      ;(svg.element as unknown as SVGSVGElement).getBoundingClientRect = () =>
+        ({ left: 0, width: 320, top: 0, right: 320, bottom: 0, height: 0, x: 0, y: 0 }) as DOMRect
+      ;(svg.element as unknown as SVGSVGElement).setPointerCapture = () => {}
+
+      await svg.trigger('pointerdown', { clientX: 56, pointerId: 1 })
+      expect(wrapper.find('.wtGScrub').exists()).toBe(true)
+      expect(wrapper.find('.wtGScrubLine').exists()).toBe(true)
+      expect(wrapper.find('.wtGReadoutText').text()).toContain('lbs')
+
+      await svg.trigger('pointerup', { pointerId: 1 })
+      expect(wrapper.find('.wtGScrub').exists()).toBe(false)
+    })
+  })
+
   describe('time-range selector', () => {
     const recentExercise = makeExercise([
       makeSet(135, 8, daysAgo(200)),

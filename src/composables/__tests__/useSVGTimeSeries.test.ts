@@ -325,4 +325,38 @@ describe('useSVGTimeSeries', () => {
       expect(maxVal.value).toBe(300)
     })
   })
+
+  describe('readoutBox', () => {
+    const data = ref<TimeSeriesEntry[]>([])
+    const { readoutBox } = useSVGTimeSeries(data)
+
+    it('centres the bubble on the point when there is room', () => {
+      const box = readoutBox({ x: 160, y: 60 }, 'Hello')
+      // Text centre should match the point x (bubble centred under it)
+      expect(box.tx).toBeCloseTo(160)
+      expect(box.h).toBe(17)
+      expect(box.w).toBeGreaterThan(0)
+    })
+
+    it('clamps the bubble to the left chart edge', () => {
+      const box = readoutBox({ x: PAD_L, y: 60 }, 'A very long readout label here')
+      expect(box.x).toBeGreaterThanOrEqual(PAD_L)
+    })
+
+    it('clamps the bubble to the right chart edge', () => {
+      const box = readoutBox({ x: W - PAD_R, y: 60 }, '200 lbs · Feb 1')
+      expect(box.x + box.w).toBeLessThanOrEqual(W - PAD_R)
+    })
+
+    it('caps width to the chart width for very long labels', () => {
+      const box = readoutBox({ x: 160, y: 60 }, 'x'.repeat(200))
+      expect(box.w).toBeLessThanOrEqual(chartW)
+    })
+
+    it('flips below the point when the bubble would clip the top', () => {
+      const aboveTop = readoutBox({ x: 160, y: PAD_T }, 'label')
+      // Placed below the anchor (y greater than the point y)
+      expect(aboveTop.y).toBeGreaterThan(PAD_T)
+    })
+  })
 })
