@@ -185,6 +185,21 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.wtPrevSessionChip quick-fill / ladder chips (#741)', () => {
+    const lines = getRuleLines('.wtPrevSessionChip')
+
+    it('has min-height: 44px for iOS HIG touch target', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('keeps ladder state classes on theme tokens (no hardcoded colors)', () => {
+      const next = getRuleLines('.wtPrevSessionChipNext')
+      expect(next.some(l => l.includes('var(--accent-subtle)'))).toBe(true)
+      expect(next.some(l => l.includes('var(--accent)'))).toBe(true)
+      expect(next.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+    })
+  })
+
   describe('Vue component touch target compliance', () => {
     // jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
     // cannot verify sizing in component tests. These CSS regression tests

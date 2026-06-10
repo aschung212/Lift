@@ -5268,6 +5268,7 @@ html.theme-fading .settingsSheet {
   border-radius: 10px;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .wtPrevSessionChip:active {
@@ -5280,6 +5281,28 @@ html.theme-fading .settingsSheet {
   opacity: 0.45;
   text-decoration: line-through;
   border-style: dashed;
+}
+
+/* Usual-ladder rung states (#741): the up-next rung gets the accent
+   treatment; rungs below today's heaviest set are dimmed as skipped
+   (no strikethrough — visually distinct from logged/used). */
+.wtPrevSessionChipNext {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.wtPrevSessionChipSkipped {
+  opacity: 0.45;
+}
+
+/* Overload nudge card (#741) — accent, never --pr gold (gold is reserved
+   for actual PRs). Solid border distinguishes the actionable suggestion
+   from the dashed "to beat" target cards. */
+.wtOverloadCard {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  border-style: solid;
 }
 
 .wtInputRow {

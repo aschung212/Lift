@@ -131,6 +131,12 @@ const mockReorderExercise = vi.fn()
 const mockArchiveExercise = vi.fn()
 const mockUnarchiveExercise = vi.fn()
 
+// Mockable read getters — tests drive these with mockReturnValue and the
+// suite-level beforeEach resets them to the no-data default.
+const mockGetOverloadSuggestion = vi.fn()
+const mockGetLastSession = vi.fn()
+const mockGetUsualLadder = vi.fn()
+
 vi.mock('../../stores/workout', () => ({
   useWorkoutStore: () => ({
     get exercises() { return mockState.exercises },
@@ -140,8 +146,9 @@ vi.mock('../../stores/workout', () => ({
     get allTags() { return getAllTags() },
     getExercisePR,
     getExercisePRSet,
-    getOverloadSuggestion: () => null,
-    getLastSession: () => null,
+    getOverloadSuggestion: mockGetOverloadSuggestion,
+    getLastSession: mockGetLastSession,
+    getUsualLadder: mockGetUsualLadder,
     addExercise: mockAddExercise,
     logSet: mockLogSet,
     updateSet: mockUpdateSet,
@@ -214,6 +221,11 @@ describe('WorkoutTracker', () => {
     mockState.exercises = []
     localStorageMock.clear()
     vi.clearAllMocks()
+    // clearAllMocks keeps implementations — reset return values explicitly
+    // so a test's mockReturnValue never leaks into the next test.
+    mockGetOverloadSuggestion.mockReturnValue(null)
+    mockGetLastSession.mockReturnValue(null)
+    mockGetUsualLadder.mockReturnValue(null)
   })
 
   describe('empty state', () => {
@@ -924,6 +936,483 @@ describe('WorkoutTracker', () => {
       } finally {
         vi.useRealTimers()
       }
+    })
+  })
+
+  describe('usual ladder & ghost logging (#741)', () => {
+    /** Local calendar date, matching the component's todayISO(). */
+    function localDay(daysAgo = 0): string {
+      const d = new Date()
+      d.setDate(d.getDate() - daysAgo)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+
+    function benchLadder() {
+      return {
+        rungs: [
+          { weightLbs: 45, reps: 10, source: 'consensus' },
+          { weightLbs: 95, reps: 10, source: 'consensus' },
+          { weightLbs: 135, reps: 10, source: 'consensus' },
+          { weightLbs: 185, reps: 10, source: 'consensus' },
+          { weightLbs: 225, reps: 10, source: 'consensus' },
+          { weightLbs: 275, reps: 10, source: 'consensus' },
+        ],
+        consensusCount: 6,
+        sessionsSampled: 4,
+      }
+    }
+
+    /** Appends sets dated today to ex-1 so doneness derivation sees them. */
+    function seedTodaySets(weights: number[]) {
+      for (const w of weights) {
+        mockState.exercises[0].sets.push({
+          id: `s-today-${w}-${mockState.exercises[0].sets.length}`,
+          date: `${localDay()}T23:59:00.000Z`,
+          weight: w,
+          reps: 10,
+          estimated1RM: Math.round(w * (1 + 10 / 30)),
+        })
+      }
+    }
+
+    async function openBenchModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    it('falls back to last-session chips when no ladder is detected', async () => {
+      mockGetLastSession.mockReturnValue({
+        date: '2026-01-20',
+        sets: [
+          { id: 's-a', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's-b', date: '2026-01-20T12:00:00', weight: 195, reps: 3, estimated1RM: 215 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('.wtPrevSessionLabel').text()).toContain('Last session')
+      const chips = wrapper.findAll('.wtPrevSessionChip')
+      expect(chips).toHaveLength(2)
+      await chips[0].trigger('click')
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('185')
+      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('5')
+    })
+
+    it('renders the ladder with the first rung highlighted as next', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('.wtPrevSessionLabel').text()).toBe('Usual · 6 sets')
+      const chips = wrapper.findAll('.wtPrevSessionChip')
+      expect(chips).toHaveLength(6)
+      expect(chips[0].classes()).toContain('wtPrevSessionChipNext')
+      expect(chips[0].attributes('aria-current')).toBe('step')
+      expect(chips[0].text()).toBe('45 × 10')
+      expect(chips[5].text()).toBe('275 × 10')
+    })
+
+    it('fills weight and reps when a rung chip is tapped', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await wrapper.findAll('.wtPrevSessionChip')[2].trigger('click')
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('135')
+      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('10')
+    })
+
+    it('arms the ghost: placeholders show the next rung and Save states its payload', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('input[aria-label="Weight"]').attributes('placeholder')).toBe('45')
+      expect(wrapper.find('input[aria-label="Reps"]').attributes('placeholder')).toBe('10')
+      const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
+      expect(saveBtn.text()).toBe('Save 45 × 10')
+      expect(saveBtn.attributes('disabled')).toBeUndefined()
+    })
+
+    it('ghost save logs the next rung with fields left empty (settled pattern)', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 45, 10, expect.any(String))
+      // Modal stays open, fields remain genuinely empty
+      expect(wrapper.find('.repMaxModal').exists()).toBe(true)
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('')
+      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('')
+    })
+
+    it('a double-tap on ghost Save logs exactly one set (re-arm cooldown)', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      // NOTE: re-find the button after every state change — the render
+      // replaces the element, so a held wrapper goes stale (detached node).
+      const saveBtn = () => wrapper.find('.repMaxBtn.repMaxBtnCalc')
+      await saveBtn().trigger('click')
+      await saveBtn().trigger('click') // accidental double-tap
+      expect(mockLogSet).toHaveBeenCalledTimes(1)
+      // Button visibly disarms during the cooldown
+      expect(saveBtn().attributes('disabled')).toBeDefined()
+      expect(saveBtn().text()).toBe('Save')
+
+      // After the cooldown an intentional tap logs the next set
+      await new Promise(r => setTimeout(r, 600))
+      await wrapper.vm.$nextTick()
+      await saveBtn().trigger('click')
+      expect(mockLogSet).toHaveBeenCalledTimes(2)
+    })
+
+    it('typing anything disarms the ghost', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await wrapper.find('input[aria-label="Weight"]').setValue('50')
+      const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
+      expect(saveBtn.text()).toBe('Save')
+      // Normal validation again: weight without reps cannot save
+      expect(saveBtn.attributes('disabled')).toBeDefined()
+    })
+
+    it('derives doneness from today\'s logged sets', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      seedTodaySets([45])
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('.wtPrevSessionLabel').text()).toBe('Usual · 1 of 6')
+      const chips = wrapper.findAll('.wtPrevSessionChip')
+      expect(chips[0].classes()).toContain('wtPrevSessionChipUsed')
+      expect(chips[0].attributes('aria-label')).toBe('45 × 10, logged')
+      expect(chips[1].classes()).toContain('wtPrevSessionChipNext')
+      // Ghost now points at the second rung
+      expect(wrapper.find('.repMaxBtn.repMaxBtnCalc').text()).toBe('Save 95 × 10')
+    })
+
+    it('dims lighter rungs as skipped when the user jumps ahead', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      seedTodaySets([185])
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const chips = wrapper.findAll('.wtPrevSessionChip')
+      // 45/95/135 are moot warm-ups below today's heaviest — skipped, not struck through
+      for (const i of [0, 1, 2]) {
+        expect(chips[i].classes()).toContain('wtPrevSessionChipSkipped')
+        expect(chips[i].classes()).not.toContain('wtPrevSessionChipUsed')
+        // Skipped state is exposed to screen readers, not just via opacity
+        expect(chips[i].attributes('aria-label')).toContain('skipped')
+      }
+      expect(chips[3].classes()).toContain('wtPrevSessionChipUsed')
+      expect(chips[4].classes()).toContain('wtPrevSessionChipNext')
+      expect(chips[4].attributes('aria-label')).toBeUndefined()
+      expect(wrapper.find('.wtPrevSessionLabel').text()).toBe('Usual · 4 of 6')
+    })
+
+    it('completes the ladder when a heavier set beats the top rung', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      seedTodaySets([280])
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('.wtPrevSessionLabel').text()).toBe('Usual · 6 of 6')
+      expect(wrapper.find('.wtPrevSessionChipNext').exists()).toBe(false)
+      // Ghost disarmed → Save disabled until the user types
+      const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
+      expect(saveBtn.text()).toBe('Save')
+      expect(saveBtn.attributes('disabled')).toBeDefined()
+    })
+
+    it('backdating the modal date drops to fallback mode and disarms the ghost', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await wrapper.find('.wtDateOverlayInput').setValue('2026-01-10')
+      await wrapper.vm.$nextTick()
+
+      // No ladder UI, no ghost — getLastSession is null here so the row vanishes
+      expect(wrapper.find('.wtPrevSessionLabel').exists()).toBe(false)
+      const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
+      expect(saveBtn.text()).toBe('Save')
+      expect(saveBtn.attributes('disabled')).toBeDefined()
+    })
+
+    it('never arms the ghost in plate mode but chips still fill plates + reps', async () => {
+      mockState.exercises[0].inputMode = 'plates'
+      mockState.exercises[0].plateCountMode = 'per-side'
+      mockState.exercises[0].barWeight = 45
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      // Plate seeding pre-fills the weight from the next rung — no ghost
+      expect(wrapper.find('.repMaxBtn.repMaxBtnCalc').text()).toBe('Save')
+      expect(wrapper.find('input[aria-label="Reps"]').attributes('placeholder')).toBe('—')
+
+      await wrapper.findAll('.wtPrevSessionChip')[2].trigger('click')
+      await wrapper.vm.$nextTick()
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('135')
+      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('10')
+    })
+  })
+
+  describe('overload nudge (#741)', () => {
+    function localDay(daysAgo = 0): string {
+      const d = new Date()
+      d.setDate(d.getDate() - daysAgo)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+
+    function benchLadder() {
+      return {
+        rungs: [
+          { weightLbs: 45, reps: 10, source: 'consensus' },
+          { weightLbs: 135, reps: 10, source: 'consensus' },
+          { weightLbs: 225, reps: 10, source: 'consensus' },
+          { weightLbs: 275, reps: 10, source: 'consensus' },
+        ],
+        consensusCount: 4,
+        sessionsSampled: 4,
+      }
+    }
+
+    function highSuggestion() {
+      return { type: 'increase_weight', weight: 280, reps: 8, reason: 'x', confidence: 'high' }
+    }
+
+    function priorSession(daysAgo = 2, topWeight = 275) {
+      return {
+        date: localDay(daysAgo),
+        sets: [{ id: 's-p', date: `${localDay(daysAgo)}T12:00:00`, weight: topWeight, reps: 10, estimated1RM: 367 }],
+      }
+    }
+
+    /** Today's sets covering every rung except the top one → top set is up next. */
+    function seedAllButTopRung() {
+      for (const w of [45, 135, 225]) {
+        mockState.exercises[0].sets.push({
+          id: `s-today-${w}`,
+          date: `${localDay()}T23:59:00.000Z`,
+          weight: w,
+          reps: 10,
+          estimated1RM: Math.round(w * (1 + 10 / 30)),
+        })
+      }
+    }
+
+    async function openBenchModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    function armEligibleNudge() {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      mockGetOverloadSuggestion.mockReturnValue(highSuggestion())
+      mockGetLastSession.mockReturnValue(priorSession())
+      seedAllButTopRung()
+    }
+
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    it('shows the nudge card right before the habitual top set', async () => {
+      armEligibleNudge()
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const card = wrapper.find('.wtOverloadCard')
+      expect(card.exists()).toBe(true)
+      expect(card.text()).toContain('Suggestion')
+      expect(card.text()).toContain('280 lbs × 8')
+      expect(card.text()).toContain('Up from 275 lbs × 10')
+    })
+
+    it('records the shown nudge once per day in localStorage', async () => {
+      armEligibleNudge()
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const state = JSON.parse(localStorageMock.getItem('overload-nudge-state')!)
+      expect(state.lastGlobalShownDay).toBe(localDay())
+      expect(state.byExercise['ex-1']).toMatchObject({
+        lastShownDay: localDay(),
+        shownForWeightLbs: 280,
+        outcome: 'pending',
+        ignoredCount: 0,
+      })
+    })
+
+    it('does not show before the top rung is up next', async () => {
+      mockGetUsualLadder.mockReturnValue(benchLadder())
+      mockGetOverloadSuggestion.mockReturnValue(highSuggestion())
+      mockGetLastSession.mockReturnValue(priorSession())
+      // No sets logged today → next rung is the first, not the top
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('never shows low-confidence suggestions', async () => {
+      armEligibleNudge()
+      mockGetOverloadSuggestion.mockReturnValue({ ...highSuggestion(), confidence: 'low' })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('suppresses the nudge during a deload (last session below the usual top)', async () => {
+      armEligibleNudge()
+      mockGetLastSession.mockReturnValue(priorSession(2, 225))
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('suppresses the nudge after a 3+ week break', async () => {
+      armEligibleNudge()
+      mockGetLastSession.mockReturnValue(priorSession(30))
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('enforces the one-nudge-per-day global cap across exercises', async () => {
+      armEligibleNudge()
+      localStorageMock.setItem('overload-nudge-state', JSON.stringify({
+        lastGlobalShownDay: localDay(),
+        byExercise: { 'ex-other': { lastShownDay: localDay(), shownForWeightLbs: 100, outcome: 'pending', ignoredCount: 0 } },
+      }))
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('enforces the 7-day per-exercise cooldown', async () => {
+      armEligibleNudge()
+      localStorageMock.setItem('overload-nudge-state', JSON.stringify({
+        lastGlobalShownDay: localDay(3),
+        byExercise: { 'ex-1': { lastShownDay: localDay(3), shownForWeightLbs: 280, outcome: 'accepted', ignoredCount: 0 } },
+      }))
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('shows again once the cooldown has elapsed', async () => {
+      armEligibleNudge()
+      localStorageMock.setItem('overload-nudge-state', JSON.stringify({
+        lastGlobalShownDay: localDay(8),
+        byExercise: { 'ex-1': { lastShownDay: localDay(8), shownForWeightLbs: 280, outcome: 'accepted', ignoredCount: 0 } },
+      }))
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(true)
+    })
+
+    it('backs off to 14 days after one ignore', async () => {
+      armEligibleNudge()
+      localStorageMock.setItem('overload-nudge-state', JSON.stringify({
+        lastGlobalShownDay: localDay(10),
+        byExercise: { 'ex-1': { lastShownDay: localDay(10), shownForWeightLbs: 280, outcome: 'ignored', ignoredCount: 1 } },
+      }))
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('mutes the exercise after three ignores while the top weight is unchanged', async () => {
+      armEligibleNudge()
+      localStorageMock.setItem('overload-nudge-state', JSON.stringify({
+        lastGlobalShownDay: localDay(60),
+        byExercise: { 'ex-1': { lastShownDay: localDay(60), shownForWeightLbs: 280, outcome: 'ignored', ignoredCount: 3 } },
+      }))
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('disarms the ghost while the nudge is visible — Save demands an explicit choice', async () => {
+      armEligibleNudge()
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(true)
+      // No ghost: plain disabled Save, default placeholders — the nudge and
+      // the old top set never compete as two one-tap payloads
+      const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
+      expect(saveBtn.text()).toBe('Save')
+      expect(saveBtn.attributes('disabled')).toBeDefined()
+      expect(wrapper.find('input[aria-label="Weight"]').attributes('placeholder')).toBe('135')
+    })
+
+    it('exposes the nudge card as a keyboard-actionable button', async () => {
+      armEligibleNudge()
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const card = wrapper.find('.wtOverloadCard')
+      expect(card.attributes('role')).toBe('button')
+      expect(card.attributes('tabindex')).toBe('0')
+      expect(card.attributes('aria-label')).toContain('280')
+      await card.trigger('keydown.enter')
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('280')
+    })
+
+    it('settles a stale pending nudge as ignored when a later session stayed lighter', async () => {
+      armEligibleNudge()
+      // Nudge shown 8 days ago, still pending; the user benched 5 days ago
+      // at the usual top weight — that answers "no thanks"
+      localStorageMock.setItem('overload-nudge-state', JSON.stringify({
+        lastGlobalShownDay: localDay(8),
+        byExercise: { 'ex-1': { lastShownDay: localDay(8), shownForWeightLbs: 280, outcome: 'pending', ignoredCount: 0 } },
+      }))
+      mockState.exercises[0].sets.push({
+        id: 's-between', date: `${localDay(5)}T23:59:00.000Z`, weight: 275, reps: 10, estimated1RM: 367,
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const state = JSON.parse(localStorageMock.getItem('overload-nudge-state')!)
+      expect(state.byExercise['ex-1'].outcome).toBe('ignored')
+      expect(state.byExercise['ex-1'].ignoredCount).toBe(1)
+      // One ignore → 14-day backoff; only 8 days elapsed → suppressed
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+    })
+
+    it('tapping the card fills the fields, and saving records the accept', async () => {
+      armEligibleNudge()
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await wrapper.find('.wtOverloadCard').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('280')
+      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('8')
+      // Card is gone once the fields are filled (fill-only, never saves)
+      expect(wrapper.find('.wtOverloadCard').exists()).toBe(false)
+
+      await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 280, 8, expect.any(String))
+      const state = JSON.parse(localStorageMock.getItem('overload-nudge-state')!)
+      expect(state.byExercise['ex-1'].outcome).toBe('accepted')
+      expect(state.byExercise['ex-1'].ignoredCount).toBe(0)
     })
   })
 
