@@ -911,12 +911,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
   }
 
-  function removeCustomTag(name: string) {
-    customTags.value = customTags.value.filter(t => t !== name)
-    triggerRef(customTags)
-    _persist()
-  }
-
   // ── Getters (computed) ─────────────────────────────────────────────
   const allTags = computed((): string[] => {
     const tagSet = new Set<string>()
@@ -974,12 +968,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     return filtered.reduce((best: WorkoutSet, s: WorkoutSet) =>
       s.estimated1RM > best.estimated1RM ? s : best
     )
-  }
-
-  function getRecentSets(exerciseId: string, limit = 5): WorkoutSet[] {
-    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise) return []
-    return [...exercise.sets].reverse().slice(0, limit)
   }
 
   /**
@@ -1271,7 +1259,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     setTagRecoveryDays,
     setTagRecoveryExcluded,
     addCustomTag,
-    removeCustomTag,
     // Getters
     allTags,
     activeExercises,
@@ -1279,7 +1266,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     workoutDates,
     getExercisePR,
     getExercisePRSet,
-    getRecentSets,
     getLastSession,
     getUsualLadder,
     getOverloadSuggestion
