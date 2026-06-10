@@ -219,6 +219,15 @@
         :collapsed="volumeCollapsed"
         @toggle-collapsed="volumeCollapsed = !volumeCollapsed"
       />
+
+      <!-- Weekly rep-range distribution chart (collapsible) -->
+      <RepRangeChart
+        v-if="repRangeHasData"
+        :zones="repRangeZones"
+        :total-sets="repRangeTotal"
+        :collapsed="repRangeCollapsed"
+        @toggle-collapsed="repRangeCollapsed = !repRangeCollapsed"
+      />
     </div>
   </div>
 
@@ -306,9 +315,11 @@ import { usePRBaseline } from '../composables/usePRBaseline'
 import { useModal } from '../composables/useModal'
 import { useTagVolume } from '../composables/useTagVolume'
 import { useTagRecovery } from '../composables/useTagRecovery'
+import { useRepRangeDistribution } from '../composables/useRepRangeDistribution'
 
 const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
 const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/MuscleGroupRecovery.vue'))
+const RepRangeChart = defineAsyncComponent(() => import('../components/RepRangeChart.vue'))
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
@@ -601,6 +612,10 @@ const weekDateStrings = computed(() => weekDays.value.map(d => d.dateStr))
 const exercisesRef = computed(() => filteredExercises.value)
 const { weeklyVolume, maxSets, totalSets } = useTagVolume(exercisesRef, weekDateStrings)
 
+// ── Weekly rep-range distribution ─────────────────────────────────
+const { zones: repRangeZones, totalSets: repRangeTotal, hasData: repRangeHasData } =
+  useRepRangeDistribution(exercisesRef, weekDateStrings)
+
 // ── Tag recovery ─────────────────────────────────────────────────
 const allExercisesRef = computed(() => store.exercises)
 const tagRecoveryDaysRef = computed(() => store.tagRecoveryDays)
@@ -635,6 +650,7 @@ function onRecoveryDaysChange(tag: string, days: number | null) {
 }
 
 const volumeCollapsed = ref(false)
+const repRangeCollapsed = ref(false)
 
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
