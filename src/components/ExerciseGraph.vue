@@ -206,12 +206,27 @@ const {
   shouldShowLabel, formatDate,
 } = useSVGTimeSeries(graphData, { timeRange: periodTimeRange })
 
-// Extend base points with exercise-specific PR flag
+// Earliest date that hit the all-time best value, derived from full history
+// (not the windowed view) so narrowing the range never mislabels a merely
+// window-best set as an all-time PR.
+const allTimePRDate = computed((): string => {
+  let max = -Infinity
+  let date = ''
+  for (const entry of graphDataAll.value) {
+    if (entry.value > max) {
+      max = entry.value
+      date = entry.date
+    }
+  }
+  return date
+})
+
+// Extend base points with exercise-specific PR flag. The PR badge only renders
+// when the all-time best session falls inside the selected window.
 const points = computed(() => {
   const pts = basePoints.value
   if (!pts.length) return []
-  // Find the earliest date that hit the max value
-  const prDate = pts.find(p => p.value === maxVal.value)?.date ?? ''
+  const prDate = allTimePRDate.value
   return pts.map(p => ({
     ...p,
     e1rm: p.value,

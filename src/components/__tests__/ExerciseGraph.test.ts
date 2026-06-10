@@ -199,6 +199,22 @@ describe('ExerciseGraph', () => {
       expect(wrapper.find('.exGraphPeriodRow').exists()).toBe(true)
     })
 
+    it('does not show a PR badge when the all-time PR is outside the window', async () => {
+      // All-time best (200 days ago) sits outside the 3M window; the windowed
+      // max must not be mislabeled as a PR.
+      const exercise = makeExercise([
+        makeSet(225, 5, daysAgo(200)), // all-time best e1RM
+        makeSet(135, 8, daysAgo(60)),
+        makeSet(155, 6, daysAgo(10)),
+      ])
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      // All view: PR dot present (best session in view)
+      expect(wrapper.findAll('.wtGDotPR').length).toBe(1)
+      // 3M view: best session excluded → no PR badge
+      await wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')[1].trigger('click')
+      expect(wrapper.findAll('.wtGDotPR').length).toBe(0)
+    })
+
     it('keeps range buttons accessible with aria-pressed state', () => {
       const wrapper = mount(ExerciseGraph, { props: { exercise: recentExercise } })
       const allBtn = wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')[3]
