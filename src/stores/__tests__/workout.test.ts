@@ -618,6 +618,178 @@ describe('workout store', () => {
     })
   })
 
+  describe('getUsualLadder', () => {
+    const TODAY = '2026-05-25'
+    const BENCH_LADDER: Array<[number, number]> = [[45, 10], [95, 10], [135, 10], [185, 10], [225, 10], [275, 10]]
+
+    function logSessions(
+      store: ReturnType<typeof useWorkoutStore>,
+      exId: string,
+      days: string[],
+      ladder: Array<[number, number]>,
+    ) {
+      for (const day of days) {
+        for (const [weight, reps] of ladder) store.logSet(exId, weight, reps, day)
+      }
+    }
+
+    it('detects a repeated warm-up ladder across 4 identical sessions', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22'], BENCH_LADDER)
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.sessionsSampled).toBe(4)
+      expect(ladder!.consensusCount).toBe(6)
+      expect(ladder!.rungs).toHaveLength(6)
+      expect(ladder!.rungs.map(r => [r.weightLbs, r.reps])).toEqual(BENCH_LADDER)
+      expect(ladder!.rungs.every(r => r.source === 'consensus')).toBe(true)
+    })
+
+    it('tolerates 2 deviant sessions in a 6-session window', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22'], BENCH_LADDER)
+      // Two deviant days (a deload and an experiment) interleaved
+      logSessions(store, id, ['2026-05-10'], [[45, 15], [65, 15], [85, 15]])
+      logSessions(store, id, ['2026-05-18'], [[100, 5], [150, 5], [200, 5], [250, 2]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.sessionsSampled).toBe(6)
+      // 4/6 support clears the max(3, ceil(0.6×6)=4) threshold at every position
+      expect(ladder!.rungs.slice(0, 6).map(r => [r.weightLbs, r.reps])).toEqual(BENCH_LADDER)
+    })
+
+    it('requires unanimity at exactly 3 sessions (1 deviant of 3 → null)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-08', '2026-05-15'], BENCH_LADDER)
+      logSessions(store, id, ['2026-05-22'], [[100, 5], [150, 5], [200, 5]])
+      // support threshold is max(3, ceil(0.6×3)=2) = 3 → 2/3 fails everywhere
+      expect(store.getUsualLadder(id, TODAY)).toBeNull()
+    })
+
+    it('returns null with fewer than 3 prior sessions', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-15', '2026-05-22'], BENCH_LADDER)
+      expect(store.getUsualLadder(id, TODAY)).toBeNull()
+    })
+
+    it("excludes today's sets from detection", () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15'], BENCH_LADDER)
+      // Today the user is mid-deviation — must not affect the ladder
+      logSessions(store, id, [TODAY], [[300, 1], [305, 1]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.sessionsSampled).toBe(3)
+      expect(ladder!.rungs.map(r => [r.weightLbs, r.reps])).toEqual(BENCH_LADDER)
+    })
+
+    it('truncates the consensus prefix at the first unsupported position', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      const days = ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22']
+      days.forEach((day, i) => {
+        logSessions(store, id, [day], [[45, 10], [95, 10], [135, 10], [150 + i * 20, 5]])
+      })
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.consensusCount).toBe(3)
+      // Position 4 drifts 20 lbs per session → carried from the newest session as a 'recent' tail
+      expect(ladder!.rungs).toHaveLength(4)
+      expect(ladder!.rungs[3]).toEqual({ weightLbs: 210, reps: 5, source: 'recent' })
+    })
+
+    it('keeps repeated working sets as separate rungs (3×225)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15'], [[135, 10], [225, 5], [225, 5], [225, 5]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.rungs.map(r => [r.weightLbs, r.reps])).toEqual([[135, 10], [225, 5], [225, 5], [225, 5]])
+    })
+
+    it('clusters kg-entered float weights within 1 lb and returns the newest raw value', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('OHP')!
+      // 60 kg re-entered across sessions with conversion drift (all within 1 lb)
+      logSessions(store, id, ['2026-05-01'], [[132.0, 8], [154.0, 5], [176.0, 3]])
+      logSessions(store, id, ['2026-05-08'], [[132.5, 8], [154.5, 5], [176.5, 3]])
+      logSessions(store, id, ['2026-05-15'], [[132.277, 8], [154.324, 5], [176.37, 3]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.consensusCount).toBe(3)
+      // Newest session's raw floats come back, so kg users see their own numbers
+      expect(ladder!.rungs.map(r => r.weightLbs)).toEqual([132.277, 154.324, 176.37])
+    })
+
+    it('survives a deload in the most recent session', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22'], BENCH_LADDER)
+      logSessions(store, id, ['2026-05-24'], [[45, 15], [65, 15], [85, 15]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      // Deload weights lose the cluster vote 4-to-1; rung values stay on the ladder
+      expect(ladder!.rungs.slice(0, 6).map(r => [r.weightLbs, r.reps])).toEqual(BENCH_LADDER)
+    })
+
+    it('drops the recent tail when the newest session deviated from the ladder', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      const ladder: Array<[number, number]> = [[45, 10], [95, 10], [135, 10], [185, 10]]
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22'], ladder)
+      // Newest session is a LONG deload — without the on-ladder guard its
+      // later sets would leak in as contradictory rungs after the top set
+      logSessions(store, id, ['2026-05-24'], [[45, 15], [65, 15], [85, 15], [105, 15], [125, 15], [145, 15]])
+      const usual = store.getUsualLadder(id, TODAY)
+      expect(usual).not.toBeNull()
+      expect(usual!.consensusCount).toBe(4)
+      expect(usual!.rungs).toHaveLength(4)
+      expect(usual!.rungs.map(r => r.weightLbs)).toEqual([45, 95, 135, 185])
+    })
+
+    it('returns null when only 2 positions are established', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Curls')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15'], [[30, 12], [40, 10]])
+      expect(store.getUsualLadder(id, TODAY)).toBeNull()
+    })
+
+    it('uses modal reps with ties broken toward the newest session', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Rows')!
+      logSessions(store, id, ['2026-05-01'], [[100, 10], [120, 12], [140, 10]])
+      logSessions(store, id, ['2026-05-08'], [[100, 10], [120, 8], [140, 10]])
+      logSessions(store, id, ['2026-05-15'], [[100, 8], [120, 8], [140, 10]])
+      logSessions(store, id, ['2026-05-22'], [[100, 8], [120, 8], [140, 10]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      // Position 1: reps tie 2×10 vs 2×8 → newest session (8) wins
+      expect(ladder!.rungs[0].reps).toBe(8)
+      // Position 2: mode (3×8) beats the newest-adjacent outlier (1×12)
+      expect(ladder!.rungs[1].reps).toBe(8)
+    })
+
+    it('caps the ladder at 10 rungs', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Volume Day')!
+      const twelveSets: Array<[number, number]> = Array.from({ length: 12 }, (_, i) => [100 + i * 10, 5])
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15'], twelveSets)
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.rungs).toHaveLength(10)
+    })
+
+    it('returns null for non-existent exercise', () => {
+      const store = useWorkoutStore()
+      expect(store.getUsualLadder('fake', TODAY)).toBeNull()
+    })
+  })
+
   describe('getOverloadSuggestion', () => {
     function addSetsOnDays(store: ReturnType<typeof useWorkoutStore>, exId: string, entries: Array<{ date: string; weight: number; reps: number }>) {
       for (const e of entries) {
@@ -657,6 +829,7 @@ describe('workout store', () => {
       expect(suggestion).not.toBeNull()
       expect(suggestion!.type).toBe('increase_weight')
       expect(suggestion!.weight).toBe(190)
+      expect(suggestion!.confidence).toBe('high')
     })
 
     it('suggests rep increase after recent weight increase', () => {
@@ -672,6 +845,8 @@ describe('workout store', () => {
       expect(suggestion!.type).toBe('increase_reps')
       expect(suggestion!.weight).toBe(195)
       expect(suggestion!.reps).toBe(4)
+      // Consolidation advice fires after almost any weight bump — never nudge-worthy
+      expect(suggestion!.confidence).toBe('low')
     })
 
     it('suggests weight increase when reps reach 8+', () => {
@@ -686,6 +861,59 @@ describe('workout store', () => {
       expect(suggestion).not.toBeNull()
       expect(suggestion!.type).toBe('increase_weight')
       expect(suggestion!.weight).toBe(140)
+      expect(suggestion!.confidence).toBe('high')
+    })
+
+    it('marks mid-progression rep advice as low confidence', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      // Low-rep build at the same weight (3 → 4 reps stays under the
+      // branch-1 threshold of 5) → "keep building" advice
+      addSetsOnDays(store, id, [
+        { date: '2026-03-01', weight: 135, reps: 3 },
+        { date: '2026-03-03', weight: 135, reps: 3 },
+        { date: '2026-03-05', weight: 135, reps: 4 },
+      ])
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      expect(suggestion!.type).toBe('increase_reps')
+      expect(suggestion!.confidence).toBe('low')
+    })
+
+    it('excludes an in-progress today session when today is passed (#741)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      addSetsOnDays(store, id, [
+        { date: '2026-03-01', weight: 275, reps: 10 },
+        { date: '2026-03-08', weight: 275, reps: 10 },
+        { date: '2026-03-15', weight: 275, reps: 10 },
+        // Mid-workout today: warm-ups logged, top set still ahead
+        { date: '2026-03-22', weight: 45, reps: 10 },
+        { date: '2026-03-22', weight: 135, reps: 10 },
+      ])
+      // Without exclusion, today's 135 reads as the latest top set → wrong branch
+      expect(store.getOverloadSuggestion(id)!.confidence).toBe('low')
+      // With exclusion, the consistent 275×10 sessions yield the real signal
+      const suggestion = store.getOverloadSuggestion(id, '2026-03-22')
+      expect(suggestion).not.toBeNull()
+      expect(suggestion!.type).toBe('increase_weight')
+      expect(suggestion!.weight).toBe(280)
+      expect(suggestion!.confidence).toBe('high')
+    })
+
+    it('marks the default add-a-rep fallback as low confidence', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      // Weights trending down — fallback branch
+      addSetsOnDays(store, id, [
+        { date: '2026-03-01', weight: 200, reps: 5 },
+        { date: '2026-03-03', weight: 185, reps: 5 },
+        { date: '2026-03-05', weight: 175, reps: 5 },
+      ])
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      expect(suggestion!.type).toBe('increase_reps')
+      expect(suggestion!.confidence).toBe('low')
     })
 
     it('returns null for non-existent exercise', () => {

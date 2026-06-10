@@ -54,10 +54,17 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Multi-tag filtering on both Workouts and Calendar tabs (ANY match)
 - Inline "× Clear" chip at end of tag row when filters are active — no layout shift
 
+### Usual Ladder (One-Tap Set Logging)
+- Detects your habitual set progression per exercise across recent sessions (e.g. 45×10 → 95×10 → 135×10 …), tolerant of occasional deviations
+- The log modal shows the ladder as chips: done rungs strike through, skipped rungs dim, the next rung highlights
+- Ghost prefill: with empty fields, the next rung appears as placeholders and the Save button reads "Save 135 × 10" — one tap logs each habitual set
+- Falls back to last-session chips when no routine is detected
+
 ### Progressive Overload Suggestions
 - Analyzes recent training history per exercise
 - Suggests weight or rep increases when performance plateaus
-- Based on linear periodization — tracks rolling averages across recent sessions
+- Surfaces as a tappable suggestion card right before your habitual top set — only on high-confidence signals
+- Rate-limited so it never nags: at most one nudge per day across all exercises, 7-day per-exercise cooldown, and ignoring it backs off further (14/28 days, then muted until your top weight changes)
 
 ### Workout Templates
 - Save current exercise list as a named template

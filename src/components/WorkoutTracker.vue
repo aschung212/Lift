@@ -418,18 +418,39 @@
             </span>
           </p>
 
-          <!-- Last session sets (quick-fill) -->
-          <div v-if="!isEditMode && isLogForExercise && lastSession" class="wtPrevSession">
-            <span class="wtPrevSessionLabel">Last session · {{ formatDate(lastSession.date + 'T12:00:00') }}</span>
-            <div class="wtPrevSessionChips">
-              <button
-                v-for="(s, i) in lastSession.sets"
-                :key="i"
-                class="wtPrevSessionChip"
-                :class="{ wtPrevSessionChipUsed: lastSessionUsed[i] }"
-                @click="fillFromLastSession(s, i)"
-              >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
-            </div>
+          <!-- Usual ladder (routine-aware) / last session sets (quick-fill) -->
+          <div v-if="!isEditMode && isLogForExercise && (ladderActive || lastSession)" class="wtPrevSession">
+            <template v-if="ladderActive && usualLadder">
+              <span class="wtPrevSessionLabel">{{ ladderLabel }}</span>
+              <div ref="ladderChipsEl" class="wtPrevSessionChips">
+                <button
+                  v-for="(rung, i) in usualLadder.rungs"
+                  :key="i"
+                  class="wtPrevSessionChip"
+                  :class="{
+                    wtPrevSessionChipUsed: rungStates[i] === 'done',
+                    wtPrevSessionChipNext: rungStates[i] === 'next',
+                    wtPrevSessionChipSkipped: rungStates[i] === 'skipped',
+                  }"
+                  :aria-current="rungStates[i] === 'next' ? 'step' : undefined"
+                  :aria-label="rungStates[i] === 'done' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, logged`
+                    : rungStates[i] === 'skipped' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, skipped` : undefined"
+                  @click="fillFromRung(rung)"
+                >{{ displayWeight(rung.weightLbs) }} × {{ rung.reps }}</button>
+              </div>
+            </template>
+            <template v-else-if="lastSession">
+              <span class="wtPrevSessionLabel">Last session · {{ formatDate(lastSession.date + 'T12:00:00') }}</span>
+              <div class="wtPrevSessionChips">
+                <button
+                  v-for="(s, i) in lastSession.sets"
+                  :key="i"
+                  class="wtPrevSessionChip"
+                  :class="{ wtPrevSessionChipUsed: lastSessionUsed[i] }"
+                  @click="fillFromLastSession(s, i)"
+                >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
+              </div>
+            </template>
           </div>
 
           <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
@@ -463,6 +484,19 @@
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
             <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
             <span class="repMaxPersonalBest">Tap to set reps</span>
+          </div>
+          <div
+            v-else-if="overloadNudge"
+            class="repMaxResult repMaxResultTarget repMaxResultTappable wtOverloadCard"
+            role="button"
+            tabindex="0"
+            :aria-label="`Load suggested set, ${overloadNudge.displayWeight} ${weightUnit} × ${overloadNudge.reps}`"
+            @click="acceptOverloadNudge"
+            @keydown.enter="acceptOverloadNudge"
+          >
+            <span class="repMaxResultLabel">Suggestion</span>
+            <span class="repMaxResultValue">{{ overloadNudge.displayWeight }} {{ weightUnit }} × {{ overloadNudge.reps }}</span>
+            <span class="repMaxPersonalBest">Up from {{ displayWeight(overloadNudge.fromWeightLbs) }} {{ weightUnit }} × {{ overloadNudge.fromReps }} · Tap to load</span>
           </div>
           <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
             <span class="repMaxResultLabel">Estimated 1RM</span>
@@ -532,7 +566,7 @@
                   inputmode="decimal"
                   enterkeyhint="next"
                   autocomplete="off"
-                  placeholder="135"
+                  :placeholder="ghostArmed && nextRung ? String(displayWeight(nextRung.weightLbs)) : '135'"
                   class="repMaxInput logSetFieldInput"
                   aria-label="Weight"
                 />
@@ -554,7 +588,7 @@
                 inputmode="numeric"
                 enterkeyhint="done"
                 autocomplete="off"
-                placeholder="—"
+                :placeholder="ghostArmed && nextRung ? String(nextRung.reps) : '—'"
                 class="repMaxInput logSetFieldInput logSetFieldInputReps"
                 aria-label="Reps"
               />
@@ -617,7 +651,7 @@
           <!-- Actions (always last) -->
           <div class="repMaxActions">
             <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
-              {{ isEditMode ? 'Save Changes' : (selectedExerciseId === '__new__' && !hasSetData ? 'Add Exercise' : 'Save') }}
+              {{ isEditMode ? 'Save Changes' : (selectedExerciseId === '__new__' && !hasSetData ? 'Add Exercise' : (ghostArmed && nextRung ? `Save ${displayWeight(nextRung.weightLbs)} × ${nextRung.reps}` : 'Save')) }}
             </button>
             <button class="repMaxBtn repMaxBtnClose" @click="closeModal">{{ isEditMode ? 'Cancel' : 'Done' }}</button>
           </div>
@@ -890,7 +924,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { toLocalDateKey, buildSessionSummary } from '../lib/sessionSummary'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
-import type { Exercise, WorkoutSet, PlateCountMode } from '../stores/workout'
+import type { Exercise, WorkoutSet, PlateCountMode, UsualLadder, UsualLadderRung } from '../stores/workout'
 
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
@@ -1575,6 +1609,324 @@ function fillFromLastSession(set: { weight: number; reps: number }, index: numbe
   lastSessionUsed.value = { ...lastSessionUsed.value, [index]: true }
 }
 
+// ── Usual ladder: routine-aware quick-fill + ghost logging (#741) ──
+// Captured once per modal open so the ladder never reshuffles mid-session
+// (detection excludes today, so re-opening between sets yields the same rungs).
+const usualLadder = ref<UsualLadder | null>(null)
+
+// Mirrors the store's clustering tolerance — absorbs kg↔lbs float drift.
+const LADDER_MATCH_TOLERANCE = 1.0
+
+const ladderActive = computed(() =>
+  usualLadder.value !== null &&
+  !isEditMode.value &&
+  isLogForExercise.value &&
+  date.value === todayISO()
+)
+
+type RungState = 'done' | 'next' | 'skipped' | 'upcoming'
+
+// Doneness is derived entirely from today's logged sets in the store — it
+// survives modal close/reopen, set edits, and deletes with zero local state.
+const rungStates = computed<RungState[]>(() => {
+  if (!ladderActive.value) return []
+  const rungs = usualLadder.value!.rungs
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  const today = todayISO()
+  const todaySets = ex ? ex.sets.filter(s => s.date.slice(0, 10) === today) : []
+
+  // Each today-set consumes the first pending rung within tolerance.
+  const done = rungs.map(() => false)
+  let maxTodayWeight = -Infinity
+  for (const s of todaySets) {
+    if (s.weight > maxTodayWeight) maxTodayWeight = s.weight
+    for (let i = 0; i < rungs.length; i++) {
+      if (!done[i] && Math.abs(rungs[i].weightLbs - s.weight) <= LADDER_MATCH_TOLERANCE) {
+        done[i] = true
+        break
+      }
+    }
+  }
+  // Beating the top rung (e.g. accepting the overload nudge) also completes it.
+  const lastIdx = rungs.length - 1
+  if (!done[lastIdx] && todaySets.some(s => s.weight >= rungs[lastIdx].weightLbs - LADDER_MATCH_TOLERANCE)) {
+    done[lastIdx] = true
+  }
+  // Pending rungs lighter than today's heaviest are moot warm-ups → skipped.
+  // Strict inequality keeps remaining repeat top-set rungs (e.g. 2nd of 3×225) pending.
+  const states: RungState[] = rungs.map((rung, i) =>
+    done[i] ? 'done'
+      : todaySets.length > 0 && rung.weightLbs < maxTodayWeight - LADDER_MATCH_TOLERANCE ? 'skipped'
+      : 'upcoming'
+  )
+  const nextIdx = states.indexOf('upcoming')
+  if (nextIdx !== -1) states[nextIdx] = 'next'
+  return states
+})
+
+const nextRungIndex = computed(() => rungStates.value.indexOf('next'))
+const nextRung = computed<UsualLadderRung | null>(() => {
+  const i = nextRungIndex.value
+  return i >= 0 ? usualLadder.value!.rungs[i] : null
+})
+
+const ladderDoneCount = computed(() =>
+  rungStates.value.filter(s => s === 'done' || s === 'skipped').length
+)
+
+const ladderLabel = computed(() => {
+  if (!usualLadder.value) return ''
+  const total = usualLadder.value.rungs.length
+  return ladderDoneCount.value === 0
+    ? `Usual · ${total} sets`
+    : `Usual · ${ladderDoneCount.value} of ${total}`
+})
+
+function fillFromRung(rung: UsualLadderRung) {
+  if (plateMode.value) {
+    const plates = weightToPlates(rung.weightLbs, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    if (plates) {
+      currentPlates.value = plates
+      syncPlateWeight()
+    }
+  } else {
+    weightStr.value = String(displayWeight(rung.weightLbs))
+  }
+  repsStr.value = String(rung.reps)
+  impactLight()
+}
+
+// Ghost prefill: with both fields empty the next rung shows as input
+// placeholders and Save commits it directly — one tap per habitual set.
+// Typing anything disarms it. Fields stay genuinely empty, so the settled
+// "fields cleared after save" pattern holds.
+//
+// Two extra disarm conditions guard the tap-tap-tap flow:
+// - ghostJustSaved: brief cooldown after a ghost save so an iOS double-tap
+//   can't silently log two rungs (the settled pattern's implicit guard —
+//   fields cleared → Save disabled — doesn't exist on the ghost path).
+// - overloadNudge visible: the nudge offers a heavier payload than the armed
+//   rung; presenting both would put two near-identical numbers with opposite
+//   tap semantics side by side. Save disarms until the user chooses (tap the
+//   nudge card, tap a chip, or type).
+const ghostJustSaved = ref(false)
+let _ghostRearmTimer: ReturnType<typeof setTimeout> | null = null
+const GHOST_REARM_MS = 500
+
+const ghostArmed = computed(() =>
+  ladderActive.value &&
+  nextRung.value !== null &&
+  weightStr.value === '' &&
+  repsStr.value === '' &&
+  !plateMode.value &&
+  !ghostJustSaved.value &&
+  overloadNudge.value === null
+)
+
+// Keep the highlighted "next" chip visible as the user works up the ladder.
+const ladderChipsEl = ref<HTMLElement | null>(null)
+watch(nextRungIndex, async (idx) => {
+  if (idx < 0 || !showModal.value) return
+  await nextTick()
+  const el = ladderChipsEl.value?.querySelector('.wtPrevSessionChipNext')
+  if (el) {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: reduced ? 'auto' : 'smooth' })
+  }
+})
+
+// ── Overload nudge: rate-limited "go heavier" suggestion (#741) ───
+// Surfaces only at the natural decision point — the habitual top set is up
+// next — and only for high-confidence suggestions. Device-local UX state
+// (PLATE_HINT_KEY precedent): deliberately NOT in preferences (would enter
+// the Supabase sync payload) and NOT on Exercise (would trip LWW merge).
+const NUDGE_STORAGE_KEY = 'overload-nudge-state'
+// Suggested weight sits one store increment (5 lbs) above the habitual top set.
+const NUDGE_WEIGHT_INCREMENT = 5
+const NUDGE_BREAK_DAYS = 21
+// Cooldown ladder indexed by ignoredCount; ≥3 ignores mutes the exercise
+// until its habitual top weight actually changes (the silent escape hatch).
+const NUDGE_COOLDOWNS = [7, 14, 28]
+
+interface NudgeExerciseState {
+  lastShownDay: string
+  shownForWeightLbs: number
+  outcome: 'pending' | 'accepted' | 'ignored'
+  ignoredCount: number
+}
+interface NudgeState {
+  lastGlobalShownDay: string
+  byExercise: Record<string, NudgeExerciseState>
+}
+
+// Bumped on every write so the gate computed re-reads localStorage.
+const nudgeStateVersion = ref(0)
+
+function readNudgeState(): NudgeState {
+  try {
+    const raw = localStorage.getItem(NUDGE_STORAGE_KEY)
+    if (raw) return JSON.parse(raw) as NudgeState
+  } catch { /* corrupted state falls back to fresh */ }
+  return { lastGlobalShownDay: '', byExercise: {} }
+}
+
+function writeNudgeState(state: NudgeState) {
+  localStorage.setItem(NUDGE_STORAGE_KEY, JSON.stringify(state))
+  nudgeStateVersion.value++
+}
+
+function daysBetweenISO(a: string, b: string): number {
+  return Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000)
+}
+
+/**
+ * Settles a pending nudge outcome lazily at modal open. Merely closing the
+ * modal or skipping a day is NOT an ignore — only a later session whose top
+ * set stayed below the suggestion counts. Also forgives a muted exercise
+ * once its habitual top weight actually moves.
+ */
+function settleNudgeOutcome(exerciseId: string) {
+  const state = readNudgeState()
+  const mine = state.byExercise[exerciseId]
+  if (!mine) return
+  let changed = false
+
+  if (mine.outcome === 'pending' && mine.lastShownDay !== todayISO()) {
+    const ex = store.exercises.find(e => e.id === exerciseId)
+    const topByDay = new Map<string, number>()
+    for (const s of ex?.sets ?? []) {
+      const day = s.date.slice(0, 10)
+      if (day <= mine.lastShownDay) continue
+      topByDay.set(day, Math.max(topByDay.get(day) ?? 0, s.weight))
+    }
+    // The user's next session after the nudge answers "did they take it?"
+    const firstDayAfter = [...topByDay.keys()].sort()[0]
+    if (firstDayAfter !== undefined) {
+      const top = topByDay.get(firstDayAfter)!
+      if (top >= mine.shownForWeightLbs - LADDER_MATCH_TOLERANCE) {
+        mine.outcome = 'accepted'
+        mine.ignoredCount = 0
+      } else {
+        mine.outcome = 'ignored'
+        mine.ignoredCount++
+      }
+      changed = true
+    }
+  }
+
+  // Mute escape hatch: the habitual top weight moved → forgive past ignores.
+  const topRung = usualLadder.value?.rungs[usualLadder.value.rungs.length - 1]
+  if (mine.ignoredCount >= NUDGE_COOLDOWNS.length && topRung &&
+      Math.abs(topRung.weightLbs - (mine.shownForWeightLbs - NUDGE_WEIGHT_INCREMENT)) > LADDER_MATCH_TOLERANCE) {
+    mine.ignoredCount = 0
+    changed = true
+  }
+
+  if (changed) writeNudgeState(state)
+}
+
+/** Rounds a raw-lbs suggestion UP to the next achievable display increment (5 lbs / 2.5 kg). */
+function roundUpDisplayWeight(lbs: number): number {
+  if (weightUnit.value === 'kg') {
+    return Math.ceil((lbs * 0.453592) / 2.5) * 2.5
+  }
+  return Math.ceil(lbs / 5) * 5
+}
+
+const overloadNudge = computed(() => {
+  void nudgeStateVersion.value // re-evaluate after state writes
+  // Gate 1: log mode for an existing exercise, today, both fields empty.
+  if (!ladderActive.value || weightStr.value !== '' || repsStr.value !== '') return null
+  // Gate 2: the habitual top set is the one up next.
+  const rungs = usualLadder.value!.rungs
+  if (nextRungIndex.value !== rungs.length - 1) return null
+  // Gate 3: the data strongly supports going heavier (today's in-progress
+  // session excluded — its partial top set would mask the signal).
+  const id = selectedExerciseId.value
+  const suggestion = store.getOverloadSuggestion(id, todayISO())
+  if (!suggestion || suggestion.confidence !== 'high') return null
+  const topRung = rungs[rungs.length - 1]
+  // Gate 4 (deload guard): last session never reached the usual top — don't push.
+  const prior = store.getLastSession(id, todayISO())
+  if (!prior || prior.sets.length === 0) return null
+  const priorTop = Math.max(...prior.sets.map(s => s.weight))
+  if (priorTop < topRung.weightLbs - LADDER_MATCH_TOLERANCE) return null
+  // Gate 5 (break guard): coming back from 3+ weeks off — ease back in.
+  const today = todayISO()
+  if (daysBetweenISO(prior.date, today) > NUDGE_BREAK_DAYS) return null
+  // Gate 6: rate limits.
+  const state = readNudgeState()
+  const mine = state.byExercise[id]
+  const shownTodayForMe = mine?.lastShownDay === today
+  // One nudge per calendar day across ALL exercises (same-day re-show of
+  // this exercise's own instance is allowed — consistency, not nagging).
+  if (state.lastGlobalShownDay === today && !shownTodayForMe) return null
+  if (shownTodayForMe && mine.outcome !== 'pending') return null
+  if (mine && !shownTodayForMe) {
+    const cooldown = NUDGE_COOLDOWNS[Math.min(mine.ignoredCount, NUDGE_COOLDOWNS.length - 1)]
+    if (mine.ignoredCount >= NUDGE_COOLDOWNS.length) return null // muted
+    if (daysBetweenISO(mine.lastShownDay, today) < cooldown) return null
+  }
+
+  return {
+    weightLbs: suggestion.weight,
+    displayWeight: roundUpDisplayWeight(suggestion.weight),
+    reps: suggestion.reps,
+    fromWeightLbs: topRung.weightLbs,
+    fromReps: topRung.reps,
+  }
+})
+
+// Record "shown" once per (exercise, calendar day); same-day modal reopens
+// re-show the same instance without re-counting.
+watch(overloadNudge, (n) => {
+  if (!n) return
+  const id = selectedExerciseId.value
+  const today = todayISO()
+  const state = readNudgeState()
+  const mine = state.byExercise[id]
+  if (mine?.lastShownDay === today) return
+  state.byExercise[id] = {
+    lastShownDay: today,
+    shownForWeightLbs: n.weightLbs,
+    outcome: 'pending',
+    ignoredCount: mine?.ignoredCount ?? 0,
+  }
+  state.lastGlobalShownDay = today
+  writeNudgeState(state)
+  logEvent('overload_nudge_shown')
+})
+
+/** Tapping the card fills the fields — it never saves. The user can edit, then Save. */
+function acceptOverloadNudge() {
+  const n = overloadNudge.value
+  if (!n) return
+  if (plateMode.value) {
+    const plates = weightToPlates(toLbs(n.displayWeight), currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    if (plates) {
+      currentPlates.value = plates
+      syncPlateWeight()
+    }
+  } else {
+    weightStr.value = String(n.displayWeight)
+  }
+  repsStr.value = String(n.reps)
+  impactLight()
+}
+
+/** Called from saveSet: a logged set at or above the suggested weight accepts the nudge. */
+function recordNudgeAcceptIfAny(exerciseId: string, savedWeightLbs: number) {
+  const state = readNudgeState()
+  const mine = state.byExercise[exerciseId]
+  if (!mine || mine.outcome !== 'pending' || mine.lastShownDay !== todayISO()) return
+  if (savedWeightLbs >= mine.shownForWeightLbs - LADDER_MATCH_TOLERANCE) {
+    mine.outcome = 'accepted'
+    mine.ignoredCount = 0
+    writeNudgeState(state)
+    logEvent('overload_nudge_accepted')
+  }
+}
+
 // ── Plate calculator state ──────────────────────────────────────
 const currentPlates = ref<number[]>([])
 const previousPlates = ref<number[]>([])
@@ -1890,16 +2242,19 @@ function openLogForExercise(exerciseId: string) {
   selectedExerciseId.value = exerciseId
   lastSessionUsed.value = {}
   date.value = lastLogDate.value
-  // Initialize plate calculator from last set if plate-loaded
+  usualLadder.value = store.getUsualLadder(exerciseId, todayISO())
+  settleNudgeOutcome(exerciseId)
+  // Initialize plate calculator: prefer the ladder's next rung, else last set
   const exercise = store.exercises.find(e => e.id === exerciseId)
   if (exercise?.inputMode === 'plates') {
     const lastSet = exercise.sets.length > 0 ? exercise.sets[exercise.sets.length - 1] : null
-    if (lastSet) {
+    const seedWeight = (ladderActive.value && nextRung.value) ? nextRung.value.weightLbs : lastSet?.weight ?? null
+    if (seedWeight !== null) {
       const barWt = exercise.barWeight ?? 45
-      const plates = weightToPlates(lastSet.weight, barWt, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+      const plates = weightToPlates(seedWeight, barWt, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
       currentPlates.value = plates || []
       previousPlates.value = plates || []
-      weight.value = displayWeight(lastSet.weight)
+      weight.value = displayWeight(seedWeight)
     } else {
       currentPlates.value = []
       previousPlates.value = []
@@ -1940,6 +2295,9 @@ function closeModal() {
   date.value = todayISO()
   plateNumpadOverride.value = false
   prTableExpanded.value = false
+  usualLadder.value = null
+  ghostJustSaved.value = false
+  if (_ghostRearmTimer) { clearTimeout(_ghostRearmTimer); _ghostRearmTimer = null }
 }
 
 // ── Rest timer (state lives in timerCtrl composable) ────────────
@@ -2256,7 +2614,7 @@ const hasSetData = computed(() => weight.value !== null && weight.value > 0 && w
 const canSave = computed(() => {
   if (isEditMode.value) return hasSetData.value
   if (selectedExerciseId.value === '__new__') return newExerciseName.value.length > 0
-  return selectedExerciseId.value !== '' && hasSetData.value
+  return selectedExerciseId.value !== '' && (hasSetData.value || ghostArmed.value)
 })
 
 function saveSet() {
@@ -2324,13 +2682,26 @@ function saveSet() {
       newExerciseBarWeight.value = 45
       logEvent('exercise_add')
     }
-    if (hasSetData.value && weight.value !== null && reps.value !== null) {
-      const wasPR = isNewPR.value
+    const typedSet = hasSetData.value && weight.value !== null && reps.value !== null
+    if (typedSet || ghostArmed.value) {
+      // Ghost save: commit the next rung's canonical stored lbs directly — no
+      // toLbs round-trip drift for kg users, so the set reinforces its cluster.
+      const effWeightLbs = typedSet ? toLbs(weight.value!) : nextRung.value!.weightLbs
+      const effReps = typedSet ? reps.value! : nextRung.value!.reps
+      // A ghost save replays a habitual set — it can never be a PR.
+      const wasPR = typedSet ? isNewPR.value : false
+      if (!typedSet) {
+        // Disarm briefly so an accidental double-tap can't log two rungs.
+        ghostJustSaved.value = true
+        if (_ghostRearmTimer) clearTimeout(_ghostRearmTimer)
+        _ghostRearmTimer = setTimeout(() => { ghostJustSaved.value = false }, GHOST_REARM_MS)
+      }
       // Capture the pre-log baseline PR so the burst can show old → new e1RM.
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
       // Snapshot PR count before logging so we can detect the user's very first PR.
       const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
-      store.logSet(exerciseId, toLbs(weight.value), reps.value, date.value)
+      store.logSet(exerciseId, effWeightLbs, effReps, date.value)
+      recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       // XP: get the just-logged set (last in array) and compute XP
       const exercise = store.exercises.find(e => e.id === exerciseId)
@@ -2348,8 +2719,8 @@ function saveSet() {
           exerciseName: selectedExerciseName.value,
           oldE1RM,
           newE1RM,
-          setWeight: toLbs(weight.value),
-          setReps: reps.value,
+          setWeight: effWeightLbs,
+          setReps: effReps,
           isFirstPR: prCountBefore === 0,
           rawDate: date.value || todayISO(),
         })

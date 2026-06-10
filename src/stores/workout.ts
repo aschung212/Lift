@@ -45,6 +45,25 @@ export interface OverloadSuggestion {
   weight: number
   reps: number
   reason: string
+  /**
+   * 'high' only when the data strongly supports going heavier (consistent
+   * top sets or rep progression past 8). UI surfaces nudge only on 'high' —
+   * the increase_reps fallbacks fire on almost any data and would spam.
+   */
+  confidence: 'high' | 'low'
+}
+
+export interface UsualLadderRung {
+  weightLbs: number
+  reps: number
+  /** 'consensus' = established across recent sessions; 'recent' = tail carried verbatim from the last session (e.g. a drifting top set). */
+  source: 'consensus' | 'recent'
+}
+
+export interface UsualLadder {
+  rungs: UsualLadderRung[]
+  consensusCount: number
+  sessionsSampled: number
 }
 
 /**
@@ -986,6 +1005,123 @@ export const useWorkoutStore = defineStore('workout', () => {
     return { date: latestDay, sets: byDay.get(latestDay)! }
   }
 
+  // ── Usual ladder detection ──────────────────────────────────────
+  const LADDER_WINDOW = 6         // prior sessions sampled
+  const LADDER_MIN_SESSIONS = 3   // minimum prior sessions to claim a routine
+  const LADDER_MIN_PREFIX = 3     // minimum established positions to claim a routine
+  const LADDER_MAX_RUNGS = 10
+  const LADDER_WEIGHT_TOLERANCE = 1.0 // lbs — absorbs kg↔lbs float drift; real plate steps are ≥2.5 lbs
+
+  /**
+   * Detects the user's habitual set progression ("ladder") for an exercise —
+   * e.g. a bench warm-up of 45×10, 95×10, 135×10, 185×10 repeated session
+   * after session. Pure read; powers the routine-aware quick-fill row and
+   * one-tap ghost logging in the set modal.
+   *
+   * Algorithm: sample the most recent LADDER_WINDOW prior sessions (excluding
+   * `today`). For each set position i, cluster the i-th set's weight across
+   * sessions (±LADDER_WEIGHT_TOLERANCE) and accept the position as
+   * "established" when the winning cluster covers ≥ max(3, 60%) of sampled
+   * sessions — so up to 2 deviant sessions in a 6-window (a deload day, an
+   * experiment) can't evict the ladder. The ladder is the longest established
+   * prefix (≥ LADDER_MIN_PREFIX, else null), plus the most recent session's
+   * remaining sets verbatim as a 'recent' tail so a week-to-week drifting top
+   * set still gets a rung.
+   */
+  function getUsualLadder(exerciseId: string, today?: string): UsualLadder | null {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise || exercise.sets.length === 0) return null
+    const todayStr = today ?? new Date().toISOString().slice(0, 10)
+
+    // Group sets by day preserving in-day insertion order — end-of-day
+    // timestamps carry random jitter, so array order is the only reliable
+    // intra-day ordering.
+    const byDay = new Map<string, WorkoutSet[]>()
+    for (const set of exercise.sets) {
+      const day = set.date.slice(0, 10)
+      if (day === todayStr) continue
+      if (!byDay.has(day)) byDay.set(day, [])
+      byDay.get(day)!.push(set)
+    }
+    if (byDay.size < LADDER_MIN_SESSIONS) return null
+
+    // Most recent prior sessions, newest first.
+    const days = [...byDay.keys()].sort().reverse().slice(0, LADDER_WINDOW)
+    const sessions = days.map(d => byDay.get(d)!)
+    const sampled = sessions.length
+    const support = Math.max(LADDER_MIN_SESSIONS, Math.ceil(0.6 * sampled))
+
+    const rungs: UsualLadderRung[] = []
+    for (let i = 0; i < LADDER_MAX_RUNGS; i++) {
+      // The i-th set of every sampled session that has one. Sessions shorter
+      // than i count against support via the fixed `sampled` denominator.
+      const candidates: { weight: number; reps: number; sessionIdx: number }[] = []
+      sessions.forEach((sets, sessionIdx) => {
+        if (sets.length > i) candidates.push({ weight: sets[i].weight, reps: sets[i].reps, sessionIdx })
+      })
+      if (candidates.length < support) break
+
+      // Cluster weights: sort distinct values, greedily merge neighbors
+      // within tolerance, then assign members.
+      const clusters: { weights: number[]; members: typeof candidates }[] = []
+      for (const w of [...new Set(candidates.map(c => c.weight))].sort((a, b) => a - b)) {
+        const last = clusters[clusters.length - 1]
+        if (last && w - last.weights[last.weights.length - 1] <= LADDER_WEIGHT_TOLERANCE) {
+          last.weights.push(w)
+        } else {
+          clusters.push({ weights: [w], members: [] })
+        }
+      }
+      for (const c of candidates) {
+        clusters.find(cl => cl.weights.includes(c.weight))!.members.push(c)
+      }
+
+      // Winning cluster: most members; ties go to the cluster seen most
+      // recently (sessions are newest-first, so lower sessionIdx = newer).
+      let winner = clusters[0]
+      for (const cl of clusters.slice(1)) {
+        const clRecent = Math.min(...cl.members.map(m => m.sessionIdx))
+        const winRecent = Math.min(...winner.members.map(m => m.sessionIdx))
+        if (cl.members.length > winner.members.length ||
+            (cl.members.length === winner.members.length && clRecent < winRecent)) {
+          winner = cl
+        }
+      }
+      if (winner.members.length < support) break
+
+      // Rung weight: the newest session's in-cluster raw value, so kg users
+      // see back exactly the number they last entered.
+      const newest = winner.members.reduce((best, m) => m.sessionIdx < best.sessionIdx ? m : best)
+      // Reps: mode among cluster members, ties broken toward the newest value.
+      const repCounts = new Map<number, number>()
+      for (const m of winner.members) repCounts.set(m.reps, (repCounts.get(m.reps) ?? 0) + 1)
+      let rungReps = newest.reps
+      let rungRepsCount = repCounts.get(newest.reps) ?? 0
+      for (const [r, count] of repCounts) {
+        if (count > rungRepsCount) { rungReps = r; rungRepsCount = count }
+      }
+      rungs.push({ weightLbs: newest.weight, reps: rungReps, source: 'consensus' })
+    }
+
+    const consensusCount = rungs.length
+    if (consensusCount < LADDER_MIN_PREFIX) return null
+
+    // Tail: the newest session's sets beyond the consensus prefix, verbatim —
+    // but only when that session actually followed the ladder. A deviant
+    // newest session (e.g. a long deload) would otherwise leak contradictory
+    // rungs after the consensus top set.
+    const newestSession = sessions[0]
+    const newestOnLadder = newestSession.length >= consensusCount &&
+      rungs.every((rung, i) => Math.abs(newestSession[i].weight - rung.weightLbs) <= LADDER_WEIGHT_TOLERANCE)
+    if (newestOnLadder) {
+      for (let i = consensusCount; i < Math.min(newestSession.length, LADDER_MAX_RUNGS); i++) {
+        rungs.push({ weightLbs: newestSession[i].weight, reps: newestSession[i].reps, source: 'recent' })
+      }
+    }
+
+    return { rungs, consensusCount, sessionsSampled: sampled }
+  }
+
   /**
    * Progressive overload suggestion for an exercise.
    * Analyzes recent sessions to suggest the next weight × reps.
@@ -997,14 +1133,17 @@ export const useWorkoutStore = defineStore('workout', () => {
    * 4. If user increased reps but not weight recently → suggest weight increase
    * 5. Otherwise suggest +1 rep at same weight
    */
-  function getOverloadSuggestion(exerciseId: string): OverloadSuggestion | null {
+  function getOverloadSuggestion(exerciseId: string, today?: string): OverloadSuggestion | null {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise || exercise.sets.length < 3) return null
 
-    // Group sets by date (YYYY-MM-DD) → sessions
+    // Group sets by date (YYYY-MM-DD) → sessions. Pass `today` to exclude an
+    // in-progress session — mid-workout, today's partial top set would
+    // otherwise read as a regression and mask a legitimate suggestion.
     const sessions = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
       const day = set.date.slice(0, 10)
+      if (day === today) continue
       if (!sessions.has(day)) sessions.set(day, [])
       sessions.get(day)!.push(set)
     }
@@ -1036,7 +1175,8 @@ export const useWorkoutStore = defineStore('workout', () => {
         type: 'increase_weight',
         weight: latest.weight + WEIGHT_INCREMENT,
         reps: suggestedReps,
-        reason: `You've hit ${latest.weight} lbs × ${latest.reps} in ${sameWeight.length} recent sessions — time to go heavier`
+        reason: `You've hit ${latest.weight} lbs × ${latest.reps} in ${sameWeight.length} recent sessions — time to go heavier`,
+        confidence: 'high'
       }
     }
 
@@ -1047,14 +1187,16 @@ export const useWorkoutStore = defineStore('workout', () => {
           type: 'increase_weight',
           weight: latest.weight + WEIGHT_INCREMENT,
           reps: Math.max(latest.reps - 2, 3),
-          reason: `Strong rep progression at ${latest.weight} lbs — ready for a weight increase`
+          reason: `Strong rep progression at ${latest.weight} lbs — ready for a weight increase`,
+          confidence: 'high'
         }
       }
       return {
         type: 'increase_reps',
         weight: latest.weight,
         reps: latest.reps + 1,
-        reason: `You went from ${previous.reps} to ${latest.reps} reps — keep building`
+        reason: `You went from ${previous.reps} to ${latest.reps} reps — keep building`,
+        confidence: 'low'
       }
     }
 
@@ -1064,7 +1206,8 @@ export const useWorkoutStore = defineStore('workout', () => {
         type: 'increase_reps',
         weight: latest.weight,
         reps: latest.reps + 1,
-        reason: `You recently moved up to ${latest.weight} lbs — build reps before adding more weight`
+        reason: `You recently moved up to ${latest.weight} lbs — build reps before adding more weight`,
+        confidence: 'low'
       }
     }
 
@@ -1073,7 +1216,8 @@ export const useWorkoutStore = defineStore('workout', () => {
       type: 'increase_reps',
       weight: latest.weight,
       reps: latest.reps + 1,
-      reason: `Try adding one more rep at ${latest.weight} lbs`
+      reason: `Try adding one more rep at ${latest.weight} lbs`,
+      confidence: 'low'
     }
   }
 
@@ -1137,6 +1281,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     getExercisePRSet,
     getRecentSets,
     getLastSession,
+    getUsualLadder,
     getOverloadSuggestion
   }
 })
