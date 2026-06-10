@@ -1,7 +1,22 @@
 <template>
-  <div v-if="points.length >= 2" class="wtGraphWrap">
+  <div v-if="hasGraph" class="wtGraphWrap">
     <p class="wtGraphTitle">{{ mode === 'prs' ? 'PR Progression' : 'Estimated 1RM Progress' }}</p>
+
+    <!-- Time-range selector -->
+    <div class="exGraphPeriodRow" role="group" aria-label="Chart time range">
+      <button
+        v-for="p in PERIODS"
+        :key="p.label"
+        type="button"
+        :class="['bwPeriodBtn', { active: period === p.days }]"
+        :aria-label="rangeAriaLabel(p)"
+        :aria-pressed="period === p.days ? 'true' : 'false'"
+        @click="period = p.days"
+      >{{ p.label }}</button>
+    </div>
+
     <svg
+      v-if="points.length >= 2"
       :viewBox="`0 0 ${W} ${H}`"
       class="wtGraphSvg"
       role="img"
@@ -71,6 +86,8 @@
         text-anchor="middle"
       >{{ formatDate(p.date) }}</text>
     </svg>
+
+    <p v-else class="exGraphRangeEmpty">No sets in this range. Try a longer range.</p>
   </div>
 
   <p v-else-if="exercise.sets.length > 0" class="wtGraphSingle">
@@ -79,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
@@ -94,6 +111,27 @@ const props = defineProps<{
 }>()
 
 const mode = computed(() => props.mode ?? 'sets')
+
+// ── Time-range selector ──────────────────────────────────────────
+// Long-trained lifts compress the whole-history curve and hide recent
+// progress; scoping to a window keeps recent sessions legible. Defaults
+// to "All" to preserve the original full-history view.
+interface RangeOption { label: string; days: number | null }
+const PERIODS: RangeOption[] = [
+  { label: '1M',  days: 30 },
+  { label: '3M',  days: 90 },
+  { label: '1Y',  days: 365 },
+  { label: 'All', days: null },
+]
+const period = ref<number | null>(null)
+
+function rangeAriaLabel(p: RangeOption): string {
+  if (p.days === null) return 'Show all time'
+  if (p.days === 30) return 'Show last 1 month'
+  if (p.days === 90) return 'Show last 3 months'
+  if (p.days === 365) return 'Show last 1 year'
+  return `Show last ${p.days} days`
+}
 
 // Best estimated1RM per calendar date, sorted chronologically.
 // Filters to sets on/after the PR baseline when set — keeps the graph aligned
@@ -124,9 +162,41 @@ const prOnly = computed((): [string, number][] => {
   return prs
 })
 
-const graphData = computed((): TimeSeriesEntry[] => {
+const graphDataAll = computed((): TimeSeriesEntry[] => {
   const raw = mode.value === 'prs' ? prOnly.value : dailyBest.value
   return raw.map(([date, value]) => ({ date, value }))
+})
+
+// Cutoff date (YYYY-MM-DD) for the selected window, or null for all-time.
+const cutoffDate = computed((): string | null => {
+  if (period.value === null) return null
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - period.value)
+  return cutoff.toISOString().slice(0, 10)
+})
+
+const graphData = computed((): TimeSeriesEntry[] => {
+  const cutoff = cutoffDate.value
+  if (!cutoff) return graphDataAll.value
+  return graphDataAll.value.filter(d => d.date.slice(0, 10) >= cutoff)
+})
+
+// Whether there is enough history to render a chart at all (independent of the
+// selected range), so the range selector stays visible even when a narrow
+// window has too few points.
+const hasGraph = computed(() => graphDataAll.value.length >= 2)
+
+// Scope the time axis to the full selected window so a sparse recent stretch
+// still spans the chart rather than bunching at one edge. Null = data-derived.
+const periodTimeRange = computed(() => {
+  if (period.value === null) return null
+  const now = new Date()
+  const start = new Date()
+  start.setDate(now.getDate() - period.value)
+  return {
+    t0: new Date(start.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
+    t1: new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
+  }
 })
 
 const {
@@ -134,7 +204,7 @@ const {
   minVal, maxVal, points: basePoints,
   linePoints, areaPoints, gridYs,
   shouldShowLabel, formatDate,
-} = useSVGTimeSeries(graphData)
+} = useSVGTimeSeries(graphData, { timeRange: periodTimeRange })
 
 // Extend base points with exercise-specific PR flag
 const points = computed(() => {

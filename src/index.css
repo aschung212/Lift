@@ -6578,6 +6578,22 @@ html.theme-fading .settingsSheet {
   color: var(--text-on-accent);
 }
 
+/* Time-range selector inside the exercise progress chart card. The card
+   already supplies horizontal padding, so the row only needs vertical
+   rhythm; buttons reuse .bwPeriodBtn styling. */
+.exGraphPeriodRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.exGraphRangeEmpty {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px 0 16px;
+}
+
 .bwStatsRow {
   display: flex;
   gap: 8px;
