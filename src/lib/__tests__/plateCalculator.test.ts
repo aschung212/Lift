@@ -5,7 +5,6 @@ import {
   plateDelta,
   formatPlates,
   formatDelta,
-  LBS_PLATES,
   KG_PLATES,
 } from '../plateCalculator'
 

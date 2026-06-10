@@ -42,7 +42,7 @@
             <div class="wtSetList">
               <p v-if="exercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</p>
               <template v-for="group in groupedSets" :key="group.key">
-                <p class="wtSetDateHeader">{{ formatDate(group.date) }}</p>
+                <p class="wtSetDateHeader">{{ formatShortDate(group.date) }}</p>
                 <div class="wtSetCard">
                   <div
                     v-for="set in group.sets"
@@ -92,7 +92,7 @@
                     <span v-if="i === 0" class="wtPRCardBadge">Current</span>
                   </div>
                   <div class="wtPRCardBottom">
-                    <span>{{ formatDate(pr.date) }}</span>
+                    <span>{{ formatShortDate(pr.date) }}</span>
                     <span class="wtPRCardSep">·</span>
                     <span>e1RM ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
                   </div>
@@ -126,7 +126,7 @@ import { usePRBaseline } from '../composables/usePRBaseline'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
-import { toLocalDateKey } from '../lib/sessionSummary'
+import { toLocalDateKey, formatShortDate } from '../lib/dates'
 import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
 import ExerciseGraph from '../components/ExerciseGraph.vue'
 import type { Exercise, WorkoutSet } from '../stores/workout'
@@ -306,8 +306,4 @@ const prHistory = computed((): PREntry[] => {
   return prs.reverse()
 })
 
-// ── Helpers ──────────────────────────────────────────────────────
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
 </script>

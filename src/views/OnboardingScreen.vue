@@ -3,7 +3,7 @@
     <div class="obCard">
       <!-- Step indicator dots -->
       <div class="obDots" role="progressbar" :aria-valuenow="currentStep" aria-valuemin="1" aria-valuemax="4" :aria-label="`Step ${currentStep} of 4`">
-        <span v-for="i in 4" :key="i" :class="['obDot', { obDotActive: i === currentStep }]" />
+        <span v-for="i in 4" :key="i" :class="['obDot', { obDotActive: i === currentStep }]"></span>
       </div>
 
       <!-- Step 1: Setup path -->

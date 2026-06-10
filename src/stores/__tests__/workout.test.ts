@@ -534,34 +534,6 @@ describe('workout store', () => {
     })
   })
 
-  describe('getRecentSets', () => {
-    it('returns sets in reverse order (most recent first)', () => {
-      const store = useWorkoutStore()
-      const id = store.addExercise('Squat')!
-      store.logSet(id, 135, 10)
-      store.logSet(id, 185, 8)
-      store.logSet(id, 225, 5)
-      const recent = store.getRecentSets(id, 2)
-      expect(recent).toHaveLength(2)
-      expect(recent[0].weight).toBe(225)
-      expect(recent[1].weight).toBe(185)
-    })
-
-    it('returns empty array for non-existent exercise', () => {
-      const store = useWorkoutStore()
-      expect(store.getRecentSets('fake')).toEqual([])
-    })
-
-    it('defaults to 5 items', () => {
-      const store = useWorkoutStore()
-      const id = store.addExercise('Bench')!
-      for (let i = 0; i < 10; i++) {
-        store.logSet(id, 100 + i * 10, 5)
-      }
-      expect(store.getRecentSets(id)).toHaveLength(5)
-    })
-  })
-
   describe('getLastSession', () => {
     it('returns sets from the most recent prior day', () => {
       const store = useWorkoutStore()
@@ -1041,7 +1013,7 @@ describe('workout store', () => {
 
     it('marks exercises as sample when sync: false (#232)', () => {
       const store = useWorkoutStore()
-      const id = store.addExercise('Sample Exercise', [], { sync: false })!
+      store.addExercise('Sample Exercise', [], { sync: false })
       expect(store.exercises[0].sample).toBe(true)
     })
 

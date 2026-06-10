@@ -2,6 +2,7 @@ import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 import { useNotification, useBackgroundTracker } from './useNotification'
 import { useRestTimer } from './useRestTimer'
+import { loadJSON } from '../lib/storage'
 
 // ── Defaults ──────────────────────────────────────────────────────
 const DEFAULT_PRESETS = [30, 60, 90, 120, 180, 300]
@@ -9,44 +10,21 @@ const DEFAULT_WARNING_OPTIONS = [3, 5, 10, 15, 30]
 
 // ── localStorage helpers ──────────────────────────────────────────
 function loadPresets(): number[] {
-  try {
-    const raw = localStorage.getItem('rest-presets')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed.sort((a: number, b: number) => a - b)
-    }
-  } catch { /* ignore */ }
-  return [...DEFAULT_PRESETS]
+  const stored = loadJSON<number[]>('rest-presets', [], Array.isArray)
+  return stored.length > 0 ? [...stored].sort((a, b) => a - b) : [...DEFAULT_PRESETS]
 }
 
 function loadDisabledPresets(): number[] {
-  try {
-    const raw = localStorage.getItem('rest-presets-disabled')
-    if (raw) return JSON.parse(raw)
-  } catch { /* ignore */ }
-  return []
+  return loadJSON<number[]>('rest-presets-disabled', [], Array.isArray)
 }
 
 function loadWarningOptions(): number[] {
-  try {
-    const raw = localStorage.getItem('rest-warning-options')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed.sort((a: number, b: number) => a - b)
-    }
-  } catch { /* ignore */ }
-  return [...DEFAULT_WARNING_OPTIONS]
+  const stored = loadJSON<number[]>('rest-warning-options', [], Array.isArray)
+  return stored.length > 0 ? [...stored].sort((a, b) => a - b) : [...DEFAULT_WARNING_OPTIONS]
 }
 
 function loadWarningTimes(): number[] {
-  try {
-    const raw = localStorage.getItem('rest-warnings')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed
-    }
-  } catch { /* ignore */ }
-  return [5]
+  return loadJSON<number[]>('rest-warnings', [5], Array.isArray)
 }
 
 // ── Audio ─────────────────────────────────────────────────────────

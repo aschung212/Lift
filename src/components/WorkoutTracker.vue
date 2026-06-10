@@ -205,62 +205,16 @@
     </div>
     </template>
 
-    <!-- Timeline view -->
-    <template v-else-if="listView === 'timeline'">
-      <div class="wtTimelineControls wtTimelineControlsRow">
-        <!-- Timeline rows have no per-exercise "+", so this is the log entry
-             point for the timeline view (the top-bar "+" adds an exercise). -->
-        <button
-          class="wtTimelineLogBtn"
-          @click="openTimelineLogModal"
-          aria-label="Log a set"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>Log a set</span>
-        </button>
-        <button
-          :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
-          @click="hideWarmups = !hideWarmups"
-          role="switch"
-          :aria-checked="hideWarmups"
-          :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
-          <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
-        </button>
-      </div>
-      <div v-if="timelineSets.length === 0" class="wtEmpty">
-        No sets logged yet.
-      </div>
-      <div v-else class="wtTimeline">
-        <template v-for="group in visibleTimelineGroups" :key="group.key">
-          <p class="wtTimelineDateHeader">{{ group.label }}</p>
-          <div class="wtSetCard">
-            <div
-              v-for="entry in group.sets"
-              :key="entry.set.id"
-              :class="['wtTimelineRow', { wtTimelineRowActive: activeSetId === entry.set.id }]"
-              @click="toggleSetActions(entry.set.id)"
-            >
-              <div class="wtTimelineRowMain">
-                <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
-                <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
-                <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
-                <span v-if="timelinePRMap[entry.set.id] === 'pr'" class="wtTimelineBadge" aria-label="Personal record">🏆</span>
-                <span v-else-if="timelinePRMap[entry.set.id] === 'repPR'" class="wtTimelineBadge" aria-label="Rep personal record">🔥</span>
-              </div>
-              <div v-if="activeSetId === entry.set.id" class="wtSetActions">
-                <button class="wtSetBtn" @click.stop="openEditModal(store.exercises.find(e => e.id === entry.exerciseId)!, entry.set)" aria-label="Edit set">Edit</button>
-                <button class="wtSetBtn wtSetBtnDel" @click.stop="undoDeleteSet(entry.exerciseId, entry.set)" aria-label="Delete set">Delete</button>
-              </div>
-            </div>
-          </div>
-        </template>
-        <button v-if="timelineLimit < filteredTimelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
-          Show more ({{ filteredTimelineSets.length - timelineLimit }} remaining)
-        </button>
-      </div>
-    </template>
+    <!-- Timeline view (extracted to WorkoutTimeline.vue) -->
+    <WorkoutTimeline
+      v-else-if="listView === 'timeline'"
+      :exercises="store.exercises"
+      :pr-baseline-date="prBaselineDate"
+      :warmup-threshold="_prefs.filters.warmupThreshold"
+      @log-set="openTimelineLogModal"
+      @edit-set="onTimelineEditSet"
+      @delete-set="undoDeleteSet"
+    />
 
   </div>
 
@@ -440,7 +394,7 @@
               </div>
             </template>
             <template v-else-if="lastSession">
-              <span class="wtPrevSessionLabel">Last session · {{ formatDate(lastSession.date + 'T12:00:00') }}</span>
+              <span class="wtPrevSessionLabel">Last session · {{ formatShortDate(lastSession.date + 'T12:00:00') }}</span>
               <div class="wtPrevSessionChips">
                 <button
                   v-for="(s, i) in lastSession.sets"
@@ -662,233 +616,37 @@
   </Teleport>
 
 
-  <!-- Edit Exercise Modal -->
-  <Teleport to="body">
-    <div v-if="editTarget !== null" class="repMaxOverlay" @click.self="editTarget = null" @keydown.escape="editTarget = null">
-      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="edit-exercise-title">
-        <h2 id="edit-exercise-title">Edit Exercise</h2>
-        <label class="repMaxLabel">
-          Name
-          <div class="repMaxInputRow">
-            <input
-              v-model.trim="editName"
-              type="text"
-              class="repMaxInput"
-              autocomplete="off"
-              maxlength="50"
-            />
-          </div>
-        </label>
-        <div class="repMaxLabel">
-          Tags
-          <div class="wtTagPicker">
-            <button
-              v-for="tag in availableEditTags"
-              :key="tag"
-              :class="['wtTagPickerChip', { wtTagPickerChipActive: editTags.includes(tag) }]"
-              :style="!editTags.includes(tag)
-                ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
-                : {}"
-              @click="toggleEditTag(tag)"
-            >{{ tag }}</button>
-            <span v-if="editTagAdding" class="wtTagInlineAdd">
-              <input
-                v-model.trim="newTagInput"
-                type="text"
-                autocomplete="off"
-                placeholder="Tag name"
-                maxlength="30"
-                class="wtTagInlineInput"
-                aria-label="New tag name"
-                ref="editTagInputEl"
-                @keyup.enter="addEditTag"
-                @blur="finishEditTagAdd"
-              />
-            </span>
-            <button v-else class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startEditTagAdd" aria-label="Add tag">+</button>
-          </div>
-        </div>
-        <!-- Plate calculator settings (iOS grouped style) -->
-        <div class="iosSettingsSection">
-          <span class="iosSettingsHeader">Input Mode</span>
-          <div class="iosSettingsGroup">
-            <div class="iosSettingsRow">
-              <span class="iosSettingsRowLabel">Plate calculator</span>
-              <button
-                class="iosToggle"
-                :class="{ iosToggleOn: editPlateMode }"
-                role="switch"
-                :aria-checked="editPlateMode"
-                @click="editPlateMode = !editPlateMode"
-              >
-                <span class="iosToggleKnob"></span>
-              </button>
-            </div>
-            <template v-if="editPlateMode">
-              <div class="iosSettingsRow">
-                <span class="iosSettingsRowLabel">Counting</span>
-                <div class="iosSegmentedControl">
-                  <button
-                    :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'per-side' }]"
-                    @click="editPlateCountMode = 'per-side'"
-                  >Per side</button>
-                  <button
-                    :class="['iosSegment', { iosSegmentActive: editPlateCountMode === 'total' }]"
-                    @click="editPlateCountMode = 'total'"
-                  >Total</button>
-                </div>
-              </div>
-              <div class="iosSettingsRow">
-                <span class="iosSettingsRowLabel">Starting weight</span>
-                <div class="iosStepper">
-                  <button class="iosStepperBtn" @click="editBarWeight = Math.max(0, editBarWeight - 5)" aria-label="Decrease weight">−</button>
-                  <input
-                    v-if="editBarWeightEditing"
-                    ref="editBarWeightInputEl"
-                    :value="editBarWeight"
-                    type="text"
-                    inputmode="numeric"
-                    autocomplete="off"
-                    class="iosStepperInput"
-                    aria-label="Starting weight"
-                    @focus="($event.target as HTMLInputElement)?.select(); scrollInputAboveKeyboard($event.target as HTMLElement)"
-                    @blur="editBarWeight = Math.max(0, Math.min(MAX_WEIGHT, Math.round(Number(($event.target as HTMLInputElement).value) || 0))); editBarWeightEditing = false"
-                  />
-                  <button v-else class="iosStepperValue iosStepperValueTappable" @click="editBarWeightEditing = true; nextTick(() => editBarWeightInputEl?.focus())">{{ editBarWeight }} {{ weightUnit }}</button>
-                  <button class="iosStepperBtn" @click="editBarWeight = Math.min(MAX_WEIGHT, editBarWeight + 5)" aria-label="Increase weight">+</button>
-                </div>
-              </div>
-            </template>
-          </div>
-        </div>
-        <div class="repMaxActions">
-          <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmEditExercise">Save</button>
-          <button class="repMaxBtn repMaxBtnClose" @click="editTarget = null">Cancel</button>
-        </div>
-        <button
-          v-if="editTargetIsArchived"
-          class="wtEditArchiveBtn"
-          @click="handleUnarchiveFromEdit"
-        >Unarchive Exercise</button>
-        <button
-          v-else
-          class="wtEditArchiveBtn"
-          @click="handleArchiveFromEdit"
-        >Archive Exercise</button>
-        <p class="wtEditArchiveHint">Hides this exercise from the main list — sets and PRs are preserved.</p>
-        <button
-          v-if="!confirmDeleteExercise"
-          class="wtEditDeleteBtn"
-          @click="confirmDeleteExercise = true"
-          aria-label="Delete exercise"
-        >Delete Exercise</button>
-        <div v-else class="wtEditDeleteConfirm">
-          <span class="wtEditDeleteConfirmText">Delete this exercise and all its sets?</span>
-          <div class="wtEditDeleteConfirmActions">
-            <button class="wtEditDeleteConfirmBtn wtEditDeleteConfirmCancel" @click="confirmDeleteExercise = false">Cancel</button>
-            <button class="wtEditDeleteConfirmBtn wtEditDeleteConfirmDanger" @click="undoDeleteExercise(store.exercises.find(e => e.id === editTarget)!); editTarget = null">Delete</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <!-- Edit Exercise Modal (extracted to EditExerciseModal.vue) -->
+  <EditExerciseModal
+    :exercise="editTargetExercise"
+    :all-tags="store.allTags"
+    @close="editTarget = null"
+    @save="onEditExerciseSave"
+    @archive="handleArchiveFromEdit"
+    @unarchive="handleUnarchiveFromEdit"
+    @delete="onEditExerciseDelete"
+  />
 
-  <!-- Exercise Picker (timeline + Log Set) -->
-  <Teleport to="body">
-    <div v-if="timelineLogPicking" class="repMaxOverlay" @click.self="timelineLogPicking = false" @keydown.escape="timelineLogPicking = false">
-      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="timeline-picker-title">
-        <h2 id="timeline-picker-title">Choose Exercise</h2>
-        <div class="wtExPickerList">
-          <button
-            v-for="ex in store.activeExercises"
-            :key="ex.id"
-            class="wtExPickerRow"
-            @click="pickExerciseForLog(ex.id)"
-          >
-            <span class="wtExPickerName">{{ ex.name }}</span>
-            <span class="wtChevron">›</span>
-          </button>
-          <button
-            class="wtExPickerRow wtExPickerNew"
-            @click="pickNewExerciseFromPicker"
-          >
-            <span class="wtExPickerName">+ New exercise</span>
-            <span class="wtChevron">›</span>
-          </button>
-        </div>
-        <div class="repMaxActions">
-          <button class="repMaxBtn repMaxBtnClose" @click="timelineLogPicking = false">Cancel</button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <!-- Exercise Picker (timeline + Log Set; extracted to ExercisePickerModal.vue) -->
+  <ExercisePickerModal
+    :open="timelineLogPicking"
+    :exercises="store.activeExercises"
+    @close="timelineLogPicking = false"
+    @select="pickExerciseForLog"
+    @create-new="pickNewExerciseFromPicker"
+  />
 
-  <!-- Tag Manager Modal -->
-  <Teleport to="body">
-    <div v-if="tagManagerOpen" class="repMaxOverlay" @click.self="tagManagerOpen = false" @keydown.escape="tagManagerOpen = false">
-      <div class="repMaxModal" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
-        <h2 id="tag-manager-title">Manage Tags</h2>
-        <p v-if="store.allTags.length === 0 && !tagManagerAdding" class="wtEmpty" style="margin: var(--space-4) 0">No tags yet. Tap + to create one.</p>
-        <ul class="wtTagManagerList">
-          <li v-for="tag in store.allTags" :key="tag" class="wtTagManagerItemWrap">
-            <div class="wtTagManagerItem">
-              <template v-if="renamingTag === tag">
-                <input
-                  v-model.trim="renameTagValue"
-                  type="text"
-                  autocomplete="off"
-                  maxlength="30"
-                  class="repMaxInput wtTagManagerInput"
-                  aria-label="Rename tag"
-                  @keyup.enter="confirmRenameTag"
-                  @keyup.escape="renamingTag = null"
-                  ref="renameTagInputEl"
-                />
-                <button class="wtTagManagerSaveBtn" @click="confirmRenameTag" :disabled="!renameTagValue" aria-label="Save tag name">✓</button>
-                <button class="wtTagManagerCancelBtn" @click="renamingTag = null" aria-label="Cancel rename">✕</button>
-              </template>
-              <template v-else>
-                <button class="wtTagManagerExpandBtn" @click="toggleTagExpand(tag)" :aria-expanded="expandedTag === tag" :aria-label="'Show exercises for ' + tag">
-                  <span class="wtTagManagerExpandIcon" :class="{ expanded: expandedTag === tag }">›</span>
-                </button>
-                <span class="wtTagManagerLabel" @click="toggleTagExpand(tag)" role="button" tabindex="0" @keydown.enter="toggleTagExpand(tag)" @keydown.space.prevent="toggleTagExpand(tag)">{{ tag }}</span>
-                <span class="wtTagManagerCount">{{ tagExerciseCount(tag) }}</span>
-                <button class="wtTagManagerEditBtn" @click="startRenameTag(tag)" aria-label="Rename tag">✎</button>
-                <button class="wtTagManagerDeleteBtn" @click="confirmDeleteTag(tag)" aria-label="Delete tag">✕</button>
-              </template>
-            </div>
-            <ul v-if="expandedTag === tag" class="wtTagExerciseList">
-                <li v-for="exercise in store.exercises" :key="exercise.id">
-                  <button class="wtTagExerciseRow" @click="toggleExerciseTag(exercise.id, tag)">
-                    <span class="wtTagExerciseRowName">{{ exercise.name }}</span>
-                    <svg v-if="exercise.tags.includes(tag)" class="wtTagExerciseCheck" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="20 6 9 17 4 12"/></svg>
-                  </button>
-                </li>
-              </ul>
-          </li>
-        </ul>
-        <div v-if="tagManagerAdding" class="wtTagManagerAddRow">
-          <input
-            v-model.trim="tagManagerNewName"
-            type="text"
-            autocomplete="off"
-            placeholder="Tag name"
-            maxlength="30"
-            class="repMaxInput"
-            aria-label="New tag name"
-            ref="tagManagerInputEl"
-            @keyup.enter="confirmTagManagerAdd"
-            @keyup.escape="cancelTagManagerAdd"
-          />
-          <button class="wtTagAddBtn" @mousedown.prevent @click="confirmTagManagerAdd" :disabled="!tagManagerNewName" aria-label="Create tag">✓</button>
-        </div>
-        <div class="repMaxActions">
-          <button v-if="!tagManagerAdding" class="repMaxBtn repMaxBtnCalc" @click="startTagManagerAdd">+ New Tag</button>
-          <button class="repMaxBtn repMaxBtnClose" @click="tagManagerOpen = false">Done</button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <!-- Tag Manager Modal (extracted to TagManagerModal.vue) -->
+  <TagManagerModal
+    :open="tagManagerOpen"
+    :all-tags="store.allTags"
+    :exercises="store.exercises"
+    @close="tagManagerOpen = false"
+    @create-tag="store.addCustomTag"
+    @rename-tag="onRenameTag"
+    @delete-tag="confirmDeleteTag"
+    @toggle-exercise-tag="toggleExerciseTag"
+  />
 
   <!-- Rest timer bar -->
   <button
@@ -919,9 +677,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
-import { toLocalDateKey, buildSessionSummary } from '../lib/sessionSummary'
+import { buildSessionSummary } from '../lib/sessionSummary'
+import { todayISO, toLocalDateKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode, UsualLadder, UsualLadderRung } from '../stores/workout'
@@ -934,6 +693,7 @@ import { useRestTimerController } from '../composables/useRestTimerController'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useLongPressReorder } from '../composables/useLongPressReorder'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
@@ -944,6 +704,13 @@ import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
 import RestTimerContent from './RestTimerContent.vue'
+import WorkoutTimeline from './WorkoutTimeline.vue'
+import EditExerciseModal, { type EditExerciseSave } from './EditExerciseModal.vue'
+import TagManagerModal from './TagManagerModal.vue'
+import ExercisePickerModal from './ExercisePickerModal.vue'
+import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
+import { MAX_WEIGHT, MAX_REPS } from '../lib/inputLimits'
+import { loadJSON } from '../lib/storage'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
@@ -966,19 +733,8 @@ const timerCtrl = useRestTimerController(
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
 import { usePreferencesStore } from '../stores/preferences'
-import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
-
-// ── Warmup set filtering (session-only toggle, not persisted) ───
-const hideWarmups = ref(false)
-const warmupSetIds = computed(() => {
-  if (!hideWarmups.value) return new Set<string>()
-  const exercises = store.exercises.map(ex => ({
-    sets: ex.sets.map(s => ({ id: s.id, date: s.date, estimated1RM: s.estimated1RM })),
-  }))
-  return buildWarmupSetIds(exercises, _prefs.filters.warmupThreshold)
-})
 
 // Filter sets to those on/after the user-set PR baseline.
 // When no baseline is set, returns sets unchanged (legacy all-time behavior).
@@ -1067,76 +823,12 @@ const listView = ref<'exercises' | 'timeline'>(
 )
 watch(listView, v => localStorage.setItem('wt-list-view', v))
 
-// ── Timeline view ───────────────────────────────────────────────
-const timelineLimit = ref(50)
-
-interface TimelineEntry {
-  exerciseId: string
-  exerciseName: string
-  set: { id: string; date: string; weight: number; reps: number; estimated1RM: number }
+// ── Timeline view (extracted to WorkoutTimeline.vue) ────────────
+/** Timeline rows carry only the exercise id — resolve it before opening the edit modal. */
+function onTimelineEditSet(exerciseId: string, set: WorkoutSet) {
+  const exercise = store.exercises.find(e => e.id === exerciseId)
+  if (exercise) openEditModal(exercise, set)
 }
-
-const timelineSets = computed((): TimelineEntry[] => {
-  const entries: TimelineEntry[] = []
-  for (const ex of store.exercises) {
-    for (const s of ex.sets) {
-      entries.push({ exerciseId: ex.id, exerciseName: ex.name, set: s })
-    }
-  }
-  return entries.sort((a, b) => b.set.date.slice(0, 10).localeCompare(a.set.date.slice(0, 10)))
-})
-
-// PR badge map: for each set, determine if it's the best e1RM (weight PR)
-// or the best reps at its weight (rep PR) for that exercise.
-// Respects the user-set PR baseline: when set, only sets on/after baseline
-// are eligible for badges AND serve as the comparison pool.
-const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
-  const map: Record<string, 'pr' | 'repPR'> = {}
-  for (const ex of store.exercises) {
-    if (ex.sets.length === 0) continue
-    const eligible = filterSetsSinceBaseline(ex.sets)
-    if (eligible.length === 0) continue
-    const best1RM = Math.max(...eligible.map(s => s.estimated1RM))
-    // Weight PR: set(s) achieving the best e1RM within the baseline window
-    for (const s of eligible) {
-      if (s.estimated1RM === best1RM) {
-        map[s.id] = 'pr'
-      }
-    }
-    // Rep PR: best reps at each weight within the baseline window
-    const bestRepsAtWeight: Record<number, number> = {}
-    for (const s of eligible) {
-      bestRepsAtWeight[s.weight] = Math.max(bestRepsAtWeight[s.weight] ?? 0, s.reps)
-    }
-    for (const s of eligible) {
-      if (!map[s.id] && s.reps === bestRepsAtWeight[s.weight] && eligible.filter(o => o.weight === s.weight).length > 1) {
-        map[s.id] = 'repPR'
-      }
-    }
-  }
-  return map
-})
-
-const filteredTimelineSets = computed(() => {
-  if (!hideWarmups.value) return timelineSets.value
-  const ids = warmupSetIds.value
-  return timelineSets.value.filter(e => !ids.has(e.set.id))
-})
-
-const visibleTimelineGroups = computed(() => {
-  const limited = filteredTimelineSets.value.slice(0, timelineLimit.value)
-  const groups: { key: string; label: string; sets: TimelineEntry[] }[] = []
-  for (const entry of limited) {
-    const k = toLocalDateKey(entry.set.date)
-    const last = groups[groups.length - 1]
-    if (last && last.key === k) {
-      last.sets.push(entry)
-    } else {
-      groups.push({ key: k, label: formatDate(entry.set.date), sets: [entry] })
-    }
-  }
-  return groups
-})
 
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
@@ -1321,8 +1013,6 @@ watch(() => store.allTags, (tags) => {
 const detailExerciseId = ref<string | null>(null)
 
 const logModalFocus = useFocusTrap()
-const editExerciseFocus = useFocusTrap()
-const tagManagerFocus = useFocusTrap()
 
 // ── Swipe-to-dismiss for log-set sheet (step 5f) ────────────────
 // Drag the handle (or the sheet body, when not scrolled) down past
@@ -1339,119 +1029,42 @@ function openDetailModal(id: string) {
   detailExerciseId.value = id
 }
 
-// ── Long-press to reorder ──────────────────────────────────────
-// Accidental reorders were common when a touchstart on the left-edge
-// drag handle fired immediately. Now the whole row is the handle, and
-// it requires a ~400ms hold (matching iOS Reminders / Files / Music).
-// Short taps still open the detail modal; scrolls cancel the hold.
-const LONG_PRESS_MS = 400
-const MOVE_TOLERANCE_PX = 8
-const SUPPRESS_CLICK_MS = 50
-
+// ── Long-press to reorder (gesture in useLongPressReorder) ──────
 const exerciseListEl = ref<HTMLElement | null>(null)
-const dragState = reactive({ dragging: false, fromIndex: -1, overIndex: -1 })
 
-let longPressTimer: ReturnType<typeof setTimeout> | null = null
-let pressStartX = 0
-let pressStartY = 0
-let suppressClickUntil = 0
-
-function clearLongPress() {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-  }
-}
-
-function shouldIgnorePressTarget(event: TouchEvent | MouseEvent): boolean {
+const {
+  dragState,
+  onItemTouchStart,
+  onItemTouchMove,
+  onItemTouchEnd,
+  onItemMouseDown,
+  onItemClickCapture,
+} = useLongPressReorder({
+  listEl: exerciseListEl,
+  itemSelector: '.wtExerciseItem',
+  // Never start a drag when pressing the "+ Log" affordance.
+  ignoreSelector: '.wtExerciseLogBtn',
   // Block reorder whenever the list is filtered (tag filter OR search).
   // Template indices are into the filtered subset, but the store splices
   // the unfiltered array — a drop under a filter corrupts unrelated rows.
-  if (isFilteringActive.value) return true
-  const target = event.target as HTMLElement | null
-  // Never start a drag when pressing the "+ Log" affordance.
-  if (target?.closest('.wtExerciseLogBtn')) return true
-  return false
-}
-
-function getItemIndexFromPoint(clientY: number): number {
-  const list = exerciseListEl.value
-  if (!list) return -1
-  const items = list.querySelectorAll('.wtExerciseItem')
-  for (let i = 0; i < items.length; i++) {
-    const rect = items[i].getBoundingClientRect()
-    if (clientY >= rect.top && clientY <= rect.bottom) return i
-    // If between items, snap to closest
-    if (clientY < rect.top) return Math.max(0, i)
-  }
-  return items.length - 1
-}
-
-function onItemTouchStart(index: number, event: TouchEvent) {
-  if (shouldIgnorePressTarget(event)) return
-  const t = event.touches[0]
-  if (!t) return
-  pressStartX = t.clientX
-  pressStartY = t.clientY
-  clearLongPress()
-  longPressTimer = setTimeout(() => {
-    longPressTimer = null
-    beginDrag(index)
-  }, LONG_PRESS_MS)
-}
-
-function onItemTouchMove(event: TouchEvent) {
-  if (!longPressTimer) return
-  const t = event.touches[0]
-  if (!t) return
-  const dx = Math.abs(t.clientX - pressStartX)
-  const dy = Math.abs(t.clientY - pressStartY)
-  if (dx > MOVE_TOLERANCE_PX || dy > MOVE_TOLERANCE_PX) {
-    clearLongPress()
-  }
-}
-
-function onItemTouchEnd() {
-  clearLongPress()
-}
-
-function onItemMouseDown(index: number, event: MouseEvent) {
-  if (shouldIgnorePressTarget(event)) return
-  pressStartX = event.clientX
-  pressStartY = event.clientY
-  clearLongPress()
-  longPressTimer = setTimeout(() => {
-    longPressTimer = null
-    beginDrag(index)
-  }, LONG_PRESS_MS)
-
-  const onMouseMove = (e: MouseEvent) => {
-    if (!longPressTimer) {
-      document.removeEventListener('mousemove', onMouseMove)
-      return
-    }
-    if (
-      Math.abs(e.clientX - pressStartX) > MOVE_TOLERANCE_PX ||
-      Math.abs(e.clientY - pressStartY) > MOVE_TOLERANCE_PX
-    ) {
-      clearLongPress()
-      document.removeEventListener('mousemove', onMouseMove)
-    }
-  }
-  const onMouseUp = () => {
-    clearLongPress()
-    document.removeEventListener('mousemove', onMouseMove)
-  }
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp, { once: true })
-}
-
-function onItemClickCapture(event: MouseEvent) {
-  if (performance.now() < suppressClickUntil) {
-    event.stopPropagation()
-    event.preventDefault()
-  }
-}
+  disabled: () => isFilteringActive.value,
+  // Haptic confirms pickup — Capacitor Haptics on native, Vibration API on web.
+  onPickup: () => impactLight(),
+  onReorder: (fromIndex, toIndex) => {
+    // Drag indices are positions in `filteredExercises` (active-only),
+    // but `store.reorderExercise` operates on the full `exercises` array.
+    // Map via exercise IDs so archived rows preserve their relative position
+    // and don't get accidentally reordered.
+    const fromEx = filteredExercises.value[fromIndex]
+    const toEx = filteredExercises.value[toIndex]
+    if (!fromEx || !toEx) return
+    const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
+    const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
+    if (fromStoreIdx === -1 || toStoreIdx === -1) return
+    store.reorderExercise(fromStoreIdx, toStoreIdx)
+    logEvent('exercise_reorder')
+  },
+})
 
 function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
   if (isFilteringActive.value) return
@@ -1490,71 +1103,6 @@ function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
   })
 }
 
-function beginDrag(index: number) {
-  // Haptic confirms pickup — Capacitor Haptics on native, Vibration API on web.
-  impactLight()
-  dragState.dragging = true
-  dragState.fromIndex = index
-  dragState.overIndex = index
-
-  const onMove = (e: MouseEvent | TouchEvent) => {
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    const idx = getItemIndexFromPoint(clientY)
-    if (idx !== -1) dragState.overIndex = idx
-    // Block page scroll while the user is dragging.
-    if (e.cancelable) e.preventDefault()
-  }
-
-  const onEnd = () => {
-    document.removeEventListener('touchmove', onMove)
-    document.removeEventListener('touchend', onEnd)
-    document.removeEventListener('touchcancel', onEnd)
-    document.removeEventListener('mousemove', onMove)
-    document.removeEventListener('mouseup', onEnd)
-
-    if (dragState.fromIndex !== dragState.overIndex) {
-      // dragState indices are positions in `filteredExercises` (active-only),
-      // but `store.reorderExercise` operates on the full `exercises` array.
-      // Map via exercise IDs so archived rows preserve their relative position
-      // and don't get accidentally reordered.
-      const fromEx = filteredExercises.value[dragState.fromIndex]
-      const toEx = filteredExercises.value[dragState.overIndex]
-      if (fromEx && toEx) {
-        const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
-        const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
-        if (fromStoreIdx !== -1 && toStoreIdx !== -1) {
-          store.reorderExercise(fromStoreIdx, toStoreIdx)
-          logEvent('exercise_reorder')
-        }
-      }
-    }
-
-    dragState.dragging = false
-    dragState.fromIndex = -1
-    dragState.overIndex = -1
-    // iOS synthesizes a click on touchend — suppress the stale click.
-    suppressClickUntil = performance.now() + SUPPRESS_CLICK_MS
-  }
-
-  // Non-passive so the move handler can preventDefault page scroll.
-  document.addEventListener('touchmove', onMove, { passive: false })
-  document.addEventListener('touchend', onEnd, { once: true })
-  document.addEventListener('touchcancel', onEnd, { once: true })
-  document.addEventListener('mousemove', onMove)
-  document.addEventListener('mouseup', onEnd, { once: true })
-}
-
-// ── Set actions (tap-to-reveal) ──────────────────────────────────
-const activeSetId = ref<string | null>(null)
-
-function toggleSetActions(setId: string) {
-  activeSetId.value = activeSetId.value === setId ? null : setId
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
 /** Relative time string used on the main exercise list ("today", "yesterday", "4 days ago"). */
 function formatTimeAgo(iso: string): string {
   const now = new Date()
@@ -1566,26 +1114,7 @@ function formatTimeAgo(iso: string): string {
   if (days === 1) return 'yesterday'
   if (days < 7) return `${days} days ago`
   if (days < 30) return `${Math.floor(days / 7)}w ago`
-  return formatDate(iso)
-}
-
-// Converts a stored ISO string back to the local YYYY-MM-DD for a date input
-function isoToLocalDate(iso: string): string {
-  const d = new Date(iso)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function todayISO(): string {
-  // Use local date components — toISOString() returns UTC which gives the
-  // wrong date in US timezones after ~5pm (midnight UTC comes before midnight local).
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return formatShortDate(iso)
 }
 
 // ── Log / Edit modal state ────────────────────────────────────────
@@ -1763,20 +1292,13 @@ interface NudgeState {
 const nudgeStateVersion = ref(0)
 
 function readNudgeState(): NudgeState {
-  try {
-    const raw = localStorage.getItem(NUDGE_STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as NudgeState
-  } catch { /* corrupted state falls back to fresh */ }
-  return { lastGlobalShownDay: '', byExercise: {} }
+  // Corrupted state falls back to fresh.
+  return loadJSON<NudgeState>(NUDGE_STORAGE_KEY, { lastGlobalShownDay: '', byExercise: {} })
 }
 
 function writeNudgeState(state: NudgeState) {
   localStorage.setItem(NUDGE_STORAGE_KEY, JSON.stringify(state))
   nudgeStateVersion.value++
-}
-
-function daysBetweenISO(a: string, b: string): number {
-  return Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000)
 }
 
 /**
@@ -2270,7 +1792,7 @@ function openLogForExercise(exerciseId: string) {
 function openEditModal(exercise: Exercise, set: WorkoutSet) {
   editingSet.value = { exerciseId: exercise.id, setId: set.id }
   selectedExerciseId.value = exercise.id
-  date.value = isoToLocalDate(set.date)
+  date.value = toLocalDateKey(set.date)
   weight.value = displayWeight(set.weight)
   reps.value = set.reps
   showModal.value = true
@@ -2580,35 +2102,6 @@ const bestWeightAtReps = computed<number | null>(() => {
   return best > 0 ? best : null
 })
 
-const MAX_WEIGHT = 2000
-
-/** Shrink modal to fit above iOS keyboard, then scroll input into view */
-function scrollInputAboveKeyboard(el: HTMLElement) {
-  setTimeout(() => {
-    const modal = el.closest('.repMaxModal') as HTMLElement | null
-    if (!modal) return
-    const vv = window.visualViewport
-    if (!vv) return
-    // Shrink modal so it fits within the visible viewport above the keyboard
-    const availableHeight = vv.height - 96
-    modal.style.maxHeight = `${availableHeight}px`
-    // Scroll the input into view within the now-scrollable modal
-    nextTick(() => {
-      const inputRect = el.getBoundingClientRect()
-      const visibleBottom = vv.offsetTop + vv.height
-      if (inputRect.bottom > visibleBottom - 16) {
-        modal.scrollTop += inputRect.bottom - visibleBottom + 60
-      }
-    })
-    // Restore max-height when keyboard dismisses
-    const restore = () => {
-      modal.style.maxHeight = ''
-      vv.removeEventListener('resize', restore)
-    }
-    vv.addEventListener('resize', restore)
-  }, 400)
-}
-const MAX_REPS = 200
 const hasSetData = computed(() => weight.value !== null && weight.value > 0 && weight.value <= MAX_WEIGHT && reps.value !== null && reps.value >= 1 && reps.value <= MAX_REPS)
 
 const canSave = computed(() => {
@@ -2784,12 +2277,6 @@ function undoDeleteExercise(exercise: Exercise) {
 const archivedOpen = ref(false)
 const archivedListId = 'wt-archived-list'
 
-const editTargetIsArchived = computed(() => {
-  if (!editTarget.value) return false
-  const ex = store.exercises.find(e => e.id === editTarget.value)
-  return !!ex?.archived_at
-})
-
 function handleArchiveFromEdit() {
   const id = editTarget.value
   if (!id) return
@@ -2821,90 +2308,33 @@ function unarchiveExerciseFromList(exerciseId: string) {
   logEvent('exercise_unarchive')
 }
 
-// ── Edit exercise state (rename + tags) ──────────────────────────
+// ── Edit exercise modal (extracted to EditExerciseModal.vue) ─────
+// The parent owns which exercise is being edited and applies the saved
+// form to the store; the modal owns the transient form state.
 const editTarget = ref<string | null>(null)
-const confirmDeleteExercise = ref(false)
-const editName = ref('')
-const editTags = ref<string[]>([])
-const newTagInput = ref('')
-const editPlateMode = ref(false)
-const editPlateCountMode = ref<'per-side' | 'total'>('per-side')
-const editBarWeight = ref<number>(45)
-const editBarWeightEditing = ref(false)
-const editBarWeightInputEl = ref<HTMLInputElement | null>(null)
 
+const editTargetExercise = computed<Exercise | null>(() =>
+  store.exercises.find(e => e.id === editTarget.value) ?? null
+)
 
 function openEditExerciseModal(exercise: Exercise) {
   editTarget.value = exercise.id
-  confirmDeleteExercise.value = false
-  editName.value = exercise.name
-  editTags.value = [...(exercise.tags || [])]
-  editPlateMode.value = exercise.inputMode === 'plates'
-  editPlateCountMode.value = exercise.plateCountMode || 'per-side'
-  editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
-  newTagInput.value = ''
 }
 
-const editTagInputEl = ref<HTMLInputElement | null>(null)
-const editTagAdding = ref(false)
-
-function startEditTagAdd() {
-  editTagAdding.value = true
-  nextTick(() => editTagInputEl.value?.focus())
-}
-
-function addEditTag() {
-  const tag = newTagInput.value.trim()
-  if (tag && !editTags.value.includes(tag)) {
-    editTags.value.push(tag)
-  }
-  newTagInput.value = ''
-  nextTick(() => editTagInputEl.value?.focus())
-}
-
-function finishEditTagAdd() {
-  const tag = newTagInput.value.trim()
-  if (tag && !editTags.value.includes(tag)) {
-    editTags.value.push(tag)
-  }
-  newTagInput.value = ''
-  editTagAdding.value = false
-}
-
-
-function toggleEditTag(tag: string) {
-  if (editTags.value.includes(tag)) {
-    editTags.value = editTags.value.filter(t => t !== tag)
-  } else {
-    editTags.value.push(tag)
-  }
-}
-
-// All known tags, including any on this exercise that might not be in allTags yet
-const availableEditTags = computed(() => {
-  const all = new Set([...store.allTags, ...editTags.value])
-  return [...all]
-})
-
-function confirmEditExercise() {
-  if (!editTarget.value || !editName.value) return
-  // Auto-add any pending tag text
-  const pendingTag = newTagInput.value.trim()
-  if (pendingTag && !editTags.value.includes(pendingTag)) {
-    editTags.value.push(pendingTag)
-  }
-  store.renameExercise(editTarget.value, editName.value)
-  store.updateExerciseTags(editTarget.value, editTags.value)
+function onEditExerciseSave(payload: EditExerciseSave) {
+  if (!editTarget.value) return
+  store.renameExercise(editTarget.value, payload.name)
+  store.updateExerciseTags(editTarget.value, payload.tags)
   // Save input mode and plate settings
-  store.setExerciseInputMode(editTarget.value, editPlateMode.value ? 'plates' : 'numpad')
-  if (editPlateMode.value) {
-    store.setExercisePlateCountMode(editTarget.value, editPlateCountMode.value)
-    store.setExerciseBarWeight(editTarget.value, editBarWeight.value)
+  store.setExerciseInputMode(editTarget.value, payload.plateMode ? 'plates' : 'numpad')
+  if (payload.plateMode) {
+    store.setExercisePlateCountMode(editTarget.value, payload.plateCountMode)
+    store.setExerciseBarWeight(editTarget.value, payload.barWeight)
   }
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).
-  if (editPlateMode.value && weight.value) {
+  if (payload.plateMode && weight.value) {
     syncPlatesFromWeight()
   } else {
     syncPlateWeight()
@@ -2912,45 +2342,18 @@ function confirmEditExercise() {
   logEvent('exercise_edit')
 }
 
-// ── Tag manager ────────────────────────────────────────────────
+function onEditExerciseDelete() {
+  const exercise = editTargetExercise.value
+  if (!exercise) return
+  undoDeleteExercise(exercise)
+  editTarget.value = null
+}
+
+// ── Tag manager (extracted to TagManagerModal.vue) ─────────────
 const tagManagerOpen = ref(false)
-const renamingTag = ref<string | null>(null)
-const renameTagValue = ref('')
-const renameTagInputEl = ref<HTMLInputElement[] | null>(null)
-const expandedTag = ref<string | null>(null)
-const tagManagerAdding = ref(false)
-const tagManagerNewName = ref('')
-const tagManagerInputEl = ref<HTMLInputElement | null>(null)
+
 function openTagManager() {
   tagManagerOpen.value = true
-  renamingTag.value = null
-  expandedTag.value = null
-  tagManagerAdding.value = false
-  tagManagerNewName.value = ''
-}
-
-function startTagManagerAdd() {
-  tagManagerAdding.value = true
-  nextTick(() => tagManagerInputEl.value?.focus())
-}
-
-function confirmTagManagerAdd() {
-  const tag = tagManagerNewName.value.trim()
-  if (tag && !store.allTags.includes(tag)) {
-    store.addCustomTag(tag)
-    expandedTag.value = tag
-  }
-  tagManagerNewName.value = ''
-  tagManagerAdding.value = false
-}
-
-function cancelTagManagerAdd() {
-  tagManagerNewName.value = ''
-  tagManagerAdding.value = false
-}
-
-function toggleTagExpand(tag: string) {
-  expandedTag.value = expandedTag.value === tag ? null : tag
 }
 
 function toggleExerciseTag(exerciseId: string, tag: string) {
@@ -2963,34 +2366,17 @@ function toggleExerciseTag(exerciseId: string, tag: string) {
   store.updateExerciseTags(exerciseId, newTags)
 }
 
-function tagExerciseCount(tag: string): number {
-  return store.exercises.filter(e => (e.tags || []).includes(tag)).length
-}
-
-function startRenameTag(tag: string) {
-  renamingTag.value = tag
-  renameTagValue.value = tag
-  nextTick(() => {
-    if (renameTagInputEl.value && renameTagInputEl.value.length > 0) {
-      renameTagInputEl.value[0].focus()
-      renameTagInputEl.value[0].select()
-    }
-  })
-}
-
-function confirmRenameTag() {
-  if (!renamingTag.value || !renameTagValue.value) return
-  store.renameTag(renamingTag.value, renameTagValue.value)
+function onRenameTag(oldName: string, newName: string) {
+  store.renameTag(oldName, newName)
   logEvent('tag_rename')
-  renamingTag.value = null
 }
 
 function confirmDeleteTag(tag: string) {
-  const count = tagExerciseCount(tag)
   // Track which exercises have this tag for undo
   const affectedIds = store.exercises
     .filter(e => (e.tags || []).includes(tag))
     .map(e => e.id)
+  const count = affectedIds.length
   store.deleteTag(tag)
   logEvent('tag_delete')
   showUndo(
@@ -3024,30 +2410,6 @@ watch(showModal, async (open) => {
   } else {
     logModalFocus.deactivate()
     logSwipe.detach()
-  }
-})
-
-watch(editTarget, async (target) => {
-  if (target) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('[aria-labelledby="edit-exercise-title"]')
-    if (el) {
-      editExerciseFocus.activate(el)
-      // Don't auto-focus the name input — user usually isn't renaming
-      ;(document.activeElement as HTMLElement)?.blur()
-    }
-  } else {
-    editExerciseFocus.deactivate()
-  }
-})
-
-watch(tagManagerOpen, async (open) => {
-  if (open) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('[aria-labelledby="tag-manager-title"]')
-    if (el) tagManagerFocus.activate(el)
-  } else {
-    tagManagerFocus.deactivate()
   }
 })
 

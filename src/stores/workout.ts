@@ -10,6 +10,8 @@ import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { todayISO } from '../lib/dates'
+import { loadJSON, isPlainObject } from '../lib/storage'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -177,9 +179,9 @@ export const useWorkoutStore = defineStore('workout', () => {
   // This avoids wrapping thousands of set objects in Proxy (5,000+ for heavy users).
   // Trade-off: every mutation must call triggerRef(exercises) to notify watchers.
   const exercises = shallowRef<Exercise[]>(load())
-  const customTags = shallowRef<string[]>(JSON.parse(localStorage.getItem('lift-custom-tags') || '[]'))
-  const tagRecoveryDays = shallowRef<Record<string, number>>(JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}'))
-  const tagRecoveryExcluded = shallowRef<string[]>(JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]'))
+  const customTags = shallowRef<string[]>(loadJSON('lift-custom-tags', [], Array.isArray))
+  const tagRecoveryDays = shallowRef<Record<string, number>>(loadJSON('lift-tag-recovery-days', {}, isPlainObject))
+  const tagRecoveryExcluded = shallowRef<string[]>(loadJSON('lift-tag-recovery-excluded', [], Array.isArray))
   let _userId: string | null = null
 
   // ── Persistence ────────────────────────────────────────────────────
@@ -200,11 +202,10 @@ export const useWorkoutStore = defineStore('workout', () => {
   /** Re-read state from localStorage (called by cross-tab sync listener). */
   function _reloadFromStorage() {
     exercises.value = load()
-    try {
-      customTags.value = JSON.parse(localStorage.getItem('lift-custom-tags') || '[]')
-      tagRecoveryDays.value = JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}')
-      tagRecoveryExcluded.value = JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]')
-    } catch { /* ignore corrupt data */ }
+    // On corrupt storage, keep the current in-memory value rather than resetting.
+    customTags.value = loadJSON('lift-custom-tags', customTags.value, Array.isArray)
+    tagRecoveryDays.value = loadJSON('lift-tag-recovery-days', tagRecoveryDays.value, isPlainObject)
+    tagRecoveryExcluded.value = loadJSON('lift-tag-recovery-excluded', tagRecoveryExcluded.value, Array.isArray)
     triggerRef(exercises)
     triggerRef(customTags)
     triggerRef(tagRecoveryDays)
@@ -911,12 +912,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     _persist()
   }
 
-  function removeCustomTag(name: string) {
-    customTags.value = customTags.value.filter(t => t !== name)
-    triggerRef(customTags)
-    _persist()
-  }
-
   // ── Getters (computed) ─────────────────────────────────────────────
   const allTags = computed((): string[] => {
     const tagSet = new Set<string>()
@@ -976,12 +971,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     )
   }
 
-  function getRecentSets(exerciseId: string, limit = 5): WorkoutSet[] {
-    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise) return []
-    return [...exercise.sets].reverse().slice(0, limit)
-  }
-
   /**
    * Returns the sets from the most recent session (day) for an exercise,
    * excluding today. Used for "Last Session" quick-fill in the log modal.
@@ -990,7 +979,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   function getLastSession(exerciseId: string, today?: string): { date: string; sets: WorkoutSet[] } | null {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise || exercise.sets.length === 0) return null
-    const todayStr = today ?? new Date().toISOString().slice(0, 10)
+    const todayStr = today ?? todayISO()
     // Group sets by day
     const byDay = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
@@ -1031,7 +1020,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   function getUsualLadder(exerciseId: string, today?: string): UsualLadder | null {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise || exercise.sets.length === 0) return null
-    const todayStr = today ?? new Date().toISOString().slice(0, 10)
+    const todayStr = today ?? todayISO()
 
     // Group sets by day preserving in-day insertion order — end-of-day
     // timestamps carry random jitter, so array order is the only reliable
@@ -1271,7 +1260,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     setTagRecoveryDays,
     setTagRecoveryExcluded,
     addCustomTag,
-    removeCustomTag,
     // Getters
     allTags,
     activeExercises,
@@ -1279,7 +1267,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     workoutDates,
     getExercisePR,
     getExercisePRSet,
-    getRecentSets,
     getLastSession,
     getUsualLadder,
     getOverloadSuggestion

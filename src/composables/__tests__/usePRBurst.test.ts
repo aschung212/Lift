@@ -90,8 +90,6 @@ describe('usePRBurst', () => {
   })
 
   it('fires heavy haptic for first PR', () => {
-    const impactHeavyMock = vi.fn()
-    // Re-mock to capture impactHeavy
     vi.mocked(notifySuccessMock).mockClear()
 
     // The heavy haptic is called inside presentPRBurst when isFirstPR is true

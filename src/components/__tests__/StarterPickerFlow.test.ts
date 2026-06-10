@@ -3,7 +3,7 @@ import { mount, VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import StarterPickerFlow from '../StarterPickerFlow.vue'
 
-import { getLocalStorageMock, mockAnalytics } from '../../__tests__/helpers'
+import { getLocalStorageMock } from '../../__tests__/helpers'
 const localStorageMock = getLocalStorageMock()
 
 const mockLogEvent = vi.fn()
