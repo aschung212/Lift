@@ -5716,6 +5716,9 @@ html.theme-fading .settingsSheet {
   height: auto;
   display: block;
   overflow: visible;
+  /* Allow vertical page scroll to start on the chart, but capture horizontal
+     drags for the touch scrubber so reading a value never fights the scroll. */
+  touch-action: pan-y;
 }
 
 .wtGGrid {
@@ -5797,6 +5800,37 @@ html.theme-fading .settingsSheet {
   font-size: var(--font-caption2);
   fill: var(--text-muted);
   font-family: inherit;
+}
+
+/* Touch-scrub readout overlay (crosshair + value bubble). Non-interactive so the
+   pointer drag keeps tracking the underlying SVG. */
+.wtGScrub {
+  pointer-events: none;
+}
+
+.wtGScrubLine {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.5;
+}
+
+.wtGScrubDot {
+  fill: var(--accent);
+  stroke: var(--bg-elevated);
+  stroke-width: 2;
+}
+
+.wtGReadoutBox {
+  fill: var(--accent);
+}
+
+.wtGReadoutText {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  fill: var(--text-on-accent);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
 }
 
 .wtGraphSingle {
