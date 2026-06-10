@@ -11,6 +11,7 @@ import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '
 import { epley } from '../lib/epley'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { todayISO } from '../lib/dates'
+import { loadJSON, isPlainObject } from '../lib/storage'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -178,9 +179,9 @@ export const useWorkoutStore = defineStore('workout', () => {
   // This avoids wrapping thousands of set objects in Proxy (5,000+ for heavy users).
   // Trade-off: every mutation must call triggerRef(exercises) to notify watchers.
   const exercises = shallowRef<Exercise[]>(load())
-  const customTags = shallowRef<string[]>(JSON.parse(localStorage.getItem('lift-custom-tags') || '[]'))
-  const tagRecoveryDays = shallowRef<Record<string, number>>(JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}'))
-  const tagRecoveryExcluded = shallowRef<string[]>(JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]'))
+  const customTags = shallowRef<string[]>(loadJSON('lift-custom-tags', [], Array.isArray))
+  const tagRecoveryDays = shallowRef<Record<string, number>>(loadJSON('lift-tag-recovery-days', {}, isPlainObject))
+  const tagRecoveryExcluded = shallowRef<string[]>(loadJSON('lift-tag-recovery-excluded', [], Array.isArray))
   let _userId: string | null = null
 
   // ── Persistence ────────────────────────────────────────────────────
@@ -201,11 +202,10 @@ export const useWorkoutStore = defineStore('workout', () => {
   /** Re-read state from localStorage (called by cross-tab sync listener). */
   function _reloadFromStorage() {
     exercises.value = load()
-    try {
-      customTags.value = JSON.parse(localStorage.getItem('lift-custom-tags') || '[]')
-      tagRecoveryDays.value = JSON.parse(localStorage.getItem('lift-tag-recovery-days') || '{}')
-      tagRecoveryExcluded.value = JSON.parse(localStorage.getItem('lift-tag-recovery-excluded') || '[]')
-    } catch { /* ignore corrupt data */ }
+    // On corrupt storage, keep the current in-memory value rather than resetting.
+    customTags.value = loadJSON('lift-custom-tags', customTags.value, Array.isArray)
+    tagRecoveryDays.value = loadJSON('lift-tag-recovery-days', tagRecoveryDays.value, isPlainObject)
+    tagRecoveryExcluded.value = loadJSON('lift-tag-recovery-excluded', tagRecoveryExcluded.value, Array.isArray)
     triggerRef(exercises)
     triggerRef(customTags)
     triggerRef(tagRecoveryDays)

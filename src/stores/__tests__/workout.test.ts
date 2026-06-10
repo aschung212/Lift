@@ -1013,7 +1013,7 @@ describe('workout store', () => {
 
     it('marks exercises as sample when sync: false (#232)', () => {
       const store = useWorkoutStore()
-      const id = store.addExercise('Sample Exercise', [], { sync: false })!
+      store.addExercise('Sample Exercise', [], { sync: false })
       expect(store.exercises[0].sample).toBe(true)
     })
 

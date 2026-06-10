@@ -915,9 +915,6 @@ describe('WorkoutTracker', () => {
         await weightInput.setValue('2')
         await wrapper.vm.$nextTick()
 
-        // Plate calc area exists but plates haven't updated yet (debounced)
-        const platesBeforeTimer = wrapper.findAll('.wtPlateBtnRemove:not(.wtPlateBtnRemoveDim)')
-        const countBefore = platesBeforeTimer.length
 
         // Type "22" — should reset the debounce timer, still no sync
         await weightInput.setValue('22')

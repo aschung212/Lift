@@ -710,6 +710,7 @@ import TagManagerModal from './TagManagerModal.vue'
 import ExercisePickerModal from './ExercisePickerModal.vue'
 import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
 import { MAX_WEIGHT, MAX_REPS } from '../lib/inputLimits'
+import { loadJSON } from '../lib/storage'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
@@ -1291,11 +1292,8 @@ interface NudgeState {
 const nudgeStateVersion = ref(0)
 
 function readNudgeState(): NudgeState {
-  try {
-    const raw = localStorage.getItem(NUDGE_STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as NudgeState
-  } catch { /* corrupted state falls back to fresh */ }
-  return { lastGlobalShownDay: '', byExercise: {} }
+  // Corrupted state falls back to fresh.
+  return loadJSON<NudgeState>(NUDGE_STORAGE_KEY, { lastGlobalShownDay: '', byExercise: {} })
 }
 
 function writeNudgeState(state: NudgeState) {
