@@ -2358,6 +2358,35 @@ html.theme-fading .settingsSheet {
   padding: 4px 16px 0;
 }
 
+/* Timeline view: "Log a set" on the left, warmup toggle on the right. */
+.wtTimelineControlsRow {
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.wtTimelineLogBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  min-height: 32px;
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  color: var(--text-on-accent, var(--bg-primary));
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtTimelineLogBtn:active {
+  opacity: 0.8;
+  background: var(--accent-hover, var(--accent));
+}
+
 .wtWarmupToggle {
   display: inline-flex;
   align-items: center;

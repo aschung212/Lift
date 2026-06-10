@@ -71,9 +71,9 @@
             <button
               v-if="activeTab === 'workouts'"
               class="topBarPlusBtn"
-              @click="triggerQuickLog"
-              title="Log a set"
-              aria-label="Log a set"
+              @click="triggerAddExercise"
+              title="Add exercise"
+              aria-label="Add exercise"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
@@ -452,14 +452,15 @@ function switchTab(tabId: string) {
   })
 }
 
-// Exposed from WorkoutTracker via defineExpose so the top-bar "+" can trigger
-// the same quick-log exercise-picker flow the in-content "+ Log Set" uses.
+// Exposed from WorkoutTracker via defineExpose so the top-bar "+" can open the
+// new-exercise modal directly. Logging a set is a per-exercise action (the "+"
+// on each exercise row); the top-bar "+" is reserved for adding an exercise.
 const workoutTrackerRef = ref<InstanceType<typeof WorkoutTracker> | null>(null)
 
-function triggerQuickLog() {
+function triggerAddExercise() {
   const wt = workoutTrackerRef.value
-  if (wt && typeof wt.openTimelineLogModal === 'function') {
-    wt.openTimelineLogModal()
+  if (wt && typeof wt.openNewExerciseModal === 'function') {
+    wt.openNewExerciseModal()
   }
 }
 
