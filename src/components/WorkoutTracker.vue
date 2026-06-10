@@ -90,7 +90,7 @@
       </button>
     </div>
     <p v-else-if="store.exercises.length === 0" class="wtEmpty">
-      No exercises yet. Hit "+ New Exercise" to add your first one.
+      No exercises yet. Tap the "+" in the top right to add your first one.
     </p>
 
     <template v-else-if="listView === 'exercises'">
@@ -207,7 +207,17 @@
 
     <!-- Timeline view -->
     <template v-else-if="listView === 'timeline'">
-      <div class="wtTimelineControls">
+      <div class="wtTimelineControls wtTimelineControlsRow">
+        <!-- Timeline rows have no per-exercise "+", so this is the log entry
+             point for the timeline view (the top-bar "+" adds an exercise). -->
+        <button
+          class="wtTimelineLogBtn"
+          @click="openTimelineLogModal"
+          aria-label="Log a set"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Log a set</span>
+        </button>
         <button
           :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
           @click="hideWarmups = !hideWarmups"
@@ -2682,10 +2692,9 @@ onUnmounted(() => {
   document.documentElement.classList.remove('modal-open')
 })
 
-// Exposed so the app's top-bar "+" button can trigger quick-log without
-// duplicating the exercise-picker state in App.vue. openNewExerciseModal is
-// also exposed for unit tests that previously opened the new-exercise
-// dialog via the in-card "+ New Exercise" button (retired after the
-// 03-workouts.png restyle).
+// openNewExerciseModal is exposed so App.vue's top-bar "+" can open the
+// new-exercise modal directly (the primary "add exercise" entry point).
+// openTimelineLogModal is exposed for the timeline view's "Log a set" button
+// and for unit tests; it opens the exercise picker used to quick-log a set.
 defineExpose({ openTimelineLogModal, openNewExerciseModal, timerCtrl })
 </script>

@@ -638,9 +638,9 @@ describe('WorkoutTracker', () => {
   })
 
   describe('new exercise modal', () => {
-    // The top-bar "+" button in App.vue calls the exposed openTimelineLogModal,
-    // which opens the exercise picker. Clicking "+ New exercise" in the picker
-    // opens the new exercise modal. Tests use the exposed API directly.
+    // App.vue's top-bar "+" calls the exposed openNewExerciseModal directly to
+    // open this modal (the picker's "+ New exercise" row is now only reached
+    // via the timeline "Log a set" button). Tests use the exposed API directly.
     async function openNewExerciseModal(wrapper: VueWrapper) {
       exposed(wrapper).openNewExerciseModal()
       await wrapper.vm.$nextTick()
@@ -1329,10 +1329,10 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtViewToggleBtn.active').text()).toBe('Timeline')
     })
 
-    it('quick-log button is driven by the app-level "+" and works from both views', async () => {
-      // The old `wtLogBtn` in the card header is gone (03-workouts.png). Both
-      // views now rely on the App.vue top-bar "+" which calls the exposed
-      // openTimelineLogModal helper to open the exercise picker.
+    it('exposes openTimelineLogModal to open the exercise picker from both views', async () => {
+      // The top-bar "+" now adds an exercise; logging a set goes through the
+      // exercise picker, exposed via openTimelineLogModal (used by the timeline
+      // view's "Log a set" button). The picker works from both views.
       const wrapper = mountTracker()
       expect(typeof exposed(wrapper).openTimelineLogModal).toBe('function')
 
@@ -1346,6 +1346,22 @@ describe('WorkoutTracker', () => {
       await wrapper.vm.$nextTick()
       exposed(wrapper).openTimelineLogModal()
       await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtExPickerNew').exists()).toBe(true)
+    })
+
+    it('timeline view shows a "Log a set" button that opens the exercise picker', async () => {
+      const wrapper = mountTracker()
+      // Switch to timeline view (timeline rows have no per-exercise "+").
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const logBtn = wrapper.find('.wtTimelineLogBtn')
+      expect(logBtn.exists()).toBe(true)
+      expect(logBtn.attributes('aria-label')).toBe('Log a set')
+
+      await logBtn.trigger('click')
+      await wrapper.vm.$nextTick()
+      // Picker opens with the "+ New exercise" row available.
       expect(wrapper.find('.wtExPickerNew').exists()).toBe(true)
     })
 
