@@ -677,7 +677,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { buildSessionSummary } from '../lib/sessionSummary'
 import { todayISO, toLocalDateKey, formatShortDate, daysBetweenISO } from '../lib/dates'
@@ -693,6 +693,7 @@ import { useRestTimerController } from '../composables/useRestTimerController'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useLongPressReorder } from '../composables/useLongPressReorder'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
@@ -1027,119 +1028,42 @@ function openDetailModal(id: string) {
   detailExerciseId.value = id
 }
 
-// ── Long-press to reorder ──────────────────────────────────────
-// Accidental reorders were common when a touchstart on the left-edge
-// drag handle fired immediately. Now the whole row is the handle, and
-// it requires a ~400ms hold (matching iOS Reminders / Files / Music).
-// Short taps still open the detail modal; scrolls cancel the hold.
-const LONG_PRESS_MS = 400
-const MOVE_TOLERANCE_PX = 8
-const SUPPRESS_CLICK_MS = 50
-
+// ── Long-press to reorder (gesture in useLongPressReorder) ──────
 const exerciseListEl = ref<HTMLElement | null>(null)
-const dragState = reactive({ dragging: false, fromIndex: -1, overIndex: -1 })
 
-let longPressTimer: ReturnType<typeof setTimeout> | null = null
-let pressStartX = 0
-let pressStartY = 0
-let suppressClickUntil = 0
-
-function clearLongPress() {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-  }
-}
-
-function shouldIgnorePressTarget(event: TouchEvent | MouseEvent): boolean {
+const {
+  dragState,
+  onItemTouchStart,
+  onItemTouchMove,
+  onItemTouchEnd,
+  onItemMouseDown,
+  onItemClickCapture,
+} = useLongPressReorder({
+  listEl: exerciseListEl,
+  itemSelector: '.wtExerciseItem',
+  // Never start a drag when pressing the "+ Log" affordance.
+  ignoreSelector: '.wtExerciseLogBtn',
   // Block reorder whenever the list is filtered (tag filter OR search).
   // Template indices are into the filtered subset, but the store splices
   // the unfiltered array — a drop under a filter corrupts unrelated rows.
-  if (isFilteringActive.value) return true
-  const target = event.target as HTMLElement | null
-  // Never start a drag when pressing the "+ Log" affordance.
-  if (target?.closest('.wtExerciseLogBtn')) return true
-  return false
-}
-
-function getItemIndexFromPoint(clientY: number): number {
-  const list = exerciseListEl.value
-  if (!list) return -1
-  const items = list.querySelectorAll('.wtExerciseItem')
-  for (let i = 0; i < items.length; i++) {
-    const rect = items[i].getBoundingClientRect()
-    if (clientY >= rect.top && clientY <= rect.bottom) return i
-    // If between items, snap to closest
-    if (clientY < rect.top) return Math.max(0, i)
-  }
-  return items.length - 1
-}
-
-function onItemTouchStart(index: number, event: TouchEvent) {
-  if (shouldIgnorePressTarget(event)) return
-  const t = event.touches[0]
-  if (!t) return
-  pressStartX = t.clientX
-  pressStartY = t.clientY
-  clearLongPress()
-  longPressTimer = setTimeout(() => {
-    longPressTimer = null
-    beginDrag(index)
-  }, LONG_PRESS_MS)
-}
-
-function onItemTouchMove(event: TouchEvent) {
-  if (!longPressTimer) return
-  const t = event.touches[0]
-  if (!t) return
-  const dx = Math.abs(t.clientX - pressStartX)
-  const dy = Math.abs(t.clientY - pressStartY)
-  if (dx > MOVE_TOLERANCE_PX || dy > MOVE_TOLERANCE_PX) {
-    clearLongPress()
-  }
-}
-
-function onItemTouchEnd() {
-  clearLongPress()
-}
-
-function onItemMouseDown(index: number, event: MouseEvent) {
-  if (shouldIgnorePressTarget(event)) return
-  pressStartX = event.clientX
-  pressStartY = event.clientY
-  clearLongPress()
-  longPressTimer = setTimeout(() => {
-    longPressTimer = null
-    beginDrag(index)
-  }, LONG_PRESS_MS)
-
-  const onMouseMove = (e: MouseEvent) => {
-    if (!longPressTimer) {
-      document.removeEventListener('mousemove', onMouseMove)
-      return
-    }
-    if (
-      Math.abs(e.clientX - pressStartX) > MOVE_TOLERANCE_PX ||
-      Math.abs(e.clientY - pressStartY) > MOVE_TOLERANCE_PX
-    ) {
-      clearLongPress()
-      document.removeEventListener('mousemove', onMouseMove)
-    }
-  }
-  const onMouseUp = () => {
-    clearLongPress()
-    document.removeEventListener('mousemove', onMouseMove)
-  }
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp, { once: true })
-}
-
-function onItemClickCapture(event: MouseEvent) {
-  if (performance.now() < suppressClickUntil) {
-    event.stopPropagation()
-    event.preventDefault()
-  }
-}
+  disabled: () => isFilteringActive.value,
+  // Haptic confirms pickup — Capacitor Haptics on native, Vibration API on web.
+  onPickup: () => impactLight(),
+  onReorder: (fromIndex, toIndex) => {
+    // Drag indices are positions in `filteredExercises` (active-only),
+    // but `store.reorderExercise` operates on the full `exercises` array.
+    // Map via exercise IDs so archived rows preserve their relative position
+    // and don't get accidentally reordered.
+    const fromEx = filteredExercises.value[fromIndex]
+    const toEx = filteredExercises.value[toIndex]
+    if (!fromEx || !toEx) return
+    const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
+    const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
+    if (fromStoreIdx === -1 || toStoreIdx === -1) return
+    store.reorderExercise(fromStoreIdx, toStoreIdx)
+    logEvent('exercise_reorder')
+  },
+})
 
 function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
   if (isFilteringActive.value) return
@@ -1176,60 +1100,6 @@ function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
     const handle = items[newIndex]?.querySelector<HTMLElement>('.wtDragHandle')
     handle?.focus()
   })
-}
-
-function beginDrag(index: number) {
-  // Haptic confirms pickup — Capacitor Haptics on native, Vibration API on web.
-  impactLight()
-  dragState.dragging = true
-  dragState.fromIndex = index
-  dragState.overIndex = index
-
-  const onMove = (e: MouseEvent | TouchEvent) => {
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    const idx = getItemIndexFromPoint(clientY)
-    if (idx !== -1) dragState.overIndex = idx
-    // Block page scroll while the user is dragging.
-    if (e.cancelable) e.preventDefault()
-  }
-
-  const onEnd = () => {
-    document.removeEventListener('touchmove', onMove)
-    document.removeEventListener('touchend', onEnd)
-    document.removeEventListener('touchcancel', onEnd)
-    document.removeEventListener('mousemove', onMove)
-    document.removeEventListener('mouseup', onEnd)
-
-    if (dragState.fromIndex !== dragState.overIndex) {
-      // dragState indices are positions in `filteredExercises` (active-only),
-      // but `store.reorderExercise` operates on the full `exercises` array.
-      // Map via exercise IDs so archived rows preserve their relative position
-      // and don't get accidentally reordered.
-      const fromEx = filteredExercises.value[dragState.fromIndex]
-      const toEx = filteredExercises.value[dragState.overIndex]
-      if (fromEx && toEx) {
-        const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
-        const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
-        if (fromStoreIdx !== -1 && toStoreIdx !== -1) {
-          store.reorderExercise(fromStoreIdx, toStoreIdx)
-          logEvent('exercise_reorder')
-        }
-      }
-    }
-
-    dragState.dragging = false
-    dragState.fromIndex = -1
-    dragState.overIndex = -1
-    // iOS synthesizes a click on touchend — suppress the stale click.
-    suppressClickUntil = performance.now() + SUPPRESS_CLICK_MS
-  }
-
-  // Non-passive so the move handler can preventDefault page scroll.
-  document.addEventListener('touchmove', onMove, { passive: false })
-  document.addEventListener('touchend', onEnd, { once: true })
-  document.addEventListener('touchcancel', onEnd, { once: true })
-  document.addEventListener('mousemove', onMove)
-  document.addEventListener('mouseup', onEnd, { once: true })
 }
 
 /** Relative time string used on the main exercise list ("today", "yesterday", "4 days ago"). */
