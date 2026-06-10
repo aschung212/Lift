@@ -3807,14 +3807,56 @@ html.theme-fading .settingsSheet {
 }
 
 .repMaxModal.logSetSheet {
+  --sheet-pad-x: 20px; /* shared with the sticky action bar's full-bleed margins */
   max-width: 100%;
   width: 100%;
   height: 88dvh;
   max-height: 88dvh;
-  padding: 16px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  padding: 16px var(--sheet-pad-x) calc(24px + env(safe-area-inset-bottom, 0px));
   border-radius: 24px 24px 0 0;
   border-bottom: none;
   animation: sheetSlideUp 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+  Form view only (.logSetSheetForm — the timer view keeps block layout):
+  flex column so the Save/Done bar can pin to the sheet bottom even when
+  the form is short (edit mode), while `flex-shrink: 0` on the children
+  preserves natural heights so long content overflows into scroll instead
+  of compressing. The sheet's own bottom padding moves into the bar so the
+  bar sits flush with the sheet's bottom edge.
+*/
+.repMaxModal.logSetSheetForm {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
+.logSetSheetForm > * { flex-shrink: 0; }
+
+/*
+  Sticky save bar: Save/Done stay visible at the bottom of the scrollport
+  while the form (usual ladder, PR card, plate calc…) scrolls behind them,
+  so logging a set never requires scrolling to find Save. `margin-top:
+  auto` pins the bar to the sheet bottom when content is short; with
+  overflow it resolves to 0 and `position: sticky` takes over.
+*/
+.logSetSheetForm .repMaxActions {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin: auto calc(-1 * var(--sheet-pad-x)) 0;
+  padding: 12px var(--sheet-pad-x) calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--glass-fill, var(--bg-elevated));
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-top: 1px solid var(--glass-edge, var(--border-strong));
+}
+
+[data-glass="off"] .logSetSheetForm .repMaxActions {
+  background: var(--bg-elevated);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* Tighter section margins inside the sheet so recent pills + PR Targets

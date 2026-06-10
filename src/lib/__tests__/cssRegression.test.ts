@@ -594,6 +594,48 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('log-set sheet sticky save bar', () => {
+    // Regression: the log form (usual ladder + PR card + plate calc) grew
+    // taller than the 88dvh sheet, pushing Save/Done below the fold — users
+    // had to scroll to find Save and could close the sheet thinking the set
+    // was logged. The action bar must stay pinned/visible at the sheet
+    // bottom while the form scrolls behind it.
+    const sheetLines = getRuleLines('.repMaxModal.logSetSheetForm')
+    const barLines = getRuleLines('.logSetSheetForm .repMaxActions')
+
+    it('form view is a flex column so the bar can pin to the sheet bottom', () => {
+      expect(sheetLines.some(l => l.startsWith('display: flex'))).toBe(true)
+      expect(sheetLines.some(l => l.startsWith('flex-direction: column'))).toBe(true)
+    })
+
+    it('moves the sheet bottom padding into the bar (bar sits flush)', () => {
+      expect(sheetLines.some(l => l.startsWith('padding-bottom: 0'))).toBe(true)
+      const pad = barLines.find(l => l.startsWith('padding:'))
+      expect(pad, 'bar must own the safe-area bottom padding').toContain('safe-area-inset-bottom')
+    })
+
+    it('form children keep natural height (overflow scrolls, not compresses)', () => {
+      const childLines = getRuleLines('.logSetSheetForm > *')
+      expect(childLines.some(l => l.startsWith('flex-shrink: 0'))).toBe(true)
+    })
+
+    it('action bar is sticky at bottom: 0 with an opaque-enough backdrop', () => {
+      expect(barLines.some(l => l.startsWith('position: sticky'))).toBe(true)
+      expect(barLines.some(l => l.startsWith('bottom: 0'))).toBe(true)
+      expect(barLines.some(l => l.startsWith('background:'))).toBe(true)
+    })
+
+    it('pins to the sheet bottom when content is short (margin-top: auto)', () => {
+      expect(barLines.some(l => l.startsWith('margin: auto'))).toBe(true)
+    })
+
+    it('has a glass-off fallback without backdrop-filter', () => {
+      const offLines = getRuleLines('[data-glass="off"] .logSetSheetForm .repMaxActions')
+      expect(offLines.some(l => l.startsWith('background: var(--bg-elevated)'))).toBe(true)
+      expect(offLines.some(l => l.startsWith('backdrop-filter: none'))).toBe(true)
+    })
+  })
+
   describe('prefers-reduced-transparency fallback (LIFT-680)', () => {
     // Regression: glass morphism is always on, but users who enable Reduce
     // Transparency (iOS/macOS/Windows) expect blur/translucency swapped for

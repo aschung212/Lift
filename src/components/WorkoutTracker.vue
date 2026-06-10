@@ -277,7 +277,7 @@
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
     <div v-if="showModal" class="repMaxOverlay logSetOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
-      <div ref="logSheetEl" class="repMaxModal logSetSheet" :style="logSwipe.dragStyle()" @click.self="timerCtrl.editingPresets.value = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+      <div ref="logSheetEl" class="repMaxModal logSetSheet" :class="{ logSetSheetForm: !timerCtrl.timerActive.value }" :style="logSwipe.dragStyle()" @click.self="timerCtrl.editingPresets.value = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
         <div ref="logSheetHandleEl" class="logSetSheetHandle" aria-hidden="true"></div>
 
         <!-- Rest timer view -->
