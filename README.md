@@ -90,6 +90,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Set count badge on each exercise tag
 - Log sets directly from the calendar
 - Tag filtering shared with workouts tab
+- Weekly view surfaces a muscle-group volume snapshot and a week-over-week training-volume trend line (hand-rolled SVG)
 
 ### Body Weight Tracking
 - Log daily weigh-ins with date
@@ -188,7 +189,7 @@ All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 
 | **Stores** | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, progression XP and theme unlocks, sync fuzzing |
 | **Composables** | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection), keyboard shortcuts, undo toast, swipe-to-dismiss, focus trap, haptics, PR burst, tag recovery/volume |
 | **Library** | Sync queue debouncing/coalescing, conflict resolver (last-write-wins, merge strategies), CSS/meta/manifest/SEO/theme-contrast/vercel-headers regression suites, CSV import, data export, plate calculator, XP migration |
-| **Components** | WorkoutTracker, BodyweightTracker, AuthScreen, ExerciseGraph, OnboardingScreen, CalendarView, ErrorBoundary, StarterPickerFlow, SkeletonLoader, MuscleGroupChart/Recovery, PR target, accessibility attributes |
+| **Components** | WorkoutTracker, BodyweightTracker, AuthScreen, ExerciseGraph, OnboardingScreen, CalendarView, ErrorBoundary, StarterPickerFlow, SkeletonLoader, MuscleGroupChart/Recovery, VolumeTrendChart, PR target, accessibility attributes |
 
 ```bash
 npm test           # run all tests

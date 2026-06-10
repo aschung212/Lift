@@ -219,6 +219,15 @@
         :collapsed="volumeCollapsed"
         @toggle-collapsed="volumeCollapsed = !volumeCollapsed"
       />
+
+      <!-- Week-over-week training volume trend (collapsible) -->
+      <VolumeTrendChart
+        v-if="volumeTrend.length >= 2"
+        :weekly-volume="volumeTrend"
+        :total-volume="volumeTrendTotal"
+        :collapsed="trendCollapsed"
+        @toggle-collapsed="trendCollapsed = !trendCollapsed"
+      />
     </div>
   </div>
 
@@ -306,9 +315,11 @@ import { usePRBaseline } from '../composables/usePRBaseline'
 import { useModal } from '../composables/useModal'
 import { useTagVolume } from '../composables/useTagVolume'
 import { useTagRecovery } from '../composables/useTagRecovery'
+import { useVolumeTrend } from '../composables/useVolumeTrend'
 
 const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
 const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/MuscleGroupRecovery.vue'))
+const VolumeTrendChart = defineAsyncComponent(() => import('../components/VolumeTrendChart.vue'))
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
@@ -601,6 +612,9 @@ const weekDateStrings = computed(() => weekDays.value.map(d => d.dateStr))
 const exercisesRef = computed(() => filteredExercises.value)
 const { weeklyVolume, maxSets, totalSets } = useTagVolume(exercisesRef, weekDateStrings)
 
+// ── Week-over-week volume trend (full history, respects tag filter) ──
+const { weeklyVolume: volumeTrend, totalVolume: volumeTrendTotal } = useVolumeTrend(exercisesRef)
+
 // ── Tag recovery ─────────────────────────────────────────────────
 const allExercisesRef = computed(() => store.exercises)
 const tagRecoveryDaysRef = computed(() => store.tagRecoveryDays)
@@ -635,6 +649,7 @@ function onRecoveryDaysChange(tag: string, days: number | null) {
 }
 
 const volumeCollapsed = ref(false)
+const trendCollapsed = ref(true)
 
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
