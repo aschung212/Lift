@@ -12,6 +12,7 @@ vi.mock('../../composables/useRestTimer', () => mockRestTimer())
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
+    filters: { warmupThreshold: 0.75 },
   }),
 }))
 vi.mock('../../stores/progression', () => ({

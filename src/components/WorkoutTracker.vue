@@ -205,62 +205,16 @@
     </div>
     </template>
 
-    <!-- Timeline view -->
-    <template v-else-if="listView === 'timeline'">
-      <div class="wtTimelineControls wtTimelineControlsRow">
-        <!-- Timeline rows have no per-exercise "+", so this is the log entry
-             point for the timeline view (the top-bar "+" adds an exercise). -->
-        <button
-          class="wtTimelineLogBtn"
-          @click="openTimelineLogModal"
-          aria-label="Log a set"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>Log a set</span>
-        </button>
-        <button
-          :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
-          @click="hideWarmups = !hideWarmups"
-          role="switch"
-          :aria-checked="hideWarmups"
-          :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
-          <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
-        </button>
-      </div>
-      <div v-if="timelineSets.length === 0" class="wtEmpty">
-        No sets logged yet.
-      </div>
-      <div v-else class="wtTimeline">
-        <template v-for="group in visibleTimelineGroups" :key="group.key">
-          <p class="wtTimelineDateHeader">{{ group.label }}</p>
-          <div class="wtSetCard">
-            <div
-              v-for="entry in group.sets"
-              :key="entry.set.id"
-              :class="['wtTimelineRow', { wtTimelineRowActive: activeSetId === entry.set.id }]"
-              @click="toggleSetActions(entry.set.id)"
-            >
-              <div class="wtTimelineRowMain">
-                <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
-                <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
-                <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
-                <span v-if="timelinePRMap[entry.set.id] === 'pr'" class="wtTimelineBadge" aria-label="Personal record">🏆</span>
-                <span v-else-if="timelinePRMap[entry.set.id] === 'repPR'" class="wtTimelineBadge" aria-label="Rep personal record">🔥</span>
-              </div>
-              <div v-if="activeSetId === entry.set.id" class="wtSetActions">
-                <button class="wtSetBtn" @click.stop="openEditModal(store.exercises.find(e => e.id === entry.exerciseId)!, entry.set)" aria-label="Edit set">Edit</button>
-                <button class="wtSetBtn wtSetBtnDel" @click.stop="undoDeleteSet(entry.exerciseId, entry.set)" aria-label="Delete set">Delete</button>
-              </div>
-            </div>
-          </div>
-        </template>
-        <button v-if="timelineLimit < filteredTimelineSets.length" class="wtTimelineShowMore" @click="timelineLimit += 50">
-          Show more ({{ filteredTimelineSets.length - timelineLimit }} remaining)
-        </button>
-      </div>
-    </template>
+    <!-- Timeline view (extracted to WorkoutTimeline.vue) -->
+    <WorkoutTimeline
+      v-else-if="listView === 'timeline'"
+      :exercises="store.exercises"
+      :pr-baseline-date="prBaselineDate"
+      :warmup-threshold="_prefs.filters.warmupThreshold"
+      @log-set="openTimelineLogModal"
+      @edit-set="onTimelineEditSet"
+      @delete-set="undoDeleteSet"
+    />
 
   </div>
 
@@ -945,6 +899,7 @@ import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
 import RestTimerContent from './RestTimerContent.vue'
+import WorkoutTimeline from './WorkoutTimeline.vue'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
@@ -967,19 +922,8 @@ const timerCtrl = useRestTimerController(
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
 import { usePreferencesStore } from '../stores/preferences'
-import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
-
-// ── Warmup set filtering (session-only toggle, not persisted) ───
-const hideWarmups = ref(false)
-const warmupSetIds = computed(() => {
-  if (!hideWarmups.value) return new Set<string>()
-  const exercises = store.exercises.map(ex => ({
-    sets: ex.sets.map(s => ({ id: s.id, date: s.date, estimated1RM: s.estimated1RM })),
-  }))
-  return buildWarmupSetIds(exercises, _prefs.filters.warmupThreshold)
-})
 
 // Filter sets to those on/after the user-set PR baseline.
 // When no baseline is set, returns sets unchanged (legacy all-time behavior).
@@ -1068,76 +1012,12 @@ const listView = ref<'exercises' | 'timeline'>(
 )
 watch(listView, v => localStorage.setItem('wt-list-view', v))
 
-// ── Timeline view ───────────────────────────────────────────────
-const timelineLimit = ref(50)
-
-interface TimelineEntry {
-  exerciseId: string
-  exerciseName: string
-  set: { id: string; date: string; weight: number; reps: number; estimated1RM: number }
+// ── Timeline view (extracted to WorkoutTimeline.vue) ────────────
+/** Timeline rows carry only the exercise id — resolve it before opening the edit modal. */
+function onTimelineEditSet(exerciseId: string, set: WorkoutSet) {
+  const exercise = store.exercises.find(e => e.id === exerciseId)
+  if (exercise) openEditModal(exercise, set)
 }
-
-const timelineSets = computed((): TimelineEntry[] => {
-  const entries: TimelineEntry[] = []
-  for (const ex of store.exercises) {
-    for (const s of ex.sets) {
-      entries.push({ exerciseId: ex.id, exerciseName: ex.name, set: s })
-    }
-  }
-  return entries.sort((a, b) => b.set.date.slice(0, 10).localeCompare(a.set.date.slice(0, 10)))
-})
-
-// PR badge map: for each set, determine if it's the best e1RM (weight PR)
-// or the best reps at its weight (rep PR) for that exercise.
-// Respects the user-set PR baseline: when set, only sets on/after baseline
-// are eligible for badges AND serve as the comparison pool.
-const timelinePRMap = computed((): Record<string, 'pr' | 'repPR'> => {
-  const map: Record<string, 'pr' | 'repPR'> = {}
-  for (const ex of store.exercises) {
-    if (ex.sets.length === 0) continue
-    const eligible = filterSetsSinceBaseline(ex.sets)
-    if (eligible.length === 0) continue
-    const best1RM = Math.max(...eligible.map(s => s.estimated1RM))
-    // Weight PR: set(s) achieving the best e1RM within the baseline window
-    for (const s of eligible) {
-      if (s.estimated1RM === best1RM) {
-        map[s.id] = 'pr'
-      }
-    }
-    // Rep PR: best reps at each weight within the baseline window
-    const bestRepsAtWeight: Record<number, number> = {}
-    for (const s of eligible) {
-      bestRepsAtWeight[s.weight] = Math.max(bestRepsAtWeight[s.weight] ?? 0, s.reps)
-    }
-    for (const s of eligible) {
-      if (!map[s.id] && s.reps === bestRepsAtWeight[s.weight] && eligible.filter(o => o.weight === s.weight).length > 1) {
-        map[s.id] = 'repPR'
-      }
-    }
-  }
-  return map
-})
-
-const filteredTimelineSets = computed(() => {
-  if (!hideWarmups.value) return timelineSets.value
-  const ids = warmupSetIds.value
-  return timelineSets.value.filter(e => !ids.has(e.set.id))
-})
-
-const visibleTimelineGroups = computed(() => {
-  const limited = filteredTimelineSets.value.slice(0, timelineLimit.value)
-  const groups: { key: string; label: string; sets: TimelineEntry[] }[] = []
-  for (const entry of limited) {
-    const k = toLocalDateKey(entry.set.date)
-    const last = groups[groups.length - 1]
-    if (last && last.key === k) {
-      last.sets.push(entry)
-    } else {
-      groups.push({ key: k, label: formatShortDate(entry.set.date), sets: [entry] })
-    }
-  }
-  return groups
-})
 
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
@@ -1543,13 +1423,6 @@ function beginDrag(index: number) {
   document.addEventListener('touchcancel', onEnd, { once: true })
   document.addEventListener('mousemove', onMove)
   document.addEventListener('mouseup', onEnd, { once: true })
-}
-
-// ── Set actions (tap-to-reveal) ──────────────────────────────────
-const activeSetId = ref<string | null>(null)
-
-function toggleSetActions(setId: string) {
-  activeSetId.value = activeSetId.value === setId ? null : setId
 }
 
 /** Relative time string used on the main exercise list ("today", "yesterday", "4 days ago"). */
