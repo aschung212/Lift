@@ -45,6 +45,7 @@ export interface UseSVGTimeSeriesReturn {
   chartH: number
   minVal: ComputedRef<number>
   maxVal: ComputedRef<number>
+  midVal: ComputedRef<number>
   points: ComputedRef<GraphPoint[]>
   linePoints: ComputedRef<string>
   areaPoints: ComputedRef<string>
@@ -110,6 +111,9 @@ export function useSVGTimeSeries(
     }
     return max
   })
+
+  /** Midpoint value, aligned with the middle horizontal gridline. */
+  const midVal = computed(() => (minVal.value + maxVal.value) / 2)
 
   /** Map data entries to SVG coordinates. Returns [] if fewer than 2 points. */
   const points = computed((): GraphPoint[] => {
@@ -225,6 +229,7 @@ export function useSVGTimeSeries(
     // Computed values
     minVal,
     maxVal,
+    midVal,
     points,
     linePoints,
     areaPoints,

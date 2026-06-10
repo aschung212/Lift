@@ -67,7 +67,7 @@ test.describe('Exercise CRUD', () => {
     await expect(page.locator('.wtSetRow')).toHaveCount(2)
   })
 
-  test('creates a second exercise via top-bar picker', async ({ page }) => {
+  test('creates a second exercise via the top-bar "+"', async ({ page }) => {
     // Create first exercise to clear fresh-start state. Save requires a set
     // (weight + reps) — without it the modal transitions to a different
     // state whose close button isn't .repMaxBtnClose, so mirror the
@@ -80,12 +80,9 @@ test.describe('Exercise CRUD', () => {
     await page.locator('.repMaxBtnClose').click()
     await expect(page.locator('.wtExerciseName', { hasText: 'OHP' })).toBeVisible()
 
-    // Use top-bar "+" button to open exercise picker
+    // The top-bar "+" now opens the New Exercise modal directly (no picker hop).
     await page.locator('.topBarPlusBtn').click()
-    await expect(page.locator('#timeline-picker-title')).toBeVisible()
-
-    // Click "+ New exercise" in the picker
-    await page.locator('.wtExPickerName', { hasText: '+ New exercise' }).click()
+    await expect(page.locator('#log-modal-title')).toHaveText('New Exercise')
 
     // Fill in second exercise
     await page.fill('input[placeholder="e.g. Bench Press"]', 'Bench Press')

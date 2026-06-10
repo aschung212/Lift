@@ -2358,6 +2358,35 @@ html.theme-fading .settingsSheet {
   padding: 4px 16px 0;
 }
 
+/* Timeline view: "Log a set" on the left, warmup toggle on the right. */
+.wtTimelineControlsRow {
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.wtTimelineLogBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  min-height: 32px;
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  color: var(--text-on-accent, var(--bg-primary));
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wtTimelineLogBtn:active {
+  opacity: 0.8;
+  background: var(--accent-hover, var(--accent));
+}
+
 .wtWarmupToggle {
   display: inline-flex;
   align-items: center;
@@ -5239,6 +5268,7 @@ html.theme-fading .settingsSheet {
   border-radius: 10px;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .wtPrevSessionChip:active {
@@ -5251,6 +5281,28 @@ html.theme-fading .settingsSheet {
   opacity: 0.45;
   text-decoration: line-through;
   border-style: dashed;
+}
+
+/* Usual-ladder rung states (#741): the up-next rung gets the accent
+   treatment; rungs below today's heaviest set are dimmed as skipped
+   (no strikethrough — visually distinct from logged/used). */
+.wtPrevSessionChipNext {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.wtPrevSessionChipSkipped {
+  opacity: 0.45;
+}
+
+/* Overload nudge card (#741) — accent, never --pr gold (gold is reserved
+   for actual PRs). Solid border distinguishes the actionable suggestion
+   from the dashed "to beat" target cards. */
+.wtOverloadCard {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  border-style: solid;
 }
 
 .wtInputRow {
@@ -5794,6 +5846,12 @@ html.theme-fading .settingsSheet {
   fill: var(--text-muted);
   font-family: inherit;
   font-variant-numeric: tabular-nums;
+}
+
+/* Midpoint label sits on the central gridline — slightly dimmer than the
+   min/max endpoints so the range bounds stay the primary reference. */
+.wtGYLabelMid {
+  opacity: 0.7;
 }
 
 .wtGDateLabel {
@@ -6610,6 +6668,22 @@ html.theme-fading .settingsSheet {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--text-on-accent);
+}
+
+/* Time-range selector inside the exercise progress chart card. The card
+   already supplies horizontal padding, so the row only needs vertical
+   rhythm; buttons reuse .bwPeriodBtn styling. */
+.exGraphPeriodRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.exGraphRangeEmpty {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px 0 16px;
 }
 
 .bwStatsRow {
