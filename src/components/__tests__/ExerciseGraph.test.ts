@@ -26,6 +26,10 @@ function makeSet(weight: number, reps: number, date: string): WorkoutSet {
   return { id: `s-${date}`, weight, reps, date: `${date}T10:00:00`, estimated1RM }
 }
 
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
+}
+
 describe('ExerciseGraph', () => {
   describe('with fewer than 2 days of data', () => {
     it('shows nothing when exercise has no sets', () => {
@@ -154,6 +158,68 @@ describe('ExerciseGraph', () => {
       // In PR mode, the middle point (not a PR) should be filtered out → 2 dots
       const dots = wrapper.findAll('circle')
       expect(dots.length).toBe(2)
+    })
+  })
+
+  describe('time-range selector', () => {
+    const recentExercise = makeExercise([
+      makeSet(135, 8, daysAgo(200)),
+      makeSet(155, 6, daysAgo(60)),
+      makeSet(175, 4, daysAgo(10)),
+    ])
+
+    it('renders 1M/3M/1Y/All range buttons', () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise: recentExercise } })
+      const btns = wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')
+      expect(btns.map(b => b.text())).toEqual(['1M', '3M', '1Y', 'All'])
+    })
+
+    it('defaults to All (full history) with all points visible', () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise: recentExercise } })
+      const active = wrapper.find('.bwPeriodBtn.active')
+      expect(active.text()).toBe('All')
+      expect(wrapper.findAll('circle').length).toBe(3)
+    })
+
+    it('filters points to the selected window on click', async () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise: recentExercise } })
+      // 3M window excludes the 200-days-ago point → 2 points remain
+      await wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')[1].trigger('click')
+      expect(wrapper.find('.bwPeriodBtn.active').text()).toBe('3M')
+      expect(wrapper.findAll('circle').length).toBe(2)
+    })
+
+    it('shows an empty-range message when the window has fewer than 2 points', async () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise: recentExercise } })
+      // 1M window includes only the 10-days-ago point → not enough to plot
+      await wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')[0].trigger('click')
+      expect(wrapper.find('svg').exists()).toBe(false)
+      expect(wrapper.find('.exGraphRangeEmpty').exists()).toBe(true)
+      // selector stays visible so the user can widen the range
+      expect(wrapper.find('.exGraphPeriodRow').exists()).toBe(true)
+    })
+
+    it('does not show a PR badge when the all-time PR is outside the window', async () => {
+      // All-time best (200 days ago) sits outside the 3M window; the windowed
+      // max must not be mislabeled as a PR.
+      const exercise = makeExercise([
+        makeSet(225, 5, daysAgo(200)), // all-time best e1RM
+        makeSet(135, 8, daysAgo(60)),
+        makeSet(155, 6, daysAgo(10)),
+      ])
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      // All view: PR dot present (best session in view)
+      expect(wrapper.findAll('.wtGDotPR').length).toBe(1)
+      // 3M view: best session excluded → no PR badge
+      await wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')[1].trigger('click')
+      expect(wrapper.findAll('.wtGDotPR').length).toBe(0)
+    })
+
+    it('keeps range buttons accessible with aria-pressed state', () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise: recentExercise } })
+      const allBtn = wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')[3]
+      expect(allBtn.attributes('aria-pressed')).toBe('true')
+      expect(allBtn.attributes('aria-label')).toBe('Show all time')
     })
   })
 
