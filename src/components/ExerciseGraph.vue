@@ -61,13 +61,20 @@
         text-anchor="middle"
       >PR</text>
 
-      <!-- Y-axis labels: max at top, min at bottom -->
+      <!-- Y-axis labels: max at top, midpoint, min at bottom -->
       <text
         :x="PAD_L - 5"
         :y="PAD_T + 4"
         class="wtGYLabel"
         text-anchor="end"
       >{{ displayWeight(maxVal) }} {{ weightUnit }}</text>
+      <text
+        v-if="displayWeight(midVal) !== displayWeight(maxVal) && displayWeight(midVal) !== displayWeight(minVal)"
+        :x="PAD_L - 5"
+        :y="PAD_T + chartH / 2 + 4"
+        class="wtGYLabel wtGYLabelMid"
+        text-anchor="end"
+      >{{ displayWeight(midVal) }} {{ weightUnit }}</text>
       <text
         :x="PAD_L - 5"
         :y="PAD_T + chartH + 4"
@@ -201,7 +208,7 @@ const periodTimeRange = computed(() => {
 
 const {
   W, H, PAD_L, PAD_R, PAD_T, chartH,
-  minVal, maxVal, points: basePoints,
+  minVal, maxVal, midVal, points: basePoints,
   linePoints, areaPoints, gridYs,
   shouldShowLabel, formatDate,
 } = useSVGTimeSeries(graphData, { timeRange: periodTimeRange })
