@@ -5793,6 +5793,12 @@ html.theme-fading .settingsSheet {
   font-variant-numeric: tabular-nums;
 }
 
+/* Midpoint label sits on the central gridline — slightly dimmer than the
+   min/max endpoints so the range bounds stay the primary reference. */
+.wtGYLabelMid {
+  opacity: 0.7;
+}
+
 .wtGDateLabel {
   font-size: var(--font-caption2);
   fill: var(--text-muted);

@@ -54,6 +54,32 @@ describe('useSVGTimeSeries', () => {
     })
   })
 
+  describe('midVal', () => {
+    it('returns 0 when data is empty', () => {
+      const data = ref<TimeSeriesEntry[]>([])
+      const { midVal } = useSVGTimeSeries(data)
+      expect(midVal.value).toBe(0)
+    })
+
+    it('is the midpoint between min and max', () => {
+      const data = ref(makeEntries([
+        ['2025-01-01', 100],
+        ['2025-01-02', 200],
+      ]))
+      const { midVal } = useSVGTimeSeries(data)
+      expect(midVal.value).toBe(150)
+    })
+
+    it('aligns with the middle gridline via valueToY', () => {
+      const data = ref(makeEntries([
+        ['2025-01-01', 100],
+        ['2025-01-02', 200],
+      ]))
+      const { midVal, valueToY } = useSVGTimeSeries(data)
+      expect(valueToY(midVal.value)).toBeCloseTo(PAD_T + chartH / 2)
+    })
+  })
+
   describe('points', () => {
     it('returns empty array with fewer than 2 data points', () => {
       const data = ref(makeEntries([['2025-01-01', 100]]))

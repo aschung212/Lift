@@ -117,10 +117,39 @@ describe('ExerciseGraph', () => {
         props: { exercise }
       })
       const yLabels = wrapper.findAll('.wtGYLabel')
-      expect(yLabels.length).toBe(2)
-      // Should contain "lbs" from mocked weightUnit
-      expect(yLabels[0].text()).toContain('lbs')
-      expect(yLabels[1].text()).toContain('lbs')
+      // max, midpoint, min — all distinct for this data
+      expect(yLabels.length).toBe(3)
+      for (const label of yLabels) {
+        expect(label.text()).toContain('lbs')
+      }
+    })
+
+    it('renders a midpoint Y-axis label between min and max', () => {
+      const wrapper = mount(ExerciseGraph, {
+        props: { exercise }
+      })
+      const yLabels = wrapper.findAll('.wtGYLabel')
+      const values = yLabels.map(l => parseInt(l.text(), 10))
+      const mid = wrapper.find('.wtGYLabelMid')
+      expect(mid.exists()).toBe(true)
+      const midValue = parseInt(mid.text(), 10)
+      const max = Math.max(...values)
+      const min = Math.min(...values)
+      expect(midValue).toBeLessThan(max)
+      expect(midValue).toBeGreaterThan(min)
+    })
+
+    it('omits the midpoint label when it collides with an endpoint', () => {
+      // Flat progression: min == mid == max, so the mid label is redundant
+      const flat = makeExercise([
+        makeSet(100, 5, '2026-01-01'),
+        makeSet(100, 5, '2026-02-01'),
+      ])
+      const wrapper = mount(ExerciseGraph, {
+        props: { exercise: flat }
+      })
+      expect(wrapper.find('.wtGYLabelMid').exists()).toBe(false)
+      expect(wrapper.findAll('.wtGYLabel').length).toBe(2)
     })
 
     it('has accessible aria-label on SVG', () => {
