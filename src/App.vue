@@ -83,7 +83,7 @@
           <KeepAlive>
             <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
             <CalendarView v-else-if="activeTab === 'calendar'" />
-            <BodyweightTracker v-else-if="activeTab === 'weight'" />
+            <BodyView v-else-if="activeTab === 'weight'" />
           </KeepAlive>
         </div>
       </main>
@@ -211,8 +211,8 @@ const CalendarView = defineAsyncComponent({
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
-const BodyweightTracker = defineAsyncComponent({
-  loader: () => import('./views/BodyweightTracker.vue'),
+const BodyView = defineAsyncComponent({
+  loader: () => import('./views/BodyView.vue'),
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
@@ -229,6 +229,7 @@ import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
 import { useBodyweightStore } from './stores/bodyweight'
+import { useBodyMeasurementsStore } from './stores/bodyMeasurements'
 import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
@@ -562,6 +563,7 @@ onMounted(async () => {
   const storeMap: Record<StoreKey, { _reloadFromStorage(): void }> = {
     workout: useWorkoutStore(),
     bodyweight: useBodyweightStore(),
+    bodyMeasurements: useBodyMeasurementsStore(),
     preferences: usePreferencesStore(),
     progression: progressionStore,
   }

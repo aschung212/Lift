@@ -39,6 +39,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      body_measurements: {
+        Row: {
+          created_at: string
+          date: string
+          deleted_at: string | null
+          id: string
+          type: string
+          user_id: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          deleted_at?: string | null
+          id?: string
+          type: string
+          user_id: string
+          value: number
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          deleted_at?: string | null
+          id?: string
+          type?: string
+          user_id?: string
+          value?: number
+        }
+        Relationships: []
+      }
       bodyweight_entries: {
         Row: {
           created_at: string

@@ -289,6 +289,8 @@ re-sync the `dist/` bundle into the native shell.
 │   │   ├── ExerciseGraph.vue    # Per-exercise SVG line chart (time-proportional)
 │   │   ├── CalendarView.vue     # Monthly/weekly calendar, PR map, set detail, tag filtering
 │   │   ├── BodyweightTracker.vue # Weight log, period stats, SVG chart, low/high badges
+│   │   ├── BodyMeasurements.vue # Chest/arms/waist/thighs circumference log + trend chart
+│   │   ├── BodyView.vue         # "Body" tab wrapper: bodyweight + measurements cards
 │   │   ├── AuthScreen.vue       # Email/password + Google sign-in
 │   │   ├── ErrorBoundary.vue    # Global error handler with fallback UI
 │   │   ├── OnboardingScreen.vue # Welcome flow with 3 entry paths

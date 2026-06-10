@@ -13,6 +13,7 @@ vi.stubGlobal('matchMedia', vi.fn(() => ({
 // Mock all stores that useAuth imports
 const mockWorkoutReset = vi.fn()
 const mockBodyweightReset = vi.fn()
+const mockBodyMeasurementsReset = vi.fn()
 const mockPreferencesReset = vi.fn()
 const mockProgressionReset = vi.fn()
 vi.mock('../../stores/workout', () => ({
@@ -20,6 +21,9 @@ vi.mock('../../stores/workout', () => ({
 }))
 vi.mock('../../stores/bodyweight', () => ({
   useBodyweightStore: () => ({ init: vi.fn(), $reset: mockBodyweightReset })
+}))
+vi.mock('../../stores/bodyMeasurements', () => ({
+  useBodyMeasurementsStore: () => ({ init: vi.fn(), $reset: mockBodyMeasurementsReset })
 }))
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({ init: vi.fn(), $reset: mockPreferencesReset })
@@ -240,7 +244,7 @@ describe('useAuth', () => {
 
       // Set all localStorage keys used by the app
       const allKeys = [
-        'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
+        'workout-exercises', 'bodyweight-entries', 'body-measurements', 'user-progression', 'user-preferences',
         'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
         'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
         'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
