@@ -19,7 +19,7 @@ export type CrossTabMessage =
   | { type: 'sync-status'; status: SyncStatus; timestamp: number }
   | { type: 'sw-update'; timestamp: number }
 
-export type StoreKey = 'workout' | 'bodyweight' | 'preferences' | 'progression'
+export type StoreKey = 'workout' | 'bodyweight' | 'bodyMeasurements' | 'preferences' | 'progression'
 
 // ---- Singleton channel ----
 

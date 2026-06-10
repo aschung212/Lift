@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { migrateLocalStorageToSupabase } from '../lib/migrate'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
+import { useBodyMeasurementsStore } from '../stores/bodyMeasurements'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { useTheme } from '../composables/useTheme'
@@ -67,6 +68,7 @@ function syncSettingsWithComposables(): void {
 async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
+  const bodyMeasurementsStore = useBodyMeasurementsStore()
   const preferencesStore = usePreferencesStore()
   const progressionStore = useProgressionStore()
   await migrateLocalStorageToSupabase(userId)
@@ -77,6 +79,7 @@ async function initStores(userId: string): Promise<void> {
   await Promise.all([
     workoutStore.init(userId),
     bodyweightStore.init(userId),
+    bodyMeasurementsStore.init(userId),
     preferencesStore.init(userId),
     progressionStore.init(userId),
   ])
@@ -147,6 +150,7 @@ async function devSignIn(): Promise<void> {
 function resetStores(): void {
   useWorkoutStore().$reset()
   useBodyweightStore().$reset()
+  useBodyMeasurementsStore().$reset()
   usePreferencesStore().$reset()
   useProgressionStore().$reset()
 }
@@ -183,6 +187,7 @@ async function deleteAccount(): Promise<void> {
       supabase.from('user_progression').delete().eq('user_id', userId),
       supabase.from('user_preferences').delete().eq('user_id', userId),
       supabase.from('bodyweight_entries').delete().eq('user_id', userId),
+      supabase.from('body_measurements').delete().eq('user_id', userId),
       supabase.from('exercises').delete().eq('user_id', userId), // cascades to sets
     ])
 
@@ -195,7 +200,7 @@ async function deleteAccount(): Promise<void> {
 
   // Clear all localStorage keys used by the app
   const localStorageKeys = [
-    'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
+    'workout-exercises', 'bodyweight-entries', 'body-measurements', 'user-progression', 'user-preferences',
     'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
     'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
     'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
