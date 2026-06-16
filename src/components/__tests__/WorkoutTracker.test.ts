@@ -1414,6 +1414,79 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  describe('warmup ramp (LIFT-725)', () => {
+    async function openBenchModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    // Last session whose heaviest set is 225 lbs — the stable ramp target.
+    function priorTop225() {
+      return {
+        date: '2026-01-20',
+        sets: [
+          { id: 's-a', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's-b', date: '2026-01-20T12:00:00', weight: 225, reps: 3, estimated1RM: 248 },
+        ],
+      }
+    }
+
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    it('renders a collapsed warmup card ramping to last session top set', async () => {
+      mockGetLastSession.mockReturnValue(priorTop225())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const card = wrapper.find('.wtWarmupCard')
+      expect(card.exists()).toBe(true)
+      expect(card.text()).toContain('Ramp to 225 lbs')
+      // Collapsed by default — no rows visible until expanded.
+      expect(card.findAll('.wtPrTargetsRow')).toHaveLength(0)
+    })
+
+    it('expands to show the ramp steps and fills inputs on tap', async () => {
+      mockGetLastSession.mockReturnValue(priorTop225())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await wrapper.find('.wtWarmupCard .wtPrTargetsHeader').trigger('click')
+      const rows = wrapper.findAll('.wtWarmupCard .wtPrTargetsRow')
+      // 40/60/80/90% of 225 → 90/135/180/205, all below the working weight.
+      expect(rows).toHaveLength(4)
+      expect(rows[0].text()).toContain('90 lbs × 8')
+
+      await rows[1].trigger('click')
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('135')
+      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('5')
+      // Re-find: tapping mutates warmupUsed, so Vue re-renders and the held node goes stale.
+      expect(wrapper.findAll('.wtWarmupCard .wtPrTargetsRow')[1].classes()).toContain('wtPrTargetsRowActive')
+    })
+
+    it('does not render when the usual ladder is active (avoids a parallel warmup row)', async () => {
+      mockGetLastSession.mockReturnValue(priorTop225())
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [
+          { weightLbs: 45, reps: 10 },
+          { weightLbs: 135, reps: 8 },
+          { weightLbs: 225, reps: 5 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtWarmupCard').exists()).toBe(false)
+    })
+
+    it('does not render when there is no prior session', async () => {
+      mockGetLastSession.mockReturnValue(null)
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtWarmupCard').exists()).toBe(false)
+    })
+  })
+
   describe('exercise search', () => {
     const FIVE_EXERCISES: Exercise[] = [
       { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
