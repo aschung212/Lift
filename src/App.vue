@@ -234,6 +234,8 @@ import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
 import { useServiceWorker } from './composables/useServiceWorker'
+import { useAppBadge } from './composables/useAppBadge'
+import { todayISO, toLocalDateKey } from './lib/dates'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
 
 const { currentTheme, THEME_PREVIEWS, resolvedMode, isThemeUnlocked } = useTheme()
@@ -251,6 +253,33 @@ const { toast: undoToast, performUndo } = useUndoToast()
 const workoutStoreForInstall = useWorkoutStore()
 const installWorkoutDays = computed(() => workoutStoreForInstall.workoutDates.length)
 const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
+
+// ── Unfinished-workout app-icon badge ───────────────────────────
+// When the user backgrounds the app with sets logged today, badge the
+// Home-Screen icon with that count so they're nudged back to finish — and
+// clear it the moment they return. No-ops where the Badging API is
+// unsupported (see useAppBadge). Mirrors WorkoutTracker's `setsLoggedToday`,
+// which drives the in-app "Finish workout" affordance.
+const { setBadge: setAppBadge, clearBadge: clearAppBadge } = useAppBadge()
+const setsLoggedToday = computed(() => {
+  const today = todayISO()
+  let count = 0
+  for (const ex of workoutStoreForInstall.exercises) {
+    for (const s of ex.sets) {
+      if (toLocalDateKey(s.date) === today) count++
+    }
+  }
+  return count
+})
+function onBadgeVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    if (setsLoggedToday.value > 0) setAppBadge(setsLoggedToday.value)
+    else clearAppBadge()
+  } else {
+    // Back in the foreground — the nudge has served its purpose.
+    clearAppBadge()
+  }
+}
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -471,6 +500,7 @@ function onBeforeUnload() {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  document.addEventListener('visibilitychange', onBadgeVisibilityChange)
   logEvent('session_start')
 
   // Load Supabase SDK off the critical render path, then start auth.
@@ -577,6 +607,8 @@ onMounted(async () => {
 let unsubCrossTab: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  document.removeEventListener('visibilitychange', onBadgeVisibilityChange)
+  clearAppBadge()
   unsubCrossTab?.()
 })
 </script>
