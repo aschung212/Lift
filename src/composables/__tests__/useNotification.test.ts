@@ -189,6 +189,57 @@ describe('useNotification', () => {
       expect(result).toBe(true)
     })
 
+    it('passes action buttons through to the ServiceWorker notification', async () => {
+      const mockShowNotification = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'serviceWorker', {
+        value: { getRegistration: vi.fn().mockResolvedValue({ showNotification: mockShowNotification }) },
+        configurable: true,
+      })
+      Object.defineProperty(globalThis, 'Notification', {
+        value: { permission: 'granted' },
+        writable: true,
+        configurable: true,
+      })
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+
+      const actions = [
+        { action: 'snooze', title: '+1 min' },
+        { action: 'open', title: 'Log next set' },
+      ]
+      const { notify } = useNotification()
+      const result = await notify('Rest Complete', { body: 'Time to lift', actions })
+      expect(result).toBe(true)
+      expect(mockShowNotification).toHaveBeenCalledWith('Rest Complete', expect.objectContaining({ actions }))
+    })
+
+    it('strips action buttons on the Notification constructor fallback (unsupported there)', async () => {
+      Object.defineProperty(navigator, 'serviceWorker', {
+        value: { getRegistration: vi.fn().mockResolvedValue(undefined) },
+        configurable: true,
+      })
+      let captured: NotificationOptions | undefined
+      class MockNotification {
+        static permission = 'granted'
+        close = vi.fn()
+        onclick = null
+        constructor(public title: string, public options?: NotificationOptions) {
+          captured = options
+        }
+      }
+      // @ts-expect-error test mock
+      globalThis.Notification = MockNotification
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+
+      const { notify } = useNotification()
+      const result = await notify('Rest Complete', {
+        body: 'Time to lift',
+        actions: [{ action: 'snooze', title: '+1 min' }],
+      })
+      expect(result).toBe(true)
+      expect(captured).toBeDefined()
+      expect('actions' in (captured as object)).toBe(false)
+    })
+
     it('does not show notification when permission is not granted', async () => {
       Object.defineProperty(globalThis, 'Notification', {
         value: { permission: 'default' },

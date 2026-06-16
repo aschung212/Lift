@@ -127,6 +127,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Pull in the rest-timer notification action handler (LIFT-751) so the
+        // generated SW can respond to "+1 min" / "Log next set" taps.
+        importScripts: ['sw-rest-timer-actions.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         globIgnores: [
           'screenshot-*.png',

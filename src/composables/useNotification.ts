@@ -15,6 +15,31 @@ import { ref, onUnmounted, type Ref } from 'vue'
 
 const PERMISSION_KEY = 'notification-permission-asked'
 
+/**
+ * A single notification action button. Only rendered by persistent
+ * (ServiceWorker) notifications — the `Notification` constructor ignores them,
+ * and iOS Home-Screen PWAs render them partially, so they must degrade
+ * gracefully. Missing from the DOM `NotificationOptions` lib type, so declared
+ * locally.
+ */
+export interface NotificationAction {
+  action: string
+  title: string
+  icon?: string
+}
+
+/**
+ * Notification options extended with the non-standard / SW-only fields Lift
+ * relies on: `renotify` (Chrome/Android re-fire with the same tag), `actions`
+ * (persistent-notification action buttons), and `wasBackgrounded` (an internal
+ * flag, stripped before reaching the platform — see `notify`).
+ */
+export type NotifyOptions = NotificationOptions & {
+  wasBackgrounded?: boolean
+  renotify?: boolean
+  actions?: NotificationAction[]
+}
+
 /** Whether the browser supports the Notification API */
 function isSupported(): boolean {
   return 'Notification' in window
@@ -56,7 +81,7 @@ async function requestPermission(): Promise<boolean> {
  */
 async function notify(
   title: string,
-  options?: NotificationOptions & { wasBackgrounded?: boolean },
+  options?: NotifyOptions,
 ): Promise<boolean> {
   if (!hasPermission()) return false
 
@@ -65,11 +90,11 @@ async function notify(
   // Only fire if the app IS backgrounded or WAS backgrounded during the timer
   if (!isBackgrounded() && !wasBg) return false
 
-  // `renotify` is a non-standard but widely-supported Chrome/Android extension
-  // that re-fires a notification with the same tag (so a second rest-timer
-  // completion still alerts). It's missing from the standard NotificationOptions
-  // TS type, so we extend it locally rather than asserting the whole object.
-  const finalOptions: NotificationOptions & { renotify?: boolean } = {
+  // `renotify` re-fires a notification with the same tag (so a second
+  // rest-timer completion still alerts) and `actions` adds tappable buttons;
+  // both are SW-/persistent-notification features missing from the standard
+  // NotificationOptions TS type, so we use the locally-extended NotifyOptions.
+  const finalOptions: NotifyOptions = {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'lift-rest-timer',
@@ -78,7 +103,8 @@ async function notify(
   }
 
   try {
-    // Prefer ServiceWorker showNotification — required on Android Chrome & iOS PWAs
+    // Prefer ServiceWorker showNotification — required on Android Chrome & iOS
+    // PWAs and the only path that renders action buttons.
     const reg = await navigator.serviceWorker?.getRegistration()
     if (reg) {
       await reg.showNotification(title, finalOptions)
@@ -89,7 +115,11 @@ async function notify(
   }
 
   try {
-    const notification = new Notification(title, finalOptions)
+    // The non-persistent Notification constructor cannot render `actions` and
+    // throws in some engines if they're passed, so drop them on this path.
+    const constructorOptions: NotifyOptions = { ...finalOptions }
+    delete constructorOptions.actions
+    const notification = new Notification(title, constructorOptions)
     setTimeout(() => notification.close(), 5000)
     notification.onclick = () => {
       window.focus()
@@ -150,7 +180,7 @@ export interface UseNotificationReturn {
   isBackgrounded: () => boolean
   hasAskedBefore: () => boolean
   requestPermission: () => Promise<boolean>
-  notify: (title: string, options?: NotificationOptions & { wasBackgrounded?: boolean }) => Promise<boolean>
+  notify: (title: string, options?: NotifyOptions) => Promise<boolean>
 }
 
 export function useNotification(): UseNotificationReturn {

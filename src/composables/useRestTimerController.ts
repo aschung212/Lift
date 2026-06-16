@@ -1,4 +1,4 @@
-import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, watch, onUnmounted, type Ref, type ComputedRef } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 import { useNotification, useBackgroundTracker } from './useNotification'
 import { useRestTimer } from './useRestTimer'
@@ -129,6 +129,7 @@ export interface RestTimerController {
   startRestTimer: () => void
   stopTimer: () => void
   restartTimer: () => void
+  snoozeTimer: (seconds?: number) => void
   togglePause: () => void
   setRestDuration: (val: number) => void
   addPreset: () => void
@@ -233,6 +234,13 @@ export function useRestTimerController(
             sendNotification('Rest Complete', {
               body: 'Time to get back to work 💪',
               wasBackgrounded: wasBackgrounded.value,
+              // Action buttons let users react without fully reopening the app.
+              // Handled in the service worker (sw-rest-timer-actions.js), which
+              // relays the tap back to this controller via postMessage.
+              actions: [
+                { action: 'snooze', title: '+1 min' },
+                { action: 'open', title: 'Log next set' },
+              ],
             })
           }
           stopBgTracking()
@@ -289,6 +297,35 @@ export function useRestTimerController(
     timerPaused.value = false
     startInterval()
   }
+
+  /**
+   * Start a fresh, transient rest countdown — used by the "+1 min" rest-timer
+   * notification action so the user can grab more rest without reopening the
+   * app fully. Intentionally does NOT persist `rest-duration`: the user's
+   * chosen default must survive a one-off snooze.
+   */
+  function snoozeTimer(seconds = 60) {
+    ensureAudioCtx()
+    timerActive.value = true
+    timerPaused.value = false
+    timerStopping.value = false
+    timerSeconds.value = seconds
+    timerEndTime = Date.now() + seconds * 1000
+    timerAnnouncement.value = `Rest timer extended, ${formatTimerAnnouncement(seconds)}`
+    startInterval()
+  }
+
+  // ── Service-worker notification actions ───────────────────────
+  // The rest-timer notification's action buttons fire `notificationclick` in
+  // the service worker (not the page); it relays the chosen action here.
+  function handleSWMessage(event: MessageEvent) {
+    if (event.data?.type !== 'lift-rest-timer-action') return
+    if (event.data.action === 'snooze') snoozeTimer(60)
+  }
+  navigator.serviceWorker?.addEventListener('message', handleSWMessage)
+  onUnmounted(() => {
+    navigator.serviceWorker?.removeEventListener('message', handleSWMessage)
+  })
 
   function setRestDuration(val: number) {
     ensureAudioCtx()
@@ -432,6 +469,7 @@ export function useRestTimerController(
     startRestTimer,
     stopTimer,
     restartTimer,
+    snoozeTimer,
     togglePause,
     setRestDuration,
     addPreset,
