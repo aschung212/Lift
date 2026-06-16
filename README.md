@@ -90,7 +90,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Set count badge on each exercise tag
 - Log sets directly from the calendar
 - Tag filtering shared with workouts tab
-- Weekly view surfaces a muscle-group volume snapshot and a week-over-week training-volume trend line (hand-rolled SVG)
+- Weekly view surfaces a muscle-group volume snapshot (tap any tag to drill into its week-over-week volume trend) plus an overall training-volume trend line (hand-rolled SVG)
 
 ### Body Weight Tracking
 - Log daily weigh-ins with date

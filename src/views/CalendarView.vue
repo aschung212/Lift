@@ -216,6 +216,7 @@
         :weekly-volume="weeklyVolume"
         :max-sets="maxSets"
         :total-sets="totalSets"
+        :tag-trends="tagTrends"
         :collapsed="volumeCollapsed"
         @toggle-collapsed="volumeCollapsed = !volumeCollapsed"
       />
@@ -314,6 +315,7 @@ import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useModal } from '../composables/useModal'
 import { useTagVolume } from '../composables/useTagVolume'
+import { useTagVolumeTrend } from '../composables/useTagVolumeTrend'
 import { useTagRecovery } from '../composables/useTagRecovery'
 import { useVolumeTrend } from '../composables/useVolumeTrend'
 
@@ -611,6 +613,7 @@ const weekDays = computed(() => {
 const weekDateStrings = computed(() => weekDays.value.map(d => d.dateStr))
 const exercisesRef = computed(() => filteredExercises.value)
 const { weeklyVolume, maxSets, totalSets } = useTagVolume(exercisesRef, weekDateStrings)
+const { tagTrends } = useTagVolumeTrend(exercisesRef)
 
 // ── Week-over-week volume trend (full history, respects tag filter) ──
 const { weeklyVolume: volumeTrend, totalVolume: volumeTrendTotal } = useVolumeTrend(exercisesRef)

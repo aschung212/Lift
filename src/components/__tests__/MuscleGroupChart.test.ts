@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import MuscleGroupChart from '../MuscleGroupChart.vue'
 import type { TagVolume } from '../../composables/useTagVolume'
+import type { TimeSeriesEntry } from '../../composables/useSVGTimeSeries'
 
 const sampleVolume: TagVolume[] = [
   { tag: 'Chest', sets: 12 },
@@ -9,13 +10,28 @@ const sampleVolume: TagVolume[] = [
   { tag: 'Legs', sets: 10 },
 ]
 
-function mountChart(props?: Partial<{ weeklyVolume: TagVolume[]; maxSets: number; totalSets: number; collapsed: boolean }>) {
+const sampleTrends: Record<string, TimeSeriesEntry[]> = {
+  Chest: [
+    { date: '2026-03-02', value: 1000 },
+    { date: '2026-03-09', value: 1400 },
+    { date: '2026-03-16', value: 1200 },
+  ],
+  Back: [
+    { date: '2026-03-09', value: 800 },
+    { date: '2026-03-16', value: 900 },
+  ],
+  // Legs has only one week → not expandable.
+  Legs: [{ date: '2026-03-16', value: 600 }],
+}
+
+function mountChart(props?: Partial<{ weeklyVolume: TagVolume[]; maxSets: number; totalSets: number; collapsed: boolean; tagTrends: Record<string, TimeSeriesEntry[]> }>) {
   return mount(MuscleGroupChart, {
     props: {
       weeklyVolume: props?.weeklyVolume ?? sampleVolume,
       maxSets: props?.maxSets ?? 12,
       totalSets: props?.totalSets ?? 30,
       collapsed: props?.collapsed ?? false,
+      ...(props?.tagTrends !== undefined ? { tagTrends: props.tagTrends } : {}),
     },
   })
 }
@@ -133,6 +149,69 @@ describe('MuscleGroupChart', () => {
       const wrapper = mountChart()
       const header = wrapper.find('.mgHeader')
       expect(header.exists()).toBe(true)
+    })
+  })
+
+  describe('tag trend expansion', () => {
+    it('renders rows as non-interactive divs when no tagTrends provided', () => {
+      const wrapper = mountChart()
+      const mains = wrapper.findAll('.mgRowMain')
+      expect(mains).toHaveLength(3)
+      mains.forEach(m => expect(m.element.tagName).toBe('DIV'))
+      expect(wrapper.find('.mgRowChevron').exists()).toBe(false)
+    })
+
+    it('makes a tag with ≥2 weeks of history tappable', () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      const chestMain = wrapper.findAll('.mgRowMain')[0]
+      expect(chestMain.element.tagName).toBe('BUTTON')
+      expect(chestMain.attributes('aria-expanded')).toBe('false')
+    })
+
+    it('leaves a tag with <2 weeks of history non-interactive', () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      // Legs (index 2) has a single-week series.
+      const legsMain = wrapper.findAll('.mgRowMain')[2]
+      expect(legsMain.element.tagName).toBe('DIV')
+      expect(legsMain.attributes('aria-expanded')).toBeUndefined()
+    })
+
+    it('reveals the sparkline when an expandable row is tapped', async () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      expect(wrapper.findComponent({ name: 'TagVolumeSparkline' }).exists()).toBe(false)
+
+      await wrapper.findAll('.mgRowMain')[0].trigger('click')
+
+      const sparkline = wrapper.findComponent({ name: 'TagVolumeSparkline' })
+      expect(sparkline.exists()).toBe(true)
+      expect(sparkline.props('tag')).toBe('Chest')
+      expect(wrapper.findAll('.mgRowMain')[0].attributes('aria-expanded')).toBe('true')
+    })
+
+    it('collapses the sparkline when the open row is tapped again', async () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      await wrapper.findAll('.mgRowMain')[0].trigger('click')
+      expect(wrapper.findComponent({ name: 'TagVolumeSparkline' }).exists()).toBe(true)
+
+      await wrapper.findAll('.mgRowMain')[0].trigger('click')
+      expect(wrapper.findComponent({ name: 'TagVolumeSparkline' }).exists()).toBe(false)
+    })
+
+    it('only keeps one tag expanded at a time', async () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      await wrapper.findAll('.mgRowMain')[0].trigger('click') // Chest
+      await wrapper.findAll('.mgRowMain')[1].trigger('click') // Back
+
+      const sparklines = wrapper.findAllComponents({ name: 'TagVolumeSparkline' })
+      expect(sparklines).toHaveLength(1)
+      expect(sparklines[0].props('tag')).toBe('Back')
+    })
+
+    it('exposes a descriptive aria-label on the toggle', () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      const chestMain = wrapper.findAll('.mgRowMain')[0]
+      expect(chestMain.attributes('aria-label')).toContain('Chest: 12 sets')
+      expect(chestMain.attributes('aria-label')).toContain('Show weekly volume trend')
     })
   })
 })
