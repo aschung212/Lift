@@ -133,6 +133,9 @@ export default defineConfig({
           'og-image.png',
           'icon-source.png',
           'og-preview.html',
+          // iOS launch screens are loaded by Safari at cold launch via <link>
+          // tags, not fetched by the app — precaching them only bloats the SW.
+          'launch/*.png',
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],

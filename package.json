@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "generate-icons": "node scripts/generate-icons.js",
+    "generate-launch-screens": "node scripts/generate-launch-screens.js",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.js",
     "test:e2e": "playwright test",

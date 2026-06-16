@@ -288,9 +288,11 @@ re-sync the `dist/` bundle into the native shell.
 │   ├── icon.svg
 │   ├── icon-192.png
 │   ├── icon-512.png
-│   └── apple-touch-icon.png
+│   ├── apple-touch-icon.png
+│   └── launch/                 # iOS PWA launch screens (apple-touch-startup-image), per device
 ├── scripts/
-│   └── generate-icons.js
+│   ├── generate-icons.js
+│   └── generate-launch-screens.js  # Renders themed iOS launch PNGs (pure Node, no deps)
 ├── src/
 │   ├── components/
 │   │   ├── WorkoutTracker.vue   # Exercise list, detail modal, log/edit modal, rest timer, tags
