@@ -261,7 +261,10 @@ const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBa
 // unsupported (see useAppBadge). Mirrors WorkoutTracker's `setsLoggedToday`,
 // which drives the in-app "Finish workout" affordance.
 const { setBadge: setAppBadge, clearBadge: clearAppBadge } = useAppBadge()
-const setsLoggedToday = computed(() => {
+// Plain function (not a computed) so `todayISO()` is re-evaluated every time the
+// app is backgrounded — a cached computed would badge yesterday's count after a
+// midnight rollover with no new sets to invalidate it.
+function countSetsLoggedToday(): number {
   const today = todayISO()
   let count = 0
   for (const ex of workoutStoreForInstall.exercises) {
@@ -270,10 +273,11 @@ const setsLoggedToday = computed(() => {
     }
   }
   return count
-})
+}
 function onBadgeVisibilityChange() {
   if (document.visibilityState === 'hidden') {
-    if (setsLoggedToday.value > 0) setAppBadge(setsLoggedToday.value)
+    const count = countSetsLoggedToday()
+    if (count > 0) setAppBadge(count)
     else clearAppBadge()
   } else {
     // Back in the foreground — the nudge has served its purpose.
@@ -501,6 +505,10 @@ function onBeforeUnload() {
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
   document.addEventListener('visibilitychange', onBadgeVisibilityChange)
+  // Clear any badge left over from a prior session: visibilitychange does not
+  // fire on cold start (the document begins visible), so a badge set before a
+  // force-close would otherwise linger on the icon while the user is active.
+  clearAppBadge()
   logEvent('session_start')
 
   // Load Supabase SDK off the critical render path, then start auth.
