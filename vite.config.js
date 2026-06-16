@@ -102,6 +102,25 @@ export default defineConfig({
         launch_handler: {
           client_mode: 'navigate-existing',
         },
+        // Web Share Target: lets users share a Strong/Hevy/Lift CSV export from
+        // another app straight into Lift's importer. The POST is intercepted by
+        // the service worker (share-target-sw.js), which stashes the file in the
+        // Cache API and redirects to /?share-target=csv where the app consumes it.
+        // Chromium/Android PWA only — iOS Safari ignores share_target, so this is
+        // additive reach with no impact on the App Store build.
+        share_target: {
+          action: '/share-target',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            files: [
+              {
+                name: 'file',
+                accept: ['text/csv', 'text/comma-separated-values', '.csv'],
+              },
+            ],
+          },
+        },
         screenshots: [
           {
             src: 'screenshot-mobile.png',
@@ -134,6 +153,11 @@ export default defineConfig({
           'icon-source.png',
           'og-preview.html',
         ],
+        // Custom fetch handler for the Web Share Target POST (see manifest
+        // share_target above). importScripts registers it ahead of Workbox's
+        // own routing so the /share-target navigation is captured before the
+        // navigateFallback would otherwise serve index.html.
+        importScripts: ['share-target-sw.js'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
         navigationPreload: true,

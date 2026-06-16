@@ -125,6 +125,15 @@
       </Transition>
     </Teleport>
 
+    <!-- Shared CSV import toast (PWA Web Share Target) -->
+    <Teleport to="body">
+      <Transition name="undoToast">
+        <div v-if="shareImportToast" class="undoToastBar" role="status" aria-live="polite">
+          <span class="undoToastMsg">{{ shareImportToast }}</span>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Keyboard shortcuts help -->
     <Teleport to="body">
       <Transition name="undoToast">
@@ -225,6 +234,7 @@ import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStora
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { captureAcquisitionSource } from './composables/useAcquisitionSource'
+import { useShareTargetImport } from './composables/useShareTargetImport'
 import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
@@ -246,6 +256,27 @@ const { user, loading, init: initAuth, signOut } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
+
+// ── Web Share Target (shared CSV import) ────────────────────────
+const { consumePendingShare } = useShareTargetImport()
+const shareImportToast = ref<string | null>(null)
+let shareToastTimer: ReturnType<typeof setTimeout> | null = null
+function showShareImportToast(message: string) {
+  shareImportToast.value = message
+  if (shareToastTimer) clearTimeout(shareToastTimer)
+  shareToastTimer = setTimeout(() => { shareImportToast.value = null }, 5000)
+}
+async function handleSharedCsvImport() {
+  const summary = await consumePendingShare()
+  if (!summary) return
+  switchTab('workouts')
+  if (summary.error) {
+    showShareImportToast(summary.error)
+  } else {
+    const fmt = summary.format.charAt(0).toUpperCase() + summary.format.slice(1)
+    showShareImportToast(`Imported ${summary.sets} sets from your ${fmt} export`)
+  }
+}
 
 // ── PWA install prompt ──────────────────────────────────────────
 const workoutStoreForInstall = useWorkoutStore()
@@ -573,10 +604,14 @@ onMounted(async () => {
       syncStatus.value = msg.status
     }
   })
+
+  // Consume a CSV shared into the app via the PWA Web Share Target.
+  handleSharedCsvImport()
 })
 let unsubCrossTab: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
   unsubCrossTab?.()
+  if (shareToastTimer) clearTimeout(shareToastTimer)
 })
 </script>

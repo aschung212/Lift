@@ -660,7 +660,7 @@ import { useAnalytics } from '../composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport } from '../lib/dataExport'
 import { buildTrainingReport, type ReportPeriod } from '../lib/trainingReport'
 import { renderReport, openReportWindow } from '../lib/reportRenderer'
-import { importCSV } from '../lib/csvImport'
+import { useCsvImport } from '../composables/useCsvImport'
 import { usePreferencesStore } from '../stores/preferences'
 import type { WeightGoalDirection } from '../stores/preferences'
 import { useWorkoutStore } from '../stores/workout'
@@ -686,6 +686,7 @@ const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
 const { user } = useAuth()
 const { logEvent } = useAnalytics()
+const { importFromText } = useCsvImport()
 const prefs = usePreferencesStore()
 const workoutStore = useWorkoutStore()
 const bodyweightStore = useBodyweightStore()
@@ -1350,20 +1351,7 @@ function handleImportFile(event: Event) {
   const reader = new FileReader()
   reader.onload = () => {
     const text = reader.result as string
-    const result = importCSV(text)
-    if (result.format === 'unknown' || result.exercises.length === 0) {
-      importResult.value = { exercises: 0, sets: 0, format: 'unknown', error: 'Unrecognized format. Supported: Strong, Hevy, Lift CSV.' }
-      return
-    }
-    for (const ex of result.exercises) {
-      const existingId = workoutStore.addExercise(ex.name, ex.tags, { sync: false })
-      if (!existingId) continue
-      for (const set of ex.sets) {
-        workoutStore.logSet(existingId, set.weight, set.reps, set.date.slice(0, 10), { sync: false })
-      }
-    }
-    importResult.value = { exercises: result.exercises.length, sets: result.totalSets, format: result.format }
-    logEvent('data_import', { format: result.format, exercises: result.exercises.length, sets: result.totalSets })
+    importResult.value = importFromText(text, 'file')
   }
   reader.readAsText(file)
   if (importFileInput.value) importFileInput.value.value = ''

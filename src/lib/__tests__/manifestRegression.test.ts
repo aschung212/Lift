@@ -119,6 +119,28 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
+  describe('manifest registers a Web Share Target for CSV import', () => {
+    it('has a share_target with the /share-target POST action', () => {
+      expect(viteConfig).toContain('share_target: {')
+      expect(viteConfig).toContain("action: '/share-target'")
+      expect(viteConfig).toContain("method: 'POST'")
+      expect(viteConfig).toContain("enctype: 'multipart/form-data'")
+    })
+
+    it('accepts CSV files under the "file" param', () => {
+      expect(viteConfig).toContain("name: 'file'")
+      expect(viteConfig).toContain("'text/csv'")
+    })
+
+    it('injects the share-target service worker handler via importScripts', () => {
+      expect(viteConfig).toContain("importScripts: ['share-target-sw.js']")
+    })
+
+    it('the share-target service worker handler exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'share-target-sw.js'))).toBe(true)
+    })
+  })
+
   describe('manifest includes screenshots for richer install UI', () => {
     it('has narrow (mobile) screenshot entries', () => {
       expect(viteConfig).toContain("form_factor: 'narrow'")
