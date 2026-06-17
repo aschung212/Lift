@@ -2,8 +2,13 @@ import { describe, it, expect } from 'vitest'
 import {
   generateIntensityTable,
   sanitizeIntensityMaxReps,
+  sanitizeIntensityPresets,
+  nextPresetValue,
+  pickNewPresetValue,
   DEFAULT_INTENSITY_MAX_REPS,
   MAX_INTENSITY_MAX_REPS,
+  DEFAULT_INTENSITY_PRESETS,
+  MAX_INTENSITY_PRESETS,
 } from '../intensityTable'
 
 describe('sanitizeIntensityMaxReps', () => {
@@ -21,6 +26,75 @@ describe('sanitizeIntensityMaxReps', () => {
     expect(sanitizeIntensityMaxReps(0)).toBe(1)
     expect(sanitizeIntensityMaxReps(-5)).toBe(1)
     expect(sanitizeIntensityMaxReps(500)).toBe(MAX_INTENSITY_MAX_REPS)
+  })
+})
+
+describe('sanitizeIntensityPresets', () => {
+  it('falls back to defaults for a non-array', () => {
+    expect(sanitizeIntensityPresets(undefined)).toEqual(DEFAULT_INTENSITY_PRESETS)
+    expect(sanitizeIntensityPresets(null)).toEqual(DEFAULT_INTENSITY_PRESETS)
+    expect(sanitizeIntensityPresets('80,90')).toEqual(DEFAULT_INTENSITY_PRESETS)
+    // Defaults are returned as a fresh copy, not the shared constant.
+    expect(sanitizeIntensityPresets(undefined)).not.toBe(DEFAULT_INTENSITY_PRESETS)
+  })
+
+  it('keeps an explicit empty array empty (user cleared all presets)', () => {
+    expect(sanitizeIntensityPresets([])).toEqual([])
+  })
+
+  it('floors, dedupes, and sorts ascending', () => {
+    expect(sanitizeIntensityPresets([90, 60, 80, 60, 75.9])).toEqual([60, 75, 80, 90])
+  })
+
+  it('drops out-of-range and non-finite values', () => {
+    expect(sanitizeIntensityPresets([0, 1, 100, 101, -5, NaN, Infinity, 'x'])).toEqual([1, 100])
+  })
+
+  it('coerces numeric strings', () => {
+    expect(sanitizeIntensityPresets(['60', '80'])).toEqual([60, 80])
+  })
+
+  it('caps at MAX_INTENSITY_PRESETS (keeps the lowest)', () => {
+    const many = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    const out = sanitizeIntensityPresets(many)
+    expect(out).toHaveLength(MAX_INTENSITY_PRESETS)
+    expect(out).toEqual([10, 20, 30, 40, 50, 60, 70, 80])
+  })
+})
+
+describe('nextPresetValue', () => {
+  it('steps by 5 in the given direction', () => {
+    expect(nextPresetValue([80], 80, 1)).toBe(85)
+    expect(nextPresetValue([80], 80, -1)).toBe(75)
+  })
+
+  it('skips occupied values so two presets never collapse', () => {
+    // Stepping 75 up would hit 80 (taken) → jumps to the next free value, 85.
+    expect(nextPresetValue([75, 80], 75, 1)).toBe(85)
+    expect(nextPresetValue([70, 75, 80], 80, -1)).toBe(65) // 80 → 75(taken) → 70(taken) → 65
+  })
+
+  it('returns null when blocked at the range bounds', () => {
+    expect(nextPresetValue([100], 100, 1)).toBeNull()
+    expect(nextPresetValue([5], 5, -1)).toBeNull()
+    // 95 up: 100 free → not blocked.
+    expect(nextPresetValue([95], 95, 1)).toBe(100)
+  })
+})
+
+describe('pickNewPresetValue', () => {
+  it('prefers 80 when free', () => {
+    expect(pickNewPresetValue([50, 90])).toBe(80)
+  })
+
+  it('falls back to the first free step from the minimum when 80 is taken', () => {
+    expect(pickNewPresetValue([80])).toBe(5)
+    expect(pickNewPresetValue([5, 80])).toBe(10)
+  })
+
+  it('returns null when the list is already at the cap', () => {
+    const full = [10, 20, 30, 40, 50, 60, 70, 80] // MAX_INTENSITY_PRESETS entries
+    expect(pickNewPresetValue(full)).toBeNull()
   })
 })
 

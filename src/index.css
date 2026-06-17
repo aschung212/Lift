@@ -1864,6 +1864,60 @@ html.theme-fading .settingsSheet {
   flex-shrink: 0;
 }
 
+/* Intensity presets editor (#776): a stepper + delete per preset value. */
+.settingsPresetRow {
+  gap: 12px;
+}
+
+.settingsPresetDelete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.settingsPresetDelete:active {
+  color: var(--danger);
+  background: var(--danger-subtle);
+}
+
+.settingsPresetAdd {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: var(--font-callout);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.settingsPresetAdd:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settingsPresetEmpty {
+  padding: 0 16px 4px;
+}
+
+.iosStepperBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .exportBtnGroup {
   display: flex;
   gap: 8px;
