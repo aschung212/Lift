@@ -1467,11 +1467,11 @@ describe('WorkoutTracker', () => {
       const rows = wrapper.findAll('.wtPrTargetsRow')
       // Default 80% of 228 e1RM, default 10 rep rows.
       expect(rows).toHaveLength(10)
-      // Row 1: floor(80% × 228 / Epley(1)) = 175 lb.
-      expect(rows[0].text()).toContain('175 lbs')
+      // Row 1 (1 rep = the 1RM, no Epley multiplier): floor(80% × 228) = 180 lb.
+      expect(rows[0].text()).toContain('180 lbs')
 
       await rows[0].trigger('click')
-      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('175')
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('180')
       expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('1')
       // Re-find: tapping mutates intensityUsed, so Vue re-renders and the held node goes stale.
       expect(wrapper.findAll('.wtPrTargetsRow')[0].classes()).toContain('wtPrTargetsRowActive')

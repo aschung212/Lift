@@ -30,20 +30,34 @@ describe('generateIntensityTable', () => {
     expect(rows.length).toBeGreaterThan(0)
     const targetE1RM = 456 * 0.8
     for (const row of rows) {
-      const e1rm = row.weightLbs * (1 + row.reps / 30)
+      // Convention: 1 rep IS the 1RM (no Epley multiplier).
+      const e1rm = row.reps === 1 ? row.weightLbs : row.weightLbs * (1 + row.reps / 30)
       expect(e1rm).toBeLessThanOrEqual(targetE1RM + 1e-9)
       // Floored to a loadable 5 lb increment above the 45 lb bar.
       expect((row.weightLbs - 45) % 5).toBe(0)
     }
   })
 
+  it('treats 1 rep as the 1RM (no Epley multiplier), matching prTargetsTable', () => {
+    // 100% of a 400 1RM at 1 rep must be the 1RM itself (floored), not 400/1.033.
+    const rows = generateIntensityTable(400, 100, { maxReps: 1 })
+    expect(rows).toEqual([{ reps: 1, weightLbs: 400, plates: expect.any(Array) }])
+  })
+
   it('computes the expected floored weights (400 max, 100%, 3 reps)', () => {
     const rows = generateIntensityTable(400, 100, { maxReps: 3 })
     expect(rows).toEqual([
-      { reps: 1, weightLbs: 385, plates: expect.any(Array) },
+      { reps: 1, weightLbs: 400, plates: expect.any(Array) },
       { reps: 2, weightLbs: 375, plates: expect.any(Array) },
       { reps: 3, weightLbs: 360, plates: expect.any(Array) },
     ])
+  })
+
+  it('never emits a 0-weight row in machine/total mode', () => {
+    // Low intensity on a machine (bar 0): floored weights can round to 0 — those
+    // rows must be dropped, not surfaced as un-loggable 0-weight suggestions.
+    const rows = generateIntensityTable(60, 15, { perSide: false, barWeight: 0, maxReps: 12 })
+    expect(rows.every(r => r.weightLbs > 0)).toBe(true)
   })
 
   it('caps the rows at maxReps (sanitized)', () => {

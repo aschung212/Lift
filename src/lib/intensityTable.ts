@@ -112,10 +112,16 @@ export function generateIntensityTable(
   const rows: IntensityRow[] = []
 
   for (let r = 1; r <= cap; r++) {
-    const raw = targetE1RM / (1 + r / 30)
+    // Match the app's e1RM convention (see prTargetsTable / xp): a single rep IS
+    // the 1RM — no Epley multiplier — so 100% intensity at 1 rep is the 1RM
+    // itself. Only multi-rep sets get the (1 + reps/30) factor.
+    const raw = r === 1 ? targetE1RM : targetE1RM / (1 + r / 30)
     // Nothing loadable above the bar at this rep count for this intensity.
     if (raw <= barWeight) continue
     const weightLbs = floorToLoadable(raw, barWeight, increment)
+    // Guard against a 0-weight row (e.g. machine/total mode, bar 0, low target),
+    // which would populate the inputs with 0 and silently disable Save.
+    if (weightLbs <= 0) continue
     const plates = perSide ? weightToPlates(weightLbs, barWeight, denominations) : null
     rows.push({ reps: r, weightLbs, plates })
   }
