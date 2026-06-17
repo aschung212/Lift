@@ -13,6 +13,7 @@ vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
     filters: { warmupThreshold: 0.75 },
+    intensityPresets: [50, 70, 80, 90, 100],
   }),
 }))
 vi.mock('../../stores/progression', () => ({
@@ -1144,8 +1145,11 @@ describe('WorkoutTracker', () => {
       await wrapper.vm.$nextTick()
 
       // Ladder gated off (not today) → no routine chips and the ghost disarms.
-      // (The PR-anchored Intensity lens is date-independent and may still show.)
-      expect(wrapper.find('.wtPrevSessionChip').exists()).toBe(false)
+      // (The PR-anchored Intensity lens is date-independent and may still show
+      // its own preset chips, so scope to the non-preset chips.)
+      const routineChips = wrapper.findAll('.wtPrevSessionChip')
+        .filter(c => !c.element.closest('.wtIntensityPresetChips'))
+      expect(routineChips).toHaveLength(0)
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       expect(saveBtn.text()).toBe('Save')
       expect(saveBtn.attributes('disabled')).toBeDefined()
@@ -1458,6 +1462,25 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtIntensitySlider').exists()).toBe(true)
     })
 
+    it('renders tappable intensity presets that drive the slider (#776)', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      const chips = wrapper.findAll('.wtIntensityPresetChips .wtPrevSessionChip')
+      expect(chips.map(c => c.text())).toEqual(['50%', '70%', '80%', '90%', '100%'])
+      // Default intensity is 80% → that chip is highlighted as current.
+      expect(chips.find(c => c.classes().includes('wtPrevSessionChipNext'))?.text()).toBe('80%')
+
+      // Tapping a preset sets the intensity: caption + slider follow, highlight moves.
+      await chips.find(c => c.text() === '50%')!.trigger('click')
+      expect(wrapper.find('.wtSuggestions .wtPrevSessionLabel').text()).toContain('50% of')
+      expect((wrapper.find('.wtIntensitySlider').element as HTMLInputElement).value).toBe('50')
+      const after = wrapper.findAll('.wtIntensityPresetChips .wtPrevSessionChip')
+      expect(after.find(c => c.classes().includes('wtPrevSessionChipNext'))?.text()).toBe('50%')
+    })
+
     it('shows weight rows at the default intensity and fills inputs on tap', async () => {
       mockGetLastSession.mockReturnValue(priorSession())
       const wrapper = mountTracker()
@@ -1603,10 +1626,13 @@ describe('WorkoutTracker', () => {
 
       const intensitySeg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === 'Intensity')!
       await intensitySeg.trigger('click')
-      // Now the intensity rows show and the last-session chips are gone.
+      // Now the intensity rows show and the last-session chips are gone (the
+      // intensity lens has its own preset chips, so scope to non-preset chips).
       expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Intensity')
       expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
-      expect(wrapper.findAll('.wtPrevSessionChip')).toHaveLength(0)
+      const lastSessionChips = wrapper.findAll('.wtPrevSessionChip')
+        .filter(c => !c.element.closest('.wtIntensityPresetChips'))
+      expect(lastSessionChips).toHaveLength(0)
     })
   })
 

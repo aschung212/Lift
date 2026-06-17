@@ -4,6 +4,7 @@ import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { backupToIDB } from '../lib/durableStorage'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -131,6 +132,8 @@ export const usePreferencesStore = defineStore('preferences', {
     restTimerEnabled: true,
     restTimerAutoStart: true,
     appIcon: 'default' as string,
+    /** Tappable intensity presets (% of max) in the log-set Intensity lens (#776). */
+    intensityPresets: [...DEFAULT_INTENSITY_PRESETS] as number[],
     _userId: null as string | null,
   }),
 
@@ -148,6 +151,7 @@ export const usePreferencesStore = defineStore('preferences', {
         restTimerEnabled: this.restTimerEnabled,
         restTimerAutoStart: this.restTimerAutoStart,
         appIcon: this.appIcon,
+        intensityPresets: this.intensityPresets,
       }
       const data = JSON.stringify(payload)
       try {
@@ -193,6 +197,7 @@ export const usePreferencesStore = defineStore('preferences', {
         if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
         if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
         if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
+        if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
       } catch { /* ignore corrupt data */ }
     },
 
@@ -224,6 +229,7 @@ export const usePreferencesStore = defineStore('preferences', {
           if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
           if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
           if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
+          if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
         } catch { /* ignore corrupt data */ }
       }
 
@@ -293,6 +299,7 @@ export const usePreferencesStore = defineStore('preferences', {
             if (typeof prefs.restTimerEnabled === 'boolean') this.restTimerEnabled = prefs.restTimerEnabled as boolean
             if (typeof prefs.restTimerAutoStart === 'boolean') this.restTimerAutoStart = prefs.restTimerAutoStart as boolean
             if (typeof prefs.appIcon === 'string') this.appIcon = prefs.appIcon as string
+            if (prefs.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(prefs.intensityPresets)
             const synced = JSON.stringify({
               features: this.features, weightGoal: this.weightGoal,
               experience: this.experience, filters: this.filters,
@@ -300,6 +307,7 @@ export const usePreferencesStore = defineStore('preferences', {
               theme: this.theme, colorMode: this.colorMode,
               weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
               restTimerAutoStart: this.restTimerAutoStart, appIcon: this.appIcon,
+              intensityPresets: this.intensityPresets,
             })
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
@@ -398,6 +406,12 @@ export const usePreferencesStore = defineStore('preferences', {
 
     setAppIcon(id: string) {
       this.appIcon = id
+      this._persist()
+    },
+
+    /** Replace the tappable intensity presets (sanitized: int, [1,100], deduped, sorted, capped). */
+    setIntensityPresets(presets: number[]) {
+      this.intensityPresets = sanitizeIntensityPresets(presets)
       this._persist()
     },
   },

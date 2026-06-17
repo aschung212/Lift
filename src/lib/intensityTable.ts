@@ -66,6 +66,69 @@ export const DEFAULT_INTENSITY_MAX_REPS = 10
 export const MIN_INTENSITY_MAX_REPS = 1
 export const MAX_INTENSITY_MAX_REPS = 100
 
+/**
+ * Default tappable intensity presets (% of max) seeded into the Intensity lens
+ * so the feature is useful out of the box — warmup → working → heavy → PR.
+ */
+export const DEFAULT_INTENSITY_PRESETS = [50, 70, 80, 90, 100]
+/** Most presets a user can configure (keeps the chip row scannable). */
+export const MAX_INTENSITY_PRESETS = 8
+
+/** Step size and minimum value when editing presets in Settings. */
+export const INTENSITY_PRESET_STEP = 5
+/** A 0% preset has no loadable weight, so the editable minimum is one step up. */
+export const MIN_INTENSITY_PRESET = 5
+
+/**
+ * Clamp/validate a stored or user-supplied list of intensity presets: integers
+ * in [1, 100], deduped, sorted ascending, capped at {@link MAX_INTENSITY_PRESETS}.
+ * A non-array falls back to the defaults; an explicit empty array stays empty
+ * (the user deliberately cleared all presets → the lens shows the slider only).
+ */
+export function sanitizeIntensityPresets(value: unknown): number[] {
+  if (!Array.isArray(value)) return [...DEFAULT_INTENSITY_PRESETS]
+  const seen = new Set<number>()
+  const out: number[] = []
+  for (const raw of value) {
+    const n = typeof raw === 'number' ? raw : Number(raw)
+    if (!Number.isFinite(n)) continue
+    const v = Math.floor(n)
+    if (v < 1 || v > 100 || seen.has(v)) continue
+    seen.add(v)
+    out.push(v)
+  }
+  out.sort((a, b) => a - b)
+  return out.slice(0, MAX_INTENSITY_PRESETS)
+}
+
+/**
+ * Next free preset value when stepping `value` by {@link INTENSITY_PRESET_STEP}
+ * in `dir` (+1 up, -1 down). Occupied values are skipped so stepping never
+ * collapses two presets into one. Returns null when no free value remains in
+ * range [{@link MIN_INTENSITY_PRESET}, 100] — used to disable the stepper button.
+ */
+export function nextPresetValue(presets: number[], value: number, dir: 1 | -1): number | null {
+  let next = value + dir * INTENSITY_PRESET_STEP
+  while (next >= MIN_INTENSITY_PRESET && next <= 100 && presets.includes(next)) {
+    next += dir * INTENSITY_PRESET_STEP
+  }
+  return next >= MIN_INTENSITY_PRESET && next <= 100 ? next : null
+}
+
+/**
+ * Choose a value for a newly added preset: prefer 80% (a common working
+ * intensity), else the first free step from the minimum up. Returns null when
+ * the list is already at {@link MAX_INTENSITY_PRESETS} or fully saturated.
+ */
+export function pickNewPresetValue(presets: number[]): number | null {
+  if (presets.length >= MAX_INTENSITY_PRESETS) return null
+  if (!presets.includes(80)) return 80
+  for (let v = MIN_INTENSITY_PRESET; v <= 100; v += INTENSITY_PRESET_STEP) {
+    if (!presets.includes(v)) return v
+  }
+  return null
+}
+
 const KG_PER_LB = 0.453592
 const LBS_NUMPAD_STEP = 5
 const KG_NUMPAD_STEP = 2.5

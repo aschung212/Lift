@@ -343,6 +343,52 @@
           </div>
         </div>
 
+        <!-- Intensity presets (#776): tappable % chips in the log-set Intensity lens -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Intensity Presets</div>
+          <div
+            v-for="p in prefs.intensityPresets"
+            :key="p"
+            class="settingsRow settingsPresetRow"
+          >
+            <div class="iosStepper">
+              <button
+                class="iosStepperBtn"
+                @click="adjustPreset(p, -1)"
+                :disabled="nextPresetValue(prefs.intensityPresets, p, -1) === null"
+                :aria-label="`Lower ${p}% preset`"
+              >−</button>
+              <span class="iosStepperValue">{{ p }}%</span>
+              <button
+                class="iosStepperBtn"
+                @click="adjustPreset(p, 1)"
+                :disabled="nextPresetValue(prefs.intensityPresets, p, 1) === null"
+                :aria-label="`Raise ${p}% preset`"
+              >+</button>
+            </div>
+            <button
+              class="settingsPresetDelete"
+              @click="deletePreset(p)"
+              :aria-label="`Delete ${p}% preset`"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+          <p v-if="!prefs.intensityPresets.length" class="settingsHint settingsPresetEmpty">
+            No presets — the Intensity lens shows just the slider. Add one below.
+          </p>
+          <button
+            class="settingsPresetAdd"
+            @click="addPreset"
+            :disabled="prefs.intensityPresets.length >= MAX_INTENSITY_PRESETS"
+          >+ Add preset</button>
+          <div class="settingsRow">
+            <span class="settingsHint">
+              Tap these in the log-set Intensity lens to jump straight to a training intensity. The slider stays for one-off values.
+            </span>
+          </div>
+        </div>
+
         <!-- Dev tools — only on localhost/LAN -->
         <div v-if="isDev" class="settingsGroup">
           <div class="settingsHeader">Dev Tools</div>
@@ -663,6 +709,7 @@ import { renderReport, openReportWindow } from '../lib/reportRenderer'
 import { importCSV } from '../lib/csvImport'
 import { usePreferencesStore } from '../stores/preferences'
 import type { WeightGoalDirection } from '../stores/preferences'
+import { MAX_INTENSITY_PRESETS, nextPresetValue, pickNewPresetValue } from '../lib/intensityTable'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
@@ -691,6 +738,26 @@ const workoutStore = useWorkoutStore()
 const bodyweightStore = useBodyweightStore()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+// ── Intensity presets editor (#776) ────────────────────────────
+// Edits the global preset list shown as tappable chips in the log-set Intensity
+// lens. Pure step/add logic lives in intensityTable.ts (unit-tested); these
+// thin wrappers apply the result through the store (which dedupes/sorts/persists).
+function adjustPreset(value: number, dir: 1 | -1) {
+  const next = nextPresetValue(prefs.intensityPresets, value, dir)
+  if (next === null) return
+  prefs.setIntensityPresets(prefs.intensityPresets.map(p => (p === value ? next : p)))
+}
+
+function deletePreset(value: number) {
+  prefs.setIntensityPresets(prefs.intensityPresets.filter(p => p !== value))
+}
+
+function addPreset() {
+  const candidate = pickNewPresetValue(prefs.intensityPresets)
+  if (candidate === null) return
+  prefs.setIntensityPresets([...prefs.intensityPresets, candidate])
+}
 
 // ── Share the app (word-of-mouth loop, #713) ───────────────────
 const { shareApp, isSharing: appShareInFlight } = useAppShare()

@@ -448,6 +448,19 @@
                    so this one lens spans warmups → PR (#770). -->
               <template v-else-if="currentLens === 'intensity'">
                 <span class="wtPrevSessionLabel">{{ intensityPct }}% of {{ displayWeight(intensityOneRM!) }} {{ weightUnit }} max</span>
+                <!-- Tappable presets (configured in Settings, #776) — the fast path;
+                     the slider below stays for one-off intensities. -->
+                <div v-if="intensityPresets.length" class="wtPrevSessionChips wtIntensityPresetChips" role="group" aria-label="Intensity presets">
+                  <button
+                    v-for="p in intensityPresets"
+                    :key="p"
+                    type="button"
+                    class="wtPrevSessionChip"
+                    :class="{ wtPrevSessionChipNext: intensityPct === p }"
+                    :aria-pressed="intensityPct === p"
+                    @click="intensityPct = p"
+                  >{{ p }}%</button>
+                </div>
                 <div class="wtIntensityControl">
                   <input
                     type="range"
@@ -1228,6 +1241,10 @@ const intensityMaxReps = computed<number>(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   return ex?.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
 })
+
+// Global, user-configured intensity presets (Settings → Intensity Presets, #776).
+// Rendered as tappable chips above the slider; tapping one sets intensityPct.
+const intensityPresets = computed<number[]>(() => _prefs.intensityPresets)
 
 const intensityTable = computed<IntensityRow[]>(() => {
   const oneRM = intensityOneRM.value
