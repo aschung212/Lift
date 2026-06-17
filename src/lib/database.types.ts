@@ -78,6 +78,7 @@ export type Database = {
           tags: string[]
           updated_at: string | null
           user_id: string
+          warmup_scheme: Json | null
         }
         Insert: {
           archived_at?: string | null
@@ -90,6 +91,7 @@ export type Database = {
           tags?: string[]
           updated_at?: string | null
           user_id: string
+          warmup_scheme?: Json | null
         }
         Update: {
           archived_at?: string | null
@@ -102,6 +104,7 @@ export type Database = {
           tags?: string[]
           updated_at?: string | null
           user_id?: string
+          warmup_scheme?: Json | null
         }
         Relationships: []
       }

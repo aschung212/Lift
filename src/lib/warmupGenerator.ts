@@ -58,6 +58,47 @@ export const DEFAULT_WARMUP_SCHEME: WarmupSchemeStep[] = [
   { pct: 0.9, reps: 1 },
 ]
 
+/** Most steps a per-exercise custom ramp may hold (keeps the editor + UI bounded). */
+export const MAX_WARMUP_STEPS = 8
+/** A warmup step's working-weight fraction is clamped to this range. */
+export const MIN_WARMUP_PCT = 0.05
+export const MAX_WARMUP_PCT = 0.95
+/** A warmup step's rep target is clamped to this range. */
+export const MIN_WARMUP_REPS = 1
+export const MAX_WARMUP_REPS = 30
+
+/**
+ * Clamp and validate a user- (or storage-) supplied warmup scheme into a safe,
+ * renderable shape. Drops malformed entries, clamps each step's percentage and
+ * reps into range, rounds reps to whole numbers, and caps the total step count.
+ *
+ * An EMPTY result is meaningful and preserved: it means "no warmup ramp for
+ * this exercise" (the user removed every step). A non-array input (e.g. corrupt
+ * remote JSON) falls back to the default scheme rather than silently vanishing.
+ */
+export function sanitizeWarmupScheme(scheme: unknown): WarmupSchemeStep[] {
+  if (!Array.isArray(scheme)) return DEFAULT_WARMUP_SCHEME.map(s => ({ ...s }))
+  const clean: WarmupSchemeStep[] = []
+  for (const raw of scheme) {
+    if (!raw || typeof raw !== 'object') continue
+    const pct = Number((raw as { pct?: unknown }).pct)
+    const reps = Number((raw as { reps?: unknown }).reps)
+    if (!Number.isFinite(pct) || !Number.isFinite(reps)) continue
+    clean.push({
+      pct: Math.min(MAX_WARMUP_PCT, Math.max(MIN_WARMUP_PCT, pct)),
+      reps: Math.min(MAX_WARMUP_REPS, Math.max(MIN_WARMUP_REPS, Math.round(reps))),
+    })
+    if (clean.length >= MAX_WARMUP_STEPS) break
+  }
+  return clean
+}
+
+/** Order-sensitive value equality for two warmup schemes (used to detect "still default"). */
+export function schemesEqual(a: WarmupSchemeStep[], b: WarmupSchemeStep[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((step, i) => step.pct === b[i].pct && step.reps === b[i].reps)
+}
+
 /** Smallest loadable weight increment for the given plates + loading mode. */
 function smallestIncrement(denominations: number[], perSide: boolean): number {
   const smallestPlate = denominations[denominations.length - 1]

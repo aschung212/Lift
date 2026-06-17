@@ -2,6 +2,12 @@ import { describe, it, expect } from 'vitest'
 import {
   generateWarmupRamp,
   DEFAULT_WARMUP_SCHEME,
+  sanitizeWarmupScheme,
+  schemesEqual,
+  MAX_WARMUP_STEPS,
+  MIN_WARMUP_PCT,
+  MAX_WARMUP_PCT,
+  MAX_WARMUP_REPS,
   type WarmupStep,
 } from '../warmupGenerator'
 import { KG_PLATES, platesToWeight } from '../plateCalculator'
@@ -96,6 +102,79 @@ describe('warmupGenerator', () => {
       expect(pcts).toEqual(ascending)
       expect(reps).toEqual(descending)
       expect(pcts[pcts.length - 1]).toBeLessThan(1)
+    })
+  })
+
+  describe('sanitizeWarmupScheme', () => {
+    it('passes a clean scheme through unchanged', () => {
+      const scheme = [{ pct: 0.5, reps: 5 }, { pct: 0.75, reps: 3 }]
+      expect(sanitizeWarmupScheme(scheme)).toEqual(scheme)
+    })
+
+    it('preserves an empty scheme (explicit "no warmup")', () => {
+      expect(sanitizeWarmupScheme([])).toEqual([])
+    })
+
+    it('falls back to the default for a non-array input (corrupt remote JSON)', () => {
+      expect(sanitizeWarmupScheme(null)).toEqual(DEFAULT_WARMUP_SCHEME)
+      expect(sanitizeWarmupScheme('nope')).toEqual(DEFAULT_WARMUP_SCHEME)
+      expect(sanitizeWarmupScheme({ pct: 0.5 })).toEqual(DEFAULT_WARMUP_SCHEME)
+      // A returned default must be a copy, not the shared module constant.
+      expect(sanitizeWarmupScheme(null)).not.toBe(DEFAULT_WARMUP_SCHEME)
+    })
+
+    it('clamps out-of-range percentages and reps into bounds', () => {
+      const out = sanitizeWarmupScheme([
+        { pct: 0, reps: 100 },     // pct too low, reps too high
+        { pct: 2, reps: 0 },       // pct too high, reps too low
+      ])
+      expect(out[0]).toEqual({ pct: MIN_WARMUP_PCT, reps: MAX_WARMUP_REPS })
+      expect(out[1]).toEqual({ pct: MAX_WARMUP_PCT, reps: 1 })
+    })
+
+    it('rounds fractional reps and drops malformed / non-finite entries', () => {
+      const out = sanitizeWarmupScheme([
+        { pct: 0.5, reps: 5.7 },
+        { pct: NaN, reps: 5 },
+        { pct: 0.5, reps: Infinity },
+        null,
+        'garbage',
+        { pct: 0.6, reps: 4 },
+      ])
+      expect(out).toEqual([{ pct: 0.5, reps: 6 }, { pct: 0.6, reps: 4 }])
+    })
+
+    it('caps the number of steps at MAX_WARMUP_STEPS', () => {
+      const many = Array.from({ length: 20 }, () => ({ pct: 0.5, reps: 5 }))
+      expect(sanitizeWarmupScheme(many)).toHaveLength(MAX_WARMUP_STEPS)
+    })
+  })
+
+  describe('schemesEqual', () => {
+    it('is true for value-equal schemes and the default round-trip', () => {
+      expect(schemesEqual(DEFAULT_WARMUP_SCHEME, DEFAULT_WARMUP_SCHEME)).toBe(true)
+      // Percentages rebuilt from whole-percent editor state still match.
+      const rebuilt = DEFAULT_WARMUP_SCHEME.map(s => ({ pct: Math.round(s.pct * 100) / 100, reps: s.reps }))
+      expect(schemesEqual(rebuilt, DEFAULT_WARMUP_SCHEME)).toBe(true)
+    })
+
+    it('is false when length, percentages, or reps differ', () => {
+      expect(schemesEqual([{ pct: 0.4, reps: 8 }], [{ pct: 0.4, reps: 8 }, { pct: 0.6, reps: 5 }])).toBe(false)
+      expect(schemesEqual([{ pct: 0.4, reps: 8 }], [{ pct: 0.5, reps: 8 }])).toBe(false)
+      expect(schemesEqual([{ pct: 0.4, reps: 8 }], [{ pct: 0.4, reps: 6 }])).toBe(false)
+    })
+  })
+
+  describe('generateWarmupRamp with a custom (sanitized) scheme', () => {
+    it('drives the ramp from a user scheme and stays loadable', () => {
+      const scheme = sanitizeWarmupScheme([{ pct: 0.4, reps: 10 }, { pct: 0.7, reps: 2 }])
+      const ramp = generateWarmupRamp(225, { scheme })
+      expect(ramp.map(s => s.reps)).toEqual([10, 2])
+      expect(weights(ramp)).toEqual([90, 160]) // 0.4·225=90; 0.7·225=157.5 → 160 loadable
+    })
+
+    it('produces no ramp for an empty scheme', () => {
+      expect(generateWarmupRamp(225, { scheme: [] })).toEqual([])
     })
   })
 })

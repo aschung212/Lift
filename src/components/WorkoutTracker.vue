@@ -1197,10 +1197,14 @@ const warmupTargetLbs = computed<number | null>(() => {
 const warmupRamp = computed<WarmupStep[]>(() => {
   const target = warmupTargetLbs.value
   if (target === null) return []
+  // Per-exercise custom ramp (LIFT-725) drives the scheme; undefined falls back
+  // to the default ladder, an empty scheme suppresses the ramp for this exercise.
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   return generateWarmupRamp(target, {
     barWeight: currentBarWeight.value,
     perSide: isPerSide.value,
     denominations: weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES,
+    ...(ex?.warmupScheme !== undefined ? { scheme: ex.warmupScheme } : {}),
   })
 })
 
@@ -2413,6 +2417,7 @@ function onEditExerciseSave(payload: EditExerciseSave) {
     store.setExercisePlateCountMode(editTarget.value, payload.plateCountMode)
     store.setExerciseBarWeight(editTarget.value, payload.barWeight)
   }
+  store.setExerciseWarmupScheme(editTarget.value, payload.warmupScheme)
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).

@@ -1485,6 +1485,27 @@ describe('WorkoutTracker', () => {
       await openBenchModal(wrapper)
       expect(wrapper.find('.wtWarmupCard').exists()).toBe(false)
     })
+
+    it('drives the ramp from a per-exercise custom scheme', async () => {
+      mockGetLastSession.mockReturnValue(priorTop225())
+      // One custom step at 40% × 10 (default would be 4 steps starting 40% × 8).
+      mockState.exercises[0].warmupScheme = [{ pct: 0.4, reps: 10 }]
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await wrapper.find('.wtWarmupCard .wtPrTargetsHeader').trigger('click')
+      const ramp = wrapper.findAll('.wtWarmupCard .wtPrTargetsRow')
+      expect(ramp).toHaveLength(1)
+      expect(ramp[0].text()).toContain('90 lbs × 10')
+    })
+
+    it('suppresses the ramp when the custom scheme is empty', async () => {
+      mockGetLastSession.mockReturnValue(priorTop225())
+      mockState.exercises[0].warmupScheme = []
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtWarmupCard').exists()).toBe(false)
+    })
   })
 
   describe('exercise search', () => {
