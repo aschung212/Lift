@@ -372,39 +372,115 @@
             </span>
           </p>
 
-          <!-- Usual ladder (routine-aware) / last session sets (quick-fill) -->
-          <div v-if="!isEditMode && isLogForExercise && (ladderActive || lastSession)" class="wtPrevSession">
-            <template v-if="ladderActive && usualLadder">
-              <span class="wtPrevSessionLabel">{{ ladderLabel }}</span>
-              <div ref="ladderChipsEl" class="wtPrevSessionChips">
+          <!--
+            Consolidated "Suggestions" drawer (#759 / LIFT-725 / #769) — one
+            interaction path, not three. Folds the usual-ladder / last-session
+            quick-fill, the warmup ramp, and the PR-targets table into a single
+            segmented disclosure. The routine ladder (or last-session) lens is
+            the default and stays expanded so the one-tap ghost-arm logging flow
+            is preserved; the warmup ramp + PR targets are a tap away on the
+            segmented control. Each lens reuses its existing chip/row markup.
+            Warmup and PR targets are NOT merged into one table — they anchor to
+            different reference weights (today's working weight vs. all-time PR);
+            see #769 for the configurable-intensity-table follow-up.
+          -->
+          <div
+            v-if="!isEditMode && isLogForExercise && suggestionLenses.length"
+            :class="['wtPrTargets', 'wtSuggestions', { wtPrTargetsExpanded: suggestionsExpanded }]"
+          >
+            <button class="wtPrTargetsHeader" @click="suggestionsExpanded = !suggestionsExpanded" :aria-expanded="suggestionsExpanded">
+              <span class="wtPrTargetsTitleCol">
+                <span class="wtPrTargetsTitle">Suggestions</span>
+                <span class="wtPrTargetsSub">{{ suggestionHeaderSub }}</span>
+              </span>
+              <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: suggestionsExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+
+            <div v-if="suggestionsExpanded" class="wtSuggestionBody">
+              <div v-if="suggestionLenses.length > 1" class="wtSuggestionSegments" role="tablist" aria-label="Suggestion type">
                 <button
-                  v-for="(rung, i) in usualLadder.rungs"
-                  :key="i"
-                  class="wtPrevSessionChip"
-                  :class="{
-                    wtPrevSessionChipUsed: rungStates[i] === 'done',
-                    wtPrevSessionChipNext: rungStates[i] === 'next',
-                    wtPrevSessionChipSkipped: rungStates[i] === 'skipped',
-                  }"
-                  :aria-current="rungStates[i] === 'next' ? 'step' : undefined"
-                  :aria-label="rungStates[i] === 'done' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, logged`
-                    : rungStates[i] === 'skipped' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, skipped` : undefined"
-                  @click="fillFromRung(rung)"
-                >{{ displayWeight(rung.weightLbs) }} × {{ rung.reps }}</button>
+                  v-for="lens in suggestionLenses"
+                  :key="lens"
+                  type="button"
+                  role="tab"
+                  :aria-selected="currentLens === lens"
+                  :class="['wtSuggestionSegment', { wtSuggestionSegmentActive: currentLens === lens }]"
+                  @click="activeLens = lens"
+                >{{ lensLabel(lens) }}</button>
               </div>
-            </template>
-            <template v-else-if="lastSession">
-              <span class="wtPrevSessionLabel">Last session · {{ formatShortDate(lastSession.date + 'T12:00:00') }}</span>
-              <div class="wtPrevSessionChips">
-                <button
-                  v-for="(s, i) in lastSession.sets"
-                  :key="i"
-                  class="wtPrevSessionChip"
-                  :class="{ wtPrevSessionChipUsed: lastSessionUsed[i] }"
-                  @click="fillFromLastSession(s, i)"
-                >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
-              </div>
-            </template>
+
+              <!-- Routine: usual-ladder rungs (quick-fill + ghost-arm) -->
+              <template v-if="currentLens === 'routine' && usualLadder">
+                <span class="wtPrevSessionLabel">{{ ladderLabel }}</span>
+                <div ref="ladderChipsEl" class="wtPrevSessionChips">
+                  <button
+                    v-for="(rung, i) in usualLadder.rungs"
+                    :key="i"
+                    class="wtPrevSessionChip"
+                    :class="{
+                      wtPrevSessionChipUsed: rungStates[i] === 'done',
+                      wtPrevSessionChipNext: rungStates[i] === 'next',
+                      wtPrevSessionChipSkipped: rungStates[i] === 'skipped',
+                    }"
+                    :aria-current="rungStates[i] === 'next' ? 'step' : undefined"
+                    :aria-label="rungStates[i] === 'done' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, logged`
+                      : rungStates[i] === 'skipped' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, skipped` : undefined"
+                    @click="fillFromRung(rung)"
+                  >{{ displayWeight(rung.weightLbs) }} × {{ rung.reps }}</button>
+                </div>
+              </template>
+
+              <!-- Last session quick-fill (fallback when no routine is detected) -->
+              <template v-else-if="currentLens === 'last' && lastSession">
+                <span class="wtPrevSessionLabel">Last session · {{ formatShortDate(lastSession.date + 'T12:00:00') }}</span>
+                <div class="wtPrevSessionChips">
+                  <button
+                    v-for="(s, i) in lastSession.sets"
+                    :key="i"
+                    class="wtPrevSessionChip"
+                    :class="{ wtPrevSessionChipUsed: lastSessionUsed[i] }"
+                    @click="fillFromLastSession(s, i)"
+                  >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
+                </div>
+              </template>
+
+              <!-- Warmup ramp: auto-ramp to today's working weight -->
+              <template v-else-if="currentLens === 'warmup'">
+                <span class="wtPrevSessionLabel">Ramp to {{ displayWeight(warmupTargetLbs!) }} {{ weightUnit }}</span>
+                <div class="wtPrTargetsList wtSuggestionList">
+                  <button
+                    v-for="(step, i) in warmupRamp"
+                    :key="i"
+                    :class="['wtPrTargetsRow', { wtPrTargetsRowActive: warmupUsed[i] }]"
+                    :aria-label="`Warmup, ${displayWeight(step.weightLbs)} ${weightUnit} for ${step.reps} reps`"
+                    @click="fillFromWarmup(step, i)"
+                  >
+                    <span class="wtPrTargetsReps">{{ Math.round(step.pct * 100) }}</span>
+                    <span class="wtPrTargetsRepsLabel">%</span>
+                    <span class="wtPrTargetsWeight">{{ displayWeight(step.weightLbs) }} {{ weightUnit }} × {{ step.reps }}</span>
+                    <span v-if="step.plates" class="wtPrTargetsE1rm">{{ step.plates.length ? formatPlates(step.plates) : 'bar' }}</span>
+                  </button>
+                </div>
+              </template>
+
+              <!-- PR targets: weight × reps to beat your all-time best e1RM -->
+              <template v-else-if="currentLens === 'targets' && prTargetsTable">
+                <span class="wtPrevSessionLabel">Beat {{ displayWeight(store.getExercisePR(selectedExerciseId, prBaselineDate)) }} {{ weightUnit }} e1RM</span>
+                <div class="wtPrTargetsList wtSuggestionList">
+                  <button
+                    v-for="row in prTargetsTable"
+                    :key="row.reps"
+                    :class="['wtPrTargetsRow', { wtPrTargetsRowActive: reps !== null && row.reps === reps }]"
+                    @click="fillFromPRTable(row)"
+                  >
+                    <span class="wtPrTargetsReps">{{ row.reps }}</span>
+                    <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
+                    <span class="wtPrTargetsWeight">{{ row.displayWt }} {{ weightUnit }}</span>
+                    <span class="wtPrTargetsE1rm">~{{ row.e1rm }} e1RM</span>
+                  </button>
+                </div>
+              </template>
+            </div>
           </div>
 
           <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
@@ -455,75 +531,6 @@
           <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
             <span class="repMaxResultLabel">Estimated 1RM</span>
             <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
-          </div>
-
-          <!--
-            Warmup ramp (LIFT-725). Auto-ramps to the working weight (the
-            heaviest set from last session). Collapsible like PR Targets and
-            collapsed by default — progressive disclosure, no clutter on open.
-            Each row loads that warmup into the inputs on tap.
-          -->
-          <div v-if="!isEditMode && isLogForExercise && warmupRamp.length" :class="['wtPrTargets', 'wtWarmupCard', { wtPrTargetsExpanded: warmupExpanded }]">
-            <button class="wtPrTargetsHeader" @click="warmupExpanded = !warmupExpanded" :aria-expanded="warmupExpanded">
-              <span class="wtPrTargetsTitleCol">
-                <span class="wtPrTargetsTitle">Warmup ramp</span>
-                <span class="wtPrTargetsSub">
-                  Ramp to {{ displayWeight(warmupTargetLbs!) }} {{ weightUnit }}
-                  <span class="wtPrTargetsSubDot">·</span>
-                  <span class="wtPrTargetsSubCount">{{ warmupRamp.length }} sets</span>
-                </span>
-              </span>
-              <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: warmupExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div v-if="warmupExpanded" class="wtPrTargetsList">
-              <button
-                v-for="(step, i) in warmupRamp"
-                :key="i"
-                :class="['wtPrTargetsRow', { wtPrTargetsRowActive: warmupUsed[i] }]"
-                :aria-label="`Warmup, ${displayWeight(step.weightLbs)} ${weightUnit} for ${step.reps} reps`"
-                @click="fillFromWarmup(step, i)"
-              >
-                <span class="wtPrTargetsReps">{{ Math.round(step.pct * 100) }}</span>
-                <span class="wtPrTargetsRepsLabel">%</span>
-                <span class="wtPrTargetsWeight">{{ displayWeight(step.weightLbs) }} {{ weightUnit }} × {{ step.reps }}</span>
-                <span v-if="step.plates" class="wtPrTargetsE1rm">{{ step.plates.length ? formatPlates(step.plates) : 'bar' }}</span>
-              </button>
-            </div>
-          </div>
-
-          <!--
-            PR Targets card per screens/07-pr-targets-expanded.png. Always
-            visible when the exercise has an established PR. Header is
-            tappable to expand/collapse the scrollable list. The row
-            matching the user's current reps value is highlighted in
-            accent so they can see at a glance "this is the weight to
-            hit at the rep count you've already chosen."
-          -->
-          <div v-if="!isEditMode && isLogForExercise && prTargetsTable" :class="['wtPrTargets', { wtPrTargetsExpanded: prTableExpanded }]">
-            <button class="wtPrTargetsHeader" @click="prTableExpanded = !prTableExpanded" :aria-expanded="prTableExpanded">
-              <span class="wtPrTargetsTitleCol">
-                <span class="wtPrTargetsTitle">PR Targets</span>
-                <span class="wtPrTargetsSub">
-                  Beat {{ displayWeight(store.getExercisePR(selectedExerciseId, prBaselineDate)) }} {{ weightUnit }} e1RM
-                  <span class="wtPrTargetsSubDot">·</span>
-                  <span class="wtPrTargetsSubCount">{{ prTargetsTable.length }} targets 🏆</span>
-                </span>
-              </span>
-              <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: prTableExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div v-if="prTableExpanded" class="wtPrTargetsList">
-              <button
-                v-for="row in prTargetsTable"
-                :key="row.reps"
-                :class="['wtPrTargetsRow', { wtPrTargetsRowActive: reps !== null && row.reps === reps }]"
-                @click="fillFromPRTable(row)"
-              >
-                <span class="wtPrTargetsReps">{{ row.reps }}</span>
-                <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
-                <span class="wtPrTargetsWeight">{{ row.displayWt }} {{ weightUnit }}</span>
-                <span class="wtPrTargetsE1rm">~{{ row.e1rm }} e1RM</span>
-              </button>
-            </div>
           </div>
 
           <!--
@@ -1196,20 +1203,18 @@ function fillFromLastSession(set: { weight: number; reps: number }, index: numbe
 }
 
 // ── Warmup ramp: auto-ramp to the working weight (LIFT-725) ────────
-// A collapsible, opt-in ladder of lighter primer sets (40/60/80/90% ×
-// descending reps) up to a STABLE working-weight target — the heaviest set
-// from the user's last session for this exercise. Reading last session (not
-// the live weight input) keeps the ramp from reshuffling as the user fills and
-// logs each warmup. Suppressed when the usual ladder is active, since that row
-// already encodes the user's habitual warmup progression from history — no need
-// for a second, parallel warmup affordance (one interaction path, not two).
-const warmupExpanded = ref(false)
+// An opt-in ladder of lighter primer sets (40/60/80/90% × descending reps) up
+// to a STABLE working-weight target — the heaviest set from the user's last
+// session for this exercise. Reading last session (not the live weight input)
+// keeps the ramp from reshuffling as the user fills and logs each warmup.
+// Surfaced as the "Warmup" lens of the consolidated Suggestions drawer (#759);
+// it coexists with the usual ladder as a separate segment rather than being
+// suppressed by it — the two anchor to different reference weights.
 const warmupUsed = ref<Record<number, boolean>>({})
 
 const warmupTargetLbs = computed<number | null>(() => {
   if (isEditMode.value || !isLogForExercise.value) return null
   if (date.value !== todayISO()) return null
-  if (ladderActive.value) return null
   const ls = lastSession.value
   if (!ls || ls.sets.length === 0) return null
   const top = Math.max(...ls.sets.map(s => s.weight))
@@ -1229,6 +1234,17 @@ const warmupRamp = computed<WarmupStep[]>(() => {
     ...(ex?.warmupScheme !== undefined ? { scheme: ex.warmupScheme } : {}),
   })
 })
+
+// ── Consolidated "Suggestions" drawer (#759) ──────────────────────
+// One segmented disclosure over every "what should my next set be?" lens —
+// routine ladder / last-session quick-fill, warmup ramp, PR targets — instead
+// of three stacked cards. `suggestionLenses` (defined after the lenses' source
+// computeds) lists what's available; `currentLens` self-heals if the selected
+// lens loses its data. The drawer opens expanded on the quick-fill lens
+// (routine/last) so the one-tap ghost-arm flow is never a tap away.
+type SuggestionLens = 'routine' | 'last' | 'warmup' | 'targets'
+const suggestionsExpanded = ref(false)
+const activeLens = ref<SuggestionLens>('routine')
 
 /** Load a warmup step into the inputs (mirrors fillFromRung's plate handling). */
 function fillFromWarmup(step: WarmupStep, index: number) {
@@ -1715,7 +1731,6 @@ const newExercisePlateMode = ref(false)
 const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
 const newExerciseBarWeight = ref(45)
 const newBarWeightEditing = ref(false)
-const prTableExpanded = ref(false)
 const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
 // Vue writing back the parsed number to el.value causes iOS Safari to dismiss
@@ -1869,9 +1884,14 @@ function openLogForExercise(exerciseId: string) {
   selectedExerciseId.value = exerciseId
   lastSessionUsed.value = {}
   warmupUsed.value = {}
-  warmupExpanded.value = false
   date.value = lastLogDate.value
   usualLadder.value = store.getUsualLadder(exerciseId, todayISO())
+  // Default the Suggestions drawer to the first available lens, opened only
+  // when that lens is a quick-fill (routine/last) so the one-tap ghost-arm flow
+  // is immediate; warmup/targets-only states start collapsed (clean surface).
+  const lenses = suggestionLenses.value
+  activeLens.value = lenses[0] ?? 'routine'
+  suggestionsExpanded.value = lenses[0] === 'routine' || lenses[0] === 'last'
   settleNudgeOutcome(exerciseId)
   // Initialize plate calculator: prefer the ladder's next rung, else last set
   const exercise = store.exercises.find(e => e.id === exerciseId)
@@ -1923,8 +1943,8 @@ function closeModal() {
   reps.value = null
   date.value = todayISO()
   plateNumpadOverride.value = false
-  prTableExpanded.value = false
-  warmupExpanded.value = false
+  suggestionsExpanded.value = false
+  activeLens.value = 'routine'
   usualLadder.value = null
   ghostJustSaved.value = false
   if (_ghostRearmTimer) { clearTimeout(_ghostRearmTimer); _ghostRearmTimer = null }
@@ -2176,9 +2196,43 @@ function fillFromPRTable(row: PRTargetRow) {
     weightStr.value = String(row.displayWt)
   }
   repsStr.value = String(row.reps)
-  prTableExpanded.value = false
   impactLight()
 }
+
+// Lenses available in the Suggestions drawer, in display order. Routine and
+// last-session are mutually exclusive (a detected routine supersedes the raw
+// last session); warmup + targets append when their source data exists.
+const suggestionLenses = computed<SuggestionLens[]>(() => {
+  if (isEditMode.value || !isLogForExercise.value) return []
+  const lenses: SuggestionLens[] = []
+  if (ladderActive.value) lenses.push('routine')
+  else if (lastSession.value) lenses.push('last')
+  if (warmupRamp.value.length) lenses.push('warmup')
+  if (prTargetsTable.value) lenses.push('targets')
+  return lenses
+})
+
+// The effectively-shown lens: the user's selection if still available, else the
+// first available lens. Keeps the body coherent when data shifts (e.g. backdate
+// drops the routine lens) without needing a watcher to reset activeLens.
+const currentLens = computed<SuggestionLens | null>(() => {
+  const lenses = suggestionLenses.value
+  if (!lenses.length) return null
+  return lenses.includes(activeLens.value) ? activeLens.value : lenses[0]
+})
+
+function lensLabel(lens: SuggestionLens): string {
+  switch (lens) {
+    case 'routine': return 'Routine'
+    case 'last': return 'Last'
+    case 'warmup': return 'Warmup'
+    case 'targets': return 'Targets'
+  }
+}
+
+// Collapsed-header summary: the names of the available lenses (e.g.
+// "Routine · Warmup · Targets") so the drawer advertises its contents at a glance.
+const suggestionHeaderSub = computed(() => suggestionLenses.value.map(lensLabel).join(' · '))
 
 // ── Personal bests from actual history ──────────────────────────
 // Best reps at the entered weight (exact match in lbs)

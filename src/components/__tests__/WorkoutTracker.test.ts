@@ -1435,25 +1435,33 @@ describe('WorkoutTracker', () => {
       mockState.exercises = createExercises()
     })
 
-    it('renders a collapsed warmup card ramping to last session top set', async () => {
+    // Activate a named lens in the Suggestions drawer (the drawer opens on the
+    // default quick-fill lens; warmup/targets live behind the segmented control).
+    async function selectLens(wrapper: VueWrapper, label: string) {
+      const seg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === label)
+      if (!seg) throw new Error(`no "${label}" suggestion segment`)
+      await seg.trigger('click')
+    }
+
+    it('exposes a warmup lens ramping to the last-session top set', async () => {
       mockGetLastSession.mockReturnValue(priorTop225())
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
 
-      const card = wrapper.find('.wtWarmupCard')
-      expect(card.exists()).toBe(true)
-      expect(card.text()).toContain('Ramp to 225 lbs')
-      // Collapsed by default — no rows visible until expanded.
-      expect(card.findAll('.wtPrTargetsRow')).toHaveLength(0)
+      // No routine detected → drawer defaults to the last-session lens, with
+      // warmup available alongside it on the segmented control.
+      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).toEqual(['Last', 'Warmup'])
+      await selectLens(wrapper, 'Warmup')
+      expect(wrapper.find('.wtSuggestions').text()).toContain('Ramp to 225 lbs')
     })
 
-    it('expands to show the ramp steps and fills inputs on tap', async () => {
+    it('shows the ramp steps under the warmup lens and fills inputs on tap', async () => {
       mockGetLastSession.mockReturnValue(priorTop225())
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
 
-      await wrapper.find('.wtWarmupCard .wtPrTargetsHeader').trigger('click')
-      const rows = wrapper.findAll('.wtWarmupCard .wtPrTargetsRow')
+      await selectLens(wrapper, 'Warmup')
+      const rows = wrapper.findAll('.wtPrTargetsRow')
       // 40/60/80/90% of 225 → 90/135/180/205, all below the working weight.
       expect(rows).toHaveLength(4)
       expect(rows[0].text()).toContain('90 lbs × 8')
@@ -1462,10 +1470,10 @@ describe('WorkoutTracker', () => {
       expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('135')
       expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('5')
       // Re-find: tapping mutates warmupUsed, so Vue re-renders and the held node goes stale.
-      expect(wrapper.findAll('.wtWarmupCard .wtPrTargetsRow')[1].classes()).toContain('wtPrTargetsRowActive')
+      expect(wrapper.findAll('.wtPrTargetsRow')[1].classes()).toContain('wtPrTargetsRowActive')
     })
 
-    it('does not render when the usual ladder is active (avoids a parallel warmup row)', async () => {
+    it('coexists with the usual ladder as a separate lens (no longer suppressed)', async () => {
       mockGetLastSession.mockReturnValue(priorTop225())
       mockGetUsualLadder.mockReturnValue({
         rungs: [
@@ -1476,14 +1484,20 @@ describe('WorkoutTracker', () => {
       })
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
-      expect(wrapper.find('.wtWarmupCard').exists()).toBe(false)
+
+      // Routine is the default lens; the warmup ramp is available beside it.
+      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).toEqual(['Routine', 'Warmup'])
+      expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Routine')
+
+      await selectLens(wrapper, 'Warmup')
+      expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
     })
 
-    it('does not render when there is no prior session', async () => {
+    it('does not render the drawer when there is no prior session', async () => {
       mockGetLastSession.mockReturnValue(null)
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
-      expect(wrapper.find('.wtWarmupCard').exists()).toBe(false)
+      expect(wrapper.find('.wtSuggestions').exists()).toBe(false)
     })
 
     it('drives the ramp from a per-exercise custom scheme', async () => {
@@ -1493,18 +1507,83 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
 
-      await wrapper.find('.wtWarmupCard .wtPrTargetsHeader').trigger('click')
-      const ramp = wrapper.findAll('.wtWarmupCard .wtPrTargetsRow')
+      await selectLens(wrapper, 'Warmup')
+      const ramp = wrapper.findAll('.wtPrTargetsRow')
       expect(ramp).toHaveLength(1)
       expect(ramp[0].text()).toContain('90 lbs × 10')
     })
 
-    it('suppresses the ramp when the custom scheme is empty', async () => {
+    it('drops the warmup lens when the custom scheme is empty', async () => {
       mockGetLastSession.mockReturnValue(priorTop225())
       mockState.exercises[0].warmupScheme = []
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
-      expect(wrapper.find('.wtWarmupCard').exists()).toBe(false)
+      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).not.toContain('Warmup')
+    })
+  })
+
+  describe('suggestions drawer (#759)', () => {
+    async function openBenchModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    it('opens expanded on the routine lens so one-tap logging needs no extra tap', async () => {
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [
+          { weightLbs: 135, reps: 5 },
+          { weightLbs: 185, reps: 5 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      // Ladder chips are visible immediately — the ghost-arm flow is preserved.
+      expect(wrapper.find('.wtSuggestions').exists()).toBe(true)
+      expect(wrapper.findAll('.wtPrevSessionChip').length).toBe(2)
+    })
+
+    it('renders no segmented control when only one lens is available', async () => {
+      // Ladder only (no last session, no warmup target) → a single lens.
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [
+          { weightLbs: 135, reps: 5 },
+          { weightLbs: 185, reps: 5 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('.wtSuggestions').exists()).toBe(true)
+      expect(wrapper.findAll('.wtSuggestionSegment')).toHaveLength(0)
+    })
+
+    it('switches the visible lens when a segment is tapped', async () => {
+      mockGetLastSession.mockReturnValue({
+        date: '2026-01-20',
+        sets: [
+          { id: 's-a', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's-b', date: '2026-01-20T12:00:00', weight: 225, reps: 3, estimated1RM: 248 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      // Defaults to the last-session lens (chips visible, no ramp rows).
+      expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Last')
+      expect(wrapper.findAll('.wtPrevSessionChip').length).toBe(2)
+      expect(wrapper.findAll('.wtPrTargetsRow')).toHaveLength(0)
+
+      const warmupSeg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === 'Warmup')!
+      await warmupSeg.trigger('click')
+      // Now the warmup ramp rows show and the last-session chips are gone.
+      expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Warmup')
+      expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
+      expect(wrapper.findAll('.wtPrevSessionChip')).toHaveLength(0)
     })
   })
 
