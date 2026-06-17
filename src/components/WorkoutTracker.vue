@@ -458,7 +458,6 @@
                     <span class="wtPrTargetsReps">{{ Math.round(step.pct * 100) }}</span>
                     <span class="wtPrTargetsRepsLabel">%</span>
                     <span class="wtPrTargetsWeight">{{ displayWeight(step.weightLbs) }} {{ weightUnit }} × {{ step.reps }}</span>
-                    <span v-if="step.plates" class="wtPrTargetsE1rm">{{ step.plates.length ? formatPlates(step.plates) : 'bar' }}</span>
                   </button>
                 </div>
               </template>
@@ -741,7 +740,7 @@ import { usePRBurst } from '../composables/usePRBurst'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
-import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { generateWarmupRamp, type WarmupStep } from '../lib/warmupGenerator'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { useXPCeremony } from '../composables/useXPCeremony'
