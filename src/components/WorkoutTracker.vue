@@ -1248,6 +1248,8 @@ const intensityTable = computed<IntensityRow[]>(() => {
     perSide: isPerSide.value,
     denominations: weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES,
     maxReps: intensityMaxReps.value,
+    plateMode: plateMode.value,
+    unit: weightUnit.value,
   })
 })
 

@@ -1494,8 +1494,8 @@ describe('WorkoutTracker', () => {
 
       await selectLens(wrapper, 'Intensity')
       expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
-      // 10% of 228 ≈ 23 lb — below the 45 lb bar at every rep count → empty.
-      await wrapper.find('.wtIntensitySlider').setValue(10)
+      // 0% intensity has no loadable target at any rep count → empty state.
+      await wrapper.find('.wtIntensitySlider').setValue(0)
       expect(wrapper.findAll('.wtPrTargetsRow')).toHaveLength(0)
       expect(wrapper.find('.wtIntensityEmpty').exists()).toBe(true)
     })

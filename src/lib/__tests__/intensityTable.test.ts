@@ -54,10 +54,34 @@ describe('generateIntensityTable', () => {
   })
 
   it('never emits a 0-weight row in machine/total mode', () => {
-    // Low intensity on a machine (bar 0): floored weights can round to 0 — those
-    // rows must be dropped, not surfaced as un-loggable 0-weight suggestions.
-    const rows = generateIntensityTable(60, 15, { perSide: false, barWeight: 0, maxReps: 12 })
+    // Low intensity on a machine (bar 0): higher-rep rows floor to 0 and must be
+    // dropped, not surfaced as un-loggable 0-weight suggestions.
+    const rows = generateIntensityTable(30, 10, { perSide: false, barWeight: 0, maxReps: 12 })
     expect(rows.every(r => r.weightLbs > 0)).toBe(true)
+    expect(rows.length).toBeLessThan(12) // some high-rep rows dropped
+  })
+
+  it('numpad mode rounds to clean 5 lb steps with no bar offset or plates', () => {
+    const rows = generateIntensityTable(400, 80, { plateMode: false, maxReps: 3 })
+    expect(rows).toEqual([
+      { reps: 1, weightLbs: 320, plates: null },
+      { reps: 2, weightLbs: 300, plates: null },
+      { reps: 3, weightLbs: 290, plates: null },
+    ])
+  })
+
+  it('numpad mode surfaces light weights that plate mode drops below the bar', () => {
+    // 40% of 100 = 40 lb target — below the 45 lb bar.
+    expect(generateIntensityTable(100, 40, { plateMode: true, maxReps: 1 })).toEqual([])
+    expect(generateIntensityTable(100, 40, { plateMode: false, maxReps: 1 }))
+      .toEqual([{ reps: 1, weightLbs: 40, plates: null }])
+  })
+
+  it('numpad kg mode rounds down in kg-space (clean 2.5 kg step, no plates)', () => {
+    // 440 lb = 199.58 kg; 100% at 1 rep floors to 197.5 kg → 435 lb.
+    const rows = generateIntensityTable(440, 100, { plateMode: false, unit: 'kg', maxReps: 1 })
+    expect(rows[0].plates).toBeNull()
+    expect(rows[0].weightLbs).toBe(435)
   })
 
   it('caps the rows at maxReps (sanitized)', () => {

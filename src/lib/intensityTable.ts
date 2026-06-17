@@ -42,6 +42,16 @@ export interface IntensityTableOptions {
   denominations?: number[]
   /** How many rep rows (1..maxReps) to compute. Default {@link DEFAULT_INTENSITY_MAX_REPS}. */
   maxReps?: number
+  /**
+   * Round to loadable plates above the bar and attach per-side plate
+   * breakdowns. When false (numpad mode), round to a clean numeric increment
+   * (5 lb, or 2.5 kg in kg-space) with no plate breakdown — mirroring
+   * `prTargetsTable` so numpad users never see bar-offset fractional weights.
+   * Default true.
+   */
+  plateMode?: boolean
+  /** Display unit, used only for numpad rounding (kg rounds in kg-space). Default 'lbs'. */
+  unit?: 'lbs' | 'kg'
 }
 
 /** Default number of rep rows shown in the intensity table. */
@@ -49,6 +59,10 @@ export const DEFAULT_INTENSITY_MAX_REPS = 10
 /** A configured rep-row count is clamped to this range. */
 export const MIN_INTENSITY_MAX_REPS = 1
 export const MAX_INTENSITY_MAX_REPS = 100
+
+const KG_PER_LB = 0.453592
+const LBS_NUMPAD_STEP = 5
+const KG_NUMPAD_STEP = 2.5
 
 /**
  * Clamp and validate a user- (or storage-) supplied max-reps count into a safe
@@ -83,10 +97,13 @@ function floorToLoadable(rawLbs: number, barWeight: number, increment: number): 
 /**
  * Generate an intensity table at `intensityPct`% of `oneRepMaxLbs`.
  *
- * For each rep count 1..maxReps, inverts Epley (e1RM = w·(1 + reps/30)) to find
- * the weight whose estimated 1RM equals the target intensity, then floors it to
- * a loadable increment. Rows whose target weight sits at/below the bar (nothing
- * to load) are dropped.
+ * For each rep count 1..maxReps, inverts Epley (e1RM = w·(1 + reps/30); 1 rep =
+ * the 1RM itself, no multiplier) to find the weight at the target intensity,
+ * then rounds it DOWN so the resulting set never exceeds that intensity. The
+ * rounding mode mirrors `prTargetsTable`: plate mode floors to a loadable plate
+ * increment above the bar (and attaches a per-side breakdown); numpad mode
+ * floors to a clean 5 lb (or 2.5 kg, in kg-space) increment with no bar offset.
+ * Rows that round to a non-positive weight are dropped.
  *
  * Returns an empty array when there is nothing meaningful to show — a
  * non-positive 1RM, or a non-positive intensity.
@@ -101,6 +118,8 @@ export function generateIntensityTable(
     perSide = true,
     denominations = LBS_PLATES,
     maxReps = DEFAULT_INTENSITY_MAX_REPS,
+    plateMode = true,
+    unit = 'lbs',
   } = options
 
   if (!Number.isFinite(oneRepMaxLbs) || oneRepMaxLbs <= 0) return []
@@ -116,13 +135,25 @@ export function generateIntensityTable(
     // the 1RM — no Epley multiplier — so 100% intensity at 1 rep is the 1RM
     // itself. Only multi-rep sets get the (1 + reps/30) factor.
     const raw = r === 1 ? targetE1RM : targetE1RM / (1 + r / 30)
-    // Nothing loadable above the bar at this rep count for this intensity.
-    if (raw <= barWeight) continue
-    const weightLbs = floorToLoadable(raw, barWeight, increment)
-    // Guard against a 0-weight row (e.g. machine/total mode, bar 0, low target),
-    // which would populate the inputs with 0 and silently disable Save.
+
+    let weightLbs: number
+    let plates: PlateSet | null = null
+    if (plateMode) {
+      // Nothing loadable above the bar at this rep count for this intensity.
+      if (raw <= barWeight) continue
+      weightLbs = floorToLoadable(raw, barWeight, increment)
+      plates = perSide ? weightToPlates(weightLbs, barWeight, denominations) : null
+    } else if (unit === 'kg') {
+      // Floor in kg-space so the displayed kg value is a clean 2.5 kg step.
+      const flooredKg = Math.floor((raw * KG_PER_LB) / KG_NUMPAD_STEP) * KG_NUMPAD_STEP
+      weightLbs = Math.round(flooredKg / KG_PER_LB)
+    } else {
+      weightLbs = Math.floor(raw / LBS_NUMPAD_STEP) * LBS_NUMPAD_STEP
+    }
+
+    // Guard against a non-positive row (low target / bar 0), which would
+    // populate the inputs with 0 and silently disable Save.
     if (weightLbs <= 0) continue
-    const plates = perSide ? weightToPlates(weightLbs, barWeight, denominations) : null
     rows.push({ reps: r, weightLbs, plates })
   }
 
