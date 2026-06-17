@@ -188,6 +188,11 @@
   <Teleport to="body">
     <PRBurst />
   </Teleport>
+
+  <!-- Weekly-goal celebration — triggered via useGoalCelebration().presentGoalCelebration(). -->
+  <Teleport to="body">
+    <GoalCelebration />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -198,6 +203,7 @@ import AuthScreen from './views/AuthScreen.vue'
 import OnboardingScreen from './views/OnboardingScreen.vue'
 import SettingsSheet from './components/SettingsSheet.vue'
 import PRBurst from './components/PRBurst.vue'
+import GoalCelebration from './components/GoalCelebration.vue'
 
 // Lazy-load tab content — split into separate chunks for faster initial load
 import SkeletonLoader from './components/SkeletonLoader.vue'

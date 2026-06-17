@@ -136,8 +136,8 @@
           </div>
           <div class="settingsRow">
             <div class="settingsLabelGroup">
-              <span class="settingsLabel">PR celebration</span>
-              <span class="settingsHint">Full-screen burst on new PRs</span>
+              <span class="settingsLabel">Celebrations</span>
+              <span class="settingsHint">PR bursts & weekly goal hits</span>
             </div>
             <button
               :class="['glassToggle', { on: prefs.experience.prCelebrations }]"
