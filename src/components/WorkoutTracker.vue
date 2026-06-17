@@ -697,6 +697,7 @@ import { useLongPressReorder } from '../composables/useLongPressReorder'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useFirstSetCelebration } from '../composables/useFirstSetCelebration'
 import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
@@ -723,6 +724,10 @@ const { impactLight, notifySuccess } = useHaptics()
 const { logSetXPCeremony } = useXPCeremony()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+const { presentFirstSetCelebration } = useFirstSetCelebration()
+
+// One-time activation flag (#762): celebrate a brand-new user's first ever set.
+const FIRST_SET_FLAG = 'first-set-celebrated'
 
 // Rest timer controller — all timer state and logic extracted into composable
 const timerCtrl = useRestTimerController(
@@ -2193,6 +2198,14 @@ function saveSet() {
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
       // Snapshot PR count before logging so we can detect the user's very first PR.
       const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
+      // Detect a brand-new user's very first ever set (#762): no sets logged yet
+      // anywhere, and the one-time flag hasn't fired. A first set can never be a
+      // PR (PRs need a prior established session), so this won't collide with the
+      // PR burst below.
+      const isFirstSetEver =
+        !wasPR &&
+        localStorage.getItem(FIRST_SET_FLAG) !== 'true' &&
+        store.exercises.every(e => e.sets.length === 0)
       store.logSet(exerciseId, effWeightLbs, effReps, date.value)
       recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
@@ -2220,6 +2233,11 @@ function saveSet() {
         if (prCountBefore === 0) {
           logEvent('first_pr', { exercise: selectedExerciseName.value })
         }
+      } else if (isFirstSetEver) {
+        // Activation moment — celebrate the first set (fires its own haptic).
+        localStorage.setItem(FIRST_SET_FLAG, 'true')
+        logEvent('first_set', { exercise: selectedExerciseName.value })
+        presentFirstSetCelebration()
       } else {
         impactLight()
       }

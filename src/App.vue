@@ -188,6 +188,12 @@
   <Teleport to="body">
     <PRBurst />
   </Teleport>
+
+  <!-- First-set activation celebration (#762) — triggered on a new user's first
+       ever logged set via useFirstSetCelebration().presentFirstSetCelebration(). -->
+  <Teleport to="body">
+    <FirstSetCelebration />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -198,6 +204,7 @@ import AuthScreen from './views/AuthScreen.vue'
 import OnboardingScreen from './views/OnboardingScreen.vue'
 import SettingsSheet from './components/SettingsSheet.vue'
 import PRBurst from './components/PRBurst.vue'
+import FirstSetCelebration from './components/FirstSetCelebration.vue'
 
 // Lazy-load tab content — split into separate chunks for faster initial load
 import SkeletonLoader from './components/SkeletonLoader.vue'
