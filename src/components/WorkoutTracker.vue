@@ -458,6 +458,40 @@
           </div>
 
           <!--
+            Warmup ramp (LIFT-725). Auto-ramps to the working weight (the
+            heaviest set from last session). Collapsible like PR Targets and
+            collapsed by default — progressive disclosure, no clutter on open.
+            Each row loads that warmup into the inputs on tap.
+          -->
+          <div v-if="!isEditMode && isLogForExercise && warmupRamp.length" :class="['wtPrTargets', 'wtWarmupCard', { wtPrTargetsExpanded: warmupExpanded }]">
+            <button class="wtPrTargetsHeader" @click="warmupExpanded = !warmupExpanded" :aria-expanded="warmupExpanded">
+              <span class="wtPrTargetsTitleCol">
+                <span class="wtPrTargetsTitle">Warmup ramp</span>
+                <span class="wtPrTargetsSub">
+                  Ramp to {{ displayWeight(warmupTargetLbs!) }} {{ weightUnit }}
+                  <span class="wtPrTargetsSubDot">·</span>
+                  <span class="wtPrTargetsSubCount">{{ warmupRamp.length }} sets</span>
+                </span>
+              </span>
+              <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: warmupExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div v-if="warmupExpanded" class="wtPrTargetsList">
+              <button
+                v-for="(step, i) in warmupRamp"
+                :key="i"
+                :class="['wtPrTargetsRow', { wtPrTargetsRowActive: warmupUsed[i] }]"
+                :aria-label="`Warmup, ${displayWeight(step.weightLbs)} ${weightUnit} for ${step.reps} reps`"
+                @click="fillFromWarmup(step, i)"
+              >
+                <span class="wtPrTargetsReps">{{ Math.round(step.pct * 100) }}</span>
+                <span class="wtPrTargetsRepsLabel">%</span>
+                <span class="wtPrTargetsWeight">{{ displayWeight(step.weightLbs) }} {{ weightUnit }} × {{ step.reps }}</span>
+                <span v-if="step.plates" class="wtPrTargetsE1rm">{{ step.plates.length ? formatPlates(step.plates) : 'bar' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!--
             PR Targets card per screens/07-pr-targets-expanded.png. Always
             visible when the exercise has an established PR. Header is
             tappable to expand/collapse the scrollable list. The row
@@ -700,7 +734,8 @@ import { usePRBurst } from '../composables/usePRBurst'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
-import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, formatPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { generateWarmupRamp, type WarmupStep } from '../lib/warmupGenerator'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
@@ -1158,6 +1193,54 @@ function fillFromLastSession(set: { weight: number; reps: number }, index: numbe
   weightStr.value = String(displayWeight(set.weight))
   repsStr.value = String(set.reps)
   lastSessionUsed.value = { ...lastSessionUsed.value, [index]: true }
+}
+
+// ── Warmup ramp: auto-ramp to the working weight (LIFT-725) ────────
+// A collapsible, opt-in ladder of lighter primer sets (40/60/80/90% ×
+// descending reps) up to a STABLE working-weight target — the heaviest set
+// from the user's last session for this exercise. Reading last session (not
+// the live weight input) keeps the ramp from reshuffling as the user fills and
+// logs each warmup. Suppressed when the usual ladder is active, since that row
+// already encodes the user's habitual warmup progression from history — no need
+// for a second, parallel warmup affordance (one interaction path, not two).
+const warmupExpanded = ref(false)
+const warmupUsed = ref<Record<number, boolean>>({})
+
+const warmupTargetLbs = computed<number | null>(() => {
+  if (isEditMode.value || !isLogForExercise.value) return null
+  if (date.value !== todayISO()) return null
+  if (ladderActive.value) return null
+  const ls = lastSession.value
+  if (!ls || ls.sets.length === 0) return null
+  const top = Math.max(...ls.sets.map(s => s.weight))
+  return Number.isFinite(top) && top > 0 ? top : null
+})
+
+const warmupRamp = computed<WarmupStep[]>(() => {
+  const target = warmupTargetLbs.value
+  if (target === null) return []
+  // Per-exercise custom ramp (LIFT-725) drives the scheme; undefined falls back
+  // to the default ladder, an empty scheme suppresses the ramp for this exercise.
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  return generateWarmupRamp(target, {
+    barWeight: currentBarWeight.value,
+    perSide: isPerSide.value,
+    denominations: weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES,
+    ...(ex?.warmupScheme !== undefined ? { scheme: ex.warmupScheme } : {}),
+  })
+})
+
+/** Load a warmup step into the inputs (mirrors fillFromRung's plate handling). */
+function fillFromWarmup(step: WarmupStep, index: number) {
+  if (plateMode.value && step.plates) {
+    currentPlates.value = [...step.plates]
+    syncPlateWeight()
+  } else {
+    weightStr.value = String(displayWeight(step.weightLbs))
+  }
+  repsStr.value = String(step.reps)
+  warmupUsed.value = { ...warmupUsed.value, [index]: true }
+  impactLight()
 }
 
 // ── Usual ladder: routine-aware quick-fill + ghost logging (#741) ──
@@ -1785,6 +1868,8 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   lastSessionUsed.value = {}
+  warmupUsed.value = {}
+  warmupExpanded.value = false
   date.value = lastLogDate.value
   usualLadder.value = store.getUsualLadder(exerciseId, todayISO())
   settleNudgeOutcome(exerciseId)
@@ -1839,6 +1924,7 @@ function closeModal() {
   date.value = todayISO()
   plateNumpadOverride.value = false
   prTableExpanded.value = false
+  warmupExpanded.value = false
   usualLadder.value = null
   ghostJustSaved.value = false
   if (_ghostRearmTimer) { clearTimeout(_ghostRearmTimer); _ghostRearmTimer = null }
@@ -2355,6 +2441,7 @@ function onEditExerciseSave(payload: EditExerciseSave) {
     store.setExercisePlateCountMode(editTarget.value, payload.plateCountMode)
     store.setExerciseBarWeight(editTarget.value, payload.barWeight)
   }
+  store.setExerciseWarmupScheme(editTarget.value, payload.warmupScheme)
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).

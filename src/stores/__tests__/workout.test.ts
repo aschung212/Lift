@@ -1142,4 +1142,46 @@ describe('workout store', () => {
       expect(result[0].sets.map(s => s.id)).toEqual(['s1', 's2', 's3'])
     })
   })
+
+  // ── setExerciseWarmupScheme (LIFT-725) ──────────────────────────
+  describe('setExerciseWarmupScheme', () => {
+    it('stores a custom scheme and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench Press', [])
+      store.setExerciseWarmupScheme(id, [{ pct: 0.5, reps: 6 }, { pct: 0.8, reps: 2 }])
+
+      expect(store.exercises[0].warmupScheme).toEqual([{ pct: 0.5, reps: 6 }, { pct: 0.8, reps: 2 }])
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].warmupScheme).toEqual([{ pct: 0.5, reps: 6 }, { pct: 0.8, reps: 2 }])
+    })
+
+    it('sanitizes out-of-range steps before storing', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat', [])
+      store.setExerciseWarmupScheme(id, [{ pct: 5, reps: 0 }] as never)
+      // pct clamped to 0.95, reps clamped to 1.
+      expect(store.exercises[0].warmupScheme).toEqual([{ pct: 0.95, reps: 1 }])
+    })
+
+    it('keeps an empty scheme as "no warmup ramp"', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Deadlift', [])
+      store.setExerciseWarmupScheme(id, [])
+      expect(store.exercises[0].warmupScheme).toEqual([])
+    })
+
+    it('clears the override when passed null', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Row', [])
+      store.setExerciseWarmupScheme(id, [{ pct: 0.5, reps: 5 }])
+      store.setExerciseWarmupScheme(id, null)
+      expect(store.exercises[0].warmupScheme).toBeUndefined()
+      expect('warmupScheme' in store.exercises[0]).toBe(false)
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExerciseWarmupScheme('nope', [{ pct: 0.5, reps: 5 }])).not.toThrow()
+    })
+  })
 })
