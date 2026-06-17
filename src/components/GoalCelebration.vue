@@ -15,9 +15,7 @@
       :class="{ goalCelebMilestone: payload.milestone }"
       role="status"
       aria-live="polite"
-      tabindex="-1"
       @click="onDismiss"
-      @keydown.escape="onDismiss"
     >
       <span class="goalCelebIcon" aria-hidden="true">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14 0-5.5 3-7 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.5-2.5 1.5-3.5l1 1Z"/></svg>
@@ -31,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, nextTick, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 
 const { visible, payload, presentGoalCelebration, dismissGoalCelebration } = useGoalCelebration()
@@ -53,14 +51,11 @@ function onDismiss(): void {
   dismissGoalCelebration()
 }
 
-// Focus on present so Escape-to-dismiss works without a prior focus.
-watch(visible, async (v) => {
-  if (v) {
-    await nextTick()
-    const root = document.querySelector('.goalCeleb') as HTMLElement | null
-    root?.focus()
-  }
-})
+// NOTE: this banner deliberately does NOT grab focus. It fires synchronously
+// from saveSet, immediately before WorkoutTracker re-focuses the weight input
+// for the next set; stealing focus here would drop the iOS keyboard and break
+// the settled "fields cleared and auto-focused after save" pattern. As a
+// passive role="status" toast it's tap- and auto-dismissed, so it needs none.
 
 // DEV-only trigger so the overlay can be verified without a live goal-hit.
 // Stripped from prod by Vite dead-code elimination.
