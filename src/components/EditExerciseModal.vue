@@ -117,7 +117,7 @@
             class="wtIntensityEditReset"
             @click="resetIntensityMaxReps"
           >Reset to default</button>
-          <span class="iosSettingsFooter">How many rep counts (1–{{ editIntensityMaxReps }}) the Intensity table calculates when you log this exercise.</span>
+          <span class="iosSettingsFooter">How many rep counts (1–{{ editIntensityMaxReps }}) the Intensity table calculates when you log this exercise — from warmups up to PR-beating loads at 100%.</span>
         </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmSave">Save</button>

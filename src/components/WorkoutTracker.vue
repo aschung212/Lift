@@ -373,16 +373,15 @@
           </p>
 
           <!--
-            Consolidated "Suggestions" drawer (#759 / LIFT-725 / #769) — one
-            interaction path, not three. Folds the usual-ladder / last-session
-            quick-fill, the warmup ramp, and the PR-targets table into a single
-            segmented disclosure. The routine ladder (or last-session) lens is
-            the default and stays expanded so the one-tap ghost-arm logging flow
-            is preserved; the warmup ramp + PR targets are a tap away on the
-            segmented control. Each lens reuses its existing chip/row markup.
-            Warmup and PR targets are NOT merged into one table — they anchor to
-            different reference weights (today's working weight vs. all-time PR);
-            see #769 for the configurable-intensity-table follow-up.
+            Consolidated "Suggestions" drawer (#759 / #770) — one interaction
+            path, not three. Folds the usual-ladder / last-session quick-fill and
+            the PR-anchored Intensity table into a single segmented disclosure.
+            The routine ladder (or last-session) lens is the default and stays
+            expanded so the one-tap ghost-arm logging flow is preserved; the
+            Intensity slider is a tap away on the segmented control. The Intensity
+            lens ceils to a loadable plate increment, so its 100% end reaches
+            PR-beating loads — the former separate PR table is just this table
+            read at 100% (#770). Each lens reuses its existing chip/row markup.
           -->
           <div
             v-if="!isEditMode && isLogForExercise && suggestionLenses.length"
@@ -444,7 +443,9 @@
                 </div>
               </template>
 
-              <!-- Intensity: PR-anchored weight × reps at the chosen % of max -->
+              <!-- Intensity: PR-anchored weight × reps at the chosen % of max.
+                   Ceiling rounding means the 100% end reaches PR-beating loads,
+                   so this one lens spans warmups → PR (#770). -->
               <template v-else-if="currentLens === 'intensity'">
                 <span class="wtPrevSessionLabel">{{ intensityPct }}% of {{ displayWeight(intensityOneRM!) }} {{ weightUnit }} max</span>
                 <div class="wtIntensityControl">
@@ -464,33 +465,16 @@
                     v-for="(row, i) in intensityTable"
                     :key="row.reps"
                     :class="['wtPrTargetsRow', { wtPrTargetsRowActive: intensityUsed[i] }]"
-                    :aria-label="`${displayWeight(row.weightLbs)} ${weightUnit} for ${row.reps} reps`"
+                    :aria-label="`${displayWeight(row.weightLbs)} ${weightUnit} for ${row.reps} reps, ${displayWeight(row.e1rm)} ${weightUnit} estimated 1RM`"
                     @click="fillFromIntensity(row, i)"
                   >
                     <span class="wtPrTargetsReps">{{ row.reps }}</span>
                     <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
                     <span class="wtPrTargetsWeight">{{ displayWeight(row.weightLbs) }} {{ weightUnit }}</span>
+                    <span class="wtPrTargetsE1rm">~{{ displayWeight(row.e1rm) }} {{ weightUnit }} e1RM</span>
                   </button>
                 </div>
                 <p v-else class="wtIntensityEmpty">Nothing loadable at {{ intensityPct }}% — slide higher.</p>
-              </template>
-
-              <!-- PR: weight × reps to beat your all-time best e1RM (round up) -->
-              <template v-else-if="currentLens === 'pr' && prTargetsTable">
-                <span class="wtPrevSessionLabel">Beat {{ displayWeight(store.getExercisePR(selectedExerciseId, prBaselineDate)) }} {{ weightUnit }} e1RM</span>
-                <div class="wtPrTargetsList wtSuggestionList">
-                  <button
-                    v-for="row in prTargetsTable"
-                    :key="row.reps"
-                    :class="['wtPrTargetsRow', { wtPrTargetsRowActive: reps !== null && row.reps === reps }]"
-                    @click="fillFromPRTable(row)"
-                  >
-                    <span class="wtPrTargetsReps">{{ row.reps }}</span>
-                    <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
-                    <span class="wtPrTargetsWeight">{{ row.displayWt }} {{ weightUnit }}</span>
-                    <span class="wtPrTargetsE1rm">~{{ row.e1rm }} e1RM</span>
-                  </button>
-                </div>
               </template>
             </div>
           </div>
@@ -1216,11 +1200,11 @@ function fillFromLastSession(set: { weight: number; reps: number }, index: numbe
 
 // ── Intensity lens: PR/1RM-anchored weight × reps table (#770) ─────
 // A slider picks an intensity (% of the exercise's best e1RM); the table shows,
-// per rep count, the heaviest LOADABLE weight whose e1RM does not exceed that
-// intensity (floored to a plate increment). The low end of the slider yields
-// warmups, the high end near-maximal work. Reps are NOT prescribed — the user
-// taps the row matching their planned reps. Beating the PR (round-UP,
-// supramaximal) is the separate "PR" lens, which needs ceiling rounding.
+// per rep count, the lightest LOADABLE weight whose e1RM MEETS OR BEATS that
+// intensity (ceiled to a plate increment). Ceiling is what lets one lens span
+// warmups (low %) through PR-beating loads (100%) — the former separate "PR"
+// table is just this table read at 100%. Reps are NOT prescribed — the user
+// taps the row matching their planned reps; each row carries its e1RM.
 const INTENSITY_DEFAULT_PCT = 80
 const INTENSITY_STEP = 5
 const intensityPct = ref(INTENSITY_DEFAULT_PCT)
@@ -1260,13 +1244,13 @@ const intensityTable = computed<IntensityRow[]>(() => {
 
 // ── Consolidated "Suggestions" drawer (#759 / #770) ───────────────
 // One segmented disclosure over every "what should my next set be?" lens —
-// routine ladder / last-session quick-fill, the PR-anchored intensity table,
-// and the PR-beating targets — instead of stacked cards. `suggestionLenses`
-// (defined after the lenses' source computeds) lists what's available;
-// `currentLens` self-heals if the selected lens loses its data. The drawer
-// opens expanded on the quick-fill lens (routine/last) so the one-tap ghost-arm
-// flow is never a tap away.
-type SuggestionLens = 'routine' | 'last' | 'intensity' | 'pr'
+// routine ladder / last-session quick-fill and the PR-anchored intensity table
+// (which spans warmups → PR-beating at 100%) — instead of stacked cards.
+// `suggestionLenses` (defined after the lenses' source computeds) lists what's
+// available; `currentLens` self-heals if the selected lens loses its data. The
+// drawer opens expanded on the quick-fill lens (routine/last) so the one-tap
+// ghost-arm flow is never a tap away.
+type SuggestionLens = 'routine' | 'last' | 'intensity'
 const suggestionsExpanded = ref(false)
 const activeLens = ref<SuggestionLens>('routine')
 
@@ -2146,96 +2130,18 @@ const prTargetReps = computed<number | null>(() => {
   return needed
 })
 
-// ── PR targets table (all weight/rep combos to beat PR) ─────────
-interface PRTargetRow {
-  reps: number
-  weightLbs: number
-  displayWt: number
-  e1rm: number
-}
-
-const prTargetsTable = computed<PRTargetRow[] | null>(() => {
-  if (isEditMode.value) return null
-  const id = selectedExerciseId.value
-  if (!id || id === '__new__') return null
-  const exercise = store.exercises.find(e => e.id === id)
-  if (!exercise) return null
-  if (!isExerciseEstablished(exercise.sets, date.value || todayISO())) return null
-  const pr = store.getExercisePR(id, prBaselineDate.value)
-  if (pr <= 0) return null
-
-  const target = pr + 0.5
-  const isPlate = plateMode.value
-  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-  const barWt = currentBarWeight.value
-  // Smallest total weight increment: smallest plate × 2 (per-side) or × 1 (total)
-  const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
-  const rows: PRTargetRow[] = []
-
-  for (let r = 1; r <= 20; r++) {
-    const rawLbs = r === 1 ? Math.ceil(target) : Math.ceil(target / (1 + r / 30))
-    // Round up to nearest achievable weight (5 lb increments for lbs, 2.5 kg for kg)
-    let finalLbs: number
-    if (isPlate) {
-      // Plate mode: round up to nearest plate increment above bar weight
-      const plateWeight = rawLbs - barWt
-      if (plateWeight <= 0) {
-        finalLbs = barWt
-      } else {
-        const roundedPlateWeight = Math.ceil(plateWeight / smallestIncrement) * smallestIncrement
-        finalLbs = barWt + roundedPlateWeight
-      }
-    } else if (weightUnit.value === 'kg') {
-      // Numpad kg mode: round in kg space, convert back to lbs
-      const rawKg = rawLbs * 0.453592
-      const roundedKg = Math.ceil(rawKg / 2.5) * 2.5
-      finalLbs = Math.round(roundedKg / 0.453592)
-    } else {
-      // Numpad lbs mode: round to nearest 5 lbs
-      finalLbs = Math.ceil(rawLbs / 5) * 5
-    }
-
-    const e1rm = r === 1 ? finalLbs : Math.round(finalLbs * (1 + r / 30))
-
-    rows.push({
-      reps: r,
-      weightLbs: finalLbs,
-      displayWt: displayWeight(finalLbs),
-      e1rm: displayWeight(e1rm),
-    })
-  }
-
-  return rows
-})
-
-function fillFromPRTable(row: PRTargetRow) {
-  if (plateMode.value) {
-    const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-    const barWt = currentBarWeight.value
-    const plates = weightToPlates(row.weightLbs, barWt, denoms)
-    if (plates) {
-      currentPlates.value = plates
-      syncPlateWeight()
-    }
-  } else {
-    weightStr.value = String(row.displayWt)
-  }
-  repsStr.value = String(row.reps)
-  impactLight()
-}
-
 // Lenses available in the Suggestions drawer, in display order. Routine and
 // last-session are mutually exclusive (a detected routine supersedes the raw
-// last session); intensity + PR append when their source data exists. The
-// intensity lens appears whenever there's a 1RM to anchor to (the slider may
-// land on an empty table at extreme positions — that's fine, it's transient).
+// last session); the intensity lens appends whenever there's a 1RM to anchor to
+// (the slider may land on an empty table at extreme positions — that's fine,
+// it's transient). The former separate "PR" lens is now the 100% end of the
+// intensity slider (ceiling rounding), so there's nothing extra to push (#770).
 const suggestionLenses = computed<SuggestionLens[]>(() => {
   if (isEditMode.value || !isLogForExercise.value) return []
   const lenses: SuggestionLens[] = []
   if (ladderActive.value) lenses.push('routine')
   else if (lastSession.value) lenses.push('last')
   if (intensityOneRM.value !== null) lenses.push('intensity')
-  if (prTargetsTable.value) lenses.push('pr')
   return lenses
 })
 
@@ -2253,12 +2159,11 @@ function lensLabel(lens: SuggestionLens): string {
     case 'routine': return 'Routine'
     case 'last': return 'Last'
     case 'intensity': return 'Intensity'
-    case 'pr': return 'PR'
   }
 }
 
 // Collapsed-header summary: the names of the available lenses (e.g.
-// "Routine · Warmup · Targets") so the drawer advertises its contents at a glance.
+// "Routine · Intensity") so the drawer advertises its contents at a glance.
 const suggestionHeaderSub = computed(() => suggestionLenses.value.map(lensLabel).join(' · '))
 
 // ── Personal bests from actual history ──────────────────────────

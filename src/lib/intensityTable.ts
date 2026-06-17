@@ -4,17 +4,21 @@
  * Pure functions that build a "what weight, at this intensity, for each rep
  * count?" table anchored on the user's 1RM. Given a one-rep-max and an
  * intensity (a fraction of that max), produces a row per rep count whose weight
- * is the heaviest LOADABLE weight whose estimated 1RM does NOT exceed the
- * target intensity — i.e. each weight is rounded DOWN (floored) to an
- * achievable plate increment so the user never overshoots the selected
- * intensity (plates only go up in fixed steps).
+ * is the lightest LOADABLE weight whose estimated 1RM is at least the target
+ * intensity — i.e. each weight is rounded UP (ceiled) to an achievable plate
+ * increment so a shown set always MEETS OR BEATS the selected intensity (plates
+ * only go up in fixed steps, so you can't land exactly on the target).
  *
- * This is the data behind the log-set modal's "Intensity" lens (#770): a slider
- * picks the intensity, the table shows the weight to use at each rep count, and
- * the user chooses the row matching their planned reps. The low end of the
- * slider yields warmups; the high end yields near-maximal work. Reps are NOT
- * prescribed — the user picks. Beating the PR (supramaximal, round-UP) is a
- * separate concern handled by the "PR" lens.
+ * Ceiling (not flooring) is what lets a single table span the whole range: the
+ * low end of the slider yields warmups and the **100% end reaches your PR** —
+ * each rep row is the lightest loadable weight whose e1RM meets/beats your best,
+ * which is exactly "what it takes to set a PR at this rep count." That is why
+ * the log-set modal's "Intensity" lens (#770) is one lens, not two: the former
+ * separate PR table is just this table read at 100%.
+ *
+ * Reps are NOT prescribed — the user taps the row matching their planned reps.
+ * Every row also carries its `e1rm` so the user can see, per option, how the
+ * weight relates to their max.
  *
  * All weights are LBS (the app's canonical storage unit); the UI converts for
  * display. Plate breakdowns are PER SIDE and only computed for barbell
@@ -23,12 +27,14 @@
 
 import { weightToPlates, LBS_PLATES, type PlateSet } from './plateCalculator'
 
-/** A concrete, plate-floored intensity row ready to display or log. */
+/** A concrete, plate-ceiled intensity row ready to display or log. */
 export interface IntensityRow {
   /** Rep count this row targets. */
   reps: number
-  /** Total weight in lbs, floored to an achievable increment (≤ the exact target). */
+  /** Total weight in lbs, ceiled to an achievable increment (≥ the exact target). */
   weightLbs: number
+  /** Estimated 1RM of `weightLbs` at `reps`, in lbs (1 rep = the weight itself). */
+  e1rm: number
   /** Per-side plates for this weight, or null for non-per-side (machine) loading. */
   plates: PlateSet | null
 }
@@ -45,8 +51,8 @@ export interface IntensityTableOptions {
   /**
    * Round to loadable plates above the bar and attach per-side plate
    * breakdowns. When false (numpad mode), round to a clean numeric increment
-   * (5 lb, or 2.5 kg in kg-space) with no plate breakdown — mirroring
-   * `prTargetsTable` so numpad users never see bar-offset fractional weights.
+   * (5 lb, or 2.5 kg in kg-space) with no plate breakdown — mirroring the PR
+   * targets table so numpad users never see bar-offset fractional weights.
    * Default true.
    */
   plateMode?: boolean
@@ -83,15 +89,15 @@ function smallestIncrement(denominations: number[], perSide: boolean): number {
 }
 
 /**
- * Round a raw target DOWN to the nearest achievable total weight at/above the
- * bar. Flooring (not nearest/ceiling) guarantees the resulting weight's
- * intensity never EXCEEDS the selected intensity.
+ * Round a raw target UP to the nearest achievable total weight at/above the
+ * bar. Ceiling (not nearest/floor) guarantees the resulting weight's intensity
+ * MEETS OR EXCEEDS the selected intensity — so 100% reaches PR-beating loads.
  */
-function floorToLoadable(rawLbs: number, barWeight: number, increment: number): number {
+function ceilToLoadable(rawLbs: number, barWeight: number, increment: number): number {
   const plateLoad = rawLbs - barWeight
   if (plateLoad <= 0) return barWeight
-  const floored = Math.floor(plateLoad / increment) * increment
-  return barWeight + floored
+  const ceiled = Math.ceil(plateLoad / increment) * increment
+  return barWeight + ceiled
 }
 
 /**
@@ -99,11 +105,11 @@ function floorToLoadable(rawLbs: number, barWeight: number, increment: number): 
  *
  * For each rep count 1..maxReps, inverts Epley (e1RM = w·(1 + reps/30); 1 rep =
  * the 1RM itself, no multiplier) to find the weight at the target intensity,
- * then rounds it DOWN so the resulting set never exceeds that intensity. The
- * rounding mode mirrors `prTargetsTable`: plate mode floors to a loadable plate
- * increment above the bar (and attaches a per-side breakdown); numpad mode
- * floors to a clean 5 lb (or 2.5 kg, in kg-space) increment with no bar offset.
- * Rows that round to a non-positive weight are dropped.
+ * then rounds it UP so the resulting set meets or beats that intensity. The
+ * rounding mode: plate mode ceils to a loadable plate increment above the bar
+ * (and attaches a per-side breakdown); numpad mode ceils to a clean 5 lb (or
+ * 2.5 kg, in kg-space) increment with no bar offset. In plate mode a target
+ * below the empty bar is dropped (you can't load less than the bar).
  *
  * Returns an empty array when there is nothing meaningful to show — a
  * non-positive 1RM, or a non-positive intensity.
@@ -140,22 +146,22 @@ export function generateIntensityTable(
     let plates: PlateSet | null = null
     if (plateMode) {
       // Below the empty bar there's nothing to load; a target AT the bar is the
-      // valid "just the bar" suggestion (floorToLoadable returns barWeight).
+      // valid "just the bar" suggestion (ceilToLoadable returns barWeight).
       if (raw < barWeight) continue
-      weightLbs = floorToLoadable(raw, barWeight, increment)
+      weightLbs = ceilToLoadable(raw, barWeight, increment)
       plates = perSide ? weightToPlates(weightLbs, barWeight, denominations) : null
     } else if (unit === 'kg') {
-      // Floor in kg-space so the displayed kg value is a clean 2.5 kg step.
-      const flooredKg = Math.floor((raw * KG_PER_LB) / KG_NUMPAD_STEP) * KG_NUMPAD_STEP
-      weightLbs = Math.round(flooredKg / KG_PER_LB)
+      // Ceil in kg-space so the displayed kg value is a clean 2.5 kg step.
+      const ceiledKg = Math.ceil((raw * KG_PER_LB) / KG_NUMPAD_STEP) * KG_NUMPAD_STEP
+      weightLbs = Math.round(ceiledKg / KG_PER_LB)
     } else {
-      weightLbs = Math.floor(raw / LBS_NUMPAD_STEP) * LBS_NUMPAD_STEP
+      weightLbs = Math.ceil(raw / LBS_NUMPAD_STEP) * LBS_NUMPAD_STEP
     }
 
-    // Guard against a non-positive row (low target / bar 0), which would
-    // populate the inputs with 0 and silently disable Save.
+    // Defensive guard against a non-positive row (e.g. a degenerate 0 target).
     if (weightLbs <= 0) continue
-    rows.push({ reps: r, weightLbs, plates })
+    const e1rm = r === 1 ? weightLbs : Math.round(weightLbs * (1 + r / 30))
+    rows.push({ reps: r, weightLbs, e1rm, plates })
   }
 
   return rows
