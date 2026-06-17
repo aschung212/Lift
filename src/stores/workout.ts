@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { shallowRef, triggerRef, computed } from 'vue'
 import { supabase, isPreviewMode } from '../lib/supabase'
-import type { Tables, Json } from '../lib/database.types'
+import type { Tables } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
@@ -12,7 +12,7 @@ import { epley } from '../lib/epley'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { todayISO } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
-import { sanitizeWarmupScheme, type WarmupSchemeStep } from '../lib/warmupGenerator'
+import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -38,7 +38,7 @@ export interface Exercise {
   inputMode?: ExerciseInputMode    // remembered per exercise, default 'numpad'
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
-  warmupScheme?: WarmupSchemeStep[] // custom warmup ramp; undefined = default, [] = no warmup (LIFT-725)
+  intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -168,12 +168,11 @@ function load(): Exercise[] {
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) throw new Error('Expected array')
-    // Defensively normalize any persisted custom warmup ramp — corrupt or
-    // hand-edited storage must never feed malformed steps into the generator.
+    // Defensively normalize any persisted Intensity-lens config — corrupt or
+    // hand-edited storage must never feed a malformed rep cap into the table.
     for (const ex of parsed) {
-      if (ex && ex.warmupScheme !== undefined) {
-        if (Array.isArray(ex.warmupScheme)) ex.warmupScheme = sanitizeWarmupScheme(ex.warmupScheme)
-        else delete ex.warmupScheme
+      if (ex && ex.intensityMaxReps !== undefined) {
+        ex.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensityMaxReps)
       }
     }
     return parsed
@@ -241,11 +240,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       archived_at: exercise.archived_at ?? null,
       ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}),
       ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {}),
-      // Always send warmup_scheme (null when unset) so "reset to default" actually
-      // clears the override server-side — omitting it would leave a stale custom
-      // ramp that re-applies on the next fetch. Cast: the {pct,reps}[] shape is
-      // structurally JSON but lacks Json's index signature.
-      warmup_scheme: (exercise.warmupScheme ?? null) as unknown as Json,
+      // Always send intensity_max_reps (null when unset) so "reset to default"
+      // actually clears the override server-side — omitting it would leave a
+      // stale value that re-applies on the next fetch.
+      intensity_max_reps: exercise.intensityMaxReps ?? null,
     }
   }
 
@@ -373,7 +371,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       }
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
-      if (ex.warmup_scheme != null) exercise.warmupScheme = sanitizeWarmupScheme(ex.warmup_scheme)
+      if (ex.intensity_max_reps != null) exercise.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensity_max_reps)
       if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
     })
@@ -610,19 +608,18 @@ export const useWorkoutStore = defineStore('workout', () => {
   }
 
   /**
-   * Set (or clear) a custom per-exercise warmup ramp scheme (LIFT-725).
-   * `null` clears the override so the default ramp applies again; an empty
-   * array means "no warmup ramp for this exercise". Any other value is
-   * sanitized (clamped %/reps, capped step count) before it is stored.
+   * Set (or clear) the per-exercise Intensity-lens rep-row count (#770).
+   * `null` clears the override so the default (10) applies again. Any other
+   * value is sanitized (floored, clamped to [1, 100]) before it is stored.
    */
-  function setExerciseWarmupScheme(exerciseId: string, scheme: WarmupSchemeStep[] | null) {
+  function setExerciseIntensityMaxReps(exerciseId: string, maxReps: number | null) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
     if (exercise.sample) _adoptExercise(exercise)
-    if (scheme === null) {
-      delete exercise.warmupScheme
+    if (maxReps === null) {
+      delete exercise.intensityMaxReps
     } else {
-      exercise.warmupScheme = sanitizeWarmupScheme(scheme)
+      exercise.intensityMaxReps = sanitizeIntensityMaxReps(maxReps)
     }
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
@@ -1282,7 +1279,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExercisePlateCountMode,
     setExerciseInputMode,
     setExerciseBarWeight,
-    setExerciseWarmupScheme,
+    setExerciseIntensityMaxReps,
     logSet,
     updateSet,
     deleteSet,

@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise } from '../../stores/workout'
 import { mockWeightUnit } from '../../__tests__/helpers'
-import { DEFAULT_WARMUP_SCHEME } from '../../lib/warmupGenerator'
 
 vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 
@@ -24,83 +23,54 @@ async function openWith(exercise: Exercise): Promise<VueWrapper> {
   return wrapper
 }
 
-const rows = (w: VueWrapper) => w.findAll('.wtWarmupEditRow')
+const stepperValue = (w: VueWrapper) => w.find('.iosStepperValue').text()
 const lastSavePayload = (w: VueWrapper) => {
   const calls = w.emitted('save')!
-  return calls[calls.length - 1][0] as { warmupScheme: { pct: number; reps: number }[] | null }
+  return calls[calls.length - 1][0] as { intensityMaxReps: number | null }
 }
 
-describe('EditExerciseModal — warmup ramp editor (LIFT-725)', () => {
-  it('seeds the default ramp and hides "Reset" when an exercise has no custom scheme', async () => {
+describe('EditExerciseModal — intensity rep-rows config (#770)', () => {
+  it('seeds the default (10) and hides "Reset" when the exercise has no override', async () => {
     const wrapper = await openWith(makeExercise())
-    expect(rows(wrapper)).toHaveLength(DEFAULT_WARMUP_SCHEME.length)
-    const firstRow = rows(wrapper)[0]
-    const values = firstRow.findAll('.iosStepperValue')
-    expect(values[0].text()).toBe('40%') // intensity
-    expect(values[1].text()).toBe('8')   // reps
-    expect(wrapper.find('.wtWarmupEditReset').exists()).toBe(false)
+    expect(stepperValue(wrapper)).toBe('10')
+    expect(wrapper.find('.wtIntensityEditReset').exists()).toBe(false)
   })
 
-  it('seeds a per-exercise custom scheme and shows "Reset"', async () => {
-    const wrapper = await openWith(makeExercise({ warmupScheme: [{ pct: 0.5, reps: 6 }] }))
-    expect(rows(wrapper)).toHaveLength(1)
-    const values = rows(wrapper)[0].findAll('.iosStepperValue')
-    expect(values[0].text()).toBe('50%')
-    expect(values[1].text()).toBe('6')
-    expect(wrapper.find('.wtWarmupEditReset').exists()).toBe(true)
+  it('seeds a per-exercise override and shows "Reset"', async () => {
+    const wrapper = await openWith(makeExercise({ intensityMaxReps: 15 }))
+    expect(stepperValue(wrapper)).toBe('15')
+    expect(wrapper.find('.wtIntensityEditReset').exists()).toBe(true)
   })
 
-  it('renders the empty-state and no rows when the scheme is explicitly empty', async () => {
-    const wrapper = await openWith(makeExercise({ warmupScheme: [] }))
-    expect(rows(wrapper)).toHaveLength(0)
-    expect(wrapper.find('.wtWarmupEditEmpty').exists()).toBe(true)
-  })
-
-  it('emits warmupScheme: null when the ramp is left at the default', async () => {
+  it('emits intensityMaxReps: null when left at the default', async () => {
     const wrapper = await openWith(makeExercise())
     await wrapper.find('.repMaxBtnCalc').trigger('click')
-    expect(lastSavePayload(wrapper).warmupScheme).toBeNull()
+    expect(lastSavePayload(wrapper).intensityMaxReps).toBeNull()
   })
 
-  it('emits a custom scheme after editing intensity', async () => {
+  it('increments and emits the custom value', async () => {
     const wrapper = await openWith(makeExercise())
-    await wrapper.find('[aria-label="Increase warm-up 1 intensity"]').trigger('click') // 40 → 45
+    await wrapper.find('[aria-label="More rep rows"]').trigger('click') // 10 → 11
+    expect(stepperValue(wrapper)).toBe('11')
     await wrapper.find('.repMaxBtnCalc').trigger('click')
-    const scheme = lastSavePayload(wrapper).warmupScheme
-    expect(scheme).not.toBeNull()
-    expect(scheme![0]).toEqual({ pct: 0.45, reps: 8 })
+    expect(lastSavePayload(wrapper).intensityMaxReps).toBe(11)
   })
 
-  it('clamps intensity at the maximum and reps at the minimum', async () => {
-    const wrapper = await openWith(makeExercise({ warmupScheme: [{ pct: 0.95, reps: 1 }] }))
-    await wrapper.find('[aria-label="Increase warm-up 1 intensity"]').trigger('click') // already 95%
-    await wrapper.find('[aria-label="Decrease warm-up 1 reps"]').trigger('click')      // already 1
-    await wrapper.find('.repMaxBtnCalc').trigger('click')
-    expect(lastSavePayload(wrapper).warmupScheme![0]).toEqual({ pct: 0.95, reps: 1 })
+  it('disables the steppers at the [1, 100] bounds', async () => {
+    const high = await openWith(makeExercise({ intensityMaxReps: 100 }))
+    expect(high.find('[aria-label="More rep rows"]').attributes('disabled')).toBeDefined()
+    const low = await openWith(makeExercise({ intensityMaxReps: 1 }))
+    expect(low.find('[aria-label="Fewer rep rows"]').attributes('disabled')).toBeDefined()
   })
 
-  it('adds and removes steps, then resets back to default', async () => {
-    const wrapper = await openWith(makeExercise())
-    await wrapper.find('.wtWarmupEditAdd').trigger('click')
-    expect(rows(wrapper)).toHaveLength(DEFAULT_WARMUP_SCHEME.length + 1)
-
-    // Remove the first step.
-    await wrapper.find('.wtWarmupEditRow [aria-label="Remove warm-up 1"]').trigger('click')
-    expect(rows(wrapper)).toHaveLength(DEFAULT_WARMUP_SCHEME.length)
-
-    // Reset restores the default and hides the reset control again.
-    await wrapper.find('.wtWarmupEditReset').trigger('click')
+  it('resets back to the default and hides the reset control', async () => {
+    const wrapper = await openWith(makeExercise({ intensityMaxReps: 20 }))
+    expect(wrapper.find('.wtIntensityEditReset').exists()).toBe(true)
+    await wrapper.find('.wtIntensityEditReset').trigger('click')
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.wtWarmupEditReset').exists()).toBe(false)
+    expect(stepperValue(wrapper)).toBe('10')
+    expect(wrapper.find('.wtIntensityEditReset').exists()).toBe(false)
     await wrapper.find('.repMaxBtnCalc').trigger('click')
-    expect(lastSavePayload(wrapper).warmupScheme).toBeNull()
-  })
-
-  it('emits warmupScheme: [] when every step is removed', async () => {
-    const wrapper = await openWith(makeExercise({ warmupScheme: [{ pct: 0.5, reps: 5 }] }))
-    await wrapper.find('.wtWarmupEditRow [aria-label="Remove warm-up 1"]').trigger('click')
-    expect(wrapper.find('.wtWarmupEditEmpty').exists()).toBe(true)
-    await wrapper.find('.repMaxBtnCalc').trigger('click')
-    expect(lastSavePayload(wrapper).warmupScheme).toEqual([])
+    expect(lastSavePayload(wrapper).intensityMaxReps).toBeNull()
   })
 })

@@ -74,6 +74,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           input_mode: string | null
+          intensity_max_reps: number | null
           name: string
           tags: string[]
           updated_at: string | null
@@ -87,6 +88,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           input_mode?: string | null
+          intensity_max_reps?: number | null
           name: string
           tags?: string[]
           updated_at?: string | null
@@ -100,6 +102,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           input_mode?: string | null
+          intensity_max_reps?: number | null
           name?: string
           tags?: string[]
           updated_at?: string | null

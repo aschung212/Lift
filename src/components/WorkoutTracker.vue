@@ -444,26 +444,39 @@
                 </div>
               </template>
 
-              <!-- Warmup ramp: auto-ramp to today's working weight -->
-              <template v-else-if="currentLens === 'warmup'">
-                <span class="wtPrevSessionLabel">Ramp to {{ displayWeight(warmupTargetLbs!) }} {{ weightUnit }}</span>
-                <div class="wtPrTargetsList wtSuggestionList">
+              <!-- Intensity: PR-anchored weight × reps at the chosen % of max -->
+              <template v-else-if="currentLens === 'intensity'">
+                <span class="wtPrevSessionLabel">{{ intensityPct }}% of {{ displayWeight(intensityOneRM!) }} {{ weightUnit }} max</span>
+                <div class="wtIntensityControl">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    :step="INTENSITY_STEP"
+                    v-model.number="intensityPct"
+                    class="wtIntensitySlider"
+                    :aria-label="`Intensity, ${intensityPct} percent of max`"
+                  />
+                  <span class="wtIntensityValue">{{ intensityPct }}%</span>
+                </div>
+                <div v-if="intensityTable.length" class="wtPrTargetsList wtSuggestionList">
                   <button
-                    v-for="(step, i) in warmupRamp"
-                    :key="i"
-                    :class="['wtPrTargetsRow', { wtPrTargetsRowActive: warmupUsed[i] }]"
-                    :aria-label="`Warmup, ${displayWeight(step.weightLbs)} ${weightUnit} for ${step.reps} reps`"
-                    @click="fillFromWarmup(step, i)"
+                    v-for="(row, i) in intensityTable"
+                    :key="row.reps"
+                    :class="['wtPrTargetsRow', { wtPrTargetsRowActive: intensityUsed[i] }]"
+                    :aria-label="`${displayWeight(row.weightLbs)} ${weightUnit} for ${row.reps} reps`"
+                    @click="fillFromIntensity(row, i)"
                   >
-                    <span class="wtPrTargetsReps">{{ Math.round(step.pct * 100) }}</span>
-                    <span class="wtPrTargetsRepsLabel">%</span>
-                    <span class="wtPrTargetsWeight">{{ displayWeight(step.weightLbs) }} {{ weightUnit }} × {{ step.reps }}</span>
+                    <span class="wtPrTargetsReps">{{ row.reps }}</span>
+                    <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
+                    <span class="wtPrTargetsWeight">{{ displayWeight(row.weightLbs) }} {{ weightUnit }}</span>
                   </button>
                 </div>
+                <p v-else class="wtIntensityEmpty">Nothing loadable at {{ intensityPct }}% — slide higher.</p>
               </template>
 
-              <!-- PR targets: weight × reps to beat your all-time best e1RM -->
-              <template v-else-if="currentLens === 'targets' && prTargetsTable">
+              <!-- PR: weight × reps to beat your all-time best e1RM (round up) -->
+              <template v-else-if="currentLens === 'pr' && prTargetsTable">
                 <span class="wtPrevSessionLabel">Beat {{ displayWeight(store.getExercisePR(selectedExerciseId, prBaselineDate)) }} {{ weightUnit }} e1RM</span>
                 <div class="wtPrTargetsList wtSuggestionList">
                   <button
@@ -741,7 +754,7 @@ import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
-import { generateWarmupRamp, type WarmupStep } from '../lib/warmupGenerator'
+import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
@@ -1201,60 +1214,72 @@ function fillFromLastSession(set: { weight: number; reps: number }, index: numbe
   lastSessionUsed.value = { ...lastSessionUsed.value, [index]: true }
 }
 
-// ── Warmup ramp: auto-ramp to the working weight (LIFT-725) ────────
-// An opt-in ladder of lighter primer sets (40/60/80/90% × descending reps) up
-// to a STABLE working-weight target — the heaviest set from the user's last
-// session for this exercise. Reading last session (not the live weight input)
-// keeps the ramp from reshuffling as the user fills and logs each warmup.
-// Surfaced as the "Warmup" lens of the consolidated Suggestions drawer (#759);
-// it coexists with the usual ladder as a separate segment rather than being
-// suppressed by it — the two anchor to different reference weights.
-const warmupUsed = ref<Record<number, boolean>>({})
+// ── Intensity lens: PR/1RM-anchored weight × reps table (#770) ─────
+// A slider picks an intensity (% of the exercise's best e1RM); the table shows,
+// per rep count, the heaviest LOADABLE weight whose e1RM does not exceed that
+// intensity (floored to a plate increment). The low end of the slider yields
+// warmups, the high end near-maximal work. Reps are NOT prescribed — the user
+// taps the row matching their planned reps. Beating the PR (round-UP,
+// supramaximal) is the separate "PR" lens, which needs ceiling rounding.
+const INTENSITY_DEFAULT_PCT = 80
+const INTENSITY_STEP = 5
+const intensityPct = ref(INTENSITY_DEFAULT_PCT)
+const intensityUsed = ref<Record<number, boolean>>({})
 
-const warmupTargetLbs = computed<number | null>(() => {
+// `intensityUsed` is keyed by row index; moving the slider rebuilds the table
+// with new weights at the same indices, so a stale "used" highlight would lie.
+// Clear it whenever the intensity changes.
+watch(intensityPct, () => { intensityUsed.value = {} })
+
+// Anchor: the exercise's best e1RM (its PR) — same source as the PR lens.
+const intensityOneRM = computed<number | null>(() => {
   if (isEditMode.value || !isLogForExercise.value) return null
-  if (date.value !== todayISO()) return null
-  const ls = lastSession.value
-  if (!ls || ls.sets.length === 0) return null
-  const top = Math.max(...ls.sets.map(s => s.weight))
-  return Number.isFinite(top) && top > 0 ? top : null
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  const pr = store.getExercisePR(id, prBaselineDate.value)
+  return pr > 0 ? pr : null
 })
 
-const warmupRamp = computed<WarmupStep[]>(() => {
-  const target = warmupTargetLbs.value
-  if (target === null) return []
-  // Per-exercise custom ramp (LIFT-725) drives the scheme; undefined falls back
-  // to the default ladder, an empty scheme suppresses the ramp for this exercise.
+const intensityMaxReps = computed<number>(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
-  return generateWarmupRamp(target, {
+  return ex?.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
+})
+
+const intensityTable = computed<IntensityRow[]>(() => {
+  const oneRM = intensityOneRM.value
+  if (oneRM === null) return []
+  return generateIntensityTable(oneRM, intensityPct.value, {
     barWeight: currentBarWeight.value,
     perSide: isPerSide.value,
     denominations: weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES,
-    ...(ex?.warmupScheme !== undefined ? { scheme: ex.warmupScheme } : {}),
+    maxReps: intensityMaxReps.value,
+    plateMode: plateMode.value,
+    unit: weightUnit.value,
   })
 })
 
-// ── Consolidated "Suggestions" drawer (#759) ──────────────────────
+// ── Consolidated "Suggestions" drawer (#759 / #770) ───────────────
 // One segmented disclosure over every "what should my next set be?" lens —
-// routine ladder / last-session quick-fill, warmup ramp, PR targets — instead
-// of three stacked cards. `suggestionLenses` (defined after the lenses' source
-// computeds) lists what's available; `currentLens` self-heals if the selected
-// lens loses its data. The drawer opens expanded on the quick-fill lens
-// (routine/last) so the one-tap ghost-arm flow is never a tap away.
-type SuggestionLens = 'routine' | 'last' | 'warmup' | 'targets'
+// routine ladder / last-session quick-fill, the PR-anchored intensity table,
+// and the PR-beating targets — instead of stacked cards. `suggestionLenses`
+// (defined after the lenses' source computeds) lists what's available;
+// `currentLens` self-heals if the selected lens loses its data. The drawer
+// opens expanded on the quick-fill lens (routine/last) so the one-tap ghost-arm
+// flow is never a tap away.
+type SuggestionLens = 'routine' | 'last' | 'intensity' | 'pr'
 const suggestionsExpanded = ref(false)
 const activeLens = ref<SuggestionLens>('routine')
 
-/** Load a warmup step into the inputs (mirrors fillFromRung's plate handling). */
-function fillFromWarmup(step: WarmupStep, index: number) {
-  if (plateMode.value && step.plates) {
-    currentPlates.value = [...step.plates]
+/** Load an intensity row into the inputs (mirrors fillFromRung's plate handling). */
+function fillFromIntensity(row: IntensityRow, index: number) {
+  if (plateMode.value && row.plates) {
+    currentPlates.value = [...row.plates]
     syncPlateWeight()
   } else {
-    weightStr.value = String(displayWeight(step.weightLbs))
+    weightStr.value = String(displayWeight(row.weightLbs))
   }
-  repsStr.value = String(step.reps)
-  warmupUsed.value = { ...warmupUsed.value, [index]: true }
+  repsStr.value = String(row.reps)
+  intensityUsed.value = { ...intensityUsed.value, [index]: true }
   impactLight()
 }
 
@@ -1882,12 +1907,13 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   lastSessionUsed.value = {}
-  warmupUsed.value = {}
+  intensityUsed.value = {}
+  intensityPct.value = INTENSITY_DEFAULT_PCT
   date.value = lastLogDate.value
   usualLadder.value = store.getUsualLadder(exerciseId, todayISO())
   // Default the Suggestions drawer to the first available lens, opened only
   // when that lens is a quick-fill (routine/last) so the one-tap ghost-arm flow
-  // is immediate; warmup/targets-only states start collapsed (clean surface).
+  // is immediate; intensity/PR-only states start collapsed (clean surface).
   const lenses = suggestionLenses.value
   activeLens.value = lenses[0] ?? 'routine'
   suggestionsExpanded.value = lenses[0] === 'routine' || lenses[0] === 'last'
@@ -2200,14 +2226,16 @@ function fillFromPRTable(row: PRTargetRow) {
 
 // Lenses available in the Suggestions drawer, in display order. Routine and
 // last-session are mutually exclusive (a detected routine supersedes the raw
-// last session); warmup + targets append when their source data exists.
+// last session); intensity + PR append when their source data exists. The
+// intensity lens appears whenever there's a 1RM to anchor to (the slider may
+// land on an empty table at extreme positions — that's fine, it's transient).
 const suggestionLenses = computed<SuggestionLens[]>(() => {
   if (isEditMode.value || !isLogForExercise.value) return []
   const lenses: SuggestionLens[] = []
   if (ladderActive.value) lenses.push('routine')
   else if (lastSession.value) lenses.push('last')
-  if (warmupRamp.value.length) lenses.push('warmup')
-  if (prTargetsTable.value) lenses.push('targets')
+  if (intensityOneRM.value !== null) lenses.push('intensity')
+  if (prTargetsTable.value) lenses.push('pr')
   return lenses
 })
 
@@ -2224,8 +2252,8 @@ function lensLabel(lens: SuggestionLens): string {
   switch (lens) {
     case 'routine': return 'Routine'
     case 'last': return 'Last'
-    case 'warmup': return 'Warmup'
-    case 'targets': return 'Targets'
+    case 'intensity': return 'Intensity'
+    case 'pr': return 'PR'
   }
 }
 
@@ -2494,7 +2522,7 @@ function onEditExerciseSave(payload: EditExerciseSave) {
     store.setExercisePlateCountMode(editTarget.value, payload.plateCountMode)
     store.setExerciseBarWeight(editTarget.value, payload.barWeight)
   }
-  store.setExerciseWarmupScheme(editTarget.value, payload.warmupScheme)
+  store.setExerciseIntensityMaxReps(editTarget.value, payload.intensityMaxReps)
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).
