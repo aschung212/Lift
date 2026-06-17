@@ -697,6 +697,8 @@ import { useLongPressReorder } from '../composables/useLongPressReorder'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useGoalCelebration } from '../composables/useGoalCelebration'
+import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
@@ -723,6 +725,7 @@ const { impactLight, notifySuccess } = useHaptics()
 const { logSetXPCeremony } = useXPCeremony()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+const { presentGoalCelebration } = useGoalCelebration()
 
 // Rest timer controller — all timer state and logic extracted into composable
 const timerCtrl = useRestTimerController(
@@ -963,6 +966,25 @@ const weeklyGoalInfo = computed(() => {
   if (!progressionStore.progressionEnabled) return null
   return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
 })
+
+/**
+ * Fire the weekly-goal celebration the first time the goal is met each week
+ * (LIFT-764). Called after a set is logged. Skipped while a PR burst is showing
+ * so the two overlays never stack — the week is left unmarked so the
+ * celebration still fires on the next non-PR set. The once-per-week guard lives
+ * in device-local storage, mirroring the overload nudge.
+ */
+function maybeCelebrateWeeklyGoal(prShown: boolean): void {
+  if (prShown) return
+  const info = weeklyGoalInfo.value
+  if (!info) return
+  const state = readGoalCelebrationState()
+  const decision = decideGoalCelebration(info.met, progressionStore.streakWeeks, state.lastCelebratedWeek)
+  if (!decision) return
+  markGoalWeekCelebrated(decision.weekKey)
+  presentGoalCelebration({ streak: decision.streak, milestone: decision.milestone, target: info.target })
+  logEvent('weekly_goal_celebrated', { streak: decision.streak, milestone: decision.milestone })
+}
 
 /**
  * Count of exercises carrying each tag — powers the "Push 23" suffix on tag
@@ -2223,6 +2245,8 @@ function saveSet() {
       } else {
         impactLight()
       }
+      // Celebrate the first weekly-goal completion of the week (LIFT-764).
+      maybeCelebrateWeeklyGoal(wasPR)
       if (restTimerEnabled.value && restTimerAutoStart.value) {
         timerCtrl.startRestTimer()
       }

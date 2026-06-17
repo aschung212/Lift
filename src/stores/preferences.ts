@@ -25,7 +25,10 @@ export interface WeightGoalConfig {
 }
 
 export interface ExperienceFlags {
-  /** Fire the full-screen PR burst when a set beats the user's e1RM for an exercise. */
+  /**
+   * Master switch for celebration moments: the full-screen PR burst when a set
+   * beats the user's e1RM, and the lighter weekly-goal / streak-milestone banner.
+   */
   prCelebrations: boolean
   /** Allow haptic feedback on taps, PRs, and timer end. */
   haptics: boolean
