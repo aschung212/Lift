@@ -97,6 +97,62 @@
             </template>
           </div>
         </div>
+        <!-- Warmup ramp (LIFT-725): per-exercise custom ramp. Each step is an
+             intensity (% of working weight) + a rep target. No steps = no ramp;
+             matching the default stores nothing (the default applies). -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Warmup Ramp</span>
+          <div class="iosSettingsGroup">
+            <div
+              v-for="(step, i) in editWarmupSteps"
+              :key="i"
+              class="wtWarmupEditRow"
+            >
+              <div class="wtWarmupEditRowHead">
+                <span class="iosSettingsRowLabel">Warm-up {{ i + 1 }}</span>
+                <button
+                  class="wtWarmupEditRemove"
+                  @click="removeWarmupStep(i)"
+                  :aria-label="`Remove warm-up ${i + 1}`"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+              </div>
+              <div class="wtWarmupEditFields">
+                <div class="wtWarmupEditField">
+                  <span class="wtWarmupEditFieldLabel">Intensity</span>
+                  <div class="iosStepper">
+                    <button class="iosStepperBtn" @click="adjustWarmupPct(i, -PCT_STEP)" :aria-label="`Decrease warm-up ${i + 1} intensity`">−</button>
+                    <span class="iosStepperValue">{{ step.pctInt }}%</span>
+                    <button class="iosStepperBtn" @click="adjustWarmupPct(i, PCT_STEP)" :aria-label="`Increase warm-up ${i + 1} intensity`">+</button>
+                  </div>
+                </div>
+                <div class="wtWarmupEditField">
+                  <span class="wtWarmupEditFieldLabel">Reps</span>
+                  <div class="iosStepper">
+                    <button class="iosStepperBtn" @click="adjustWarmupReps(i, -1)" :aria-label="`Decrease warm-up ${i + 1} reps`">−</button>
+                    <span class="iosStepperValue">{{ step.reps }}</span>
+                    <button class="iosStepperBtn" @click="adjustWarmupReps(i, 1)" :aria-label="`Increase warm-up ${i + 1} reps`">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p v-if="editWarmupSteps.length === 0" class="wtWarmupEditEmpty">
+              No warm-up sets — this exercise won't suggest a ramp.
+            </p>
+            <button
+              v-if="editWarmupSteps.length < MAX_WARMUP_STEPS"
+              class="wtWarmupEditAdd"
+              @click="addWarmupStep"
+            >+ Add warm-up set</button>
+          </div>
+          <button
+            v-if="!isDefaultWarmup"
+            class="wtWarmupEditReset"
+            @click="resetWarmupScheme"
+          >Reset to default</button>
+          <span class="iosSettingsFooter">Lighter primer sets that ramp up to your working weight, shown when you log this exercise.</span>
+        </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmSave">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="emit('close')">Cancel</button>
@@ -132,6 +188,7 @@
 
 <script lang="ts">
 import type { PlateCountMode } from '../stores/workout'
+import type { WarmupSchemeStep } from '../lib/warmupGenerator'
 
 /** Payload emitted on Save — the parent applies it to the store. */
 export interface EditExerciseSave {
@@ -140,6 +197,8 @@ export interface EditExerciseSave {
   plateMode: boolean
   plateCountMode: PlateCountMode
   barWeight: number
+  /** Custom warmup ramp; null = use the default ramp, [] = no warmup for this exercise. */
+  warmupScheme: WarmupSchemeStep[] | null
 }
 </script>
 
@@ -150,6 +209,15 @@ import { useWeightUnit } from '../composables/useWeightUnit'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
 import { MAX_WEIGHT } from '../lib/inputLimits'
+import {
+  DEFAULT_WARMUP_SCHEME,
+  MAX_WARMUP_STEPS,
+  MIN_WARMUP_PCT,
+  MAX_WARMUP_PCT,
+  MIN_WARMUP_REPS,
+  MAX_WARMUP_REPS,
+  schemesEqual,
+} from '../lib/warmupGenerator'
 
 const props = defineProps<{
   /** Exercise being edited; null renders nothing (modal closed). */
@@ -179,6 +247,50 @@ const editBarWeightEditing = ref(false)
 const editBarWeightInputEl = ref<HTMLInputElement | null>(null)
 const confirmDeleteExercise = ref(false)
 
+// ── Warmup ramp editor (LIFT-725) ───────────────────────────────
+// Steps are edited in whole-percent space (the steppers move in 5% notches)
+// and converted to fractions on save. pctInt 40 ↔ scheme pct 0.4.
+const PCT_STEP = 5
+const MIN_PCT_INT = Math.round(MIN_WARMUP_PCT * 100)
+const MAX_PCT_INT = Math.round(MAX_WARMUP_PCT * 100)
+const editWarmupSteps = ref<{ pctInt: number; reps: number }[]>([])
+
+/** Build the {pct,reps} scheme the form currently represents. */
+function currentWarmupScheme(): WarmupSchemeStep[] {
+  return editWarmupSteps.value.map(s => ({ pct: s.pctInt / 100, reps: s.reps }))
+}
+
+/** True when the form matches the built-in default — used to hide "Reset". */
+const isDefaultWarmup = computed(() => schemesEqual(currentWarmupScheme(), DEFAULT_WARMUP_SCHEME))
+
+function adjustWarmupPct(i: number, delta: number) {
+  const step = editWarmupSteps.value[i]
+  if (!step) return
+  step.pctInt = Math.min(MAX_PCT_INT, Math.max(MIN_PCT_INT, step.pctInt + delta))
+}
+
+function adjustWarmupReps(i: number, delta: number) {
+  const step = editWarmupSteps.value[i]
+  if (!step) return
+  step.reps = Math.min(MAX_WARMUP_REPS, Math.max(MIN_WARMUP_REPS, step.reps + delta))
+}
+
+function removeWarmupStep(i: number) {
+  editWarmupSteps.value.splice(i, 1)
+}
+
+function addWarmupStep() {
+  if (editWarmupSteps.value.length >= MAX_WARMUP_STEPS) return
+  const last = editWarmupSteps.value[editWarmupSteps.value.length - 1]
+  // New step continues the ramp: a notch heavier than the last, same reps.
+  const pctInt = last ? Math.min(MAX_PCT_INT, last.pctInt + 10) : 50
+  editWarmupSteps.value.push({ pctInt, reps: last ? last.reps : 5 })
+}
+
+function resetWarmupScheme() {
+  editWarmupSteps.value = DEFAULT_WARMUP_SCHEME.map(s => ({ pctInt: Math.round(s.pct * 100), reps: s.reps }))
+}
+
 const isArchived = computed(() => !!props.exercise?.archived_at)
 
 const focusTrap = useFocusTrap()
@@ -190,6 +302,9 @@ watch(() => props.exercise, async (exercise) => {
     editPlateMode.value = exercise.inputMode === 'plates'
     editPlateCountMode.value = exercise.plateCountMode || 'per-side'
     editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
+    // undefined → seed with the default ramp; [] → seed empty (no warmup).
+    const seed = exercise.warmupScheme ?? DEFAULT_WARMUP_SCHEME
+    editWarmupSteps.value = seed.map(s => ({ pctInt: Math.round(s.pct * 100), reps: s.reps }))
     newTagInput.value = ''
     editTagAdding.value = false
     confirmDeleteExercise.value = false
@@ -253,12 +368,16 @@ function confirmSave() {
   if (pendingTag && !editTags.value.includes(pendingTag)) {
     editTags.value.push(pendingTag)
   }
+  // Store nothing when the ramp matches the default (keeps the override clear);
+  // otherwise persist the custom scheme ([] = explicitly no warmup).
+  const scheme = currentWarmupScheme()
   emit('save', {
     name: editName.value,
     tags: [...editTags.value],
     plateMode: editPlateMode.value,
     plateCountMode: editPlateCountMode.value,
     barWeight: editBarWeight.value,
+    warmupScheme: isDefaultWarmup.value ? null : scheme,
   })
 }
 </script>
