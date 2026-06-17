@@ -1437,7 +1437,7 @@ describe('WorkoutTracker', () => {
     })
 
     // Activate a named lens in the Suggestions drawer (the drawer opens on the
-    // default quick-fill lens; intensity/PR live behind the segmented control).
+    // default quick-fill lens; intensity lives behind the segmented control).
     async function selectLens(wrapper: VueWrapper, label: string) {
       const seg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === label)
       if (!seg) throw new Error(`no "${label}" suggestion segment`)
@@ -1467,11 +1467,13 @@ describe('WorkoutTracker', () => {
       const rows = wrapper.findAll('.wtPrTargetsRow')
       // Default 80% of 228 e1RM, default 10 rep rows.
       expect(rows).toHaveLength(10)
-      // Row 1 (1 rep = the 1RM, no Epley multiplier): floor(80% × 228) = 180 lb.
-      expect(rows[0].text()).toContain('180 lbs')
+      // Row 1 (1 rep = the 1RM, no Epley multiplier): ceil(80% × 228) = 185 lb,
+      // and each row surfaces its e1RM for context.
+      expect(rows[0].text()).toContain('185 lbs')
+      expect(rows[0].text()).toContain('e1RM')
 
       await rows[0].trigger('click')
-      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('180')
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('185')
       expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('1')
       // Re-find: tapping mutates intensityUsed, so Vue re-renders and the held node goes stale.
       expect(wrapper.findAll('.wtPrTargetsRow')[0].classes()).toContain('wtPrTargetsRowActive')
