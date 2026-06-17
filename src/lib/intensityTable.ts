@@ -139,8 +139,9 @@ export function generateIntensityTable(
     let weightLbs: number
     let plates: PlateSet | null = null
     if (plateMode) {
-      // Nothing loadable above the bar at this rep count for this intensity.
-      if (raw <= barWeight) continue
+      // Below the empty bar there's nothing to load; a target AT the bar is the
+      // valid "just the bar" suggestion (floorToLoadable returns barWeight).
+      if (raw < barWeight) continue
       weightLbs = floorToLoadable(raw, barWeight, increment)
       plates = perSide ? weightToPlates(weightLbs, barWeight, denominations) : null
     } else if (unit === 'kg') {

@@ -1500,6 +1500,20 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtIntensityEmpty').exists()).toBe(true)
     })
 
+    it('clears the row highlight when the slider moves (no stale index)', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      await wrapper.findAll('.wtPrTargetsRow')[1].trigger('click')
+      expect(wrapper.findAll('.wtPrTargetsRow')[1].classes()).toContain('wtPrTargetsRowActive')
+
+      // Moving the slider rebuilds the table — the stale highlight must clear.
+      await wrapper.find('.wtIntensitySlider').setValue(70)
+      expect(wrapper.findAll('.wtPrTargetsRow').some(r => r.classes().includes('wtPrTargetsRowActive'))).toBe(false)
+    })
+
     it('coexists with the usual ladder as a separate lens', async () => {
       mockGetUsualLadder.mockReturnValue({
         rungs: [

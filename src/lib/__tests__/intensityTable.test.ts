@@ -90,9 +90,17 @@ describe('generateIntensityTable', () => {
     expect(generateIntensityTable(456, 90, { maxReps: 0 })).toHaveLength(1)
   })
 
-  it('drops rep rows whose target weight sits at/below the bar', () => {
+  it('drops rep rows whose target weight sits below the bar', () => {
     // 20% of 200 = 40 lb target e1RM — below the 45 lb bar at every rep count.
     expect(generateIntensityTable(200, 20)).toEqual([])
+  })
+
+  it('surfaces the empty bar when the target lands exactly on it', () => {
+    // 100% of a 45 lb 1RM at 1 rep = 45 = the bar itself: a valid "just the bar"
+    // row, not dropped.
+    expect(generateIntensityTable(45, 100, { maxReps: 1 })).toEqual([
+      { reps: 1, weightLbs: 45, plates: [] },
+    ])
   })
 
   it('returns empty for a non-positive 1RM or intensity', () => {

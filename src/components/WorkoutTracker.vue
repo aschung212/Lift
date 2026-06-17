@@ -1226,6 +1226,11 @@ const INTENSITY_STEP = 5
 const intensityPct = ref(INTENSITY_DEFAULT_PCT)
 const intensityUsed = ref<Record<number, boolean>>({})
 
+// `intensityUsed` is keyed by row index; moving the slider rebuilds the table
+// with new weights at the same indices, so a stale "used" highlight would lie.
+// Clear it whenever the intensity changes.
+watch(intensityPct, () => { intensityUsed.value = {} })
+
 // Anchor: the exercise's best e1RM (its PR) — same source as the PR lens.
 const intensityOneRM = computed<number | null>(() => {
   if (isEditMode.value || !isLogForExercise.value) return null
