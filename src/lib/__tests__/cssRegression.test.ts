@@ -265,6 +265,16 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.wtIntensitySlider touch target (#770)', () => {
+    // The Intensity-lens slider is a draggable control; its hit area must meet
+    // the project's 44pt iOS touch-target minimum.
+    const lines = getRuleLines('.wtIntensitySlider')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('brace balance', () => {
     // Regression: an extra closing brace in index.css caused a CSS minifier
     // warning ("unexpected }") that could silently drop rules in production.

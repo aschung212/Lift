@@ -1143,8 +1143,9 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.wtDateOverlayInput').setValue('2026-01-10')
       await wrapper.vm.$nextTick()
 
-      // No ladder UI, no ghost — getLastSession is null here so the row vanishes
-      expect(wrapper.find('.wtPrevSessionLabel').exists()).toBe(false)
+      // Ladder gated off (not today) → no routine chips and the ghost disarms.
+      // (The PR-anchored Intensity lens is date-independent and may still show.)
+      expect(wrapper.find('.wtPrevSessionChip').exists()).toBe(false)
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       expect(saveBtn.text()).toBe('Save')
       expect(saveBtn.attributes('disabled')).toBeDefined()
@@ -1414,19 +1415,19 @@ describe('WorkoutTracker', () => {
     })
   })
 
-  describe('warmup ramp (LIFT-725)', () => {
+  describe('intensity lens (#770)', () => {
     async function openBenchModal(wrapper: VueWrapper) {
       await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
       await wrapper.vm.$nextTick()
     }
 
-    // Last session whose heaviest set is 225 lbs — the stable ramp target.
-    function priorTop225() {
+    // Bench's best e1RM in createExercises is 228 — the intensity anchor.
+    function priorSession() {
       return {
         date: '2026-01-20',
         sets: [
           { id: 's-a', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
-          { id: 's-b', date: '2026-01-20T12:00:00', weight: 225, reps: 3, estimated1RM: 248 },
+          { id: 's-b', date: '2026-01-20T12:00:00', weight: 195, reps: 5, estimated1RM: 228 },
         ],
       }
     }
@@ -1436,45 +1437,70 @@ describe('WorkoutTracker', () => {
     })
 
     // Activate a named lens in the Suggestions drawer (the drawer opens on the
-    // default quick-fill lens; warmup/targets live behind the segmented control).
+    // default quick-fill lens; intensity/PR live behind the segmented control).
     async function selectLens(wrapper: VueWrapper, label: string) {
       const seg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === label)
       if (!seg) throw new Error(`no "${label}" suggestion segment`)
       await seg.trigger('click')
     }
 
-    it('exposes a warmup lens ramping to the last-session top set', async () => {
-      mockGetLastSession.mockReturnValue(priorTop225())
+    it('exposes an Intensity lens anchored to the PR e1RM', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
 
-      // No routine detected → drawer defaults to the last-session lens, with
-      // warmup available alongside it on the segmented control.
-      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).toEqual(['Last', 'Warmup'])
-      await selectLens(wrapper, 'Warmup')
-      expect(wrapper.find('.wtSuggestions').text()).toContain('Ramp to 225 lbs')
+      // No routine detected → drawer defaults to the last-session lens, with the
+      // intensity lens available alongside it on the segmented control.
+      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).toEqual(['Last', 'Intensity'])
+      await selectLens(wrapper, 'Intensity')
+      // Anchor caption + the slider control.
+      expect(wrapper.find('.wtSuggestions').text()).toContain('228 lbs max')
+      expect(wrapper.find('.wtIntensitySlider').exists()).toBe(true)
     })
 
-    it('shows the ramp steps under the warmup lens and fills inputs on tap', async () => {
-      mockGetLastSession.mockReturnValue(priorTop225())
+    it('shows weight rows at the default intensity and fills inputs on tap', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
 
-      await selectLens(wrapper, 'Warmup')
+      await selectLens(wrapper, 'Intensity')
       const rows = wrapper.findAll('.wtPrTargetsRow')
-      // 40/60/80/90% of 225 → 90/135/180/205, all below the working weight.
-      expect(rows).toHaveLength(4)
-      expect(rows[0].text()).toContain('90 lbs × 8')
+      // Default 80% of 228 e1RM, default 10 rep rows.
+      expect(rows).toHaveLength(10)
+      // Row 1: floor(80% × 228 / Epley(1)) = 175 lb.
+      expect(rows[0].text()).toContain('175 lbs')
 
-      await rows[1].trigger('click')
-      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('135')
-      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('5')
-      // Re-find: tapping mutates warmupUsed, so Vue re-renders and the held node goes stale.
-      expect(wrapper.findAll('.wtPrTargetsRow')[1].classes()).toContain('wtPrTargetsRowActive')
+      await rows[0].trigger('click')
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('175')
+      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('1')
+      // Re-find: tapping mutates intensityUsed, so Vue re-renders and the held node goes stale.
+      expect(wrapper.findAll('.wtPrTargetsRow')[0].classes()).toContain('wtPrTargetsRowActive')
     })
 
-    it('coexists with the usual ladder as a separate lens (no longer suppressed)', async () => {
-      mockGetLastSession.mockReturnValue(priorTop225())
+    it('respects a per-exercise intensityMaxReps override', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      mockState.exercises[0].intensityMaxReps = 3
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      expect(wrapper.findAll('.wtPrTargetsRow')).toHaveLength(3)
+    })
+
+    it('recomputes (and can empty) the table as the slider moves', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
+      // 10% of 228 ≈ 23 lb — below the 45 lb bar at every rep count → empty.
+      await wrapper.find('.wtIntensitySlider').setValue(10)
+      expect(wrapper.findAll('.wtPrTargetsRow')).toHaveLength(0)
+      expect(wrapper.find('.wtIntensityEmpty').exists()).toBe(true)
+    })
+
+    it('coexists with the usual ladder as a separate lens', async () => {
       mockGetUsualLadder.mockReturnValue({
         rungs: [
           { weightLbs: 45, reps: 10 },
@@ -1485,40 +1511,20 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
 
-      // Routine is the default lens; the warmup ramp is available beside it.
-      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).toEqual(['Routine', 'Warmup'])
+      // Routine is the default lens; intensity is available beside it.
+      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).toEqual(['Routine', 'Intensity'])
       expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Routine')
 
-      await selectLens(wrapper, 'Warmup')
+      await selectLens(wrapper, 'Intensity')
       expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
     })
 
-    it('does not render the drawer when there is no prior session', async () => {
-      mockGetLastSession.mockReturnValue(null)
+    it('does not render the drawer with no routine, last session, or PR', async () => {
+      // An exercise with no sets has no PR to anchor the intensity lens to.
+      mockState.exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets: [] }]
       const wrapper = mountTracker()
       await openBenchModal(wrapper)
       expect(wrapper.find('.wtSuggestions').exists()).toBe(false)
-    })
-
-    it('drives the ramp from a per-exercise custom scheme', async () => {
-      mockGetLastSession.mockReturnValue(priorTop225())
-      // One custom step at 40% × 10 (default would be 4 steps starting 40% × 8).
-      mockState.exercises[0].warmupScheme = [{ pct: 0.4, reps: 10 }]
-      const wrapper = mountTracker()
-      await openBenchModal(wrapper)
-
-      await selectLens(wrapper, 'Warmup')
-      const ramp = wrapper.findAll('.wtPrTargetsRow')
-      expect(ramp).toHaveLength(1)
-      expect(ramp[0].text()).toContain('90 lbs × 10')
-    })
-
-    it('drops the warmup lens when the custom scheme is empty', async () => {
-      mockGetLastSession.mockReturnValue(priorTop225())
-      mockState.exercises[0].warmupScheme = []
-      const wrapper = mountTracker()
-      await openBenchModal(wrapper)
-      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).not.toContain('Warmup')
     })
   })
 
@@ -1548,7 +1554,8 @@ describe('WorkoutTracker', () => {
     })
 
     it('renders no segmented control when only one lens is available', async () => {
-      // Ladder only (no last session, no warmup target) → a single lens.
+      // Ladder only — a no-sets exercise has no PR, so no intensity lens either.
+      mockState.exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets: [] }]
       mockGetUsualLadder.mockReturnValue({
         rungs: [
           { weightLbs: 135, reps: 5 },
@@ -1578,10 +1585,10 @@ describe('WorkoutTracker', () => {
       expect(wrapper.findAll('.wtPrevSessionChip').length).toBe(2)
       expect(wrapper.findAll('.wtPrTargetsRow')).toHaveLength(0)
 
-      const warmupSeg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === 'Warmup')!
-      await warmupSeg.trigger('click')
-      // Now the warmup ramp rows show and the last-session chips are gone.
-      expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Warmup')
+      const intensitySeg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === 'Intensity')!
+      await intensitySeg.trigger('click')
+      // Now the intensity rows show and the last-session chips are gone.
+      expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Intensity')
       expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
       expect(wrapper.findAll('.wtPrevSessionChip')).toHaveLength(0)
     })
