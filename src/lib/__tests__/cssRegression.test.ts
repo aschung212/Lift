@@ -255,6 +255,16 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.wtSuggestionSegment touch target (#759)', () => {
+    // The Suggestions-drawer segmented control is a new interactive element;
+    // each segment must meet the project's 44pt iOS touch-target minimum.
+    const lines = getRuleLines('.wtSuggestionSegment')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('brace balance', () => {
     // Regression: an extra closing brace in index.css caused a CSS minifier
     // warning ("unexpected }") that could silently drop rules in production.
