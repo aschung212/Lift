@@ -762,6 +762,7 @@ import EditExerciseModal, { type EditExerciseSave } from './EditExerciseModal.vu
 import TagManagerModal from './TagManagerModal.vue'
 import ExercisePickerModal from './ExercisePickerModal.vue'
 import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
+import { ladderChipScrollLeft } from '../lib/ladderScroll'
 import { MAX_WEIGHT, MAX_REPS } from '../lib/inputLimits'
 import { loadJSON } from '../lib/storage'
 
@@ -1404,15 +1405,23 @@ const ghostArmed = computed(() =>
 )
 
 // Keep the highlighted "next" chip visible as the user works up the ladder.
+// HORIZONTAL ONLY: scrollIntoView() would scroll every ancestor, including the
+// vertical modal — yanking the inputs (and the just-saved confirmation) off
+// screen after each save (#780). We scroll the chip row by itself instead.
 const ladderChipsEl = ref<HTMLElement | null>(null)
 watch(nextRungIndex, async (idx) => {
   if (idx < 0 || !showModal.value) return
   await nextTick()
-  const el = ladderChipsEl.value?.querySelector('.wtPrevSessionChipNext')
-  if (el) {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    el.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: reduced ? 'auto' : 'smooth' })
-  }
+  const container = ladderChipsEl.value
+  const el = container?.querySelector<HTMLElement>('.wtPrevSessionChipNext')
+  if (!container || !el) return
+  const delta = ladderChipScrollLeft(
+    container.getBoundingClientRect(),
+    el.getBoundingClientRect(),
+  )
+  if (delta === 0) return
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  container.scrollBy({ left: delta, behavior: reduced ? 'auto' : 'smooth' })
 })
 
 // ── Overload nudge: rate-limited "go heavier" suggestion (#741) ───
