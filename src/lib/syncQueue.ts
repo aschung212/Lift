@@ -113,10 +113,6 @@ export class SyncQueue {
   // seen, so descriptor-less queues never touch IndexedDB.
   private _journal = new Map<string, JournalEntry>()
   private _journalActive = false
-  // When true, a flush that is already in flight must NOT repopulate the retry
-  // queue or schedule further work — the queue is being torn down (e.g. account
-  // deletion). Reset to false on the next enqueue so normal sync resumes.
-  private _stopped = false
   // Promise of the currently-executing flush (null when idle). stop() awaits it
   // so callers can guarantee no write is still in flight (LIFT-782).
   private _currentFlush: Promise<void> | null = null
@@ -156,9 +152,6 @@ export class SyncQueue {
    */
   enqueue(key: string, op: SyncOperation, descriptor?: SyncDescriptor): void {
     if (!supabase || isPreviewMode.value) return
-    // A new write means normal operation has resumed — lift any prior stop()
-    // so the flush it schedules below isn't suppressed (LIFT-782).
-    this._stopped = false
     // Journal first — before rate-limit deferral — so the durable record
     // exists the instant the user acts, even if execution is deferred.
     if (descriptor) this._journalSet(key, descriptor, false)
@@ -281,9 +274,7 @@ export class SyncQueue {
     } finally {
       this._currentFlush = null
       this._flushing = false
-      // Skip rescheduling once stopped — the queue is being torn down and a new
-      // timer would re-fire after clear()/sign-out (LIFT-782).
-      if (!this._stopped && this._queue.size > 0) this._scheduleFlush()
+      if (this._queue.size > 0) this._scheduleFlush()
     }
   }
 
@@ -298,11 +289,6 @@ export class SyncQueue {
     const results = await Promise.allSettled(
       entries.map(([, op]) => op()),
     )
-
-    // If the queue was stopped while these ops were in flight (e.g. account
-    // deletion awaited this flush), do NOT repopulate the retry queue or
-    // reschedule — that would resurrect work after the queue is torn down.
-    if (this._stopped) return
 
     let hasFailure = false
     let journalChanged = false
@@ -344,18 +330,21 @@ export class SyncQueue {
   }
 
   /**
-   * Halt pending flushes WITHOUT discarding queued work or the durable journal.
+   * Quiesce the queue WITHOUT discarding queued work or the durable journal.
    *
-   * Cancels the debounce/retry timers, marks the queue stopped (so an in-flight
-   * flush won't repopulate or reschedule), and AWAITS any flush already on the
-   * network so the caller can guarantee no write is still in flight. Every
-   * pending operation and its journal entry is preserved, so flushing resumes
-   * on the next enqueue. Account deletion uses this to stop an in-flight write
-   * from resurrecting a row mid-delete while still preserving unsynced work if
-   * the deletion fails and the user retries (LIFT-782).
+   * Cancels the pending debounce/retry timers and AWAITS any flush already on
+   * the network so the caller can guarantee no write is still in flight when it
+   * returns. Every pending operation and its journal entry is preserved, so
+   * flushing resumes on the next enqueue (or, on the failure path, on the retry
+   * timer the awaited flush may have scheduled). Account deletion uses this to
+   * stop an in-flight write from resurrecting a row mid-delete while still
+   * preserving unsynced work if the deletion fails and the user retries.
+   *
+   * Note: the awaited flush settles fully BEFORE the caller proceeds, so a
+   * subsequent clear() (on a confirmed deletion) tears down any retry state it
+   * left behind — the two run sequentially, never concurrently (LIFT-782).
    */
   async stop(): Promise<void> {
-    this._stopped = true
     if (this._timer) {
       clearTimeout(this._timer)
       this._timer = null
@@ -364,8 +353,6 @@ export class SyncQueue {
       clearTimeout(this._retryTimer)
       this._retryTimer = null
     }
-    // Wait for any flush already issuing network writes to settle, so no
-    // upsert can land after the caller's subsequent deletes.
     await this._currentFlush
   }
 

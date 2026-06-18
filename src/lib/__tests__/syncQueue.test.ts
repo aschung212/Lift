@@ -147,7 +147,7 @@ describe('SyncQueue', () => {
     expect(queue.pending).toBe(0)
   })
 
-  it('stop() awaits an in-flight flush and suppresses retry repopulation', async () => {
+  it('stop() awaits the in-flight flush; a following clear() tears it down with no retry', async () => {
     const queue = new SyncQueue(100)
     let rejectOp: (() => void) | null = null
     const op = vi.fn().mockImplementation(
@@ -159,15 +159,23 @@ describe('SyncQueue', () => {
     const flushPromise = queue.flush()
     expect(op).toHaveBeenCalledOnce()
 
-    // Stop mid-flight, then let the in-flight op fail.
+    // stop() must not resolve until the in-flight op settles.
     const stopPromise = queue.stop()
     rejectOp!()
     await stopPromise
     await flushPromise
 
-    // A failed op would normally be requeued for retry; once stopped it must
-    // NOT be — the queue is being torn down, so nothing resurrects it.
+    // The awaited flush ran to completion: the failed op was requeued for retry
+    // (so the failure path resumes naturally) rather than being silently lost.
+    expect(queue.pending).toBe(1)
+
+    // On a confirmed deletion the caller clears the queue; because stop()
+    // already settled the flush, clear() tears down all retry state and no
+    // background flush re-fires for the signed-out user.
+    queue.clear()
     expect(queue.pending).toBe(0)
+    await vi.runAllTimersAsync()
+    expect(op).toHaveBeenCalledOnce()
   })
 
   it('should not double-flush if flush() called while already flushing', async () => {
