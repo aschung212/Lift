@@ -8,6 +8,7 @@ import type { ThemeId } from '../lib/themes'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import {
   themeUnlocksToJson,
@@ -283,8 +284,12 @@ export const useProgressionStore = defineStore('progression', {
         if (error.code === 'PGRST116') {
           // Row genuinely doesn't exist — push local state to create it
           this._syncToSupabase()
+        } else {
+          // Network/auth/RLS error — classify so an RLS/auth regression is
+          // observable instead of being silently swallowed (LIFT-786).
+          reportFetchError('progression', error)
         }
-        // For any other error (network, auth, etc.), don't overwrite — just bail
+        // Don't overwrite local state — just bail
         return
       }
 

@@ -6,6 +6,7 @@ import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
 import { logError, logWarn } from '../lib/logger'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
 
@@ -74,12 +75,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .is('deleted_at', null)
           .order('created_at')
         if (result.error) {
-          logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(result.error) })
+          reportFetchError('bodyweight', result.error)
           return
         }
         data = result.data
       } catch (err) {
-        logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
+        reportFetchError('bodyweight', err)
         return
       }
 

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { backupToIDB } from '../lib/durableStorage'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
@@ -270,11 +271,17 @@ export const usePreferencesStore = defineStore('preferences', {
       // Then try Supabase (overrides local if exists)
       if (supabase) {
         try {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('user_preferences')
             .select('preferences')
             .eq('user_id', userId)
             .single()
+          // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
+          // Any other error (network/auth/RLS) is classified so an RLS or auth
+          // regression is observable instead of silently swallowed (LIFT-786).
+          if (error && error.code !== 'PGRST116') {
+            reportFetchError('preferences', error)
+          }
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
             this.features = { ...DEFAULTS, ...prefs.features as Record<string, boolean> }
@@ -312,7 +319,11 @@ export const usePreferencesStore = defineStore('preferences', {
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
           }
-        } catch { /* table may not exist yet or no row */ }
+        } catch (err) {
+          // Thrown (vs returned) error — typically a network failure. Classify
+          // so offline stays quiet but auth/server failures are observable.
+          reportFetchError('preferences', err)
+        }
       }
     },
 
