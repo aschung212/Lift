@@ -116,6 +116,12 @@ export class SyncQueue {
   // Promise of the currently-executing flush (null when idle). stop() awaits it
   // so callers can guarantee no write is still in flight (LIFT-782).
   private _currentFlush: Promise<void> | null = null
+  // When true, the flush/retry schedulers are inhibited so NO new timer can be
+  // armed — even by an in-flight flush settling after stop(). This guarantees
+  // that once stop() returns there are zero live timers that could fire an
+  // upsert mid-deletion and resurrect a row. Reset on the next enqueue so
+  // normal sync resumes (e.g. after a failed deletion) (LIFT-782).
+  private _stopped = false
 
   constructor(flushDelay = 1000) {
     this._flushDelay = flushDelay
@@ -152,6 +158,11 @@ export class SyncQueue {
    */
   enqueue(key: string, op: SyncOperation, descriptor?: SyncDescriptor): void {
     if (!supabase || isPreviewMode.value) return
+    // A new write means normal operation has resumed after a stop() — lift the
+    // inhibit so the flush scheduled below (and any retries stranded by the
+    // stop) can run again (LIFT-782).
+    const wasStopped = this._stopped
+    this._stopped = false
     // Journal first — before rate-limit deferral — so the durable record
     // exists the instant the user acts, even if execution is deferred.
     if (descriptor) this._journalSet(key, descriptor, false)
@@ -180,6 +191,10 @@ export class SyncQueue {
     this._queue.set(key, op)
     this._retryQueue.delete(key)
     this._scheduleFlush()
+    // If a prior stop() left failed ops stranded in the retry queue without a
+    // timer (the scheduler was inhibited), re-arm their retry now that we've
+    // resumed so they drain instead of waiting for an app restart (LIFT-782).
+    if (wasStopped && this._retryQueue.size > 0) this._scheduleRetry()
   }
 
   /**
@@ -340,11 +355,15 @@ export class SyncQueue {
    * stop an in-flight write from resurrecting a row mid-delete while still
    * preserving unsynced work if the deletion fails and the user retries.
    *
-   * Note: the awaited flush settles fully BEFORE the caller proceeds, so a
-   * subsequent clear() (on a confirmed deletion) tears down any retry state it
-   * left behind — the two run sequentially, never concurrently (LIFT-782).
+   * Note: the awaited flush settles fully BEFORE the caller proceeds, and the
+   * _stopped flag inhibits the schedulers so that flush can't arm a new timer
+   * as it settles. Once stop() returns there are zero live timers, so nothing
+   * fires an upsert during the caller's subsequent deletes (LIFT-782).
    */
   async stop(): Promise<void> {
+    // Set BEFORE awaiting the flush: the awaited flush's _scheduleRetry /
+    // _scheduleFlush calls then become no-ops, leaving no live timer behind.
+    this._stopped = true
     if (this._timer) {
       clearTimeout(this._timer)
       this._timer = null
@@ -423,11 +442,15 @@ export class SyncQueue {
   }
 
   private _scheduleFlush(): void {
+    // Inhibited while stopped so a flush settling during teardown can't re-arm
+    // a timer that would fire an upsert mid-deletion (LIFT-782).
+    if (this._stopped) return
     if (this._timer) clearTimeout(this._timer)
     this._timer = setTimeout(() => this.flush(), this._flushDelay)
   }
 
   private _scheduleRetry(): void {
+    if (this._stopped) return // inhibited while stopped (see _scheduleFlush)
     if (this._retryTimer) return // already scheduled
     // Exponential backoff based on highest attempt count
     const maxAttempt = Math.max(...[...this._retryQueue.values()].map(r => r.attempt))

@@ -147,7 +147,7 @@ describe('SyncQueue', () => {
     expect(queue.pending).toBe(0)
   })
 
-  it('stop() awaits the in-flight flush; a following clear() tears it down with no retry', async () => {
+  it('stop() leaves no live timer even when the awaited in-flight flush fails', async () => {
     const queue = new SyncQueue(100)
     let rejectOp: (() => void) | null = null
     const op = vi.fn().mockImplementation(
@@ -161,21 +161,48 @@ describe('SyncQueue', () => {
 
     // stop() must not resolve until the in-flight op settles.
     const stopPromise = queue.stop()
-    rejectOp!()
+    rejectOp!() // in-flight op fails WHILE stopped
     await stopPromise
     await flushPromise
 
-    // The awaited flush ran to completion: the failed op was requeued for retry
-    // (so the failure path resumes naturally) rather than being silently lost.
+    // The settling flush requeued the failed op (so it isn't lost)...
     expect(queue.pending).toBe(1)
 
-    // On a confirmed deletion the caller clears the queue; because stop()
-    // already settled the flush, clear() tears down all retry state and no
-    // background flush re-fires for the signed-out user.
-    queue.clear()
-    expect(queue.pending).toBe(0)
+    // ...but it armed NO timer (the schedulers are inhibited while stopped), so
+    // advancing well past any retry backoff re-runs nothing. This is what stops
+    // an upsert from firing mid-deletion and resurrecting a row (LIFT-782).
+    vi.advanceTimersByTime(120000)
     await vi.runAllTimersAsync()
     expect(op).toHaveBeenCalledOnce()
+
+    // A confirmed deletion then tears everything down cleanly.
+    queue.clear()
+    expect(queue.pending).toBe(0)
+  })
+
+  it('resumes a stranded retry on the next enqueue after a stop()', async () => {
+    const queue = new SyncQueue(100)
+    let rejectOp: (() => void) | null = null
+    const failingOp = vi.fn().mockImplementation(
+      () => new Promise<void>((_resolve, reject) => { rejectOp = () => reject(new Error('fail')) })
+    )
+
+    queue.enqueue('a', failingOp)
+    const flushPromise = queue.flush()
+    const stopPromise = queue.stop()
+    rejectOp!()
+    await stopPromise
+    await flushPromise
+    // 'a' is stranded in the retry queue with no timer.
+    expect(queue.pending).toBe(1)
+
+    // A new write resumes the queue and re-arms the stranded retry.
+    const okOp = vi.fn().mockResolvedValue(undefined)
+    failingOp.mockResolvedValue(undefined) // 'a' now succeeds on retry
+    queue.enqueue('b', okOp)
+    await vi.runAllTimersAsync()
+    expect(okOp).toHaveBeenCalled()
+    expect(queue.pending).toBe(0)
   })
 
   it('should not double-flush if flush() called while already flushing', async () => {
