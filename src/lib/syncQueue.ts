@@ -54,6 +54,10 @@ const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
   exercises: new Set([
     'id', 'user_id', 'name', 'tags', 'archived_at',
     'input_mode', 'bar_weight', 'intensity_max_reps', 'deleted_at',
+    // Retired in #770 but the DB column still exists (left dormant, never
+    // dropped). Tolerated so an offline write journaled by a pre-#770 client
+    // still replays after an upgrade instead of being silently dropped.
+    'warmup_scheme',
   ]),
   sets: new Set([
     'id', 'user_id', 'exercise_id', 'date', 'weight', 'reps',

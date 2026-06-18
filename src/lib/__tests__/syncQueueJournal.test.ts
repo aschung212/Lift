@@ -267,6 +267,15 @@ describe('replay allowlist (LIFT-785)', () => {
       })).toBe(true)
     })
 
+    it('tolerates retired-but-dormant DB columns so legacy offline writes still replay', () => {
+      // warmup_scheme was retired in #770 but the column still exists in the DB.
+      // An offline write journaled by a pre-#770 client must not be dropped.
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'exercises',
+        row: { id: 'e1', user_id: 'u1', name: 'Bench', warmup_scheme: [] },
+      })).toBe(true)
+    })
+
     it('rejects unknown tables, columns, and ops', () => {
       // Table not in the allowlist (e.g. a tampered entry targeting auth state)
       expect(isReplayableDescriptor({ op: 'upsert', table: 'user_progression', row: { id: 'x' } })).toBe(false)
