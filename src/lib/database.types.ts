@@ -45,6 +45,7 @@ export type Database = {
           date: string
           deleted_at: string | null
           id: string
+          updated_at: string
           user_id: string
           weight: number
         }
@@ -53,6 +54,7 @@ export type Database = {
           date: string
           deleted_at?: string | null
           id?: string
+          updated_at?: string
           user_id: string
           weight: number
         }
@@ -61,6 +63,7 @@ export type Database = {
           date?: string
           deleted_at?: string | null
           id?: string
+          updated_at?: string
           user_id?: string
           weight?: number
         }
@@ -73,9 +76,11 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           id: string
-          input_mode: string | null
+          input_mode: string
           intensity_max_reps: number | null
           name: string
+          plate_count_mode: string | null
+          plate_loaded: boolean
           tags: string[]
           updated_at: string | null
           user_id: string
@@ -87,9 +92,11 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           id?: string
-          input_mode?: string | null
+          input_mode?: string
           intensity_max_reps?: number | null
           name: string
+          plate_count_mode?: string | null
+          plate_loaded?: boolean
           tags?: string[]
           updated_at?: string | null
           user_id: string
@@ -101,9 +108,11 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           id?: string
-          input_mode?: string | null
+          input_mode?: string
           intensity_max_reps?: number | null
           name?: string
+          plate_count_mode?: string | null
+          plate_loaded?: boolean
           tags?: string[]
           updated_at?: string | null
           user_id?: string
@@ -160,6 +169,7 @@ export type Database = {
           id: string
           reps: number
           session_id: string | null
+          updated_at: string
           user_id: string
           weight: number
         }
@@ -172,6 +182,7 @@ export type Database = {
           id?: string
           reps: number
           session_id?: string | null
+          updated_at?: string
           user_id: string
           weight: number
         }
@@ -184,6 +195,7 @@ export type Database = {
           id?: string
           reps?: number
           session_id?: string | null
+          updated_at?: string
           user_id?: string
           weight?: number
         }
