@@ -228,6 +228,16 @@
         :collapsed="trendCollapsed"
         @toggle-collapsed="trendCollapsed = !trendCollapsed"
       />
+
+      <!-- Rep-range / intensity-zone distribution (collapsible) -->
+      <RepRangeChart
+        v-if="repRangeTotal > 0"
+        :zones="repRangeZones"
+        :total-sets="repRangeTotal"
+        :dominant="repRangeDominant"
+        :collapsed="repRangeCollapsed"
+        @toggle-collapsed="repRangeCollapsed = !repRangeCollapsed"
+      />
     </div>
   </div>
 
@@ -316,10 +326,12 @@ import { useModal } from '../composables/useModal'
 import { useTagVolume } from '../composables/useTagVolume'
 import { useTagRecovery } from '../composables/useTagRecovery'
 import { useVolumeTrend } from '../composables/useVolumeTrend'
+import { useRepRangeDistribution } from '../composables/useRepRangeDistribution'
 
 const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
 const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/MuscleGroupRecovery.vue'))
 const VolumeTrendChart = defineAsyncComponent(() => import('../components/VolumeTrendChart.vue'))
+const RepRangeChart = defineAsyncComponent(() => import('../components/RepRangeChart.vue'))
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
@@ -615,6 +627,9 @@ const { weeklyVolume, maxSets, totalSets } = useTagVolume(exercisesRef, weekDate
 // ── Week-over-week volume trend (full history, respects tag filter) ──
 const { weeklyVolume: volumeTrend, totalVolume: volumeTrendTotal } = useVolumeTrend(exercisesRef)
 
+// ── Rep-range distribution (full history, respects tag filter) ──
+const { zones: repRangeZones, totalSets: repRangeTotal, dominant: repRangeDominant } = useRepRangeDistribution(exercisesRef)
+
 // ── Tag recovery ─────────────────────────────────────────────────
 const allExercisesRef = computed(() => store.exercises)
 const tagRecoveryDaysRef = computed(() => store.tagRecoveryDays)
@@ -650,6 +665,7 @@ function onRecoveryDaysChange(tag: string, days: number | null) {
 
 const volumeCollapsed = ref(false)
 const trendCollapsed = ref(true)
+const repRangeCollapsed = ref(true)
 
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {
