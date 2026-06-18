@@ -39,7 +39,10 @@ describe('useGoalCelebration', () => {
 
   it('presents the banner and fires a success haptic', () => {
     const { presentGoalCelebration, visible, payload } = useGoalCelebration()
-    presentGoalCelebration({ streak: 1, milestone: false, target: 3 })
+    const fired = presentGoalCelebration({ streak: 1, milestone: false, target: 3 })
+    // Returns true so the caller (saveSet) suppresses its routine light tap and
+    // the two native haptics don't collide on iOS.
+    expect(fired).toBe(true)
     expect(visible.value).toBe(true)
     expect(payload.value).toEqual({ streak: 1, milestone: false, target: 3 })
     expect(notifySuccessMock).toHaveBeenCalledTimes(1)
@@ -57,7 +60,10 @@ describe('useGoalCelebration', () => {
     const prefs = usePreferencesStore()
     prefs.setExperienceFlag('prCelebrations', false)
     const { presentGoalCelebration, visible } = useGoalCelebration()
-    presentGoalCelebration({ streak: 1, milestone: false, target: 3 })
+    const fired = presentGoalCelebration({ streak: 1, milestone: false, target: 3 })
+    // Returns false (no celebration haptic) so the caller still plays its
+    // routine light tap for the logged set.
+    expect(fired).toBe(false)
     expect(visible.value).toBe(false)
     expect(notifySuccessMock).not.toHaveBeenCalled()
   })
