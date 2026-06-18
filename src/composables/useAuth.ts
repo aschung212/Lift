@@ -186,9 +186,16 @@ async function deleteAccount(): Promise<void> {
       supabase.from('exercises').delete().eq('user_id', userId), // cascades to sets
     ])
 
-    // Check for hard failures (network errors, not RLS/empty-table errors)
-    const failed = results.filter(r => r.status === 'rejected')
-    if (failed.length > 0) {
+    // Supabase query builders RESOLVE (not reject) when a DELETE fails at the
+    // DB/RLS layer — the failure is surfaced in the resolved object's `.error`
+    // field, and the promise only rejects on transport errors. Treat BOTH a
+    // rejected promise AND a resolved-with-error response as a hard failure, so
+    // a silent server-side delete failure never lets us wipe local data while
+    // the user's rows remain on the server (privacy/GDPR orphaning, LIFT-782).
+    const failed = results.some(r =>
+      r.status === 'rejected' || (r.value as { error: unknown } | null)?.error != null
+    )
+    if (failed) {
       throw new Error('Failed to delete server data. Please try again.')
     }
   }

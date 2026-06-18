@@ -309,6 +309,27 @@ describe('useAuth', () => {
       await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
     })
 
+    // Regression LIFT-782: Supabase DELETEs RESOLVE with a non-null `.error`
+    // (not reject) on a DB/RLS failure. deleteAccount must treat that as a hard
+    // failure and abort BEFORE wiping any local data, or the user's rows are
+    // orphaned on the server while the app reports success (privacy/GDPR).
+    it('throws and preserves local data when a Supabase delete resolves with an error', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      localStorage.setItem('workout-exercises', 'precious-data')
+
+      // One of the deletes resolves with an error rather than rejecting
+      mockDelete.mockReturnValueOnce({
+        eq: vi.fn().mockResolvedValue({ error: { message: 'RLS policy violation' } })
+      })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+
+      // Local data must NOT have been wiped — the user can retry the deletion.
+      expect(localStorage.getItem('workout-exercises')).toBe('precious-data')
+    })
+
     it('deletes all IndexedDB databases via indexedDB.databases() when available', async () => {
       const mockDeleteDatabase = vi.fn()
       const mockDatabases = vi.fn().mockResolvedValue([

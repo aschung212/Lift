@@ -69,9 +69,22 @@ export async function migrateLocalStorageToSupabase(userId: string): Promise<voi
       }
     }
 
-    await supabase.from('exercises').insert(exerciseRows)
+    // Supabase inserts RESOLVE (not reject) on a DB/RLS failure — the error is
+    // returned in the resolved object's `.error` field. Throwing on a non-null
+    // error (a) aborts before inserting dependent `sets` when the parent
+    // `exercises` insert failed, so we never strand sets pointing at rows that
+    // don't exist, and (b) leaves the count guard tripped only on a genuinely
+    // successful exercises insert, so a partial failure can be safely re-run
+    // on the next launch instead of being silently marked complete (LIFT-782).
+    const { error: exercisesError } = await supabase.from('exercises').insert(exerciseRows)
+    if (exercisesError) {
+      throw new Error(`Migration failed inserting exercises: ${exercisesError.message}`)
+    }
     if (setRows.length > 0) {
-      await supabase.from('sets').insert(setRows)
+      const { error: setsError } = await supabase.from('sets').insert(setRows)
+      if (setsError) {
+        throw new Error(`Migration failed inserting sets: ${setsError.message}`)
+      }
     }
   }
 
@@ -83,6 +96,9 @@ export async function migrateLocalStorageToSupabase(userId: string): Promise<voi
       date: e.date,
       weight: e.weight
     }))
-    await supabase.from('bodyweight_entries').insert(bwRows)
+    const { error: bodyweightError } = await supabase.from('bodyweight_entries').insert(bwRows)
+    if (bodyweightError) {
+      throw new Error(`Migration failed inserting bodyweight entries: ${bodyweightError.message}`)
+    }
   }
 }

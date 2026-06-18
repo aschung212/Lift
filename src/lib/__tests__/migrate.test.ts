@@ -21,8 +21,8 @@ vi.mock('../supabase', () => ({
           }
         },
         insert: (rows: unknown[]) => {
-          mockInsert(table, rows)
-          return Promise.resolve({ error: null })
+          const result = mockInsert(table, rows)
+          return Promise.resolve(result ?? { error: null })
         },
       }
     },
@@ -153,5 +153,59 @@ describe('migrateLocalStorageToSupabase', () => {
     await migrateLocalStorageToSupabase('user-1')
 
     expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  // Regression LIFT-782: Supabase inserts RESOLVE with an `.error` field on a
+  // DB/RLS failure rather than rejecting. The migration must surface that as a
+  // thrown error so it is not silently marked complete and can be re-run.
+  it('throws and skips dependent set inserts when the exercises insert fails', async () => {
+    localStorageMock['workout-exercises'] = JSON.stringify([
+      {
+        name: 'Bench Press',
+        sets: [{ date: '2026-03-30', weight: 100, reps: 8, estimated1RM: 125 }],
+      },
+    ])
+
+    // exercises insert resolves with an error (e.g. RLS denial)
+    mockInsert.mockReturnValueOnce({ error: { message: 'RLS policy violation' } })
+
+    await expect(migrateLocalStorageToSupabase('user-1')).rejects.toThrow(
+      /Migration failed inserting exercises/
+    )
+
+    // Sets must NOT be inserted when the parent exercises insert failed —
+    // otherwise we strand sets pointing at rows that don't exist.
+    expect(mockInsert).toHaveBeenCalledWith('exercises', expect.anything())
+    expect(mockInsert).not.toHaveBeenCalledWith('sets', expect.anything())
+  })
+
+  it('throws when the sets insert fails after exercises succeed', async () => {
+    localStorageMock['workout-exercises'] = JSON.stringify([
+      {
+        name: 'Squat',
+        sets: [{ date: '2026-03-30', weight: 140, reps: 5, estimated1RM: 163 }],
+      },
+    ])
+
+    // exercises insert succeeds, sets insert resolves with an error
+    mockInsert
+      .mockReturnValueOnce({ error: null })
+      .mockReturnValueOnce({ error: { message: 'server error' } })
+
+    await expect(migrateLocalStorageToSupabase('user-1')).rejects.toThrow(
+      /Migration failed inserting sets/
+    )
+  })
+
+  it('throws when the bodyweight insert fails', async () => {
+    localStorageMock['bodyweight-entries'] = JSON.stringify([
+      { date: '2026-03-30', weight: 185 },
+    ])
+
+    mockInsert.mockReturnValueOnce({ error: { message: 'server error' } })
+
+    await expect(migrateLocalStorageToSupabase('user-1')).rejects.toThrow(
+      /Migration failed inserting bodyweight entries/
+    )
   })
 })
