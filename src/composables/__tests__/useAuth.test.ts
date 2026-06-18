@@ -58,11 +58,13 @@ vi.mock('../../lib/supabase', () => ({
 // Mock syncQueue
 const mockSyncQueueClear = vi.fn()
 const mockSyncQueueStop = vi.fn()
+const mockSyncQueueResume = vi.fn()
 const mockSyncQueueRehydrate = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: {
     clear: () => mockSyncQueueClear(),
     stop: () => mockSyncQueueStop(),
+    resume: () => mockSyncQueueResume(),
     rehydrate: () => mockSyncQueueRehydrate(),
   }
 }))
@@ -345,14 +347,16 @@ describe('useAuth', () => {
 
       mockSyncQueueClear.mockClear()
       mockSyncQueueStop.mockClear()
+      mockSyncQueueResume.mockClear()
       await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
 
       // Local data must NOT have been wiped — the user can retry the deletion.
       expect(localStorage.getItem('workout-exercises')).toBe('precious-data')
-      // The queue is stopped (to prevent mid-delete resurrection) but the
-      // durable journal is NOT cleared, so pending offline writes survive a
-      // failed deletion and resume on the next mutation.
+      // The queue is stopped (to prevent mid-delete resurrection) and then
+      // resumed so the user can keep working; it is NEVER cleared on failure,
+      // so pending offline writes survive in the durable journal.
       expect(mockSyncQueueStop).toHaveBeenCalled()
+      expect(mockSyncQueueResume).toHaveBeenCalled()
       expect(mockSyncQueueClear).not.toHaveBeenCalled()
     })
 

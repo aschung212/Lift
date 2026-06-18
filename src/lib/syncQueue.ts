@@ -158,11 +158,10 @@ export class SyncQueue {
    */
   enqueue(key: string, op: SyncOperation, descriptor?: SyncDescriptor): void {
     if (!supabase || isPreviewMode.value) return
-    // A new write means normal operation has resumed after a stop() — lift the
-    // inhibit so the flush scheduled below (and any retries stranded by the
-    // stop) can run again (LIFT-782).
-    const wasStopped = this._stopped
-    this._stopped = false
+    // NOTE: enqueue does NOT lift a stop(). While the queue is stopped (account
+    // deletion), _scheduleFlush below is inhibited so a stray write enqueued in
+    // the deletion window cannot schedule a flush that resurrects a just-deleted
+    // row. Sync resumes only via resume() (failure path) or clear() (LIFT-782).
     // Journal first — before rate-limit deferral — so the durable record
     // exists the instant the user acts, even if execution is deferred.
     if (descriptor) this._journalSet(key, descriptor, false)
@@ -191,10 +190,6 @@ export class SyncQueue {
     this._queue.set(key, op)
     this._retryQueue.delete(key)
     this._scheduleFlush()
-    // If a prior stop() left failed ops stranded in the retry queue without a
-    // timer (the scheduler was inhibited), re-arm their retry now that we've
-    // resumed so they drain instead of waiting for an app restart (LIFT-782).
-    if (wasStopped && this._retryQueue.size > 0) this._scheduleRetry()
   }
 
   /**
@@ -347,18 +342,16 @@ export class SyncQueue {
   /**
    * Quiesce the queue WITHOUT discarding queued work or the durable journal.
    *
-   * Cancels the pending debounce/retry timers and AWAITS any flush already on
-   * the network so the caller can guarantee no write is still in flight when it
-   * returns. Every pending operation and its journal entry is preserved, so
-   * flushing resumes on the next enqueue (or, on the failure path, on the retry
-   * timer the awaited flush may have scheduled). Account deletion uses this to
-   * stop an in-flight write from resurrecting a row mid-delete while still
-   * preserving unsynced work if the deletion fails and the user retries.
+   * Cancels the pending debounce/retry timers, sets the terminal _stopped flag,
+   * and AWAITS any flush already on the network so the caller can guarantee no
+   * write is still in flight when it returns. While _stopped, BOTH the
+   * schedulers AND enqueue() are inhibited, so a stray write in the deletion
+   * window can neither flush an in-flight op nor schedule a new one — nothing
+   * can resurrect a just-deleted row. The stop persists until clear() (success)
+   * or resume() (failure) is called; it is NOT lifted by a passing enqueue.
    *
-   * Note: the awaited flush settles fully BEFORE the caller proceeds, and the
-   * _stopped flag inhibits the schedulers so that flush can't arm a new timer
-   * as it settles. Once stop() returns there are zero live timers, so nothing
-   * fires an upsert during the caller's subsequent deletes (LIFT-782).
+   * Account deletion uses this to fully freeze sync across its server deletes
+   * while still preserving unsynced work if the deletion fails (LIFT-782).
    */
   async stop(): Promise<void> {
     // Set BEFORE awaiting the flush: the awaited flush's _scheduleRetry /
@@ -375,6 +368,19 @@ export class SyncQueue {
     await this._currentFlush
   }
 
+  /**
+   * Lift a stop() and resume normal syncing, re-arming a flush/retry for any
+   * work that was queued or stranded while stopped. Used on the account-deletion
+   * FAILURE path so the user can keep working; the success path calls clear()
+   * instead (LIFT-782).
+   */
+  resume(): void {
+    if (!this._stopped) return
+    this._stopped = false
+    if (this._queue.size > 0) this._scheduleFlush()
+    if (this._retryQueue.size > 0) this._scheduleRetry()
+  }
+
   /** Cancel all pending operations without executing them. */
   clear(): void {
     if (this._timer) {
@@ -389,6 +395,9 @@ export class SyncQueue {
     this._retryQueue.clear()
     this._attemptMap.clear()
     _deferredOps.clear()
+    // A full reset also lifts any stop() — the queue is empty, so the next
+    // lifecycle (e.g. a new user on a shared device) starts un-inhibited.
+    this._stopped = false
     const hadJournal = this._journal.size > 0
     this._journal.clear()
     if (hadJournal) this._persistJournal()

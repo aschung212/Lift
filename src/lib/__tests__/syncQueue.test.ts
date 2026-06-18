@@ -129,22 +129,40 @@ describe('SyncQueue', () => {
     expect(queue.pending).toBe(2)
   })
 
-  it('stop() preserves the durable journal so a later enqueue can resume it', async () => {
+  it('stop() preserves the durable journal; resume() drains the preserved work', async () => {
     const queue = new SyncQueue(500)
     const op = vi.fn().mockResolvedValue(undefined)
 
     queue.enqueue('a', op, { op: 'upsert', table: 'exercises', row: { id: 'a' } })
     expect(queue.journalSize).toBe(1)
 
-    queue.stop()
+    await queue.stop()
     expect(queue.journalSize).toBe(1)
 
-    // A subsequent enqueue reschedules a flush that drains the preserved work.
+    // A stray enqueue while stopped does NOT lift the stop or schedule a flush.
     queue.enqueue('b', op)
+    vi.advanceTimersByTime(1000)
+    await vi.runAllTimersAsync()
+    expect(op).not.toHaveBeenCalled()
+
+    // resume() re-arms the flush that drains the preserved work.
+    queue.resume()
     vi.advanceTimersByTime(500)
     await vi.runAllTimersAsync()
     expect(op).toHaveBeenCalled()
     expect(queue.pending).toBe(0)
+  })
+
+  // While stopped, a stray enqueue must NOT re-enable syncing — otherwise a
+  // background write during account deletion could flush and resurrect a row.
+  it('enqueue while stopped does not lift the stop or schedule a flush', () => {
+    const queue = new SyncQueue(100)
+    const op = vi.fn().mockResolvedValue(undefined)
+
+    queue.stop()
+    queue.enqueue('a', op)
+    vi.advanceTimersByTime(5000)
+    expect(op).not.toHaveBeenCalled()
   })
 
   it('stop() leaves no live timer even when the awaited in-flight flush fails', async () => {
@@ -180,7 +198,7 @@ describe('SyncQueue', () => {
     expect(queue.pending).toBe(0)
   })
 
-  it('resumes a stranded retry on the next enqueue after a stop()', async () => {
+  it('resume() re-arms a retry stranded by a stop()', async () => {
     const queue = new SyncQueue(100)
     let rejectOp: (() => void) | null = null
     const failingOp = vi.fn().mockImplementation(
@@ -196,12 +214,10 @@ describe('SyncQueue', () => {
     // 'a' is stranded in the retry queue with no timer.
     expect(queue.pending).toBe(1)
 
-    // A new write resumes the queue and re-arms the stranded retry.
-    const okOp = vi.fn().mockResolvedValue(undefined)
+    // resume() (failure-deletion path) re-arms the stranded retry.
     failingOp.mockResolvedValue(undefined) // 'a' now succeeds on retry
-    queue.enqueue('b', okOp)
+    queue.resume()
     await vi.runAllTimersAsync()
-    expect(okOp).toHaveBeenCalled()
     expect(queue.pending).toBe(0)
   })
 

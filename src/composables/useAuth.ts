@@ -212,9 +212,11 @@ async function deleteAccount(): Promise<void> {
       r.status === 'rejected' || (r.value as { error: unknown } | null)?.error != null
     )
     if (failed) {
-      // Abort BEFORE touching any local state so the user can retry. The sync
-      // journal was only stopped (not cleared) above, so pending offline writes
-      // survive a failed deletion and resume on the next mutation (LIFT-782).
+      // Abort BEFORE touching any local state so the user can retry. Resume the
+      // sync queue (it was frozen by stop() above) so the user can keep working;
+      // the durable journal was never cleared, so unsynced writes survive the
+      // failed deletion (LIFT-782).
+      syncQueue.resume()
       throw new Error('Failed to delete server data. Please try again.')
     }
   }
