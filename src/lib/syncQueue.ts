@@ -113,6 +113,13 @@ export class SyncQueue {
   // seen, so descriptor-less queues never touch IndexedDB.
   private _journal = new Map<string, JournalEntry>()
   private _journalActive = false
+  // When true, a flush that is already in flight must NOT repopulate the retry
+  // queue or schedule further work — the queue is being torn down (e.g. account
+  // deletion). Reset to false on the next enqueue so normal sync resumes.
+  private _stopped = false
+  // Promise of the currently-executing flush (null when idle). stop() awaits it
+  // so callers can guarantee no write is still in flight (LIFT-782).
+  private _currentFlush: Promise<void> | null = null
 
   constructor(flushDelay = 1000) {
     this._flushDelay = flushDelay
@@ -149,6 +156,9 @@ export class SyncQueue {
    */
   enqueue(key: string, op: SyncOperation, descriptor?: SyncDescriptor): void {
     if (!supabase || isPreviewMode.value) return
+    // A new write means normal operation has resumed — lift any prior stop()
+    // so the flush it schedules below isn't suppressed (LIFT-782).
+    this._stopped = false
     // Journal first — before rate-limit deferral — so the durable record
     // exists the instant the user acts, even if execution is deferred.
     if (descriptor) this._journalSet(key, descriptor, false)
@@ -264,51 +274,68 @@ export class SyncQueue {
     if (this._flushing || this._queue.size === 0) return
 
     this._flushing = true
+    const work = this._runFlush()
+    this._currentFlush = work
+    try {
+      await work
+    } finally {
+      this._currentFlush = null
+      this._flushing = false
+      // Skip rescheduling once stopped — the queue is being torn down and a new
+      // timer would re-fire after clear()/sign-out (LIFT-782).
+      if (!this._stopped && this._queue.size > 0) this._scheduleFlush()
+    }
+  }
+
+  /** Execute one batch of the current queue. Extracted so flush() can track
+   *  the in-flight promise (this._currentFlush) for stop() to await. */
+  private async _runFlush(): Promise<void> {
     syncStatus.value = 'syncing'
     broadcastSyncStatus('syncing')
     const entries = [...this._queue.entries()]
     this._queue.clear()
 
-    try {
-      const results = await Promise.allSettled(
-        entries.map(([, op]) => op()),
-      )
-      let hasFailure = false
-      let journalChanged = false
-      results.forEach((result, i) => {
-        const key = entries[i][0]
-        if (result.status === 'fulfilled') {
-          // Clear retry counter on success so future failures get full retries
-          this._attemptMap.delete(key)
-          // Write durably landed on the server — drop its journal entry.
+    const results = await Promise.allSettled(
+      entries.map(([, op]) => op()),
+    )
+
+    // If the queue was stopped while these ops were in flight (e.g. account
+    // deletion awaited this flush), do NOT repopulate the retry queue or
+    // reschedule — that would resurrect work after the queue is torn down.
+    if (this._stopped) return
+
+    let hasFailure = false
+    let journalChanged = false
+    results.forEach((result, i) => {
+      const key = entries[i][0]
+      if (result.status === 'fulfilled') {
+        // Clear retry counter on success so future failures get full retries
+        this._attemptMap.delete(key)
+        // Write durably landed on the server — drop its journal entry.
+        if (this._journal.delete(key)) journalChanged = true
+      } else if (result.status === 'rejected') {
+        hasFailure = true
+        const op = entries[i][1]
+        const prevAttempt = this._attemptMap.get(key) ?? 0
+        const attempt = prevAttempt + 1
+        if (attempt <= this._maxRetries) {
+          this._retryQueue.set(key, { op, attempt })
+          this._attemptMap.set(key, attempt)
+          logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
+        } else {
+          logError(result.reason, { source: 'SyncQueue', key, attempts: attempt })
+          // Retries exhausted — the op is dropped, so drop its journal entry
+          // too. (Reconciliation in the store's _fetchFromSupabase is the
+          // last line of defense for recovering such writes.)
           if (this._journal.delete(key)) journalChanged = true
-        } else if (result.status === 'rejected') {
-          hasFailure = true
-          const op = entries[i][1]
-          const prevAttempt = this._attemptMap.get(key) ?? 0
-          const attempt = prevAttempt + 1
-          if (attempt <= this._maxRetries) {
-            this._retryQueue.set(key, { op, attempt })
-            this._attemptMap.set(key, attempt)
-            logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
-          } else {
-            logError(result.reason, { source: 'SyncQueue', key, attempts: attempt })
-            // Retries exhausted — the op is dropped, so drop its journal entry
-            // too. (Reconciliation in the store's _fetchFromSupabase is the
-            // last line of defense for recovering such writes.)
-            if (this._journal.delete(key)) journalChanged = true
-          }
         }
-      })
-      if (journalChanged) this._persistJournal()
-      if (this._retryQueue.size > 0) this._scheduleRetry()
-      const newStatus = hasFailure ? 'error' : 'synced' as const
-      syncStatus.value = newStatus
-      broadcastSyncStatus(newStatus)
-    } finally {
-      this._flushing = false
-      if (this._queue.size > 0) this._scheduleFlush()
-    }
+      }
+    })
+    if (journalChanged) this._persistJournal()
+    if (this._retryQueue.size > 0) this._scheduleRetry()
+    const newStatus = hasFailure ? 'error' : 'synced' as const
+    syncStatus.value = newStatus
+    broadcastSyncStatus(newStatus)
   }
 
   /** Number of pending (unflushed) operations. */
@@ -319,13 +346,16 @@ export class SyncQueue {
   /**
    * Halt pending flushes WITHOUT discarding queued work or the durable journal.
    *
-   * Unlike clear(), this only cancels the debounce/retry timers; every pending
-   * operation and its journal entry is preserved, so flushing resumes on the
-   * next enqueue. Account deletion uses this to stop an in-flight write from
-   * resurrecting a row mid-delete while still preserving unsynced work if the
-   * deletion fails and the user retries (LIFT-782).
+   * Cancels the debounce/retry timers, marks the queue stopped (so an in-flight
+   * flush won't repopulate or reschedule), and AWAITS any flush already on the
+   * network so the caller can guarantee no write is still in flight. Every
+   * pending operation and its journal entry is preserved, so flushing resumes
+   * on the next enqueue. Account deletion uses this to stop an in-flight write
+   * from resurrecting a row mid-delete while still preserving unsynced work if
+   * the deletion fails and the user retries (LIFT-782).
    */
-  stop(): void {
+  async stop(): Promise<void> {
+    this._stopped = true
     if (this._timer) {
       clearTimeout(this._timer)
       this._timer = null
@@ -334,6 +364,9 @@ export class SyncQueue {
       clearTimeout(this._retryTimer)
       this._retryTimer = null
     }
+    // Wait for any flush already issuing network writes to settle, so no
+    // upsert can land after the caller's subsequent deletes.
+    await this._currentFlush
   }
 
   /** Cancel all pending operations without executing them. */

@@ -181,10 +181,12 @@ async function signOut(): Promise<void> {
  */
 async function deleteAccount(): Promise<void> {
   // Halt the sync queue (without discarding the journal) so an in-flight or
-  // debounced write can't resurrect a row mid-delete. We deliberately do NOT
-  // clear() here: if the server deletion below fails, the preserved journal
-  // lets the user's unsynced work survive for a retry (LIFT-782).
-  syncQueue.stop()
+  // debounced write can't resurrect a row mid-delete. Awaiting stop() ensures
+  // any flush already on the network settles BEFORE we delete, so no upsert
+  // lands afterward. We deliberately do NOT clear() here: if the server
+  // deletion below fails, the preserved journal lets the user's unsynced work
+  // survive for a retry (LIFT-782).
+  await syncQueue.stop()
 
   const userId = user.value?.id
   if (supabase && userId) {

@@ -147,6 +147,29 @@ describe('SyncQueue', () => {
     expect(queue.pending).toBe(0)
   })
 
+  it('stop() awaits an in-flight flush and suppresses retry repopulation', async () => {
+    const queue = new SyncQueue(100)
+    let rejectOp: (() => void) | null = null
+    const op = vi.fn().mockImplementation(
+      () => new Promise<void>((_resolve, reject) => { rejectOp = () => reject(new Error('network fail')) })
+    )
+
+    queue.enqueue('a', op)
+    // Kick off a flush so the op is mid-network (the promise is unresolved).
+    const flushPromise = queue.flush()
+    expect(op).toHaveBeenCalledOnce()
+
+    // Stop mid-flight, then let the in-flight op fail.
+    const stopPromise = queue.stop()
+    rejectOp!()
+    await stopPromise
+    await flushPromise
+
+    // A failed op would normally be requeued for retry; once stopped it must
+    // NOT be — the queue is being torn down, so nothing resurrects it.
+    expect(queue.pending).toBe(0)
+  })
+
   it('should not double-flush if flush() called while already flushing', async () => {
     const queue = new SyncQueue(100)
     let callCount = 0
