@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import type { Tables } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
+import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
@@ -75,6 +76,9 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .order('created_at')
         if (result.error) {
           logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(result.error) })
+          // A 401 means an expired token, not offline — refresh once so the next
+          // fetch recovers rather than staying local-only forever (LIFT-784).
+          if (isAuthError(result.error)) void ensureFreshSession()
           return
         }
         data = result.data
