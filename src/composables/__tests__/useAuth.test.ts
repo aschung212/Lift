@@ -233,6 +233,23 @@ describe('useAuth', () => {
     })
   })
 
+  // Regression LIFT-782: migrate.ts now throws on a DB/RLS insert failure.
+  // initStores must swallow that so a migration error can't soft-lock the app
+  // (the init callers don't await its rejection, so an uncaught throw would
+  // leave `loading` stuck and the user signed-in state unset).
+  it('does not throw when the localStorage migration fails during init', async () => {
+    const migrateMod = await import('../../lib/migrate')
+    vi.mocked(migrateMod.migrateLocalStorageToSupabase).mockRejectedValueOnce(
+      new Error('Migration failed inserting exercises: RLS policy violation')
+    )
+
+    const { devSignIn, user } = useAuth()
+
+    await expect(devSignIn()).resolves.toBeUndefined()
+    // The user is still signed in locally — migration failure is non-fatal.
+    expect(user.value).not.toBeNull()
+  })
+
   describe('deleteAccount', () => {
     it('clears all localStorage keys used by the app', async () => {
       const { deleteAccount, devSignIn } = useAuth()
@@ -324,10 +341,14 @@ describe('useAuth', () => {
         eq: vi.fn().mockResolvedValue({ error: { message: 'RLS policy violation' } })
       })
 
+      mockSyncQueueClear.mockClear()
       await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
 
       // Local data must NOT have been wiped — the user can retry the deletion.
       expect(localStorage.getItem('workout-exercises')).toBe('precious-data')
+      // The durable sync journal must be preserved on failure so pending
+      // offline writes survive a failed deletion (cleared only after success).
+      expect(mockSyncQueueClear).not.toHaveBeenCalled()
     })
 
     it('deletes all IndexedDB databases via indexedDB.databases() when available', async () => {

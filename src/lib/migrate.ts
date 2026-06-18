@@ -73,9 +73,14 @@ export async function migrateLocalStorageToSupabase(userId: string): Promise<voi
     // returned in the resolved object's `.error` field. Throwing on a non-null
     // error (a) aborts before inserting dependent `sets` when the parent
     // `exercises` insert failed, so we never strand sets pointing at rows that
-    // don't exist, and (b) leaves the count guard tripped only on a genuinely
-    // successful exercises insert, so a partial failure can be safely re-run
-    // on the next launch instead of being silently marked complete (LIFT-782).
+    // don't exist, and (b) surfaces the failure to the caller instead of
+    // silently reporting success (LIFT-782).
+    //
+    // CAVEAT: these inserts are not wrapped in a transaction, so if `exercises`
+    // commits but a later insert fails, the `count > 0` guard at the top will
+    // skip the migration on the next launch and the remaining `sets` /
+    // bodyweight rows are never migrated. Making the migration transactional or
+    // re-runnable per-row is tracked separately in LIFT-787.
     const { error: exercisesError } = await supabase.from('exercises').insert(exerciseRows)
     if (exercisesError) {
       throw new Error(`Migration failed inserting exercises: ${exercisesError.message}`)

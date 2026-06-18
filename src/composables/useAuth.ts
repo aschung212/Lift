@@ -69,7 +69,17 @@ async function initStores(userId: string): Promise<void> {
   const bodyweightStore = useBodyweightStore()
   const preferencesStore = usePreferencesStore()
   const progressionStore = useProgressionStore()
-  await migrateLocalStorageToSupabase(userId)
+  // A migration failure (e.g. a transient RLS/server error on insert, which
+  // migrate.ts now throws on rather than swallowing) must NOT soft-lock the app
+  // on the loading screen — these callers don't await initStores' rejection, so
+  // an uncaught throw would leave `loading` stuck true. The local-first stores
+  // work without the migration and it retries on the next launch; log it so the
+  // failure stays observable instead of silently swallowed (LIFT-782).
+  try {
+    await migrateLocalStorageToSupabase(userId)
+  } catch (err) {
+    logError(err, { source: 'useAuth', action: 'migrate' })
+  }
   // Replay any writes that were journaled to IndexedDB but never reached the
   // server before the app last closed (LIFT-706). Safe + idempotent; runs
   // before store fetches so recovered writes are in flight during sync.
@@ -170,13 +180,11 @@ async function signOut(): Promise<void> {
  * Throws if Supabase deletion fails so the caller can show an error.
  */
 async function deleteAccount(): Promise<void> {
-  // Cancel any pending sync operations to avoid racing with deletion
-  syncQueue.clear()
-
   const userId = user.value?.id
   if (supabase && userId) {
-    // Delete from Supabase tables. exercises CASCADE deletes sets.
-    // Order: leaf tables first, then tables with foreign keys.
+    // Delete every table the user owns. Each row references only auth.users(id)
+    // (exercises additionally CASCADE-deletes sets), so there are no inter-table
+    // foreign-key dependencies and the deletes can safely run concurrently.
     const results = await Promise.allSettled([
       supabase.from('xp_events').delete().eq('user_id', userId),
       supabase.from('progression_snapshots').delete().eq('user_id', userId),
@@ -196,9 +204,19 @@ async function deleteAccount(): Promise<void> {
       r.status === 'rejected' || (r.value as { error: unknown } | null)?.error != null
     )
     if (failed) {
+      // Abort BEFORE touching any local state so the user can retry. The sync
+      // journal is left intact (it is only cleared after a confirmed delete
+      // below), so pending offline writes survive a failed deletion (LIFT-782).
       throw new Error('Failed to delete server data. Please try again.')
     }
   }
+
+  // Server data is gone (or there was none) — only now is it safe to discard
+  // pending sync operations. Clearing here (rather than at the top) means a
+  // FAILED server deletion above preserves the durable journal so the user
+  // doesn't lose unsynced writes; on success it stops a queued write from
+  // resurrecting the just-deleted rows before we wipe local state (LIFT-782).
+  syncQueue.clear()
 
   // Clear all localStorage keys used by the app
   const localStorageKeys = [
