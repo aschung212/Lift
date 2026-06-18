@@ -30,11 +30,19 @@ const payload: Ref<GoalCelebrationPayload | null> = ref(null)
 let autoDismissId: ReturnType<typeof setTimeout> | null = null
 let clearPayloadId: ReturnType<typeof setTimeout> | null = null
 
-function presentGoalCelebration(p: GoalCelebrationPayload): void {
+/**
+ * Present the banner and fire its celebration haptic. Returns `true` when the
+ * celebration was actually presented (and thus a success / milestone haptic was
+ * fired), `false` when it was suppressed by the celebrations opt-out. Callers
+ * use the return value to avoid firing a second, colliding haptic: two native
+ * haptics fired back-to-back collapse into a muddy/truncated buzz on
+ * Capacitor/iOS (see WorkoutTracker.saveSet).
+ */
+function presentGoalCelebration(p: GoalCelebrationPayload): boolean {
   // Honor the celebrations opt-out (Settings → Experience).
   try {
     const prefs = usePreferencesStore()
-    if (prefs.experience?.prCelebrations === false) return
+    if (prefs.experience?.prCelebrations === false) return false
   } catch {
     // Pinia unavailable (e.g. some test setups) — proceed.
   }
@@ -57,6 +65,7 @@ function presentGoalCelebration(p: GoalCelebrationPayload): void {
   // Auto-dismiss — celebrations should never block the next set.
   if (autoDismissId !== null) clearTimeout(autoDismissId)
   autoDismissId = setTimeout(dismissGoalCelebration, AUTO_DISMISS_MS)
+  return true
 }
 
 function dismissGoalCelebration(): void {
@@ -73,7 +82,7 @@ function dismissGoalCelebration(): void {
 export interface UseGoalCelebrationReturn {
   visible: Ref<boolean>
   payload: Ref<GoalCelebrationPayload | null>
-  presentGoalCelebration: (p: GoalCelebrationPayload) => void
+  presentGoalCelebration: (p: GoalCelebrationPayload) => boolean
   dismissGoalCelebration: () => void
 }
 

@@ -1024,17 +1024,22 @@ const weeklyGoalInfo = computed(() => {
  * so the two overlays never stack — the week is left unmarked so the
  * celebration still fires on the next non-PR set. The once-per-week guard lives
  * in device-local storage, mirroring the overload nudge.
+ *
+ * Returns `true` when a celebration (and its success/milestone haptic) actually
+ * fired, so the caller can suppress the routine light tap and avoid two native
+ * haptics colliding into a muddy buzz on Capacitor/iOS.
  */
-function maybeCelebrateWeeklyGoal(prShown: boolean): void {
-  if (prShown) return
+function maybeCelebrateWeeklyGoal(prShown: boolean): boolean {
+  if (prShown) return false
   const info = weeklyGoalInfo.value
-  if (!info) return
+  if (!info) return false
   const state = readGoalCelebrationState()
   const decision = decideGoalCelebration(info.met, progressionStore.streakWeeks, state.lastCelebratedWeek)
-  if (!decision) return
+  if (!decision) return false
   markGoalWeekCelebrated(decision.weekKey)
-  presentGoalCelebration({ streak: decision.streak, milestone: decision.milestone, target: info.target })
+  const celebrated = presentGoalCelebration({ streak: decision.streak, milestone: decision.milestone, target: info.target })
   logEvent('weekly_goal_celebrated', { streak: decision.streak, milestone: decision.milestone })
+  return celebrated
 }
 
 /**
@@ -2331,11 +2336,17 @@ function saveSet() {
         if (prCountBefore === 0) {
           logEvent('first_pr', { exercise: selectedExerciseName.value })
         }
-      } else {
+      }
+      // Celebrate the first weekly-goal completion of the week (LIFT-764). When
+      // it fires its own success/milestone haptic, suppress the routine light
+      // tap: two native haptics fired back-to-back collapse into a muddy /
+      // truncated buzz on Capacitor/iOS. The light tap stays for the common
+      // non-PR, no-celebration path. (PRs already played notifySuccess above and
+      // skip the goal banner, so they never reach the light tap.)
+      const celebrated = maybeCelebrateWeeklyGoal(wasPR)
+      if (!wasPR && !celebrated) {
         impactLight()
       }
-      // Celebrate the first weekly-goal completion of the week (LIFT-764).
-      maybeCelebrateWeeklyGoal(wasPR)
       if (restTimerEnabled.value && restTimerAutoStart.value) {
         timerCtrl.startRestTimer()
       }
