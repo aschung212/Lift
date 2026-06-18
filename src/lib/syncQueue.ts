@@ -316,6 +316,26 @@ export class SyncQueue {
     return this._queue.size + this._retryQueue.size + _deferredOps.size
   }
 
+  /**
+   * Halt pending flushes WITHOUT discarding queued work or the durable journal.
+   *
+   * Unlike clear(), this only cancels the debounce/retry timers; every pending
+   * operation and its journal entry is preserved, so flushing resumes on the
+   * next enqueue. Account deletion uses this to stop an in-flight write from
+   * resurrecting a row mid-delete while still preserving unsynced work if the
+   * deletion fails and the user retries (LIFT-782).
+   */
+  stop(): void {
+    if (this._timer) {
+      clearTimeout(this._timer)
+      this._timer = null
+    }
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer)
+      this._retryTimer = null
+    }
+  }
+
   /** Cancel all pending operations without executing them. */
   clear(): void {
     if (this._timer) {

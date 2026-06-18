@@ -110,6 +110,43 @@ describe('SyncQueue', () => {
     expect(op).not.toHaveBeenCalled()
   })
 
+  // LIFT-782: stop() halts the debounce flush WITHOUT discarding queued work,
+  // so account deletion can prevent a mid-delete resurrection while still
+  // preserving unsynced writes if the deletion fails.
+  it('stop() halts the pending flush but preserves queued operations', () => {
+    const queue = new SyncQueue(500)
+    const op = vi.fn().mockResolvedValue(undefined)
+
+    queue.enqueue('a', op)
+    queue.enqueue('b', op)
+    expect(queue.pending).toBe(2)
+
+    queue.stop()
+    // Timer cancelled — op must not fire even after the debounce window passes.
+    vi.advanceTimersByTime(1000)
+    expect(op).not.toHaveBeenCalled()
+    // But the work is preserved (unlike clear()).
+    expect(queue.pending).toBe(2)
+  })
+
+  it('stop() preserves the durable journal so a later enqueue can resume it', async () => {
+    const queue = new SyncQueue(500)
+    const op = vi.fn().mockResolvedValue(undefined)
+
+    queue.enqueue('a', op, { op: 'upsert', table: 'exercises', row: { id: 'a' } })
+    expect(queue.journalSize).toBe(1)
+
+    queue.stop()
+    expect(queue.journalSize).toBe(1)
+
+    // A subsequent enqueue reschedules a flush that drains the preserved work.
+    queue.enqueue('b', op)
+    vi.advanceTimersByTime(500)
+    await vi.runAllTimersAsync()
+    expect(op).toHaveBeenCalled()
+    expect(queue.pending).toBe(0)
+  })
+
   it('should not double-flush if flush() called while already flushing', async () => {
     const queue = new SyncQueue(100)
     let callCount = 0

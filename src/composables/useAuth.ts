@@ -180,6 +180,12 @@ async function signOut(): Promise<void> {
  * Throws if Supabase deletion fails so the caller can show an error.
  */
 async function deleteAccount(): Promise<void> {
+  // Halt the sync queue (without discarding the journal) so an in-flight or
+  // debounced write can't resurrect a row mid-delete. We deliberately do NOT
+  // clear() here: if the server deletion below fails, the preserved journal
+  // lets the user's unsynced work survive for a retry (LIFT-782).
+  syncQueue.stop()
+
   const userId = user.value?.id
   if (supabase && userId) {
     // Delete every table the user owns. Each row references only auth.users(id)
@@ -205,17 +211,15 @@ async function deleteAccount(): Promise<void> {
     )
     if (failed) {
       // Abort BEFORE touching any local state so the user can retry. The sync
-      // journal is left intact (it is only cleared after a confirmed delete
-      // below), so pending offline writes survive a failed deletion (LIFT-782).
+      // journal was only stopped (not cleared) above, so pending offline writes
+      // survive a failed deletion and resume on the next mutation (LIFT-782).
       throw new Error('Failed to delete server data. Please try again.')
     }
   }
 
-  // Server data is gone (or there was none) — only now is it safe to discard
-  // pending sync operations. Clearing here (rather than at the top) means a
-  // FAILED server deletion above preserves the durable journal so the user
-  // doesn't lose unsynced writes; on success it stops a queued write from
-  // resurrecting the just-deleted rows before we wipe local state (LIFT-782).
+  // Server data is gone (or there was none) — only now discard the pending
+  // sync operations and durable journal so a queued write can't re-push the
+  // just-deleted rows, then wipe local state.
   syncQueue.clear()
 
   // Clear all localStorage keys used by the app
