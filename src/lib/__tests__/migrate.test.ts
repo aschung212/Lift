@@ -5,6 +5,9 @@ const mockSelect = vi.fn()
 const mockEq = vi.fn()
 const mockInsert = vi.fn()
 const mockFrom = vi.fn()
+const mockDelete = vi.fn()
+const mockDeleteEq = vi.fn()
+const mockDeleteIn = vi.fn()
 
 vi.mock('../supabase', () => ({
   supabase: {
@@ -12,17 +15,35 @@ vi.mock('../supabase', () => ({
       mockFrom(table)
       return {
         select: (...args: unknown[]) => {
-          mockSelect(...args)
+          mockSelect(table, ...args)
           return {
             eq: (...eqArgs: unknown[]) => {
-              mockEq(...eqArgs)
-              return Promise.resolve({ count: 0 })
+              // Tests can override the count-query result via mockEq's return
+              // value (e.g. an error or a non-zero count); default to empty.
+              const result = mockEq(...eqArgs)
+              return result ?? Promise.resolve({ count: 0 })
             },
           }
         },
         insert: (rows: unknown[]) => {
-          mockInsert(table, rows)
-          return Promise.resolve({ error: null })
+          // Tests can override the result per table via mockInsert's return
+          // value; default to a clean success.
+          const result = mockInsert(table, rows)
+          return Promise.resolve(result ?? { error: null })
+        },
+        delete: () => {
+          mockDelete(table)
+          return {
+            eq: (...eqArgs: unknown[]) => {
+              mockDeleteEq(...eqArgs)
+              return {
+                in: (...inArgs: unknown[]) => {
+                  mockDeleteIn(...inArgs)
+                  return Promise.resolve({ error: null })
+                },
+              }
+            },
+          }
         },
       }
     },
@@ -41,6 +62,10 @@ describe('migrateLocalStorageToSupabase', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    // clearAllMocks does not reset implementations, so restore the default
+    // (clean-success / empty-count) behavior between tests that override them.
+    mockInsert.mockReset()
+    mockEq.mockReset()
     uuidCounter = 0
     localStorageMock = {}
 
@@ -153,5 +178,76 @@ describe('migrateLocalStorageToSupabase', () => {
     await migrateLocalStorageToSupabase('user-1')
 
     expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  it('aborts without migrating when the count guard query errors (LIFT-787)', async () => {
+    // A transient count-query failure returns null count + an error. The old
+    // guard read null as "empty" and would have duplicated existing cloud data.
+    mockEq.mockReturnValueOnce(Promise.resolve({ count: null, error: { message: 'network' } }))
+    localStorageMock['workout-exercises'] = JSON.stringify([
+      { name: 'Bench Press', sets: [{ date: '2026-03-30', weight: 100, reps: 8, estimated1RM: 125 }] },
+    ])
+
+    await migrateLocalStorageToSupabase('user-1')
+
+    expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  it('aborts before inserting sets if the exercises insert fails (LIFT-787)', async () => {
+    mockInsert.mockImplementation((table: string) =>
+      table === 'exercises' ? { error: { message: 'insert failed' } } : { error: null }
+    )
+    localStorageMock['workout-exercises'] = JSON.stringify([
+      { name: 'Bench Press', sets: [{ date: '2026-03-30', weight: 100, reps: 8, estimated1RM: 125 }] },
+    ])
+
+    await migrateLocalStorageToSupabase('user-1')
+
+    expect(mockInsert).toHaveBeenCalledWith('exercises', expect.anything())
+    // Sets must not be inserted, and no rollback is needed (nothing landed).
+    expect(mockInsert).not.toHaveBeenCalledWith('sets', expect.anything())
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  it('rolls back orphaned exercises if the sets insert fails (LIFT-787)', async () => {
+    // Exercises land but sets fail — without rollback the user is left with
+    // exercises-without-sets AND the count guard permanently blocks a re-run.
+    mockInsert.mockImplementation((table: string) =>
+      table === 'sets' ? { error: { message: 'sets failed' } } : { error: null }
+    )
+    localStorageMock['workout-exercises'] = JSON.stringify([
+      { name: 'Bench Press', sets: [{ date: '2026-03-30', weight: 100, reps: 8, estimated1RM: 125 }] },
+      { name: 'Squat', sets: [{ date: '2026-03-30', weight: 140, reps: 5, estimated1RM: 163 }] },
+    ])
+
+    await migrateLocalStorageToSupabase('user-1')
+
+    // The freshly-minted exercise rows are deleted, scoped to this user and to
+    // exactly the UUIDs we created this run.
+    expect(mockDelete).toHaveBeenCalledWith('exercises')
+    expect(mockDeleteEq).toHaveBeenCalledWith('user_id', 'user-1')
+    expect(mockDeleteIn).toHaveBeenCalledWith('id', ['test-uuid-1', 'test-uuid-3'])
+  })
+
+  it('skips bodyweight migration when the bodyweight count guard errors (LIFT-787)', async () => {
+    mockEq
+      .mockReturnValueOnce(Promise.resolve({ count: 0 })) // exercises count
+      .mockReturnValueOnce(Promise.resolve({ count: null, error: { message: 'rls' } })) // bodyweight count
+    localStorageMock['bodyweight-entries'] = JSON.stringify([{ date: '2026-03-28', weight: 185 }])
+
+    await migrateLocalStorageToSupabase('user-1')
+
+    expect(mockInsert).not.toHaveBeenCalledWith('bodyweight_entries', expect.anything())
+  })
+
+  it('skips bodyweight migration when bodyweight already exists in the cloud (LIFT-787)', async () => {
+    mockEq
+      .mockReturnValueOnce(Promise.resolve({ count: 0 })) // exercises count
+      .mockReturnValueOnce(Promise.resolve({ count: 3 })) // bodyweight already migrated
+    localStorageMock['bodyweight-entries'] = JSON.stringify([{ date: '2026-03-28', weight: 185 }])
+
+    await migrateLocalStorageToSupabase('user-1')
+
+    expect(mockInsert).not.toHaveBeenCalledWith('bodyweight_entries', expect.anything())
   })
 })
