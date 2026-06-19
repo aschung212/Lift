@@ -102,8 +102,15 @@ describe('PWA manifest regression tests', () => {
       expect(viteConfig).toContain('navigateFallbackDenylist:')
     })
 
-    it('offline.html exists in public/', () => {
-      expect(existsSync(resolve(publicDir, 'offline.html'))).toBe(true)
+    it('excludes the orphaned offline.html from precache (LIFT-703)', () => {
+      // index.html is the real offline experience for this local-first SPA;
+      // offline.html is never served, so it must not ship dead bytes in the
+      // precache manifest.
+      expect(viteConfig).toContain("'offline.html'")
+    })
+
+    it('excludes the empty sw-offline-handler.js from precache (LIFT-703)', () => {
+      expect(viteConfig).toContain("'sw-offline-handler.js'")
     })
   })
 

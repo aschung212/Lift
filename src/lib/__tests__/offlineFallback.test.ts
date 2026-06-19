@@ -1,68 +1,49 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
 /**
- * Regression tests for the offline fallback page.
+ * Regression tests for the offline-navigation CONTRACT (LIFT-703).
  *
- * Validates that public/offline.html exists, contains required elements,
- * and follows the project's design standards (safe-area-insets, touch targets,
- * no hardcoded URLs, accessible markup).
+ * Lift is a local-first SPA: Pinia + localStorage are the source of truth, so
+ * the precached `index.html` shell boots and runs the full app with no network.
+ * That shell — wired via Workbox `navigateFallback: 'index.html'` — IS the
+ * offline experience.
+ *
+ * The repo still contains two orphaned fossils of an abandoned offline-page
+ * attempt: `public/offline.html` (never served, because navigateFallback points
+ * at index.html) and `public/sw-offline-handler.js` (a 0-byte file imported
+ * nowhere). Their source deletion is pending (LIFT-703); until then they are
+ * excluded from the Workbox precache so they ship no dead bytes to installs.
+ *
+ * These tests pin the ACTUAL behavior — which document the service worker serves
+ * offline, and that the dead files stay out of the precache — rather than the
+ * previous suite which only asserted that offline.html existed on disk (false
+ * confidence in a feature that was never wired up).
  */
 
-const offlinePath = resolve(__dirname, '../../../public/offline.html')
-const offlineHtml = existsSync(offlinePath)
-  ? readFileSync(offlinePath, 'utf-8')
-  : ''
+const viteConfigPath = resolve(__dirname, '../../../vite.config.js')
+const viteConfig = readFileSync(viteConfigPath, 'utf-8')
 
-describe('offline fallback page', () => {
-  it('offline.html exists in public/', () => {
-    expect(existsSync(offlinePath)).toBe(true)
+describe('offline navigation contract', () => {
+  it('serves the precached index.html shell as the navigation fallback', () => {
+    // The local-first SPA shell is the real offline experience, not a static
+    // "you're offline" dead-end page.
+    expect(viteConfig).toContain("navigateFallback: 'index.html'")
   })
 
-  it('has a valid HTML document structure', () => {
-    expect(offlineHtml).toContain('<!DOCTYPE html>')
-    expect(offlineHtml).toContain('<html lang="en"')
-    expect(offlineHtml).toContain('</html>')
+  it('keeps API routes out of the navigation fallback', () => {
+    expect(viteConfig).toContain('navigateFallbackDenylist:')
   })
 
-  it('includes viewport meta tag with viewport-fit=cover', () => {
-    expect(offlineHtml).toContain('viewport-fit=cover')
+  it('excludes the orphaned offline.html from the precache manifest', () => {
+    // offline.html is never served (navigateFallback is index.html); excluding
+    // it keeps its dead bytes out of every install.
+    expect(viteConfig).toContain("'offline.html'")
   })
 
-  it('uses safe-area-inset for notch/home indicator spacing', () => {
-    expect(offlineHtml).toContain('safe-area-inset')
-  })
-
-  it('has a visible offline message', () => {
-    expect(offlineHtml).toMatch(/you.re offline/i)
-  })
-
-  it('has a retry button', () => {
-    expect(offlineHtml).toContain('retry')
-    expect(offlineHtml).toContain('location.reload()')
-  })
-
-  it('reassures user about local data', () => {
-    expect(offlineHtml).toMatch(/data.*saved.*locally|saved locally/i)
-  })
-
-  it('includes the Lift wordmark', () => {
-    expect(offlineHtml).toContain('Lift')
-  })
-
-  it('has minimum 48px touch target for retry button', () => {
-    expect(offlineHtml).toContain('min-height: 48px')
-  })
-
-  it('does not contain any external URLs (no fabricated domains)', () => {
-    // The offline page must be fully self-contained with no external requests
-    const externalUrls = offlineHtml.match(/https?:\/\/[^\s"'<>]+/g) || []
-    expect(externalUrls).toEqual([])
-  })
-
-  it('supports light mode via prefers-color-scheme', () => {
-    expect(offlineHtml).toContain('prefers-color-scheme: light')
+  it('excludes the empty sw-offline-handler.js from the precache manifest', () => {
+    expect(viteConfig).toContain("'sw-offline-handler.js'")
   })
 })

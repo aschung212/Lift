@@ -136,6 +136,14 @@ export default defineConfig({
           // iOS launch screens are loaded by Safari at cold launch via <link>
           // tags, not fetched by the app — precaching them only bloats the SW.
           'launch/*.png',
+          // Orphaned offline-fallback artifacts (LIFT-703). For this local-first
+          // SPA the precached index.html shell boots fully offline, so it — not
+          // offline.html — is the real offline experience (navigateFallback:
+          // 'index.html'). offline.html is never served and sw-offline-handler.js
+          // is an empty fossil; excluding them keeps their dead bytes out of every
+          // install's precache. The source files await deletion (LIFT-703).
+          'offline.html',
+          'sw-offline-handler.js',
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
