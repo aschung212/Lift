@@ -3,6 +3,12 @@ import { usePreferencesStore } from '../stores/preferences'
 import { useNotification, useBackgroundTracker } from './useNotification'
 import { useRestTimer } from './useRestTimer'
 import { loadJSON } from '../lib/storage'
+import {
+  buildRestTimerActivityState,
+  startRestTimerActivity,
+  updateRestTimerActivity,
+  endRestTimerActivity,
+} from '../lib/restTimerActivity'
 
 // ── Defaults ──────────────────────────────────────────────────────
 const DEFAULT_PRESETS = [30, 60, 90, 120, 180, 300]
@@ -207,6 +213,21 @@ export function useRestTimerController(
     if (v) setTimeout(() => presetInputEl.value?.focus(), 0)
   })
 
+  // ── Live Activity (iOS Lock Screen / Dynamic Island) ──────────
+  // Mirrors the running timer to a native Live Activity. No-ops off native iOS.
+  function currentActivityState() {
+    const paused = timerPaused.value
+    const remaining = paused ? pausedRemaining : timerSeconds.value
+    return buildRestTimerActivityState({
+      durationSeconds: restDuration.value,
+      // While paused the OS shows the static remaining value, so the exact
+      // endTime is moot — project it forward so it is still self-consistent.
+      endTimeMs: paused ? Date.now() + remaining * 1000 : timerEndTime,
+      remainingSeconds: remaining,
+      paused,
+    })
+  }
+
   // ── Timer interval ────────────────────────────────────────────
   function startInterval() {
     if (timerIntervalId !== null) clearInterval(timerIntervalId)
@@ -235,6 +256,7 @@ export function useRestTimerController(
               wasBackgrounded: wasBackgrounded.value,
             })
           }
+          endRestTimerActivity()
           stopBgTracking()
           if (!editingPresets.value) {
             onComplete()
@@ -257,6 +279,7 @@ export function useRestTimerController(
     timerEndTime = Date.now() + restDuration.value * 1000
     timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
     startInterval()
+    startRestTimerActivity(currentActivityState())
   }
 
   function togglePause() {
@@ -268,6 +291,7 @@ export function useRestTimerController(
       timerEndTime = Date.now() + pausedRemaining * 1000
       timerPaused.value = false
     }
+    updateRestTimerActivity(currentActivityState())
   }
 
   function stopTimer() {
@@ -279,6 +303,7 @@ export function useRestTimerController(
     timerSeconds.value = 0
     editingPresets.value = false
     newPresetValue.value = null
+    endRestTimerActivity()
     setTimeout(() => { timerStopping.value = false }, 0)
   }
 
@@ -288,6 +313,7 @@ export function useRestTimerController(
     timerEndTime = Date.now() + restDuration.value * 1000
     timerPaused.value = false
     startInterval()
+    updateRestTimerActivity(currentActivityState())
   }
 
   function setRestDuration(val: number) {
@@ -298,6 +324,7 @@ export function useRestTimerController(
     timerEndTime = Date.now() + val * 1000
     timerPaused.value = false
     startInterval()
+    updateRestTimerActivity(currentActivityState())
   }
 
   // ── Preset management ─────────────────────────────────────────
