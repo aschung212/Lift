@@ -35,14 +35,86 @@ interface JournalEntry {
 const JOURNAL_KEY = 'lift-sync-journal'
 
 /**
+ * Allowlist of tables (and their writable columns) that a journaled descriptor
+ * is permitted to target on replay (LIFT-785).
+ *
+ * The journal lives in IndexedDB, which is user-writable. `rehydrate()` replays
+ * whatever was persisted, and `executeDescriptor` casts the typed client to a
+ * loose surface to target a dynamic table name — so without validation a
+ * tampered (or corrupted) journal entry could issue an upsert/update against an
+ * arbitrary table or column, with RLS as the only backstop. This allowlist is a
+ * client-side defense-in-depth layer: only the tables the app actually journals
+ * (`exercises`, `sets`) and only their real columns are replayable; anything
+ * else is dropped before a query is ever built.
+ *
+ * Keep this in sync with the descriptors built in `src/stores/workout.ts`
+ * (`_buildExerciseUpsert`, `_enqueueSetUpsert`, `_enqueueSoftDelete`,
+ * `_enqueueRestore`) — those are the only descriptor producers in the app.
+ */
+const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
+  exercises: new Set([
+    'id', 'user_id', 'name', 'tags', 'archived_at',
+    'input_mode', 'bar_weight', 'intensity_max_reps', 'deleted_at',
+    // Retired in #770 but the DB column still exists (left dormant, never
+    // dropped). Tolerated so an offline write journaled by a pre-#770 client
+    // still replays after an upgrade instead of being silently dropped.
+    'warmup_scheme',
+  ]),
+  sets: new Set([
+    'id', 'user_id', 'exercise_id', 'date', 'weight', 'reps',
+    'estimated_1rm', 'deleted_at',
+  ]),
+}
+
+/** True when `obj` is a non-empty plain map whose keys are all in `allowed`. */
+function isAllowedColumnMap(obj: unknown, allowed: ReadonlySet<string>): boolean {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false
+  const keys = Object.keys(obj)
+  // Empty maps are rejected: an empty upsert row is meaningless, and an empty
+  // update `match` would target EVERY row in the table — exactly the kind of
+  // unbounded write this allowlist exists to prevent.
+  if (keys.length === 0) return false
+  return keys.every(col => allowed.has(col))
+}
+
+/**
+ * Validate that a descriptor is safe to replay (LIFT-785): a known op, an
+ * allowlisted table, and only writable columns of that table in its row /
+ * values / match. Used both as the gate in `rehydrate()` (drop + warn) and as
+ * the final guard inside `executeDescriptor` (no-op) so a bad descriptor can
+ * never reach Supabase regardless of how it was enqueued.
+ */
+export function isReplayableDescriptor(descriptor: unknown): descriptor is SyncDescriptor {
+  if (!descriptor || typeof descriptor !== 'object') return false
+  const d = descriptor as Record<string, unknown>
+  if (typeof d.table !== 'string') return false
+  const allowed = REPLAYABLE_COLUMNS[d.table]
+  if (!allowed) return false
+  if (d.op === 'upsert') return isAllowedColumnMap(d.row, allowed)
+  if (d.op === 'update') {
+    return isAllowedColumnMap(d.values, allowed) && isAllowedColumnMap(d.match, allowed)
+  }
+  return false
+}
+
+/**
  * Rebuild a runnable Supabase operation from its serializable descriptor.
  * Used to replay journaled writes after a reload. Returns a no-op promise when
- * Supabase is unavailable so replay degrades gracefully offline.
+ * Supabase is unavailable so replay degrades gracefully offline, or when the
+ * descriptor falls outside the replay allowlist (LIFT-785).
  */
 export function executeDescriptor(descriptor: SyncDescriptor): PromiseLike<unknown> {
   if (!supabase) return Promise.resolve()
+  if (!isReplayableDescriptor(descriptor)) {
+    logWarn('Refusing to execute sync descriptor outside the replay allowlist', {
+      op: (descriptor as { op?: unknown } | null)?.op,
+      table: (descriptor as { table?: unknown } | null)?.table,
+    })
+    return Promise.resolve()
+  }
   // The table name is dynamic here (driven by the descriptor), so the strongly
-  // typed supabase client surface doesn't apply — cast to a loose client.
+  // typed supabase client surface doesn't apply — cast to a loose client. The
+  // allowlist check above bounds `table` to the known set before we cast.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
   if (descriptor.op === 'upsert') {
@@ -393,6 +465,17 @@ export class SyncQueue {
     }
     for (const entry of entries) {
       if (!entry || typeof entry.key !== 'string' || !entry.descriptor) continue
+      // Drop any journaled entry whose descriptor falls outside the replay
+      // allowlist (LIFT-785) — the journal is user-writable IndexedDB, so a
+      // tampered or corrupted entry must never be rebuilt into a query.
+      if (!isReplayableDescriptor(entry.descriptor)) {
+        logWarn('Dropping journaled descriptor outside the replay allowlist', {
+          key: entry.key,
+          op: (entry.descriptor as { op?: unknown }).op,
+          table: (entry.descriptor as { table?: unknown }).table,
+        })
+        continue
+      }
       const { key, descriptor, isDelete } = entry
       // Don't clobber a newer in-session write: if the user acted on this key
       // while the (async) journal read was in flight, the live queue/retry entry

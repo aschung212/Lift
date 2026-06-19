@@ -55,6 +55,7 @@ vi.mock('../logger', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.f
 import {
   SyncQueue,
   executeDescriptor,
+  isReplayableDescriptor,
   syncStatus,
   _resetRateLimit,
   _resetCircuitBreaker,
@@ -234,5 +235,106 @@ describe('executeDescriptor (LIFT-706)', () => {
     expect(fakeSupabase.calls).toEqual([
       { op: 'update', table: 'sets', data: { deleted_at: null }, filters: { id: 's1', user_id: 'u1' } },
     ])
+  })
+})
+
+// Replay allowlist: a journaled descriptor lives in user-writable IndexedDB, so
+// rehydrate()/executeDescriptor must validate it against an allowlist of tables
+// and writable columns before ever building a query (LIFT-785).
+describe('replay allowlist (LIFT-785)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    syncStatus.value = 'synced'
+    idbStore.clear()
+    fakeSupabase.reset()
+    _resetRateLimit()
+    _resetCircuitBreaker()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  describe('isReplayableDescriptor', () => {
+    it('accepts the real descriptors the app produces', () => {
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'sets', row: { id: 's1', weight: 100 } })).toBe(true)
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'exercises', row: { id: 'e1', name: 'Bench' } })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'update', table: 'sets', values: { deleted_at: null }, match: { id: 's1', user_id: 'u1' },
+      })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'update', table: 'exercises', values: { deleted_at: 'x' }, match: { id: 'e1' },
+      })).toBe(true)
+    })
+
+    it('tolerates retired-but-dormant DB columns so legacy offline writes still replay', () => {
+      // warmup_scheme was retired in #770 but the column still exists in the DB.
+      // An offline write journaled by a pre-#770 client must not be dropped.
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'exercises',
+        row: { id: 'e1', user_id: 'u1', name: 'Bench', warmup_scheme: [] },
+      })).toBe(true)
+    })
+
+    it('rejects unknown tables, columns, and ops', () => {
+      // Table not in the allowlist (e.g. a tampered entry targeting auth state)
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'user_progression', row: { id: 'x' } })).toBe(false)
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'profiles', row: { is_admin: true } })).toBe(false)
+      // Column not writable on an allowlisted table
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'sets', row: { id: 's1', injected: 1 } })).toBe(false)
+      // Op outside the idempotent upsert/update set
+      expect(isReplayableDescriptor({ op: 'delete', table: 'sets', row: { id: 's1' } })).toBe(false)
+    })
+
+    it('rejects malformed shapes without throwing', () => {
+      const malformed: unknown[] = [
+        null, undefined, 42, 'sets', [], {},
+        { op: 'upsert', table: 'sets' },               // missing row
+        { op: 'upsert', table: 'sets', row: null },    // null row
+        { op: 'upsert', table: 'sets', row: [] },      // array row
+        { op: 'upsert', table: 'sets', row: {} },      // empty row
+        { op: 'update', table: 'sets', values: { deleted_at: 'x' }, match: {} }, // empty match → would hit every row
+        { op: 'update', table: 'sets', values: {}, match: { id: 's1' } },        // empty values
+      ]
+      for (const d of malformed) {
+        expect(isReplayableDescriptor(d)).toBe(false)
+      }
+    })
+  })
+
+  it('executeDescriptor refuses to issue a write for a non-allowlisted table', async () => {
+    await executeDescriptor({ op: 'upsert', table: 'profiles', row: { id: 'x' } } as unknown as SyncDescriptor)
+    expect(fakeSupabase.calls).toHaveLength(0)
+  })
+
+  it('executeDescriptor refuses an update whose match would target the whole table', async () => {
+    await executeDescriptor({
+      op: 'update', table: 'sets', values: { deleted_at: 'x' }, match: {},
+    } as unknown as SyncDescriptor)
+    expect(fakeSupabase.calls).toHaveLength(0)
+  })
+
+  it('rehydrate() drops a tampered journal entry and replays only the valid ones', async () => {
+    idbStore.set('lift-sync-journal', JSON.stringify([
+      // Tampered: targets a table outside the allowlist
+      { key: 'evil:1', isDelete: false, descriptor: { op: 'upsert', table: 'profiles', row: { is_admin: true } } },
+      // Tampered: an unbounded delete on the whole sets table
+      { key: 'evil:2', isDelete: true, descriptor: { op: 'update', table: 'sets', values: { deleted_at: 'x' }, match: {} } },
+      // Legitimate write that must still replay
+      { key: 'set:s1', isDelete: false, descriptor: UPSERT },
+    ]))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+
+    // Only the legitimate entry was enqueued/journaled
+    expect(queue.pending).toBe(1)
+    expect(queue.journalSize).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(100)
+
+    // Exactly one write reached Supabase — the valid set upsert
+    expect(fakeSupabase.calls).toHaveLength(1)
+    expect(fakeSupabase.calls[0]).toMatchObject({ op: 'upsert', table: 'sets', data: { id: 's1', weight: 100 } })
   })
 })
