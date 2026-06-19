@@ -10,7 +10,7 @@ import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
-import { todayISO } from '../lib/dates'
+import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -1025,7 +1025,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Group sets by day
     const byDay = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
-      const day = set.date.slice(0, 10)
+      const day = setDayKey(set.date)
       if (day === todayStr) continue
       if (!byDay.has(day)) byDay.set(day, [])
       byDay.get(day)!.push(set)
@@ -1069,7 +1069,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // intra-day ordering.
     const byDay = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
-      const day = set.date.slice(0, 10)
+      const day = setDayKey(set.date)
       if (day === todayStr) continue
       if (!byDay.has(day)) byDay.set(day, [])
       byDay.get(day)!.push(set)
@@ -1173,7 +1173,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // otherwise read as a regression and mask a legitimate suggestion.
     const sessions = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
-      const day = set.date.slice(0, 10)
+      const day = setDayKey(set.date)
       if (day === today) continue
       if (!sessions.has(day)) sessions.set(day, [])
       sessions.get(day)!.push(set)

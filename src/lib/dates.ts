@@ -33,6 +33,32 @@ export function toLocalDateKey(iso: string): string {
 }
 
 /**
+ * Day key for a stored set/bodyweight date, correct for BOTH storage
+ * conventions the app produces:
+ *
+ *  - **endOfDayISO stamps** (`YYYY-MM-DDT23:59:ss.SSSZ`) — written by every
+ *    UI-logged set and bodyweight entry — carry the user's chosen LOCAL day
+ *    directly in the prefix. `slice(0, 10)` is the right key; `toLocalDateKey`
+ *    would shift it +1 in UTC+ timezones (`…T23:59Z` is the next morning local
+ *    in Tokyo).
+ *  - **Real-time stamps** (`logSet`'s no-date fallback, legacy data) are true
+ *    UTC instants. `toLocalDateKey` returns the correct local day, while
+ *    `slice(0, 10)` rolls an Americas-evening set forward to tomorrow.
+ *
+ * Detection mirrors `sessionSummary.isEndOfDayJitter`: the `23:59` UTC window is
+ * the signature of `endOfDayISO()`. A real-time stamp landing in that one-minute
+ * UTC window is the same unavoidable edge case that prior art already accepts.
+ *
+ * Use this for any day-bucketing or local-day comparison of a `set.date` /
+ * `entry.date`. A blanket swap to `toLocalDateKey` regresses every UTC+ user on
+ * the dominant endOfDayISO path; a blanket `slice(0, 10)` regresses Americas
+ * evenings on real-time data. This helper is the single reconciliation point.
+ */
+export function setDayKey(iso: string): string {
+  return iso.slice(11, 16) === '23:59' ? iso.slice(0, 10) : toLocalDateKey(iso)
+}
+
+/**
  * Short locale-aware display date, e.g. "Jan 5".
  * Accepts anything `new Date()` parses; pass date-only keys with a noon
  * suffix (`key + 'T12:00:00'`) to avoid timezone rollover at the boundary.

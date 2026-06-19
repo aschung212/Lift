@@ -730,7 +730,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { buildSessionSummary } from '../lib/sessionSummary'
-import { todayISO, toLocalDateKey, formatShortDate, daysBetweenISO } from '../lib/dates'
+import { todayISO, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode, UsualLadder, UsualLadderRung } from '../stores/workout'
@@ -796,7 +796,7 @@ const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== fals
 function filterSetsSinceBaseline<T extends { date: string }>(sets: T[]): T[] {
   const baseline = prBaselineDate.value
   if (!baseline) return sets
-  return sets.filter(s => s.date.slice(0, 10) >= baseline)
+  return sets.filter(s => setDayKey(s.date) >= baseline)
 }
 
 function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
@@ -971,7 +971,7 @@ const setsLoggedToday = computed(() => {
   let count = 0
   for (const ex of store.exercises) {
     for (const s of ex.sets) {
-      if (toLocalDateKey(s.date) === today) count++
+      if (setDayKey(s.date) === today) count++
     }
   }
   return count
@@ -1314,7 +1314,7 @@ const rungStates = computed<RungState[]>(() => {
   const rungs = usualLadder.value!.rungs
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   const today = todayISO()
-  const todaySets = ex ? ex.sets.filter(s => s.date.slice(0, 10) === today) : []
+  const todaySets = ex ? ex.sets.filter(s => setDayKey(s.date) === today) : []
 
   // Each today-set consumes the first pending rung within tolerance.
   const done = rungs.map(() => false)
@@ -1477,7 +1477,7 @@ function settleNudgeOutcome(exerciseId: string) {
     const ex = store.exercises.find(e => e.id === exerciseId)
     const topByDay = new Map<string, number>()
     for (const s of ex?.sets ?? []) {
-      const day = s.date.slice(0, 10)
+      const day = setDayKey(s.date)
       if (day <= mine.lastShownDay) continue
       topByDay.set(day, Math.max(topByDay.get(day) ?? 0, s.weight))
     }
@@ -1959,7 +1959,7 @@ function openLogForExercise(exerciseId: string) {
 function openEditModal(exercise: Exercise, set: WorkoutSet) {
   editingSet.value = { exerciseId: exercise.id, setId: set.id }
   selectedExerciseId.value = exercise.id
-  date.value = toLocalDateKey(set.date)
+  date.value = setDayKey(set.date)
   weight.value = displayWeight(set.weight)
   reps.value = set.reps
   showModal.value = true
