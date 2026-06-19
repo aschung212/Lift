@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { APP_URL, APP_NAME, APP_TAGLINE } from '../../lib/appMeta'
+import { appUrlWithRef, APP_NAME, APP_TAGLINE, SHARE_REF } from '../../lib/appMeta'
+
+// The app-share flow stamps the canonical URL with the share_app attribution
+// ref (#798) so a share-driven install isn't logged as "direct".
+const SHARE_URL = appUrlWithRef(SHARE_REF.app)
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 // useAppShare reads `isNative` from platform at module scope, so each test
@@ -48,7 +52,7 @@ describe('useAppShare', () => {
 
       expect(res).toEqual({ kind: 'shared' })
       expect(mockCapacitorShare).toHaveBeenCalledWith(
-        expect.objectContaining({ title: APP_NAME, text: APP_TAGLINE, url: APP_URL }),
+        expect.objectContaining({ title: APP_NAME, text: APP_TAGLINE, url: SHARE_URL }),
       )
     })
 
@@ -68,7 +72,7 @@ describe('useAppShare', () => {
       const res = await shareApp()
 
       expect(res).toEqual({ kind: 'copied' })
-      expect(writeText).toHaveBeenCalledWith(APP_URL)
+      expect(writeText).toHaveBeenCalledWith(SHARE_URL)
     })
   })
 
@@ -83,7 +87,7 @@ describe('useAppShare', () => {
       const res = await shareApp()
 
       expect(res).toEqual({ kind: 'shared' })
-      expect(shareFn).toHaveBeenCalledWith({ title: APP_NAME, text: APP_TAGLINE, url: APP_URL })
+      expect(shareFn).toHaveBeenCalledWith({ title: APP_NAME, text: APP_TAGLINE, url: SHARE_URL })
       expect(mockCapacitorShare).not.toHaveBeenCalled()
     })
 
@@ -106,7 +110,7 @@ describe('useAppShare', () => {
       const res = await shareApp()
 
       expect(res).toEqual({ kind: 'copied' })
-      expect(writeText).toHaveBeenCalledWith(APP_URL)
+      expect(writeText).toHaveBeenCalledWith(SHARE_URL)
     })
   })
 
@@ -121,7 +125,7 @@ describe('useAppShare', () => {
       const res = await shareApp()
 
       expect(res).toEqual({ kind: 'copied' })
-      expect(writeText).toHaveBeenCalledWith(APP_URL)
+      expect(writeText).toHaveBeenCalledWith(SHARE_URL)
     })
 
     it('returns unavailable when neither share nor clipboard works', async () => {
