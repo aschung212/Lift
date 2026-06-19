@@ -151,6 +151,41 @@ describe('useWorkoutShare', () => {
       )
     })
 
+    it('includes the canonical app link in the Web Share payload (#794)', async () => {
+      const shareFn = vi.fn().mockResolvedValue(undefined)
+      const canShareFn = vi.fn().mockReturnValue(true)
+      Object.defineProperty(navigator, 'share', { value: shareFn, writable: true, configurable: true })
+      Object.defineProperty(navigator, 'canShare', { value: canShareFn, writable: true, configurable: true })
+
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest())
+
+      expect(shareFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          files: expect.arrayContaining([expect.any(File)]),
+          title: 'Lift workout',
+          url: 'https://spa-rho-sandy.vercel.app',
+          text: expect.stringContaining('Lift'),
+        }),
+      )
+    })
+
+    it('degrades to an image-only payload when the link-carrying payload is rejected (#794)', async () => {
+      const shareFn = vi.fn().mockResolvedValue(undefined)
+      // canShare rejects any payload carrying a url, accepts files-only.
+      const canShareFn = vi.fn((data: ShareData) => !('url' in data))
+      Object.defineProperty(navigator, 'share', { value: shareFn, writable: true, configurable: true })
+      Object.defineProperty(navigator, 'canShare', { value: canShareFn, writable: true, configurable: true })
+
+      const { shareCard } = await getComposable()
+      const result = await shareCard(makeRequest())
+
+      expect(result).toEqual({ kind: 'shared' })
+      const payload = shareFn.mock.calls[0][0] as ShareData
+      expect(payload.files).toBeDefined()
+      expect('url' in payload).toBe(false)
+    })
+
     it('returns cancelled when user dismisses share sheet (AbortError)', async () => {
       const abortError = new DOMException('User cancelled', 'AbortError')
       const shareFn = vi.fn().mockRejectedValue(abortError)

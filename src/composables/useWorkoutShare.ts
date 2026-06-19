@@ -22,6 +22,10 @@ import {
 } from '../lib/shareImage'
 import type { SessionSummary } from '../lib/sessionSummary'
 import { useAnalytics } from './useAnalytics'
+import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
+
+/** Title shown in the share sheet for a rasterized workout card. */
+const SHARE_TITLE = 'Lift workout'
 
 export interface ShareCardRequest {
   /** The Vue component that renders the card. */
@@ -48,16 +52,27 @@ export type ShareResult =
   | { kind: 'error'; error: Error }
 
 /**
- * Browsers that support image files in the Web Share API.
+ * Pick the richest Web Share payload a platform will actually accept for a
+ * rendered card. We prefer a payload that carries both the card image AND a
+ * tappable link back to the app (#794) so a recipient can convert in one tap
+ * instead of retyping the printed handle — but some platforms reject a
+ * files+url combo via `canShare`, so we degrade to image-only rather than
+ * drop the share entirely. Returns null when no payload is sharable (caller
+ * falls back to download).
+ *
  * iOS Safari 16.4+ and Android Chrome both report `canShare({ files })` as true.
  */
-function canWebShareFiles(files: File[]): boolean {
-  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return false
+function pickWebSharePayload(file: File): ShareData | null {
+  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return null
+  const withLink: ShareData = { files: [file], title: SHARE_TITLE, text: APP_TAGLINE, url: APP_URL }
+  const imageOnly: ShareData = { files: [file], title: SHARE_TITLE }
   try {
-    return navigator.canShare({ files })
+    if (navigator.canShare(withLink)) return withLink
+    if (navigator.canShare(imageOnly)) return imageOnly
   } catch {
-    return false
+    return null
   }
+  return null
 }
 
 /** Triggers a download via a temporary anchor element. Matches the dataExport.ts pattern. */
@@ -196,9 +211,10 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
       // alone would silently drop the rendered image, which is worse than
       // surfacing the download.
 
-      if (canWebShareFiles([file])) {
+      const sharePayload = pickWebSharePayload(file)
+      if (sharePayload) {
         try {
-          await navigator.share({ files: [file], title: 'Lift workout' })
+          await navigator.share(sharePayload)
           logEvent('share_completed', { format: req.format, method: 'share', outcome: 'shared' })
           return { kind: 'shared' }
         } catch (err) {
