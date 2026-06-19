@@ -665,6 +665,38 @@ describe('usePreferencesStore', () => {
       expect(stored.filters).toBeDefined()
     })
 
+    it('workoutReminders defaults to off, Mon/Wed/Fri 6pm', () => {
+      expect(store.workoutReminders).toEqual({ enabled: false, days: [1, 3, 5], hour: 18, minute: 0 })
+    })
+
+    it('setWorkoutReminders sanitizes, updates, and persists', () => {
+      store.setWorkoutReminders({ enabled: true, days: [5, 1, 1, 9], hour: 7, minute: 30 })
+      expect(store.workoutReminders).toEqual({ enabled: true, days: [1, 5], hour: 7, minute: 30 })
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.workoutReminders).toEqual({ enabled: true, days: [1, 5], hour: 7, minute: 30 })
+    })
+
+    it('init loads workoutReminders from JSON blob', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        workoutReminders: { enabled: true, days: [2, 4], hour: 8, minute: 15 },
+      }))
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+      expect(freshStore.workoutReminders).toEqual({ enabled: true, days: [2, 4], hour: 8, minute: 15 })
+    })
+
+    it('_reloadFromStorage picks up workoutReminders', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        workoutReminders: { enabled: true, days: [0, 6], hour: 9, minute: 0 },
+      }))
+      store._reloadFromStorage()
+      expect(store.workoutReminders).toEqual({ enabled: true, days: [0, 6], hour: 9, minute: 0 })
+    })
+
     it('appIcon defaults to "default"', () => {
       expect(store.appIcon).toBe('default')
     })

@@ -5067,6 +5067,58 @@ html.theme-fading .settingsSheet {
   line-height: 1.4;
 }
 
+/* ─── Workout reminder day-of-week chips (#793) ──────────────────── */
+.reminderDayRow {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.reminderDayChip {
+  flex: 1;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-base);
+  font-family: inherit;
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.reminderDayChip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+}
+
+.reminderDayChip:active {
+  opacity: 0.6;
+}
+
+.reminderTimeInput {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--font-callout);
+  font-weight: 500;
+  outline: none;
+}
+
+.reminderTimeInput:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 /* ─── Intensity lens config: reset link in EditExerciseModal (#770) ──── */
 
 .wtIntensityEditReset {

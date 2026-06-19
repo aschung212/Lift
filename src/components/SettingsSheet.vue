@@ -208,6 +208,50 @@
           </div>
         </div>
 
+        <!-- Workout reminders (native iOS only — scheduled local notifications don't fire in a web PWA) -->
+        <div v-if="remindersSupported" class="settingsGroup">
+          <div class="settingsHeader">Reminders</div>
+          <div class="settingsRow">
+            <div class="settingsLabelGroup">
+              <span class="settingsLabel">Workout reminders</span>
+              <span class="settingsHint">A nudge to train on your schedule</span>
+            </div>
+            <button
+              :class="['glassToggle', { on: prefs.workoutReminders.enabled }]"
+              @click="toggleReminders"
+              role="switch"
+              :aria-checked="prefs.workoutReminders.enabled"
+              :aria-label="prefs.workoutReminders.enabled ? 'Disable workout reminders' : 'Enable workout reminders'"
+            >
+              <span class="glassToggleThumb"></span>
+            </button>
+          </div>
+          <div v-show="prefs.workoutReminders.enabled" class="settingsRow reminderDayRow">
+            <button
+              v-for="day in reminderDayOptions"
+              :key="day.value"
+              :class="['reminderDayChip', { on: day.selected }]"
+              @click="toggleReminderDay(day.value)"
+              role="switch"
+              :aria-checked="day.selected"
+              :aria-label="(day.selected ? 'Remove ' : 'Add ') + day.fullLabel"
+            >{{ day.label }}</button>
+          </div>
+          <div v-show="prefs.workoutReminders.enabled" class="settingsRow">
+            <div class="settingsLabelGroup">
+              <span class="settingsLabel settingsLabelIndented">Time</span>
+              <span class="settingsHint">{{ reminderDaysSummary }}</span>
+            </div>
+            <input
+              type="time"
+              class="reminderTimeInput"
+              :value="reminderTimeValue"
+              @input="onReminderTimeInput(($event.target as HTMLInputElement).value)"
+              aria-label="Reminder time"
+            />
+          </div>
+        </div>
+
         <div class="settingsGroup">
           <div class="settingsHeader">Features</div>
           <div
@@ -709,6 +753,13 @@ import { renderReport, openReportWindow } from '../lib/reportRenderer'
 import { importCSV } from '../lib/csvImport'
 import { usePreferencesStore } from '../stores/preferences'
 import type { WeightGoalDirection } from '../stores/preferences'
+import { useWorkoutReminders } from '../composables/useWorkoutReminders'
+import {
+  DAY_LABELS,
+  formatReminderTime,
+  summarizeReminderDays,
+  type ReminderConfig,
+} from '../lib/workoutReminders'
 import { MAX_INTENSITY_PRESETS, nextPresetValue, pickNewPresetValue } from '../lib/intensityTable'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
@@ -1287,6 +1338,62 @@ function toggleExperience(key: 'prCelebrations' | 'haptics' | 'screenWakeLock' |
 function toggleFeature(featureId: string) {
   prefs.toggleFeature(featureId)
   logEvent('feature_toggle', { feature: featureId, enabled: prefs.features[featureId] })
+}
+
+// ── Workout reminders (#793, native only) ──────────────────────
+// Scheduled local notifications only fire in the native Capacitor shell, so the
+// whole section is gated behind `remindersSupported`. Each change persists the
+// config (synced via preferences) and reconciles the OS schedule.
+const reminders = useWorkoutReminders()
+const remindersSupported = reminders.isSupported()
+
+const reminderDayOptions = computed(() =>
+  DAY_LABELS.map((label, value) => ({
+    value,
+    label: label.charAt(0),
+    fullLabel: label,
+    selected: prefs.workoutReminders.days.includes(value),
+  })),
+)
+const reminderTimeValue = computed(() => {
+  const { hour, minute } = prefs.workoutReminders
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+})
+const reminderDaysSummary = computed(() =>
+  `${summarizeReminderDays(prefs.workoutReminders.days)} · ${formatReminderTime(prefs.workoutReminders.hour, prefs.workoutReminders.minute)}`,
+)
+
+function applyReminderConfig(next: ReminderConfig) {
+  prefs.setWorkoutReminders(next)
+  void reminders.syncReminders(prefs.workoutReminders)
+}
+
+function toggleReminders() {
+  const current = prefs.workoutReminders
+  const enabled = !current.enabled
+  // Re-enabling with no days selected would schedule nothing — fall back to the
+  // default day set so the toggle is never a silent no-op.
+  const days = enabled && current.days.length === 0 ? [1, 3, 5] : current.days
+  applyReminderConfig({ ...current, enabled, days })
+  logEvent('reminders_toggle', { enabled })
+}
+
+function toggleReminderDay(day: number) {
+  const current = prefs.workoutReminders
+  const days = current.days.includes(day)
+    ? current.days.filter((d) => d !== day)
+    : [...current.days, day]
+  applyReminderConfig({ ...current, days })
+}
+
+function onReminderTimeInput(value: string) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value)
+  if (!match) return
+  applyReminderConfig({
+    ...prefs.workoutReminders,
+    hour: Number(match[1]),
+    minute: Number(match[2]),
+  })
 }
 
 // ── Tab definitions (for feature toggles) ──────────────────────
