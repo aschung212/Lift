@@ -24,6 +24,10 @@
             <button class="previewToggle" @click="isPreviewMode = true">Go read-only</button>
           </template>
         </div>
+        <div v-if="authNeedsReauth" class="previewBanner" role="status">
+          Session expired — sign in again to resume syncing
+          <button class="previewToggle" @click="handleSignOut">Sign in</button>
+        </div>
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
@@ -234,6 +238,7 @@ import { captureAcquisitionSource } from './composables/useAcquisitionSource'
 import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
+import { authNeedsReauth } from './lib/sessionHealth'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'

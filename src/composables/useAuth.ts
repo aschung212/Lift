@@ -11,6 +11,7 @@ import { useRestTimer } from '../composables/useRestTimer'
 import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
 import { logError } from '../lib/logger'
+import { clearReauthFlag } from '../lib/sessionHealth'
 import type { User, Provider } from '@supabase/supabase-js'
 import type { ColorMode } from '../lib/themes'
 import type { WeightUnit } from '../lib/themes'
@@ -37,6 +38,39 @@ const loading: Ref<boolean> = ref(true)
 
 let _initialized = false
 let _authUnsubscribe: (() => void) | null = null
+let _lifecycleCleanups: Array<() => void> = []
+
+/**
+ * Re-arm supabase-js token auto-refresh on app resume (LIFT-784).
+ *
+ * supabase-js pauses its refresh timer while the document is hidden and relies
+ * on `visibilitychange` to resume — but that event is unreliable in
+ * WKWebView/Capacitor (the App Store target) when coming back from the
+ * background, so the access token can quietly expire mid-session. We listen to
+ * `visibilitychange` plus `focus` and `pageshow` as redundant resume signals;
+ * `startAutoRefresh()` immediately checks the token and refreshes it if it is
+ * within the expiry margin. `stopAutoRefresh()` on hide avoids a wasted timer.
+ */
+function setupSessionRefreshLifecycle(): void {
+  if (!supabase || typeof document === 'undefined') return
+  const client = supabase
+  const resume = () => { void client.auth.startAutoRefresh() }
+  const pause = () => { void client.auth.stopAutoRefresh() }
+  const onVisibility = () => {
+    if (document.visibilityState === 'visible') resume()
+    else pause()
+  }
+  document.addEventListener('visibilitychange', onVisibility)
+  window.addEventListener('focus', resume)
+  window.addEventListener('pageshow', resume)
+  _lifecycleCleanups.push(
+    () => document.removeEventListener('visibilitychange', onVisibility),
+    () => window.removeEventListener('focus', resume),
+    () => window.removeEventListener('pageshow', resume),
+  )
+  // Kick off the loop for the session that is already in the foreground.
+  if (document.visibilityState === 'visible') resume()
+}
 
 /**
  * Push synced settings from the preferences store to the composable module-scope
@@ -105,14 +139,19 @@ function init(): void {
     loading.value = false
   })
 
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     const prev = user.value
     user.value = session?.user ?? null
+    // A successful (re)auth means the token is healthy again — clear any
+    // pending "re-sign-in needed" prompt (LIFT-784).
+    if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') clearReauthFlag()
     if (session?.user && !prev) {
       initStores(session.user.id)
     }
   })
   _authUnsubscribe = () => subscription.unsubscribe()
+
+  setupSessionRefreshLifecycle()
 }
 
 async function signInWithProvider(provider: Provider): Promise<{ error: AuthError | null }> {
@@ -228,6 +267,8 @@ async function deleteAccount(): Promise<void> {
 function destroy(): void {
   _authUnsubscribe?.()
   _authUnsubscribe = null
+  for (const cleanup of _lifecycleCleanups) cleanup()
+  _lifecycleCleanups = []
   _initialized = false
 }
 

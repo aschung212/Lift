@@ -4,11 +4,21 @@ import { SyncQueue, syncStatus, _resetRateLimit, _resetCircuitBreaker, _getCircu
 // Mock supabase so the module loads (syncQueue checks supabase for the singleton)
 vi.mock('../supabase', () => ({ supabase: {}, isPreviewMode: { value: false } }))
 
+// Spy on ensureFreshSession but keep the real isAuthError classifier (LIFT-784).
+const { ensureFreshSessionSpy } = vi.hoisted(() => ({
+  ensureFreshSessionSpy: vi.fn(() => Promise.resolve(true)),
+}))
+vi.mock('../sessionHealth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../sessionHealth')>()
+  return { ...actual, ensureFreshSession: ensureFreshSessionSpy }
+})
+
 describe('SyncQueue', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     syncStatus.value = 'synced'
     _resetRateLimit()
+    ensureFreshSessionSpy.mockClear()
   })
 
   afterEach(() => {
@@ -92,6 +102,54 @@ describe('SyncQueue', () => {
     // Failing op retried up to 5 times + 1 initial = 6 total
     expect(failing).toHaveBeenCalledTimes(6)
     expect(succeeding).toHaveBeenCalledOnce()
+    expect(queue.pending).toBe(0)
+  })
+
+  it('refreshes the session ONCE when a flush hits an expired-token 401 (LIFT-784)', async () => {
+    const queue = new SyncQueue(100)
+    // Supabase ops RESOLVE { error } on a 401 (they do not reject), so a stale
+    // token would otherwise be treated as a silent success.
+    const jwtExpired = { error: { code: 'PGRST301', message: 'JWT expired' } }
+    const a = vi.fn().mockResolvedValue(jwtExpired)
+    const b = vi.fn().mockResolvedValue(jwtExpired)
+
+    queue.enqueue('a', a)
+    queue.enqueue('b', b)
+
+    // Flush the batch once (don't run the retry timers — we're asserting on the
+    // first encounter, before retries are exhausted).
+    await queue.flush()
+
+    // One refresh for the whole batch, not one per write.
+    expect(ensureFreshSessionSpy).toHaveBeenCalledTimes(1)
+    // The writes were queued for retry, not dropped as "synced".
+    expect(syncStatus.value).toBe('error')
+    expect(queue.pending).toBeGreaterThan(0)
+  })
+
+  it('does NOT refresh the session on an ordinary (non-auth) failure', async () => {
+    const queue = new SyncQueue(100)
+    const failing = vi.fn().mockRejectedValue(new Error('network'))
+
+    queue.enqueue('fail', failing)
+    vi.advanceTimersByTime(100)
+    await vi.runAllTimersAsync()
+
+    expect(ensureFreshSessionSpy).not.toHaveBeenCalled()
+  })
+
+  it('treats a resolved non-auth error as the legacy success path (no retry storm)', async () => {
+    const queue = new SyncQueue(100)
+    // A non-auth PostgREST error (e.g. unique violation) keeps the historical
+    // fulfilled-is-success behavior — it is not retried and not a refresh.
+    const op = vi.fn().mockResolvedValue({ error: { code: '23505', message: 'duplicate key' } })
+
+    queue.enqueue('dup', op)
+    vi.advanceTimersByTime(100)
+    await vi.runAllTimersAsync()
+
+    expect(op).toHaveBeenCalledTimes(1)
+    expect(ensureFreshSessionSpy).not.toHaveBeenCalled()
     expect(queue.pending).toBe(0)
   })
 

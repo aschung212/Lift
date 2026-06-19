@@ -3,6 +3,7 @@ import { supabase, isPreviewMode } from './supabase'
 import { logError, logWarn } from './logger'
 import { broadcastSyncStatus } from './crossTabSync'
 import { backupToIDB, restoreFromIDB } from './durableStorage'
+import { isAuthError, ensureFreshSession } from './sessionHealth'
 
 type SyncOperation = () => PromiseLike<unknown>
 
@@ -136,6 +137,25 @@ export class SyncQueue {
     this._journalActive = true
     this._journal.set(key, { descriptor, isDelete })
     this._persistJournal()
+  }
+
+  /**
+   * Extract a failure reason from a settled op result, or null on success.
+   *
+   * A rejection is always a failure. A *fulfilled* Supabase op resolves
+   * `{ data, error }` even on a 401 — so an expired-token write looks like a
+   * success and was silently dropped (LIFT-784). We surface a resolved AUTH
+   * error as a retryable failure so the write recovers after a refresh, while
+   * leaving non-auth resolved errors on the legacy fulfilled-is-success path to
+   * avoid changing unrelated sync behavior.
+   */
+  private _resultError(result: PromiseSettledResult<unknown>): unknown {
+    if (result.status === 'rejected') return result.reason
+    const val = result.value as { error?: unknown } | null | undefined
+    if (val && typeof val === 'object' && 'error' in val && val.error && isAuthError(val.error)) {
+      return val.error
+    }
+    return null
   }
 
   /**
@@ -274,32 +294,41 @@ export class SyncQueue {
         entries.map(([, op]) => op()),
       )
       let hasFailure = false
+      let sawAuthError = false
       let journalChanged = false
       results.forEach((result, i) => {
         const key = entries[i][0]
-        if (result.status === 'fulfilled') {
+        const error = this._resultError(result)
+        if (!error) {
           // Clear retry counter on success so future failures get full retries
           this._attemptMap.delete(key)
           // Write durably landed on the server — drop its journal entry.
           if (this._journal.delete(key)) journalChanged = true
-        } else if (result.status === 'rejected') {
-          hasFailure = true
-          const op = entries[i][1]
-          const prevAttempt = this._attemptMap.get(key) ?? 0
-          const attempt = prevAttempt + 1
-          if (attempt <= this._maxRetries) {
-            this._retryQueue.set(key, { op, attempt })
-            this._attemptMap.set(key, attempt)
-            logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
-          } else {
-            logError(result.reason, { source: 'SyncQueue', key, attempts: attempt })
-            // Retries exhausted — the op is dropped, so drop its journal entry
-            // too. (Reconciliation in the store's _fetchFromSupabase is the
-            // last line of defense for recovering such writes.)
-            if (this._journal.delete(key)) journalChanged = true
-          }
+          return
+        }
+        hasFailure = true
+        if (isAuthError(error)) sawAuthError = true
+        const op = entries[i][1]
+        const prevAttempt = this._attemptMap.get(key) ?? 0
+        const attempt = prevAttempt + 1
+        if (attempt <= this._maxRetries) {
+          this._retryQueue.set(key, { op, attempt })
+          this._attemptMap.set(key, attempt)
+          logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
+        } else {
+          logError(error, { source: 'SyncQueue', key, attempts: attempt })
+          // Retries exhausted — the op is dropped, so drop its journal entry
+          // too. (Reconciliation in the store's _fetchFromSupabase is the
+          // last line of defense for recovering such writes.)
+          if (this._journal.delete(key)) journalChanged = true
         }
       })
+      // An expired/stale token surfaces identically across every queued write.
+      // Refresh the session ONCE (single-flight) so the scheduled retry runs
+      // with a fresh token instead of burning all five retries on a dead one
+      // (LIFT-784). If the refresh fails, sessionHealth flips authNeedsReauth
+      // and the UI prompts a re-sign-in.
+      if (sawAuthError) void ensureFreshSession()
       if (journalChanged) this._persistJournal()
       if (this._retryQueue.size > 0) this._scheduleRetry()
       const newStatus = hasFailure ? 'error' : 'synced' as const

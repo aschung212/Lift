@@ -13,6 +13,7 @@ import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { todayISO } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
+import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -343,6 +344,10 @@ export const useWorkoutStore = defineStore('workout', () => {
           exerciseError: String(exResult.error),
           setsError: String(setsResult.error),
         })
+        // A 401 here means the token expired rather than the user being offline.
+        // Refresh once so the next fetch recovers instead of staying local-only
+        // until a manual reload (LIFT-784).
+        if (isAuthError(exResult.error) || isAuthError(setsResult.error)) void ensureFreshSession()
         return
       }
       remoteExData = exResult.data
