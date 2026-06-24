@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { createHash } from 'node:crypto'
 
 interface HeaderRule {
   source: string
@@ -30,6 +31,21 @@ function loadVercelConfig(): VercelConfig {
   const path = resolve(__dirname, '../../../vercel.json')
   const raw = readFileSync(path, 'utf8')
   return JSON.parse(raw) as VercelConfig
+}
+
+/**
+ * Compute the CSP `'sha256-…'` source-expression for every attribute-less
+ * inline `<script>` block in index.html, exactly the way a browser does:
+ * SHA-256 over the raw UTF-8 bytes between the tags, base64-encoded. Vite
+ * emits these inline blocks verbatim (it only rewrites the external
+ * `type="module"` entry), so the source hash matches what ships.
+ */
+function inlineScriptHashes(): string[] {
+  const html = readFileSync(resolve(__dirname, '../../../index.html'), 'utf8')
+  const matches = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+  return matches.map(
+    m => `sha256-${createHash('sha256').update(m[1], 'utf8').digest('base64')}`
+  )
 }
 
 function findGlobalHeaderRule(config: VercelConfig): HeaderRule {
@@ -80,13 +96,32 @@ describe('vercel.json security headers', () => {
       expect(csp).toMatch(/default-src\s+'self'/)
     })
 
-    it('restricts script-src to self (+ unsafe-inline for the index.html theme script)', () => {
-      expect(csp).toMatch(/script-src\s+[^;]*'self'/)
-      // We still allow 'unsafe-inline' for the splash theme bootstrap
-      // script — remove this branch once we ship a nonce/hash strategy.
-      expect(csp).toMatch(/script-src\s+[^;]*'unsafe-inline'/)
+    it('restricts script-src to self + a hash of the inline theme bootstrap (no unsafe-inline)', () => {
+      const scriptSrc = csp.match(/script-src\s+([^;]*)/)?.[1] ?? ''
+      expect(scriptSrc).toMatch(/'self'/)
+      // 'unsafe-inline' negates almost all script-XSS protection (LIFT-809).
+      // The single static inline script (index.html theme bootstrap) is
+      // allow-listed by its SHA-256 hash instead.
+      expect(scriptSrc).not.toContain("'unsafe-inline'")
       // Explicitly ensure no third-party CDN is allow-listed
-      expect(csp).not.toMatch(/script-src[^;]*https?:\/\//)
+      expect(scriptSrc).not.toMatch(/https?:\/\//)
+    })
+
+    /**
+     * Pins the inline-script hash to the actual bytes of index.html. If the
+     * theme bootstrap script changes without vercel.json being updated, its
+     * hash no longer appears in the CSP and the script is blocked at runtime —
+     * this test fails loudly in CI instead of shipping a broken page.
+     */
+    it('allow-lists every inline index.html script by its current SHA-256 hash', () => {
+      const hashes = inlineScriptHashes()
+      // Guard against a future refactor that adds/removes inline scripts
+      // silently — there must be exactly the one theme bootstrap block.
+      expect(hashes).toHaveLength(1)
+      const scriptSrc = csp.match(/script-src\s+([^;]*)/)?.[1] ?? ''
+      for (const hash of hashes) {
+        expect(scriptSrc).toContain(`'${hash}'`)
+      }
     })
 
     it('allows Supabase REST + realtime on connect-src', () => {
