@@ -5,7 +5,7 @@ import type { SessionSummary } from '../../lib/sessionSummary'
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
-// Mock html-to-image at the module level — renderNodeToBlob calls `toBlob`
+// Mock modern-screenshot at the module level — renderNodeToBlob calls `domToBlob`
 // internally. We mock the higher-level shareImage module so we don't need
 // a real DOM rasterizer.
 const mockRenderNodeToBlob = vi.fn<(node: HTMLElement, opts: unknown) => Promise<Blob>>()
