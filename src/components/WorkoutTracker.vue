@@ -1040,6 +1040,12 @@ function maybeCelebrateWeeklyGoal(prShown: boolean): boolean {
   markGoalWeekCelebrated(decision.weekKey)
   const celebrated = presentGoalCelebration({ streak: decision.streak, milestone: decision.milestone, target: info.target })
   logEvent('weekly_goal_celebrated', { streak: decision.streak, milestone: decision.milestone })
+  // A streak-tier crossing (2/4/8/12-week multiplier bump) is a distinct
+  // progression-depth signal from simply hitting the weekly goal — emit a
+  // dedicated event so streak retention is filterable in the dashboard (#796).
+  if (decision.milestone) {
+    logEvent('streak_milestone', { streak: decision.streak, target: info.target })
+  }
   return celebrated
 }
 
