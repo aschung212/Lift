@@ -3,7 +3,7 @@
  *   1. Mount a card component offscreen (detached Vue app, no Pinia needed —
  *      cards are pure presentational components that take a typed summary prop).
  *   2. Wait for the next tick so the DOM and CSS are settled, then rasterize
- *      the card to a PNG Blob via `html-to-image`.
+ *      the card to a PNG Blob via `modern-screenshot`.
  *   3. Share via the native iOS share sheet (Capacitor), the Web Share API
  *      (browser, iOS Safari 16.4+ supports image files), or fall back to a
  *      direct download — same Blob → URL.createObjectURL pattern App.vue
@@ -83,7 +83,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 /**
  * The list of theme custom properties consumed by share cards. Snapshotted
  * from the live document at render time and inlined onto the offscreen
- * host so theme variables resolve inside `html-to-image`'s cloned subtree
+ * host so theme variables resolve inside `modern-screenshot`'s cloned subtree
  * (where the original `[data-theme="X"][data-mode="Y"]` selectors don't
  * reliably match — the clone lives outside the original cascade).
  */
@@ -122,9 +122,9 @@ function snapshotThemeVars(): string {
 async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
   const { width, height } = PREVIEW_SIZE[req.format]
   const host = document.createElement('div')
-  // Offscreen but rendered: html-to-image needs the node in the DOM with real
-  // layout. Inline the resolved theme variables onto the host so they survive
-  // html-to-image's clone-and-rehome step (the `[data-theme=…]` selectors
+  // Offscreen but rendered: modern-screenshot needs the node in the DOM with
+  // real layout. Inline the resolved theme variables onto the host so they
+  // survive modern-screenshot's clone-and-rehome step (the `[data-theme=…]` selectors
   // don't reliably match in the cloned subtree, which leaves the rasterized
   // image blank). Explicit `position: relative` on the inner provides the
   // containing block for cards' absolute children.
