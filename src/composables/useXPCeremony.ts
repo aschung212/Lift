@@ -9,7 +9,8 @@
  */
 
 import { THEMES } from './useTheme'
-import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { useProgressionStore } from '../stores/progression'
+import { showXPToast, showUnlockCelebration } from './xpCeremonyUI'
 import { XP_CONFIG } from '../lib/xp'
 import { logXPEvent, logBodyweightXPEvent } from '../lib/xpInstrumentation'
 import { useAppReview } from './useAppReview'

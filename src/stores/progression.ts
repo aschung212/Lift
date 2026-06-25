@@ -1,4 +1,3 @@
-import { reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
@@ -26,43 +25,6 @@ const STORAGE_KEY = 'user-progression'
 
 export interface StreakWeekEntry extends StreakHistoryEntry {
   combinedMultiplier: number
-}
-
-// Transient toast state (not persisted, reactive for template binding)
-export const xpToast = reactive({
-  visible: false,
-  text: '',
-  progressPercent: 0,
-  totalXP: 0,
-  nextThresholdXP: null as number | null,
-  _timer: null as ReturnType<typeof setTimeout> | null,
-})
-
-export function showXPToast(text: string, progressPercent: number, totalXP: number, nextThresholdXP: number | null): void {
-  xpToast.text = text
-  xpToast.progressPercent = progressPercent
-  xpToast.totalXP = totalXP
-  xpToast.nextThresholdXP = nextThresholdXP
-  xpToast.visible = true
-  if (xpToast._timer) clearTimeout(xpToast._timer)
-  xpToast._timer = setTimeout(() => { xpToast.visible = false }, 4000)
-}
-
-// Unlock celebration state (not persisted, reactive)
-export const unlockCelebration = reactive({
-  visible: false,
-  themeId: null as ThemeId | null,
-  themeName: '',
-})
-
-export function showUnlockCelebration(themeId: ThemeId, themeName: string): void {
-  unlockCelebration.themeId = themeId
-  unlockCelebration.themeName = themeName
-  unlockCelebration.visible = true
-}
-
-export function dismissUnlockCelebration(): void {
-  unlockCelebration.visible = false
 }
 
 export interface ThemeUnlock {
