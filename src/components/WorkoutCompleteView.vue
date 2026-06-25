@@ -102,12 +102,11 @@ function onKey(e: KeyboardEvent) {
   emit('close')
 }
 onMounted(async () => {
-  document.documentElement.classList.add('modal-open')
+  // Background-scroll lock is owned by useModal (activateTrap) now.
   window.addEventListener('keydown', onKey)
   activateTrap()
 })
 onUnmounted(() => {
-  document.documentElement.classList.remove('modal-open')
   window.removeEventListener('keydown', onKey)
   deactivateTrap()
 })

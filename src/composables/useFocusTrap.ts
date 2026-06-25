@@ -18,8 +18,22 @@ const FOCUSABLE = [
  *   // When modal mounts:  focusTrap.activate(el)
  *   // When modal closes:  focusTrap.deactivate()
  */
+export interface FocusTrapActivateOptions {
+  /**
+   * Focus the container element itself instead of the first focusable
+   * descendant. Use for modals whose first field is a text/number input:
+   * on iOS, programmatically focusing such an input on open shows the caret
+   * but withholds the soft keyboard, and a later tap on the already-focused
+   * field won't summon it either (a deadlock). Focusing the container avoids
+   * that AND matches the WAI-ARIA dialog pattern — announce the dialog, then
+   * let the user tap the field to type (a fresh, gesture-driven focus that
+   * does raise the keyboard).
+   */
+  focusContainer?: boolean
+}
+
 export interface UseFocusTrapReturn {
-  activate: (el: HTMLElement) => void
+  activate: (el: HTMLElement, opts?: FocusTrapActivateOptions) => void
   deactivate: () => void
 }
 
@@ -52,13 +66,15 @@ export function useFocusTrap(): UseFocusTrapReturn {
     }
   }
 
-  function activate(el: HTMLElement) {
+  function activate(el: HTMLElement, opts: FocusTrapActivateOptions = {}) {
     // Store the element that was focused before the modal opened
     previouslyFocused = document.activeElement as HTMLElement | null
     trapEl = el
 
-    // Focus the first focusable element, or the container itself
-    const first = el.querySelector<HTMLElement>(FOCUSABLE)
+    // Focus the first focusable element, or the container itself.
+    // focusContainer skips the first-focusable lookup so the container takes
+    // focus (see FocusTrapActivateOptions — iOS keyboard deadlock).
+    const first = opts.focusContainer ? null : el.querySelector<HTMLElement>(FOCUSABLE)
     if (first) {
       first.focus()
     } else {

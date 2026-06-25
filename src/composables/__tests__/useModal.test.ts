@@ -1,12 +1,27 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, onUnmounted } from 'vue'
 import { useModal } from '../useModal'
 
-// Mock onUnmounted since we're not in a Vue component context
+// Mock onUnmounted since we're not in a Vue component context. Captured so
+// the scroll-lock leak-on-unmount safety net can be exercised directly.
 vi.mock('vue', async () => {
   const actual = await vi.importActual('vue')
   return { ...actual as object, onUnmounted: vi.fn() }
 })
+
+/**
+ * Build a useModal whose onUnmounted callback can be fired manually.
+ * useModal registers its lock-release onUnmounted LAST (useFocusTrap
+ * registers one first), so the most recent call is the one we want.
+ */
+function modalWithUnmount(opts?: Parameters<typeof useModal>[0]) {
+  const modal = useModal(opts)
+  const calls = vi.mocked(onUnmounted).mock.calls
+  const unmount = calls[calls.length - 1]?.[0] as (() => void) | undefined
+  return { ...modal, unmount }
+}
+
+const isLocked = () => document.documentElement.classList.contains('modal-open')
 
 function createModal(id: string): HTMLElement {
   const el = document.createElement('div')
@@ -50,6 +65,33 @@ describe('useModal', () => {
 
     // Focus trap should have moved focus into the modal
     expect(document.activeElement).toBe(modalEl.querySelector('button'))
+
+    close()
+    await nextTick()
+  })
+
+  it('focuses the container, not the first field, when focusContainer is set', async () => {
+    // Regression (#830 follow-up): auto-focusing a text/number input on open
+    // shows the iOS caret but withholds the keyboard, and a later tap on the
+    // already-focused field can't summon it. focusContainer keeps focus on the
+    // dialog so the user's first tap is a fresh, keyboard-raising focus.
+    modalEl = document.createElement('div')
+    modalEl.setAttribute('aria-labelledby', 'fc-title')
+    modalEl.innerHTML = '<input class="firstField" /><button>Save</button>'
+    document.body.appendChild(modalEl)
+
+    const { open, close } = useModal({
+      selector: '[aria-labelledby="fc-title"]',
+      focusContainer: true,
+    })
+
+    open()
+    await nextTick()
+    await nextTick()
+
+    // The input must NOT be auto-focused; the dialog container takes focus.
+    expect(document.activeElement).not.toBe(modalEl.querySelector('.firstField'))
+    expect(document.activeElement).toBe(modalEl)
 
     close()
     await nextTick()
@@ -149,5 +191,80 @@ describe('useModal', () => {
 
     close()
     await nextTick()
+  })
+})
+
+// Regression: the Log Weight modal (and CalendarView's modals) used useModal
+// but never locked background scroll, unlike every other modal. On iOS that
+// leaves `.tabContent` scrollable, so opening the keyboard shifts the visual
+// viewport and the fixed overlay's tap targets desync from its paint (caret
+// over Save, tapping the weight field opened the date picker). The lock now
+// lives in useModal so every consumer gets it. See index.css `html.modal-open`.
+describe('useModal — background scroll lock', () => {
+  afterEach(() => {
+    // Guard against a leaked count silently corrupting the next test.
+    expect(isLocked()).toBe(false)
+  })
+
+  it('locks background scroll while open, unlocks on close', () => {
+    const { open, close } = useModal()
+    expect(isLocked()).toBe(false)
+    open()
+    expect(isLocked()).toBe(true)
+    close()
+    expect(isLocked()).toBe(false)
+  })
+
+  it('stays locked until the LAST stacked modal closes (ref-counted)', () => {
+    const a = useModal()
+    const b = useModal()
+    a.open()
+    b.open()
+    expect(isLocked()).toBe(true)
+    a.close() // inner closes — outer still up
+    expect(isLocked()).toBe(true)
+    b.close()
+    expect(isLocked()).toBe(false)
+  })
+
+  it('does not lock when lockScroll is false', () => {
+    const { open, close } = useModal({ lockScroll: false })
+    open()
+    expect(isLocked()).toBe(false)
+    close()
+    expect(isLocked()).toBe(false)
+  })
+
+  it('a lockScroll:false sheet does not drop another modal’s lock when it closes', () => {
+    const owner = useModal()              // e.g. WorkoutCompleteView
+    const sheet = useModal({ lockScroll: false }) // nested SharePickerSheet
+    owner.open()
+    sheet.open()
+    expect(isLocked()).toBe(true)
+    sheet.close()
+    expect(isLocked()).toBe(true) // owner still up
+    owner.close()
+    expect(isLocked()).toBe(false)
+  })
+
+  it('is robust to duplicate open()/close() calls (no count drift)', () => {
+    const a = useModal()
+    const b = useModal()
+    a.open()
+    a.open()   // duplicate — e.g. click.self + escape both firing
+    b.open()
+    a.close()
+    a.close()  // duplicate close must not over-decrement
+    expect(isLocked()).toBe(true) // b still holds the lock
+    b.close()
+    expect(isLocked()).toBe(false)
+  })
+
+  it('releases the lock on unmount if a parent stops rendering it', () => {
+    const { open, unmount } = modalWithUnmount()
+    open()
+    expect(isLocked()).toBe(true)
+    unmount?.() // v-if flipped without close()
+    expect(isLocked()).toBe(false)
   })
 })
