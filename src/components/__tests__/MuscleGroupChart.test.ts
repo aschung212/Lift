@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
 import MuscleGroupChart from '../MuscleGroupChart.vue'
 import type { TagVolume } from '../../composables/useTagVolume'
 import type { TimeSeriesEntry } from '../../composables/useSVGTimeSeries'
+
+// The expandable rows render the real TagVolumeSparkline, which reads
+// weightUnit from the preferences store (LIFT-821) — needs an active Pinia.
+beforeEach(() => {
+  setActivePinia(createPinia())
+})
 
 const sampleVolume: TagVolume[] = [
   { tag: 'Chest', sets: 12 },
