@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { backupToIDB } from '../lib/durableStorage'
-import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { persistStoreData } from '../lib/storePersistence'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
 
 const STORAGE_KEY = 'user-preferences'
@@ -154,20 +154,19 @@ export const usePreferencesStore = defineStore('preferences', {
         intensityPresets: this.intensityPresets,
       }
       const data = JSON.stringify(payload)
+      persistStoreData('preferences', STORAGE_KEY, data)
+      // Write individual keys so initTheme() can read them before Pinia for
+      // FOUC prevention on the next page load. These are preferences-specific
+      // mirror keys, not part of the shared primary-payload plumbing.
       try {
-        localStorage.setItem(STORAGE_KEY, data)
-        // Write individual keys so initTheme() can read them before Pinia
-        // for FOUC prevention on the next page load.
         localStorage.setItem('app-theme', this.theme)
         localStorage.setItem('app-mode', this.colorMode)
         localStorage.setItem('weight-unit', this.weightUnit)
         localStorage.setItem('rest-timer', this.restTimerEnabled ? 'on' : 'off')
         localStorage.setItem('rest-timer-autostart', this.restTimerAutoStart ? 'on' : 'off')
       } catch (e) {
-        logError(e, { source: 'preferences._persist' })
+        logError(e, { source: 'preferences._persist:fouc' })
       }
-      backupToIDB(STORAGE_KEY, data)
-      broadcastStoreUpdate('preferences')
       if (supabase && this._userId) {
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>

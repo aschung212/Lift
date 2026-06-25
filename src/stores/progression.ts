@@ -3,12 +3,11 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
-import { backupToIDB } from '../lib/durableStorage'
 import type { ThemeId } from '../lib/themes'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
-import { logError, logWarn } from '../lib/logger'
-import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { isPlainObject } from '../lib/storage'
+import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import {
   themeUnlocksToJson,
   streakHistoryToJson,
@@ -217,23 +216,24 @@ function migrateUnlockedThemes(themes: unknown): ThemeUnlock[] {
 }
 
 function load(): ProgressionState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return defaultState()
-    const parsed = { ...defaultState(), ...JSON.parse(raw) }
-    parsed.unlockedThemes = migrateUnlockedThemes(parsed.unlockedThemes)
-    if (!parsed.epoch) parsed.epoch = 1
-    // Defensive: if starter was picked and XP earned, the trial is over.
-    // Only infer starterConfirmed — do NOT force progressionEnabled, as the
-    // user may have intentionally disabled progression while keeping their data.
-    if (parsed.starterTheme && parsed.totalXP > 0) {
-      parsed.starterConfirmed = true
-    }
-    return parsed
-  } catch (e) {
-    logWarn('Corrupt progression data in localStorage, using defaults', { error: String(e) })
-    return defaultState()
+  // The shared helper owns the read/parse/corrupt-fallback plumbing; the
+  // merge-with-defaults and migration logic below is store-specific.
+  const stored = loadStoreData<Record<string, unknown>>(
+    'progression',
+    STORAGE_KEY,
+    () => ({}),
+    isPlainObject,
+  )
+  const parsed = { ...defaultState(), ...stored } as ProgressionState
+  parsed.unlockedThemes = migrateUnlockedThemes(parsed.unlockedThemes)
+  if (!parsed.epoch) parsed.epoch = 1
+  // Defensive: if starter was picked and XP earned, the trial is over.
+  // Only infer starterConfirmed — do NOT force progressionEnabled, as the
+  // user may have intentionally disabled progression while keeping their data.
+  if (parsed.starterTheme && parsed.totalXP > 0) {
+    parsed.starterConfirmed = true
   }
+  return parsed
 }
 
 // --- Store ---
@@ -246,16 +246,10 @@ export const useProgressionStore = defineStore('progression', {
 
   actions: {
     _persist() {
+      // _userId is tab-local, never persisted.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { _userId: _omit, ...state } = this.$state
-      const data = JSON.stringify(state)
-      try {
-        localStorage.setItem(STORAGE_KEY, data)
-      } catch (e) {
-        logError(e, { source: 'progression._persist', size: data.length })
-      }
-      backupToIDB(STORAGE_KEY, data)
-      broadcastStoreUpdate('progression')
+      persistStoreData('progression', STORAGE_KEY, JSON.stringify(state))
     },
 
     /** Re-read state from localStorage (called by cross-tab sync listener). */
