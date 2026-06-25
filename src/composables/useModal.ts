@@ -51,6 +51,14 @@ export interface UseModalOptions {
    * whose parents toggle `modal-open` themselves).
    */
   lockScroll?: boolean
+
+  /**
+   * On open, focus the dialog container instead of its first focusable
+   * field. Set true for modals whose first field is a text/number input,
+   * so iOS raises the soft keyboard on the user's first tap rather than
+   * deadlocking on a pre-focused field (see FocusTrapActivateOptions).
+   */
+  focusContainer?: boolean
 }
 
 /**
@@ -100,7 +108,7 @@ export function useModal(options: UseModalOptions = {}) {
       const el = options.selector
         ? document.querySelector<HTMLElement>(options.selector)
         : trapRef.value
-      if (el) focusTrap.activate(el)
+      if (el) focusTrap.activate(el, { focusContainer: options.focusContainer })
       options.onOpen?.()
     } else {
       focusTrap.deactivate()

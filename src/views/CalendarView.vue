@@ -680,8 +680,12 @@ function formatSelectedDay(dateStr: string) {
 const { isOpen: pickerOpen, open: openPicker, close: closePicker } = useModal({
   selector: '[aria-labelledby="exercise-picker-title"]',
 })
+// focusContainer: the first field is a number input — focusing the dialog
+// (not the field) lets iOS raise the keyboard on the user's first tap instead
+// of deadlocking on a pre-focused field (#830).
 const { isOpen: logModalOpen, open: openLogTrap, close: closeLogTrap } = useModal({
   selector: '[aria-labelledby="cal-modal-title"]',
+  focusContainer: true,
 })
 const logModal = ref<{ date: string; exerciseId: string; weight: number | null; reps: number | null }>({ date: '', exerciseId: '', weight: null, reps: null })
 

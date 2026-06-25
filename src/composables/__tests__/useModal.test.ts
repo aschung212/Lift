@@ -70,6 +70,33 @@ describe('useModal', () => {
     await nextTick()
   })
 
+  it('focuses the container, not the first field, when focusContainer is set', async () => {
+    // Regression (#830 follow-up): auto-focusing a text/number input on open
+    // shows the iOS caret but withholds the keyboard, and a later tap on the
+    // already-focused field can't summon it. focusContainer keeps focus on the
+    // dialog so the user's first tap is a fresh, keyboard-raising focus.
+    modalEl = document.createElement('div')
+    modalEl.setAttribute('aria-labelledby', 'fc-title')
+    modalEl.innerHTML = '<input class="firstField" /><button>Save</button>'
+    document.body.appendChild(modalEl)
+
+    const { open, close } = useModal({
+      selector: '[aria-labelledby="fc-title"]',
+      focusContainer: true,
+    })
+
+    open()
+    await nextTick()
+    await nextTick()
+
+    // The input must NOT be auto-focused; the dialog container takes focus.
+    expect(document.activeElement).not.toBe(modalEl.querySelector('.firstField'))
+    expect(document.activeElement).toBe(modalEl)
+
+    close()
+    await nextTick()
+  })
+
   it('activates focus trap on open via trapRef', async () => {
     modalEl = document.createElement('div')
     modalEl.innerHTML = '<input id="first" /><button>OK</button>'
