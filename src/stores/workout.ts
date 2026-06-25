@@ -189,6 +189,11 @@ export const useWorkoutStore = defineStore('workout', () => {
   // This avoids wrapping thousands of set objects in Proxy (5,000+ for heavy users).
   // Trade-off: every mutation must call triggerRef(exercises) to notify watchers.
   const exercises = shallowRef<Exercise[]>(load())
+  // Secondary state MUST hydrate through loadJSON (guarded parse + shape
+  // validation), never a raw JSON.parse. A corrupt key (truncated write,
+  // quota eviction mid-write, manual tampering) would otherwise throw in this
+  // setup-function body and the store would fail to construct at all — taking
+  // down the whole workout feature instead of degrading to defaults (#822).
   const customTags = shallowRef<string[]>(loadJSON('lift-custom-tags', [], Array.isArray))
   const tagRecoveryDays = shallowRef<Record<string, number>>(loadJSON('lift-tag-recovery-days', {}, isPlainObject))
   const tagRecoveryExcluded = shallowRef<string[]>(loadJSON('lift-tag-recovery-excluded', [], Array.isArray))
