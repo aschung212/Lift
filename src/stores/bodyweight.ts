@@ -58,6 +58,23 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this.entries = load()
     },
 
+    /**
+     * Reset to empty state AND overwrite localStorage (LIFT-818).
+     *
+     * Pinia's auto-generated $reset() for an options store re-runs the state
+     * factory — which here calls load() and reads the PREVIOUS user's entries
+     * straight back out of the still-populated localStorage. On a shared device
+     * that stale local data would then be merged into the next user's account by
+     * _fetchFromSupabase. Overriding $reset to clear state and persist the empty
+     * array (after dropping _userId so _persist never syncs) closes that leak and
+     * matches the workout store's hand-rolled reset contract.
+     */
+    $reset() {
+      this._userId = null
+      this.entries = []
+      this._persist()
+    },
+
     async init(userId: string) {
       this._userId = userId
       await this._fetchFromSupabase()

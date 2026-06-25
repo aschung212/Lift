@@ -265,6 +265,26 @@ export const useProgressionStore = defineStore('progression', {
       this.$patch({ ...fresh })
     },
 
+    /**
+     * Reset to default state AND overwrite localStorage (LIFT-818).
+     *
+     * Pinia's auto-generated $reset() for an options store re-runs the state
+     * factory — which here calls load() and reads the PREVIOUS user's
+     * progression straight back out of the still-populated localStorage. On a
+     * shared device that stale XP/unlock data would then be merged into the next
+     * user's account by _fetchFromSupabase. Overriding $reset to restore the
+     * defaults and persist them (after dropping _userId so no Supabase write is
+     * triggered) closes that leak and matches the workout store's reset contract.
+     */
+    $reset() {
+      this._userId = null
+      // Use the function form of $patch so collection fields (xpPerSet,
+      // unlockedThemes, …) are REPLACED by reference. The object form merges
+      // reactive objects and would leave the prior user's xpPerSet keys behind.
+      this.$patch((state) => { Object.assign(state, defaultState()) })
+      this._persist()
+    },
+
     async init(userId: string) {
       this._userId = userId
       await this._fetchFromSupabase()

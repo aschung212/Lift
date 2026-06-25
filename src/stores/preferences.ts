@@ -201,6 +201,34 @@ export const usePreferencesStore = defineStore('preferences', {
       } catch { /* ignore corrupt data */ }
     },
 
+    /**
+     * Reset to default settings AND overwrite localStorage (LIFT-818).
+     *
+     * Pinia's auto-generated $reset() returns the in-memory state to DEFAULTS but
+     * leaves the previous user's persisted preferences (the JSON blob plus the
+     * legacy app-theme/app-mode/weight-unit/rest-timer keys) on disk, so they are
+     * read straight back on the next sign-in before Supabase can override them.
+     * Dropping _userId first guarantees _persist() does NOT enqueue a Supabase
+     * write of the defaults; it then rewrites localStorage to the default values,
+     * matching the explicit reset contract of the other stores.
+     */
+    $reset() {
+      this._userId = null
+      this.features = { ...DEFAULTS }
+      this.weightGoal = { ...DEFAULT_WEIGHT_GOAL }
+      this.experience = { ...DEFAULT_EXPERIENCE }
+      this.filters = { ...DEFAULT_FILTERS }
+      this.prBaselineDate = null
+      this.theme = 'eternal'
+      this.colorMode = 'dark'
+      this.weightUnit = 'lbs'
+      this.restTimerEnabled = true
+      this.restTimerAutoStart = true
+      this.appIcon = 'default'
+      this.intensityPresets = [...DEFAULT_INTENSITY_PRESETS]
+      this._persist()
+    },
+
     async init(userId: string) {
       this._userId = userId
 
