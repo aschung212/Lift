@@ -14,6 +14,7 @@ import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -194,6 +195,13 @@ export const useWorkoutStore = defineStore('workout', () => {
   const tagRecoveryExcluded = shallowRef<string[]>(loadJSON('lift-tag-recovery-excluded', [], Array.isArray))
   let _userId: string | null = null
 
+  // ── Sync status (LIFT-820) ─────────────────────────────────────────
+  // Uniform, observable contract so the UI can surface "syncing" / "sync
+  // failed" instead of silently degrading to local-only. `lastSyncError` is
+  // typed so an expired session can be told apart from being offline.
+  const syncing = shallowRef(false)
+  const lastSyncError = shallowRef<SyncErrorKind | null>(null)
+
   // ── Persistence ────────────────────────────────────────────────────
   function _persist() {
     const data = JSON.stringify(exercises.value)
@@ -332,6 +340,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
 
+    syncing.value = true
     let remoteExData: Tables<'exercises'>[] | null
     let sets: Tables<'sets'>[] | null
     try {
@@ -344,6 +353,7 @@ export const useWorkoutStore = defineStore('workout', () => {
           exerciseError: String(exResult.error),
           setsError: String(setsResult.error),
         })
+        lastSyncError.value = classifySyncError(exResult.error ?? setsResult.error)
         // A 401 here means the token expired rather than the user being offline.
         // Refresh once so the next fetch recovers instead of staying local-only
         // until a manual reload (LIFT-784).
@@ -354,10 +364,14 @@ export const useWorkoutStore = defineStore('workout', () => {
       sets = setsResult.data
     } catch (err) {
       logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      lastSyncError.value = classifySyncError(err)
       return
+    } finally {
+      syncing.value = false
     }
 
     if (!remoteExData || !sets) return
+    lastSyncError.value = null
 
     // Filter out tombstoned exercises (deleted offline, not yet synced)
     const remoteIds = new Set(remoteExData.map(ex => ex.id))
@@ -1263,6 +1277,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     tagRecoveryDays.value = {}
     tagRecoveryExcluded.value = []
     _userId = null
+    syncing.value = false
+    lastSyncError.value = null
     triggerRef(exercises)
     triggerRef(customTags)
     triggerRef(tagRecoveryDays)
@@ -1276,6 +1292,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     customTags,
     tagRecoveryDays,
     tagRecoveryExcluded,
+    syncing,
+    lastSyncError,
     // Actions
     $reset,
     init,

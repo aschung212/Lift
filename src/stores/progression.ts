@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import type { Tables } from '../lib/database.types'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import { backupToIDB } from '../lib/durableStorage'
 import type { ThemeId } from '../lib/themes'
@@ -9,6 +10,8 @@ import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { logError, logWarn } from '../lib/logger'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import {
   themeUnlocksToJson,
   streakHistoryToJson,
@@ -239,15 +242,20 @@ function load(): ProgressionState {
 // --- Store ---
 
 export const useProgressionStore = defineStore('progression', {
-  state: (): ProgressionState & { _userId: string | null } => ({
+  state: (): ProgressionState & { _userId: string | null; syncing: boolean; lastSyncError: SyncErrorKind | null } => ({
     ...load(),
     _userId: null,
+    // Uniform sync-status contract (LIFT-820): observable by the UI.
+    syncing: false,
+    lastSyncError: null,
   }),
 
   actions: {
     _persist() {
+      // Strip tab-local / transient fields — `_userId` is per-tab and the
+      // sync-status fields (LIFT-820) must never be persisted or synced.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { _userId: _omit, ...state } = this.$state
+      const { _userId: _omit, syncing: _s, lastSyncError: _e, ...state } = this.$state
       const data = JSON.stringify(state)
       try {
         localStorage.setItem(STORAGE_KEY, data)
@@ -273,22 +281,46 @@ export const useProgressionStore = defineStore('progression', {
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 
-      const { data, error } = await supabase
-        .from('user_progression')
-        .select('*')
-        .eq('user_id', this._userId)
-        .single()
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // Row genuinely doesn't exist — push local state to create it
-          this._syncToSupabase()
+      this.syncing = true
+      let data: Tables<'user_progression'> | null
+      try {
+        // A network-layer failure rejects rather than resolving `{ error }`, so
+        // the awaited call must be guarded — an unguarded throw here would
+        // propagate through init() and reject the whole Promise.allSettled in
+        // initStores, leaving the app half-hydrated (LIFT-820).
+        const result = await supabase
+          .from('user_progression')
+          .select('*')
+          .eq('user_id', this._userId)
+          .single()
+        const error = result.error
+        if (error) {
+          if (error.code === 'PGRST116') {
+            // Row genuinely doesn't exist — push local state to create it.
+            // This is not a sync failure; clear any prior error.
+            this.lastSyncError = null
+            this._syncToSupabase()
+          } else {
+            logWarn('Supabase fetch failed in progression store — using local data', { error: String(error) })
+            this.lastSyncError = classifySyncError(error)
+            // A 401 means an expired token, not offline — refresh once so the
+            // next fetch recovers rather than staying local-only (LIFT-784).
+            if (isAuthError(error)) void ensureFreshSession()
+          }
+          return
         }
-        // For any other error (network, auth, etc.), don't overwrite — just bail
+        data = result.data
+      } catch (err) {
+        logWarn('Supabase fetch failed in progression store — using local data', { error: String(err) })
+        this.lastSyncError = classifySyncError(err)
+        if (isAuthError(err)) void ensureFreshSession()
         return
+      } finally {
+        this.syncing = false
       }
 
       if (!data) return
+      this.lastSyncError = null
 
       // Merge remote state — remote wins for simple scalar fields
       this.streakWeeks = data.streak_weeks ?? this.streakWeeks

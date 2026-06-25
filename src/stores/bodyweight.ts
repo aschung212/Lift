@@ -3,6 +3,7 @@ import { supabase, isPreviewMode } from '../lib/supabase'
 import type { Tables } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { backupToIDB } from '../lib/durableStorage'
@@ -38,7 +39,10 @@ function load(): BodyweightEntry[] {
 export const useBodyweightStore = defineStore('bodyweight', {
   state: () => ({
     entries: load() as BodyweightEntry[],
-    _userId: null as string | null
+    _userId: null as string | null,
+    // Uniform sync-status contract (LIFT-820): observable by the UI.
+    syncing: false,
+    lastSyncError: null as SyncErrorKind | null,
   }),
 
   actions: {
@@ -66,6 +70,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 
+      this.syncing = true
       let data: Tables<'bodyweight_entries'>[] | null
       try {
         const result = await supabase
@@ -76,6 +81,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .order('created_at')
         if (result.error) {
           logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(result.error) })
+          this.lastSyncError = classifySyncError(result.error)
           // A 401 means an expired token, not offline — refresh once so the next
           // fetch recovers rather than staying local-only forever (LIFT-784).
           if (isAuthError(result.error)) void ensureFreshSession()
@@ -84,10 +90,14 @@ export const useBodyweightStore = defineStore('bodyweight', {
         data = result.data
       } catch (err) {
         logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
+        this.lastSyncError = classifySyncError(err)
         return
+      } finally {
+        this.syncing = false
       }
 
       if (!data) return
+      this.lastSyncError = null
 
       // Filter out tombstoned entries (deleted offline, not yet synced)
       const remoteIds = new Set(data.map(e => e.id))
