@@ -14,7 +14,7 @@
 
 import { ref, type Ref } from 'vue'
 import { isNative } from '../lib/platform'
-import { APP_URL, APP_NAME, APP_TAGLINE } from '../lib/appMeta'
+import { appUrlWithRef, APP_NAME, APP_TAGLINE, SHARE_REF } from '../lib/appMeta'
 
 export type AppShareResult =
   | { kind: 'shared' }       // native sheet / Web Share resolved
@@ -53,6 +53,9 @@ export function useAppShare(): UseAppShareReturn {
   async function shareApp(): Promise<AppShareResult> {
     if (isSharing.value) return { kind: 'cancelled' }
     isSharing.value = true
+    // Tag the shared link with the app-share attribution ref (#798) so a
+    // share-driven install is credited to this surface instead of "direct".
+    const shareUrl = appUrlWithRef(SHARE_REF.app)
     try {
       // Tier 1: native system share sheet.
       if (isNative) {
@@ -61,7 +64,7 @@ export function useAppShare(): UseAppShareReturn {
           await Share.share({
             title: APP_NAME,
             text: APP_TAGLINE,
-            url: APP_URL,
+            url: shareUrl,
             dialogTitle: 'Share Lift',
           })
           return { kind: 'shared' }
@@ -74,7 +77,7 @@ export function useAppShare(): UseAppShareReturn {
       // Tier 2: Web Share API (iOS Safari PWA, Android Chrome).
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
         try {
-          await navigator.share({ title: APP_NAME, text: APP_TAGLINE, url: APP_URL })
+          await navigator.share({ title: APP_NAME, text: APP_TAGLINE, url: shareUrl })
           return { kind: 'shared' }
         } catch (err) {
           if (isCancellation(err)) return { kind: 'cancelled' }
@@ -83,7 +86,7 @@ export function useAppShare(): UseAppShareReturn {
       }
 
       // Tier 3: copy the link so the user can paste it anywhere.
-      if (await copyToClipboard(APP_URL)) return { kind: 'copied' }
+      if (await copyToClipboard(shareUrl)) return { kind: 'copied' }
       return { kind: 'unavailable' }
     } catch (err) {
       return { kind: 'error', error: err as Error }
