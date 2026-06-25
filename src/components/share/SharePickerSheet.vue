@@ -92,7 +92,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay' })
+// lockScroll:false — the parent (WorkoutCompleteView / PRBurst) already owns
+// the background-scroll lock for this surface. See the onMounted note below.
+const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay', lockScroll: false })
 const { currentTheme, resolvedMode } = useTheme()
 const { shareCard, downloadCard, isSharing } = useWorkoutShare()
 const { isSupporter } = useSupporter()
@@ -176,9 +178,9 @@ async function onSave() {
 // to handle the same key is fragile with stopImmediatePropagation; one
 // owner is simpler and avoids closing the underlying summary by accident.
 //
-// `modal-open` is also owned by the parent. The picker doesn't toggle
-// it — doing so would re-enable background scroll the moment the picker
-// closes even though the parent is still up.
+// `modal-open` is owned by the parent (useModal lockScroll:false above).
+// If the picker locked too, closing it would drop the parent's count/boolean
+// and re-enable background scroll while the parent is still up.
 onMounted(() => {
   activateTrap()
   logEvent('share_opened', { format: format.value })
