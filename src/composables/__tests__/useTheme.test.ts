@@ -29,6 +29,9 @@ describe('useTheme', () => {
     localStorageMock.clear()
     localStorageMock.setItem.mockClear()
     localStorageMock.getItem.mockClear()
+    // useTheme() delegates weightUnit/restTimer to the preferences store
+    // (LIFT-821), so a Pinia instance must be active before it is called.
+    setActivePinia(createPinia())
     // initTheme() is guarded against double-init in production, but tests need
     // fresh state. We call it here so watchers and DOM attributes are set up.
     // The guard is tested separately below.
