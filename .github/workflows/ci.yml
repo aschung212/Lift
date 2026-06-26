@@ -161,7 +161,7 @@ jobs:
 
       - name: Save bundle sizes (master)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: bundle-sizes.json
           key: bundle-sizes-master-${{ github.sha }}
@@ -262,7 +262,7 @@ jobs:
 
       - name: Save coverage summary (master)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: coverage/coverage-summary.json
           key: coverage-summary-master-${{ github.sha }}
