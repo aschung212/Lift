@@ -64,6 +64,23 @@ describe('index.html meta tag regression tests', () => {
     })
   })
 
+  describe('viewport meta keeps iOS-critical keys (LIFT-832)', () => {
+    const viewport =
+      html.match(/<meta name="viewport" content="([^"]+)"/)?.[1] ?? ''
+
+    it('declares a viewport meta tag', () => {
+      expect(viewport.length).toBeGreaterThan(0)
+    })
+
+    it('keeps viewport-fit=cover so safe-area insets resolve under the notch', () => {
+      expect(viewport).toContain('viewport-fit=cover')
+    })
+
+    it('sets interactive-widget=resizes-content so the soft keyboard resizes the layout viewport in step with the visual viewport (iOS Safari tab keyboard / #830 desync)', () => {
+      expect(viewport).toContain('interactive-widget=resizes-content')
+    })
+  })
+
   describe('no references to domains we do not own', () => {
     it('does not reference liftracker.app (competitor domain)', () => {
       expect(html).not.toContain('liftracker.app')

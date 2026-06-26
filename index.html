@@ -2,7 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <!--
+    interactive-widget=resizes-content (LIFT-832): when the soft keyboard opens,
+    resize the LAYOUT viewport (not just the visual viewport) so layout and visual
+    viewports stay in sync. The default (resizes-visual) shrinks only the visual
+    viewport, which is the exact desync the #830 scroll-lock fix works around
+    (visual viewport shifts, layout viewport doesn't). It also helps iOS Safari
+    tab mode present the keyboard for inputs under the locked `html,body{overflow:hidden}`
+    app shell, which works in standalone PWA/WKWebView but not always in a Safari tab.
+    On engines that don't yet honor the key it is ignored — a safe no-op.
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
 
   <!-- PWA / iOS -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
