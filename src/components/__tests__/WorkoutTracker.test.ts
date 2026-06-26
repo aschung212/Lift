@@ -14,6 +14,7 @@ vi.mock('../../stores/preferences', () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
     filters: { warmupThreshold: 0.75 },
     intensityPresets: [50, 70, 80, 90, 100],
+    plateInventory: { enabled: false, lbs: {}, kg: {} },
   }),
 }))
 vi.mock('../../stores/progression', () => ({

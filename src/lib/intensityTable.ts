@@ -25,7 +25,7 @@
  * (per-side) loading — machine/total loading leaves `plates` null.
  */
 
-import { weightToPlates, LBS_PLATES, type PlateSet } from './plateCalculator'
+import { weightToPlates, denomValues, LBS_PLATES, type PlateSet, type PlateStock } from './plateCalculator'
 
 /** A concrete, plate-ceiled intensity row ready to display or log. */
 export interface IntensityRow {
@@ -44,8 +44,12 @@ export interface IntensityTableOptions {
   barWeight?: number
   /** Whether the load is per-side (barbell) vs total (machine/cable). Default true. */
   perSide?: boolean
-  /** Available plate denominations, per side. Default {@link LBS_PLATES}. */
-  denominations?: number[]
+  /**
+   * Available plate denominations, per side. Default {@link LBS_PLATES}. Pass a
+   * {@link PlateStock}[] to respect a limited (owned) plate supply so breakdowns
+   * stay rackable (#835); the increment is still derived from the denominations.
+   */
+  denominations?: number[] | PlateStock[]
   /** How many rep rows (1..maxReps) to compute. Default {@link DEFAULT_INTENSITY_MAX_REPS}. */
   maxReps?: number
   /**
@@ -195,7 +199,7 @@ export function generateIntensityTable(
   if (!Number.isFinite(intensityPct) || intensityPct <= 0) return []
 
   const targetE1RM = oneRepMaxLbs * (intensityPct / 100)
-  const increment = smallestIncrement(denominations, perSide)
+  const increment = smallestIncrement(denomValues(denominations), perSide)
   const cap = sanitizeIntensityMaxReps(maxReps)
   const rows: IntensityRow[] = []
 

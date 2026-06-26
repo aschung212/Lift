@@ -750,7 +750,7 @@ import { usePRBurst } from '../composables/usePRBurst'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
-import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, denomValues, ownedPlateStock, LBS_PLATES, KG_PLATES, type PlateStock } from '../lib/plateCalculator'
 import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
 import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { useXPCeremony } from '../composables/useXPCeremony'
@@ -1264,7 +1264,7 @@ const intensityTable = computed<IntensityRow[]>(() => {
   return generateIntensityTable(oneRM, intensityPct.value, {
     barWeight: currentBarWeight.value,
     perSide: isPerSide.value,
-    denominations: weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES,
+    denominations: plateDenominationsArg.value,
     maxReps: intensityMaxReps.value,
     plateMode: plateMode.value,
     unit: weightUnit.value,
@@ -1371,7 +1371,7 @@ const ladderLabel = computed(() => {
 
 function fillFromRung(rung: UsualLadderRung) {
   if (plateMode.value) {
-    const plates = weightToPlates(rung.weightLbs, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    const plates = weightToPlates(rung.weightLbs, currentBarWeight.value, plateDenominationsArg.value)
     if (plates) {
       currentPlates.value = plates
       syncPlateWeight()
@@ -1590,7 +1590,7 @@ function acceptOverloadNudge() {
   const n = overloadNudge.value
   if (!n) return
   if (plateMode.value) {
-    const plates = weightToPlates(toLbs(n.displayWeight), currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    const plates = weightToPlates(toLbs(n.displayWeight), currentBarWeight.value, plateDenominationsArg.value)
     if (plates) {
       currentPlates.value = plates
       syncPlateWeight()
@@ -1670,10 +1670,11 @@ const weightHasValue = computed(() => weightStr.value.trim().length > 0)
 function loadPRTarget() {
   if (!prTargetWeight.value) return
   const targetLbs = toLbs(prTargetWeight.value)
-  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  const denoms = plateDenominationsArg.value
+  const denomVals = denomValues(denoms)
   const barWt = currentBarWeight.value
   // Smallest weight increment: smallest plate × 2 for per-side, × 1 for total
-  const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
+  const smallestIncrement = denomVals[denomVals.length - 1] * (isPerSide.value ? 2 : 1)
   // Round up to nearest achievable weight above bar
   const plateWeight = targetLbs - barWt
   if (plateWeight <= 0) {
@@ -1708,9 +1709,37 @@ const isPerSide = computed(() => {
 })
 
 
-const activeDenominations = computed(() =>
-  weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-)
+// Owned-plate inventory (#835): when enabled, the calculator draws only from the
+// plates the user physically owns so it never suggests an unrackable load. Off
+// (or "enabled but owns nothing") falls back to unlimited standard plates.
+const plateUnit = computed<'lbs' | 'kg'>(() => (weightUnit.value === 'kg' ? 'kg' : 'lbs'))
+
+const ownedStock = computed<PlateStock[]>(() => {
+  const inv = _prefs.plateInventory
+  if (!inv.enabled) return []
+  return ownedPlateStock(inv, plateUnit.value, isPerSide.value)
+})
+
+/** Denomination arg for weightToPlates / the intensity table: finite stock when
+ *  inventory is in effect, else the unlimited standard list. */
+const plateDenominationsArg = computed<number[] | PlateStock[]>(() => {
+  const standard = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  return ownedStock.value.length > 0 ? ownedStock.value : standard
+})
+
+/** Per-denomination supply cap for the manual plate buttons (empty = unlimited). */
+const plateSupply = computed<Map<number, number>>(() => {
+  const m = new Map<number, number>()
+  for (const s of ownedStock.value) m.set(s.denom, s.count)
+  return m
+})
+
+const activeDenominations = computed<number[]>(() => {
+  const standard = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  if (ownedStock.value.length === 0) return standard
+  const owned = denomValues(ownedStock.value)
+  return standard.filter(d => owned.includes(d))
+})
 
 
 
@@ -1746,12 +1775,15 @@ function syncPlatesFromWeight() {
     return
   }
   const lbs = toLbs(w)
-  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-  const plates = weightToPlates(lbs, currentBarWeight.value, denoms)
+  const plates = weightToPlates(lbs, currentBarWeight.value, plateDenominationsArg.value)
   currentPlates.value = plates || []
 }
 
 function addPlate(denom: number) {
+  // Respect an owned-plate cap (#835): never stack more of a denomination than
+  // the user has declared they own. An absent cap (unlimited) is undefined.
+  const cap = plateSupply.value.get(denom)
+  if (cap !== undefined && currentPlates.value.filter(p => p === denom).length >= cap) return
   const preview = [...currentPlates.value, denom]
   const previewWeight = isPerSide.value
     ? platesToWeight(preview, currentBarWeight.value)
@@ -1946,7 +1978,7 @@ function openLogForExercise(exerciseId: string) {
     const seedWeight = (ladderActive.value && nextRung.value) ? nextRung.value.weightLbs : lastSet?.weight ?? null
     if (seedWeight !== null) {
       const barWt = exercise.barWeight ?? 45
-      const plates = weightToPlates(seedWeight, barWt, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+      const plates = weightToPlates(seedWeight, barWt, plateDenominationsArg.value)
       currentPlates.value = plates || []
       previousPlates.value = plates || []
       weight.value = displayWeight(seedWeight)

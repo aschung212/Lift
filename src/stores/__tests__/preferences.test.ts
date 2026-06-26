@@ -773,4 +773,67 @@ describe('usePreferencesStore', () => {
       expect(store.intensityPresets).toEqual([40, 60, 80])
     })
   })
+
+  describe('plate inventory (#835)', () => {
+    it('defaults to a disabled, empty inventory', () => {
+      expect(store.plateInventory).toEqual({ enabled: false, lbs: {}, kg: {} })
+    })
+
+    it('setPlateInventory sanitizes and persists', () => {
+      store.setPlateInventory({
+        enabled: true,
+        lbs: { '45': 4.7, '25': 0, '99': 3 },
+        kg: { '20': 2 },
+      })
+      expect(store.plateInventory).toEqual({
+        enabled: true,
+        lbs: { '45': 4 },
+        kg: { '20': 2 },
+      })
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.plateInventory).toEqual({
+        enabled: true,
+        lbs: { '45': 4 },
+        kg: { '20': 2 },
+      })
+    })
+
+    it('init loads + sanitizes inventory from the JSON blob', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        plateInventory: { enabled: true, lbs: { '45': 5 }, kg: {} },
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.plateInventory).toEqual({ enabled: true, lbs: { '45': 5 }, kg: {} })
+    })
+
+    it('init keeps the default inventory when the blob has none (existing users)', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.plateInventory).toEqual({ enabled: false, lbs: {}, kg: {} })
+    })
+
+    it('_reloadFromStorage picks up the inventory', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        plateInventory: { enabled: true, lbs: { '25': 2 }, kg: {} },
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.plateInventory).toEqual({ enabled: true, lbs: { '25': 2 }, kg: {} })
+    })
+  })
 })

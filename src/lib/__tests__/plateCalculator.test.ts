@@ -5,7 +5,15 @@ import {
   plateDelta,
   formatPlates,
   formatDelta,
+  denomValues,
+  sanitizePlateInventory,
+  emptyPlateInventory,
+  ownedPlateStock,
+  defaultOwnedPairs,
+  MAX_PLATE_PAIRS,
+  type PlateStock,
   KG_PLATES,
+  LBS_PLATES,
 } from '../plateCalculator'
 
 describe('plateCalculator', () => {
@@ -96,6 +104,120 @@ describe('plateCalculator', () => {
         expect(plates).not.toBeNull()
         expect(platesToWeight(plates!, 45)).toBe(w)
       }
+    })
+
+    describe('finite plate supply (#835)', () => {
+      it('never suggests more of a plate than the user owns', () => {
+        // Owns one pair of 25s. Target 145 = 50 per side. Unlimited greedy would
+        // be [25, 25]; with a single 25 available it must use the 25 + 10s + 5.
+        const stock: PlateStock[] = [
+          { denom: 45, count: 0 },
+          { denom: 25, count: 1 },
+          { denom: 10, count: 4 },
+          { denom: 5, count: 2 },
+          { denom: 2.5, count: 2 },
+        ]
+        const plates = weightToPlates(145, 45, stock)
+        expect(plates).not.toBeNull()
+        expect(platesToWeight(plates!, 45)).toBe(145)
+        expect(plates!.filter(p => p === 25).length).toBeLessThanOrEqual(1)
+      })
+
+      it('backtracks when the greedy choice strands the remainder', () => {
+        // perSide 30: greedy takes the single 25 then cannot make 5 (no 5s/2.5s),
+        // but 3×10 works — the solver must backtrack off the 25.
+        const stock: PlateStock[] = [
+          { denom: 25, count: 1 },
+          { denom: 10, count: 5 },
+        ]
+        const plates = weightToPlates(105, 45, stock) // 30 per side
+        expect(plates).toEqual([10, 10, 10])
+      })
+
+      it('returns null when the owned plates cannot reach the target', () => {
+        const stock: PlateStock[] = [{ denom: 10, count: 2 }]
+        // Max loadable = 45 + 2×(2×10) = 85; 135 is unreachable.
+        expect(weightToPlates(135, 45, stock)).toBeNull()
+      })
+
+      it('drops zero/negative-count stock entries', () => {
+        const stock: PlateStock[] = [
+          { denom: 45, count: 0 },
+          { denom: 25, count: 2 },
+        ]
+        // 25s only: 45 + 2×25 = 95.
+        expect(weightToPlates(95, 45, stock)).toEqual([25])
+      })
+
+      it('treats a plain number[] as unlimited supply (greedy parity)', () => {
+        expect(weightToPlates(315, 45, [45, 25, 10, 5, 2.5])).toEqual([45, 45, 45])
+      })
+    })
+  })
+
+  describe('denomValues', () => {
+    it('returns the values for a plain denomination list', () => {
+      expect(denomValues(LBS_PLATES)).toEqual([45, 25, 10, 5, 2.5])
+    })
+
+    it('extracts denominations from stock, dropping empty entries', () => {
+      const stock: PlateStock[] = [
+        { denom: 45, count: 2 },
+        { denom: 25, count: 0 },
+        { denom: 10, count: 1 },
+      ]
+      expect(denomValues(stock)).toEqual([45, 10])
+    })
+  })
+
+  describe('sanitizePlateInventory', () => {
+    it('returns an empty inventory for non-objects', () => {
+      expect(sanitizePlateInventory(null)).toEqual(emptyPlateInventory())
+      expect(sanitizePlateInventory('nope')).toEqual(emptyPlateInventory())
+      expect(sanitizePlateInventory([1, 2])).toEqual(emptyPlateInventory())
+    })
+
+    it('coerces enabled to a strict boolean', () => {
+      expect(sanitizePlateInventory({ enabled: 'yes', lbs: {}, kg: {} }).enabled).toBe(false)
+      expect(sanitizePlateInventory({ enabled: true, lbs: {}, kg: {} }).enabled).toBe(true)
+    })
+
+    it('keeps only known denominations and floors/clamps counts, dropping zeros', () => {
+      const result = sanitizePlateInventory({
+        enabled: true,
+        lbs: { '45': 2.9, '25': 0, '99': 5, '5': -3, '2.5': 999 },
+        kg: { '20': 4 },
+      })
+      expect(result.lbs).toEqual({ '45': 2, '2.5': MAX_PLATE_PAIRS })
+      expect(result.kg).toEqual({ '20': 4 })
+    })
+  })
+
+  describe('ownedPlateStock', () => {
+    it('returns empty for an inventory with no owned plates for the unit', () => {
+      expect(ownedPlateStock(emptyPlateInventory(), 'lbs', true)).toEqual([])
+    })
+
+    it('maps pairs to per-side availability', () => {
+      const inv = sanitizePlateInventory({ enabled: true, lbs: { '45': 3, '10': 1 }, kg: {} })
+      expect(ownedPlateStock(inv, 'lbs', true)).toEqual([
+        { denom: 45, count: 3 },
+        { denom: 10, count: 1 },
+      ])
+    })
+
+    it('doubles per-side allowance in total loading mode', () => {
+      const inv = sanitizePlateInventory({ enabled: true, lbs: { '45': 2 }, kg: {} })
+      expect(ownedPlateStock(inv, 'lbs', false)).toEqual([{ denom: 45, count: 4 }])
+    })
+  })
+
+  describe('defaultOwnedPairs', () => {
+    it('seeds every standard denomination for the unit', () => {
+      expect(Object.keys(defaultOwnedPairs('lbs')).map(Number).sort((a, b) => b - a))
+        .toEqual([...LBS_PLATES])
+      expect(Object.keys(defaultOwnedPairs('kg')).map(Number).sort((a, b) => b - a))
+        .toEqual([...KG_PLATES])
     })
   })
 

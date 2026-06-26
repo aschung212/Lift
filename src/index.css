@@ -1869,6 +1869,13 @@ html.theme-fading .settingsSheet {
   gap: 12px;
 }
 
+/* Owned-plate count stepper (#835): "pairs" suffix is secondary to the number. */
+.settingsPlatePairUnit {
+  font-size: var(--font-caption2);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
 .settingsPresetDelete {
   display: flex;
   align-items: center;

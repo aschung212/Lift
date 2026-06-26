@@ -389,6 +389,55 @@
           </div>
         </div>
 
+        <!-- Plate inventory (#835): round plate-calculator suggestions to plates the user owns -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Plate Inventory</div>
+          <div class="settingsRow">
+            <div class="settingsLabelGroup">
+              <span class="settingsLabel">Only suggest plates I own</span>
+              <span class="settingsHint">The plate calculator rounds to loads you can actually rack.</span>
+            </div>
+            <button
+              :class="['glassToggle', { on: prefs.plateInventory.enabled }]"
+              @click="togglePlateInventory"
+              role="switch"
+              :aria-checked="prefs.plateInventory.enabled"
+              :aria-label="prefs.plateInventory.enabled ? 'Use all standard plates' : 'Only suggest plates I own'"
+            >
+              <span class="glassToggleThumb"></span>
+            </button>
+          </div>
+          <template v-if="prefs.plateInventory.enabled">
+            <div
+              v-for="denom in plateInventoryDenoms"
+              :key="denom"
+              class="settingsRow settingsPresetRow"
+            >
+              <span class="settingsLabel">{{ denom }} {{ prefs.weightUnit }}</span>
+              <div class="iosStepper">
+                <button
+                  class="iosStepperBtn"
+                  @click="adjustPlatePairs(denom, -1)"
+                  :disabled="platePairsFor(denom) <= 0"
+                  :aria-label="`Fewer ${denom} ${prefs.weightUnit} plates`"
+                >−</button>
+                <span class="iosStepperValue">{{ platePairsFor(denom) }}<span class="settingsPlatePairUnit"> pairs</span></span>
+                <button
+                  class="iosStepperBtn"
+                  @click="adjustPlatePairs(denom, 1)"
+                  :disabled="platePairsFor(denom) >= MAX_PLATE_PAIRS"
+                  :aria-label="`More ${denom} ${prefs.weightUnit} plates`"
+                >+</button>
+              </div>
+            </div>
+            <div class="settingsRow">
+              <span class="settingsHint">
+                Counts are pairs (one for each side of the bar). Set a plate to 0 if you don't own it.
+              </span>
+            </div>
+          </template>
+        </div>
+
         <!-- Dev tools — only on localhost/LAN -->
         <div v-if="isDev" class="settingsGroup">
           <div class="settingsHeader">Dev Tools</div>
@@ -710,6 +759,13 @@ import { importCSV } from '../lib/csvImport'
 import { usePreferencesStore } from '../stores/preferences'
 import type { WeightGoalDirection } from '../stores/preferences'
 import { MAX_INTENSITY_PRESETS, nextPresetValue, pickNewPresetValue } from '../lib/intensityTable'
+import {
+  LBS_PLATES,
+  KG_PLATES,
+  MAX_PLATE_PAIRS,
+  defaultOwnedPairs,
+  type PlateInventory,
+} from '../lib/plateCalculator'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
@@ -757,6 +813,57 @@ function addPreset() {
   const candidate = pickNewPresetValue(prefs.intensityPresets)
   if (candidate === null) return
   prefs.setIntensityPresets([...prefs.intensityPresets, candidate])
+}
+
+// ── Plate inventory editor (#835) ──────────────────────────────
+// Edits the owned-plate counts for the active weight unit. Pairs map to the
+// number of a plate available per side; the plate calculator restricts its
+// suggestions to combinations the user can actually rack.
+const plateInventoryUnit = computed<'lbs' | 'kg'>(() =>
+  prefs.weightUnit === 'kg' ? 'kg' : 'lbs'
+)
+const plateInventoryDenoms = computed<number[]>(() =>
+  plateInventoryUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+)
+
+function platePairsFor(denom: number): number {
+  const map = plateInventoryUnit.value === 'kg'
+    ? prefs.plateInventory.kg
+    : prefs.plateInventory.lbs
+  return map[String(denom)] ?? 0
+}
+
+function writePlateInventory(pairs: Record<string, number>) {
+  const unit = plateInventoryUnit.value
+  const next: PlateInventory = {
+    enabled: prefs.plateInventory.enabled,
+    lbs: unit === 'lbs' ? pairs : { ...prefs.plateInventory.lbs },
+    kg: unit === 'kg' ? pairs : { ...prefs.plateInventory.kg },
+  }
+  prefs.setPlateInventory(next)
+}
+
+function togglePlateInventory() {
+  const enabling = !prefs.plateInventory.enabled
+  const unit = plateInventoryUnit.value
+  const current = unit === 'kg' ? prefs.plateInventory.kg : prefs.plateInventory.lbs
+  // Seed sensible starter counts the first time the user enables it so the
+  // calculator still resolves common loads immediately.
+  const seeded = enabling && Object.keys(current).length === 0
+  prefs.setPlateInventory({
+    enabled: enabling,
+    lbs: unit === 'lbs' && seeded ? defaultOwnedPairs('lbs') : { ...prefs.plateInventory.lbs },
+    kg: unit === 'kg' && seeded ? defaultOwnedPairs('kg') : { ...prefs.plateInventory.kg },
+  })
+}
+
+function adjustPlatePairs(denom: number, dir: 1 | -1) {
+  const unit = plateInventoryUnit.value
+  const map = { ...(unit === 'kg' ? prefs.plateInventory.kg : prefs.plateInventory.lbs) }
+  const next = Math.max(0, Math.min(MAX_PLATE_PAIRS, (map[String(denom)] ?? 0) + dir))
+  if (next <= 0) delete map[String(denom)]
+  else map[String(denom)] = next
+  writePlateInventory(map)
 }
 
 // ── Share the app (word-of-mouth loop, #713) ───────────────────
