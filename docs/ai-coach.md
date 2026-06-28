@@ -164,10 +164,16 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   (`claim_coach_request`, `record_coach_usage`, `record_coach_consent`, `delete_coach_data`).
 - `vercel.json` `ignoreCommand` now includes `api/` and `vercel.json` (else a function-only
   change ships green in CI and 404s in prod).
+- `src/lib/coachDigest.ts` — pure payload builder (`buildCoachPayload`) mirroring
+  `buildSessionSummary`: full per-set log windowed to ~16 weeks (`setDayKey`-bucketed),
+  lifetime PRs, per-set relative intensities, current-week volume, consistency, bodyweight
+  trend, weights unit-converted, identifiers stripped — + 13 tests (validate round-trip +
+  no-identifiers assertion).
 
 **Remaining Phase 1:**
-- `coachDigest.ts` payload builder (mirrors `buildSessionSummary`) + minimization tests.
-- `CoachSheet` + the Workouts-tab entry card; render output via text interpolation.
+- `CoachSheet` + the Workouts-tab entry card; render output via text interpolation. The view
+  wires `buildCoachPayload` to the stores (passes `getOverloadSuggestion` results as `overloads`,
+  `streakWeeks`/`weeklyTarget`, and `toDisplayUnits`).
 - Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers.
 - **Wire `deleteAccount()` to call `delete_coach_data`** and fix the verified resolved-error
   bug at `src/composables/useAuth.ts:225` (`Promise.allSettled` then `filter(status === 'rejected')`

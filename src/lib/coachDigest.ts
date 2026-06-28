@@ -1,0 +1,243 @@
+/**
+ * AI Coach — payload builder (PURE).
+ *
+ * Mirrors the pure style of `buildSessionSummary` (src/lib/sessionSummary.ts):
+ * takes plain data in, returns a typed `CoachPayload`, with NO Pinia/store/browser
+ * dependencies (only `import type` from the stores, which is erased at compile).
+ * The store-backed view passes raw data in; this module does all the analysis the
+ * model needs — the full per-set log, lifetime PRs, per-set relative intensities,
+ * weekly volume, consistency, and bodyweight trend.
+ *
+ * Two correctness notes that bit prior code:
+ *  - Set/bodyweight dates MUST be bucketed via `setDayKey` (#746) — it handles both
+ *    the endOfDayISO and real-time storage conventions. Never `slice(0, 10)` here.
+ *  - Stored weights are in POUNDS; the user's display unit may be kg. Weights are
+ *    converted via `toDisplayUnits` so the numbers the model sees match the app,
+ *    and `unit` is set accordingly. Intensities/reps are unit-independent.
+ *
+ * Identifiers (exercise/set ids, user id) are never emitted — only training data.
+ */
+
+import type { Exercise, OverloadSuggestion } from '../stores/workout'
+import type { BodyweightEntry } from '../stores/bodyweight'
+import { setDayKey } from './dates'
+import { computeWeeklyGoal } from './weeklyGoal'
+import {
+  MAX_SETS,
+  MAX_PR_ITEMS,
+  MAX_VOLUME_ITEMS,
+  MAX_FOCUS_ITEMS,
+  type CoachPayload,
+  type SetRecord,
+  type PRItem,
+  type VolumeItem,
+  type ConsistencyBlock,
+  type FocusItem,
+  type BodyweightBlock,
+  type WeightUnit,
+} from './aiCoach'
+
+/** Default history window the client sends — long enough for real progression analysis. */
+export const DEFAULT_WINDOW_DAYS = 112 // ~16 weeks
+
+/** An exercise paired with its store-computed overload suggestion (the one non-pure input). */
+export interface ExerciseOverload {
+  exerciseName: string
+  suggestion: OverloadSuggestion | null
+}
+
+export interface CoachDigestInput {
+  exercises: Exercise[]
+  bodyweightEntries: BodyweightEntry[]
+  /** Store-computed overload suggestions (getOverloadSuggestion is store-bound). */
+  overloads: ExerciseOverload[]
+  /** The user's display weight unit, e.g. 'lbs' | 'kg'. */
+  weightUnit: string
+  /** Weekly training-days goal (1–7); 0 disables the consistency block. */
+  weeklyTarget: number
+  streakWeeks: number
+  /** Convert a stored pound value to the display unit. Defaults to identity (lbs). */
+  toDisplayUnits?: (lb: number) => number
+  /** Injectable "now" for tests. */
+  now?: Date
+  /** History window in days (default ~16 weeks). */
+  windowDays?: number
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10
+}
+
+/** Local YYYY-MM-DD key for a Date (matches dates.ts's private localDayKey). */
+function dayKeyOf(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** Monday→today local day keys for the week containing `now`. */
+function currentWeekKeys(now: Date): Set<string> {
+  const dow = now.getDay() // 0=Sun
+  const since = dow === 0 ? 6 : dow - 1
+  const keys = new Set<string>()
+  for (let i = since; i >= 0; i--) {
+    const d = new Date(now)
+    d.setDate(now.getDate() - i)
+    keys.add(dayKeyOf(d))
+  }
+  return keys
+}
+
+/** Set ids that set a new all-time e1RM PR, by a chronological running-max pass. */
+function prSetIds(exercise: Exercise): Set<string> {
+  const ids = new Set<string>()
+  const ordered = [...exercise.sets].sort((a, b) => a.date.localeCompare(b.date))
+  let runningMax = 0
+  for (const s of ordered) {
+    if (s.estimated1RM > runningMax) {
+      runningMax = s.estimated1RM
+      ids.add(s.id)
+    }
+  }
+  return ids
+}
+
+/**
+ * Build the full Coach payload from raw store data. Pure and deterministic given
+ * `now`. The result is shaped to pass `validateCoachPayload` whenever there is
+ * enough data; the caller decides whether to send it (MIN_SETS_FOR_REVIEW).
+ */
+export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
+  const {
+    exercises,
+    bodyweightEntries,
+    overloads,
+    weightUnit,
+    weeklyTarget,
+    streakWeeks,
+    toDisplayUnits = (lb) => lb,
+    now = new Date(),
+    windowDays = DEFAULT_WINDOW_DAYS,
+  } = input
+
+  const unit: WeightUnit = weightUnit === 'kg' ? 'kg' : 'lb'
+  const conv = (lb: number) => round1(toDisplayUnits(lb))
+
+  const windowStart = new Date(now)
+  windowStart.setDate(now.getDate() - windowDays)
+  const windowStartKey = dayKeyOf(windowStart)
+  const nowKey = dayKeyOf(now)
+
+  // ---- sets (the core ground truth) + personalRecords ----
+  const sets: SetRecord[] = []
+  const personalRecords: PRItem[] = []
+
+  for (const ex of exercises) {
+    if (ex.sets.length === 0) continue
+
+    const bestE1rm = ex.sets.reduce((m, s) => Math.max(m, s.estimated1RM), 0)
+    const prBestSet = ex.sets.reduce((best, s) => (s.estimated1RM > best.estimated1RM ? s : best), ex.sets[0])
+    const prIds = prSetIds(ex)
+
+    personalRecords.push({
+      exerciseName: ex.name,
+      bestE1rm: conv(bestE1rm),
+      bestWeight: conv(prBestSet.weight),
+      bestReps: prBestSet.reps,
+      date: setDayKey(prBestSet.date),
+    })
+
+    for (const s of ex.sets) {
+      const key = setDayKey(s.date)
+      if (key < windowStartKey || key > nowKey) continue
+      const rec: SetRecord = {
+        exerciseName: ex.name,
+        weight: conv(s.weight),
+        reps: s.reps,
+        e1rm: conv(s.estimated1RM),
+        date: key,
+      }
+      if (bestE1rm > 0) rec.intensityPct = Math.round((s.weight / bestE1rm) * 100)
+      if (prIds.has(s.id)) rec.isPR = true
+      sets.push(rec)
+    }
+  }
+
+  // Chronological order; if over the cap, keep the most recent MAX_SETS.
+  // (date is always set above, but the contract type marks it optional.)
+  sets.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+  const cappedSets = sets.length > MAX_SETS ? sets.slice(sets.length - MAX_SETS) : sets
+
+  // Highest-impact PRs first, capped.
+  personalRecords.sort((a, b) => b.bestE1rm - a.bestE1rm)
+  const cappedPRs = personalRecords.slice(0, MAX_PR_ITEMS)
+
+  // ---- volume (current week, sets per tag) ----
+  const weekKeys = currentWeekKeys(now)
+  const tagCounts: Record<string, number> = {}
+  for (const ex of exercises) {
+    if (!ex.tags || ex.tags.length === 0) continue
+    let n = 0
+    for (const s of ex.sets) {
+      if (weekKeys.has(setDayKey(s.date))) n++
+    }
+    if (n === 0) continue
+    for (const tag of ex.tags) tagCounts[tag] = (tagCounts[tag] || 0) + n
+  }
+  const volume: VolumeItem[] = Object.entries(tagCounts)
+    .map(([tagName, weeklyVolume]) => ({ tagName, weeklyVolume }))
+    .sort((a, b) => b.weeklyVolume - a.weeklyVolume)
+    .slice(0, MAX_VOLUME_ITEMS)
+
+  // ---- consistency ----
+  let consistency: ConsistencyBlock | null = null
+  if (weeklyTarget > 0) {
+    const goal = computeWeeklyGoal(exercises, weeklyTarget, now)
+    consistency = {
+      workoutDaysThisWeek: goal.trained,
+      weeklyTarget: goal.target,
+      streakWeeks,
+      goalMet: goal.met,
+    }
+  }
+
+  // ---- focus (high-confidence overload suggestions only) ----
+  const focus: FocusItem[] = overloads
+    .filter((o): o is { exerciseName: string; suggestion: OverloadSuggestion } =>
+      o.suggestion !== null && o.suggestion.confidence === 'high')
+    .map((o) => ({
+      exerciseName: o.exerciseName,
+      type: o.suggestion.type,
+      suggestedWeight: conv(o.suggestion.weight),
+      suggestedReps: o.suggestion.reps,
+      reason: o.suggestion.reason,
+    }))
+    .slice(0, MAX_FOCUS_ITEMS)
+
+  // ---- bodyweight (trend + delta over the window) ----
+  let bodyweight: BodyweightBlock | null = null
+  const windowEntries = bodyweightEntries
+    .filter((e) => {
+      const key = setDayKey(e.date)
+      return key >= windowStartKey && key <= nowKey
+    })
+    .sort((a, b) => (setDayKey(a.date) < setDayKey(b.date) ? -1 : 1))
+  if (windowEntries.length >= 2) {
+    const first = windowEntries[0].weight
+    const last = windowEntries[windowEntries.length - 1].weight
+    const deltaLbs = round1(toDisplayUnits(last) - toDisplayUnits(first))
+    const trendDirection = deltaLbs > 0.05 ? 'up' : deltaLbs < -0.05 ? 'down' : 'flat'
+    bodyweight = { trendDirection, deltaLbs }
+  }
+
+  return {
+    unit,
+    sets: cappedSets,
+    personalRecords: cappedPRs,
+    volume,
+    consistency,
+    focus,
+    bodyweight,
+  }
+}

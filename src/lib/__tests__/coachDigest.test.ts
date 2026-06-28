@@ -1,0 +1,171 @@
+import { describe, it, expect } from 'vitest'
+import { buildCoachPayload, type ExerciseOverload } from '../coachDigest'
+import { validateCoachPayload, MAX_SETS } from '../aiCoach'
+import type { Exercise } from '../../stores/workout'
+import type { BodyweightEntry } from '../../stores/bodyweight'
+
+// 2026-06-27 is a Saturday (week = Mon 06-22 .. Sat 06-27). Noon-UTC set stamps
+// bucket to the same calendar day in every common timezone, keeping tests stable.
+const NOW = new Date('2026-06-27T12:00:00')
+
+function ex(id: string, name: string, tags: string[], sets: Exercise['sets']): Exercise {
+  return { id, name, tags, sets }
+}
+
+function baseExercises(): Exercise[] {
+  return [
+    ex('e1', 'Bench Press', ['Chest', 'Push'], [
+      { id: 'b1', date: '2026-01-05T12:00:00.000Z', weight: 185, reps: 5, estimated1RM: 216 }, // out of window
+      { id: 'b2', date: '2026-06-23T12:00:00.000Z', weight: 225, reps: 5, estimated1RM: 263 }, // all-time PR
+      { id: 'b3', date: '2026-06-27T12:00:00.000Z', weight: 205, reps: 8, estimated1RM: 260 },
+    ]),
+    ex('e2', 'Squat', ['Legs'], [
+      { id: 'q1', date: '2026-06-27T12:00:00.000Z', weight: 315, reps: 3, estimated1RM: 347 },
+    ]),
+  ]
+}
+
+const overloads: ExerciseOverload[] = [
+  { exerciseName: 'Bench Press', suggestion: { type: 'increase_weight', weight: 230, reps: 5, reason: 'consistent top sets', confidence: 'high' } },
+  { exerciseName: 'Squat', suggestion: { type: 'increase_reps', weight: 315, reps: 4, reason: 'rep progression', confidence: 'low' } },
+  { exerciseName: 'Deadlift', suggestion: null },
+]
+
+const bodyweight: BodyweightEntry[] = [
+  { id: 'w1', date: '2026-06-01T12:00:00.000Z', weight: 200 },
+  { id: 'w2', date: '2026-06-23T12:00:00.000Z', weight: 196 },
+]
+
+function build(overrides: Partial<Parameters<typeof buildCoachPayload>[0]> = {}) {
+  return buildCoachPayload({
+    exercises: baseExercises(),
+    bodyweightEntries: bodyweight,
+    overloads,
+    weightUnit: 'lbs',
+    weeklyTarget: 4,
+    streakWeeks: 5,
+    now: NOW,
+    ...overrides,
+  })
+}
+
+describe('buildCoachPayload — sets', () => {
+  it('windows out old sets but keeps them for lifetime PRs', () => {
+    const p = build()
+    expect(p.sets.every((s) => s.date !== '2026-01-05')).toBe(true)
+    expect(p.sets).toHaveLength(3) // b2, b3, q1 — b1 is out of window
+  })
+
+  it('computes per-set relative intensity against the lifetime best e1RM', () => {
+    const p = build()
+    const topBench = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.weight === 225)
+    expect(topBench?.intensityPct).toBe(86) // 225 / 263
+    const repBench = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.weight === 205)
+    expect(repBench?.intensityPct).toBe(78) // 205 / 263
+  })
+
+  it('flags PR sets chronologically', () => {
+    const p = build()
+    const pr = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.weight === 225)
+    const notPr = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.weight === 205)
+    expect(pr?.isPR).toBe(true)
+    expect(notPr?.isPR).toBeUndefined()
+  })
+
+  it('caps the set log at MAX_SETS, keeping the most recent', () => {
+    const many = Array.from({ length: MAX_SETS + 25 }, (_, i) => ({
+      id: `s${i}`,
+      date: '2026-06-27T12:00:00.000Z',
+      weight: 100,
+      reps: 5,
+      estimated1RM: 116,
+    }))
+    const p = build({ exercises: [ex('big', 'Rows', ['Back'], many)] })
+    expect(p.sets).toHaveLength(MAX_SETS)
+  })
+})
+
+describe('buildCoachPayload — personalRecords', () => {
+  it('reports lifetime bests, highest e1RM first', () => {
+    const p = build()
+    expect(p.personalRecords[0]).toMatchObject({ exerciseName: 'Squat', bestE1rm: 347, bestReps: 3 })
+    const bench = p.personalRecords.find((r) => r.exerciseName === 'Bench Press')
+    expect(bench).toMatchObject({ bestE1rm: 263, bestWeight: 225, bestReps: 5, date: '2026-06-23' })
+  })
+})
+
+describe('buildCoachPayload — volume & consistency', () => {
+  it('counts current-week sets per tag', () => {
+    const p = build()
+    const chest = p.volume.find((v) => v.tagName === 'Chest')
+    const legs = p.volume.find((v) => v.tagName === 'Legs')
+    expect(chest?.weeklyVolume).toBe(2) // b2 + b3 this week
+    expect(legs?.weeklyVolume).toBe(1) // q1
+  })
+
+  it('builds the consistency block from the weekly goal + streak', () => {
+    const p = build()
+    expect(p.consistency).toEqual({
+      workoutDaysThisWeek: 2, // trained Tue + Sat
+      weeklyTarget: 4,
+      streakWeeks: 5,
+      goalMet: false,
+    })
+  })
+
+  it('omits consistency when there is no weekly target', () => {
+    expect(build({ weeklyTarget: 0 }).consistency).toBeNull()
+  })
+})
+
+describe('buildCoachPayload — focus & bodyweight', () => {
+  it('keeps only high-confidence overload suggestions', () => {
+    const p = build()
+    expect(p.focus).toHaveLength(1)
+    expect(p.focus[0]).toMatchObject({ exerciseName: 'Bench Press', type: 'increase_weight', suggestedWeight: 230 })
+  })
+
+  it('computes bodyweight trend and delta over the window', () => {
+    const p = build()
+    expect(p.bodyweight).toEqual({ trendDirection: 'down', deltaLbs: -4 })
+  })
+})
+
+describe('buildCoachPayload — unit conversion', () => {
+  it('converts stored pounds to the display unit, leaving ratios intact', () => {
+    const p = build({ weightUnit: 'kg', toDisplayUnits: (lb) => lb * 0.453592 })
+    expect(p.unit).toBe('kg')
+    const topBench = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.intensityPct === 86)
+    expect(topBench?.weight).toBe(102.1) // 225 lb -> kg
+    expect(topBench?.intensityPct).toBe(86) // ratio unchanged
+    expect(p.bodyweight?.deltaLbs).toBe(-1.8) // -4 lb -> kg
+  })
+})
+
+// A realistic payload needs >= MIN_SETS_FOR_REVIEW (8) sets to pass the spend gate.
+function richExercises(): Exercise[] {
+  const sets = Array.from({ length: 10 }, (_, i) => ({
+    id: `setid-${i}`,
+    date: `2026-06-${String(18 + (i % 9)).padStart(2, '0')}T12:00:00.000Z`, // all in-window, <= now
+    weight: 135 + i,
+    reps: 5,
+    estimated1RM: 160 + i,
+  }))
+  return [ex('exid-bench', 'Bench Press', ['Chest'], sets)]
+}
+
+describe('buildCoachPayload — contract & minimization', () => {
+  it('produces a payload that passes server-side validation', () => {
+    const p = build({ exercises: richExercises() })
+    expect(p.sets.length).toBeGreaterThanOrEqual(8)
+    expect(validateCoachPayload(p).ok).toBe(true)
+  })
+
+  it('emits no identifiers (no ids, no user/email keys)', () => {
+    const json = JSON.stringify(build({ exercises: richExercises() }))
+    expect(json).not.toContain('"id"')
+    expect(json).not.toContain('exid-bench') // exercise id
+    expect(json).not.toContain('setid-') // set ids
+    expect(json.toLowerCase()).not.toContain('email')
+  })
+})
