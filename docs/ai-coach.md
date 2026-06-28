@@ -37,6 +37,7 @@ counter is cosmetic — the server is the only real cap.
 | Billing | **Anthropic Console API key**, usage-billed | A Claude **Max subscription is NOT API access** and cannot power an app backend. Separate account/bill. |
 | Monetization | **Free forever, premium seam built in** | `coach_usage.limit_override` column lets a future premium tier be a config change, not a rewrite. |
 | Bodyweight | **Included in v1**, behind its own opt-out | Most sensitive field; named explicitly in consent + App Store label. |
+| Data sent | **Full per-set log** (client windows to ~16 wks) + lifetime PRs + per-set relative intensities + derived volume/consistency/overload | Ground truth, not just aggregates — thin aggregates produce thin coaching. Identifiers (user_id/email/UUIDs) are never sent. |
 | Per-user quota | **3 reviews / rolling 7-day window** (`DEFAULT_WEEKLY_LIMIT`) | Rolling, not fixed Mon–Sun. UI copy: "Resets in N days" from server `resetsAt`. |
 | Cadence | **Weekly only** | No daily flag/tier in v1. |
 | Global spend ceiling | **$2/day** (`COACH_DAILY_CEILING_CENTS=200`) | Abuse brake, not a growth limiter. Provider-side monthly cap ≈ $62. |
@@ -44,17 +45,23 @@ counter is cosmetic — the server is the only real cap.
 | Thinking | Adaptive on for Opus/Sonnet; off for Haiku | The synthesis benefits from reasoning. |
 | History | Device-local, last-12 ring (Phase 1) | No `coach_insights` sync until Phase 2 (re-triggers consent bump). |
 
-### Cost model (authoritative pricing, ~3K input + ≤2.5K output)
+### Cost model (authoritative pricing, full per-set history)
 
-| Model | in / out per 1M | ~Worst-case / review | $2/day buys | Organic @ 100 users (1/wk) |
+Input scales with the history window. A serious lifter (4 sessions/wk × ~20 sets) over 12 weeks
+is ~960 sets ≈ ~30K input tokens — trivially within Opus's 1M context, ~$0.15 of input. Casual
+users are far cheaper. Output is capped at `MAX_OUTPUT_TOKENS` (2500).
+
+| Window (heavy user) | ~Sets | ~Input tok | Opus ~/review | Sonnet ~/review |
 |---|---|---|---|---|
-| Opus 4.8 | $5 / $25 | ~$0.08 | ~25 reviews/day | ~$34/mo |
-| Sonnet 4.6 | $3 / $15 | ~$0.05 | ~40 reviews/day | ~$21/mo |
-| Haiku 4.5 (no thinking) | $1 / $5 | ~$0.01 | ~200 reviews/day | ~$4/mo |
+| This week only | ~80 | ~3K | ~$0.08 | ~$0.05 |
+| 12 weeks (default ~16) | ~960 | ~30K | ~$0.20 | ~$0.13 |
+| 26 weeks | ~2,000 | ~62K | ~$0.38 | ~$0.24 |
 
-At Opus + thinking the `$2/day` ceiling is ~25 reviews/day — ample for the early phase, and it
-throttles organically around ~150–200 weekly-active users, which is exactly when the premium
-gate / model-tier decision gets revisited.
+At Opus with a ~12–16-week window the `$2/day` ceiling buys ~8–10 heavy reviews/day (casual users
+cost far less, so the practical mix is higher). It throttles organically around ~100 weekly-active
+users — earlier than the aggregate-only design, which is the deliberate trade for usefulness. The
+two levers when you grow: raise the ceiling (and the provider monthly cap), or shorten the window.
+Hard backstops: `MAX_SETS` (1500), `MAX_INPUT_TOKENS` (80K → 413), `MAX_INPUT_PAYLOAD_BYTES` (512KB).
 
 ## Architecture & request flow
 
@@ -75,7 +82,7 @@ Gate order is load-bearing — every cheap check runs **before any spend**:
    verified `sub`, require `email_confirmed_at` (canonical for email + Google OAuth) → 401/403.
 5. **Consent** — server-recorded, versioned (`coach_consent.version >= CURRENT_CONSENT_VERSION`)
    → 403 if absent/stale (a stale synced client blob must not re-enable egress).
-6. **Payload** — byte cap (413) then allowlist validation; reject < 2 non-null sections (422).
+6. **Payload** — byte cap + input-token cap (413) then allowlist validation; reject < 8 logged sets (422).
 7. **Quota + global pre-charge** — one atomic `claim_coach_request` RPC: pre-charge the max
    possible cost into the daily ledger, then the rolling per-user window reset + increment +
    cap check; refund the global pre-charge if the per-user gate rejects. 429 / 503.
@@ -84,21 +91,27 @@ Gate order is load-bearing — every cheap check runs **before any spend**:
    (refunding the per-user count only on an unbilled upstream failure); then `sanitizeCoachOutput`
    truncates bodies, drops any section with a URL/markdown link, and metric-echoes numbers.
 
-### Data contract (what leaves the device — derived aggregates only)
+### Data contract (full training picture, identifiers stripped)
 
-Assembled into a small typed payload, validated server-side against an allowlist
-(`validateCoachPayload` in `src/lib/aiCoach.ts`):
+The model gets ground truth — the per-set log — plus the app's derived analysis, so it can find
+real patterns instead of restating pre-chewed aggregates. Assembled into a typed payload (client
+windows the log to ~16 weeks), validated server-side against an allowlist (`validateCoachPayload`
+in `src/lib/aiCoach.ts`):
 
-- **progress** — top ~8 exercises: `{ exerciseName, e1rmNow, e1rmDelta, isPR }`
+- **sets** — the per-set log (core ground truth): `{ exerciseName, weight, reps, e1rm?, date?, intensityPct?, isPR? }`
+  where `intensityPct` is the set's weight as a % of that lift's best e1RM (the "how hard" signal).
+- **personalRecords** — lifetime bests per exercise: `{ exerciseName, bestE1rm, bestWeight?, bestReps?, date? }`
+  (so the model knows the whole history without serializing every old set).
 - **volume** — per muscle-group tag: `{ tagName, weeklyVolume }`
 - **consistency** — `{ workoutDaysThisWeek, weeklyTarget, streakWeeks, goalMet }`
-- **focus** — top 1–2 overload suggestions: `{ exerciseName, type, suggestedWeight, suggestedReps, reason }`
+- **focus** — overload suggestions: `{ exerciseName, type, suggestedWeight, suggestedReps, reason }`
 - **bodyweight** (opt-out) — `{ trendDirection, deltaLbs }`
 
-**Never sent:** raw set rows, raw bodyweight timeline, exercise UUIDs, session ids, user_id,
-email, auth tokens, XP log, preferences. Identifiers are used for quota/consent only and are
-never forwarded to the model. Exercise names are the one semi-PII free-text field that crosses
-the boundary; they are length-capped, delimited as data, and treated as untrusted (prompt-injection vector).
+**Never sent:** exercise/session/set UUIDs, user_id, email, auth tokens, XP log, preferences.
+Identifiers are used for quota/consent only and never forwarded to the model. Exercise names are
+the one semi-PII free-text field that crosses the boundary; they are length-capped, delimited as
+data, and treated as untrusted (prompt-injection vector). The spend guard requires at least
+`MIN_SETS_FOR_REVIEW` (8) logged sets before a review is generated.
 
 ## Guardrails (defense in depth)
 
@@ -124,8 +137,9 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   (`aiCoachConsent: { accepted, acceptedAt, version }`, sanitized at the same points as
   `intensityPresets`) **and** server-side via `record_coach_consent` (server is authoritative).
 - `LegalSheet.vue` updated to name the LLM provider as a processor of health/fitness data, list
-  the exact fields sent (call out bodyweight), and state the **actual** retention posture — do
-  not write "zero data retention" until verified in writing (SEV1 fabrication trap).
+  the exact fields sent (the per-set log — exercises, weights, reps, dates — plus PRs, relative
+  intensities, volume, consistency, and bodyweight), and state the **actual** retention posture —
+  do not write "zero data retention" until verified in writing (SEV1 fabrication trap).
 - A hosted `/privacy` route (`public/privacy.html` + a `vercel.json` rewrite exception) for the
   App Store listing.
 - App Store nutrition label: Health & Fitness → **Data Linked to You = Yes**,

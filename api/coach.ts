@@ -30,6 +30,7 @@ import {
   CURRENT_CONSENT_VERSION,
   DEFAULT_WEEKLY_LIMIT,
   MAX_INPUT_PAYLOAD_BYTES,
+  MAX_INPUT_TOKENS,
   MAX_OUTPUT_TOKENS,
   COACH_OUTPUT_SCHEMA,
   COACH_SYSTEM_PROMPT,
@@ -43,7 +44,8 @@ import {
   type CoachPayload,
 } from '../src/lib/aiCoach'
 
-export const config = { maxDuration: 25 }
+// Headroom for a large per-set payload + adaptive thinking on Opus (single-shot).
+export const config = { maxDuration: 60 }
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 const ANTHROPIC_VERSION = '2023-06-01'
@@ -218,6 +220,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   // 7. Atomic quota claim + two-phase global pre-charge (max possible cost).
   const inputTokens = estimateInputTokens(rawBody.length)
+  if (inputTokens > MAX_INPUT_TOKENS) return json(413, { error: 'payload_too_large' }, cors)
   const maxCostCents = estimateMaxCostCents(model, inputTokens)
   const ceilingCents = intEnv('COACH_DAILY_CEILING_CENTS', 200)
 

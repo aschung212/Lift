@@ -6,14 +6,29 @@ import {
   estimateMaxCostCents,
   containsUrl,
   MAX_OUTPUT_TOKENS,
-  MAX_PROGRESS_ITEMS,
+  MAX_SETS,
+  MIN_SETS_FOR_REVIEW,
   type CoachPayload,
+  type SetRecord,
 } from '../aiCoach'
+
+function makeSets(n: number): SetRecord[] {
+  return Array.from({ length: n }, (_, i) => ({
+    exerciseName: 'Bench Press',
+    weight: 225,
+    reps: 5,
+    e1rm: 253,
+    date: '2026-06-17',
+    intensityPct: 89,
+    isPR: i === 0,
+  }))
+}
 
 function validPayload(): CoachPayload {
   return {
     unit: 'lb',
-    progress: [{ exerciseName: 'Bench Press', e1rmNow: 225, e1rmDelta: 10, isPR: true }],
+    sets: makeSets(MIN_SETS_FOR_REVIEW),
+    personalRecords: [{ exerciseName: 'Bench Press', bestE1rm: 253, bestWeight: 245, bestReps: 1 }],
     volume: [{ tagName: 'Chest', weeklyVolume: 12000 }],
     consistency: { workoutDaysThisWeek: 4, weeklyTarget: 4, streakWeeks: 6, goalMet: true },
     focus: [],
@@ -22,16 +37,17 @@ function validPayload(): CoachPayload {
 }
 
 describe('validateCoachPayload', () => {
-  it('accepts a well-formed payload with >= 2 non-null sections', () => {
+  it('accepts a well-formed payload with the full set log', () => {
     const r = validateCoachPayload(validPayload())
     expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.payload.sets).toHaveLength(MIN_SETS_FOR_REVIEW)
+      expect(r.payload.sets[0].intensityPct).toBe(89)
+    }
   })
 
-  it('rejects fewer than 2 non-null sections (insufficient signal)', () => {
-    const r = validateCoachPayload({
-      unit: 'lb',
-      progress: [{ exerciseName: 'Bench', e1rmNow: 200, e1rmDelta: 5, isPR: false }],
-    })
+  it('rejects too few sets (insufficient signal)', () => {
+    const r = validateCoachPayload({ ...validPayload(), sets: makeSets(MIN_SETS_FOR_REVIEW - 1) })
     expect(r.ok).toBe(false)
     if (!r.ok) {
       expect(r.status).toBe(422)
@@ -40,43 +56,45 @@ describe('validateCoachPayload', () => {
   })
 
   it('rejects unexpected top-level fields (allowlist)', () => {
-    const r = validateCoachPayload({ ...validPayload(), rawSets: [1, 2, 3] })
+    const r = validateCoachPayload({ ...validPayload(), email: 'a@b.com' })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toContain('unexpected_field')
   })
 
-  it('rejects too many progress items', () => {
-    const progress = Array.from({ length: MAX_PROGRESS_ITEMS + 1 }, (_, i) => ({
-      exerciseName: `Ex${i}`,
-      e1rmNow: 100,
-      e1rmDelta: 1,
-      isPR: false,
-    }))
-    const r = validateCoachPayload({ unit: 'lb', progress, volume: [{ tagName: 'X', weeklyVolume: 1 }] })
+  it('rejects more than MAX_SETS with 413', () => {
+    const r = validateCoachPayload({ ...validPayload(), sets: makeSets(MAX_SETS + 1) })
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.error).toBe('progress_too_many')
-  })
-
-  it('truncates over-long exercise names and coerces unit', () => {
-    const r = validateCoachPayload({
-      unit: 'stone',
-      progress: [{ exerciseName: 'x'.repeat(200), e1rmNow: 100, e1rmDelta: 1, isPR: false }],
-      consistency: { workoutDaysThisWeek: 3, weeklyTarget: 3, streakWeeks: 1, goalMet: true },
-    })
-    expect(r.ok).toBe(true)
-    if (r.ok) {
-      expect(r.payload.unit).toBe('lb')
-      expect(r.payload.progress[0].exerciseName.length).toBe(40)
+    if (!r.ok) {
+      expect(r.status).toBe(413)
+      expect(r.error).toBe('too_many_sets')
     }
   })
 
-  it('rejects non-finite numbers', () => {
-    const r = validateCoachPayload({
-      unit: 'lb',
-      progress: [{ exerciseName: 'Bench', e1rmNow: 'lots', e1rmDelta: 1, isPR: false }],
-      volume: [{ tagName: 'X', weeklyVolume: 1 }],
-    })
+  it('truncates over-long exercise names and coerces unit', () => {
+    const sets = makeSets(MIN_SETS_FOR_REVIEW).map((s) => ({ ...s, exerciseName: 'x'.repeat(200) }))
+    const r = validateCoachPayload({ ...validPayload(), unit: 'stone', sets })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.payload.unit).toBe('lb')
+      expect(r.payload.sets[0].exerciseName.length).toBe(40)
+    }
+  })
+
+  it('rejects non-finite numeric fields in a set', () => {
+    const sets = makeSets(MIN_SETS_FOR_REVIEW)
+    sets[0] = { ...sets[0], weight: Number.NaN }
+    const r = validateCoachPayload({ ...validPayload(), sets })
     expect(r.ok).toBe(false)
+  })
+
+  it('accepts sets with only the required fields (optional fields omitted)', () => {
+    const sets: SetRecord[] = Array.from({ length: MIN_SETS_FOR_REVIEW }, () => ({
+      exerciseName: 'Squat',
+      weight: 315,
+      reps: 3,
+    }))
+    const r = validateCoachPayload({ unit: 'lb', sets })
+    expect(r.ok).toBe(true)
   })
 })
 
@@ -117,17 +135,17 @@ describe('sanitizeCoachOutput', () => {
       {
         headline: 'PR week',
         focusNext: 'Next',
-        sections: [{ type: 'progress', title: 'Bench', body: 'New PR', metric: { label: 'e1RM', value: '225 lb' } }],
+        sections: [{ type: 'progress', title: 'Bench', body: 'New PR', metric: { label: 'top set', value: '225 lb' } }],
       },
       payload,
     )
-    expect(grounded.sections[0].metric).toEqual({ label: 'e1RM', value: '225 lb' })
+    expect(grounded.sections[0].metric).toEqual({ label: 'top set', value: '225 lb' })
 
     const ungrounded = sanitizeCoachOutput(
       {
         headline: 'PR week',
         focusNext: 'Next',
-        sections: [{ type: 'progress', title: 'Bench', body: 'New PR', metric: { label: 'e1RM', value: '999 lb' } }],
+        sections: [{ type: 'progress', title: 'Bench', body: 'New PR', metric: { label: 'top set', value: '999 lb' } }],
       },
       payload,
     )
@@ -146,13 +164,13 @@ describe('costCents', () => {
     expect(costCents('claude-opus-4-8', 3000, 2500)).toBe(8)
   })
 
-  it('prices Sonnet 4.6 cheaper than Opus', () => {
-    expect(costCents('claude-sonnet-4-6', 3000, 2500)).toBeLessThan(costCents('claude-opus-4-8', 3000, 2500))
+  it('scales with a larger (full-history) input payload', () => {
+    // 30000 input + 2500 output on Opus: 15 + 6.25 = 21.25c -> 22
+    expect(costCents('claude-opus-4-8', 30000, 2500)).toBe(22)
   })
 
-  it('prices Haiku 4.5 at ~1c for a small request', () => {
-    // 3000*100/1e6 + 1024*500/1e6 = 0.3 + 0.512 = 0.812c -> ceil 1
-    expect(costCents('claude-haiku-4-5', 3000, 1024)).toBe(1)
+  it('prices Sonnet 4.6 cheaper than Opus', () => {
+    expect(costCents('claude-sonnet-4-6', 3000, 2500)).toBeLessThan(costCents('claude-opus-4-8', 3000, 2500))
   })
 
   it('throws on an unknown model rather than fabricating a price', () => {
