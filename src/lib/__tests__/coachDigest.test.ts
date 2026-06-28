@@ -138,6 +138,37 @@ describe('buildCoachPayload — focus & bodyweight', () => {
   })
 })
 
+describe('buildCoachPayload — sessions (cadence + split)', () => {
+  it('summarizes each training day with its tags and set count, oldest first', () => {
+    const p = build()
+    expect(p.sessions.map((s) => s.date)).toEqual(['2026-06-20', '2026-06-23', '2026-06-27'])
+    const last = p.sessions.find((s) => s.date === '2026-06-27')
+    expect(last?.setCount).toBe(2) // bench + squat on the same day
+    expect(last?.tags.slice().sort()).toEqual(['Chest', 'Legs', 'Push'])
+  })
+})
+
+describe('buildCoachPayload — time of day (forward-ready)', () => {
+  it('omits timeOfDay when no real timestamp is captured', () => {
+    const p = build()
+    expect(p.sets.every((s) => s.timeOfDay === undefined)).toBe(true)
+  })
+
+  it('emits HH:MM and orders within a day by real timestamp when createdAt is present', () => {
+    const sets = [
+      { id: 'm2', date: '2026-06-25T12:00:00.000Z', weight: 100, reps: 5, estimated1RM: 116, createdAt: '2026-06-25T17:30:00Z' },
+      { id: 'm1', date: '2026-06-25T12:00:00.000Z', weight: 95, reps: 5, estimated1RM: 110, createdAt: '2026-06-25T17:00:00Z' },
+    ]
+    const p = build({ exercises: [ex('e1', 'Bench Press', ['Chest'], sets)] })
+    const bench = p.sets.filter((s) => s.exerciseName === 'Bench Press')
+    // ordered by createdAt asc despite reversed input order: m1 (95, 17:00) before m2 (100, 17:30)
+    expect(bench.map((s) => s.weight)).toEqual([95, 100])
+    expect(bench[0].timeOfDay).toMatch(/^\d{2}:\d{2}$/)
+    expect(bench[1].timeOfDay).toMatch(/^\d{2}:\d{2}$/)
+    expect(bench[0].timeOfDay).not.toBe(bench[1].timeOfDay)
+  })
+})
+
 describe('buildCoachPayload — unit conversion', () => {
   it('converts stored pounds to the display unit, leaving ratios intact', () => {
     const p = build({ weightUnit: 'kg', toDisplayUnits: (lb) => lb * 0.453592 })

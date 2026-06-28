@@ -33,6 +33,7 @@ function validPayload(): CoachPayload {
     consistency: { workoutDaysThisWeek: 4, weeklyTarget: 4, streakWeeks: 6, goalMet: true },
     focus: [],
     bodyweight: null,
+    sessions: [{ date: '2026-06-17', tags: ['Chest'], setCount: 8 }],
   }
 }
 
@@ -95,6 +96,26 @@ describe('validateCoachPayload', () => {
     }))
     const r = validateCoachPayload({ unit: 'lb', sets })
     expect(r.ok).toBe(true)
+  })
+
+  it('accepts a sessions list and per-set timeOfDay', () => {
+    const sets = makeSets(MIN_SETS_FOR_REVIEW).map((s) => ({ ...s, timeOfDay: '17:30' }))
+    const r = validateCoachPayload({
+      ...validPayload(),
+      sets,
+      sessions: [{ date: '2026-06-17', tags: ['Chest', 'Push'], setCount: 8 }],
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.payload.sessions[0]).toEqual({ date: '2026-06-17', tags: ['Chest', 'Push'], setCount: 8 })
+      expect(r.payload.sets[0].timeOfDay).toBe('17:30')
+    }
+  })
+
+  it('rejects a malformed session entry', () => {
+    const r = validateCoachPayload({ ...validPayload(), sessions: [{ date: '2026-06-17', tags: 'Chest', setCount: 3 }] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('session_invalid')
   })
 })
 

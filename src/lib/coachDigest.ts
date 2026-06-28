@@ -27,6 +27,7 @@ import {
   MAX_PR_ITEMS,
   MAX_VOLUME_ITEMS,
   MAX_FOCUS_ITEMS,
+  MAX_SESSION_ITEMS,
   type CoachPayload,
   type SetRecord,
   type PRItem,
@@ -34,6 +35,7 @@ import {
   type ConsistencyBlock,
   type FocusItem,
   type BodyweightBlock,
+  type SessionDigest,
   type WeightUnit,
 } from './aiCoach'
 
@@ -66,6 +68,15 @@ export interface CoachDigestInput {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10
+}
+
+/** Local "HH:MM" for a real ISO timestamp, or undefined when absent/unparseable. */
+function localTimeOfDay(iso: string | undefined): string | undefined {
+  if (!iso) return undefined
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return undefined
+  const d = new Date(t)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 /** Local YYYY-MM-DD key for a Date (matches dates.ts's private localDayKey). */
@@ -135,9 +146,12 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
   const windowStartKey = dayKeyOf(windowStart)
   const nowKey = dayKeyOf(now)
 
-  // ---- sets (the core ground truth) + personalRecords ----
-  const sets: SetRecord[] = []
+  // ---- sets (core ground truth) + personalRecords + per-day sessions ----
+  // sortTime carries the set's real timestamp so the window can be ordered by
+  // actual within-day sequence once capture lands; '' (today) keeps stable order.
+  const setItems: Array<{ rec: SetRecord; sortTime: string }> = []
   const personalRecords: PRItem[] = []
+  const sessionMap = new Map<string, { tags: Set<string>; setCount: number }>()
 
   for (const ex of exercises) {
     if (ex.sets.length === 0) continue
@@ -157,6 +171,16 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     for (const s of ex.sets) {
       const key = setDayKey(s.date)
       if (key < windowStartKey || key > nowKey) continue
+
+      // Per-day session summary (split + cadence).
+      let session = sessionMap.get(key)
+      if (!session) {
+        session = { tags: new Set<string>(), setCount: 0 }
+        sessionMap.set(key, session)
+      }
+      session.setCount++
+      for (const tag of ex.tags ?? []) session.tags.add(tag)
+
       const c = ctx.get(s.id)
       const rec: SetRecord = {
         exerciseName: ex.name,
@@ -169,14 +193,20 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
       // so historical sets reflect how hard they were when performed.
       if (c && c.bestThen > 0) rec.intensityPct = Math.round((s.weight / c.bestThen) * 100)
       if (c?.isPR) rec.isPR = true
-      sets.push(rec)
+      const t = localTimeOfDay(s.createdAt)
+      if (t) rec.timeOfDay = t
+      setItems.push({ rec, sortTime: s.createdAt ?? '' })
     }
   }
 
-  // Chronological order; if over the cap, keep the most recent MAX_SETS.
-  // (date is always set above, but the contract type marks it optional.)
-  sets.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
-  const cappedSets = sets.length > MAX_SETS ? sets.slice(sets.length - MAX_SETS) : sets
+  // Order by day, then by real log time within the day when available (stable
+  // — preserving per-exercise logged order — when timestamps aren't captured yet).
+  setItems.sort((a, b) => {
+    const d = (a.rec.date ?? '').localeCompare(b.rec.date ?? '')
+    return d !== 0 ? d : a.sortTime.localeCompare(b.sortTime)
+  })
+  const orderedSets = setItems.map((it) => it.rec)
+  const cappedSets = orderedSets.length > MAX_SETS ? orderedSets.slice(orderedSets.length - MAX_SETS) : orderedSets
 
   // Highest-impact PRs first, capped.
   personalRecords.sort((a, b) => b.bestE1rm - a.bestE1rm)
@@ -240,6 +270,14 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     bodyweight = { trendDirection, deltaLbs }
   }
 
+  // ---- sessions (oldest first; rest-day cadence = gaps between dates, split = tags/day) ----
+  const allSessions: SessionDigest[] = Array.from(sessionMap.entries())
+    .map(([date, s]) => ({ date, tags: Array.from(s.tags), setCount: s.setCount }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const sessions = allSessions.length > MAX_SESSION_ITEMS
+    ? allSessions.slice(allSessions.length - MAX_SESSION_ITEMS)
+    : allSessions
+
   return {
     unit,
     sets: cappedSets,
@@ -248,5 +286,6 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     consistency,
     focus,
     bodyweight,
+    sessions,
   }
 }

@@ -25,6 +25,14 @@ export interface WorkoutSet {
   weight: number
   reps: number
   estimated1RM: number
+  /**
+   * Real timestamp the set was logged (ISO 8601), distinct from `date` (which is
+   * stamped end-of-day and carries no time). Optional and currently unpopulated —
+   * the set-time capture work fills it from logSet + the DB `created_at` column,
+   * which lights up time-of-day and within-workout exercise ordering in the AI
+   * Coach payload. See docs/ai-coach.md and the AI Coach issue.
+   */
+  createdAt?: string
 }
 
 export type ExerciseInputMode = 'numpad' | 'plates'
