@@ -390,7 +390,19 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add .coverage-baseline.json
             git commit -m "chore: ratchet coverage baseline [skip ci]"
-            git push
+            # master is a protected branch and the default GITHUB_TOKEN cannot push to it
+            # (rejected with GH006). A blocked auto-commit must NOT fail the whole run:
+            # the ratchet's intent (floor only ever rises) is preserved either way —
+            # on success the floor rises, and when the push is blocked the floor simply
+            # holds at its current value (PRs are still gated against it, never falsely).
+            # Long-term fix: push with a PAT / GitHub App token that is in the branch-
+            # protection bypass allowlist — set it as a secret and use it as the
+            # `token:` on the checkout step above, then this fallback never triggers.
+            if git push; then
+              echo "Ratcheted coverage baseline committed to master."
+            else
+              echo "::warning::Coverage baseline could not be pushed to protected master (GH006); floor held. Configure a bypass token to auto-ratchet."
+            fi
           fi
 
   e2e:
