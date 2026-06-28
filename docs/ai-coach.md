@@ -99,7 +99,9 @@ windows the log to ~16 weeks), validated server-side against an allowlist (`vali
 in `src/lib/aiCoach.ts`):
 
 - **sets** — the per-set log (core ground truth): `{ exerciseName, weight, reps, e1rm?, date?, intensityPct?, isPR? }`
-  where `intensityPct` is the set's weight as a % of that lift's best e1RM (the "how hard" signal).
+  where `intensityPct` is the set's weight as a % of the best e1RM achieved **up to that point**
+  (intensity *when performed*, not vs the current best — so historical training intensity reads
+  truthfully), and `isPR` flags an all-time e1RM PR **at the moment it was performed**.
 - **personalRecords** — lifetime bests per exercise: `{ exerciseName, bestE1rm, bestWeight?, bestReps?, date? }`
   (so the model knows the whole history without serializing every old set).
 - **volume** — per muscle-group tag: `{ tagName, weeklyVolume }`

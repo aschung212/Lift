@@ -89,18 +89,24 @@ function currentWeekKeys(now: Date): Set<string> {
   return keys
 }
 
-/** Set ids that set a new all-time e1RM PR, by a chronological running-max pass. */
-function prSetIds(exercise: Exercise): Set<string> {
-  const ids = new Set<string>()
+/**
+ * Per-set context from a single chronological pass:
+ *  - `isPR`: this set was an all-time e1RM PR at the moment it was performed
+ *    (stays true even if a later set beat it — it reflects PR-at-execution).
+ *  - `bestThen`: the best e1RM achieved up to AND including this set — the
+ *    denominator for intensity-at-the-time, so a hard set early in the history
+ *    isn't divided by a PR the user hadn't hit yet.
+ */
+function prAndIntensityContext(exercise: Exercise): Map<string, { isPR: boolean; bestThen: number }> {
+  const ctx = new Map<string, { isPR: boolean; bestThen: number }>()
   const ordered = [...exercise.sets].sort((a, b) => a.date.localeCompare(b.date))
   let runningMax = 0
   for (const s of ordered) {
-    if (s.estimated1RM > runningMax) {
-      runningMax = s.estimated1RM
-      ids.add(s.id)
-    }
+    const isPR = s.estimated1RM > runningMax
+    if (isPR) runningMax = s.estimated1RM
+    ctx.set(s.id, { isPR, bestThen: runningMax })
   }
-  return ids
+  return ctx
 }
 
 /**
@@ -138,7 +144,7 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
 
     const bestE1rm = ex.sets.reduce((m, s) => Math.max(m, s.estimated1RM), 0)
     const prBestSet = ex.sets.reduce((best, s) => (s.estimated1RM > best.estimated1RM ? s : best), ex.sets[0])
-    const prIds = prSetIds(ex)
+    const ctx = prAndIntensityContext(ex)
 
     personalRecords.push({
       exerciseName: ex.name,
@@ -151,6 +157,7 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     for (const s of ex.sets) {
       const key = setDayKey(s.date)
       if (key < windowStartKey || key > nowKey) continue
+      const c = ctx.get(s.id)
       const rec: SetRecord = {
         exerciseName: ex.name,
         weight: conv(s.weight),
@@ -158,8 +165,10 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
         e1rm: conv(s.estimated1RM),
         date: key,
       }
-      if (bestE1rm > 0) rec.intensityPct = Math.round((s.weight / bestE1rm) * 100)
-      if (prIds.has(s.id)) rec.isPR = true
+      // Intensity relative to the best e1RM AS OF this set (not the lifetime best),
+      // so historical sets reflect how hard they were when performed.
+      if (c && c.bestThen > 0) rec.intensityPct = Math.round((s.weight / c.bestThen) * 100)
+      if (c?.isPR) rec.isPR = true
       sets.push(rec)
     }
   }

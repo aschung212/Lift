@@ -16,6 +16,7 @@ function baseExercises(): Exercise[] {
   return [
     ex('e1', 'Bench Press', ['Chest', 'Push'], [
       { id: 'b1', date: '2026-01-05T12:00:00.000Z', weight: 185, reps: 5, estimated1RM: 216 }, // out of window
+      { id: 'b0', date: '2026-06-20T12:00:00.000Z', weight: 215, reps: 5, estimated1RM: 251 }, // in-window early PR (not current week)
       { id: 'b2', date: '2026-06-23T12:00:00.000Z', weight: 225, reps: 5, estimated1RM: 263 }, // all-time PR
       { id: 'b3', date: '2026-06-27T12:00:00.000Z', weight: 205, reps: 8, estimated1RM: 260 },
     ]),
@@ -53,21 +54,27 @@ describe('buildCoachPayload — sets', () => {
   it('windows out old sets but keeps them for lifetime PRs', () => {
     const p = build()
     expect(p.sets.every((s) => s.date !== '2026-01-05')).toBe(true)
-    expect(p.sets).toHaveLength(3) // b2, b3, q1 — b1 is out of window
+    expect(p.sets).toHaveLength(4) // b0, b2, b3, q1 — b1 is out of window
   })
 
-  it('computes per-set relative intensity against the lifetime best e1RM', () => {
+  it('computes per-set intensity against the best e1RM AT THE TIME, not the lifetime best', () => {
     const p = build()
+    // Early PR set: 215 / 251 (its own at-the-time best) = 86. Against the lifetime
+    // best (263) it would read 82 — that regression is exactly what this guards.
+    const earlyBench = p.sets.find((s) => s.weight === 215)
+    expect(earlyBench?.intensityPct).toBe(86)
     const topBench = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.weight === 225)
     expect(topBench?.intensityPct).toBe(86) // 225 / 263
     const repBench = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.weight === 205)
-    expect(repBench?.intensityPct).toBe(78) // 205 / 263
+    expect(repBench?.intensityPct).toBe(78) // 205 / 263 (263 is the best as of this set)
   })
 
-  it('flags PR sets chronologically', () => {
+  it('flags sets that were a PR at the time they were performed', () => {
     const p = build()
+    const earlyPr = p.sets.find((s) => s.weight === 215) // PR when performed, later beaten
     const pr = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.weight === 225)
     const notPr = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.weight === 205)
+    expect(earlyPr?.isPR).toBe(true)
     expect(pr?.isPR).toBe(true)
     expect(notPr?.isPR).toBeUndefined()
   })
@@ -135,7 +142,7 @@ describe('buildCoachPayload — unit conversion', () => {
   it('converts stored pounds to the display unit, leaving ratios intact', () => {
     const p = build({ weightUnit: 'kg', toDisplayUnits: (lb) => lb * 0.453592 })
     expect(p.unit).toBe('kg')
-    const topBench = p.sets.find((s) => s.exerciseName === 'Bench Press' && s.intensityPct === 86)
+    const topBench = p.sets.find((s) => s.date === '2026-06-23') // the 225 lb PR set
     expect(topBench?.weight).toBe(102.1) // 225 lb -> kg
     expect(topBench?.intensityPct).toBe(86) // ratio unchanged
     expect(p.bodyweight?.deltaLbs).toBe(-1.8) // -4 lb -> kg
