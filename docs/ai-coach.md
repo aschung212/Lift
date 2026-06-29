@@ -98,14 +98,25 @@ real patterns instead of restating pre-chewed aggregates. Assembled into a typed
 windows the log to ~16 weeks), validated server-side against an allowlist (`validateCoachPayload`
 in `src/lib/aiCoach.ts`):
 
-- **sets** — the per-set log (core ground truth): `{ exerciseName, weight, reps, e1rm?, date?, intensityPct?, isPR? }`
-  where `intensityPct` is the set's weight as a % of that lift's best e1RM (the "how hard" signal).
+- **sets** — the per-set log (core ground truth): `{ exerciseName, weight, reps, e1rm?, date?, intensityPct?, isPR?, timeOfDay? }`
+  where `intensityPct` is the set's weight as a % of the best e1RM achieved **up to that point**
+  (intensity *when performed*, not vs the current best — so historical training intensity reads
+  truthfully), `isPR` flags an all-time e1RM PR **at the moment it was performed**, and `timeOfDay`
+  is the local "HH:MM" the set was performed. Within a day, sets are ordered by real timestamp when
+  available, giving within-workout exercise order.
 - **personalRecords** — lifetime bests per exercise: `{ exerciseName, bestE1rm, bestWeight?, bestReps?, date? }`
   (so the model knows the whole history without serializing every old set).
+- **sessions** — one entry per training day (oldest first): `{ date, tags, setCount }`. Drives
+  **rest-day cadence** (gaps between dates) and **training split & rotation** (tags trained each day).
 - **volume** — per muscle-group tag: `{ tagName, weeklyVolume }`
 - **consistency** — `{ workoutDaysThisWeek, weeklyTarget, streakWeeks, goalMet }`
 - **focus** — overload suggestions: `{ exerciseName, type, suggestedWeight, suggestedReps, reason }`
 - **bodyweight** (opt-out) — `{ trendDirection, deltaLbs }`
+
+> **`timeOfDay` and within-workout order are dormant until the set-time capture work lands.**
+> `set.date` is stamped end-of-day (no time), so the builder emits `timeOfDay`/real ordering only
+> once a real per-set timestamp (`WorkoutSet.createdAt`, currently unpopulated) is captured —
+> tracked as its own issue. `sessions` (split + rest-day cadence) works today.
 
 **Never sent:** exercise/session/set UUIDs, user_id, email, auth tokens, XP log, preferences.
 Identifiers are used for quota/consent only and never forwarded to the model. Exercise names are
@@ -164,10 +175,16 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   (`claim_coach_request`, `record_coach_usage`, `record_coach_consent`, `delete_coach_data`).
 - `vercel.json` `ignoreCommand` now includes `api/` and `vercel.json` (else a function-only
   change ships green in CI and 404s in prod).
+- `src/lib/coachDigest.ts` — pure payload builder (`buildCoachPayload`) mirroring
+  `buildSessionSummary`: full per-set log windowed to ~16 weeks (`setDayKey`-bucketed),
+  lifetime PRs, per-set relative intensities, current-week volume, consistency, bodyweight
+  trend, weights unit-converted, identifiers stripped — + 13 tests (validate round-trip +
+  no-identifiers assertion).
 
 **Remaining Phase 1:**
-- `coachDigest.ts` payload builder (mirrors `buildSessionSummary`) + minimization tests.
-- `CoachSheet` + the Workouts-tab entry card; render output via text interpolation.
+- `CoachSheet` + the Workouts-tab entry card; render output via text interpolation. The view
+  wires `buildCoachPayload` to the stores (passes `getOverloadSuggestion` results as `overloads`,
+  `streakWeeks`/`weeklyTarget`, and `toDisplayUnits`).
 - Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers.
 - **Wire `deleteAccount()` to call `delete_coach_data`** and fix the verified resolved-error
   bug at `src/composables/useAuth.ts:225` (`Promise.allSettled` then `filter(status === 'rejected')`
