@@ -113,10 +113,13 @@ in `src/lib/aiCoach.ts`):
 - **focus** — overload suggestions: `{ exerciseName, type, suggestedWeight, suggestedReps, reason }`
 - **bodyweight** (opt-out) — `{ trendDirection, deltaLbs }`
 
-> **`timeOfDay` and within-workout order are dormant until the set-time capture work lands.**
-> `set.date` is stamped end-of-day (no time), so the builder emits `timeOfDay`/real ordering only
-> once a real per-set timestamp (`WorkoutSet.createdAt`, currently unpopulated) is captured —
-> tracked as its own issue. `sessions` (split + rest-day cadence) works today.
+> **`timeOfDay` and within-workout order are now live (#846).** `set.date` stays end-of-day (no
+> time, per #746); a separate `WorkoutSet.createdAt` carries the real log time — surfaced from the
+> server `sets.created_at` column for synced/historical sets and stamped at log time in `logSet` for
+> new/offline sets. The builder reads it for `timeOfDay` ("HH:MM" local) and orders within a day by
+> real timestamp. **Accuracy caveat:** `created_at` is insert/sync time — ≈ training time for live
+> online logging, but skewed for log-offline-then-sync-later or backfilled sets, so time-of-day is
+> indicative, not exact. `sessions` (split + rest-day cadence) works for all data regardless.
 
 **Never sent:** exercise/session/set UUIDs, user_id, email, auth tokens, XP log, preferences.
 Identifiers are used for quota/consent only and never forwarded to the model. Exercise names are

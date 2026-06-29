@@ -283,7 +283,7 @@ export const useWorkoutStore = defineStore('workout', () => {
 
   /** Durable set upsert with a journaled descriptor (LIFT-706). */
   function _enqueueSetUpsert(
-    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number },
+    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number; createdAt?: string },
     exerciseId: string,
     userId: string,
   ) {
@@ -291,6 +291,11 @@ export const useWorkoutStore = defineStore('workout', () => {
       id: set.id, user_id: userId, exercise_id: exerciseId,
       date: set.date, weight: set.weight, reps: set.reps,
       estimated_1rm: set.estimated1RM,
+      // Persist the real log-time timestamp so an offline set logged at 6pm but
+      // synced hours later keeps its training time instead of the DB insert-time
+      // default (#846). Omitted when absent so editing a legacy set (no local
+      // createdAt) leaves the server's created_at untouched on upsert.
+      ...(set.createdAt ? { created_at: set.createdAt } : {}),
     }
     syncQueue.enqueue(
       `set:${set.id}`,
@@ -406,7 +411,10 @@ export const useWorkoutStore = defineStore('workout', () => {
         date: s.date,
         weight: s.weight,
         reps: s.reps,
-        estimated1RM: s.estimated_1rm
+        estimated1RM: s.estimated_1rm,
+        // Surface the server insert timestamp so historical/synced sets carry a
+        // real time-of-day + within-workout order for the AI Coach payload (#846).
+        createdAt: s.created_at,
       })
     }
     remoteExercises.forEach(ex => {
@@ -656,13 +664,19 @@ export const useWorkoutStore = defineStore('workout', () => {
       : new Date().toISOString()
     const id = uuid()
     const estimated1RM = epley(weight, reps)
-    exercise.sets.push({ id, date, weight, reps, estimated1RM })
+    // Real wall-clock log time, distinct from `date` (stamped end-of-day for the
+    // chosen calendar day, no time-of-day, per #746). Drives time-of-day +
+    // within-workout ordering in the AI Coach payload (#846): ≈ training time for
+    // live logging, and for an offline set it preserves the log moment rather
+    // than the later sync time.
+    const createdAt = new Date().toISOString()
+    exercise.sets.push({ id, date, weight, reps, estimated1RM, createdAt })
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
-      _enqueueSetUpsert({ id, date, weight, reps, estimated1RM }, exerciseId, _userId)
+      _enqueueSetUpsert({ id, date, weight, reps, estimated1RM, createdAt }, exerciseId, _userId)
     }
   }
 
