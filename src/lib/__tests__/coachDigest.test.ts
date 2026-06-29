@@ -167,6 +167,21 @@ describe('buildCoachPayload — time of day (forward-ready)', () => {
     expect(bench[1].timeOfDay).toMatch(/^\d{2}:\d{2}$/)
     expect(bench[0].timeOfDay).not.toBe(bench[1].timeOfDay)
   })
+
+  it('orders untimestamped (legacy) sets after timestamped ones within the same day', () => {
+    // A day that mixes a pre-#846 set (no createdAt) with a freshly timestamped
+    // one: the timestamped set must not land behind the unknown-time set just
+    // because '' sorts before any real ISO string.
+    const sets = [
+      { id: 'u1', date: '2026-06-25T12:00:00.000Z', weight: 200, reps: 5, estimated1RM: 233 }, // legacy: no createdAt
+      { id: 't1', date: '2026-06-25T12:00:00.000Z', weight: 100, reps: 5, estimated1RM: 116, createdAt: '2026-06-25T08:00:00Z' },
+    ]
+    const p = build({ exercises: [ex('e1', 'Bench Press', ['Chest'], sets)] })
+    const bench = p.sets.filter((s) => s.exerciseName === 'Bench Press')
+    expect(bench.map((s) => s.weight)).toEqual([100, 200]) // timestamped first, legacy last
+    expect(bench[0].timeOfDay).toMatch(/^\d{2}:\d{2}$/)
+    expect(bench[1].timeOfDay).toBeUndefined()
+  })
 })
 
 describe('buildCoachPayload — unit conversion', () => {

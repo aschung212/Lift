@@ -102,14 +102,20 @@ describe('#846 per-set createdAt timestamp', () => {
     expect(set.createdAt).not.toBe(set.date)
   })
 
-  it('persists createdAt through localStorage', () => {
+  it('persists createdAt through localStorage and round-trips via load()', () => {
     const store = useWorkoutStore()
     const id = store.addExercise('Bench')!
-    store.logSet(id, 185, 5)
+    store.logSet(id, 185, 5) // no-date path: createdAt is still stamped
 
-    const raw = localStorageMock.getItem('workout-exercises')!
-    const parsed = JSON.parse(raw)
+    // Written to storage…
+    const parsed = JSON.parse(localStorageMock.getItem('workout-exercises')!)
     expect(parsed[0].sets[0].createdAt).toBe(NOW)
+    expect(parsed[0].sets[0].createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/) // a real ISO instant
+
+    // …and survives a reload through the store's load() path (not just the raw write).
+    setActivePinia(createPinia())
+    const reloaded = useWorkoutStore()
+    expect(reloaded.exercises[0].sets[0].createdAt).toBe(NOW)
   })
 
   it('does not reset createdAt when a set is edited', () => {
@@ -140,6 +146,24 @@ describe('#846 per-set createdAt timestamp', () => {
     const row = setUpsertRow(setId)
     expect(row).toBeDefined()
     expect(row!.created_at).toBe(NOW)
+  })
+
+  it('re-sends created_at in the upsert row when editing a set that has one', async () => {
+    const store = useWorkoutStore()
+    await store.init('user-1')
+    const exId = store.addExercise('Row')!
+    store.logSet(exId, 135, 8)
+    const setId = store.exercises[0].sets[0].id
+
+    // Edit weight/reps after time passes — createdAt must still ride along
+    // (setUpsertRow returns the most recent enqueue, i.e. this edit's).
+    vi.setSystemTime(new Date('2026-06-29T09:00:00.000Z'))
+    store.updateSet(exId, setId, 145, 6)
+
+    const row = setUpsertRow(setId)
+    expect(row).toBeDefined()
+    expect(row!.weight).toBe(145)
+    expect(row!.created_at).toBe(NOW) // original log time, not the edit time
   })
 
   it('omits created_at from the upsert row for a legacy set with no local createdAt', async () => {

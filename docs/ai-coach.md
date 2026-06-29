@@ -118,8 +118,11 @@ in `src/lib/aiCoach.ts`):
 > server `sets.created_at` column for synced/historical sets and stamped at log time in `logSet` for
 > new/offline sets. The builder reads it for `timeOfDay` ("HH:MM" local) and orders within a day by
 > real timestamp. **Accuracy caveat:** `created_at` is insert/sync time — ≈ training time for live
-> online logging, but skewed for log-offline-then-sync-later or backfilled sets, so time-of-day is
-> indicative, not exact. `sessions` (split + rest-day cadence) works for all data regardless.
+> online logging, but skewed for log-offline-then-sync-later or backfilled sets. It also stores only
+> a UTC instant (no captured offset), and `timeOfDay` is rendered in the timezone of the device that
+> *builds* the digest — so a set trained while traveling reads in the digesting device's local time,
+> not the training-location time. Treat time-of-day as indicative, not exact. `sessions` (split +
+> rest-day cadence) works for all data regardless.
 
 **Never sent:** exercise/session/set UUIDs, user_id, email, auth tokens, XP log, preferences.
 Identifiers are used for quota/consent only and never forwarded to the model. Exercise names are

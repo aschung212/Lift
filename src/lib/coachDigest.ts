@@ -199,11 +199,19 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     }
   }
 
-  // Order by day, then by real log time within the day when available (stable
-  // — preserving per-exercise logged order — when timestamps aren't captured yet).
+  // Order by day, then by real log time within the day when available. A naive
+  // localeCompare would sort the empty sortTime ('' = legacy/never-synced set,
+  // no captured time) BEFORE any real ISO timestamp — inverting order on a day
+  // that mixes a pre-#846 set with a freshly timestamped one. Instead, untimestamped
+  // sets sort AFTER timestamped ones (a known time never lands behind an unknown
+  // one); a stable sort preserves per-exercise logged order among equally-(un)timestamped sets.
   setItems.sort((a, b) => {
     const d = (a.rec.date ?? '').localeCompare(b.rec.date ?? '')
-    return d !== 0 ? d : a.sortTime.localeCompare(b.sortTime)
+    if (d !== 0) return d
+    if (a.sortTime && b.sortTime) return a.sortTime.localeCompare(b.sortTime)
+    if (a.sortTime) return -1
+    if (b.sortTime) return 1
+    return 0
   })
   const orderedSets = setItems.map((it) => it.rec)
   const cappedSets = orderedSets.length > MAX_SETS ? orderedSets.slice(orderedSets.length - MAX_SETS) : orderedSets
