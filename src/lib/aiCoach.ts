@@ -27,6 +27,67 @@
 /** Bump only when the set of fields that leave the device expands or the provider changes. */
 export const CURRENT_CONSENT_VERSION = 1
 
+// ---- Consent (client mirror of the server-authoritative coach_consent record) ----
+
+/**
+ * The device-local mirror of a user's AI Coach consent. The SERVER is
+ * authoritative (the `coach_consent` table, written via `record_coach_consent`);
+ * this synced copy only gates the client so it never even attempts an egress call
+ * without a current opt-in. Because the synced preferences blob is remote-wins, a
+ * stale older-device copy must never re-enable egress — so consent is always
+ * re-verified against {@link CURRENT_CONSENT_VERSION} at call time, and the server
+ * 403s `consent_required` independently when its record is absent or stale.
+ */
+export interface AiCoachConsent {
+  /** Strictly true only when the user has affirmatively accepted. */
+  accepted: boolean
+  /** ISO timestamp of acceptance, or null when not (yet) accepted. */
+  acceptedAt: string | null
+  /** The consent version accepted; 0 means "never accepted". */
+  version: number
+}
+
+/** The not-consented baseline (and the value any malformed/declined input collapses to). */
+export const NO_AI_COACH_CONSENT: AiCoachConsent = Object.freeze({
+  accepted: false,
+  acceptedAt: null,
+  version: 0,
+})
+
+/**
+ * Coerce any stored/synced value into a trustworthy {@link AiCoachConsent}. Anything
+ * that is not *strictly* an accepted record collapses to {@link NO_AI_COACH_CONSENT}
+ * — i.e. the only way to be consented is for `accepted === true` with a positive
+ * version. This is fail-closed by construction: corrupt, partial, truthy-but-not-true,
+ * or adversarial input can never grant consent. Mirrors `sanitizeIntensityPresets` and
+ * runs at the same load sites (localStorage init, Supabase hydrate, cross-tab reload).
+ */
+export function sanitizeAiCoachConsent(raw: unknown): AiCoachConsent {
+  if (!isObject(raw)) return { ...NO_AI_COACH_CONSENT }
+  if (raw.accepted !== true) return { ...NO_AI_COACH_CONSENT }
+  const version =
+    typeof raw.version === 'number' && Number.isFinite(raw.version) && raw.version > 0
+      ? Math.floor(raw.version)
+      : 0
+  if (version <= 0) return { ...NO_AI_COACH_CONSENT }
+  const acceptedAt = typeof raw.acceptedAt === 'string' ? raw.acceptedAt : null
+  return { accepted: true, acceptedAt, version }
+}
+
+/**
+ * True only when consent is affirmatively accepted AND at least the current version.
+ * An older accepted version is treated as NOT current → the UI must re-prompt and the
+ * server will 403 until the user re-accepts.
+ */
+export function coachConsentIsCurrent(consent: AiCoachConsent | null | undefined): boolean {
+  return !!consent && consent.accepted === true && consent.version >= CURRENT_CONSENT_VERSION
+}
+
+/** Convenience inverse of {@link coachConsentIsCurrent} — the UI needs the consent gate. */
+export function needsCoachConsent(consent: AiCoachConsent | null | undefined): boolean {
+  return !coachConsentIsCurrent(consent)
+}
+
 /** Per-user reviews per rolling 7-day window (overridable per user via coach_usage.limit_override). */
 export const DEFAULT_WEEKLY_LIMIT = 3
 

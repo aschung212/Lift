@@ -773,4 +773,91 @@ describe('usePreferencesStore', () => {
       expect(store.intensityPresets).toEqual([40, 60, 80])
     })
   })
+
+  describe('AI Coach consent (LIFT-849)', () => {
+    it('defaults to not-consented and needs the consent gate', () => {
+      expect(store.aiCoachConsent.accepted).toBe(false)
+      expect(store.aiCoachConsent.version).toBe(0)
+      expect(store.aiCoachBodyweightOptOut).toBe(false)
+      expect(store.needsAiCoachConsent).toBe(true)
+    })
+
+    it('recordAiCoachConsent stamps the current version + clears the gate and persists', () => {
+      store.recordAiCoachConsent()
+      expect(store.aiCoachConsent.accepted).toBe(true)
+      expect(store.aiCoachConsent.version).toBe(1)
+      expect(typeof store.aiCoachConsent.acceptedAt).toBe('string')
+      expect(store.needsAiCoachConsent).toBe(false)
+
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.aiCoachConsent.accepted).toBe(true)
+      expect(stored.aiCoachConsent.version).toBe(1)
+    })
+
+    it('revokeAiCoachConsent flips back to not-consented and persists', () => {
+      store.recordAiCoachConsent()
+      store.revokeAiCoachConsent()
+      expect(store.aiCoachConsent.accepted).toBe(false)
+      expect(store.needsAiCoachConsent).toBe(true)
+
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.aiCoachConsent.accepted).toBe(false)
+    })
+
+    it('setAiCoachBodyweightOptOut coerces to a strict boolean and persists', () => {
+      store.setAiCoachBodyweightOptOut(true)
+      expect(store.aiCoachBodyweightOptOut).toBe(true)
+      // @ts-expect-error — guard against a truthy non-boolean being stored verbatim
+      store.setAiCoachBodyweightOptOut('yes')
+      expect(store.aiCoachBodyweightOptOut).toBe(false)
+
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.aiCoachBodyweightOptOut).toBe(false)
+    })
+
+    it('init sanitizes a stored consent blob fail-closed (truthy, not strictly true)', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        aiCoachConsent: { accepted: 'true', version: 9, acceptedAt: 'x' },
+        aiCoachBodyweightOptOut: true,
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.aiCoachConsent.accepted).toBe(false)
+      expect(freshStore.needsAiCoachConsent).toBe(true)
+      expect(freshStore.aiCoachBodyweightOptOut).toBe(true)
+    })
+
+    it('init loads a valid current-version consent record', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        aiCoachConsent: { accepted: true, version: 1, acceptedAt: '2026-06-30T00:00:00.000Z' },
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.aiCoachConsent.accepted).toBe(true)
+      expect(freshStore.needsAiCoachConsent).toBe(false)
+    })
+
+    it('_reloadFromStorage picks up a consent change from another tab', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        aiCoachConsent: { accepted: true, version: 1, acceptedAt: 'x' },
+        aiCoachBodyweightOptOut: true,
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.aiCoachConsent.accepted).toBe(true)
+      expect(store.aiCoachBodyweightOptOut).toBe(true)
+    })
+  })
 })

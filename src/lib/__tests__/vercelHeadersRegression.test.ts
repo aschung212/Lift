@@ -21,9 +21,15 @@ interface RedirectRule {
   statusCode?: number
 }
 
+interface RewriteRule {
+  source: string
+  destination: string
+}
+
 interface VercelConfig {
   headers?: HeaderRule[]
   redirects?: RedirectRule[]
+  rewrites?: RewriteRule[]
 }
 
 function loadVercelConfig(): VercelConfig {
@@ -121,6 +127,29 @@ describe('vercel.json security headers', () => {
       expect(csp).toMatch(/img-src\s+[^;]*'self'/)
       expect(csp).toMatch(/img-src\s+[^;]*data:/)
       expect(csp).toMatch(/img-src\s+[^;]*blob:/)
+    })
+  })
+
+  describe('rewrites — hosted /privacy exception (LIFT-849)', () => {
+    const rewrites = config.rewrites || []
+
+    it('serves /privacy from the static privacy.html before the SPA catch-all', () => {
+      const privacy = rewrites.find(r => r.source === '/privacy')
+      expect(privacy).toBeDefined()
+      expect(privacy?.destination).toBe('/privacy.html')
+    })
+
+    it('orders the /privacy rewrite before the /(.*) catch-all (first match wins)', () => {
+      const privacyIdx = rewrites.findIndex(r => r.source === '/privacy')
+      const catchAllIdx = rewrites.findIndex(r => r.source === '/(.*)')
+      expect(privacyIdx).toBeGreaterThanOrEqual(0)
+      expect(catchAllIdx).toBeGreaterThanOrEqual(0)
+      expect(privacyIdx).toBeLessThan(catchAllIdx)
+    })
+
+    it('still routes everything else to the SPA shell', () => {
+      const catchAll = rewrites.find(r => r.source === '/(.*)')
+      expect(catchAll?.destination).toBe('/index.html')
     })
   })
 

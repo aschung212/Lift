@@ -20,7 +20,17 @@
               <ul class="legalList">
                 <li><strong>Supabase</strong> — authentication and cloud data sync</li>
                 <li><strong>Vercel</strong> — hosting and anonymous analytics</li>
+                <li><strong>Anthropic</strong> — processes your training data to generate AI Coach reviews (only when you opt in)</li>
               </ul>
+              <h4 class="legalH4">AI Coach (opt-in)</h4>
+              <p>The AI Coach is off by default. The first time you use it, we ask for your explicit consent before any data leaves your device. When you generate a weekly review, the following training data is sent to <strong>Anthropic</strong> (the provider of the Claude AI model) so it can be analyzed:</p>
+              <ul class="legalList">
+                <li>Your per-set log — exercise names, weights, reps, and dates</li>
+                <li>Your personal records and each set's relative intensity</li>
+                <li>Your training sessions and consistency (how often you train)</li>
+                <li>Your bodyweight trend — unless you opt out of sharing it (a separate toggle)</li>
+              </ul>
+              <p>Your name, email address, account identifier, and any other account data are <strong>never</strong> sent to Anthropic — only the training data above. Anthropic processes this data under its own terms and privacy policy as a sub-processor. We do not control Anthropic's retention of API data; refer to Anthropic's published policies for their current practices. You can withdraw consent and disable the AI Coach at any time in Settings, which stops any further sharing.</p>
               <h4 class="legalH4">Data Deletion</h4>
               <p>You can export or delete your data at any time. Use the Export feature in Settings to download your data as CSV or JSON. To delete your account and all associated data, contact us at the email below.</p>
               <h4 class="legalH4">Contact</h4>

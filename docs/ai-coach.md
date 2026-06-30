@@ -152,9 +152,26 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   intensities, volume, consistency, and bodyweight), and state the **actual** retention posture —
   do not write "zero data retention" until verified in writing (SEV1 fabrication trap).
 - A hosted `/privacy` route (`public/privacy.html` + a `vercel.json` rewrite exception) for the
-  App Store listing.
+  App Store listing. The reachable URL is `https://spa-rho-sandy.vercel.app/privacy` (the catch-all
+  `/(.*) → /index.html` rewrite is preceded by `/privacy → /privacy.html` so the static page wins;
+  pinned by `vercelHeadersRegression.test.ts`).
 - App Store nutrition label: Health & Fitness → **Data Linked to You = Yes**,
   **Used for Tracking = No**, **Third-Party Sharing = Yes**.
+
+### App Store nutrition-label answers (documented for the listing)
+
+| Question | Answer | Rationale |
+|---|---|---|
+| Data Linked to You | **Yes** | Workout/health data is tied to an authenticated account (email). |
+| Used for Tracking | **No** | No cross-app/cross-site tracking; analytics are anonymous + aggregated. |
+| Third-Party Sharing | **Yes** | Training data (and bodyweight unless opted out) is sent to Anthropic when the user opts into the AI Coach. |
+| Data types — Health & Fitness | Collected, linked | Sets/reps/weights, PRs, bodyweight trend. |
+| Data types — Contact Info | Collected, linked | Email (auth only); **never** forwarded to Anthropic. |
+
+> **Retention posture (SEV1 fabrication guard):** the LegalSheet + `/privacy` deliberately do NOT
+> assert "zero data retention" / "not trained on" for Anthropic. State only that Anthropic processes
+> the data as a sub-processor under its own published terms until a written DPA/retention commitment
+> is on file. `privacyPolicy.test.ts` fails the build if those unverified phrases appear.
 
 ## UX (Phase 1, after backend)
 
@@ -181,11 +198,27 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   trend, weights unit-converted, identifiers stripped — + 13 tests (validate round-trip +
   no-identifiers assertion).
 
+**Landed (consent/governance PR, LIFT-849):**
+- Consent contract in `src/lib/aiCoach.ts`: `AiCoachConsent` + `sanitizeAiCoachConsent`
+  (fail-closed: only `accepted === true` with a positive version consents) + `coachConsentIsCurrent`
+  / `needsCoachConsent` (a stale older version → re-prompt). The synced preferences blob is a client
+  *mirror*; the server's `coach_consent` record stays authoritative.
+- `preferences` store: `aiCoachConsent` + the granular `aiCoachBodyweightOptOut`, sanitized at all
+  three load sites (localStorage init, Supabase hydrate, cross-tab reload), with
+  `recordAiCoachConsent` / `revokeAiCoachConsent` / `setAiCoachBodyweightOptOut` and the
+  `needsAiCoachConsent` getter.
+- `AiCoachConsentModal.vue` — the centered (`repMaxModal`) opt-in: one screen of what's sent / to
+  whom / how to revoke, with the bodyweight opt-out toggle inline. Prop-driven (emits
+  `accept(bodyweightOptOut)` / `decline` / `view-privacy`); wired by `CoachSheet` (#848).
+- `LegalSheet.vue` AI Coach disclosure + hosted `public/privacy.html` (served at `/privacy` via the
+  ordered rewrite) + nutrition-label answers above. No fabricated retention claims (test-guarded).
+
 **Remaining Phase 1:**
 - `CoachSheet` + the Workouts-tab entry card; render output via text interpolation. The view
   wires `buildCoachPayload` to the stores (passes `getOverloadSuggestion` results as `overloads`,
-  `streakWeeks`/`weeklyTarget`, and `toDisplayUnits`).
-- Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers.
+  `streakWeeks`/`weeklyTarget`, and `toDisplayUnits`), shows `AiCoachConsentModal` when
+  `needsAiCoachConsent`, calls `record_coach_consent(version)` on accept (server is authoritative),
+  and excludes bodyweight from the payload when `aiCoachBodyweightOptOut`.
 - **Wire `deleteAccount()` to call `delete_coach_data`** and fix the verified resolved-error
   bug at `src/composables/useAuth.ts:225` (`Promise.allSettled` then `filter(status === 'rejected')`
   — supabase-js *resolves* `{ error }` on a failed delete, so a failed delete passes silently

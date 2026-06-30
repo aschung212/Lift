@@ -5,6 +5,11 @@ import {
   costCents,
   estimateMaxCostCents,
   containsUrl,
+  sanitizeAiCoachConsent,
+  coachConsentIsCurrent,
+  needsCoachConsent,
+  CURRENT_CONSENT_VERSION,
+  NO_AI_COACH_CONSENT,
   MAX_OUTPUT_TOKENS,
   MAX_SETS,
   MIN_SETS_FOR_REVIEW,
@@ -209,5 +214,69 @@ describe('containsUrl', () => {
     expect(containsUrl('go to spam.io now')).toBe(true)
     expect(containsUrl('[click](https://a.dev)')).toBe(true)
     expect(containsUrl('a clean coaching sentence with no links')).toBe(false)
+  })
+})
+
+describe('AI Coach consent (LIFT-849)', () => {
+  it('accepts a strictly-true current-version record', () => {
+    const c = sanitizeAiCoachConsent({
+      accepted: true,
+      acceptedAt: '2026-06-30T00:00:00.000Z',
+      version: CURRENT_CONSENT_VERSION,
+    })
+    expect(c.accepted).toBe(true)
+    expect(c.version).toBe(CURRENT_CONSENT_VERSION)
+    expect(c.acceptedAt).toBe('2026-06-30T00:00:00.000Z')
+    expect(coachConsentIsCurrent(c)).toBe(true)
+    expect(needsCoachConsent(c)).toBe(false)
+  })
+
+  it('fails closed on anything not strictly accepted', () => {
+    // truthy-but-not-true, missing fields, wrong types, adversarial input
+    for (const raw of [
+      undefined,
+      null,
+      {},
+      'true',
+      1,
+      [],
+      { accepted: 'true', version: 1 },
+      { accepted: 1, version: 1 },
+      { accepted: true }, // no positive version
+      { accepted: true, version: 0 },
+      { accepted: true, version: -3 },
+      { accepted: true, version: 'two' },
+      { accepted: false, version: 5, acceptedAt: 'x' },
+    ]) {
+      const c = sanitizeAiCoachConsent(raw)
+      expect(c).toEqual(NO_AI_COACH_CONSENT)
+      expect(coachConsentIsCurrent(c)).toBe(false)
+      expect(needsCoachConsent(c)).toBe(true)
+    }
+  })
+
+  it('floors a fractional version and drops a non-string acceptedAt', () => {
+    const c = sanitizeAiCoachConsent({ accepted: true, version: 2.9, acceptedAt: 42 })
+    expect(c.version).toBe(2)
+    expect(c.acceptedAt).toBeNull()
+  })
+
+  it('treats a stale (older) accepted version as needing re-consent', () => {
+    const stale = sanitizeAiCoachConsent({ accepted: true, version: CURRENT_CONSENT_VERSION - 1, acceptedAt: 'x' })
+    // version 0 here would collapse; use a representative bump scenario instead
+    const olderButValid = { accepted: true as const, acceptedAt: 'x', version: CURRENT_CONSENT_VERSION - 1 }
+    expect(coachConsentIsCurrent(olderButValid)).toBe(CURRENT_CONSENT_VERSION - 1 >= CURRENT_CONSENT_VERSION)
+    expect(coachConsentIsCurrent(olderButValid)).toBe(false)
+    expect(needsCoachConsent(olderButValid)).toBe(true)
+    // sanitize keeps a positive older version (so the UI can detect it's stale)
+    if (CURRENT_CONSENT_VERSION - 1 > 0) {
+      expect(stale.version).toBe(CURRENT_CONSENT_VERSION - 1)
+    }
+  })
+
+  it('does not mutate the frozen NO_AI_COACH_CONSENT baseline', () => {
+    const a = sanitizeAiCoachConsent(null)
+    a.accepted = true
+    expect(NO_AI_COACH_CONSENT.accepted).toBe(false)
   })
 })
