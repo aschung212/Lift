@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCoachPayload, type ExerciseOverload } from '../coachDigest'
+import { buildCoachPayload, coachReviewEligibility, type ExerciseOverload } from '../coachDigest'
 import { validateCoachPayload, MAX_SETS } from '../aiCoach'
 import type { Exercise } from '../../stores/workout'
 import type { BodyweightEntry } from '../../stores/bodyweight'
@@ -220,5 +220,57 @@ describe('buildCoachPayload — contract & minimization', () => {
     expect(json).not.toContain('exid-bench') // exercise id
     expect(json).not.toContain('setid-') // set ids
     expect(json.toLowerCase()).not.toContain('email')
+  })
+})
+
+describe('coachReviewEligibility — entry-card data gate', () => {
+  it('is eligible with enough sets spread across 2+ training weeks', () => {
+    // richExercises spreads 10 sets across 2026-06-18..26 (weeks of Jun 15 & Jun 22).
+    const e = coachReviewEligibility(richExercises(), NOW)
+    expect(e.eligible).toBe(true)
+    expect(e.totalSets).toBe(10)
+    expect(e.weeksWithData).toBeGreaterThanOrEqual(2)
+  })
+
+  it('is NOT eligible below the set floor even across multiple weeks', () => {
+    const sparse = [
+      ex('e', 'Bench', ['Chest'], [
+        { id: 'a', date: '2026-06-16T12:00:00.000Z', weight: 135, reps: 5, estimated1RM: 160 },
+        { id: 'b', date: '2026-06-24T12:00:00.000Z', weight: 140, reps: 5, estimated1RM: 165 },
+      ]),
+    ]
+    const result = coachReviewEligibility(sparse, NOW)
+    expect(result.totalSets).toBe(2)
+    expect(result.eligible).toBe(false)
+  })
+
+  it('is NOT eligible when all sets fall in a single week', () => {
+    const oneWeek = [
+      ex('e', 'Bench', ['Chest'], Array.from({ length: 9 }, (_, i) => ({
+        id: `s${i}`,
+        date: `2026-06-${String(22 + (i % 5)).padStart(2, '0')}T12:00:00.000Z`, // Mon 06-22 .. Fri 06-26
+        weight: 135,
+        reps: 5,
+        estimated1RM: 160,
+      }))),
+    ]
+    const result = coachReviewEligibility(oneWeek, NOW)
+    expect(result.totalSets).toBe(9)
+    expect(result.weeksWithData).toBe(1)
+    expect(result.eligible).toBe(false)
+  })
+
+  it('ignores sets outside the history window', () => {
+    const old = [
+      ex('e', 'Bench', ['Chest'], Array.from({ length: 12 }, (_, i) => ({
+        id: `s${i}`,
+        date: '2026-01-05T12:00:00.000Z', // ~6 months before NOW — out of the 112-day window
+        weight: 135,
+        reps: 5,
+        estimated1RM: 160,
+      }))),
+    ]
+    expect(coachReviewEligibility(old, NOW).eligible).toBe(false)
+    expect(coachReviewEligibility(old, NOW).totalSets).toBe(0)
   })
 })

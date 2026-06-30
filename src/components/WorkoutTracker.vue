@@ -32,6 +32,23 @@
       </button>
     </header>
 
+    <!-- AI Coach weekly-review entry card + quota meter (only with enough data) -->
+    <button
+      v-if="showCoachCard"
+      class="wtCoachCard"
+      @click="openCoach"
+      aria-label="Open your AI weekly training review"
+    >
+      <span class="wtCoachIcon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+      </span>
+      <span class="wtCoachText">
+        <span class="wtCoachTitle">Weekly Review</span>
+        <span class="wtCoachMeta">{{ coachCardMeta }}</span>
+      </span>
+      <svg class="wtCoachChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+
     <!-- View toggle (Exercises / Timeline) -->
     <div v-if="store.exercises.length > 0" class="wtViewToggle">
       <button :class="['wtViewToggleBtn', { active: listView === 'exercises' }]" @click="listView = 'exercises'">Exercises</button>
@@ -227,6 +244,9 @@
     @edit-set="openEditModal"
     @delete-set="undoDeleteSet"
   />
+
+  <!-- AI Coach weekly-review sheet -->
+  <CoachSheet v-if="coachOpen" @close="coachOpen = false" />
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
@@ -757,6 +777,11 @@ import { scoreSet } from '../lib/setScoring'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
+const CoachSheet = defineAsyncComponent(() => import('../views/CoachSheet.vue'))
+import { coachReviewEligibility } from '../lib/coachDigest'
+import { useCoach } from '../composables/useCoach'
+import { useAuth } from '../composables/useAuth'
+import { isPreviewMode } from '../lib/supabase'
 import RestTimerContent from './RestTimerContent.vue'
 import WorkoutTimeline from './WorkoutTimeline.vue'
 import EditExerciseModal, { type EditExerciseSave } from './EditExerciseModal.vue'
@@ -770,6 +795,30 @@ import { loadJSON } from '../lib/storage'
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
+const coach = useCoach()
+const { user: authUser } = useAuth()
+
+// ── AI Coach weekly review (LIFT-848) ────────────────────────────
+const coachOpen = ref(false)
+// Gate the entry card like the Suggestions drawer gates its lenses: only when
+// there's enough signal (a couple training weeks + the server's set floor), the
+// user is signed in (the proxy is auth-gated), and not on a preview deploy.
+const coachEligible = computed(() => coachReviewEligibility(store.exercises, new Date()).eligible)
+const showCoachCard = computed(
+  () => coachEligible.value && authUser.value !== null && !isPreviewMode.value,
+)
+const coachCardMeta = computed(() => {
+  const n = coach.remaining.value
+  if (n === null) return 'AI-written · once a week'
+  if (n <= 0) {
+    const days = coach.resetDays.value
+    return days && days > 0 ? `Resets in ${days} ${days === 1 ? 'day' : 'days'}` : 'No reviews left'
+  }
+  return `${n} ${n === 1 ? 'review' : 'reviews'} left this week`
+})
+function openCoach() {
+  coachOpen.value = true
+}
 const { show: showUndo } = useUndoToast()
 const { currentTheme } = useTheme()
 const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
