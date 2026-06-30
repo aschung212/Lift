@@ -95,6 +95,16 @@ describe('vercel.json security headers', () => {
       expect(csp).toContain('wss://*.supabase.co')
     })
 
+    /**
+     * The native Capacitor build is cross-origin (ios scheme), so it calls the
+     * AI Coach proxy at the absolute production origin rather than same-origin.
+     * That origin must be reachable via connect-src or the native fetch is blocked
+     * (LIFT-850). Pinned here so it can't be dropped without updating this test.
+     */
+    it('allows the production origin on connect-src for the native coach proxy', () => {
+      expect(csp).toContain('https://spa-rho-sandy.vercel.app')
+    })
+
     it('allows Sentry ingest on connect-src', () => {
       expect(csp).toContain('https://*.sentry.io')
       expect(csp).toContain('https://*.ingest.sentry.io')
