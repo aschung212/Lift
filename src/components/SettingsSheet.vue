@@ -66,7 +66,16 @@
             Unlock more themes by enabling <span class="badgeEnableLink">Progression</span> below.
           </p>
           <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
-          <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
+          <div
+            v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null"
+            class="badgeProgressBar"
+            role="progressbar"
+            aria-label="Progress to next theme unlock"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-valuenow="progressionStore.progressPercent"
+            :aria-valuetext="`${progressionStore.xpToNextUnlock.toLocaleString()} XP to next theme`"
+          >
             <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>
           </div>
           <div class="settingsRow">

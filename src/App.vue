@@ -159,7 +159,16 @@
       <div v-if="xpToast.visible" class="xpGlobalToast" role="status" aria-live="polite">
         <div class="xpToastEarned">{{ xpToast.text }}</div>
         <div class="xpToastTotal">{{ xpToast.nextThresholdXP ? `${xpToast.totalXP.toLocaleString()} / ${xpToast.nextThresholdXP.toLocaleString()} XP` : `${xpToast.totalXP.toLocaleString()} XP` }}</div>
-        <div v-if="xpToast.nextThresholdXP" class="xpToastProgress">
+        <div
+          v-if="xpToast.nextThresholdXP"
+          class="xpToastProgress"
+          role="progressbar"
+          aria-label="XP progress to next level"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          :aria-valuenow="xpToast.progressPercent"
+          :aria-valuetext="`${xpToast.totalXP.toLocaleString()} of ${xpToast.nextThresholdXP.toLocaleString()} XP`"
+        >
           <div class="xpToastProgressFill" :style="{ width: xpToast.progressPercent + '%' }"></div>
         </div>
       </div>
