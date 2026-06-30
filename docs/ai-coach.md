@@ -191,15 +191,76 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   — supabase-js *resolves* `{ error }` on a failed delete, so a failed delete passes silently
   and leaves health data on the server). Add a regression test.
 - Provision env (`COACH_ENABLED`, `COACH_MODEL`, `ANTHROPIC_API_KEY`, `SUPABASE_URL`,
-  `SUPABASE_ANON_KEY`, `COACH_DAILY_CEILING_CENTS`) in Vercel Production scope, plus the
-  provider-side monthly budget cap and a Slack spend alert from the function.
-- WAF rate rule + BotID on `/api/coach`; CSP `connect-src` + CORS for the native origin.
+  `SUPABASE_ANON_KEY`, `COACH_DAILY_CEILING_CENTS`, `SLACK_WEBHOOK_URL`) in Vercel Production
+  scope, plus the provider-side monthly budget cap. The function-side Slack spend alert (50%
+  of the daily ceiling) **has landed** (LIFT-850). See the Launch readiness runbook below.
+- WAF rate rule + BotID on `/api/coach` (Vercel dashboard). CSP `connect-src` + CORS for the
+  native origin **have landed**, as has the Netlify exclusion and the key-leak tripwire test
+  (LIFT-850).
 
-## Known deploy gotcha
+## Launch readiness runbook (LIFT-850)
 
-`netlify.toml` is committed (publish=dist, `/*` → index.html, **zero functions**), so
-`/api/coach` 404s on any Netlify deploy. Confirm Netlify is dead/removed, or scope the feature
-to the Vercel origin and document the exclusion, before launch.
+The ops gate before `COACH_ENABLED` is flipped on. Code-side wiring (CSP/CORS native
+reachability, the spend-alert hook, the leak tripwire, the Netlify exclusion) has landed;
+the remaining items are Vercel/Anthropic dashboard actions and are listed here so the
+flip-on is a checklist, not a memory test.
+
+### Environment (Vercel, **Production scope only**, never `VITE_`-prefixed)
+
+| Var | Value | Notes |
+|---|---|---|
+| `COACH_ENABLED` | `true` | Kill switch. Anything but `true` → 503 (fail-closed). Leave unset until launch. |
+| `COACH_MODEL` | `claude-opus-4-8` | Must be a priced model id (see `MODEL_PRICING`); never fabricated. |
+| `ANTHROPIC_API_KEY` | *(Console key)* | An Anthropic **Console** key, usage-billed — **NOT** a Max subscription. |
+| `SUPABASE_URL` | *(project URL)* | Server copy; used to verify the caller's JWT. |
+| `SUPABASE_ANON_KEY` | *(anon key)* | Server copy. |
+| `COACH_DAILY_CEILING_CENTS` | `200` | Global $2/day spend brake. |
+| `SLACK_WEBHOOK_URL` | *(server copy)* | Server copy of the #lift-automation webhook — the function can't read the local `~/.zshenv` var. Optional; absent = no alert. |
+
+Set the provider-side **monthly budget cap ≈ $62** (ceiling × ~31) in the Anthropic
+Console as the dollar backstop, plus a provider usage alert.
+
+### Spend alert (shipped)
+
+The function fires **one** Slack heads-up per UTC day when *actual* spend first crosses
+50% of `COACH_DAILY_CEILING_CENTS` ($1/day at the default). Crossing detection + the
+once-per-day latch are atomic in the `record_coach_usage` RPC (the `alert_sent` column on
+`coach_global_spend`, migration `20260630000000`); the function only posts on the returned
+crossing flag. Alerting is best-effort and never blocks or delays the user's response.
+
+### WAF / BotID (Vercel dashboard)
+
+- Add a Vercel WAF **per-IP rate rule** on `/api/coach` and enable **BotID** on the route.
+- **Allowlist the local `192.168.x.x` LAN** during on-device testing.
+- **Kill-switch runbook:** flip `COACH_ENABLED` (sub-second via Edge Config) **and/or**
+  enable WAF **Attack Mode** on the route. Either fully stops spend.
+
+### Native reachability (shipped)
+
+- CSP `connect-src` includes `https://spa-rho-sandy.vercel.app` (vercel.json) so the
+  cross-origin native build can reach the proxy; the headers regression test pins it.
+- The function CORS allowlist (`ALLOWED_ORIGINS` in `api/coach.ts`) already includes the
+  production origin + `capacitor://localhost`.
+- Verify Capacitor `allowNavigation` / ATS permits the production origin before the native
+  build ships.
+
+### Netlify reconciliation (shipped)
+
+`netlify.toml` builds the static SPA with **zero functions**, so `/api/coach` 404s on any
+Netlify deploy. Production deploys go through **Vercel** (auto-deploy from master), so the
+AI Coach is **scoped to the Vercel origin**; the native/App Store build must never point at
+a Netlify URL. Documented in `netlify.toml` and enforced by the CORS + CSP origin pins.
+
+### Leak tripwire (shipped)
+
+`coachLeakTripwire.test.ts` asserts the Anthropic key/endpoint can never reach the client:
+no `src/` (or built `dist/`) file references the provider host, no `VITE_`-prefixed LLM key
+exists, and the CSP `connect-src` never gains an LLM-provider origin.
+
+### Acceptance
+
+Feature flips on safely (fail-closed when off), the native build reaches the function,
+master stays green, and the leak + headers tests pass.
 
 ## Local dev / testing
 

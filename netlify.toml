@@ -1,3 +1,10 @@
+# Production deploys go through VERCEL (auto-deploy from master) — see CLAUDE.md.
+# This Netlify config builds the static SPA only: it declares ZERO serverless
+# functions, so the AI Coach proxy (`/api/coach`) does NOT exist on a Netlify deploy
+# and any request to it 404s. The AI Coach feature is therefore scoped to the Vercel
+# origin (the function CORS allowlist + CSP connect-src pin spa-rho-sandy.vercel.app).
+# Do NOT point the App Store / native build at a Netlify URL. See docs/ai-coach.md
+# ("Launch readiness runbook" → Netlify reconciliation).
 [build]
   command   = "npm run build"
   publish   = "dist"
