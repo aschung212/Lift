@@ -4,6 +4,8 @@ import {
   sanitizeCoachOutput,
   costCents,
   estimateMaxCostCents,
+  spendAlertThresholdCents,
+  SPEND_ALERT_RATIO,
   containsUrl,
   MAX_OUTPUT_TOKENS,
   MAX_SETS,
@@ -200,6 +202,24 @@ describe('costCents', () => {
 
   it('estimateMaxCostCents uses the full output budget', () => {
     expect(estimateMaxCostCents('claude-opus-4-8', 3000)).toBe(costCents('claude-opus-4-8', 3000, MAX_OUTPUT_TOKENS))
+  })
+})
+
+describe('spendAlertThresholdCents', () => {
+  it('fires at half the daily ceiling by default ($1 of $2)', () => {
+    expect(SPEND_ALERT_RATIO).toBe(0.5)
+    expect(spendAlertThresholdCents(200)).toBe(100)
+  })
+
+  it('floors so the threshold never exceeds the ceiling', () => {
+    expect(spendAlertThresholdCents(199)).toBe(99)
+    expect(spendAlertThresholdCents(1)).toBe(0)
+  })
+
+  it('disables alerting (returns 0) for a non-positive or invalid ceiling', () => {
+    expect(spendAlertThresholdCents(0)).toBe(0)
+    expect(spendAlertThresholdCents(-50)).toBe(0)
+    expect(spendAlertThresholdCents(Number.NaN)).toBe(0)
   })
 })
 

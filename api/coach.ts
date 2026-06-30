@@ -19,6 +19,7 @@
  *   ANTHROPIC_API_KEY=...         Console API key — usage-billed, NOT a Max subscription
  *   SUPABASE_URL / SUPABASE_ANON_KEY   server copies (used to verify the caller's JWT)
  *   COACH_DAILY_CEILING_CENTS=200 global spend brake (default $2/day)
+ *   SLACK_WEBHOOK_URL=...         optional; one heads-up at 50% of the daily ceiling
  *   COACH_DEV_ALLOW=1             local `vercel dev` escape hatch (never set in Vercel)
  *
  * See docs/ai-coach.md for the full design, the remaining Phase 1 work (consent UI,
@@ -40,6 +41,7 @@ import {
   estimateInputTokens,
   estimateMaxCostCents,
   costCents,
+  spendAlertThresholdCents,
   supportsAdaptiveThinking,
   type CoachPayload,
 } from '../src/lib/aiCoach'
@@ -223,6 +225,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (inputTokens > MAX_INPUT_TOKENS) return json(413, { error: 'payload_too_large' }, cors)
   const maxCostCents = estimateMaxCostCents(model, inputTokens)
   const ceilingCents = intEnv('COACH_DAILY_CEILING_CENTS', 200)
+  const alertThresholdCents = spendAlertThresholdCents(ceilingCents)
 
   const { data: claimData, error: claimError } = await supabase.rpc('claim_coach_request', {
     p_max_cost_cents: maxCostCents,
@@ -241,7 +244,8 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     result = await callAnthropic({ apiKey, model, payload })
   } catch {
-    // Upstream failure with no usable output: refund the pre-charge AND the per-user count.
+    // Upstream failure with no usable output: refund the pre-charge AND the per-user
+    // count. A refund only lowers spend, so it can never cross the alert threshold.
     await supabase.rpc('record_coach_usage', {
       p_pre_charge_cents: maxCostCents,
       p_actual_cost_cents: 0,
@@ -249,19 +253,26 @@ export default async function handler(req: Request): Promise<Response> {
       p_output_tokens: 0,
       p_model: model,
       p_billed: false,
+      p_alert_threshold_cents: 0,
     })
     return json(502, { error: 'coach_upstream_failed' }, cors)
   }
 
   const actualCostCents = costCents(model, result.inputTokens, result.outputTokens)
-  await supabase.rpc('record_coach_usage', {
+  // The RPC trues up the global ledger atomically and returns whether THIS call
+  // pushed actual daily spend across the early-warning threshold (once per day).
+  const { data: crossedAlert } = await supabase.rpc('record_coach_usage', {
     p_pre_charge_cents: maxCostCents,
     p_actual_cost_cents: actualCostCents,
     p_input_tokens: result.inputTokens,
     p_output_tokens: result.outputTokens,
     p_model: model,
     p_billed: true,
+    p_alert_threshold_cents: alertThresholdCents,
   })
+  if (crossedAlert === true) {
+    await postSpendAlert(alertThresholdCents, ceilingCents)
+  }
 
   // A safety refusal is a "used" request — spend stands, no refund.
   if (result.stopReason === 'refusal') return json(200, { error: 'coach_unavailable' }, cors)
@@ -274,6 +285,28 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   return json(200, { review, resetsAt: decision.reset_at, remaining: decision.remaining }, cors)
+}
+
+// Best-effort Slack heads-up when actual daily spend first crosses the early-warning
+// threshold. Alerting is never allowed to break or delay the user's response: a
+// missing webhook is a silent no-op and any post failure is swallowed. The
+// once-per-day dedup lives in the record_coach_usage RPC, not here.
+async function postSpendAlert(thresholdCents: number, ceilingCents: number): Promise<void> {
+  const webhook = env('SLACK_WEBHOOK_URL')
+  if (!webhook) return
+  const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`
+  const text =
+    `:warning: Lift AI Coach: daily spend crossed ${usd(thresholdCents)} ` +
+    `(50% of the ${usd(ceilingCents)} daily ceiling). The coach auto-pauses at 100%.`
+  try {
+    await fetch(webhook, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+  } catch {
+    // Alerting is best-effort — a failed notification must never affect the request.
+  }
 }
 
 // Local guard so an unpriced model fails closed before any spend. Mirrors the

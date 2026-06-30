@@ -518,6 +518,23 @@ export function estimateInputTokens(serializedPayloadBytes: number): number {
   return Math.ceil(serializedPayloadBytes / 4) + 900
 }
 
+/**
+ * Fraction of the daily ceiling at which a single early-warning Slack alert fires.
+ * The hard backstops are the daily ceiling (auto-pause) and the provider-side
+ * monthly budget cap; this alert is the heads-up before either trips.
+ */
+export const SPEND_ALERT_RATIO = 0.5
+
+/**
+ * Cents of actual daily spend at which the early-warning alert should fire. Returns
+ * 0 (alerting disabled) for a non-positive ceiling so a misconfigured ceiling can
+ * never make the function alert on every request.
+ */
+export function spendAlertThresholdCents(dailyCeilingCents: number): number {
+  if (!Number.isFinite(dailyCeilingCents) || dailyCeilingCents <= 0) return 0
+  return Math.floor(dailyCeilingCents * SPEND_ALERT_RATIO)
+}
+
 // ---- Prompt assembly (pure) ----
 
 export const COACH_SYSTEM_PROMPT = [
