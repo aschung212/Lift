@@ -181,11 +181,20 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   trend, weights unit-converted, identifiers stripped — + 13 tests (validate round-trip +
   no-identifiers assertion).
 
+- `CoachSheet` + the Workouts-tab entry card (LIFT-848): `src/lib/coachClient.ts` (pure status→
+  result mapping + abort-timeout fetch + `daysUntilReset`), `src/composables/useCoach.ts`
+  (singleton UI state + device-local cosmetic quota cache + `getSession` token), and
+  `src/views/CoachSheet.vue` (idle/loading/result/error states; output rendered via text
+  interpolation, NEVER `v-html`). The entry card lives in `WorkoutTracker`'s `wtPageHeader`,
+  gated by `coachReviewEligibility` (≥`MIN_SETS_FOR_REVIEW` sets across ≥2 weeks) AND signed-in
+  AND not a preview deploy; it doubles as the quota meter. The view wires `buildCoachPayload` to
+  the stores (`getOverloadSuggestion` → `overloads`, `streakWeeks`/`weeklyTarget`, `toDisplayUnits`).
+
 **Remaining Phase 1:**
-- `CoachSheet` + the Workouts-tab entry card; render output via text interpolation. The view
-  wires `buildCoachPayload` to the stores (passes `getOverloadSuggestion` results as `overloads`,
-  `streakWeeks`/`weeklyTarget`, and `toDisplayUnits`).
-- Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers.
+- Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers
+  (#849). Until it lands the server 403s `consent_required`; `CoachSheet` surfaces that as a
+  non-retryable "accept the Coach privacy terms" message (the consent capture itself is #849).
+- Past-insights history (#851) — `useCoach` deliberately holds only transient state today.
 - **Wire `deleteAccount()` to call `delete_coach_data`** and fix the verified resolved-error
   bug at `src/composables/useAuth.ts:225` (`Promise.allSettled` then `filter(status === 'rejected')`
   — supabase-js *resolves* `{ error }` on a failed delete, so a failed delete passes silently

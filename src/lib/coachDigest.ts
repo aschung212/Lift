@@ -28,6 +28,7 @@ import {
   MAX_VOLUME_ITEMS,
   MAX_FOCUS_ITEMS,
   MAX_SESSION_ITEMS,
+  MIN_SETS_FOR_REVIEW,
   type CoachPayload,
   type SetRecord,
   type PRItem,
@@ -41,6 +42,62 @@ import {
 
 /** Default history window the client sends — long enough for real progression analysis. */
 export const DEFAULT_WINDOW_DAYS = 112 // ~16 weeks
+
+/** Distinct training weeks required before a review is worth offering. */
+export const MIN_WEEKS_FOR_REVIEW = 2
+
+export interface CoachEligibility {
+  /** Enough signal to surface the entry card (and let the server accept the request). */
+  eligible: boolean
+  /** Logged sets within the window. */
+  totalSets: number
+  /** Distinct ISO weeks (Mon-anchored) that contain at least one logged set. */
+  weeksWithData: number
+}
+
+/** ISO-week key "YYYY-Www" (Mon-anchored) for a local day key, for distinct-week counting. */
+function isoWeekKey(dayKey: string): string {
+  const [y, m, d] = dayKey.split('-').map(Number)
+  // Local date; the day-key already encodes the user's local calendar day.
+  const date = new Date(y, (m || 1) - 1, d || 1)
+  const day = date.getDay() || 7 // 1=Mon..7=Sun
+  date.setDate(date.getDate() + 4 - day) // shift to the week's Thursday (ISO anchor)
+  const yearStart = new Date(date.getFullYear(), 0, 1)
+  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7)
+  return `${date.getFullYear()}-W${String(week).padStart(2, '0')}`
+}
+
+/**
+ * Decide whether the Coach entry card should appear. Mirrors how the Suggestions
+ * drawer only shows lenses with data: require both a couple training weeks AND the
+ * server's `MIN_SETS_FOR_REVIEW` floor, so the card never offers a review the
+ * server would 422. Pure and deterministic given `now`.
+ */
+export function coachReviewEligibility(
+  exercises: Exercise[],
+  now: Date = new Date(),
+  windowDays: number = DEFAULT_WINDOW_DAYS,
+): CoachEligibility {
+  const windowStart = new Date(now)
+  windowStart.setDate(now.getDate() - windowDays)
+  const windowStartKey = dayKeyOf(windowStart)
+  const nowKey = dayKeyOf(now)
+
+  let totalSets = 0
+  const weeks = new Set<string>()
+  for (const ex of exercises) {
+    for (const s of ex.sets) {
+      const key = setDayKey(s.date)
+      if (key < windowStartKey || key > nowKey) continue
+      totalSets++
+      weeks.add(isoWeekKey(key))
+    }
+  }
+
+  const weeksWithData = weeks.size
+  const eligible = totalSets >= MIN_SETS_FOR_REVIEW && weeksWithData >= MIN_WEEKS_FOR_REVIEW
+  return { eligible, totalSets, weeksWithData }
+}
 
 /** An exercise paired with its store-computed overload suggestion (the one non-pure input). */
 export interface ExerciseOverload {
