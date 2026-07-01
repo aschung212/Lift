@@ -267,6 +267,16 @@ jobs:
           path: coverage/coverage-summary.json
           key: coverage-summary-master-${{ github.sha }}
 
+      # Hand the freshly-computed summary to ratchet-baseline as a same-run
+      # artifact so it never has to re-run the full suite just to regenerate it.
+      - name: Upload coverage summary artifact (master)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-summary
+          path: coverage/coverage-summary.json
+          retention-days: 1
+
       - name: Post coverage delta comment
         if: always() && github.event_name == 'pull_request' && hashFiles('coverage/coverage-summary.json') != ''
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
@@ -367,16 +377,16 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
-          cache: npm
 
-      - name: Restore node_modules
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+      # Reuse the coverage-summary.json that build-and-test already produced
+      # instead of re-running the full suite. The ratchet script reads only
+      # coverage/coverage-summary.json and Node builtins — no node_modules
+      # or test run is needed on this job (LIFT-868).
+      - name: Download coverage summary artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          path: node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Run tests with coverage
-        run: npx vitest run --coverage
+          name: coverage-summary
+          path: coverage
 
       - name: Ratchet baseline
         run: node scripts/check-coverage-ratchet.js --update
