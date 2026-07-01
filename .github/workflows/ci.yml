@@ -16,6 +16,7 @@ concurrency:
 jobs:
   dependency-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -29,6 +30,7 @@ jobs:
 
   install:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -52,6 +54,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: install
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -73,6 +76,7 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: install
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -94,6 +98,7 @@ jobs:
 
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [lint, typecheck]
     permissions:
       contents: read
@@ -352,6 +357,7 @@ jobs:
   # Uses [skip ci] to prevent an infinite loop.
   ratchet-baseline:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [build-and-test, e2e]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
@@ -407,6 +413,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: build-and-test
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -461,6 +468,7 @@ jobs:
   # Runs before Vercel deploys so the DB schema is ready for the new code.
   migrate-db:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [build-and-test, e2e]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
@@ -491,6 +499,7 @@ jobs:
   # shell). See GitHub docs: "Understanding the risk of script injections".
   notify-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [lint, typecheck, build-and-test, e2e, migrate-db, ratchet-baseline]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
@@ -509,6 +518,7 @@ jobs:
   # script-injection guard as `notify-deploy` above.
   notify-failure:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [lint, typecheck, build-and-test, e2e, migrate-db, ratchet-baseline]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
