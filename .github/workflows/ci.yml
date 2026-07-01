@@ -14,6 +14,24 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
+  # Fast pre-flight: statically validate the workflow YAML itself before any
+  # heavy job runs. actionlint catches invalid `needs`/`if` expressions, bad
+  # `${{ }}` contexts, unknown action inputs, malformed cron/globs, and (via
+  # shellcheck) real bugs in `run:` shell — the class of "typo merged to master
+  # breaks all of CI" mistakes that hand-rolled workflow shell is prone to.
+  # No `needs:` so it runs immediately in parallel; it finishes in seconds.
+  workflow-lint:
+    name: Lint workflow YAML (actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run actionlint
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          version: 1.7.12
+          fail-on-error: true
+
   dependency-review:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
