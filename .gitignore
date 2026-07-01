@@ -12,6 +12,9 @@ coverage/
 test-results/
 playwright-report/
 
+# Lighthouse CI
+.lighthouseci/
+
 # local env files
 *.local
 .env
