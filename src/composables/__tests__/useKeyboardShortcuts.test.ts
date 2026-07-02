@@ -101,6 +101,17 @@ describe('useKeyboardShortcuts', () => {
     expect(actions.workouts).not.toHaveBeenCalled()
   })
 
+  it('gives each consumer an independent help state', () => {
+    const a = createWrapper([{ key: '?', label: 'Help', action: actions.help }])
+    const b = createWrapper([{ key: '?', label: 'Help', action: actions.help }])
+    a.vm.toggleHelp()
+    expect(a.vm.helpOpen).toBe(true)
+    // Toggling one consumer's help must not leak into the other (LIFT-882)
+    expect(b.vm.helpOpen).toBe(false)
+    a.unmount()
+    b.unmount()
+  })
+
   it('closes help on Escape when help is open', async () => {
     const wrapper = createWrapper([
       { key: '?', label: 'Help', action: actions.help },
