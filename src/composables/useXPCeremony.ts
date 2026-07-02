@@ -14,6 +14,7 @@ import { XP_CONFIG } from '../lib/xp'
 import { logXPEvent, logBodyweightXPEvent } from '../lib/xpInstrumentation'
 import { useAppReview } from './useAppReview'
 import { useAnalytics } from './useAnalytics'
+import { useManagedTimers } from './useManagedTimers'
 import type { ThemeId } from './useTheme'
 
 export interface SetXPCeremonyInput {
@@ -48,6 +49,10 @@ export function useXPCeremony(): UseXPCeremonyReturn {
   const progressionStore = useProgressionStore()
   const { requestReviewAtMoment } = useAppReview()
   const { logEvent } = useAnalytics()
+  // Deferred toast/celebration timeouts are cleared if the owning component
+  // unmounts before they fire, so we never dispatch a stale toast against a
+  // torn-down view (#877).
+  const timers = useManagedTimers()
 
   /**
    * Run the full XP ceremony for a logged workout set.
@@ -77,7 +82,7 @@ export function useXPCeremony(): UseXPCeremonyReturn {
       if (wasTrialPeriod && progressionStore.starterConfirmed) {
         const starterLabel = THEMES.find(t => t.id === progressionStore.starterTheme)?.label
         if (starterLabel) {
-          setTimeout(() => showXPToast(
+          timers.setTimeout(() => showXPToast(
             `${starterLabel} locked in as your starter`,
             progressionStore.progressPercent,
             progressionStore.totalXP,
@@ -184,7 +189,7 @@ export function useXPCeremony(): UseXPCeremonyReturn {
 
       const theme = THEMES.find(t => t.id === newUnlocks[0])
       if (theme) {
-        setTimeout(() => {
+        timers.setTimeout(() => {
           showUnlockCelebration(theme.id, theme.label)
           onUnlock?.()
           // Unlocking a new theme is a high-satisfaction moment — ask for a
@@ -203,7 +208,7 @@ export function useXPCeremony(): UseXPCeremonyReturn {
     themeIds.forEach((themeId, i) => {
       const theme = THEMES.find(t => t.id === themeId)
       if (theme) {
-        setTimeout(() => showUnlockCelebration(theme.id, theme.label), 500 + i * 2500)
+        timers.setTimeout(() => showUnlockCelebration(theme.id, theme.label), 500 + i * 2500)
       }
     })
   }

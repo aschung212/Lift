@@ -18,7 +18,7 @@
  * determined a true PR occurred.
  */
 
-import { ref, type Ref } from 'vue'
+import { ref, getCurrentScope, onScopeDispose, type Ref } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 import { useHaptics } from './useHaptics'
 
@@ -77,13 +77,21 @@ function presentPRBurst(p: PRBurstPayload): void {
 function dismissPRBurst(): void {
   visible.value = false
   // Clear any pending dismiss timeout before starting a new one
-  if (dismissTimeoutId !== null) clearTimeout(dismissTimeoutId)
+  clearPendingDismiss()
   // Clear payload slightly after the fade-out so the component can animate
   // with the final values; a CSS transition handles opacity.
   dismissTimeoutId = setTimeout(() => {
     if (!visible.value) payload.value = null
     dismissTimeoutId = null
   }, 200)
+}
+
+/** Cancel the pending post-fade payload-clear timeout, if any. */
+function clearPendingDismiss(): void {
+  if (dismissTimeoutId !== null) {
+    clearTimeout(dismissTimeoutId)
+    dismissTimeoutId = null
+  }
 }
 
 export interface UsePRBurstReturn {
@@ -94,6 +102,14 @@ export interface UsePRBurstReturn {
 }
 
 export function usePRBurst(): UsePRBurstReturn {
+  // The dismiss timeout is module-scoped singleton state, but it should not
+  // outlive the consuming component (e.g. PRBurst.vue). Clear it on scope
+  // disposal so no stray callback runs after unmount (#877). Guarded so calling
+  // outside a component/effect scope (tests, module init) is a no-op.
+  if (getCurrentScope()) {
+    onScopeDispose(clearPendingDismiss)
+  }
+
   return {
     visible,
     payload,

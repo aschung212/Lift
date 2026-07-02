@@ -2,6 +2,7 @@ import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 import { useNotification, useBackgroundTracker } from './useNotification'
 import { useRestTimer } from './useRestTimer'
+import { useManagedTimers } from './useManagedTimers'
 import { loadJSON } from '../lib/storage'
 
 // ── Defaults ──────────────────────────────────────────────────────
@@ -156,6 +157,10 @@ export function useRestTimerController(
   const { notify: sendNotification, requestPermission: requestNotificationPermission } = useNotification()
   const { wasBackgrounded, startTracking: startBgTracking, stopTracking: stopBgTracking } = useBackgroundTracker()
   const { setRestTimerEnabled } = useRestTimer()
+  // Scope-aware timers: the countdown interval (and the small focus/stopping
+  // timeouts) are cleared automatically when the owning component unmounts, so
+  // a running rest timer never ticks on against a torn-down component (#877).
+  const timers = useManagedTimers()
 
   // ── Core timer state ──────────────────────────────────────────
   const timerActive = ref(false)
@@ -204,14 +209,14 @@ export function useRestTimerController(
 
   // ── Watchers ──────────────────────────────────────────────────
   watch(editingPresets, (v) => {
-    if (v) setTimeout(() => presetInputEl.value?.focus(), 0)
+    if (v) timers.setTimeout(() => presetInputEl.value?.focus(), 0)
   })
 
   // ── Timer interval ────────────────────────────────────────────
   function startInterval() {
-    if (timerIntervalId !== null) clearInterval(timerIntervalId)
+    if (timerIntervalId !== null) timers.clearInterval(timerIntervalId)
     lastWarnedAt = -1
-    timerIntervalId = setInterval(() => {
+    timerIntervalId = timers.setInterval(() => {
       if (!timerPaused.value) {
         const remaining = Math.ceil((timerEndTime - Date.now()) / 1000)
         const prev = timerSeconds.value
@@ -225,7 +230,7 @@ export function useRestTimerController(
         }
         if (timerSeconds.value <= 0) {
           playGoBeep()
-          if (timerIntervalId !== null) clearInterval(timerIntervalId)
+          if (timerIntervalId !== null) timers.clearInterval(timerIntervalId)
           timerIntervalId = null
           timerSeconds.value = 0
           timerAnnouncement.value = 'Rest timer done'
@@ -272,14 +277,14 @@ export function useRestTimerController(
 
   function stopTimer() {
     timerStopping.value = true
-    if (timerIntervalId !== null) clearInterval(timerIntervalId)
+    if (timerIntervalId !== null) timers.clearInterval(timerIntervalId)
     timerIntervalId = null
     timerActive.value = false
     timerPaused.value = false
     timerSeconds.value = 0
     editingPresets.value = false
     newPresetValue.value = null
-    setTimeout(() => { timerStopping.value = false }, 0)
+    timers.setTimeout(() => { timerStopping.value = false }, 0)
   }
 
   function restartTimer() {
