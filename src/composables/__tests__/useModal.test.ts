@@ -268,3 +268,88 @@ describe('useModal — background scroll lock', () => {
     expect(isLocked()).toBe(false)
   })
 })
+
+// Escape-to-close ownership (LIFT-878): useModal owns a single window keydown
+// listener attached on open and removed on close/unmount, so PRBurst and
+// WorkoutCompleteView no longer hand-roll add/remove listener boilerplate.
+describe('useModal — Escape-to-close', () => {
+  function pressEscape() {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+  }
+  function pressEnter() {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  }
+
+  it('calls onEscape when Escape is pressed while open', async () => {
+    const onEscape = vi.fn()
+    const { open, close } = useModal({ onEscape })
+    open()
+    await nextTick()
+    pressEscape()
+    expect(onEscape).toHaveBeenCalledOnce()
+    close()
+    await nextTick()
+  })
+
+  it('ignores non-Escape keys', async () => {
+    const onEscape = vi.fn()
+    const { open, close } = useModal({ onEscape })
+    open()
+    await nextTick()
+    pressEnter()
+    expect(onEscape).not.toHaveBeenCalled()
+    close()
+    await nextTick()
+  })
+
+  it('does not fire onEscape before open or after close', async () => {
+    const onEscape = vi.fn()
+    const { open, close } = useModal({ onEscape })
+
+    pressEscape() // before open — no listener attached
+    expect(onEscape).not.toHaveBeenCalled()
+
+    open()
+    await nextTick()
+    close()
+    await nextTick()
+
+    pressEscape() // after close — listener detached
+    expect(onEscape).not.toHaveBeenCalled()
+  })
+
+  it('attaches at most one listener across duplicate open() calls', async () => {
+    const onEscape = vi.fn()
+    const { open, close } = useModal({ onEscape })
+    open()
+    open() // duplicate — must not double-attach
+    await nextTick()
+    pressEscape()
+    expect(onEscape).toHaveBeenCalledOnce()
+    close()
+    await nextTick()
+  })
+
+  it('detaches the listener on unmount (no leak)', async () => {
+    const onEscape = vi.fn()
+    const { open, unmount } = modalWithUnmount({ onEscape })
+    open()
+    await nextTick()
+    unmount?.() // v-if flipped without close()
+    pressEscape()
+    expect(onEscape).not.toHaveBeenCalled()
+  })
+
+  it('does not attach any listener when onEscape is omitted', async () => {
+    // A plain modal (no onEscape) must not touch window keydown at all.
+    const addSpy = vi.spyOn(window, 'addEventListener')
+    const { open, close } = useModal()
+    open()
+    await nextTick()
+    const keydownAdds = addSpy.mock.calls.filter(([type]) => type === 'keydown')
+    expect(keydownAdds).toHaveLength(0)
+    close()
+    await nextTick()
+    addSpy.mockRestore()
+  })
+})
