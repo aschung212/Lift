@@ -35,10 +35,10 @@ counter is cosmetic — the server is the only real cap.
 |---|---|---|
 | Provider/model | **Claude Opus 4.8** (`claude-opus-4-8`), read from `COACH_MODEL` env | Sonnet 4.6 is a 1-line swap; Haiku 4.5 also priced. Never hardcoded (SEV1). |
 | Billing | **Anthropic Console API key**, usage-billed | A Claude **Max subscription is NOT API access** and cannot power an app backend. Separate account/bill. |
-| Monetization | **Free forever, premium seam built in** | `coach_usage.limit_override` column lets a future premium tier be a config change, not a rewrite. |
+| Monetization | **Free baseline, Supporter anchors on frequency** (LIFT-904) | Tracking + a baseline weekly digest stay free forever; the Supporter tier buys a higher weekly review allowance (`SUPPORTER_WEEKLY_LIMIT`) so recurring API cost is cost-recovered, never the core loop. Applied via the `coach_usage.limit_override` seam. |
 | Bodyweight | **Included in v1**, behind its own opt-out | Most sensitive field; named explicitly in consent + App Store label. |
 | Data sent | **Full per-set log** (client windows to ~16 wks) + lifetime PRs + per-set relative intensities + derived volume/consistency/overload | Ground truth, not just aggregates — thin aggregates produce thin coaching. Identifiers (user_id/email/UUIDs) are never sent. |
-| Per-user quota | **3 reviews / rolling 7-day window** (`DEFAULT_WEEKLY_LIMIT`) | Rolling, not fixed Mon–Sun. UI copy: "Resets in N days" from server `resetsAt`. |
+| Per-user quota | **Free `FREE_WEEKLY_LIMIT` (3) / Supporter `SUPPORTER_WEEKLY_LIMIT` (10)** per rolling 7-day window | Rolling, not fixed Mon–Sun. UI copy: "Resets in N days" from server `resetsAt`. |
 | Cadence | **Weekly only** | No daily flag/tier in v1. |
 | Global spend ceiling | **$2/day** (`COACH_DAILY_CEILING_CENTS=200`) | Abuse brake, not a growth limiter. Provider-side monthly cap ≈ $62. |
 | Output cap | `max_tokens` 2500 (`MAX_OUTPUT_TOKENS`) | Leaves room for adaptive thinking + the digest; single-shot (non-streaming). |
@@ -62,6 +62,31 @@ cost far less, so the practical mix is higher). It throttles organically around 
 users — earlier than the aggregate-only design, which is the deliberate trade for usefulness. The
 two levers when you grow: raise the ceiling (and the provider monthly cap), or shorten the window.
 Hard backstops: `MAX_SETS` (1500), `MAX_INPUT_TOKENS` (80K → 413), `MAX_INPUT_PAYLOAD_BYTES` (512KB).
+
+## Monetization anchor — Supporter tier (LIFT-904)
+
+The AI Coach is the one feature with a real, recurring **per-user API cost** (Opus 4.8
+through the server proxy), which makes it the only place a paid tier is philosophically
+defensible: freemium best practice is to gate the feature with a marginal cost, never the
+core loop. So the whole tracking app + a baseline weekly digest stay **free forever**, and
+the `isSupporter` entitlement is anchored on **more-frequent** coach runs — supporter
+revenue funds the API bill instead of taxing core UX.
+
+The per-tier allowance lives in one tiny pure module, `src/lib/coachTier.ts`
+(`FREE_WEEKLY_LIMIT` = 3, `SUPPORTER_WEEKLY_LIMIT` = 10, `weeklyReviewLimit(isSupporter)`),
+re-exported from `aiCoach.ts` so the server shares the same source of truth. Consumers:
+- **Server (`api/coach.ts`)** — passes `FREE_WEEKLY_LIMIT` as `claim_coach_request`'s
+  `p_default_limit`. **It never trusts a client-claimed limit.** A supporter's higher
+  allowance is applied server-side through the trusted `coach_usage.limit_override` column,
+  set from a validated entitlement (RevenueCat / StoreKit IAP — LIFT-598), which overrides
+  the default *inside* the RPC. This closes the obvious attack (a free client sending
+  `p_default_limit: 10`): the client input for the cap is ignored entirely.
+- **Client (`useSupporter().coachWeeklyLimit`)** — cosmetic "N reviews left this week"
+  display; the server counter is authoritative.
+
+Remaining to make it live: LIFT-598 wires the IAP entitlement and the server path that
+writes `coach_usage.limit_override` from a validated receipt (the `limit_override` column
+and the resolver seam already exist; only the trusted writer is missing).
 
 ## Architecture & request flow
 

@@ -24,11 +24,18 @@
 
 // ---- Tunable constants (defaults; the function may override cost ceiling via env) ----
 
+// Per-tier weekly review allowance lives in the tiny pure `coachTier` module so the
+// client entitlement and this server-shared contract share one source of truth. The
+// server passes FREE_WEEKLY_LIMIT as claim_coach_request's p_default_limit; supporters
+// get SUPPORTER_WEEKLY_LIMIT server-side via coach_usage.limit_override (LIFT-904).
+export {
+  FREE_WEEKLY_LIMIT,
+  SUPPORTER_WEEKLY_LIMIT,
+  weeklyReviewLimit,
+} from './coachTier'
+
 /** Bump only when the set of fields that leave the device expands or the provider changes. */
 export const CURRENT_CONSENT_VERSION = 1
-
-/** Per-user reviews per rolling 7-day window (overridable per user via coach_usage.limit_override). */
-export const DEFAULT_WEEKLY_LIMIT = 3
 
 /** Hard output ceiling sent to the model. Leaves room for adaptive thinking + the digest. */
 export const MAX_OUTPUT_TOKENS = 2500

@@ -28,7 +28,7 @@
 import { createClient } from '@supabase/supabase-js'
 import {
   CURRENT_CONSENT_VERSION,
-  DEFAULT_WEEKLY_LIMIT,
+  FREE_WEEKLY_LIMIT,
   MAX_INPUT_PAYLOAD_BYTES,
   MAX_INPUT_TOKENS,
   MAX_OUTPUT_TOKENS,
@@ -224,10 +224,15 @@ export default async function handler(req: Request): Promise<Response> {
   const maxCostCents = estimateMaxCostCents(model, inputTokens)
   const ceilingCents = intEnv('COACH_DAILY_CEILING_CENTS', 200)
 
+  // Always pass the FREE baseline as the default — NEVER a client-claimed limit
+  // (LIFT-904). A supporter's higher allowance (SUPPORTER_WEEKLY_LIMIT) is applied
+  // server-side via the trusted coach_usage.limit_override, set from a validated
+  // entitlement, so it overrides this default inside the RPC without the client
+  // ever dictating its own cap.
   const { data: claimData, error: claimError } = await supabase.rpc('claim_coach_request', {
     p_max_cost_cents: maxCostCents,
     p_daily_ceiling_cents: ceilingCents,
-    p_default_limit: DEFAULT_WEEKLY_LIMIT,
+    p_default_limit: FREE_WEEKLY_LIMIT,
   })
   if (claimError) return json(500, { error: 'quota_error' }, cors)
   const decision = Array.isArray(claimData) ? claimData[0] : claimData
