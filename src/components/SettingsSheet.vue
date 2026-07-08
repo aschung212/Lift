@@ -530,14 +530,14 @@
           <div v-if="appShareFeedback" class="settingsImportResult" role="status">
             <span class="settingsImportSuccess">{{ appShareFeedback }}</span>
           </div>
-          <a class="settingsRow settingsRowBtn settingsLink" href="https://github.com/sponsors/aschung212" target="_blank" rel="noopener">
+          <a v-if="!isNative" class="settingsRow settingsRowBtn settingsLink" href="https://github.com/sponsors/aschung212" target="_blank" rel="noopener">
             <span class="settingsLabel">
               <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
               Sponsor on GitHub
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
-          <a class="settingsRow settingsRowBtn settingsLink" href="https://buymeacoffee.com/aschung212" target="_blank" rel="noopener">
+          <a v-if="!isNative" class="settingsRow settingsRowBtn settingsLink" href="https://buymeacoffee.com/aschung212" target="_blank" rel="noopener">
             <span class="settingsLabel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
               Buy Me a Coffee
