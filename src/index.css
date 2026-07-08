@@ -1913,6 +1913,10 @@ html.theme-fading .settingsSheet {
   padding: 0 16px 4px;
 }
 
+.settingsTipIntro {
+  padding: 8px 16px;
+}
+
 .iosStepperBtn:disabled {
   opacity: 0.3;
   cursor: default;
