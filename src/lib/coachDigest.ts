@@ -20,7 +20,7 @@
 
 import type { Exercise, OverloadSuggestion } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
-import { setDayKey } from './dates'
+import { setDayKey, localDateKey } from './dates'
 import { computeWeeklyGoal } from './weeklyGoal'
 import {
   MAX_SETS,
@@ -79,14 +79,6 @@ function localTimeOfDay(iso: string | undefined): string | undefined {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** Local YYYY-MM-DD key for a Date (matches dates.ts's private localDayKey). */
-function dayKeyOf(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 /** Monday→today local day keys for the week containing `now`. */
 function currentWeekKeys(now: Date): Set<string> {
   const dow = now.getDay() // 0=Sun
@@ -95,7 +87,7 @@ function currentWeekKeys(now: Date): Set<string> {
   for (let i = since; i >= 0; i--) {
     const d = new Date(now)
     d.setDate(now.getDate() - i)
-    keys.add(dayKeyOf(d))
+    keys.add(localDateKey(d))
   }
   return keys
 }
@@ -143,8 +135,8 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
 
   const windowStart = new Date(now)
   windowStart.setDate(now.getDate() - windowDays)
-  const windowStartKey = dayKeyOf(windowStart)
-  const nowKey = dayKeyOf(now)
+  const windowStartKey = localDateKey(windowStart)
+  const nowKey = localDateKey(now)
 
   // ---- sets (core ground truth) + personalRecords + per-day sessions ----
   // sortTime carries the set's real timestamp so the window can be ordered by

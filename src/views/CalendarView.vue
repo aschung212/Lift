@@ -320,6 +320,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import { localDateKey, todayISO } from '../lib/dates'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
@@ -378,14 +379,7 @@ function setView(v: string) {
   logEvent('calendar_view_switch', { view: v })
 }
 
-function toLocalDateStr(d: Date) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-const todayStr = toLocalDateStr(new Date())
+const todayStr = todayISO()
 
 // True when the user has zero sets across all exercises (brand-new account)
 const hasAnyData = computed(() =>
@@ -580,13 +574,13 @@ const monthCells = computed(() => {
   for (let i = firstDow - 1; i >= 0; i--) {
     const day = prevMonthDays - i
     const d = new Date(year, month - 1, day)
-    const dateStr = toLocalDateStr(d)
+    const dateStr = localDateKey(d)
     cells.push({ key: `p${day}`, day, dateStr, inMonth: false, isToday: dateStr === todayStr, exercises: trainingMap.value[dateStr] || [] })
   }
 
   for (let day = 1; day <= daysInMonth; day++) {
     const d = new Date(year, month, day)
-    const dateStr = toLocalDateStr(d)
+    const dateStr = localDateKey(d)
     cells.push({ key: `c${day}`, day, dateStr, inMonth: true, isToday: dateStr === todayStr, exercises: trainingMap.value[dateStr] || [] })
   }
 
@@ -594,7 +588,7 @@ const monthCells = computed(() => {
   if (rem > 0) {
     for (let day = 1; day <= 7 - rem; day++) {
       const d = new Date(year, month + 1, day)
-      const dateStr = toLocalDateStr(d)
+      const dateStr = localDateKey(d)
       cells.push({ key: `n${day}`, day, dateStr, inMonth: false, isToday: dateStr === todayStr, exercises: trainingMap.value[dateStr] || [] })
     }
   }
@@ -610,7 +604,7 @@ const weekDays = computed(() => {
   return Array.from({ length: 7 }, (_, i) => {
     const curr = new Date(d)
     curr.setDate(d.getDate() + i)
-    const dateStr = toLocalDateStr(curr)
+    const dateStr = localDateKey(curr)
     return {
       dateStr,
       shortName: SHORT_NAMES[i],

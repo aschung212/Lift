@@ -79,6 +79,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useProgressionStore } from '../stores/progression'
 import { useAnalytics } from '../composables/useAnalytics'
 import { buildSessionSummary, type SessionSummary } from '../lib/sessionSummary'
+import { todayISO } from '../lib/dates'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
@@ -92,15 +93,6 @@ const { logEvent } = useAnalytics()
 const pickerOpen = ref(false)
 const shareSummary = ref<SessionSummary | null>(null)
 
-/** Local calendar date (YYYY-MM-DD), matching WorkoutTracker.todayISO(). */
-function localTodayKey(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 function onShareThisPR(): void {
   const p = payload.value
   if (!p) return
@@ -108,7 +100,7 @@ function onShareThisPR(): void {
   // to the PR card) renders the right numbers. The set is already persisted by
   // the time the burst shows, so the summary reflects it.
   shareSummary.value = buildSessionSummary({
-    rawDate: p.rawDate ?? localTodayKey(),
+    rawDate: p.rawDate ?? todayISO(),
     exercises: workoutStore.exercises,
     xpPerSet: progressionStore.xpPerSet,
     streakWeeks: progressionStore.streakWeeks,

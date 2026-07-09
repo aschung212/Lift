@@ -730,7 +730,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { buildSessionSummary } from '../lib/sessionSummary'
-import { todayISO, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
+import { todayISO, localDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode, UsualLadder, UsualLadderRung } from '../stores/workout'
@@ -1822,7 +1822,7 @@ const dateDisplay = computed(() => {
   if (date.value === today) return 'Today'
   const prev = new Date()
   prev.setDate(prev.getDate() - 1)
-  const yest = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`
+  const yest = localDateKey(prev)
   if (date.value === yest) return 'Yesterday'
   return new Date(date.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 })
