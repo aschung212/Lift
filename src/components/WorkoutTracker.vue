@@ -2339,6 +2339,11 @@ function saveSet() {
         // Full-bleed PR celebration (respects the PR baseline via oldE1RM,
         // and the prCelebrations opt-out inside presentPRBurst).
         const newE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
+        // Build the session summary here (WorkoutTracker owns store access) and
+        // hand it to the burst so the presentational PRBurst component can drive
+        // its "Share this PR" flow without reaching into stores (LIFT-916). The
+        // set is already persisted and its XP logged above, so this reflects it.
+        const prRawDate = date.value || todayISO()
         presentPRBurst({
           exerciseName: selectedExerciseName.value,
           oldE1RM,
@@ -2346,7 +2351,14 @@ function saveSet() {
           setWeight: effWeightLbs,
           setReps: effReps,
           isFirstPR: prCountBefore === 0,
-          rawDate: date.value || todayISO(),
+          shareSummary: buildSessionSummary({
+            rawDate: prRawDate,
+            exercises: store.exercises,
+            xpPerSet: progressionStore.xpPerSet,
+            streakWeeks: progressionStore.streakWeeks,
+            toDisplayUnits: displayWeight,
+            unitLabel: weightUnit.value,
+          }),
         })
         if (prCountBefore === 0) {
           logEvent('first_pr', { exercise: selectedExerciseName.value })
