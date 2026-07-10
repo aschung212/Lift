@@ -8,7 +8,7 @@
     <AuthScreen v-if="!user" />
 
     <!-- Onboarding -->
-    <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" @started="onboardingInProgress = true" />
+    <OnboardingScreen v-else-if="showOnboarding" @complete="completeOnboarding" @started="onboardingInProgress = true" />
 
     <!-- Authenticated app -->
     <template v-else>
@@ -159,7 +159,16 @@
       <div v-if="xpToast.visible" class="xpGlobalToast" role="status" aria-live="polite">
         <div class="xpToastEarned">{{ xpToast.text }}</div>
         <div class="xpToastTotal">{{ xpToast.nextThresholdXP ? `${xpToast.totalXP.toLocaleString()} / ${xpToast.nextThresholdXP.toLocaleString()} XP` : `${xpToast.totalXP.toLocaleString()} XP` }}</div>
-        <div v-if="xpToast.nextThresholdXP" class="xpToastProgress">
+        <div
+          v-if="xpToast.nextThresholdXP"
+          class="xpToastProgress"
+          role="progressbar"
+          aria-label="XP progress to next level"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          :aria-valuenow="xpToast.progressPercent"
+          :aria-valuetext="`${xpToast.totalXP.toLocaleString()} of ${xpToast.nextThresholdXP.toLocaleString()} XP`"
+        >
           <div class="xpToastProgressFill" :style="{ width: xpToast.progressPercent + '%' }"></div>
         </div>
       </div>
@@ -228,7 +237,8 @@ const BodyweightTracker = defineAsyncComponent({
 })
 import { useTheme, connectProgressionStore } from './composables/useTheme'
 import type { ThemeId } from './lib/themes'
-import { useProgressionStore, xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './stores/progression'
+import { useProgressionStore } from './stores/progression'
+import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './composables/xpCeremonyUI'
 import { useXPCeremony } from './composables/useXPCeremony'
 import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
@@ -245,6 +255,8 @@ import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
 import { useServiceWorker } from './composables/useServiceWorker'
+import { useOnboarding } from './composables/useOnboarding'
+import { useTabRouting } from './composables/useTabRouting'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
 
 const { currentTheme, THEME_PREVIEWS, resolvedMode, isThemeUnlocked } = useTheme()
@@ -258,9 +270,14 @@ const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
 
+// Acquire each store once and pass references to the lifecycle composables and
+// handlers below — Pinia returns the same instance per call, so re-calling the
+// hooks in scattered handlers was redundant noise.
+const workoutStore = useWorkoutStore()
+const bodyweightStore = useBodyweightStore()
+
 // ── PWA install prompt ──────────────────────────────────────────
-const workoutStoreForInstall = useWorkoutStore()
-const installWorkoutDays = computed(() => workoutStoreForInstall.workoutDates.length)
+const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
 const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
 
 // Dismiss splash screen once auth resolves
@@ -302,47 +319,14 @@ const shortcutsFocus = useFocusTrap()
 const { checkForSWUpdate } = useServiceWorker()
 
 // ── Onboarding ──────────────────────────────────────────────────
-const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
-const workoutStoreForOnboarding = useWorkoutStore()
-const bodyweightStoreForOnboarding = useBodyweightStore()
-
-// Skip onboarding if user already has any data (exercises or bodyweight entries)
-// Reactive so it catches data that loads asynchronously after auth.
-// onboardingInProgress prevents the watcher from firing when the onboarding
-// screen itself adds exercises (e.g. Popular Exercises option).
-const onboardingInProgress = ref(false)
-watch(
-  () => workoutStoreForOnboarding.exercises.length + bodyweightStoreForOnboarding.entries.length,
-  (total) => {
-    if (!onboardingComplete.value && !onboardingInProgress.value && total > 0) {
-      localStorage.setItem('onboarding-complete', 'true')
-      onboardingComplete.value = true
-    }
-  },
-  { immediate: true },
-)
-const showOnboarding = computed(() => !onboardingComplete.value)
-const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
-
-function onOnboardingComplete() {
-  onboardingInProgress.value = false
-  onboardingComplete.value = true
-  hasSampleData.value = localStorage.getItem('sample-data') === 'true'
-}
-
-function clearSampleData() {
-  const workoutStore = useWorkoutStore()
-  const bwStore = useBodyweightStore()
-  const exerciseIds = [...workoutStore.exercises.map(e => e.id)]
-  for (const id of exerciseIds) {
-    workoutStore.deleteExercise(id)
-  }
-  bwStore.clearAll()
-  localStorage.removeItem('sample-data')
-  localStorage.setItem('fresh-start', 'true')
-  hasSampleData.value = false
-  window.dispatchEvent(new CustomEvent('fresh-start'))
-}
+const {
+  showOnboarding,
+  onboardingInProgress,
+  hasSampleData,
+  completeOnboarding,
+  clearSampleData,
+  resetOnboarding,
+} = useOnboarding({ workoutStore, bodyweightStore })
 
 function closeSettings() {
   settingsSheetRef.value?.closeSettings()
@@ -350,8 +334,7 @@ function closeSettings() {
 
 // ── Sign out handler (from SettingsSheet) ────────────────────────
 function handleSignOut() {
-  localStorage.removeItem('onboarding-complete')
-  onboardingComplete.value = false
+  resetOnboarding()
   signOut()
 }
 
@@ -362,19 +345,18 @@ function handleSignOut() {
 // measurable without a backend.
 captureAcquisitionSource()
 
-// ── Tab initialization (supports PWA manifest shortcuts via ?tab= param) ──
-const VALID_TABS = ['workouts', 'calendar', 'weight'] as const
-const urlTab = new URLSearchParams(window.location.search).get('tab')
-const initialTab = urlTab && VALID_TABS.includes(urlTab as typeof VALID_TABS[number])
-  ? urlTab
-  : localStorage.getItem('active-tab') || 'workouts'
-const activeTab = ref(initialTab)
-// Clean up the query param so it doesn't persist on reload
-if (urlTab) {
-  const url = new URL(window.location.href)
-  url.searchParams.delete('tab')
-  window.history.replaceState({}, '', url.pathname)
-}
+// ── Tab routing (supports PWA manifest shortcuts via ?tab= param) ─────
+// The scrollable tab-content element, used to preserve per-tab scroll offset.
+const tabContentEl = ref<HTMLElement | null>(null)
+const { activeTab, switchTab } = useTabRouting({
+  scrollContainer: tabContentEl,
+  // Runs on every tap (including the active tab) — dismiss the settings sheet.
+  onBeforeSwitch: closeSettings,
+  onSwitch: (from, to) => {
+    tabSwitch(from, to)
+    checkForSWUpdate()
+  },
+})
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────
 const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeShortcuts } = useKeyboardShortcuts(() => [
@@ -438,31 +420,6 @@ watch(() => prefs.features, () => {
   }
 }, { deep: true })
 
-// ── Tab scroll position preservation ─────────────────────────────
-const tabContentEl = ref<HTMLElement | null>(null)
-const tabScrollPositions: Record<string, number> = {}
-
-// ── Analytics ────────────────────────────────────────────────────
-function switchTab(tabId: string) {
-  const from = activeTab.value
-  closeSettings()
-  if (from === tabId) return
-  // Save scroll position of outgoing tab
-  if (tabContentEl.value) {
-    tabScrollPositions[from] = tabContentEl.value.scrollTop
-  }
-  activeTab.value = tabId
-  localStorage.setItem('active-tab', tabId)
-  tabSwitch(from, tabId)
-  checkForSWUpdate()
-  // Restore scroll position of incoming tab (default to top)
-  nextTick(() => {
-    if (tabContentEl.value) {
-      tabContentEl.value.scrollTop = tabScrollPositions[tabId] ?? 0
-    }
-  })
-}
-
 // Exposed from WorkoutTracker via defineExpose so the top-bar "+" can open the
 // new-exercise modal directly. Logging a set is a per-exercise action (the "+"
 // on each exercise row); the top-bar "+" is reserved for adding an exercise.
@@ -509,7 +466,7 @@ onMounted(async () => {
 
   // Startup migration and streak catch-up
   if (progressionStore.progressionEnabled && !isMigrated()) {
-    const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
+    const result = computeRetroactiveXP(workoutStore.exercises, bodyweightStore.entries)
     if (result.totalXP > 0) {
       progressionStore.totalXP = result.totalXP
       progressionStore.xpPerSet = result.xpPerSet
@@ -535,23 +492,23 @@ onMounted(async () => {
         progressionStore.weeklyTarget = progressionStore.pendingTargetChange
         progressionStore.pendingTargetChange = null
         const setIdToDate: Record<string, string> = {}
-        for (const exercise of workoutStoreForOnboarding.exercises) {
+        for (const exercise of workoutStore.exercises) {
           for (const set of exercise.sets) {
             setIdToDate[set.id] = set.date.slice(0, 10)
           }
         }
-        progressionStore.reEvaluateStreaks(workoutStoreForOnboarding.workoutDates, new Date(), setIdToDate)
+        progressionStore.reEvaluateStreaks(workoutStore.workoutDates, new Date(), setIdToDate)
       }
     }
     // Evaluate missed weeks
     const setIdToDate: Record<string, string> = {}
-    for (const exercise of workoutStoreForOnboarding.exercises) {
+    for (const exercise of workoutStore.exercises) {
       for (const set of exercise.sets) {
         setIdToDate[set.id] = set.date.slice(0, 10)
       }
     }
     const streakBefore = progressionStore.streakWeeks
-    progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates, new Date(), setIdToDate)
+    progressionStore.evaluatePendingWeeks(workoutStore.workoutDates, new Date(), setIdToDate)
     const streakAfter = progressionStore.streakWeeks
     if (progressionStore.showProgression && streakAfter > streakBefore) {
       const MILESTONES = [12, 8, 4, 2] as const
@@ -572,8 +529,8 @@ onMounted(async () => {
 
   // Cross-tab sync: reload stores when another tab persists data
   const storeMap: Record<StoreKey, { _reloadFromStorage(): void }> = {
-    workout: useWorkoutStore(),
-    bodyweight: useBodyweightStore(),
+    workout: workoutStore,
+    bodyweight: bodyweightStore,
     preferences: usePreferencesStore(),
     progression: progressionStore,
   }
