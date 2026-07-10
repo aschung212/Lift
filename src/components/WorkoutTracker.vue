@@ -26,7 +26,13 @@
       >
         <span class="wtFinishWorkoutLabel">Finish workout</span>
         <span class="wtFinishWorkoutMeta">
-          {{ setsLoggedToday }} {{ setsLoggedToday === 1 ? 'set' : 'sets' }} today
+          <span
+            v-if="sessionStopwatch.isActive.value"
+            class="wtSessionClock"
+            role="timer"
+            aria-label="Session duration"
+          >{{ sessionStopwatch.label.value }}</span>
+          <span class="wtFinishWorkoutSets">{{ setsLoggedToday }} {{ setsLoggedToday === 1 ? 'set' : 'sets' }}</span>
         </span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
       </button>
@@ -755,6 +761,7 @@ import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow }
 import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { scoreSet } from '../lib/setScoring'
 import { useXPCeremony } from '../composables/useXPCeremony'
+import { useSessionStopwatch } from '../composables/useSessionStopwatch'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
 import RestTimerContent from './RestTimerContent.vue'
@@ -947,6 +954,9 @@ const setsLoggedToday = computed(() => {
   }
   return count
 })
+
+/** Live in-workout stopwatch — "time since your first set today" (LIFT-926). */
+const sessionStopwatch = useSessionStopwatch(setsLoggedToday)
 
 /** When non-null, renders the WorkoutCompleteView overlay for that date. */
 const workoutCompleteDate = ref<string | null>(null)

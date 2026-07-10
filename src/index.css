@@ -2191,6 +2191,10 @@ html.theme-fading .settingsSheet {
 }
 
 .wtFinishWorkoutMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
   font-family: var(--ff-mono);
   font-size: var(--font-caption2);
   font-weight: 500;
@@ -2198,6 +2202,18 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
   opacity: 0.85;
   font-variant-numeric: tabular-nums;
+}
+
+/* Live session stopwatch — the ticking "duration" is the primary meta value. */
+.wtSessionClock {
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.wtFinishWorkoutSets {
+  opacity: 0.75;
 }
 
 /* Segmented control (Exercises / Timeline) — gold-filled active pill. */
