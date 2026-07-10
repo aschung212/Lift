@@ -1174,6 +1174,88 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  describe('last-time reference (#925)', () => {
+    function localDay(daysAgo = 0): string {
+      const d = new Date()
+      d.setDate(d.getDate() - daysAgo)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+
+    /** Two-set prior session used as the historical reference. */
+    function priorSession() {
+      return {
+        date: '2026-01-20',
+        sets: [
+          { id: 's-a', date: '2026-01-20T12:00:00', weight: 185, reps: 8, estimated1RM: 231 },
+          { id: 's-b', date: '2026-01-20T12:00:00', weight: 205, reps: 5, estimated1RM: 239 },
+        ],
+      }
+    }
+
+    /** Appends `count` sets dated today to ex-1 so the set-position advances. */
+    function seedTodaySets(count: number) {
+      for (let i = 0; i < count; i++) {
+        mockState.exercises[0].sets.push({
+          id: `s-today-${i}`,
+          date: `${localDay()}T23:59:00.000Z`,
+          weight: 100,
+          reps: 10,
+          estimated1RM: 133,
+        })
+      }
+    }
+
+    async function openBenchModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    it('shows the first prior-session set when no sets are logged today', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const ref = wrapper.find('.wtLastTimeRef')
+      expect(ref.exists()).toBe(true)
+      expect(ref.find('.wtLastTimeRefLabel').text()).toBe('Last time · Set 1')
+      expect(ref.find('.wtLastTimeRefValue').text()).toBe('185 lbs × 8')
+    })
+
+    it('advances the reference to the matching set position as today fills in', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      seedTodaySets(1)
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const ref = wrapper.find('.wtLastTimeRef')
+      expect(ref.find('.wtLastTimeRefLabel').text()).toBe('Last time · Set 2')
+      expect(ref.find('.wtLastTimeRefValue').text()).toBe('205 lbs × 5')
+    })
+
+    it('clamps to the final prior set once today runs longer than last time', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      seedTodaySets(5)
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      const ref = wrapper.find('.wtLastTimeRef')
+      expect(ref.find('.wtLastTimeRefLabel').text()).toBe('Last time · Set 2')
+      expect(ref.find('.wtLastTimeRefValue').text()).toBe('205 lbs × 5')
+    })
+
+    it('renders nothing when there is no prior session', async () => {
+      mockGetLastSession.mockReturnValue(null)
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('.wtLastTimeRef').exists()).toBe(false)
+    })
+  })
+
   describe('overload nudge (#741)', () => {
     function localDay(daysAgo = 0): string {
       const d = new Date()

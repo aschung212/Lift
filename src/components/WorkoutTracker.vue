@@ -559,6 +559,16 @@
             which after step 5c removed the in-card weight display would
             leave the user with no visible weight at all).
           -->
+          <!--
+            Passive "last time" reference (#925): what you did for this same set
+            number last session, shown right above the inputs so you can beat it
+            without leaving the modal. Non-interactive by design — quick-fill
+            lives in the Suggestions drawer chips (one interaction path).
+          -->
+          <div v-if="prevSessionSetRef" class="wtLastTimeRef">
+            <span class="wtLastTimeRefLabel">Last time · Set {{ prevSessionSetRef.setNumber }}</span>
+            <span class="wtLastTimeRefValue">{{ displayWeight(prevSessionSetRef.weight) }} {{ weightUnit }} × {{ prevSessionSetRef.reps }}</span>
+          </div>
           <div class="wtInputRow logSetFieldsRow">
             <label :class="['repMaxLabel', 'logSetField', 'logSetFieldWeight', { logSetFieldActive: weightHasValue }]">
               <span class="logSetFieldLabel">Weight <span class="logSetFieldLabelUnit">({{ weightUnit }})</span></span>
@@ -1193,6 +1203,27 @@ function fillFromLastSession(set: { weight: number; reps: number }, index: numbe
   repsStr.value = String(set.reps)
   lastSessionUsed.value = { ...lastSessionUsed.value, [index]: true }
 }
+
+// ── Passive "last time" reference for the current set position (#925) ──
+// Hevy-style historical readout shown beside the inputs: what you did for THIS
+// set number last session, so you can beat it without leaving the modal. This
+// is deliberately passive (non-interactive) and distinct from the tappable
+// last-session chips (quick-fill) and PR targets — it's an always-visible
+// reference for the exact set about to be logged. The set index is how many
+// sets of this exercise are already logged today; once today's session runs
+// longer than last time it clamps to last session's final set.
+const prevSessionSetRef = computed<{ weight: number; reps: number; setNumber: number } | null>(() => {
+  if (isEditMode.value || !isLogForExercise.value) return null
+  const prev = lastSession.value
+  if (!prev || prev.sets.length === 0) return null
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  if (!ex) return null
+  const today = todayISO()
+  const loggedToday = ex.sets.reduce((n, s) => (setDayKey(s.date) === today ? n + 1 : n), 0)
+  const idx = Math.min(loggedToday, prev.sets.length - 1)
+  const refSet = prev.sets[idx]
+  return { weight: refSet.weight, reps: refSet.reps, setNumber: idx + 1 }
+})
 
 // ── Intensity lens: PR/1RM-anchored weight × reps table (#770) ─────
 // A slider picks an intensity (% of the exercise's best e1RM); the table shows,

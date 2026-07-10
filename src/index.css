@@ -5196,6 +5196,35 @@ html.theme-fading .settingsSheet {
   cursor: default;
 }
 
+/* Passive "last time" reference above the weight/reps inputs (#925) — a
+   greyed Hevy-style readout of the same set number from last session. */
+.wtLastTimeRef {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+}
+
+.wtLastTimeRefLabel {
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.wtLastTimeRefValue {
+  font-size: var(--font-footnote);
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── XP toast ───────────────────────────────────────────────────── */
 
 .xpToast {
