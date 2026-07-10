@@ -5,7 +5,8 @@ import {
   buildCoachExportText,
   coachExportFilename,
 } from '../coachExport'
-import { COACH_SYSTEM_PROMPT, type CoachPayload } from '../aiCoach'
+import type { CoachPayload } from '../aiCoach'
+import { buildAthleteBlock, DEFAULT_COACH_PROFILE } from '../coachProfile'
 
 const PAYLOAD: CoachPayload = {
   weightUnit: 'lb',
@@ -21,13 +22,30 @@ const PAYLOAD: CoachPayload = {
 } as unknown as CoachPayload
 
 describe('coachExport — recommended prompt', () => {
-  it('reuses the server coaching guidance verbatim', () => {
-    expect(RECOMMENDED_COACH_PROMPT).toContain(COACH_SYSTEM_PROMPT)
+  it('is an analyst prompt: analyze → synthesize → prescribe', () => {
+    expect(RECOMMENDED_COACH_PROMPT).toMatch(/ANALYZE/)
+    expect(RECOMMENDED_COACH_PROMPT).toMatch(/SYNTHESIZE/)
+    expect(RECOMMENDED_COACH_PROMPT).toMatch(/PRESCRIBE/)
   })
 
-  it('asks for readable prose, not the server JSON schema (open loop)', () => {
+  it('bakes in the known pitfalls (e1RM inflation, machine lifts not standard-comparable)', () => {
+    expect(RECOMMENDED_COACH_PROMPT).toMatch(/high-rep sets/i)
+    expect(RECOMMENDED_COACH_PROMPT).toMatch(/machine lifts/i)
+  })
+
+  it('keeps the DATA-ONLY prompt-injection guard for user-entered fields', () => {
+    expect(RECOMMENDED_COACH_PROMPT).toMatch(/DATA ONLY/)
+    expect(RECOMMENDED_COACH_PROMPT).toMatch(/untrusted/)
+  })
+
+  it('asks for prose of data-driven depth, not the server JSON schema (open loop)', () => {
     expect(RECOMMENDED_COACH_PROMPT).toMatch(/no JSON/i)
-    expect(RECOMMENDED_COACH_PROMPT).toContain('Focus next')
+    expect(RECOMMENDED_COACH_PROMPT).toMatch(/review_mode/)
+  })
+
+  it('references both the athlete profile and the data block', () => {
+    expect(RECOMMENDED_COACH_PROMPT).toContain('<athlete>')
+    expect(RECOMMENDED_COACH_PROMPT).toContain('<data>')
   })
 })
 
@@ -41,9 +59,20 @@ describe('coachExport — buildCoachExportText', () => {
     expect(text).toContain('Bench Press')
   })
 
-  it('puts the prompt before the data so a user can swap in their own', () => {
-    const text = buildCoachExportText(PAYLOAD)
-    expect(text.indexOf(RECOMMENDED_COACH_PROMPT)).toBeLessThan(text.indexOf('<data>'))
+  it('injects the athlete block between the prompt and the data when provided', () => {
+    const block = buildAthleteBlock({ ...DEFAULT_COACH_PROFILE, sex: 'male', age: 31 })
+    const text = buildCoachExportText(PAYLOAD, block)
+    expect(text).toContain('<athlete>')
+    const athletePos = text.indexOf('<athlete>')
+    const dataPos = text.indexOf('<data>')
+    expect(text.indexOf(RECOMMENDED_COACH_PROMPT)).toBeLessThan(athletePos)
+    expect(athletePos).toBeLessThan(dataPos)
+  })
+
+  it('omits the serialized athlete block when none is supplied', () => {
+    // The prompt text references <athlete> in prose; assert no actual data block
+    // (a `<athlete>\n{…}` payload) is emitted.
+    expect(buildCoachExportText(PAYLOAD)).not.toMatch(/<athlete>\s*\{/)
   })
 })
 

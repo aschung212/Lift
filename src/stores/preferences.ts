@@ -5,6 +5,7 @@ import { logError } from '../lib/logger'
 import { backupToIDB } from '../lib/durableStorage'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
+import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
@@ -136,6 +137,8 @@ export const usePreferencesStore = defineStore('preferences', {
     appIcon: 'default' as string,
     /** Tappable intensity presets (% of max) in the log-set Intensity lens (#776). */
     intensityPresets: [...DEFAULT_INTENSITY_PRESETS] as number[],
+    /** AI Coach athlete profile — individualizes the export (#931). Synced in the blob. */
+    coachProfile: { ...DEFAULT_COACH_PROFILE, competition: { ...DEFAULT_COACH_PROFILE.competition } } as CoachProfile,
     _userId: null as string | null,
     // Uniform sync-status contract (LIFT-820): observable by the UI.
     syncing: false,
@@ -157,6 +160,7 @@ export const usePreferencesStore = defineStore('preferences', {
         restTimerAutoStart: this.restTimerAutoStart,
         appIcon: this.appIcon,
         intensityPresets: this.intensityPresets,
+        coachProfile: this.coachProfile,
       }
       const data = JSON.stringify(payload)
       try {
@@ -203,6 +207,7 @@ export const usePreferencesStore = defineStore('preferences', {
         if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
         if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
         if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
+        if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
       } catch { /* ignore corrupt data */ }
     },
 
@@ -235,6 +240,7 @@ export const usePreferencesStore = defineStore('preferences', {
           if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
           if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
           if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
+          if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
         } catch { /* ignore corrupt data */ }
       }
 
@@ -312,6 +318,7 @@ export const usePreferencesStore = defineStore('preferences', {
             if (typeof prefs.restTimerAutoStart === 'boolean') this.restTimerAutoStart = prefs.restTimerAutoStart as boolean
             if (typeof prefs.appIcon === 'string') this.appIcon = prefs.appIcon as string
             if (prefs.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(prefs.intensityPresets)
+            if (prefs.coachProfile) this.coachProfile = sanitizeCoachProfile(prefs.coachProfile)
             const synced = JSON.stringify({
               features: this.features, weightGoal: this.weightGoal,
               experience: this.experience, filters: this.filters,
@@ -320,6 +327,7 @@ export const usePreferencesStore = defineStore('preferences', {
               weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
               restTimerAutoStart: this.restTimerAutoStart, appIcon: this.appIcon,
               intensityPresets: this.intensityPresets,
+              coachProfile: this.coachProfile,
             })
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
@@ -426,6 +434,12 @@ export const usePreferencesStore = defineStore('preferences', {
     /** Replace the tappable intensity presets (sanitized: int, [1,100], deduped, sorted, capped). */
     setIntensityPresets(presets: number[]) {
       this.intensityPresets = sanitizeIntensityPresets(presets)
+      this._persist()
+    },
+
+    /** Replace the AI Coach athlete profile (sanitized + versioned). Syncs in the blob (#931). */
+    setCoachProfile(profile: Partial<CoachProfile>) {
+      this.coachProfile = sanitizeCoachProfile({ ...this.coachProfile, ...profile })
       this._persist()
     },
   },

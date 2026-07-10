@@ -22,6 +22,20 @@ vi.mock('../../composables/useAnalytics', () => ({
   useAnalytics: () => ({ logEvent: vi.fn(), tabSwitch: vi.fn(), flushEngagement: vi.fn() }),
 }))
 vi.mock('../../lib/supabase', () => ({ isPreviewMode: { value: false }, supabase: null }))
+vi.mock('../../stores/preferences', () => {
+  const profile = {
+    version: 1, sex: '', age: null, height: '', experience: '', primaryGoal: '',
+    prioritiesLagging: '', effortStyle: '', daysPerWeek: null, sessionLenMin: null,
+    injuries: '', equipment: '', competing: false,
+    competition: { sport: '', division: '', timeline: '', phase: '' }, reviewMode: 'deep_audit',
+  }
+  return {
+    usePreferencesStore: () => ({
+      coachProfile: profile,
+      setCoachProfile: (p: Record<string, unknown>) => Object.assign(profile, p),
+    }),
+  }
+})
 
 const REVIEW: CoachReview = {
   headline: 'Strong, consistent week',
@@ -200,8 +214,10 @@ describe('CoachSheet — bring-your-own-AI export (open loop)', () => {
     await nextTick()
     expect(writeText).toHaveBeenCalledTimes(1)
     const payloadText = writeText.mock.calls[0][0] as string
-    // Carries the coaching instructions AND the delimited data block.
-    expect(payloadText).toContain('strength-training coach')
+    // Carries the analyst instructions, the athlete block, AND the data block.
+    expect(payloadText).toMatch(/coach and data analyst/)
+    expect(payloadText).toContain('<athlete>')
+    expect(payloadText).toContain('review_mode')
     expect(payloadText).toContain('<data>')
     // Open loop: the prompt asks for prose, not the server's JSON schema.
     expect(payloadText).toContain('no JSON')
@@ -218,6 +234,18 @@ describe('CoachSheet — bring-your-own-AI export (open loop)', () => {
     await nextTick()
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
     expect(clickNames[0]).toMatch(/^lift-weekly-review-\d{4}-\d{2}-\d{2}\.md$/)
+  })
+
+  it('offers a review-depth control and a profile entry point', () => {
+    mountSheet({ mode: 'byo' })
+    const text = document.body.textContent ?? ''
+    expect(text).toContain('Deep audit')
+    expect(text).toContain('Quick check-in')
+    expect(text).toContain('Your profile')
+    // Deep audit is the default selection.
+    const active = document.body.querySelector('.coachModeSeg.on')
+    expect(active?.textContent).toContain('Deep audit')
+    expect(document.body.querySelector('.coachProfileRow')).not.toBeNull()
   })
 
   it('exposes a bodyweight opt-out that starts included and toggles off', async () => {
