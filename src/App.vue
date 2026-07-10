@@ -237,7 +237,8 @@ const BodyweightTracker = defineAsyncComponent({
 })
 import { useTheme, connectProgressionStore } from './composables/useTheme'
 import type { ThemeId } from './lib/themes'
-import { useProgressionStore, xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './stores/progression'
+import { useProgressionStore } from './stores/progression'
+import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './composables/xpCeremonyUI'
 import { useXPCeremony } from './composables/useXPCeremony'
 import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'

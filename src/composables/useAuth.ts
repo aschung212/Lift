@@ -5,6 +5,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
+import { resetXPCeremony } from '../composables/xpCeremonyUI'
 import { useTheme } from '../composables/useTheme'
 import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
@@ -193,6 +194,10 @@ function resetStores(): void {
   useBodyweightStore().$reset()
   usePreferencesStore().$reset()
   useProgressionStore().$reset()
+  // Transient XP-ceremony UI lives outside the stores (LIFT-823); clear it and
+  // its auto-dismiss timer so a shared device never shows the previous user's
+  // toast/celebration.
+  resetXPCeremony()
 }
 
 async function signOut(): Promise<void> {
