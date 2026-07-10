@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import CoachSheet from '../CoachSheet.vue'
 import { useCoach } from '../../composables/useCoach'
@@ -34,8 +34,8 @@ const REVIEW: CoachReview = {
 
 let wrapper: VueWrapper | null = null
 
-function mountSheet() {
-  wrapper = mount(CoachSheet, { attachTo: document.body })
+function mountSheet(props: { mode?: 'byo' | 'server' } = { mode: 'server' }) {
+  wrapper = mount(CoachSheet, { attachTo: document.body, props })
   return wrapper
 }
 
@@ -150,5 +150,83 @@ describe('CoachSheet — states', () => {
     closeBtn!.click()
     await nextTick()
     expect(w.emitted('close')).toBeTruthy()
+  })
+})
+
+describe('CoachSheet — bring-your-own-AI export (open loop)', () => {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  const clickNames: string[] = []
+
+  beforeEach(() => {
+    writeText.mockClear()
+    clickNames.length = 0
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    URL.createObjectURL = vi.fn(() => 'blob:mock')
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clickNames.push(this.download)
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('renders the export panel instead of the server state machine', () => {
+    mountSheet({ mode: 'byo' })
+    const text = document.body.textContent ?? ''
+    expect(text).toContain('Bring your own AI')
+    expect(text).toContain('Copy to clipboard')
+    expect(text).toContain('Download file')
+    expect(text).toContain('Nothing leaves Lift until you paste it')
+    // Server affordances are absent.
+    expect(text).not.toContain('Generate review')
+    expect(document.body.querySelector('.coachExportActions')).not.toBeNull()
+  })
+
+  it('copies the recommended prompt + training data to the clipboard', async () => {
+    mountSheet({ mode: 'byo' })
+    const copyBtn = [...document.body.querySelectorAll<HTMLButtonElement>('.coachPrimaryBtn')].find(
+      (b) => /Copy to clipboard/.test(b.textContent ?? ''),
+    )
+    expect(copyBtn).not.toBeNull()
+    copyBtn!.click()
+    await flushPromises()
+    await nextTick()
+    expect(writeText).toHaveBeenCalledTimes(1)
+    const payloadText = writeText.mock.calls[0][0] as string
+    // Carries the coaching instructions AND the delimited data block.
+    expect(payloadText).toContain('strength-training coach')
+    expect(payloadText).toContain('<data>')
+    // Open loop: the prompt asks for prose, not the server's JSON schema.
+    expect(payloadText).toContain('no JSON')
+    expect(document.body.textContent).toContain('Copied to clipboard')
+  })
+
+  it('downloads the export as a dated markdown file', async () => {
+    mountSheet({ mode: 'byo' })
+    const dlBtn = [...document.body.querySelectorAll<HTMLButtonElement>('.coachSecondaryBtn')].find(
+      (b) => /Download file/.test(b.textContent ?? ''),
+    )
+    expect(dlBtn).not.toBeNull()
+    dlBtn!.click()
+    await nextTick()
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+    expect(clickNames[0]).toMatch(/^lift-weekly-review-\d{4}-\d{2}-\d{2}\.md$/)
+  })
+
+  it('exposes a bodyweight opt-out that starts included and toggles off', async () => {
+    mountSheet({ mode: 'byo' })
+    const toggle = document.body.querySelector<HTMLButtonElement>('.coachToggleRow .glassToggle')
+    expect(toggle).not.toBeNull()
+    expect(toggle!.getAttribute('aria-checked')).toBe('true')
+    toggle!.click()
+    await nextTick()
+    expect(toggle!.getAttribute('aria-checked')).toBe('false')
   })
 })

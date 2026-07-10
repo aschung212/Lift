@@ -779,6 +779,7 @@ import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
 const CoachSheet = defineAsyncComponent(() => import('../views/CoachSheet.vue'))
 import { coachReviewEligibility } from '../lib/coachDigest'
+import { COACH_MODE } from '../lib/coachExport'
 import { useCoach } from '../composables/useCoach'
 import { useAuth } from '../composables/useAuth'
 import { isPreviewMode } from '../lib/supabase'
@@ -801,13 +802,19 @@ const { user: authUser } = useAuth()
 // ── AI Coach weekly review (LIFT-848) ────────────────────────────
 const coachOpen = ref(false)
 // Gate the entry card like the Suggestions drawer gates its lenses: only when
-// there's enough signal (a couple training weeks + the server's set floor), the
-// user is signed in (the proxy is auth-gated), and not on a preview deploy.
+// there's enough signal (a couple training weeks + the server's set floor) and
+// not on a preview deploy. In the server transport the proxy is auth-gated so we
+// also require a signed-in user; the BYO export is 100% local (nothing is sent),
+// so it needs no account — requiring sign-in to copy your own data would be odd.
 const coachEligible = computed(() => coachReviewEligibility(store.exercises, new Date()).eligible)
 const showCoachCard = computed(
-  () => coachEligible.value && authUser.value !== null && !isPreviewMode.value,
+  () =>
+    coachEligible.value &&
+    !isPreviewMode.value &&
+    (COACH_MODE === 'byo' || authUser.value !== null),
 )
 const coachCardMeta = computed(() => {
+  if (COACH_MODE === 'byo') return 'Bring your own AI'
   const n = coach.remaining.value
   if (n === null) return 'AI-written · once a week'
   if (n <= 0) {
