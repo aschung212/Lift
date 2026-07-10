@@ -92,9 +92,61 @@ jobs:
 
       - run: npm run typecheck
 
-  build-and-test:
+  # Unit/component suite, sharded across a matrix for faster PR feedback.
+  # Each shard runs a disjoint slice of the ~120-file suite in parallel and
+  # writes a Vitest blob report (which carries this shard's coverage data).
+  # The blobs are merged back into a single coverage report in build-and-test,
+  # where the ratchet check and PR comments run against the full total.
+  #
+  # Coverage thresholds are intentionally disabled per shard (a single shard
+  # only exercises a subset of the code, so it can never meet the global
+  # floor). The thresholds are enforced once, on the merged total, by the
+  # `vitest --merge-reports --coverage` step in build-and-test.
+  test:
     runs-on: ubuntu-latest
     needs: [lint, typecheck]
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3]
+        shardTotal: [3]
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Restore node_modules
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Run tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        run: >-
+          npx vitest run --coverage --reporter=blob
+          --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+          --coverage.thresholds.lines=0
+          --coverage.thresholds.statements=0
+          --coverage.thresholds.functions=0
+          --coverage.thresholds.branches=0
+
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: .vitest-reports/*
+          include-hidden-files: true
+          retention-days: 1
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
     permissions:
       contents: read
       pull-requests: write
@@ -255,7 +307,19 @@ jobs:
         if: github.event_name == 'pull_request'
         run: if [ -f coverage/coverage-summary.json ]; then mv coverage/coverage-summary.json base-coverage-summary.json; fi
 
-      - run: npx vitest run --coverage
+      - name: Download shard blob reports
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: .vitest-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      # Merge the per-shard blobs into a single coverage report. This does NOT
+      # re-run the tests — it reconstructs the full coverage total from the
+      # blobs and regenerates coverage/coverage-summary.json (+ coverage-final),
+      # enforcing the global thresholds from vitest.config.js on the merged total.
+      - name: Merge coverage from shards
+        run: npx vitest run --merge-reports --coverage
 
       - name: Coverage ratchet check
         run: node scripts/check-coverage-ratchet.js
@@ -501,7 +565,7 @@ jobs:
   # shell). See GitHub docs: "Understanding the risk of script injections".
   notify-deploy:
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
@@ -519,7 +583,7 @@ jobs:
   # script-injection guard as `notify-deploy` above.
   notify-failure:
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
