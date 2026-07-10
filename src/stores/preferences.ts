@@ -5,6 +5,7 @@ import { logError } from '../lib/logger'
 import { backupToIDB } from '../lib/durableStorage'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -135,6 +136,9 @@ export const usePreferencesStore = defineStore('preferences', {
     /** Tappable intensity presets (% of max) in the log-set Intensity lens (#776). */
     intensityPresets: [...DEFAULT_INTENSITY_PRESETS] as number[],
     _userId: null as string | null,
+    // Uniform sync-status contract (LIFT-820): observable by the UI.
+    syncing: false,
+    lastSyncError: null as SyncErrorKind | null,
   }),
 
   actions: {
@@ -269,12 +273,19 @@ export const usePreferencesStore = defineStore('preferences', {
 
       // Then try Supabase (overrides local if exists)
       if (supabase) {
+        this.syncing = true
         try {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('user_preferences')
             .select('preferences')
             .eq('user_id', userId)
             .single()
+          // PGRST116 (no row yet) is not a sync failure — only a real error is.
+          if (error && error.code !== 'PGRST116') {
+            this.lastSyncError = classifySyncError(error)
+          } else {
+            this.lastSyncError = null
+          }
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
             this.features = { ...DEFAULTS, ...prefs.features as Record<string, boolean> }
@@ -312,7 +323,13 @@ export const usePreferencesStore = defineStore('preferences', {
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
           }
-        } catch { /* table may not exist yet or no row */ }
+        } catch (err) {
+          // Network-layer throw — local-first state stands; record it so the UI
+          // can surface a sync-failure indicator instead of degrading silently.
+          this.lastSyncError = classifySyncError(err)
+        } finally {
+          this.syncing = false
+        }
       }
     },
 

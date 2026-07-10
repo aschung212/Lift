@@ -104,12 +104,21 @@ async function initStores(userId: string): Promise<void> {
   // server before the app last closed (LIFT-706). Safe + idempotent; runs
   // before store fetches so recovered writes are in flight during sync.
   await syncQueue.rehydrate()
-  await Promise.all([
+  // allSettled (not all): each store's init already swallows its own fetch
+  // failures, but allSettled is defense-in-depth so a future regression that
+  // lets one store's init reject can never abort the others' hydration and
+  // leave the app half-initialized (LIFT-820).
+  const results = await Promise.allSettled([
     workoutStore.init(userId),
     bodyweightStore.init(userId),
     preferencesStore.init(userId),
     progressionStore.init(userId),
   ])
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      logError(r.reason, { source: 'useAuth', action: 'initStores' })
+    }
+  }
   syncSettingsWithComposables()
 }
 
