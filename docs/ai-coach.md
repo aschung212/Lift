@@ -1,6 +1,9 @@
 # AI Coach — Weekly Review (design)
 
 Status: **Phase 1 in progress** (backend scaffold landed; UI + consent + deletion wiring remain).
+The live transport today is the **bring-your-own-AI export** (open loop, no server) — see below —
+because the Anthropic key the server needs isn't provisioned yet. Flip `COACH_MODE` to `'server'`
+in `src/lib/coachExport.ts` once it is.
 
 An opt-in feature where a user taps once and gets an LLM-generated **Weekly Review** of
 their training — a fixed-shape digest rendered as themed cards. It is the smallest surface
@@ -28,6 +31,28 @@ Lift is a pure static SPA today — **zero server-side compute** before this fea
 trust boundary (key secrecy, quota, consent) depends on a backend that did not exist. So the
 **first deliverable is the backend** (`api/coach.ts` + the migration), and the client-side
 counter is cosmetic — the server is the only real cap.
+
+## Bring-your-own-AI export (interim transport + permanent free tier) — #931
+
+The whole coaching brain is pure and client-side (`buildCoachPayload`, `COACH_SYSTEM_PROMPT`,
+`buildCoachUserMessage`); the server only ever added the API key, the quota, and the network
+destination. So until the key is provisioned we deliver the value with **zero server**:
+
+- `src/lib/coachExport.ts` composes the recommended prompt + the `<data>` block into one
+  paste-ready text (`buildCoachExportText`). Because this is read in the user's own chat, the
+  prompt asks for **prose in the four sections**, not the server's `CoachReview` JSON.
+- `CoachSheet` (when `COACH_MODE === 'byo'`) renders an export panel: a bodyweight opt-out
+  (passes `[]` to `buildCoachPayload`), a "nothing leaves Lift until you paste it" disclosure,
+  and **Copy to clipboard** + **Download `.md`** actions. The server states stay intact behind
+  `mode === 'server'`.
+- **Open loop by decision:** no paste-back / JSON round-trip — the coaching lives in the chat.
+- No key, no quota, no consent-to-transmit surface (nothing is sent), so the entry card drops the
+  sign-in gate in this mode. This also stands as a permanent **free / privacy tier** after the
+  server exists: a user's data never leaves the device unless they paste it themselves.
+
+`COACH_MODE` (in `coachExport.ts`) is the single switch: `'byo'` today, `'server'` once
+`ANTHROPIC_API_KEY` et al. are provisioned. Consent (#849) and history (#851) remain their own
+follow-ups; the BYO disclosure is a lightweight stand-in, not the versioned consent modal.
 
 ## Locked decisions
 
@@ -195,6 +220,11 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   gated by `coachReviewEligibility` (≥`MIN_SETS_FOR_REVIEW` sets across ≥2 weeks) AND signed-in
   AND not a preview deploy; it doubles as the quota meter. The view wires `buildCoachPayload` to
   the stores (`getOverloadSuggestion` → `overloads`, `streakWeeks`/`weeklyTarget`, `toDisplayUnits`).
+
+- **Bring-your-own-AI export (#931)** — `src/lib/coachExport.ts` (`COACH_MODE`,
+  `RECOMMENDED_COACH_PROMPT`, `buildCoachExportText`, `coachExportFilename`) + the `CoachSheet`
+  export panel (copy / download / bodyweight opt-out) + tests. This is the live transport while
+  the server key is unprovisioned (`COACH_MODE = 'byo'`). See the section above.
 
 **Remaining Phase 1:**
 - Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers

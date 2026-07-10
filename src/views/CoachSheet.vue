@@ -12,15 +12,62 @@
         <header class="coachHeader">
           <div class="coachHeaderText">
             <h2 id="coachSheetTitle" class="coachTitle">Weekly Review</h2>
-            <p class="coachSub">{{ quotaLabel }}</p>
+            <p class="coachSub">{{ mode === 'byo' ? 'Bring your own AI' : quotaLabel }}</p>
           </div>
           <button class="coachClose" @click="close" aria-label="Close weekly review">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </header>
 
+        <!-- Bring-your-own-AI export (open loop): build a paste-ready prompt +
+             training data; the coaching lives in the user's own chat (#931). -->
+        <div v-if="mode === 'byo'" class="coachBody">
+          <p class="coachIntro">
+            Build a summary of your recent training, then paste it into your own AI
+            chat — Claude, ChatGPT, or any other — for a written weekly review.
+          </p>
+
+          <div class="coachToggleRow">
+            <div class="coachToggleLabel">
+              <span class="coachToggleTitle">Include bodyweight</span>
+              <span class="coachToggleHint">Your logged bodyweight is the most personal field.</span>
+            </div>
+            <button
+              :class="['glassToggle', { on: includeBodyweight }]"
+              role="switch"
+              :aria-checked="includeBodyweight"
+              :aria-label="includeBodyweight ? 'Exclude bodyweight from the export' : 'Include bodyweight in the export'"
+              @click="includeBodyweight = !includeBodyweight"
+            >
+              <span class="glassToggleThumb"></span>
+            </button>
+          </div>
+
+          <p class="coachPrivacyNote">
+            Nothing leaves Lift until you paste it — this only copies your training
+            data to your clipboard or saves it to a file.
+          </p>
+
+          <div class="coachExportActions">
+            <button class="coachPrimaryBtn" :disabled="!canGenerate" @click="copyExport">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              {{ copyLabel }}
+            </button>
+            <button class="coachSecondaryBtn" :disabled="!canGenerate" @click="downloadExport">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+              Download file
+            </button>
+          </div>
+          <p v-if="!canGenerate" class="coachHint">{{ disabledReason }}</p>
+
+          <details class="coachPromptPreview">
+            <summary class="coachPromptSummary">Preview what gets shared</summary>
+            <pre class="coachPromptText">{{ exportText }}</pre>
+          </details>
+        </div>
+
         <!-- pick / idle -->
-        <div v-if="coach.state.value === 'idle'" class="coachBody">
+        <div v-else-if="coach.state.value === 'idle'" class="coachBody">
           <p class="coachIntro">
             A quick, AI-written read of your recent training — what's progressing, where your
             volume sits, how consistent you've been, and the single thing to focus on next.
@@ -93,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import SkeletonLoader from '../components/SkeletonLoader.vue'
 import { useModal } from '../composables/useModal'
 import { useCoach } from '../composables/useCoach'
@@ -104,8 +151,15 @@ import { useProgressionStore } from '../stores/progression'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { buildCoachPayload, type ExerciseOverload } from '../lib/coachDigest'
 import type { CoachSectionType } from '../lib/aiCoach'
+import { COACH_MODE, buildCoachExportText, coachExportFilename } from '../lib/coachExport'
 import { todayISO } from '../lib/dates'
 import { isPreviewMode } from '../lib/supabase'
+
+const props = withDefaults(
+  defineProps<{ mode?: 'byo' | 'server' }>(),
+  { mode: COACH_MODE },
+)
+const mode = computed(() => props.mode)
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -174,20 +228,70 @@ const errorMessage = computed(() => {
   return (kind && ERROR_MESSAGES[kind]) || ERROR_MESSAGES.unknown
 })
 
-function buildPayload() {
+function buildPayload(includeBodyweightEntries = true) {
   const overloads: ExerciseOverload[] = store.exercises.map((ex) => ({
     exerciseName: ex.name,
     suggestion: store.getOverloadSuggestion(ex.id, todayISO()),
   }))
   return buildCoachPayload({
     exercises: store.exercises,
-    bodyweightEntries: bodyweightStore.entries,
+    bodyweightEntries: includeBodyweightEntries ? bodyweightStore.entries : [],
     overloads,
     weightUnit: weightUnit.value,
     weeklyTarget: progressionStore.weeklyTarget,
     streakWeeks: progressionStore.streakWeeks,
     toDisplayUnits: (lb) => displayWeight(lb),
   })
+}
+
+// ── Bring-your-own-AI export (#931) ──────────────────────────────
+const includeBodyweight = ref(true)
+const exportText = computed(() => buildCoachExportText(buildPayload(includeBodyweight.value)))
+
+const copyState = ref<'idle' | 'copied' | 'error'>('idle')
+const copyLabel = computed(() =>
+  copyState.value === 'copied'
+    ? 'Copied to clipboard'
+    : copyState.value === 'error'
+      ? 'Copy failed — try again'
+      : 'Copy to clipboard',
+)
+let copyResetTimer: ReturnType<typeof setTimeout> | undefined
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    /* clipboard blocked or unavailable — fall through */
+  }
+  return false
+}
+
+async function copyExport() {
+  if (!canGenerate.value) return
+  const ok = await copyToClipboard(exportText.value)
+  copyState.value = ok ? 'copied' : 'error'
+  // Analytics carry only booleans/counts — never the training data itself.
+  logEvent('coach_export_copied', { ok, bodyweight: includeBodyweight.value })
+  clearTimeout(copyResetTimer)
+  copyResetTimer = setTimeout(() => { copyState.value = 'idle' }, 2500)
+}
+
+function downloadExport() {
+  if (!canGenerate.value) return
+  const blob = new Blob([exportText.value], { type: 'text/markdown' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = coachExportFilename(todayISO())
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  logEvent('coach_export_downloaded', { bodyweight: includeBodyweight.value })
 }
 
 async function generate() {
@@ -213,6 +317,7 @@ onMounted(() => {
   logEvent('coach_opened', {})
 })
 onUnmounted(() => {
+  clearTimeout(copyResetTimer)
   deactivateModal()
 })
 </script>
@@ -319,6 +424,89 @@ onUnmounted(() => {
   font-size: var(--font-footnote);
   color: var(--text-muted);
   text-align: center;
+}
+
+/* ── Bring-your-own-AI export (#931) ── */
+.coachToggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.coachToggleLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.coachToggleTitle {
+  font-family: var(--ff);
+  font-weight: 600;
+  font-size: var(--font-callout);
+  color: var(--text-primary);
+}
+
+.coachToggleHint {
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+}
+
+.coachPrivacyNote {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.coachExportActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.coachPromptPreview {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.coachPromptSummary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-family: var(--ff);
+  font-weight: 600;
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.coachPromptSummary::-webkit-details-marker {
+  display: none;
+}
+
+.coachPromptText {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-family: var(--ff-mono, ui-monospace, monospace);
+  font-size: var(--font-caption2, 11px);
+  line-height: 1.4;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .coachStatus {
