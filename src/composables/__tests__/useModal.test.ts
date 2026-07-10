@@ -194,6 +194,155 @@ describe('useModal', () => {
   })
 })
 
+// Focus-trap lifecycle (LIFT-894): useModal is the composable that wraps
+// useFocusTrap with the watch → nextTick → activate/deactivate lifecycle every
+// v-if modal needs. The specs above prove activation happens; these pin the
+// *ordering* and *teardown* contracts a screen-reader/keyboard user depends on:
+// callbacks must observe the post-activation/post-deactivation focus state, the
+// keydown trap must be torn down on close, and the selector target must be
+// re-resolved on every open (element-getter freshness), not cached from the
+// first open.
+describe('useModal — focus-trap lifecycle', () => {
+  let modalEl: HTMLElement | null = null
+
+  afterEach(() => {
+    modalEl?.remove()
+    modalEl = null
+    // A leaked lock would silently corrupt the scroll-lock describe below.
+    expect(isLocked()).toBe(false)
+  })
+
+  it('runs onOpen AFTER the focus trap has activated', async () => {
+    modalEl = createModal('order-open')
+    let focusedWhenCalled: Element | null = null
+    const { open, close } = useModal({
+      selector: '[aria-labelledby="order-open"]',
+      // If onOpen fired before activate(), focus would still be on <body>.
+      onOpen: () => {
+        focusedWhenCalled = document.activeElement
+      },
+    })
+
+    open()
+    await nextTick()
+    await nextTick()
+
+    expect(focusedWhenCalled).toBe(modalEl.querySelector('button'))
+
+    close()
+    await nextTick()
+  })
+
+  it('runs onClose AFTER the trap deactivates and focus is restored', async () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Trigger'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    modalEl = createModal('order-close')
+    let focusedWhenCalled: Element | null = null
+    const { open, close } = useModal({
+      selector: '[aria-labelledby="order-close"]',
+      // deactivate() restores focus to the trigger; onClose must see that.
+      onClose: () => {
+        focusedWhenCalled = document.activeElement
+      },
+    })
+
+    open()
+    await nextTick()
+    await nextTick()
+
+    close()
+    await nextTick()
+
+    expect(focusedWhenCalled).toBe(trigger)
+    trigger.remove()
+  })
+
+  it('tears down the keydown trap on close (Tab no longer intercepted)', async () => {
+    modalEl = createModal('teardown')
+    const { open, close } = useModal({
+      selector: '[aria-labelledby="teardown"]',
+    })
+
+    open()
+    await nextTick()
+    await nextTick()
+
+    // While open, a Tab at the last element wraps to the first (trap active).
+    const buttons = modalEl.querySelectorAll<HTMLElement>('button')
+    const last = buttons[buttons.length - 1]
+    last.focus()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+    expect(document.activeElement).toBe(buttons[0])
+
+    close()
+    await nextTick()
+
+    // After close the listener is gone: Tab must NOT be preventDefaulted.
+    last.focus()
+    const freeTab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+    const pd = vi.spyOn(freeTab, 'preventDefault')
+    document.dispatchEvent(freeTab)
+    expect(pd).not.toHaveBeenCalled()
+  })
+
+  it('re-resolves the selector on every open (element-getter freshness)', async () => {
+    const { open, close } = useModal({
+      selector: '[aria-labelledby="fresh"]',
+    })
+
+    // First open against one DOM node.
+    modalEl = createModal('fresh')
+    open()
+    await nextTick()
+    await nextTick()
+    expect(document.activeElement).toBe(modalEl.querySelector('button'))
+    close()
+    await nextTick()
+
+    // The node is replaced (v-if re-render) — a cached element would trap the
+    // stale node; useModal must re-query and trap the NEW one.
+    modalEl.remove()
+    modalEl = createModal('fresh')
+    const freshButton = modalEl.querySelector('button')
+    open()
+    await nextTick()
+    await nextTick()
+    expect(document.activeElement).toBe(freshButton)
+
+    close()
+    await nextTick()
+  })
+
+  it('re-activates the trap when re-opened after a close', async () => {
+    modalEl = createModal('reopen')
+    const { open, close } = useModal({
+      selector: '[aria-labelledby="reopen"]',
+    })
+
+    open()
+    await nextTick()
+    await nextTick()
+    expect(document.activeElement).toBe(modalEl.querySelector('button'))
+
+    close()
+    await nextTick()
+
+    // Move focus elsewhere so re-activation is observable.
+    document.body.focus()
+
+    open()
+    await nextTick()
+    await nextTick()
+    expect(document.activeElement).toBe(modalEl.querySelector('button'))
+
+    close()
+    await nextTick()
+  })
+})
+
 // Regression: the Log Weight modal (and CalendarView's modals) used useModal
 // but never locked background scroll, unlike every other modal. On iOS that
 // leaves `.tabContent` scrollable, so opening the keyboard shifts the visual
