@@ -730,7 +730,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { buildSessionSummary } from '../lib/sessionSummary'
-import { todayISO, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
+import { todayISO, localDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode, UsualLadder, UsualLadderRung } from '../stores/workout'
@@ -752,7 +752,8 @@ import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated
 import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
-import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
+import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
+import { scoreSet } from '../lib/setScoring'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
@@ -791,50 +792,20 @@ import { usePreferencesStore } from '../stores/preferences'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
 
-// Filter sets to those on/after the user-set PR baseline.
-// When no baseline is set, returns sets unchanged (legacy all-time behavior).
-function filterSetsSinceBaseline<T extends { date: string }>(sets: T[]): T[] {
-  const baseline = prBaselineDate.value
-  if (!baseline) return sets
-  return sets.filter(s => setDayKey(s.date) >= baseline)
-}
-
 function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
   const exercise = store.exercises.find(e => e.id === exerciseId)
   if (!exercise) return
 
-  // Best 1RM from existing sets (before this set was added, it's already in the array)
+  // Score against existing sets (the just-logged set is already in the array).
   const otherSets = exercise.sets.filter(s => s.id !== setId)
-  // Apply user-set PR baseline (falls back to rolling window when unset).
-  const rawBest1RM = calculateBest1RM(otherSets, { sinceDate: prBaselineDate.value })
-
-  // Suppress PR detection for immature exercises (all sets from same day)
-  const isEstablished = isExerciseEstablished(otherSets, date.value || todayISO())
-  const best1RM = isEstablished ? rawBest1RM : null
-
-  // Rep PR only awards bonus when NOT already in PR/Tied PR zone.
-  // When a baseline is set, rep PRs are also evaluated against sets since that date.
-  const repPRPriorSets = filterSetsSinceBaseline(otherSets)
-  const isPRZone = best1RM !== null && estimated1RM >= best1RM
-  const isRepPR = isEstablished && !isPRZone && checkRepPR(weight, reps, repPRPriorSets)
-
-  const setIndex = exercise.sets.length - 1
-  const baseXP = calculateSetXP({
-    setEstimated1RM: estimated1RM,
-    exerciseBest1RM: best1RM,
-    setIndex: best1RM === null ? setIndex : 0,
-    isRepPR,
+  const { best1RM, isPR, isTie, isRepPR, zone, baseXP } = scoreSet({
+    priorSets: otherSets,
+    estimated1RM,
+    weightLbs: weight,
+    reps,
+    dateKey: date.value || todayISO(),
+    baseline: prBaselineDate.value,
   })
-
-  // Determine zone for storage, instrumentation, and display
-  let zone: 'warmup' | 'working' | 'pr' | 'tie' | 'new_exercise'
-  const isPR = best1RM !== null && estimated1RM > best1RM
-  const isTie = best1RM !== null && estimated1RM === best1RM
-  if (best1RM === null) zone = 'new_exercise'
-  else if (isPR) zone = 'pr'
-  else if (isTie) zone = 'tie'
-  else if (estimated1RM / best1RM < XP_CONFIG.warmupThreshold) zone = 'warmup'
-  else zone = 'working'
 
   const mult = progressionStore.currentMultiplier
   let xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
@@ -1822,7 +1793,7 @@ const dateDisplay = computed(() => {
   if (date.value === today) return 'Today'
   const prev = new Date()
   prev.setDate(prev.getDate() - 1)
-  const yest = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`
+  const yest = localDateKey(prev)
   if (date.value === yest) return 'Yesterday'
   return new Date(date.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 })
@@ -2093,38 +2064,31 @@ function _computeXPPreview(): XPPreviewResult | null {
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return null
 
-  const rawBest1RM = calculateBest1RM(exercise.sets, { sinceDate: prBaselineDate.value })
   const estimated1RM = liveEstimateLbs.value
   const w = toLbs(weight.value!)
   const r = reps.value!
 
-  const isEstablished = isExerciseEstablished(exercise.sets, date.value || todayISO())
-  const best1RM = isEstablished ? rawBest1RM : null
-
-  const repPRPriorSets = filterSetsSinceBaseline(exercise.sets)
-  const isPRZone = best1RM !== null && estimated1RM >= best1RM
-  const hasSetAtWeight = repPRPriorSets.some(s => s.weight === w)
-  const isRepPR = isEstablished && !isPRZone && checkRepPR(w, r, repPRPriorSets)
-  const isNewWeight = !isPRZone && !isRepPR && !hasSetAtWeight && best1RM !== null
-
-  const setIndex = exercise.sets.length
-  const baseXP = calculateSetXP({
-    setEstimated1RM: estimated1RM,
-    exerciseBest1RM: best1RM,
-    setIndex: best1RM === null ? setIndex : 0,
-    isRepPR,
+  const { best1RM, isRepPR, isNewWeight, ratio, baseXP } = scoreSet({
+    priorSets: exercise.sets,
+    estimated1RM,
+    weightLbs: w,
+    reps: r,
+    dateKey: date.value || todayISO(),
+    baseline: prBaselineDate.value,
   })
   const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
 
   let zone: string
-  if (best1RM === null) {
+  if (best1RM === null || ratio === null) {
     zone = 'New Exercise'
+  } else if (ratio > 1.0) {
+    zone = `PR! (${XP_CONFIG.prMultiplier}x)`
+  } else if (ratio === 1.0) {
+    zone = `Tied PR (${XP_CONFIG.tieMultiplier}x)`
+  } else if (ratio < XP_CONFIG.warmupThreshold) {
+    zone = 'Warmup'
   } else {
-    const ratio = estimated1RM / best1RM
-    if (ratio > 1.0) zone = `PR! (${XP_CONFIG.prMultiplier}x)`
-    else if (ratio === 1.0) zone = `Tied PR (${XP_CONFIG.tieMultiplier}x)`
-    else if (ratio < XP_CONFIG.warmupThreshold) zone = 'Warmup'
-    else zone = `${Math.round(ratio * 100)}% of best`
+    zone = `${Math.round(ratio * 100)}% of best`
   }
 
   return {
@@ -2254,26 +2218,15 @@ function saveSet() {
       const set = ex?.sets.find(s => s.id === editSetId)
       if (ex && set) {
         const otherSets = ex.sets.filter(s => s.id !== editSetId)
-        const rawBest = calculateBest1RM(otherSets, { sinceDate: prBaselineDate.value })
-        const editEstablished = isExerciseEstablished(otherSets, set.date)
-        const best = editEstablished ? rawBest : null
-        const newXP = calculateSetXP({
-          setEstimated1RM: set.estimated1RM,
-          exerciseBest1RM: best,
-          setIndex: best === null ? ex.sets.indexOf(set) : 0,
+        const { isPR: editIsPR, isRepPR: editIsRepPR, zone: editZone, baseXP } = scoreSet({
+          priorSets: otherSets,
+          estimated1RM: set.estimated1RM,
+          weightLbs: set.weight,
+          reps: set.reps,
+          dateKey: set.date,
+          baseline: prBaselineDate.value,
         })
-        const xp = applyStreakMultiplier(newXP, progressionStore.streakHistory, set.date)
-        const editIsPR = best !== null && set.estimated1RM > best
-        const editIsTie = best !== null && set.estimated1RM === best
-        const editIsPRZone = editIsPR || editIsTie
-        const editRepPRPriorSets = filterSetsSinceBaseline(otherSets)
-        const editIsRepPR = editEstablished && !editIsPRZone && checkRepPR(set.weight, set.reps, editRepPRPriorSets)
-        let editZone: string
-        if (best === null) editZone = 'new_exercise'
-        else if (editIsPR) editZone = 'pr'
-        else if (editIsTie) editZone = 'tie'
-        else if (set.estimated1RM / best < XP_CONFIG.warmupThreshold) editZone = 'warmup'
-        else editZone = 'working'
+        const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, set.date)
         progressionStore.recalcSetXP(editSetId, xp, { theme: currentTheme.value, epoch: progressionStore.epoch, zone: editZone, isPR: editIsPR, isRepPR: editIsRepPR })
       }
     }
@@ -2339,6 +2292,11 @@ function saveSet() {
         // Full-bleed PR celebration (respects the PR baseline via oldE1RM,
         // and the prCelebrations opt-out inside presentPRBurst).
         const newE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
+        // Build the session summary here (WorkoutTracker owns store access) and
+        // hand it to the burst so the presentational PRBurst component can drive
+        // its "Share this PR" flow without reaching into stores (LIFT-916). The
+        // set is already persisted and its XP logged above, so this reflects it.
+        const prRawDate = date.value || todayISO()
         presentPRBurst({
           exerciseName: selectedExerciseName.value,
           oldE1RM,
@@ -2346,7 +2304,14 @@ function saveSet() {
           setWeight: effWeightLbs,
           setReps: effReps,
           isFirstPR: prCountBefore === 0,
-          rawDate: date.value || todayISO(),
+          shareSummary: buildSessionSummary({
+            rawDate: prRawDate,
+            exercises: store.exercises,
+            xpPerSet: progressionStore.xpPerSet,
+            streakWeeks: progressionStore.streakWeeks,
+            toDisplayUnits: displayWeight,
+            unitLabel: weightUnit.value,
+          }),
         })
         if (prCountBefore === 0) {
           logEvent('first_pr', { exercise: selectedExerciseName.value })

@@ -5,6 +5,7 @@ import { injectSpeedInsights } from '@vercel/speed-insights'
 import { initNativePlugins } from './lib/native'
 import { initTheme } from './composables/useTheme'
 import { setSentryCaptureException, logError } from './lib/logger'
+import { createCspReporter, violationSummary } from './lib/cspReporting'
 import { isNative } from './lib/platform'
 import App from './App.vue'
 import './index.css'
@@ -69,6 +70,20 @@ if (sentryDsn && import.meta.env.PROD) {
     })
     setSentryCaptureException((err, ctx) => Sentry.captureException(err, { extra: ctx }))
   })
+}
+
+// ── CSP violation reporting (LIFT-810) ────────────────────────
+// Forward Content-Security-Policy violations to Sentry so a blocked resource —
+// whether a real injection attempt or a self-inflicted policy misconfiguration
+// — surfaces in telemetry instead of failing silently. Web-only: the native
+// Capacitor build serves no Vercel CSP header, so no violations can fire there.
+if (!isNative) {
+  const cspReporter = createCspReporter((report) => {
+    const violation = new Error(violationSummary(report))
+    violation.name = 'CspViolation'
+    logError(violation, { cspViolation: report })
+  })
+  cspReporter.start()
 }
 
 app.config.errorHandler = (err, _instance, info) => {

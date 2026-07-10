@@ -14,12 +14,32 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
+  # Fast pre-flight: statically validate the workflow YAML itself before any
+  # heavy job runs. actionlint catches invalid `needs`/`if` expressions, bad
+  # `${{ }}` contexts, unknown action inputs, malformed cron/globs, and (via
+  # shellcheck) real bugs in `run:` shell — the class of "typo merged to master
+  # breaks all of CI" mistakes that hand-rolled workflow shell is prone to.
+  # No `needs:` so it runs immediately in parallel; it finishes in seconds.
+  workflow-lint:
+    name: Lint workflow YAML (actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run actionlint
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          version: 1.7.12
+          fail-on-error: true
+
   dependency-review:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Dependency Review
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
@@ -35,6 +55,8 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -43,7 +65,7 @@ jobs:
 
       - name: Cache node_modules
         id: cache-nm
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -60,6 +82,8 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -67,7 +91,7 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -82,6 +106,8 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -89,23 +115,34 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - run: npm run typecheck
 
-  build-and-test:
+  # Unit/component suite, sharded across a matrix for faster PR feedback.
+  # Each shard runs a disjoint slice of the ~120-file suite in parallel and
+  # writes a Vitest blob report (which carries this shard's coverage data).
+  # The blobs are merged back into a single coverage report in build-and-test,
+  # where the ratchet check and PR comments run against the full total.
+  #
+  # Coverage thresholds are intentionally disabled per shard (a single shard
+  # only exercises a subset of the code, so it can never meet the global
+  # floor). The thresholds are enforced once, on the merged total, by the
+  # `vitest --merge-reports --coverage` step in build-and-test.
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [lint, typecheck]
-    permissions:
-      contents: read
-      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3]
+        shardTotal: [3]
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -115,7 +152,50 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Run tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        run: >-
+          npx vitest run --coverage --reporter=blob
+          --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+          --coverage.thresholds.lines=0
+          --coverage.thresholds.statements=0
+          --coverage.thresholds.functions=0
+          --coverage.thresholds.branches=0
+
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: .vitest-reports/*
+          include-hidden-files: true
+          retention-days: 1
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Restore node_modules
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -132,7 +212,7 @@ jobs:
       - name: Restore base bundle sizes (PR)
         if: github.event_name == 'pull_request'
         id: base-bundle
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: bundle-sizes.json
           key: bundle-sizes-master-${{ github.event.pull_request.base.sha }}
@@ -166,7 +246,7 @@ jobs:
 
       - name: Save bundle sizes (master)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: bundle-sizes.json
           key: bundle-sizes-master-${{ github.sha }}
@@ -250,7 +330,7 @@ jobs:
       - name: Restore base coverage summary (PR)
         if: github.event_name == 'pull_request'
         id: base-coverage
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: coverage/coverage-summary.json
           key: coverage-summary-master-${{ github.event.pull_request.base.sha }}
@@ -260,17 +340,39 @@ jobs:
         if: github.event_name == 'pull_request'
         run: if [ -f coverage/coverage-summary.json ]; then mv coverage/coverage-summary.json base-coverage-summary.json; fi
 
-      - run: npx vitest run --coverage
+      - name: Download shard blob reports
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: .vitest-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      # Merge the per-shard blobs into a single coverage report. This does NOT
+      # re-run the tests — it reconstructs the full coverage total from the
+      # blobs and regenerates coverage/coverage-summary.json (+ coverage-final),
+      # enforcing the global thresholds from vitest.config.js on the merged total.
+      - name: Merge coverage from shards
+        run: npx vitest run --merge-reports --coverage
 
       - name: Coverage ratchet check
         run: node scripts/check-coverage-ratchet.js
 
       - name: Save coverage summary (master)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: coverage/coverage-summary.json
           key: coverage-summary-master-${{ github.sha }}
+
+      # Hand the freshly-computed summary to ratchet-baseline as a same-run
+      # artifact so it never has to re-run the full suite just to regenerate it.
+      - name: Upload coverage summary artifact (master)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-summary
+          path: coverage/coverage-summary.json
+          retention-days: 1
 
       - name: Post coverage delta comment
         if: always() && github.event_name == 'pull_request' && hashFiles('coverage/coverage-summary.json') != ''
@@ -373,16 +475,16 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
-          cache: npm
 
-      - name: Restore node_modules
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+      # Reuse the coverage-summary.json that build-and-test already produced
+      # instead of re-running the full suite. The ratchet script reads only
+      # coverage/coverage-summary.json and Node builtins — no node_modules
+      # or test run is needed on this job (LIFT-868).
+      - name: Download coverage summary artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          path: node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Run tests with coverage
-        run: npx vitest run --coverage
+          name: coverage-summary
+          path: coverage
 
       - name: Ratchet baseline
         run: node scripts/check-coverage-ratchet.js --update
@@ -423,6 +525,8 @@ jobs:
       VITE_E2E: 'true'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -430,14 +534,14 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -473,6 +577,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2
         with:
@@ -500,7 +606,7 @@ jobs:
   notify-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
@@ -519,7 +625,7 @@ jobs:
   notify-failure:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
