@@ -27,6 +27,28 @@
             chat — Claude, ChatGPT, or any other — for a written weekly review.
           </p>
 
+          <div class="coachModeRow" role="group" aria-label="Review depth">
+            <button
+              v-for="opt in REVIEW_MODES"
+              :key="opt.value"
+              type="button"
+              :class="['coachModeSeg', { on: reviewMode === opt.value }]"
+              :aria-pressed="reviewMode === opt.value"
+              @click="setReviewMode(opt.value)"
+            >
+              <span class="coachModeSegTitle">{{ opt.label }}</span>
+              <span class="coachModeSegHint">{{ opt.hint }}</span>
+            </button>
+          </div>
+
+          <button class="coachProfileRow" @click="profileOpen = true">
+            <span class="coachProfileRowText">
+              <span class="coachProfileRowTitle">Your profile</span>
+              <span class="coachProfileRowMeta">{{ profileMetaLabel }}</span>
+            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+
           <div class="coachToggleRow">
             <div class="coachToggleLabel">
               <span class="coachToggleTitle">Include bodyweight</span>
@@ -45,7 +67,7 @@
 
           <p class="coachPrivacyNote">
             Nothing leaves Lift until you paste it — this only copies your training
-            data to your clipboard or saves it to a file.
+            data and profile to your clipboard or saves it to a file.
           </p>
 
           <div class="coachExportActions">
@@ -137,10 +159,12 @@
       </div>
     </div>
   </Teleport>
+
+  <CoachProfileSheet v-if="profileOpen" @close="profileOpen = false" />
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import SkeletonLoader from '../components/SkeletonLoader.vue'
 import { useModal } from '../composables/useModal'
 import { useCoach } from '../composables/useCoach'
@@ -148,12 +172,16 @@ import { useAnalytics } from '../composables/useAnalytics'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
+import { usePreferencesStore } from '../stores/preferences'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { buildCoachPayload, type ExerciseOverload } from '../lib/coachDigest'
 import type { CoachSectionType } from '../lib/aiCoach'
 import { COACH_MODE, buildCoachExportText, coachExportFilename } from '../lib/coachExport'
+import { buildAthleteBlock, profileCompleteness, type ReviewMode } from '../lib/coachProfile'
 import { todayISO } from '../lib/dates'
 import { isPreviewMode } from '../lib/supabase'
+
+const CoachProfileSheet = defineAsyncComponent(() => import('./CoachProfileSheet.vue'))
 
 const props = withDefaults(
   defineProps<{ mode?: 'byo' | 'server' }>(),
@@ -176,6 +204,7 @@ const { logEvent } = useAnalytics()
 const store = useWorkoutStore()
 const bodyweightStore = useBodyweightStore()
 const progressionStore = useProgressionStore()
+const prefs = usePreferencesStore()
 const { weightUnit, displayWeight } = useWeightUnit()
 
 const canGenerate = computed(() => !isPreviewMode.value)
@@ -246,7 +275,30 @@ function buildPayload(includeBodyweightEntries = true) {
 
 // ── Bring-your-own-AI export (#931) ──────────────────────────────
 const includeBodyweight = ref(true)
-const exportText = computed(() => buildCoachExportText(buildPayload(includeBodyweight.value)))
+
+// Athlete profile (individualization) + review depth, both from the synced store.
+const profileMeter = computed(() => profileCompleteness(prefs.coachProfile))
+const reviewMode = computed<ReviewMode>(() => prefs.coachProfile.reviewMode)
+const profileOpen = ref(false)
+function setReviewMode(m: ReviewMode) {
+  if (prefs.coachProfile.reviewMode !== m) prefs.setCoachProfile({ reviewMode: m })
+}
+const REVIEW_MODES: { value: ReviewMode; label: string; hint: string }[] = [
+  { value: 'deep_audit', label: 'Deep audit', hint: 'Full programming analysis' },
+  { value: 'quick_checkin', label: 'Quick check-in', hint: 'Short & skimmable' },
+]
+const profileMetaLabel = computed(() =>
+  profileMeter.value.filled
+    ? `${profileMeter.value.filled}/${profileMeter.value.total} added · personalizes every review`
+    : 'Add your profile to personalize the review',
+)
+
+const exportText = computed(() =>
+  buildCoachExportText(
+    buildPayload(includeBodyweight.value),
+    buildAthleteBlock(prefs.coachProfile),
+  ),
+)
 
 const copyState = ref<'idle' | 'copied' | 'error'>('idle')
 const copyLabel = computed(() =>
@@ -275,7 +327,12 @@ async function copyExport() {
   const ok = await copyToClipboard(exportText.value)
   copyState.value = ok ? 'copied' : 'error'
   // Analytics carry only booleans/counts — never the training data itself.
-  logEvent('coach_export_copied', { ok, bodyweight: includeBodyweight.value })
+  logEvent('coach_export_copied', {
+    ok,
+    bodyweight: includeBodyweight.value,
+    mode: reviewMode.value,
+    profile: profileMeter.value.filled,
+  })
   clearTimeout(copyResetTimer)
   copyResetTimer = setTimeout(() => { copyState.value = 'idle' }, 2500)
 }
@@ -291,7 +348,11 @@ function downloadExport() {
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
-  logEvent('coach_export_downloaded', { bodyweight: includeBodyweight.value })
+  logEvent('coach_export_downloaded', {
+    bodyweight: includeBodyweight.value,
+    mode: reviewMode.value,
+    profile: profileMeter.value.filled,
+  })
 }
 
 async function generate() {
@@ -427,6 +488,86 @@ onUnmounted(() => {
 }
 
 /* ── Bring-your-own-AI export (#931) ── */
+.coachModeRow {
+  display: flex;
+  gap: 8px;
+}
+
+.coachModeSeg {
+  flex: 1 1 0;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.coachModeSeg.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+}
+
+.coachModeSegTitle {
+  font-family: var(--ff);
+  font-weight: 700;
+  font-size: var(--font-footnote);
+}
+
+.coachModeSegHint {
+  font-family: var(--ff);
+  font-size: var(--font-caption2, 11px);
+  opacity: 0.85;
+}
+
+.coachProfileRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.coachProfileRow:active {
+  background: var(--bg-secondary, var(--bg-elevated));
+}
+
+.coachProfileRowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.coachProfileRowTitle {
+  font-family: var(--ff);
+  font-weight: 600;
+  font-size: var(--font-callout);
+  color: var(--text-primary);
+}
+
+.coachProfileRowMeta {
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+}
+
 .coachToggleRow {
   display: flex;
   align-items: center;

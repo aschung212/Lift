@@ -38,17 +38,43 @@ The whole coaching brain is pure and client-side (`buildCoachPayload`, `COACH_SY
 `buildCoachUserMessage`); the server only ever added the API key, the quota, and the network
 destination. So until the key is provisioned we deliver the value with **zero server**:
 
-- `src/lib/coachExport.ts` composes the recommended prompt + the `<data>` block into one
-  paste-ready text (`buildCoachExportText`). Because this is read in the user's own chat, the
-  prompt asks for **prose in the four sections**, not the server's `CoachReview` JSON.
-- `CoachSheet` (when `COACH_MODE === 'byo'`) renders an export panel: a bodyweight opt-out
-  (passes `[]` to `buildCoachPayload`), a "nothing leaves Lift until you paste it" disclosure,
-  and **Copy to clipboard** + **Download `.md`** actions. The server states stay intact behind
-  `mode === 'server'`.
+- `src/lib/coachExport.ts` composes the recommended prompt + the optional `<athlete>` block +
+  the `<data>` block into one paste-ready text (`buildCoachExportText`). The prompt is an
+  **analyst** prompt (analyze → synthesize → prescribe), not a summarizer: it asks the model to
+  derive per-exercise progression, ramp/frequency/recovery patterns, and e1RM reliability, then
+  name the single highest-leverage change and prescribe concretely — individualized to `<athlete>`
+  and adapting to bodybuilding / powerlifting / general fitness. It bakes in the known pitfalls
+  (e1RM inflation on high-rep sets; machine lifts aren't standard-comparable), keeps the DATA-ONLY
+  prompt-injection guard, and — because it's read in the user's chat, not parsed by the app — asks
+  for **prose of data-driven depth**, not the server's `CoachReview` JSON or a fixed length. It
+  references a `derived` analytics block "if present" (forward-compat for the Phase-B pre-computed
+  stats).
+- **Athlete profile (`src/lib/coachProfile.ts`) — the biggest quality lever.** A versioned,
+  sanitized `CoachProfile` (sex/age/height/experience/goal/priorities/effort-style/schedule/
+  injuries/equipment/competition/reviewMode) collected once and **synced in the preferences blob**
+  (no DB migration — the `intensityPresets` precedent). `buildAthleteBlock` serializes it into the
+  `<athlete>` block, **omitting empty fields** so a sparse profile stays clean and the prompt's
+  "state your assumption and proceed, then list what would sharpen it" path engages. Edited in
+  `CoachProfileSheet.vue` (reached from the export panel), which shows an "N/total added" meter.
+- **Tiered depth.** `reviewMode` (`quick_checkin` | `deep_audit`, default deep_audit) rides in the
+  `<athlete>` block and is chosen per export via a segmented control; one prompt serves both.
+- `CoachSheet` (when `COACH_MODE === 'byo'`) renders the export panel: review-depth control,
+  profile entry point, a bodyweight opt-out (passes `[]` to `buildCoachPayload`), a
+  "nothing leaves Lift until you paste it" disclosure, and **Copy to clipboard** + **Download
+  `.md`** actions. The server states stay intact behind `mode === 'server'`.
 - **Open loop by decision:** no paste-back / JSON round-trip — the coaching lives in the chat.
 - No key, no quota, no consent-to-transmit surface (nothing is sent), so the entry card drops the
   sign-in gate in this mode. This also stands as a permanent **free / privacy tier** after the
   server exists: a user's data never leaves the device unless they paste it themselves.
+- **Privacy:** the profile adds sensitive fields (age, injuries). In BYO nothing is auto-sent — the
+  disclosure states the profile is included only when the user copies/downloads. When `COACH_MODE`
+  flips to `'server'`, forwarding the profile to Anthropic is a **consent bump** (versioned via
+  `CURRENT_CONSENT_VERSION`) and an App Store health-data-label consideration; wire that with #849.
+- **Phase-A boundary:** the pre-computed `derived` analytics block (per-exercise progression
+  leaderboard, reliable-1RM at ≤6 reps, warm-up ramp, rest-gaps by muscle, distributions) is
+  **Phase B** — the prompt already asks for it "if present"; the app doesn't emit it yet. It needs
+  an exercise equipment/movement classification (net-new) for the free-weight-vs-machine reliability
+  flag.
 
 `COACH_MODE` (in `coachExport.ts`) is the single switch: `'byo'` today, `'server'` once
 `ANTHROPIC_API_KEY` et al. are provisioned. Consent (#849) and history (#851) remain their own
@@ -221,10 +247,13 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   AND not a preview deploy; it doubles as the quota meter. The view wires `buildCoachPayload` to
   the stores (`getOverloadSuggestion` → `overloads`, `streakWeeks`/`weeklyTarget`, `toDisplayUnits`).
 
-- **Bring-your-own-AI export (#931)** — `src/lib/coachExport.ts` (`COACH_MODE`,
-  `RECOMMENDED_COACH_PROMPT`, `buildCoachExportText`, `coachExportFilename`) + the `CoachSheet`
-  export panel (copy / download / bodyweight opt-out) + tests. This is the live transport while
-  the server key is unprovisioned (`COACH_MODE = 'byo'`). See the section above.
+- **Bring-your-own-AI export (#931)** — `src/lib/coachExport.ts` (`COACH_MODE`, analyst
+  `RECOMMENDED_COACH_PROMPT`, `buildCoachExportText`, `coachExportFilename`), the versioned
+  athlete profile (`src/lib/coachProfile.ts` + preferences-store persistence + `CoachProfileSheet`),
+  tiered `reviewMode`, and the `CoachSheet` export panel (review depth / profile / copy / download /
+  bodyweight opt-out) + tests. This is the live transport while the server key is unprovisioned
+  (`COACH_MODE = 'byo'`). Phase B (pre-computed `derived` analytics) is the open follow-up. See the
+  section above.
 
 **Remaining Phase 1:**
 - Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers
