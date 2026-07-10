@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Exercise } from '../stores/workout'
+import { localDateKey } from '../lib/dates'
 
 export interface TagRecovery {
   tag: string
@@ -50,9 +51,7 @@ export function useTagRecovery(
     // Compare calendar days, not timestamps. Sets are stored with end-of-day
     // UTC times (T23:59:xxZ) so timestamp math drifts depending on timezone
     // and time of day. Calendar day diff is always correct.
-    const todayStr = currentTime.getFullYear() + '-'
-      + String(currentTime.getMonth() + 1).padStart(2, '0') + '-'
-      + String(currentTime.getDate()).padStart(2, '0')
+    const todayStr = localDateKey(currentTime)
     const todayMs = new Date(todayStr + 'T00:00:00').getTime()
 
     const results: TagRecovery[] = []

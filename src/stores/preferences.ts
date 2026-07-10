@@ -5,6 +5,7 @@ import { logError } from '../lib/logger'
 import { backupToIDB } from '../lib/durableStorage'
 import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
+import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
 const STORAGE_KEY = 'user-preferences'
@@ -383,11 +384,7 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     startNewTrainingBlock() {
-      const d = new Date()
-      const y = d.getFullYear()
-      const m = String(d.getMonth() + 1).padStart(2, '0')
-      const day = String(d.getDate()).padStart(2, '0')
-      this.prBaselineDate = `${y}-${m}-${day}`
+      this.prBaselineDate = localDateKey(new Date())
       this._persist()
     },
 
