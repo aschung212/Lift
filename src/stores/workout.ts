@@ -13,6 +13,7 @@ import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
+import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
@@ -49,6 +50,7 @@ export interface Exercise {
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
+  equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -184,6 +186,11 @@ function load(): Exercise[] {
       if (ex && ex.intensityMaxReps !== undefined) {
         ex.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensityMaxReps)
       }
+      if (ex && ex.equipment !== undefined) {
+        const eq = sanitizeExerciseEquipment(ex.equipment)
+        if (eq) ex.equipment = eq
+        else delete ex.equipment
+      }
     }
     return parsed
   } catch (e) {
@@ -266,6 +273,8 @@ export const useWorkoutStore = defineStore('workout', () => {
       // actually clears the override server-side — omitting it would leave a
       // stale value that re-applies on the next fetch.
       intensity_max_reps: exercise.intensityMaxReps ?? null,
+      // Same always-send rule: "Auto" clears the Coach equipment classification.
+      equipment: exercise.equipment ?? null,
     }
   }
 
@@ -409,6 +418,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
       if (ex.intensity_max_reps != null) exercise.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensity_max_reps)
+      if (ex.equipment != null) {
+        const eq = sanitizeExerciseEquipment(ex.equipment)
+        if (eq) exercise.equipment = eq
+      }
       if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
     })
@@ -661,6 +674,27 @@ export const useWorkoutStore = defineStore('workout', () => {
     } else {
       exercise.intensityMaxReps = sanitizeIntensityMaxReps(maxReps)
     }
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
+   * Set (or clear) the explicit Coach equipment classification (#931 phase C).
+   * `null` clears the override ("Auto") so the name heuristic applies again.
+   * Values are sanitized so only the known kinds are ever stored.
+   */
+  function setExerciseEquipment(exerciseId: string, equipment: ExerciseEquipment | null) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    const eq = equipment === null ? undefined : sanitizeExerciseEquipment(equipment)
+    if (eq) exercise.equipment = eq
+    else delete exercise.equipment
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
@@ -1330,6 +1364,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseInputMode,
     setExerciseBarWeight,
     setExerciseIntensityMaxReps,
+    setExerciseEquipment,
     logSet,
     updateSet,
     deleteSet,

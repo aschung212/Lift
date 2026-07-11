@@ -81,10 +81,16 @@ destination. So until the key is provisioned we deliver the value with **zero se
   sets + first-set % of top), session shape medians, weekly volume & frequency per muscle tag
   (incl. median rest-gap days), intensity distribution (at-the-time %: <60 / 60–85 / >85), rep-range
   distribution (≤6 / 7–12 / ≥13), and within-session exercise order. Two honesty rules:
-  (1) equipment classification is a conservative NAME HEURISTIC (`classifyExercise`:
+  (1) equipment classification is **two-layered** (`resolveExerciseKind`, phase C): the explicit
+  per-exercise `Exercise.equipment` field wins — user-set in EditExerciseModal's "Equipment"
+  chips (Auto / Free weight / Machine / Bodyweight, where Auto stores nothing and shows what the
+  heuristic resolves to), synced via the additive `equipment` text column (always-send like
+  `intensity_max_reps`, so "Auto" clears server-side), sanitized at every boundary
+  (`sanitizeExerciseEquipment`: store setter, localStorage load, remote fetch — unknown values
+  degrade to unset, never trusted) — and the conservative NAME HEURISTIC (`classifyExercise`:
   free_weight / machine / bodyweight / unknown; machine markers beat free-weight markers so
-  "Seated Row" is a cable stack) — upgradeable to a real per-exercise field without changing the
-  contract; (2) `exerciseOrder` computes ONLY from real `createdAt` timestamps (#846) — for
+  "Seated Row" is a cable stack) is the fallback for never-classified exercises;
+  (2) `exerciseOrder` computes ONLY from real `createdAt` timestamps (#846) — for
   untimestamped sets, cross-exercise order within a day is array order, and we never feed the
   model fabricated sequence.
 

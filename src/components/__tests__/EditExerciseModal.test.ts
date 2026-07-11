@@ -26,8 +26,13 @@ async function openWith(exercise: Exercise): Promise<VueWrapper> {
 const stepperValue = (w: VueWrapper) => w.find('.iosStepperValue').text()
 const lastSavePayload = (w: VueWrapper) => {
   const calls = w.emitted('save')!
-  return calls[calls.length - 1][0] as { intensityMaxReps: number | null }
+  return calls[calls.length - 1][0] as { intensityMaxReps: number | null; equipment: string | null }
 }
+
+/** The equipment radio chips (inside the radiogroup, unlike the tag chips). */
+const equipmentChips = (w: VueWrapper) => w.findAll('[role="radiogroup"] .wtTagPickerChip')
+const equipmentChip = (w: VueWrapper, label: string | RegExp) =>
+  equipmentChips(w).find((c) => (typeof label === 'string' ? c.text() === label : label.test(c.text())))!
 
 describe('EditExerciseModal — intensity rep-rows config (#770)', () => {
   it('seeds the default (10) and hides "Reset" when the exercise has no override', async () => {
@@ -72,5 +77,41 @@ describe('EditExerciseModal — intensity rep-rows config (#770)', () => {
     expect(wrapper.find('.wtIntensityEditReset').exists()).toBe(false)
     await wrapper.find('.repMaxBtnCalc').trigger('click')
     expect(lastSavePayload(wrapper).intensityMaxReps).toBeNull()
+  })
+})
+
+describe('EditExerciseModal — Coach equipment classification (#931 phase C)', () => {
+  it('defaults to Auto and shows what the name heuristic resolves to', async () => {
+    const wrapper = await openWith(makeExercise({ name: 'Bench Press' }))
+    const auto = equipmentChip(wrapper, /^Auto/)
+    expect(auto.attributes('aria-checked')).toBe('true')
+    expect(auto.text()).toBe('Auto (free weight)')
+  })
+
+  it('shows the heuristic resolution for machine and unclassified names', async () => {
+    const machine = await openWith(makeExercise({ name: 'Leg Press' }))
+    expect(equipmentChip(machine, /^Auto/).text()).toBe('Auto (machine)')
+    const unknown = await openWith(makeExercise({ name: 'Farmers Walk' }))
+    expect(equipmentChip(unknown, /^Auto/).text()).toBe('Auto (unclassified)')
+  })
+
+  it('seeds an explicit classification from the exercise', async () => {
+    const wrapper = await openWith(makeExercise({ equipment: 'machine' }))
+    expect(equipmentChip(wrapper, 'Machine').attributes('aria-checked')).toBe('true')
+    expect(equipmentChip(wrapper, /^Auto/).attributes('aria-checked')).toBe('false')
+  })
+
+  it('emits the selected equipment on save', async () => {
+    const wrapper = await openWith(makeExercise())
+    await equipmentChip(wrapper, 'Free weight').trigger('click')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).equipment).toBe('free_weight')
+  })
+
+  it('emits null when set back to Auto (clears the override)', async () => {
+    const wrapper = await openWith(makeExercise({ equipment: 'machine' }))
+    await equipmentChip(wrapper, /^Auto/).trigger('click')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).equipment).toBeNull()
   })
 })
