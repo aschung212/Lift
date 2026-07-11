@@ -274,3 +274,47 @@ describe('coachReviewEligibility — entry-card data gate', () => {
     expect(coachReviewEligibility(old, NOW).totalSets).toBe(0)
   })
 })
+
+describe('buildCoachPayload — derived analytics (#931 phase B)', () => {
+  it('attaches a derived block that passes the shared validator', () => {
+    const p = build({ exercises: richExercises() })
+    expect(p.derived).toBeTruthy()
+    const result = validateCoachPayload(p)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.payload.derived).toBeTruthy()
+  })
+
+  it('computes progression for multi-day exercises and reliable 1RM with bw ratio', () => {
+    const p = build()
+    const prog = p.derived!.perExerciseProgression
+    expect(prog.some((x) => x.exerciseName === 'Bench Press')).toBe(true)
+    // Squat has one in-window day — no progression entry.
+    expect(prog.some((x) => x.exerciseName === 'Squat')).toBe(false)
+
+    const rel = p.derived!.reliable1RM
+    const bench = rel.find((r) => r.exerciseName === 'Bench Press')
+    expect(bench).toBeTruthy()
+    expect(bench!.reps).toBeLessThanOrEqual(6)
+    // Latest in-window bodyweight is 196 lb → ratio present.
+    expect(bench!.bwRatio).toBeCloseTo(bench!.e1rm / 196, 1)
+  })
+
+  it('omits bodyweight ratios when the bodyweight opt-out passes no entries', () => {
+    const p = build({ bodyweightEntries: [] })
+    for (const r of p.derived!.reliable1RM) expect(r.bwRatio).toBeUndefined()
+  })
+
+  it('validator rejects a malformed derived block', () => {
+    const p = build({ exercises: richExercises() })
+    const bad = { ...p, derived: { ...p.derived!, perExerciseProgression: [{ exerciseName: 'X' }] } }
+    const result = validateCoachPayload(bad)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('derived_progression_invalid')
+  })
+
+  it('validator accepts a payload without derived (older clients)', () => {
+    const p = build({ exercises: richExercises() })
+    delete (p as Record<string, unknown>).derived
+    expect(validateCoachPayload(p).ok).toBe(true)
+  })
+})

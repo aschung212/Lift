@@ -70,11 +70,23 @@ destination. So until the key is provisioned we deliver the value with **zero se
   disclosure states the profile is included only when the user copies/downloads. When `COACH_MODE`
   flips to `'server'`, forwarding the profile to Anthropic is a **consent bump** (versioned via
   `CURRENT_CONSENT_VERSION`) and an App Store health-data-label consideration; wire that with #849.
-- **Phase-A boundary:** the pre-computed `derived` analytics block (per-exercise progression
-  leaderboard, reliable-1RM at ≤6 reps, warm-up ramp, rest-gaps by muscle, distributions) is
-  **Phase B** — the prompt already asks for it "if present"; the app doesn't emit it yet. It needs
-  an exercise equipment/movement classification (net-new) for the free-weight-vs-machine reliability
-  flag.
+- **Derived analytics (Phase B, landed):** a single LLM call has no compute, and making the model
+  do arithmetic over hundreds of sets drifts on exactly the numbers users care about — so the app
+  pre-computes the analyses in pure `src/lib/coachAnalytics.ts` and ships them as the payload's
+  `derived` block (`buildCoachPayload` attaches it; types/caps/validation live in the shared
+  `aiCoach.ts` contract, so the dormant server benefits the moment it wakes). Contents:
+  per-exercise progression (first/best/recent e1RM, gain, gain/week, reliability flags),
+  **reliable 1RM** (best ≤6-rep set of free-weight lifts, with strength-to-bodyweight ratio when
+  bodyweight is included — the opt-out passes `[]` → no ratio), warm-up ramp shape (median ramp
+  sets + first-set % of top), session shape medians, weekly volume & frequency per muscle tag
+  (incl. median rest-gap days), intensity distribution (at-the-time %: <60 / 60–85 / >85), rep-range
+  distribution (≤6 / 7–12 / ≥13), and within-session exercise order. Two honesty rules:
+  (1) equipment classification is a conservative NAME HEURISTIC (`classifyExercise`:
+  free_weight / machine / bodyweight / unknown; machine markers beat free-weight markers so
+  "Seated Row" is a cable stack) — upgradeable to a real per-exercise field without changing the
+  contract; (2) `exerciseOrder` computes ONLY from real `createdAt` timestamps (#846) — for
+  untimestamped sets, cross-exercise order within a day is array order, and we never feed the
+  model fabricated sequence.
 
 `COACH_MODE` (in `coachExport.ts`) is the single switch: `'byo'` today, `'server'` once
 `ANTHROPIC_API_KEY` et al. are provisioned. Consent (#849) and history (#851) remain their own
@@ -252,8 +264,9 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   athlete profile (`src/lib/coachProfile.ts` + preferences-store persistence + `CoachProfileSheet`),
   tiered `reviewMode`, and the `CoachSheet` export panel (review depth / profile / copy / download /
   bodyweight opt-out) + tests. This is the live transport while the server key is unprovisioned
-  (`COACH_MODE = 'byo'`). Phase B (pre-computed `derived` analytics) is the open follow-up. See the
-  section above.
+  (`COACH_MODE = 'byo'`). Phase B (the pre-computed `derived` analytics block,
+  `src/lib/coachAnalytics.ts` + contract/validator support in `aiCoach.ts`) landed as the
+  follow-up. See the section above.
 
 **Remaining Phase 1:**
 - Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers

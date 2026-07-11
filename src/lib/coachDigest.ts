@@ -22,6 +22,7 @@ import type { Exercise, OverloadSuggestion } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { setDayKey, localDateKey } from './dates'
 import { computeWeeklyGoal } from './weeklyGoal'
+import { buildDerivedAnalytics } from './coachAnalytics'
 import {
   MAX_SETS,
   MAX_PR_ITEMS,
@@ -335,6 +336,21 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     ? allSessions.slice(allSessions.length - MAX_SESSION_ITEMS)
     : allSessions
 
+  // ---- derived analytics (#931 phase B) ----
+  // Pre-computed so the model synthesizes instead of doing arithmetic over
+  // hundreds of sets. Latest in-window bodyweight (lbs) powers the strength-to-
+  // bodyweight ratios; the bodyweight opt-out passes entries=[] → no ratio.
+  const latestBodyweightLb = windowEntries.length > 0
+    ? windowEntries[windowEntries.length - 1].weight
+    : null
+  const derived = buildDerivedAnalytics({
+    exercises,
+    bodyweightLb: latestBodyweightLb,
+    toDisplayUnits,
+    now,
+    windowDays,
+  })
+
   return {
     unit,
     sets: cappedSets,
@@ -344,5 +360,6 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     focus,
     bodyweight,
     sessions,
+    derived,
   }
 }
