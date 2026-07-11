@@ -119,6 +119,26 @@
           >Reset to default</button>
           <span class="iosSettingsFooter">How many rep counts (1–{{ editIntensityMaxReps }}) the Intensity table calculates when you log this exercise — from warmups up to PR-beating loads at 100%.</span>
         </div>
+        <!-- Coach equipment classification (#931 phase C): explicit kind for the
+             AI Coach's strength analytics. "Auto" stores nothing and shows what
+             the name heuristic resolves to. -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Equipment</span>
+          <div class="wtTagPicker" role="radiogroup" aria-label="Equipment type">
+            <button
+              v-for="opt in EQUIPMENT_OPTIONS"
+              :key="opt.value ?? 'auto'"
+              role="radio"
+              :aria-checked="editEquipment === opt.value"
+              :class="['wtTagPickerChip', { wtTagPickerChipActive: editEquipment === opt.value }]"
+              :style="editEquipment !== opt.value
+                ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
+                : {}"
+              @click="editEquipment = opt.value"
+            >{{ opt.value === null ? `Auto (${autoEquipmentLabel})` : opt.label }}</button>
+          </div>
+          <span class="iosSettingsFooter">Used by Coach analytics: free-weight lifts anchor strength comparisons; machine and bodyweight numbers are flagged as not standards-comparable.</span>
+        </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmSave">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="emit('close')">Cancel</button>
@@ -154,6 +174,7 @@
 
 <script lang="ts">
 import type { PlateCountMode } from '../stores/workout'
+import type { ExerciseEquipment } from '../lib/coachAnalytics'
 
 /** Payload emitted on Save — the parent applies it to the store. */
 export interface EditExerciseSave {
@@ -164,6 +185,8 @@ export interface EditExerciseSave {
   barWeight: number
   /** Intensity-table rep-row count; null = use the default (10). */
   intensityMaxReps: number | null
+  /** Coach equipment classification; null = Auto (name heuristic). */
+  equipment: ExerciseEquipment | null
 }
 </script>
 
@@ -180,6 +203,7 @@ import {
   MAX_INTENSITY_MAX_REPS,
   sanitizeIntensityMaxReps,
 } from '../lib/intensityTable'
+import { classifyExercise } from '../lib/coachAnalytics'
 
 const props = defineProps<{
   /** Exercise being edited; null renders nothing (modal closed). */
@@ -222,6 +246,26 @@ function resetIntensityMaxReps() {
   editIntensityMaxReps.value = DEFAULT_INTENSITY_MAX_REPS
 }
 
+// ── Coach equipment classification (#931 phase C) ───────────────
+// null = "Auto" (store nothing; the name heuristic classifies). The Auto chip
+// shows what the heuristic currently resolves to so the user can see whether
+// it's already right before overriding.
+const EQUIPMENT_OPTIONS: ReadonlyArray<{ value: ExerciseEquipment | null; label: string }> = [
+  { value: null, label: 'Auto' },
+  { value: 'free_weight', label: 'Free weight' },
+  { value: 'machine', label: 'Machine' },
+  { value: 'bodyweight', label: 'Bodyweight' },
+]
+const editEquipment = ref<ExerciseEquipment | null>(null)
+
+const AUTO_LABELS: Record<string, string> = {
+  free_weight: 'free weight',
+  machine: 'machine',
+  bodyweight: 'bodyweight',
+  unknown: 'unclassified',
+}
+const autoEquipmentLabel = computed(() => AUTO_LABELS[classifyExercise(editName.value)] ?? 'unclassified')
+
 const isArchived = computed(() => !!props.exercise?.archived_at)
 
 const focusTrap = useFocusTrap()
@@ -234,6 +278,7 @@ watch(() => props.exercise, async (exercise) => {
     editPlateCountMode.value = exercise.plateCountMode || 'per-side'
     editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
+    editEquipment.value = exercise.equipment ?? null
     newTagInput.value = ''
     editTagAdding.value = false
     confirmDeleteExercise.value = false
@@ -306,6 +351,7 @@ function confirmSave() {
     plateCountMode: editPlateCountMode.value,
     barWeight: editBarWeight.value,
     intensityMaxReps: editIntensityMaxReps.value === DEFAULT_INTENSITY_MAX_REPS ? null : editIntensityMaxReps.value,
+    equipment: editEquipment.value,
   })
 }
 </script>

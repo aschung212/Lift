@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { classifyExercise, buildDerivedAnalytics } from '../coachAnalytics'
+import {
+  classifyExercise,
+  sanitizeExerciseEquipment,
+  resolveExerciseKind,
+  buildDerivedAnalytics,
+} from '../coachAnalytics'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 
 /** Fixed "now" so windowing is deterministic. */
@@ -42,6 +47,25 @@ describe('classifyExercise — name heuristic', () => {
   it('returns unknown rather than guessing', () => {
     expect(classifyExercise('Farmers Walk')).toBe('unknown')
     expect(classifyExercise('Sled Drag')).toBe('unknown')
+  })
+})
+
+describe('equipment field — sanitize + resolve (#931 phase C)', () => {
+  it('accepts only the known kinds; everything else degrades to unset', () => {
+    expect(sanitizeExerciseEquipment('free_weight')).toBe('free_weight')
+    expect(sanitizeExerciseEquipment('machine')).toBe('machine')
+    expect(sanitizeExerciseEquipment('bodyweight')).toBe('bodyweight')
+    expect(sanitizeExerciseEquipment('unknown')).toBeUndefined() // never stored — unset IS unknown
+    expect(sanitizeExerciseEquipment('MACHINE')).toBeUndefined()
+    expect(sanitizeExerciseEquipment(1)).toBeUndefined()
+    expect(sanitizeExerciseEquipment(null)).toBeUndefined()
+  })
+
+  it('explicit equipment beats the name heuristic; unset falls back to it', () => {
+    // Name says machine, user says free weight (e.g. a barbell "Hack Squat").
+    expect(resolveExerciseKind({ name: 'Hack Squat', equipment: 'free_weight' })).toBe('free_weight')
+    expect(resolveExerciseKind({ name: 'Hack Squat', equipment: undefined })).toBe('machine')
+    expect(resolveExerciseKind({ name: 'Farmers Walk', equipment: 'machine' })).toBe('machine')
   })
 })
 
@@ -111,6 +135,32 @@ describe('buildDerivedAnalytics — reliable 1RM', () => {
     const bench = exercise('Bench Press', ['chest'], [set('2026-06-15', 205, 3)])
     const d = buildDerivedAnalytics({ exercises: [bench], bodyweightLb: null, now: NOW })
     expect(d.reliable1RM[0].bwRatio).toBeUndefined()
+  })
+
+  it('honors an explicit equipment override in both directions (#931 phase C)', () => {
+    // A barbell "Hack Squat" the heuristic would call a machine…
+    const barbellHack = {
+      ...exercise('Hack Squat', ['quads'], [
+        set('2026-06-01', 225, 5),
+        set('2026-06-15', 245, 5),
+      ]),
+      equipment: 'free_weight' as const,
+    }
+    // …and a "Bench Press" done on a machine the heuristic would call free weight.
+    const machineBench = {
+      ...exercise('Bench Press', ['chest'], [
+        set('2026-06-01', 185, 5),
+        set('2026-06-15', 205, 5),
+      ]),
+      equipment: 'machine' as const,
+    }
+    const d = buildDerivedAnalytics({ exercises: [barbellHack, machineBench], now: NOW })
+    // reliable1RM includes only the overridden free-weight lift.
+    expect(d.reliable1RM.map((r) => r.exerciseName)).toEqual(['Hack Squat'])
+    // The machine override lands as a reliability flag on progression.
+    const byName = Object.fromEntries(d.perExerciseProgression.map((p) => [p.exerciseName, p]))
+    expect(byName['Bench Press'].flags).toContain('machine')
+    expect(byName['Hack Squat'].flags ?? []).not.toContain('machine')
   })
 })
 

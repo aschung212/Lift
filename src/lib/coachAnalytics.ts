@@ -16,9 +16,10 @@
  * Honesty constraints baked in:
  *  - e1RM-based claims carry reliability flags: a window-best set at >10 reps is
  *    an inflated estimate; machine/bodyweight lifts aren't comparable to external
- *    strength standards. Classification is a NAME HEURISTIC (`classifyExercise`)
- *    — deliberately conservative, `unknown` when unsure; upgradeable to a real
- *    per-exercise equipment field later without changing this contract.
+ *    strength standards. Classification is two-layered (`resolveExerciseKind`):
+ *    the explicit per-exercise `equipment` field (user-set, synced) wins, and the
+ *    NAME HEURISTIC (`classifyExercise`) — deliberately conservative, `unknown`
+ *    when unsure — is the fallback for never-classified exercises.
  *  - `exerciseOrder` computes ONLY from sets with a real `createdAt` timestamp.
  *    For untimestamped sets, within-day order across exercises is array-iteration
  *    order, not performed order — feeding that to the model would fabricate data.
@@ -42,9 +43,33 @@ import {
   type ReliabilityFlag,
 } from './aiCoach'
 
-// ---- Exercise classification (name heuristic) ----
+// ---- Exercise classification ----
+// Two layers: an explicit per-exercise `equipment` field (user-set in
+// EditExerciseModal, synced via the additive `equipment` column) wins; the name
+// heuristic below is the fallback for exercises the user never classified.
 
 export type ExerciseKind = 'free_weight' | 'machine' | 'bodyweight' | 'unknown'
+
+export const EXERCISE_EQUIPMENT_KINDS = ['free_weight', 'machine', 'bodyweight'] as const
+
+/** The user-settable subset of `ExerciseKind` — 'unknown' is never stored, it IS unset. */
+export type ExerciseEquipment = (typeof EXERCISE_EQUIPMENT_KINDS)[number]
+
+/**
+ * Normalize a persisted/remote equipment value. Returns undefined for anything
+ * that isn't exactly one of the known kinds — corrupt storage or a newer client's
+ * value degrades to "unset" (heuristic) rather than throwing or misclassifying.
+ */
+export function sanitizeExerciseEquipment(raw: unknown): ExerciseEquipment | undefined {
+  return (EXERCISE_EQUIPMENT_KINDS as readonly string[]).includes(raw as string)
+    ? (raw as ExerciseEquipment)
+    : undefined
+}
+
+/** Explicit user classification wins; otherwise fall back to the name heuristic. */
+export function resolveExerciseKind(exercise: Pick<Exercise, 'name' | 'equipment'>): ExerciseKind {
+  return exercise.equipment ?? classifyExercise(exercise.name)
+}
 
 /** Substrings that mark a lift as machine/cable-loaded (not standards-comparable). */
 const MACHINE_MARKERS = [
@@ -155,7 +180,7 @@ export function buildDerivedAnalytics(input: DerivedAnalyticsInput): DerivedAnal
     if (days.size === 0) continue
     windows.push({
       exercise: ex,
-      kind: classifyExercise(ex.name),
+      kind: resolveExerciseKind(ex),
       days,
       dayKeys: Array.from(days.keys()).sort(),
       all: Array.from(days.values()).flat(),
