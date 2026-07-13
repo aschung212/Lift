@@ -2,7 +2,7 @@
   <div class="calCard">
     <!-- Header -->
     <div class="calCardHeader">
-      <h2 class="calTitle">Training Calendar</h2>
+      <h1 class="calTitle">Training Calendar</h1>
       <div class="calViewToggle">
         <button :class="['calToggleBtn', { active: view === 'month' }]" :aria-pressed="view === 'month'" @click="setView('month')">Month</button>
         <button :class="['calToggleBtn', { active: view === 'week' }]" :aria-pressed="view === 'week'" @click="setView('week')">Week</button>
