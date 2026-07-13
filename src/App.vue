@@ -99,6 +99,11 @@
         </div>
       </main>
 
+      <!-- Polite SPA view-change announcement for screen readers (WCAG 4.1.3).
+           switchTab swaps panel content via v-if with no native focus/route
+           change, so assistive tech would otherwise stay silent. -->
+      <div class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ viewAnnouncement }}</div>
+
       <!-- Tab bar -->
       <nav class="tabBar" aria-label="Main navigation">
         <div class="tabBarTabs" role="tablist" aria-label="Main navigation">
@@ -364,6 +369,11 @@ const { activeTab, switchTab } = useTabRouting({
   // Runs on every tap (including the active tab) — dismiss the settings sheet.
   onBeforeSwitch: closeSettings,
   onSwitch: (from, to) => {
+    // Announce the newly shown view to assistive tech (LIFT-854, WCAG 4.1.3) —
+    // the panel content swaps via v-if with no native focus move, so screen
+    // readers would otherwise hear nothing.
+    const label = TAB_DEFS.find(t => t.id === to)?.label ?? to
+    viewAnnouncement.value = `${label} view`
     tabSwitch(from, to)
     checkForSWUpdate()
   },
@@ -430,6 +440,9 @@ watch(() => prefs.features, () => {
     switchTab(visibleTabs.value[0]?.id || 'workouts')
   }
 }, { deep: true })
+
+// Polite live-region text announcing the active view after a tab switch.
+const viewAnnouncement = ref('')
 
 // Roving-tabindex keyboard navigation for the bottom tablist (ARIA APG Tabs
 // pattern, automatic-activation variant). Arrow/Home/End move focus between
