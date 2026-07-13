@@ -20,14 +20,16 @@
 
 import type { Exercise, OverloadSuggestion } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
-import { setDayKey } from './dates'
+import { setDayKey, localDateKey } from './dates'
 import { computeWeeklyGoal } from './weeklyGoal'
+import { buildDerivedAnalytics } from './coachAnalytics'
 import {
   MAX_SETS,
   MAX_PR_ITEMS,
   MAX_VOLUME_ITEMS,
   MAX_FOCUS_ITEMS,
   MAX_SESSION_ITEMS,
+  MIN_SETS_FOR_REVIEW,
   type CoachPayload,
   type SetRecord,
   type PRItem,
@@ -41,6 +43,62 @@ import {
 
 /** Default history window the client sends — long enough for real progression analysis. */
 export const DEFAULT_WINDOW_DAYS = 112 // ~16 weeks
+
+/** Distinct training weeks required before a review is worth offering. */
+export const MIN_WEEKS_FOR_REVIEW = 2
+
+export interface CoachEligibility {
+  /** Enough signal to surface the entry card (and let the server accept the request). */
+  eligible: boolean
+  /** Logged sets within the window. */
+  totalSets: number
+  /** Distinct ISO weeks (Mon-anchored) that contain at least one logged set. */
+  weeksWithData: number
+}
+
+/** ISO-week key "YYYY-Www" (Mon-anchored) for a local day key, for distinct-week counting. */
+function isoWeekKey(dayKey: string): string {
+  const [y, m, d] = dayKey.split('-').map(Number)
+  // Local date; the day-key already encodes the user's local calendar day.
+  const date = new Date(y, (m || 1) - 1, d || 1)
+  const day = date.getDay() || 7 // 1=Mon..7=Sun
+  date.setDate(date.getDate() + 4 - day) // shift to the week's Thursday (ISO anchor)
+  const yearStart = new Date(date.getFullYear(), 0, 1)
+  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7)
+  return `${date.getFullYear()}-W${String(week).padStart(2, '0')}`
+}
+
+/**
+ * Decide whether the Coach entry card should appear. Mirrors how the Suggestions
+ * drawer only shows lenses with data: require both a couple training weeks AND the
+ * server's `MIN_SETS_FOR_REVIEW` floor, so the card never offers a review the
+ * server would 422. Pure and deterministic given `now`.
+ */
+export function coachReviewEligibility(
+  exercises: Exercise[],
+  now: Date = new Date(),
+  windowDays: number = DEFAULT_WINDOW_DAYS,
+): CoachEligibility {
+  const windowStart = new Date(now)
+  windowStart.setDate(now.getDate() - windowDays)
+  const windowStartKey = localDateKey(windowStart)
+  const nowKey = localDateKey(now)
+
+  let totalSets = 0
+  const weeks = new Set<string>()
+  for (const ex of exercises) {
+    for (const s of ex.sets) {
+      const key = setDayKey(s.date)
+      if (key < windowStartKey || key > nowKey) continue
+      totalSets++
+      weeks.add(isoWeekKey(key))
+    }
+  }
+
+  const weeksWithData = weeks.size
+  const eligible = totalSets >= MIN_SETS_FOR_REVIEW && weeksWithData >= MIN_WEEKS_FOR_REVIEW
+  return { eligible, totalSets, weeksWithData }
+}
 
 /** An exercise paired with its store-computed overload suggestion (the one non-pure input). */
 export interface ExerciseOverload {
@@ -79,14 +137,6 @@ function localTimeOfDay(iso: string | undefined): string | undefined {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** Local YYYY-MM-DD key for a Date (matches dates.ts's private localDayKey). */
-function dayKeyOf(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 /** Monday→today local day keys for the week containing `now`. */
 function currentWeekKeys(now: Date): Set<string> {
   const dow = now.getDay() // 0=Sun
@@ -95,7 +145,7 @@ function currentWeekKeys(now: Date): Set<string> {
   for (let i = since; i >= 0; i--) {
     const d = new Date(now)
     d.setDate(now.getDate() - i)
-    keys.add(dayKeyOf(d))
+    keys.add(localDateKey(d))
   }
   return keys
 }
@@ -143,8 +193,8 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
 
   const windowStart = new Date(now)
   windowStart.setDate(now.getDate() - windowDays)
-  const windowStartKey = dayKeyOf(windowStart)
-  const nowKey = dayKeyOf(now)
+  const windowStartKey = localDateKey(windowStart)
+  const nowKey = localDateKey(now)
 
   // ---- sets (core ground truth) + personalRecords + per-day sessions ----
   // sortTime carries the set's real timestamp so the window can be ordered by
@@ -199,11 +249,19 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     }
   }
 
-  // Order by day, then by real log time within the day when available (stable
-  // — preserving per-exercise logged order — when timestamps aren't captured yet).
+  // Order by day, then by real log time within the day when available. A naive
+  // localeCompare would sort the empty sortTime ('' = legacy/never-synced set,
+  // no captured time) BEFORE any real ISO timestamp — inverting order on a day
+  // that mixes a pre-#846 set with a freshly timestamped one. Instead, untimestamped
+  // sets sort AFTER timestamped ones (a known time never lands behind an unknown
+  // one); a stable sort preserves per-exercise logged order among equally-(un)timestamped sets.
   setItems.sort((a, b) => {
     const d = (a.rec.date ?? '').localeCompare(b.rec.date ?? '')
-    return d !== 0 ? d : a.sortTime.localeCompare(b.sortTime)
+    if (d !== 0) return d
+    if (a.sortTime && b.sortTime) return a.sortTime.localeCompare(b.sortTime)
+    if (a.sortTime) return -1
+    if (b.sortTime) return 1
+    return 0
   })
   const orderedSets = setItems.map((it) => it.rec)
   const cappedSets = orderedSets.length > MAX_SETS ? orderedSets.slice(orderedSets.length - MAX_SETS) : orderedSets
@@ -278,6 +336,21 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     ? allSessions.slice(allSessions.length - MAX_SESSION_ITEMS)
     : allSessions
 
+  // ---- derived analytics (#931 phase B) ----
+  // Pre-computed so the model synthesizes instead of doing arithmetic over
+  // hundreds of sets. Latest in-window bodyweight (lbs) powers the strength-to-
+  // bodyweight ratios; the bodyweight opt-out passes entries=[] → no ratio.
+  const latestBodyweightLb = windowEntries.length > 0
+    ? windowEntries[windowEntries.length - 1].weight
+    : null
+  const derived = buildDerivedAnalytics({
+    exercises,
+    bodyweightLb: latestBodyweightLb,
+    toDisplayUnits,
+    now,
+    windowDays,
+  })
+
   return {
     unit,
     sets: cappedSets,
@@ -287,5 +360,6 @@ export function buildCoachPayload(input: CoachDigestInput): CoachPayload {
     focus,
     bodyweight,
     sessions,
+    derived,
   }
 }

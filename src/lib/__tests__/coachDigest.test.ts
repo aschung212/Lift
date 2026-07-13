@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCoachPayload, type ExerciseOverload } from '../coachDigest'
+import { buildCoachPayload, coachReviewEligibility, type ExerciseOverload } from '../coachDigest'
 import { validateCoachPayload, MAX_SETS } from '../aiCoach'
 import type { Exercise } from '../../stores/workout'
 import type { BodyweightEntry } from '../../stores/bodyweight'
@@ -167,6 +167,21 @@ describe('buildCoachPayload — time of day (forward-ready)', () => {
     expect(bench[1].timeOfDay).toMatch(/^\d{2}:\d{2}$/)
     expect(bench[0].timeOfDay).not.toBe(bench[1].timeOfDay)
   })
+
+  it('orders untimestamped (legacy) sets after timestamped ones within the same day', () => {
+    // A day that mixes a pre-#846 set (no createdAt) with a freshly timestamped
+    // one: the timestamped set must not land behind the unknown-time set just
+    // because '' sorts before any real ISO string.
+    const sets = [
+      { id: 'u1', date: '2026-06-25T12:00:00.000Z', weight: 200, reps: 5, estimated1RM: 233 }, // legacy: no createdAt
+      { id: 't1', date: '2026-06-25T12:00:00.000Z', weight: 100, reps: 5, estimated1RM: 116, createdAt: '2026-06-25T08:00:00Z' },
+    ]
+    const p = build({ exercises: [ex('e1', 'Bench Press', ['Chest'], sets)] })
+    const bench = p.sets.filter((s) => s.exerciseName === 'Bench Press')
+    expect(bench.map((s) => s.weight)).toEqual([100, 200]) // timestamped first, legacy last
+    expect(bench[0].timeOfDay).toMatch(/^\d{2}:\d{2}$/)
+    expect(bench[1].timeOfDay).toBeUndefined()
+  })
 })
 
 describe('buildCoachPayload — unit conversion', () => {
@@ -205,5 +220,101 @@ describe('buildCoachPayload — contract & minimization', () => {
     expect(json).not.toContain('exid-bench') // exercise id
     expect(json).not.toContain('setid-') // set ids
     expect(json.toLowerCase()).not.toContain('email')
+  })
+})
+
+describe('coachReviewEligibility — entry-card data gate', () => {
+  it('is eligible with enough sets spread across 2+ training weeks', () => {
+    // richExercises spreads 10 sets across 2026-06-18..26 (weeks of Jun 15 & Jun 22).
+    const e = coachReviewEligibility(richExercises(), NOW)
+    expect(e.eligible).toBe(true)
+    expect(e.totalSets).toBe(10)
+    expect(e.weeksWithData).toBeGreaterThanOrEqual(2)
+  })
+
+  it('is NOT eligible below the set floor even across multiple weeks', () => {
+    const sparse = [
+      ex('e', 'Bench', ['Chest'], [
+        { id: 'a', date: '2026-06-16T12:00:00.000Z', weight: 135, reps: 5, estimated1RM: 160 },
+        { id: 'b', date: '2026-06-24T12:00:00.000Z', weight: 140, reps: 5, estimated1RM: 165 },
+      ]),
+    ]
+    const result = coachReviewEligibility(sparse, NOW)
+    expect(result.totalSets).toBe(2)
+    expect(result.eligible).toBe(false)
+  })
+
+  it('is NOT eligible when all sets fall in a single week', () => {
+    const oneWeek = [
+      ex('e', 'Bench', ['Chest'], Array.from({ length: 9 }, (_, i) => ({
+        id: `s${i}`,
+        date: `2026-06-${String(22 + (i % 5)).padStart(2, '0')}T12:00:00.000Z`, // Mon 06-22 .. Fri 06-26
+        weight: 135,
+        reps: 5,
+        estimated1RM: 160,
+      }))),
+    ]
+    const result = coachReviewEligibility(oneWeek, NOW)
+    expect(result.totalSets).toBe(9)
+    expect(result.weeksWithData).toBe(1)
+    expect(result.eligible).toBe(false)
+  })
+
+  it('ignores sets outside the history window', () => {
+    const old = [
+      ex('e', 'Bench', ['Chest'], Array.from({ length: 12 }, (_, i) => ({
+        id: `s${i}`,
+        date: '2026-01-05T12:00:00.000Z', // ~6 months before NOW — out of the 112-day window
+        weight: 135,
+        reps: 5,
+        estimated1RM: 160,
+      }))),
+    ]
+    expect(coachReviewEligibility(old, NOW).eligible).toBe(false)
+    expect(coachReviewEligibility(old, NOW).totalSets).toBe(0)
+  })
+})
+
+describe('buildCoachPayload — derived analytics (#931 phase B)', () => {
+  it('attaches a derived block that passes the shared validator', () => {
+    const p = build({ exercises: richExercises() })
+    expect(p.derived).toBeTruthy()
+    const result = validateCoachPayload(p)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.payload.derived).toBeTruthy()
+  })
+
+  it('computes progression for multi-day exercises and reliable 1RM with bw ratio', () => {
+    const p = build()
+    const prog = p.derived!.perExerciseProgression
+    expect(prog.some((x) => x.exerciseName === 'Bench Press')).toBe(true)
+    // Squat has one in-window day — no progression entry.
+    expect(prog.some((x) => x.exerciseName === 'Squat')).toBe(false)
+
+    const rel = p.derived!.reliable1RM
+    const bench = rel.find((r) => r.exerciseName === 'Bench Press')
+    expect(bench).toBeTruthy()
+    expect(bench!.reps).toBeLessThanOrEqual(6)
+    // Latest in-window bodyweight is 196 lb → ratio present.
+    expect(bench!.bwRatio).toBeCloseTo(bench!.e1rm / 196, 1)
+  })
+
+  it('omits bodyweight ratios when the bodyweight opt-out passes no entries', () => {
+    const p = build({ bodyweightEntries: [] })
+    for (const r of p.derived!.reliable1RM) expect(r.bwRatio).toBeUndefined()
+  })
+
+  it('validator rejects a malformed derived block', () => {
+    const p = build({ exercises: richExercises() })
+    const bad = { ...p, derived: { ...p.derived!, perExerciseProgression: [{ exerciseName: 'X' }] } }
+    const result = validateCoachPayload(bad)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('derived_progression_invalid')
+  })
+
+  it('validator accepts a payload without derived (older clients)', () => {
+    const p = build({ exercises: richExercises() })
+    delete (p as Record<string, unknown>).derived
+    expect(validateCoachPayload(p).ok).toBe(true)
   })
 })

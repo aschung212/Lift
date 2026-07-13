@@ -1,5 +1,7 @@
 <template>
   <div class="wtCard bwCard">
+    <!-- Page-level heading for assistive tech (the hero shows the value, not a title) -->
+    <h1 class="srOnly">Weight</h1>
     <!-- Hero header: current weight + goal hint + log button -->
     <div class="bwHero">
       <span class="bwCurrentValue">{{ store.latestWeight ? `${displayWeight(store.latestWeight)} ${weightUnit}` : 'No entries' }}</span>

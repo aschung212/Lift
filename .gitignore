@@ -8,6 +8,9 @@ dist-ssr/
 # test coverage
 coverage/
 
+# Vitest sharded blob reports (merged in CI)
+.vitest-reports/
+
 # Playwright
 test-results/
 playwright-report/

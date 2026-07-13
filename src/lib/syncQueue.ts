@@ -63,6 +63,12 @@ const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
   sets: new Set([
     'id', 'user_id', 'exercise_id', 'date', 'weight', 'reps',
     'estimated_1rm', 'deleted_at',
+    // Real log-time timestamp sent by _enqueueSetUpsert (#846) so an offline set
+    // logged at 6pm keeps its training time when replayed after a reload rather
+    // than inheriting the later sync time. Must be allowlisted or the journaled
+    // descriptor is dropped on rehydrate() — defeating the durable queue for the
+    // exact offline-then-sync case it exists for.
+    'created_at',
   ]),
 }
 

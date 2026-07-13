@@ -2,7 +2,7 @@
   <div class="calCard">
     <!-- Header -->
     <div class="calCardHeader">
-      <h2 class="calTitle">Training Calendar</h2>
+      <h1 class="calTitle">Training Calendar</h1>
       <div class="calViewToggle">
         <button :class="['calToggleBtn', { active: view === 'month' }]" :aria-pressed="view === 'month'" @click="setView('month')">Month</button>
         <button :class="['calToggleBtn', { active: view === 'week' }]" :aria-pressed="view === 'week'" @click="setView('week')">Week</button>
@@ -320,6 +320,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
+import { localDateKey, todayISO } from '../lib/dates'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
@@ -329,6 +330,7 @@ import { useTagVolumeTrend } from '../composables/useTagVolumeTrend'
 import { useTagRecovery } from '../composables/useTagRecovery'
 import { useVolumeTrend } from '../composables/useVolumeTrend'
 import { useRepRangeDistribution } from '../composables/useRepRangeDistribution'
+import { useCalendarData } from '../composables/useCalendarData'
 
 const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
 const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/MuscleGroupRecovery.vue'))
@@ -378,100 +380,27 @@ function setView(v: string) {
   logEvent('calendar_view_switch', { view: v })
 }
 
-function toLocalDateStr(d: Date) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-const todayStr = toLocalDateStr(new Date())
+const todayStr = todayISO()
 
 // True when the user has zero sets across all exercises (brand-new account)
 const hasAnyData = computed(() =>
   store.exercises.some(e => e.sets.length > 0)
 )
 
-// Map YYYY-MM-DD → unique exercise names (respects tag filter)
-const trainingMap = computed(() => {
-  const map: Record<string, string[]> = {}
-  for (const exercise of filteredExercises.value) {
-    for (const set of exercise.sets) {
-      const day = set.date.slice(0, 10)
-      if (!map[day]) map[day] = []
-      if (!map[day].includes(exercise.name)) map[day].push(exercise.name)
-    }
-  }
-  return map
-})
-
-// Map YYYY-MM-DD → Set of exercise names that achieved a PR on that date.
-// Only the first set to reach the PR value counts — ties on later dates are not new records.
-// Respects the PR baseline: when set, only sets on/after the baseline count.
-const prMap = computed(() => {
-  const map: Record<string, Set<string>> = {}
-  const baseline = prBaselineDate.value
-  for (const exercise of filteredExercises.value) {
-    const pr = store.getExercisePR(exercise.id, baseline)
-    if (!pr) continue
-    // Find the earliest date (within baseline window) any set hit the PR value
-    let earliestDate = ''
-    for (const set of exercise.sets) {
-      const day = set.date.slice(0, 10)
-      if (baseline && day < baseline) continue
-      if (set.estimated1RM === pr) {
-        if (!earliestDate || day < earliestDate) earliestDate = day
-      }
-    }
-    if (earliestDate) {
-      if (!map[earliestDate]) map[earliestDate] = new Set()
-      map[earliestDate].add(exercise.name)
-    }
-  }
-  return map
-})
-
-function isPRExercise(dateStr: string, exName: string) {
-  return prMap.value[dateStr]?.has(exName) ?? false
-}
-
-function hasPR(dateStr: string) {
-  return !!(prMap.value[dateStr]?.size > 0)
-}
-
-// ── Daily workout summary ────────────────────────────────────────
-const daySummary = computed(() => {
-  if (!selectedDay.value || !trainingMap.value[selectedDay.value]) return null
-  const dayStr = selectedDay.value.slice(0, 10)
-  let totalSets = 0
-  let totalVolume = 0
-  let exerciseCount = 0
-  let prCount = 0
-
-  for (const exercise of filteredExercises.value) {
-    const daySets = exercise.sets.filter(s => s.date.slice(0, 10) === dayStr)
-    if (daySets.length === 0) continue
-    exerciseCount++
-    totalSets += daySets.length
-    for (const s of daySets) {
-      totalVolume += s.weight * s.reps
-    }
-    const pr = store.getExercisePR(exercise.id, prBaselineDate.value)
-    if (pr && daySets.some(s => s.estimated1RM === pr)) {
-      prCount++
-    }
-  }
-
-  const formatted = totalVolume >= 10000
-    ? `${(displayWeight(totalVolume) / 1000).toFixed(1)}k`
-    : String(displayWeight(totalVolume))
-
-  return {
-    exercises: exerciseCount,
-    sets: totalSets,
-    volumeDisplay: formatted,
-    prs: prCount,
-  }
+// ── Calendar domain derivation (training map, PR dates, day summary) ──
+const {
+  trainingMap,
+  daySummary,
+  isPRExercise,
+  hasPR,
+  getSetsForDay,
+  getSetCount,
+} = useCalendarData({
+  exercises: filteredExercises,
+  selectedDay,
+  prBaselineDate,
+  getExercisePR: store.getExercisePR,
+  displayWeight,
 })
 
 // Exercise detail expand: "YYYY-MM-DD::Exercise Name" or null
@@ -486,27 +415,6 @@ function toggleDetail(dateStr: string, exName: string) {
     expandedExercises.value.add(key)
   }
 }
-
-function getSetsForDay(dateStr: string, exName: string) {
-  const exercise = store.exercises.find(e => e.name === exName)
-  if (!exercise) return []
-  const pr = store.getExercisePR(exercise.id, prBaselineDate.value)
-  const dayStr = dateStr.slice(0, 10)
-  // Only mark as PR if this is the earliest date the PR was achieved
-  const isPRDay = prMap.value[dayStr]?.has(exName) ?? false
-  return exercise.sets
-    .filter(s => s.date.slice(0, 10) === dayStr)
-    .sort((a, b) => b.estimated1RM - a.estimated1RM)
-    .map(s => ({ ...s, isPR: isPRDay && s.estimated1RM === pr }))
-}
-
-function getSetCount(dateStr: string, exName: string) {
-  const exercise = store.exercises.find(e => e.name === exName)
-  if (!exercise) return 0
-  const dayStr = dateStr.slice(0, 10)
-  return exercise.sets.filter(s => s.date.slice(0, 10) === dayStr).length
-}
-
 
 // Navigation label
 const navLabel = computed(() => {
@@ -580,13 +488,13 @@ const monthCells = computed(() => {
   for (let i = firstDow - 1; i >= 0; i--) {
     const day = prevMonthDays - i
     const d = new Date(year, month - 1, day)
-    const dateStr = toLocalDateStr(d)
+    const dateStr = localDateKey(d)
     cells.push({ key: `p${day}`, day, dateStr, inMonth: false, isToday: dateStr === todayStr, exercises: trainingMap.value[dateStr] || [] })
   }
 
   for (let day = 1; day <= daysInMonth; day++) {
     const d = new Date(year, month, day)
-    const dateStr = toLocalDateStr(d)
+    const dateStr = localDateKey(d)
     cells.push({ key: `c${day}`, day, dateStr, inMonth: true, isToday: dateStr === todayStr, exercises: trainingMap.value[dateStr] || [] })
   }
 
@@ -594,7 +502,7 @@ const monthCells = computed(() => {
   if (rem > 0) {
     for (let day = 1; day <= 7 - rem; day++) {
       const d = new Date(year, month + 1, day)
-      const dateStr = toLocalDateStr(d)
+      const dateStr = localDateKey(d)
       cells.push({ key: `n${day}`, day, dateStr, inMonth: false, isToday: dateStr === todayStr, exercises: trainingMap.value[dateStr] || [] })
     }
   }
@@ -610,7 +518,7 @@ const weekDays = computed(() => {
   return Array.from({ length: 7 }, (_, i) => {
     const curr = new Date(d)
     curr.setDate(d.getDate() + i)
-    const dateStr = toLocalDateStr(curr)
+    const dateStr = localDateKey(curr)
     return {
       dateStr,
       shortName: SHORT_NAMES[i],
