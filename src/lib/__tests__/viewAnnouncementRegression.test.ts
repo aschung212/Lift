@@ -25,14 +25,15 @@ describe('view-change announcement (LIFT-854)', () => {
     expect(appSource).toMatch(/const viewAnnouncement = ref\(/)
   })
 
-  it('switchTab populates the announcement from the tab label', () => {
-    // The announcement must be set inside switchTab, derived from TAB_DEFS so it
-    // tracks the visible label rather than a raw tab id.
+  it('the tab-switch handler populates the announcement from the tab label', () => {
+    // The announcement must be set on switch (via useTabRouting's onSwitch
+    // callback), derived from TAB_DEFS so it tracks the visible label rather
+    // than a raw tab id.
     expect(appSource).toMatch(
       /viewAnnouncement\.value = `\$\{label\} view`/
     )
     expect(appSource).toMatch(
-      /const label = TAB_DEFS\.find\(t => t\.id === tabId\)\?\.label/
+      /const label = TAB_DEFS\.find\(t => t\.id === to\)\?\.label/
     )
   })
 })

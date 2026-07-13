@@ -1180,4 +1180,50 @@ describe('workout store', () => {
       expect(() => store.setExerciseIntensityMaxReps('nope', 12)).not.toThrow()
     })
   })
+
+  // ── setExerciseEquipment (#931 phase C) ─────────────────────────
+  describe('setExerciseEquipment', () => {
+    it('stores an explicit classification and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Hack Squat', [])
+      store.setExerciseEquipment(id, 'free_weight')
+
+      expect(store.exercises[0].equipment).toBe('free_weight')
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].equipment).toBe('free_weight')
+    })
+
+    it('clears the override ("Auto") when passed null', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench Press', [])
+      store.setExerciseEquipment(id, 'machine')
+      store.setExerciseEquipment(id, null)
+      expect('equipment' in store.exercises[0]).toBe(false)
+    })
+
+    it('refuses to store an unknown value (clears instead)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat', [])
+      store.setExerciseEquipment(id, 'machine')
+      // Corrupt/future value degrades to unset rather than persisting garbage.
+      store.setExerciseEquipment(id, 'cable_stack' as never)
+      expect('equipment' in store.exercises[0]).toBe(false)
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExerciseEquipment('nope', 'machine')).not.toThrow()
+    })
+
+    it('sanitizes a corrupt persisted equipment value on load', () => {
+      localStorageMock.setItem('workout-exercises', JSON.stringify([
+        { id: 'e1', name: 'Bench', tags: [], sets: [], equipment: 'laser_cannon' },
+        { id: 'e2', name: 'Squat', tags: [], sets: [], equipment: 'machine' },
+      ]))
+      setActivePinia(createPinia())
+      const store = useWorkoutStore()
+      expect('equipment' in store.exercises[0]).toBe(false)
+      expect(store.exercises[1].equipment).toBe('machine')
+    })
+  })
 })

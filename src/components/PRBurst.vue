@@ -51,7 +51,7 @@
         <!-- Peak-moment share affordance (#716): one tap opens the share sheet
              pre-selected to the PR card. Stop propagation so the surrounding
              tap-to-dismiss doesn't fire. -->
-        <button type="button" class="prBurstShare" @click.stop="onShareThisPR">
+        <button v-if="canShare" type="button" class="prBurstShare" @click.stop="onShareThisPR">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
           Share this PR
         </button>
@@ -75,46 +75,33 @@
 import { computed, watch, nextTick, ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { usePRBurst } from '../composables/usePRBurst'
 import { useWeightUnit } from '../composables/useWeightUnit'
-import { useWorkoutStore } from '../stores/workout'
-import { useProgressionStore } from '../stores/progression'
 import { useAnalytics } from '../composables/useAnalytics'
-import { buildSessionSummary, type SessionSummary } from '../lib/sessionSummary'
+import type { SessionSummary } from '../lib/sessionSummary'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
 const { visible, payload, presentPRBurst, dismissPRBurst } = usePRBurst()
 const { weightUnit, displayWeight } = useWeightUnit()
-const workoutStore = useWorkoutStore()
-const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 
 // ── "Share this PR" peak-moment flow (#716) ───────────────────────────────
 const pickerOpen = ref(false)
 const shareSummary = ref<SessionSummary | null>(null)
 
-/** Local calendar date (YYYY-MM-DD), matching WorkoutTracker.todayISO(). */
-function localTodayKey(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+/**
+ * True when a shareable summary exists. The caller (WorkoutTracker) builds the
+ * SessionSummary and hands it in via the payload (LIFT-916) — this presentational
+ * component holds no store access, so the button is inert without one.
+ */
+const canShare = computed(() => payload.value?.shareSummary != null)
 
 function onShareThisPR(): void {
   const p = payload.value
-  if (!p) return
-  // Build the session summary for the PR's day so the share sheet (pre-selected
-  // to the PR card) renders the right numbers. The set is already persisted by
-  // the time the burst shows, so the summary reflects it.
-  shareSummary.value = buildSessionSummary({
-    rawDate: p.rawDate ?? localTodayKey(),
-    exercises: workoutStore.exercises,
-    xpPerSet: progressionStore.xpPerSet,
-    streakWeeks: progressionStore.streakWeeks,
-    toDisplayUnits: displayWeight,
-    unitLabel: weightUnit.value,
-  })
+  if (!p || !p.shareSummary) return
+  // The caller already built the session summary for the PR's day (it owns
+  // store access), so the share sheet renders the right numbers with no
+  // store reach-in here.
+  shareSummary.value = p.shareSummary
   logEvent('pr_share_opened', {
     exercise: p.exerciseName,
     firstPr: p.isFirstPR === true,

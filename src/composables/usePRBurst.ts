@@ -21,6 +21,7 @@
 import { ref, type Ref } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 import { useHaptics } from './useHaptics'
+import type { SessionSummary } from '../lib/sessionSummary'
 
 export interface PRBurstPayload {
   exerciseName: string
@@ -35,11 +36,13 @@ export interface PRBurstPayload {
   /** True when this is the user's very first PR ever. */
   isFirstPR?: boolean
   /**
-   * Local calendar date (YYYY-MM-DD) of the set that triggered the PR. Used by
-   * the "Share this PR" entry point (#716) to build the session summary for the
-   * correct day. Defaults to today when omitted.
+   * Pre-built session summary for the PR's day, supplied by the caller (which
+   * owns store access). Powers the "Share this PR" entry point (#716) so the
+   * presentational PRBurst component never has to reach into stores itself
+   * (LIFT-916). Omitted when the caller cannot build one — the share button is
+   * then inert.
    */
-  rawDate?: string
+  shareSummary?: SessionSummary
 }
 
 const visible: Ref<boolean> = ref(false)
