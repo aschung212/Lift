@@ -83,7 +83,14 @@
             </button>
           </div>
         </div>
-        <div id="main-content" ref="tabContentEl" class="tabContent" tabindex="-1">
+        <div
+          id="main-content"
+          ref="tabContentEl"
+          class="tabContent"
+          tabindex="-1"
+          role="tabpanel"
+          :aria-labelledby="`tab-${activeTab}`"
+        >
           <KeepAlive>
             <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
             <CalendarView v-else-if="activeTab === 'calendar'" />
@@ -94,7 +101,7 @@
 
       <!-- Tab bar -->
       <nav class="tabBar" aria-label="Main navigation">
-        <div class="tabBarTabs" role="tablist">
+        <div class="tabBarTabs" role="tablist" aria-label="Main navigation">
           <div
             class="tabIndicator"
             :style="tabIndicatorStyle"
@@ -103,10 +110,14 @@
           <button
             v-for="tab in visibleTabs"
             :key="tab.id"
+            :id="`tab-${tab.id}`"
             role="tab"
             :aria-selected="activeTab === tab.id"
+            aria-controls="main-content"
+            :tabindex="activeTab === tab.id ? 0 : -1"
             :class="['tabBtn', { active: activeTab === tab.id }]"
             @click="switchTab(tab.id)"
+            @keydown="onTablistKeydown"
           >
             <!-- eslint-disable-next-line vue/no-v-html, vue/html-self-closing -- icons are hardcoded SVG paths, not user input -->
             <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="tab.icon"></svg>
@@ -419,6 +430,41 @@ watch(() => prefs.features, () => {
     switchTab(visibleTabs.value[0]?.id || 'workouts')
   }
 }, { deep: true })
+
+// Roving-tabindex keyboard navigation for the bottom tablist (ARIA APG Tabs
+// pattern, automatic-activation variant). Arrow/Home/End move focus between
+// tabs and activate the focused one; the active tab is the only one in the
+// tab order (tabindex 0), the rest are -1.
+function onTablistKeydown(e: KeyboardEvent) {
+  const tabs = visibleTabs.value
+  const currentIdx = tabs.findIndex(t => t.id === activeTab.value)
+  if (currentIdx < 0 || tabs.length === 0) return
+  let nextIdx: number
+  switch (e.key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      nextIdx = (currentIdx + 1) % tabs.length
+      break
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      nextIdx = (currentIdx - 1 + tabs.length) % tabs.length
+      break
+    case 'Home':
+      nextIdx = 0
+      break
+    case 'End':
+      nextIdx = tabs.length - 1
+      break
+    default:
+      return
+  }
+  e.preventDefault()
+  const nextTab = tabs[nextIdx]
+  switchTab(nextTab.id)
+  nextTick(() => {
+    document.getElementById(`tab-${nextTab.id}`)?.focus()
+  })
+}
 
 // Exposed from WorkoutTracker via defineExpose so the top-bar "+" can open the
 // new-exercise modal directly. Logging a set is a per-exercise action (the "+"
