@@ -743,6 +743,17 @@ describe('BodyweightTracker', () => {
       const hero = wrapper.find('.bwHero')
       expect(hero.find('.wtLogBtn').exists()).toBe(true)
     })
+
+    // LIFT-856: the hero shows the current weight value, not a title — so the view
+    // had no page-level <h1>, breaking heading navigation across tab switches. A
+    // single visually-hidden h1 gives assistive tech a consistent landmark.
+    it('provides a single visually-hidden h1 page heading for assistive tech', () => {
+      const wrapper = mountTracker()
+      const h1s = wrapper.findAll('h1')
+      expect(h1s.length).toBe(1)
+      expect(h1s[0].text()).toBe('Weight')
+      expect(h1s[0].classes()).toContain('srOnly')
+    })
   })
 
   describe('a11y: sentiment indicators (WCAG 1.4.1 — not color alone)', () => {

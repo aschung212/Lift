@@ -10,7 +10,14 @@
  * in three components before this module existed.
  */
 
-function localDayKey(d: Date): string {
+/**
+ * Format a `Date` object as its local-calendar YYYY-MM-DD key.
+ * The single source of truth for turning a Date into a day key — use this
+ * anywhere a component needs `new Date(...)` → `YYYY-MM-DD` instead of
+ * hand-rolling `getFullYear()/getMonth()/getDate()` (which drifted into four
+ * divergent copies before this was shared — #918).
+ */
+export function localDateKey(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
@@ -19,7 +26,7 @@ function localDayKey(d: Date): string {
 
 /** Today's date as a local-calendar YYYY-MM-DD key. */
 export function todayISO(): string {
-  return localDayKey(new Date())
+  return localDateKey(new Date())
 }
 
 /**
@@ -29,7 +36,7 @@ export function todayISO(): string {
 export function toLocalDateKey(iso: string): string {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return iso.slice(0, 10)
-  return localDayKey(new Date(t))
+  return localDateKey(new Date(t))
 }
 
 /**

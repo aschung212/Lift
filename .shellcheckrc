@@ -1,0 +1,11 @@
+# shellcheck configuration.
+#
+# The only shell we lint is the `run:` blocks inside our GitHub Actions
+# workflows, checked by shellcheck via actionlint (see the `workflow-lint` job
+# in .github/workflows/ci.yml). Gate CI on genuine shell bugs — word-splitting,
+# unquoted expansions, broken conditionals (warning + error severities) — but
+# not stylistic suggestions (info/style) such as SC2129's "group these
+# redirects", which are noise for the short, generated snippets that live
+# inside workflow steps. The repo ships no first-party shell scripts, so this
+# only affects workflow linting.
+severity=warning
