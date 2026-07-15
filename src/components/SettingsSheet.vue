@@ -700,6 +700,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, type ComponentPublicInstance } from 'vue'
 import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
+import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
@@ -737,7 +739,9 @@ const emit = defineEmits<{
   'sign-out': []
 }>()
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
 const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
