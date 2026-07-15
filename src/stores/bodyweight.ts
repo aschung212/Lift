@@ -6,10 +6,9 @@ import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
-import { backupToIDB } from '../lib/durableStorage'
-import { logError, logWarn } from '../lib/logger'
+import { logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
-import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 
 const TOMBSTONE_STORE = 'bodyweight'
 
@@ -24,16 +23,7 @@ export interface BodyweightEntry {
 }
 
 function load(): BodyweightEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error('Expected array')
-    return parsed
-  } catch (e) {
-    logWarn('Corrupt bodyweight data in localStorage, using empty state', { error: String(e) })
-    return []
-  }
+  return loadStoreData<BodyweightEntry[]>('bodyweight', STORAGE_KEY, () => [], Array.isArray)
 }
 
 export const useBodyweightStore = defineStore('bodyweight', {
@@ -47,14 +37,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
   actions: {
     _persist() {
-      const data = JSON.stringify(this.entries)
-      try {
-        localStorage.setItem(STORAGE_KEY, data)
-      } catch (e) {
-        logError(e, { source: 'bodyweight._persist', size: data.length })
-      }
-      backupToIDB(STORAGE_KEY, data)
-      broadcastStoreUpdate('bodyweight')
+      persistStoreData('bodyweight', STORAGE_KEY, JSON.stringify(this.entries))
     },
 
     /** Re-read state from localStorage (called by cross-tab sync listener). */

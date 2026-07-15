@@ -3,15 +3,14 @@ import { shallowRef, triggerRef, computed } from 'vue'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import type { Tables } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
-import { backupToIDB } from '../lib/durableStorage'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
-import { broadcastStoreUpdate } from '../lib/crossTabSync'
 import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
+import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -175,28 +174,20 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
 }
 
 function load(): Exercise[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error('Expected array')
-    // Defensively normalize any persisted Intensity-lens config — corrupt or
-    // hand-edited storage must never feed a malformed rep cap into the table.
-    for (const ex of parsed) {
-      if (ex && ex.intensityMaxReps !== undefined) {
-        ex.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensityMaxReps)
-      }
-      if (ex && ex.equipment !== undefined) {
-        const eq = sanitizeExerciseEquipment(ex.equipment)
-        if (eq) ex.equipment = eq
-        else delete ex.equipment
-      }
+  const parsed = loadStoreData<Exercise[]>('workout', STORAGE_KEY, () => [], Array.isArray)
+  // Defensively normalize any persisted Intensity-lens config — corrupt or
+  // hand-edited storage must never feed a malformed rep cap into the table.
+  for (const ex of parsed) {
+    if (ex && ex.intensityMaxReps !== undefined) {
+      ex.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensityMaxReps)
     }
-    return parsed
-  } catch (e) {
-    logWarn('Corrupt workout data in localStorage, using empty state', { error: String(e) })
-    return []
+    if (ex && ex.equipment !== undefined) {
+      const eq = sanitizeExerciseEquipment(ex.equipment)
+      if (eq) ex.equipment = eq
+      else delete ex.equipment
+    }
   }
+  return parsed
 }
 
 export const useWorkoutStore = defineStore('workout', () => {
@@ -224,17 +215,17 @@ export const useWorkoutStore = defineStore('workout', () => {
 
   // ── Persistence ────────────────────────────────────────────────────
   function _persist() {
-    const data = JSON.stringify(exercises.value)
+    // Secondary tag keys are workout-specific and not mirrored to the IndexedDB
+    // backup, so they're written here; the primary exercises payload goes
+    // through the shared helper (localStorage + IDB backup + cross-tab broadcast).
     try {
-      localStorage.setItem(STORAGE_KEY, data)
       localStorage.setItem('lift-custom-tags', JSON.stringify(customTags.value))
       localStorage.setItem('lift-tag-recovery-days', JSON.stringify(tagRecoveryDays.value))
       localStorage.setItem('lift-tag-recovery-excluded', JSON.stringify(tagRecoveryExcluded.value))
     } catch (e) {
-      logError(e, { source: 'workout._persist', size: data.length })
+      logError(e, { source: 'workout._persist:tags' })
     }
-    backupToIDB(STORAGE_KEY, data)
-    broadcastStoreUpdate('workout')
+    persistStoreData('workout', STORAGE_KEY, JSON.stringify(exercises.value))
   }
 
   /** Re-read state from localStorage (called by cross-tab sync listener). */
