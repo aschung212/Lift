@@ -204,6 +204,7 @@ GitHub Actions runs on every push and PR to `master`:
 2. `npm run lint` — ESLint with Vue plugin (0 errors)
 3. `npm run build` — Vite production build
 4. `npm test` — full test suite
+5. **Lighthouse CI** (PRs only) — runs `@lhci/cli autorun` against `npm run preview` and asserts category budgets (accessibility ≥ 0.87 as a hard gate — the observed baseline, to be ratcheted toward 0.9 as the failing audits are fixed; performance/best-practices/SEO as advisory warnings). Config in `lighthouserc.json`; full HTML reports upload as the `lighthouse-report` artifact. Complements the static 512 KB JS bundle budget with real rendered-page Core Web Vitals.
 
 ### Code Quality
 

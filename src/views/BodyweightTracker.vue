@@ -1,5 +1,7 @@
 <template>
   <div class="wtCard bwCard">
+    <!-- Page-level heading for assistive tech (the hero shows the value, not a title) -->
+    <h1 class="srOnly">Weight</h1>
     <!-- Hero header: current weight + goal hint + log button -->
     <div class="bwHero">
       <span class="bwCurrentValue">{{ store.latestWeight ? `${displayWeight(store.latestWeight)} ${weightUnit}` : 'No entries' }}</span>
@@ -239,7 +241,6 @@
           Weight ({{ weightUnit }})
           <div class="repMaxInputRow">
             <input
-              ref="weightInputEl"
               v-model.number="weight"
               type="number"
               inputmode="decimal"
@@ -285,10 +286,13 @@ const { show: showUndo } = useUndoToast()
 const { logBodyweightXPCeremony } = useXPCeremony()
 
 // ── Modal state ──────────────────────────────────────────────────
-const weightInputEl = ref<HTMLInputElement | null>(null)
+// focusContainer: focus the dialog, not the weight input. Auto-focusing a
+// text input on open shows the caret but withholds the iOS keyboard, and a
+// later tap on the already-focused field won't summon it either. Letting the
+// user tap the field gives a fresh, gesture-driven focus that raises it (#830).
 const { isOpen: showModal, open: openModalTrap, close: closeModalTrap } = useModal({
   selector: '[aria-labelledby="bw-modal-title"]',
-  onOpen: () => weightInputEl.value?.focus(),
+  focusContainer: true,
 })
 const editing = ref<string | null>(null) // entry id when editing
 const weight = ref<number | null>(null)

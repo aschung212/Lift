@@ -12,7 +12,9 @@ import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
+import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -24,6 +26,14 @@ export interface WorkoutSet {
   weight: number
   reps: number
   estimated1RM: number
+  /**
+   * Real timestamp the set was logged (ISO 8601), distinct from `date` (which is
+   * stamped end-of-day and carries no time). Optional and currently unpopulated —
+   * the set-time capture work fills it from logSet + the DB `created_at` column,
+   * which lights up time-of-day and within-workout exercise ordering in the AI
+   * Coach payload. See docs/ai-coach.md and the AI Coach issue.
+   */
+  createdAt?: string
 }
 
 export type ExerciseInputMode = 'numpad' | 'plates'
@@ -39,6 +49,7 @@ export interface Exercise {
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
+  equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -170,6 +181,11 @@ function load(): Exercise[] {
     if (ex && ex.intensityMaxReps !== undefined) {
       ex.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensityMaxReps)
     }
+    if (ex && ex.equipment !== undefined) {
+      const eq = sanitizeExerciseEquipment(ex.equipment)
+      if (eq) ex.equipment = eq
+      else delete ex.equipment
+    }
   }
   return parsed
 }
@@ -180,10 +196,22 @@ export const useWorkoutStore = defineStore('workout', () => {
   // This avoids wrapping thousands of set objects in Proxy (5,000+ for heavy users).
   // Trade-off: every mutation must call triggerRef(exercises) to notify watchers.
   const exercises = shallowRef<Exercise[]>(load())
+  // Secondary state MUST hydrate through loadJSON (guarded parse + shape
+  // validation), never a raw JSON.parse. A corrupt key (truncated write,
+  // quota eviction mid-write, manual tampering) would otherwise throw in this
+  // setup-function body and the store would fail to construct at all — taking
+  // down the whole workout feature instead of degrading to defaults (#822).
   const customTags = shallowRef<string[]>(loadJSON('lift-custom-tags', [], Array.isArray))
   const tagRecoveryDays = shallowRef<Record<string, number>>(loadJSON('lift-tag-recovery-days', {}, isPlainObject))
   const tagRecoveryExcluded = shallowRef<string[]>(loadJSON('lift-tag-recovery-excluded', [], Array.isArray))
   let _userId: string | null = null
+
+  // ── Sync status (LIFT-820) ─────────────────────────────────────────
+  // Uniform, observable contract so the UI can surface "syncing" / "sync
+  // failed" instead of silently degrading to local-only. `lastSyncError` is
+  // typed so an expired session can be told apart from being offline.
+  const syncing = shallowRef(false)
+  const lastSyncError = shallowRef<SyncErrorKind | null>(null)
 
   // ── Persistence ────────────────────────────────────────────────────
   function _persist() {
@@ -236,6 +264,8 @@ export const useWorkoutStore = defineStore('workout', () => {
       // actually clears the override server-side — omitting it would leave a
       // stale value that re-applies on the next fetch.
       intensity_max_reps: exercise.intensityMaxReps ?? null,
+      // Same always-send rule: "Auto" clears the Coach equipment classification.
+      equipment: exercise.equipment ?? null,
     }
   }
 
@@ -266,7 +296,7 @@ export const useWorkoutStore = defineStore('workout', () => {
 
   /** Durable set upsert with a journaled descriptor (LIFT-706). */
   function _enqueueSetUpsert(
-    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number },
+    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number; createdAt?: string },
     exerciseId: string,
     userId: string,
   ) {
@@ -274,6 +304,11 @@ export const useWorkoutStore = defineStore('workout', () => {
       id: set.id, user_id: userId, exercise_id: exerciseId,
       date: set.date, weight: set.weight, reps: set.reps,
       estimated_1rm: set.estimated1RM,
+      // Persist the real log-time timestamp so an offline set logged at 6pm but
+      // synced hours later keeps its training time instead of the DB insert-time
+      // default (#846). Omitted when absent so editing a legacy set (no local
+      // createdAt) leaves the server's created_at untouched on upsert.
+      ...(set.createdAt ? { created_at: set.createdAt } : {}),
     }
     syncQueue.enqueue(
       `set:${set.id}`,
@@ -323,6 +358,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
 
+    syncing.value = true
     let remoteExData: Tables<'exercises'>[] | null
     let sets: Tables<'sets'>[] | null
     try {
@@ -335,6 +371,7 @@ export const useWorkoutStore = defineStore('workout', () => {
           exerciseError: String(exResult.error),
           setsError: String(setsResult.error),
         })
+        lastSyncError.value = classifySyncError(exResult.error ?? setsResult.error)
         // A 401 here means the token expired rather than the user being offline.
         // Refresh once so the next fetch recovers instead of staying local-only
         // until a manual reload (LIFT-784).
@@ -345,10 +382,14 @@ export const useWorkoutStore = defineStore('workout', () => {
       sets = setsResult.data
     } catch (err) {
       logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      lastSyncError.value = classifySyncError(err)
       return
+    } finally {
+      syncing.value = false
     }
 
     if (!remoteExData || !sets) return
+    lastSyncError.value = null
 
     // Filter out tombstoned exercises (deleted offline, not yet synced)
     const remoteIds = new Set(remoteExData.map(ex => ex.id))
@@ -368,6 +409,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
       if (ex.intensity_max_reps != null) exercise.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensity_max_reps)
+      if (ex.equipment != null) {
+        const eq = sanitizeExerciseEquipment(ex.equipment)
+        if (eq) exercise.equipment = eq
+      }
       if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
     })
@@ -389,7 +434,10 @@ export const useWorkoutStore = defineStore('workout', () => {
         date: s.date,
         weight: s.weight,
         reps: s.reps,
-        estimated1RM: s.estimated_1rm
+        estimated1RM: s.estimated_1rm,
+        // Surface the server insert timestamp so historical/synced sets carry a
+        // real time-of-day + within-workout order for the AI Coach payload (#846).
+        createdAt: s.created_at,
       })
     }
     remoteExercises.forEach(ex => {
@@ -626,6 +674,27 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Set (or clear) the explicit Coach equipment classification (#931 phase C).
+   * `null` clears the override ("Auto") so the name heuristic applies again.
+   * Values are sanitized so only the known kinds are ever stored.
+   */
+  function setExerciseEquipment(exerciseId: string, equipment: ExerciseEquipment | null) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    const eq = equipment === null ? undefined : sanitizeExerciseEquipment(equipment)
+    if (eq) exercise.equipment = eq
+    else delete exercise.equipment
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
   function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
@@ -639,13 +708,19 @@ export const useWorkoutStore = defineStore('workout', () => {
       : new Date().toISOString()
     const id = uuid()
     const estimated1RM = epley(weight, reps)
-    exercise.sets.push({ id, date, weight, reps, estimated1RM })
+    // Real wall-clock log time, distinct from `date` (stamped end-of-day for the
+    // chosen calendar day, no time-of-day, per #746). Drives time-of-day +
+    // within-workout ordering in the AI Coach payload (#846): ≈ training time for
+    // live logging, and for an offline set it preserves the log moment rather
+    // than the later sync time.
+    const createdAt = new Date().toISOString()
+    exercise.sets.push({ id, date, weight, reps, estimated1RM, createdAt })
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
-      _enqueueSetUpsert({ id, date, weight, reps, estimated1RM }, exerciseId, _userId)
+      _enqueueSetUpsert({ id, date, weight, reps, estimated1RM, createdAt }, exerciseId, _userId)
     }
   }
 
@@ -1254,6 +1329,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     tagRecoveryDays.value = {}
     tagRecoveryExcluded.value = []
     _userId = null
+    syncing.value = false
+    lastSyncError.value = null
     triggerRef(exercises)
     triggerRef(customTags)
     triggerRef(tagRecoveryDays)
@@ -1267,6 +1344,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     customTags,
     tagRecoveryDays,
     tagRecoveryExcluded,
+    syncing,
+    lastSyncError,
     // Actions
     $reset,
     init,
@@ -1276,6 +1355,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseInputMode,
     setExerciseBarWeight,
     setExerciseIntensityMaxReps,
+    setExerciseEquipment,
     logSet,
     updateSet,
     deleteSet,

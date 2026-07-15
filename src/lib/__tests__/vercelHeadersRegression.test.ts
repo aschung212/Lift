@@ -64,6 +64,34 @@ describe('vercel.json security headers', () => {
     })
   })
 
+  describe('cross-origin isolation (LIFT-811)', () => {
+    /**
+     * COOP severs the window.opener relationship for cross-origin
+     * navigations, defeating tabnabbing and enabling browser process
+     * isolation. The `same-origin-allow-popups` variant (not the stricter
+     * `same-origin`) is deliberate: it keeps the opener reference for
+     * popups WE open, which the Supabase OAuth and native share-sheet
+     * redirect flows rely on. Do not tighten to `same-origin` without
+     * re-verifying those flows.
+     */
+    it('sets Cross-Origin-Opener-Policy to same-origin-allow-popups', () => {
+      expect(getHeader(globalRule, 'Cross-Origin-Opener-Policy')).toBe(
+        'same-origin-allow-popups'
+      )
+    })
+
+    /**
+     * CORP blocks other origins from embedding our responses as
+     * sub-resources. Everything Lift serves is same-origin, so
+     * `same-origin` is the safe, maximally-restrictive choice.
+     */
+    it('sets Cross-Origin-Resource-Policy to same-origin', () => {
+      expect(getHeader(globalRule, 'Cross-Origin-Resource-Policy')).toBe(
+        'same-origin'
+      )
+    })
+  })
+
   describe('Content-Security-Policy', () => {
     const csp = getHeader(globalRule, 'Content-Security-Policy') ?? ''
 

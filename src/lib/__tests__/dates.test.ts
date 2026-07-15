@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { todayISO, toLocalDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../dates'
+import { todayISO, localDateKey, toLocalDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../dates'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -35,6 +35,24 @@ describe('todayISO', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 0, 5, 12, 0, 0))
     expect(todayISO()).toBe('2026-01-05')
+  })
+})
+
+describe('localDateKey', () => {
+  it('formats a Date as its LOCAL calendar day, not the UTC day', () => {
+    // 23:59 local on June 10 — the same near-midnight boundary the other
+    // helpers guard. Deriving from a Date must never roll to the UTC tomorrow.
+    expect(localDateKey(new Date(2026, 5, 10, 23, 59, 0))).toBe('2026-06-10')
+  })
+
+  it('pads single-digit months and days', () => {
+    expect(localDateKey(new Date(2026, 0, 5, 0, 0, 0))).toBe('2026-01-05')
+  })
+
+  it('todayISO is localDateKey applied to now', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 2, 9, 8, 30, 0))
+    expect(todayISO()).toBe(localDateKey(new Date()))
   })
 })
 

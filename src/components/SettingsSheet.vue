@@ -66,7 +66,16 @@
             Unlock more themes by enabling <span class="badgeEnableLink">Progression</span> below.
           </p>
           <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
-          <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
+          <div
+            v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null"
+            class="badgeProgressBar"
+            role="progressbar"
+            aria-label="Progress to next theme unlock"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-valuenow="progressionStore.progressPercent"
+            :aria-valuetext="`${progressionStore.xpToNextUnlock.toLocaleString()} XP to next theme`"
+          >
             <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>
           </div>
           <div class="settingsRow">
@@ -691,9 +700,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, type ComponentPublicInstance } from 'vue'
 import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
+import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
-import { useProgressionStore, UNLOCK_TIERS, showXPToast } from '../stores/progression'
+import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
+import { showXPToast } from '../composables/xpCeremonyUI'
 import { isNative } from '../lib/platform'
 import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
 import { setNativeAppIcon } from '../lib/nativeAppIcon'
@@ -727,7 +739,9 @@ const emit = defineEmits<{
   'sign-out': []
 }>()
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
 const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
