@@ -1169,6 +1169,54 @@ export const useWorkoutStore = defineStore('workout', () => {
     return [...dates].sort()
   })
 
+  // ── PR memoization (LIFT-939) ───────────────────────────────────
+  // getExercisePR / getExercisePRSet are called many times per render
+  // (the exercise list calls getRowMeta 3× per row, prsThisWeek loops
+  // every exercise), and each call did an O(n) `.find` plus an O(m) scan
+  // over the exercise's sets — O(rows × (n + m)) per WorkoutTracker render.
+  // This computed rebuilds an id→exercise index and an empty result memo,
+  // and is invalidated only when `exercises` changes (ref reassignment or
+  // the store's in-place-mutation `triggerRef(exercises)` calls). Results
+  // are filled lazily per baseline date and cached until the next mutation,
+  // so repeat lookups are O(1) and each exercise is scanned at most once.
+  interface PRResult {
+    pr: number
+    prSet: WorkoutSet | null
+  }
+  const _prCache = computed<{ byId: Map<string, Exercise>; bySince: Map<string, Map<string, PRResult>> }>(() => {
+    const byId = new Map<string, Exercise>()
+    for (const e of exercises.value) byId.set(e.id, e)
+    return { byId, bySince: new Map<string, Map<string, PRResult>>() }
+  })
+
+  function _computePRResult(exercise: Exercise | undefined, sinceDate: string | null): PRResult {
+    if (!exercise || exercise.sets.length === 0) return { pr: 0, prSet: null }
+    let best: WorkoutSet | null = null
+    for (const s of exercise.sets) {
+      if (sinceDate && s.date.slice(0, 10) < sinceDate) continue
+      // Strict `>` keeps the first set that reaches the max, matching the
+      // prior reduce()/Math.max() tie-breaking behavior.
+      if (!best || s.estimated1RM > best.estimated1RM) best = s
+    }
+    return best ? { pr: best.estimated1RM, prSet: best } : { pr: 0, prSet: null }
+  }
+
+  function _prResult(exerciseId: string, sinceDate: string | null): PRResult {
+    const { byId, bySince } = _prCache.value
+    const key = sinceDate ?? ''
+    let memo = bySince.get(key)
+    if (!memo) {
+      memo = new Map<string, PRResult>()
+      bySince.set(key, memo)
+    }
+    let result = memo.get(exerciseId)
+    if (!result) {
+      result = _computePRResult(byId.get(exerciseId), sinceDate)
+      memo.set(exerciseId, result)
+    }
+    return result
+  }
+
   /**
    * Max estimated1RM across all sets for an exercise.
    * When `sinceDate` (YYYY-MM-DD) is provided, only sets on or after that
@@ -1176,13 +1224,7 @@ export const useWorkoutStore = defineStore('workout', () => {
    * all-time behavior.
    */
   function getExercisePR(exerciseId: string, sinceDate?: string | null): number {
-    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise || exercise.sets.length === 0) return 0
-    const filtered = sinceDate
-      ? exercise.sets.filter((s: WorkoutSet) => s.date.slice(0, 10) >= sinceDate)
-      : exercise.sets
-    if (filtered.length === 0) return 0
-    return Math.max(...filtered.map((s: WorkoutSet) => s.estimated1RM))
+    return _prResult(exerciseId, sinceDate ?? null).pr
   }
 
   /**
@@ -1190,15 +1232,7 @@ export const useWorkoutStore = defineStore('workout', () => {
    * Respects `sinceDate` like getExercisePR.
    */
   function getExercisePRSet(exerciseId: string, sinceDate?: string | null): WorkoutSet | null {
-    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise || exercise.sets.length === 0) return null
-    const filtered = sinceDate
-      ? exercise.sets.filter((s: WorkoutSet) => s.date.slice(0, 10) >= sinceDate)
-      : exercise.sets
-    if (filtered.length === 0) return null
-    return filtered.reduce((best: WorkoutSet, s: WorkoutSet) =>
-      s.estimated1RM > best.estimated1RM ? s : best
-    )
+    return _prResult(exerciseId, sinceDate ?? null).prSet
   }
 
   /**
