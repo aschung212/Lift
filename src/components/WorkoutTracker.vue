@@ -700,7 +700,7 @@
   <!-- Exercise Picker (timeline + Log Set; extracted to ExercisePickerModal.vue) -->
   <ExercisePickerModal
     :open="timelineLogPicking"
-    :exercises="store.activeExercises"
+    :exercises="exercisesByRecency"
     @close="timelineLogPicking = false"
     @select="pickExerciseForLog"
     @create-new="pickNewExerciseFromPicker"
@@ -952,6 +952,49 @@ function clearSearchAndTags() {
   activeTagFilters.value = []
 }
 
+/**
+ * Most recent activity day-key per exercise — the max `setDayKey` across all
+ * of its sets, INCLUDING today (a set logged today floats the exercise to the
+ * top). Exercises never logged map to '' and sort to the bottom. Built once
+ * per set-data change so the recency sort in `filteredExercises` stays
+ * O(n·log n) rather than O(n·m) rescanned on every render. (#936)
+ */
+const lastActivityByExercise = computed(() => {
+  const map = new Map<string, string>()
+  for (const ex of store.activeExercises) {
+    let latest = ''
+    for (const s of ex.sets) {
+      const day = setDayKey(s.date)
+      if (day > latest) latest = day
+    }
+    map.set(ex.id, latest)
+  }
+  return map
+})
+
+/**
+ * Sort a list of exercises by most-recent activity (descending) without
+ * mutating the input. `.sort` is stable, so equal-recency exercises (including
+ * never-logged, key '') keep their incoming order, preserving any manual
+ * drag/keyboard reorder as a tiebreaker. (#936)
+ */
+function sortByRecency(list: readonly Exercise[]): Exercise[] {
+  const activity = lastActivityByExercise.value
+  return list.slice().sort((a, b) => {
+    const ka = activity.get(a.id) ?? ''
+    const kb = activity.get(b.id) ?? ''
+    if (ka === kb) return 0
+    return ka < kb ? 1 : -1
+  })
+}
+
+/**
+ * Active exercises ordered by recency, with no search/tag filter — feeds the
+ * "Choose Exercise" quick-log picker so the next exercise to train sits at the
+ * top of that list too. (#936)
+ */
+const exercisesByRecency = computed(() => sortByRecency(store.activeExercises))
+
 const filteredExercises = computed(() => {
   let result = store.activeExercises
   // Text search — check both name and tags so "Push" matches tag-filtered rows.
@@ -970,7 +1013,11 @@ const filteredExercises = computed(() => {
       return activeTagFilters.value.some(t => tags.includes(t))
     })
   }
-  return result
+  // Recency ordering (#936): most recently logged exercise first, so the next
+  // exercise to perform is the easiest to reach. Applied AFTER filtering so
+  // tag / search subsets stay recency-ordered too — the most recent exercise
+  // within a muscle group floats to the top of that filtered view.
+  return sortByRecency(result)
 })
 
 /**
