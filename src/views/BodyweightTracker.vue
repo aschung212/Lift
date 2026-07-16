@@ -52,7 +52,10 @@
     <!-- Graph -->
     <div v-if="points.length >= 2" class="wtGraphWrap">
       <div class="bwGraphHeader">
-        <p class="wtGraphTitle">Weight Over Time</p>
+        <!-- Section heading under the "Weight" h1. Exposed via role/aria-level
+             rather than a native <h2> so it keeps its exact rendering inside the
+             baseline-aligned flex header (a real <h2>'s UA margins would shift the row). -->
+        <p class="wtGraphTitle" role="heading" aria-level="2">Weight Over Time</p>
         <span v-if="goalLine" class="bwGoalTag">{{ goalLine.direction === 'above' ? '↑' : goalLine.direction === 'below' ? '↓' : '→' }} Goal: {{ goalLine.label }} {{ weightUnit }}</span>
         <span v-else-if="rangeBand" class="bwGoalTag">Range: {{ prefs.weightGoal.maintainMin != null ? displayWeight(prefs.weightGoal.maintainMin) : '–' }}–{{ prefs.weightGoal.maintainMax != null ? displayWeight(prefs.weightGoal.maintainMax) : '–' }} {{ weightUnit }}</span>
       </div>
