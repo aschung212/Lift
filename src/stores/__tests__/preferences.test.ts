@@ -130,6 +130,50 @@ describe('usePreferencesStore', () => {
       expect(freshStore.features.weight).toBe(true)
     })
 
+    it('rejects non-boolean feature flags injected via corrupt storage on init', async () => {
+      // A corrupt localStorage payload (e.g. from a malicious cross-tab write)
+      // must not inject non-boolean values into reactive feature flags (LIFT-949).
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: 'hacked', calendar: false, evil: { drop: 1 } },
+        experience: { prCelebrations: 'yes', haptics: false },
+        filters: { warmupThreshold: 'high' },
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      // Non-boolean known flags fall back to defaults
+      expect(freshStore.features.workouts).toBe(true)
+      expect(freshStore.features.calendar).toBe(false)
+      // Non-boolean unknown key is not injected onto the map
+      expect('evil' in freshStore.features).toBe(false)
+      // Every retained flag value is a real boolean
+      for (const v of Object.values(freshStore.features)) {
+        expect(typeof v).toBe('boolean')
+      }
+      // Experience/filter shapes are likewise type-guarded
+      expect(freshStore.experience.prCelebrations).toBe(true)
+      expect(freshStore.experience.haptics).toBe(false)
+      expect(freshStore.filters.warmupThreshold).toBe(0.75)
+    })
+
+    it('rejects non-boolean flags injected via a cross-tab reload', () => {
+      // _reloadFromStorage is the BroadcastChannel-driven path — same guard applies.
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { calendar: 42 },
+        experience: { haptics: 'nope' },
+        filters: { warmupThreshold: null },
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.features.calendar).toBe(true)
+      expect(store.experience.haptics).toBe(true)
+      expect(store.filters.warmupThreshold).toBe(0.75)
+    })
+
     it('init sets userId', async () => {
       await store.init('user-123')
       expect(store._userId).toBe('user-123')

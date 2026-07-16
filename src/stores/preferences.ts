@@ -8,6 +8,7 @@ import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/inte
 import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { mergeValidatedOpen, mergeValidatedKnown, isBoolean, isNumber } from '../lib/schema'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -195,10 +196,10 @@ export const usePreferencesStore = defineStore('preferences', {
       if (!raw) return
       try {
         const parsed = JSON.parse(raw)
-        if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
+        if (parsed.features) this.features = mergeValidatedOpen(DEFAULTS, parsed.features, isBoolean) as FeatureFlags
         if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
-        if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
-        if (parsed.filters) this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
+        if (parsed.experience) this.experience = mergeValidatedKnown(DEFAULT_EXPERIENCE, parsed.experience, isBoolean)
+        if (parsed.filters) this.filters = mergeValidatedKnown(DEFAULT_FILTERS, parsed.filters, isNumber)
         if (typeof parsed.theme === 'string') this.theme = parsed.theme
         if (typeof parsed.colorMode === 'string') this.colorMode = parsed.colorMode
         if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
@@ -218,15 +219,15 @@ export const usePreferencesStore = defineStore('preferences', {
       if (raw) {
         try {
           const parsed = JSON.parse(raw)
-          if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
+          if (parsed.features) this.features = mergeValidatedOpen(DEFAULTS, parsed.features, isBoolean) as FeatureFlags
           if (parsed.weightGoal) {
             this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
           }
           if (parsed.experience) {
-            this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+            this.experience = mergeValidatedKnown(DEFAULT_EXPERIENCE, parsed.experience, isBoolean)
           }
           if (parsed.filters) {
-            this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
+            this.filters = mergeValidatedKnown(DEFAULT_FILTERS, parsed.filters, isNumber)
           }
           if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
             this.prBaselineDate = parsed.prBaselineDate
@@ -294,15 +295,15 @@ export const usePreferencesStore = defineStore('preferences', {
           }
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
-            this.features = { ...DEFAULTS, ...prefs.features as Record<string, boolean> }
+            this.features = mergeValidatedOpen(DEFAULTS, prefs.features, isBoolean) as FeatureFlags
             if (prefs.weightGoal) {
               this.weightGoal = _migrateWeightGoal(prefs.weightGoal)
             }
             if (prefs.experience) {
-              this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
+              this.experience = mergeValidatedKnown(DEFAULT_EXPERIENCE, prefs.experience, isBoolean)
             }
             if (prefs.filters) {
-              this.filters = { ...DEFAULT_FILTERS, ...(prefs.filters as Partial<FilterSettings>) }
+              this.filters = mergeValidatedKnown(DEFAULT_FILTERS, prefs.filters, isNumber)
             }
             if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate as string)) {
               this.prBaselineDate = prefs.prBaselineDate as string
