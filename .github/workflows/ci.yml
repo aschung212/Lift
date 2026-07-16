@@ -268,13 +268,13 @@ jobs:
       - name: Measure bundle sizes
         id: bundle
         run: |
-          # Total JS bundle budget: 550 KB (currently ~511 KB after the AI Coach sheet).
+          # Total JS bundle budget: 570 KB (currently ~551 KB after per-gym filtering, #961).
           # Sums every emitted JS chunk, so code-splitting does not lower the total —
-          # bumped from 500 KB when the app legitimately outgrew the old ceiling.
+          # bumped from 500 KB, then 550 KB, when the app legitimately outgrew the old ceiling.
           TOTAL_JS=$(find dist/assets -name '*.js' ! -name 'workbox-*' ! -name 'sw.*' -exec wc -c {} + | tail -1 | awk '{print $1}')
           TOTAL_CSS=$(find dist/assets -name '*.css' -exec wc -c {} + | tail -1 | awk '{print $1}')
           TOTAL_CSS=${TOTAL_CSS:-0}
-          BUDGET=563200
+          BUDGET=583680
 
           echo "js_bytes=$TOTAL_JS" >> "$GITHUB_OUTPUT"
           echo "css_bytes=$TOTAL_CSS" >> "$GITHUB_OUTPUT"
@@ -304,7 +304,8 @@ jobs:
             const fs = require('fs');
             const jsBytes = parseInt('${{ steps.bundle.outputs.js_bytes }}', 10);
             const cssBytes = parseInt('${{ steps.bundle.outputs.css_bytes }}', 10);
-            const budget = 512000;
+            // Keep in sync with BUDGET in the "Measure bundle sizes" step above.
+            const budget = 583680;
 
             let body = '## 📦 Bundle Size Report\n\n';
 
