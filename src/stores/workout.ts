@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { shallowRef, triggerRef, computed } from 'vue'
 import { supabase, isPreviewMode } from '../lib/supabase'
-import type { Tables } from '../lib/database.types'
-import { syncQueue } from '../lib/syncQueue'
+import type { Tables, TablesUpdate } from '../lib/database.types'
+import { syncQueue, type SyncTable, type SyncDescriptor } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
@@ -321,6 +321,23 @@ export const useWorkoutStore = defineStore('workout', () => {
    * Durable soft-delete (UPDATE { deleted_at }). Routed through enqueueDelete
    * so the circuit breaker sees it, with a journaled descriptor (LIFT-706).
    */
+  /**
+   * Build a typed `update` SyncDescriptor for a table only known as a runtime
+   * `sets | exercises` union (LIFT-948). TypeScript can't distribute a
+   * non-literal `table` across the `SyncDescriptor` union, so the single
+   * unavoidable widening cast is isolated here — the signature still bounds
+   * `table` to a real `SyncTable` and `values` to that table's generated
+   * `Update` shape rather than an untyped record. Kept local (not exported from
+   * syncQueue) so the many `syncQueue` test mocks don't each need to re-stub it.
+   */
+  function _buildUpdateDescriptor<T extends SyncTable>(
+    table: T,
+    values: TablesUpdate<T>,
+    match: Record<string, string>,
+  ): SyncDescriptor {
+    return { op: 'update', table, values, match } as SyncDescriptor
+  }
+
   function _enqueueSoftDelete(key: string, table: 'sets' | 'exercises', match: Record<string, string>) {
     const deletedAt = new Date().toISOString()
     const values = { deleted_at: deletedAt }
@@ -331,7 +348,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         for (const [col, val] of Object.entries(match)) q = q.eq(col, val)
         return q
       },
-      { op: 'update', table, values, match },
+      _buildUpdateDescriptor(table, values, match),
     )
   }
 
@@ -345,7 +362,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         for (const [col, val] of Object.entries(match)) q = q.eq(col, val)
         return q
       },
-      { op: 'update', table, values, match },
+      _buildUpdateDescriptor(table, values, match),
     )
   }
 
