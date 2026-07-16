@@ -132,7 +132,7 @@
       </nav>
 
       <!-- Settings bottom sheet (extracted to SettingsSheet.vue) -->
-      <SettingsSheet ref="settingsSheetRef" v-model="settingsOpen" @sign-out="handleSignOut" />
+      <SettingsSheet v-if="settingsOpen" ref="settingsSheetRef" v-model="settingsOpen" @sign-out="handleSignOut" />
     </template>
 
     <!-- Undo toast -->
@@ -230,7 +230,6 @@ import { isPreviewDeploy, isPreviewMode, initSupabase } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './views/AuthScreen.vue'
 import OnboardingScreen from './views/OnboardingScreen.vue'
-import SettingsSheet from './components/SettingsSheet.vue'
 import PRBurst from './components/PRBurst.vue'
 import GoalCelebration from './components/GoalCelebration.vue'
 
@@ -251,6 +250,10 @@ const BodyweightTracker = defineAsyncComponent({
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
+// Settings is reachable only behind a tap and pulls in training-report/data-export
+// UI many users never open — split it (and its transitive deps) into an on-demand
+// chunk, gated by v-if="settingsOpen" so the chunk isn't fetched until first open.
+const SettingsSheet = defineAsyncComponent(() => import('./components/SettingsSheet.vue'))
 import { useTheme, connectProgressionStore } from './composables/useTheme'
 import type { ThemeId } from './lib/themes'
 import { useProgressionStore } from './stores/progression'
@@ -324,7 +327,10 @@ window.addEventListener('offline', updateOnlineStatus)
 if (!navigator.onLine) syncStatus.value = 'offline'
 
 const settingsOpen = ref(false)
-const settingsSheetRef = ref<InstanceType<typeof SettingsSheet> | null>(null)
+// SettingsSheet is an async component, so a `typeof`-based InstanceType would
+// resolve to the loader wrapper, not the SFC. It only exposes closeSettings(),
+// so type the ref by the exposed surface we actually call.
+const settingsSheetRef = ref<{ closeSettings: () => void } | null>(null)
 
 // ── Focus traps for modals ─────────────────────────────────────
 const shortcutsFocus = useFocusTrap()
