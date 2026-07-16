@@ -83,6 +83,43 @@ describe('workout store secondary-state hydration (real Pinia)', () => {
     expect(store.tagRecoveryExcluded).toEqual(['Legs'])
   })
 
+  it('drops malformed exercises and sets from corrupt primary storage (LIFT-946)', async () => {
+    localStorageMock.setItem('workout-exercises', JSON.stringify([
+      {
+        id: 'ex-1',
+        name: 'Bench Press',
+        tags: ['Push', 7], // stray non-string tag → dropped
+        sets: [
+          { id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's-2', date: '2026-05-01', reps: 5 }, // missing weight → dropped
+        ],
+      },
+      { id: 'ex-2' }, // missing name → whole exercise dropped
+      'not-an-exercise', // dropped
+    ]))
+
+    const { useWorkoutStore } = await import('../workout')
+    const store = useWorkoutStore()
+
+    expect(store.exercises).toHaveLength(1)
+    expect(store.exercises[0].name).toBe('Bench Press')
+    expect(store.exercises[0].tags).toEqual(['Push'])
+    expect(store.exercises[0].sets).toHaveLength(1)
+    expect(store.exercises[0].sets[0].id).toBe('s-1')
+  })
+
+  it('drops non-string tags and non-numeric recovery-day values (LIFT-946)', async () => {
+    localStorageMock.setItem('lift-custom-tags', JSON.stringify(['Push', 42, 'Pull']))
+    localStorageMock.setItem('lift-tag-recovery-days', JSON.stringify({ Push: 3, Pull: '4' }))
+    localStorageMock.setItem('lift-tag-recovery-excluded', JSON.stringify(['Legs', null]))
+
+    const { useWorkoutStore } = await import('../workout')
+    const store = useWorkoutStore()
+    expect(store.customTags).toEqual(['Push', 'Pull'])
+    expect(store.tagRecoveryDays).toEqual({ Push: 3 })
+    expect(store.tagRecoveryExcluded).toEqual(['Legs'])
+  })
+
   it('_reloadFromStorage keeps current in-memory value on a corrupt key', async () => {
     localStorageMock.setItem('lift-custom-tags', JSON.stringify(['Push']))
 

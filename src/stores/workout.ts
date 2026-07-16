@@ -11,6 +11,7 @@ import { epley } from '../lib/epley'
 import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
+import { parseExercises, parseStringArray, parseNumberRecord } from '../lib/parseGuards'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -174,20 +175,12 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
 }
 
 function load(): Exercise[] {
-  const parsed = loadStoreData<Exercise[]>('workout', STORAGE_KEY, () => [], Array.isArray)
-  // Defensively normalize any persisted Intensity-lens config — corrupt or
-  // hand-edited storage must never feed a malformed rep cap into the table.
-  for (const ex of parsed) {
-    if (ex && ex.intensityMaxReps !== undefined) {
-      ex.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensityMaxReps)
-    }
-    if (ex && ex.equipment !== undefined) {
-      const eq = sanitizeExerciseEquipment(ex.equipment)
-      if (eq) ex.equipment = eq
-      else delete ex.equipment
-    }
-  }
-  return parsed
+  // Element-level validation at the localStorage boundary (LIFT-946): a single
+  // corrupt exercise or set (missing weight/reps, wrong-typed fields) must not
+  // flow into 1RM math, charts, or sync payloads. parseExercises drops malformed
+  // entries (logWarn), normalizes tags/sets, and sanitizes the Intensity-lens
+  // config + equipment classification through the same helpers the setters use.
+  return parseExercises(loadStoreData<unknown[]>('workout', STORAGE_KEY, () => [], Array.isArray))
 }
 
 export const useWorkoutStore = defineStore('workout', () => {
@@ -201,9 +194,12 @@ export const useWorkoutStore = defineStore('workout', () => {
   // quota eviction mid-write, manual tampering) would otherwise throw in this
   // setup-function body and the store would fail to construct at all — taking
   // down the whole workout feature instead of degrading to defaults (#822).
-  const customTags = shallowRef<string[]>(loadJSON('lift-custom-tags', [], Array.isArray))
-  const tagRecoveryDays = shallowRef<Record<string, number>>(loadJSON('lift-tag-recovery-days', {}, isPlainObject))
-  const tagRecoveryExcluded = shallowRef<string[]>(loadJSON('lift-tag-recovery-excluded', [], Array.isArray))
+  // Element-level validation (LIFT-946): loadJSON only checks the top-level
+  // shape, so a corrupt array holding a stray number or a recovery map holding
+  // string values would still hydrate. The parse guards drop those elements.
+  const customTags = shallowRef<string[]>(parseStringArray(loadJSON('lift-custom-tags', [], Array.isArray)))
+  const tagRecoveryDays = shallowRef<Record<string, number>>(parseNumberRecord(loadJSON('lift-tag-recovery-days', {}, isPlainObject)))
+  const tagRecoveryExcluded = shallowRef<string[]>(parseStringArray(loadJSON('lift-tag-recovery-excluded', [], Array.isArray)))
   let _userId: string | null = null
 
   // ── Sync status (LIFT-820) ─────────────────────────────────────────
@@ -232,9 +228,9 @@ export const useWorkoutStore = defineStore('workout', () => {
   function _reloadFromStorage() {
     exercises.value = load()
     // On corrupt storage, keep the current in-memory value rather than resetting.
-    customTags.value = loadJSON('lift-custom-tags', customTags.value, Array.isArray)
-    tagRecoveryDays.value = loadJSON('lift-tag-recovery-days', tagRecoveryDays.value, isPlainObject)
-    tagRecoveryExcluded.value = loadJSON('lift-tag-recovery-excluded', tagRecoveryExcluded.value, Array.isArray)
+    customTags.value = parseStringArray(loadJSON('lift-custom-tags', customTags.value, Array.isArray))
+    tagRecoveryDays.value = parseNumberRecord(loadJSON('lift-tag-recovery-days', tagRecoveryDays.value, isPlainObject))
+    tagRecoveryExcluded.value = parseStringArray(loadJSON('lift-tag-recovery-excluded', tagRecoveryExcluded.value, Array.isArray))
     triggerRef(exercises)
     triggerRef(customTags)
     triggerRef(tagRecoveryDays)

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
-import type { Tables } from '../lib/database.types'
+import type { Tables, Json } from '../lib/database.types'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import type { ThemeId } from '../lib/themes'
 import type { StreakHistoryEntry } from '../lib/xp'
@@ -169,16 +169,17 @@ function recalcTotalXP(xpPerSet: Record<string, SetXPEntry | number>, bodyweight
   return total
 }
 
-/** Migration: convert old ThemeId[] format to ThemeUnlock[] */
+/**
+ * Migration: convert old ThemeId[] format to ThemeUnlock[] (LIFT-946).
+ *
+ * Delegates element-level validation to `parseUnlockedThemes` (the same guard
+ * the Supabase-JSON path uses) so the localStorage boundary doesn't invent a
+ * weaker second check — it validates every entry's id/unlockedAt, not just the
+ * first, and still handles the legacy string[] format. Falls back to the default
+ * starter (pearl) when the value is absent, empty, or fully malformed.
+ */
 function migrateUnlockedThemes(themes: unknown): ThemeUnlock[] {
-  if (!Array.isArray(themes)) return [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
-  if (themes.length === 0) return [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
-  // Check if already new format
-  if (typeof themes[0] === 'object' && themes[0] !== null && 'id' in themes[0]) {
-    return themes as ThemeUnlock[]
-  }
-  // Old format: string array → convert
-  return (themes as string[]).map(id => ({ id: id as ThemeId, unlockedAt: new Date().toISOString() }))
+  return parseUnlockedThemes(themes as Json) ?? [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
 }
 
 function load(): ProgressionState {
@@ -192,6 +193,12 @@ function load(): ProgressionState {
   )
   const parsed = { ...defaultState(), ...stored } as ProgressionState
   parsed.unlockedThemes = migrateUnlockedThemes(parsed.unlockedThemes)
+  // Validate the JSON-blob fields through the same guards the Supabase-JSON path
+  // uses (LIFT-946) so a corrupt localStorage entry — a non-numeric xp, a string
+  // date — is dropped at the boundary rather than casting straight into XP math.
+  parsed.xpPerSet = parseXpPerSet(stored.xpPerSet as Json, {})
+  parsed.streakHistory = parseStreakHistory(stored.streakHistory as Json, defaultState().streakHistory)
+  parsed.bodyweightXPDates = parseBodyweightDates(stored.bodyweightXPDates as Json, [])
   if (!parsed.epoch) parsed.epoch = 1
   // Defensive: if starter was picked and XP earned, the trial is over.
   // Only infer starterConfirmed — do NOT force progressionEnabled, as the
