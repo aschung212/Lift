@@ -87,6 +87,11 @@
         >
           <span class="wtTagChipLabel">{{ gym }}</span>
         </button>
+        <button
+          class="wtTagChip wtTagChipManage"
+          @click="gymManagerOpen = true"
+          aria-label="Manage gyms"
+        ><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></button>
       </div>
     </template>
 
@@ -711,6 +716,7 @@
   <EditExerciseModal
     :exercise="editTargetExercise"
     :all-tags="store.allTags"
+    :all-gyms="allGyms"
     @close="editTarget = null"
     @save="onEditExerciseSave"
     @archive="handleArchiveFromEdit"
@@ -737,6 +743,18 @@
     @rename-tag="onRenameTag"
     @delete-tag="confirmDeleteTag"
     @toggle-exercise-tag="toggleExerciseTag"
+  />
+
+  <!-- Gym Manager Modal (#961) — create/rename/delete gyms + bulk membership -->
+  <GymManagerModal
+    :open="gymManagerOpen"
+    :gyms="allGyms"
+    :exercises="store.exercises"
+    @close="gymManagerOpen = false"
+    @create-gym="gymActions.createGym"
+    @rename-gym="onRenameGym"
+    @delete-gym="gymActions.deleteGym"
+    @toggle-exercise-gym="gymActions.toggleExerciseGym"
   />
 
   <!-- Rest timer bar -->
@@ -808,7 +826,9 @@ import RestTimerContent from './RestTimerContent.vue'
 import WorkoutTimeline from './WorkoutTimeline.vue'
 import EditExerciseModal, { type EditExerciseSave } from './EditExerciseModal.vue'
 import TagManagerModal from './TagManagerModal.vue'
+import GymManagerModal from './GymManagerModal.vue'
 import ExercisePickerModal from './ExercisePickerModal.vue'
+import { useGymActions } from '../composables/useGymActions'
 import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
 import { ladderChipScrollLeft } from '../lib/ladderScroll'
 import { MAX_WEIGHT, MAX_REPS } from '../lib/inputLimits'
@@ -2608,6 +2628,7 @@ function onEditExerciseSave(payload: EditExerciseSave) {
   }
   store.setExerciseIntensityMaxReps(editTarget.value, payload.intensityMaxReps)
   store.setExerciseEquipment(editTarget.value, payload.equipment)
+  store.setExerciseGyms(editTarget.value, payload.gyms)
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).
@@ -2671,6 +2692,21 @@ function confirmDeleteTag(tag: string) {
   )
 }
 
+// ── Gym manager (#961) ──────────────────────────────────────────
+const gymManagerOpen = ref(false)
+const gymActions = useGymActions()
+
+function onRenameGym(oldName: string, newName: string) {
+  const stored = gymActions.renameGym(oldName, newName)
+  // Keep the active filter following its gym across a rename — without this
+  // the stale-selection watch would reset it to All Gyms. (Renames from the
+  // Settings-hosted manager intentionally take that reset path instead.)
+  if (stored && activeGymFilter.value === oldName) {
+    activeGymFilter.value = stored
+  }
+  logEvent('gym_rename')
+}
+
 
 // ── Focus traps for v-if modals ─────────────────────────────────
 watch(showModal, async (open) => {
@@ -2692,7 +2728,7 @@ watch(showModal, async (open) => {
 
 // ── Lock background scroll when any modal is open (iOS) ────────
 watch(
-  () => showModal.value || !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value,
+  () => showModal.value || !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value || gymManagerOpen.value,
   (open) => { document.documentElement.classList.toggle('modal-open', open) },
 )
 onUnmounted(() => {

@@ -170,6 +170,9 @@ vi.mock('../../stores/workout', () => ({
     reorderExercise: mockReorderExercise,
     reorderExercises: vi.fn(),
     updateExercise: vi.fn(),
+    setExerciseGyms: vi.fn(),
+    renameGymOnExercises: vi.fn(),
+    removeGymFromExercises: vi.fn(() => []),
   })
 }))
 
@@ -2655,14 +2658,16 @@ describe('WorkoutTracker', () => {
       expect(gymChipRow(wrapper).exists()).toBe(false)
     })
 
-    it('renders the chip row (All Gyms + one chip per gym) once gyms exist', () => {
+    it('renders the chip row (All Gyms + one chip per gym + manage) once gyms exist', () => {
       mockPrefsState.gyms = ['Gym A', 'Gym B']
       mockState.exercises = createGymExercises()
       const wrapper = mountTracker()
       const chips = gymChipRow(wrapper).findAll('.wtTagChip')
-      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Gym A', 'Gym B'])
+      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Gym A', 'Gym B', ''])
       // Exclusive default: All Gyms is the active chip.
       expect(chips[0].classes()).toContain('wtTagChipActive')
+      // Trailing icon-only chip opens the gym manager.
+      expect(gymChipRow(wrapper).find('[aria-label="Manage gyms"]').exists()).toBe(true)
     })
 
     it('filters exclusively: only the active gym\'s + unassigned exercises remain', async () => {
