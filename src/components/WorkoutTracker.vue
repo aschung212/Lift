@@ -69,6 +69,27 @@
       <span v-if="searchQuery" class="wtSearchCount">{{ filteredExercises.length }} result{{ filteredExercises.length !== 1 ? 's' : '' }}</span>
     </div>
 
+    <!-- Gym filter chips (#961) — exclusive select, above the additive tag row.
+         Zero chrome until the user creates a gym in the gym manager. -->
+    <template v-if="listView === 'exercises' && allGyms.length > 0">
+      <div class="wtTagFilterBar" role="group" aria-label="Filter by gym">
+        <button
+          :class="['wtTagChip', { wtTagChipActive: !effectiveGymFilter }]"
+          @click="activeGymFilter = null"
+          aria-label="Show exercises from all gyms"
+        >All Gyms</button>
+        <button
+          v-for="gym in allGyms"
+          :key="gym"
+          :class="['wtTagChip', { wtTagChipActive: effectiveGymFilter === gym }]"
+          :aria-pressed="effectiveGymFilter === gym"
+          @click="toggleGymFilter(gym)"
+        >
+          <span class="wtTagChipLabel">{{ gym }}</span>
+        </button>
+      </div>
+    </template>
+
     <!-- Tag filter chips with counts (exercises view only) -->
     <template v-if="listView === 'exercises' && store.allTags.length > 0">
       <div class="wtTagFilterBar">
@@ -115,7 +136,7 @@
       All your exercises are archived. Expand "Archived" below to bring one back, or tap "+ New Exercise".
     </p>
     <p v-else-if="filteredExercises.length === 0" class="wtEmpty">
-      No exercises match your search.
+      {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
     <ul v-if="filteredExercises.length > 0" class="wtExerciseList" ref="exerciseListEl">
@@ -792,6 +813,7 @@ import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
 import { ladderChipScrollLeft } from '../lib/ladderScroll'
 import { MAX_WEIGHT, MAX_REPS } from '../lib/inputLimits'
 import { loadJSON } from '../lib/storage'
+import { matchesGymFilter, loadActiveGymFilter, saveActiveGymFilter } from '../lib/gyms'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
@@ -912,6 +934,49 @@ function onTimelineEditSet(exerciseId: string, set: WorkoutSet) {
   if (exercise) openEditModal(exercise, set)
 }
 
+// ── Gym filtering (#961) ─────────────────────────────────────────
+// Exclusive (AND) filter applied BEFORE the additive tag filter: pick the gym
+// you're training at and exercises assigned only to other gyms disappear.
+// The gym list is a synced preference; the ACTIVE selection is device-local
+// ("which gym am I at" doesn't belong on other devices).
+const allGyms = computed(() => _prefs.gyms)
+const activeGymFilter = ref<string | null>(loadActiveGymFilter())
+
+/**
+ * The filter actually applied. A persisted selection is only honored once the
+ * gym exists in the (async-hydrated) list — before hydration, and for a gym
+ * deleted on another device, the filter is inert rather than hiding rows.
+ */
+const effectiveGymFilter = computed(() =>
+  activeGymFilter.value && allGyms.value.includes(activeGymFilter.value)
+    ? activeGymFilter.value
+    : null
+)
+
+/** Active exercises narrowed to the effective gym — the base for every list surface. */
+const gymFilteredExercises = computed(() => {
+  const gym = effectiveGymFilter.value
+  if (!gym) return store.activeExercises
+  return store.activeExercises.filter(e => matchesGymFilter(e.gyms, gym, allGyms.value))
+})
+
+function toggleGymFilter(gym: string) {
+  // Exclusive select: tapping the active gym deselects back to "All Gyms".
+  activeGymFilter.value = activeGymFilter.value === gym ? null : gym
+}
+
+watch(activeGymFilter, saveActiveGymFilter)
+
+// Reset a stale selection when its gym is renamed/deleted. Only prune against
+// a NON-EMPTY list: during the pre-hydration window the list is [] and pruning
+// would wipe the persisted device-local selection (effectiveGymFilter already
+// keeps the filter inert until the gym exists).
+watch(allGyms, (gyms) => {
+  if (gyms.length > 0 && activeGymFilter.value && !gyms.includes(activeGymFilter.value)) {
+    activeGymFilter.value = null
+  }
+})
+
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
 const activeTagFilters = ref<string[]>([])
@@ -991,12 +1056,14 @@ function sortByRecency(list: readonly Exercise[]): Exercise[] {
 /**
  * Active exercises ordered by recency, with no search/tag filter — feeds the
  * "Choose Exercise" quick-log picker so the next exercise to train sits at the
- * top of that list too. (#936)
+ * top of that list too. (#936) Gym-scoped (#961): the picker exists to answer
+ * "what am I logging right now?", so it respects the active gym like the list.
  */
-const exercisesByRecency = computed(() => sortByRecency(store.activeExercises))
+const exercisesByRecency = computed(() => sortByRecency(gymFilteredExercises.value))
 
 const filteredExercises = computed(() => {
-  let result = store.activeExercises
+  // Gym filter first (#961) — exclusive AND; search/tags narrow within it.
+  let result = gymFilteredExercises.value
   // Text search — check both name and tags so "Push" matches tag-filtered rows.
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
@@ -1033,7 +1100,7 @@ const filteredExercises = computed(() => {
  * (previously only the tag-filter path was gated).
  */
 const isFilteringActive = computed(() =>
-  activeTagFilters.value.length > 0 || searchQuery.value.trim() !== ''
+  activeTagFilters.value.length > 0 || searchQuery.value.trim() !== '' || effectiveGymFilter.value !== null
 )
 
 /** Total exercise count, shown in the "Workouts" header stats. */
@@ -1125,13 +1192,14 @@ function maybeCelebrateWeeklyGoal(prShown: boolean): boolean {
 
 /**
  * Count of exercises carrying each tag — powers the "Push 23" suffix on tag
- * chips. Counts only active (non-archived) exercises so that the chip count
- * matches what the tag filter will actually show. Tags that exist solely on
- * archived exercises are filtered out by `filteredTags` below.
+ * chips. Counts only active (non-archived) exercises — narrowed to the active
+ * gym (#961) — so that the chip count matches what tapping the tag will
+ * actually show. Tags that exist solely on archived exercises are filtered
+ * out by `filteredTags` below.
  */
 const tagCounts = computed<Record<string, number>>(() => {
   const map: Record<string, number> = {}
-  for (const e of store.activeExercises) {
+  for (const e of gymFilteredExercises.value) {
     for (const t of e.tags || []) {
       map[t] = (map[t] || 0) + 1
     }
