@@ -443,6 +443,90 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  // Recency ordering (#936): the exercise list is sorted by the most recent
+  // set date (descending) so the next exercise to perform is easiest to reach,
+  // and that order is preserved inside tag/search-filtered subsets.
+  describe('recency ordering (#936)', () => {
+    /** Names in the order they render in the list. */
+    function renderedNames(wrapper: VueWrapper): string[] {
+      return wrapper.findAll('.wtExerciseItem .wtExerciseName').map(n => n.text())
+    }
+
+    it('orders exercises by most-recent set first, regardless of array order', () => {
+      // Array order deliberately does NOT match recency order.
+      mockState.exercises = [
+        {
+          id: 'ex-old', name: 'Deadlift', tags: ['Legs'],
+          sets: [{ id: 'so', date: '2026-01-05T12:00:00', weight: 315, reps: 3, estimated1RM: 344 }],
+        },
+        {
+          id: 'ex-new', name: 'Row', tags: ['Back'],
+          sets: [{ id: 'sn', date: '2026-03-10T12:00:00', weight: 135, reps: 8, estimated1RM: 168 }],
+        },
+        {
+          id: 'ex-mid', name: 'Curl', tags: ['Arms'],
+          sets: [{ id: 'sm', date: '2026-02-01T12:00:00', weight: 40, reps: 10, estimated1RM: 53 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Row', 'Curl', 'Deadlift'])
+    })
+
+    it('sorts never-logged exercises to the bottom', () => {
+      mockState.exercises = [
+        { id: 'ex-empty', name: 'Plank', tags: ['Core'], sets: [] },
+        {
+          id: 'ex-logged', name: 'Bench Press', tags: ['Push'],
+          sets: [{ id: 's', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Bench Press', 'Plank'])
+    })
+
+    it('keeps recency order inside a tag-filtered subset', async () => {
+      mockState.exercises = [
+        {
+          id: 'ex-a', name: 'Incline Press', tags: ['Push'],
+          sets: [{ id: 'a', date: '2026-01-05T12:00:00', weight: 135, reps: 8, estimated1RM: 168 }],
+        },
+        {
+          id: 'ex-b', name: 'Overhead Press', tags: ['Push'],
+          sets: [{ id: 'b', date: '2026-03-01T12:00:00', weight: 95, reps: 6, estimated1RM: 114 }],
+        },
+        {
+          id: 'ex-c', name: 'Squat', tags: ['Legs'],
+          sets: [{ id: 'c', date: '2026-04-01T12:00:00', weight: 225, reps: 5, estimated1RM: 263 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      const pushChip = wrapper.findAll('.wtTagChip')
+        .find(c => c.find('.wtTagChipLabel').exists() && c.find('.wtTagChipLabel').text() === 'Push')!
+      await pushChip.trigger('click')
+
+      // Only the two Push exercises, most-recent first — Squat is filtered out
+      // even though it is the most recently trained overall.
+      expect(renderedNames(wrapper)).toEqual(['Overhead Press', 'Incline Press'])
+    })
+
+    it('breaks recency ties by preserving array order (stable sort)', () => {
+      // Same day for both — the manual/array order is the tiebreaker so a
+      // drag/keyboard reorder still has meaning among same-day exercises.
+      mockState.exercises = [
+        {
+          id: 'ex-1', name: 'Second', tags: [],
+          sets: [{ id: '1', date: '2026-02-02T12:00:00', weight: 100, reps: 5, estimated1RM: 117 }],
+        },
+        {
+          id: 'ex-2', name: 'First', tags: [],
+          sets: [{ id: '2', date: '2026-02-02T18:00:00', weight: 100, reps: 5, estimated1RM: 117 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Second', 'First'])
+    })
+  })
+
   describe('exercise detail modal', () => {
     beforeEach(() => {
       mockState.exercises = createExercises()
