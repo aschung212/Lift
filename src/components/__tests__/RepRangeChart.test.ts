@@ -22,6 +22,19 @@ describe('RepRangeChart', () => {
     expect(wrapper.find('.rrChart').exists()).toBe(false)
   })
 
+  // LIFT-856: the collapse toggle is wrapped in a level-2 heading (WAI-ARIA
+  // accordion pattern) so the section is reachable by heading navigation under
+  // the Calendar view's <h1>.
+  it('wraps the toggle in an h2 section heading', () => {
+    const wrapper = mount(RepRangeChart, {
+      props: { zones, totalSets: 10, dominant, collapsed: false },
+    })
+    const h2 = wrapper.find('h2')
+    expect(h2.exists()).toBe(true)
+    expect(h2.text()).toContain('Rep Range Focus')
+    expect(h2.find('button.rrHeader').exists()).toBe(true)
+  })
+
   it('renders one bar segment per non-empty zone when expanded', () => {
     const wrapper = mount(RepRangeChart, {
       props: { zones, totalSets: 10, dominant, collapsed: false },

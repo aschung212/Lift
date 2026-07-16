@@ -1,12 +1,14 @@
 <template>
   <div v-if="weeklyVolume.length > 0" class="mgChart">
-    <button class="mgHeader" :aria-expanded="!collapsed" @click="$emit('toggleCollapsed')">
-      <p class="mgTitle">Weekly Volume by Tag</p>
-      <div class="mgHeaderRight">
-        <span v-if="collapsed" class="mgCollapsedSummary">{{ totalSets }} sets</span>
-        <svg class="mgChevron" :class="{ mgChevronOpen: !collapsed }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-    </button>
+    <h2 class="mgCardHeading">
+      <button class="mgHeader" :aria-expanded="!collapsed" @click="$emit('toggleCollapsed')">
+        <span class="mgTitle">Weekly Volume by Tag</span>
+        <div class="mgHeaderRight">
+          <span v-if="collapsed" class="mgCollapsedSummary">{{ totalSets }} sets</span>
+          <svg class="mgChevron" :class="{ mgChevronOpen: !collapsed }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </button>
+    </h2>
 
     <template v-if="!collapsed">
       <div class="mgBars" role="list" :aria-label="`Weekly tag volume: ${totalSets} total sets across ${weeklyVolume.length} tags`">
@@ -98,6 +100,14 @@ function toggleTag(tag: string) {
   background: var(--bg-secondary);
   border-radius: 12px;
   border: 1px solid var(--border);
+}
+
+/* Wraps the collapse toggle in a heading (WAI-ARIA accordion pattern) so the
+   section is reachable by heading navigation; reset so it's visually identical
+   to the bare button it replaced. */
+.mgCardHeading {
+  margin: 0;
+  font: inherit;
 }
 
 .mgHeader {

@@ -1,6 +1,6 @@
 <template>
   <div v-if="recovery.length > 0 || hiddenCount > 0" class="mgChart">
-    <p class="mgTitle">Recovery</p>
+    <h2 class="mgTitle">Recovery</h2>
     <div class="recList" role="list" aria-label="Tag recovery status">
       <div
         v-for="item in recovery"

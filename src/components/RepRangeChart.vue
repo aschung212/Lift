@@ -1,12 +1,14 @@
 <template>
   <div v-if="totalSets > 0" class="rrChart">
-    <button class="rrHeader" :aria-expanded="!collapsed" @click="$emit('toggleCollapsed')">
-      <p class="rrTitle">Rep Range Focus</p>
-      <div class="rrHeaderRight">
-        <span v-if="collapsed && dominant" class="rrCollapsedSummary">{{ dominant.label }}</span>
-        <svg class="rrChevron" :class="{ rrChevronOpen: !collapsed }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-    </button>
+    <h2 class="rrCardHeading">
+      <button class="rrHeader" :aria-expanded="!collapsed" @click="$emit('toggleCollapsed')">
+        <span class="rrTitle">Rep Range Focus</span>
+        <div class="rrHeaderRight">
+          <span v-if="collapsed && dominant" class="rrCollapsedSummary">{{ dominant.label }}</span>
+          <svg class="rrChevron" :class="{ rrChevronOpen: !collapsed }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </button>
+    </h2>
 
     <template v-if="!collapsed">
       <!-- Segmented distribution bar -->
@@ -94,6 +96,13 @@ const ariaLabel = computed(() => {
   background: var(--bg-secondary);
   border-radius: 12px;
   border: 1px solid var(--border);
+}
+
+/* Heading wrapper for the collapse toggle (WAI-ARIA accordion pattern) — reset
+   so it renders identically to the bare button it replaced. */
+.rrCardHeading {
+  margin: 0;
+  font: inherit;
 }
 
 .rrHeader {
