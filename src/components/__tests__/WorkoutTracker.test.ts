@@ -9,11 +9,14 @@ vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
 vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 vi.mock('../../composables/useRestTimer', () => mockRestTimer())
+// Mutable container so gym-filter tests (#961) can drive the synced gym list.
+const mockPrefsState = { gyms: [] as string[] }
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
     filters: { warmupThreshold: 0.75 },
     intensityPresets: [50, 70, 80, 90, 100],
+    get gyms() { return mockPrefsState.gyms },
   }),
 }))
 vi.mock('../../stores/progression', () => ({
@@ -167,6 +170,9 @@ vi.mock('../../stores/workout', () => ({
     reorderExercise: mockReorderExercise,
     reorderExercises: vi.fn(),
     updateExercise: vi.fn(),
+    setExerciseGyms: vi.fn(),
+    renameGymOnExercises: vi.fn(),
+    removeGymFromExercises: vi.fn(() => []),
   })
 }))
 
@@ -221,6 +227,7 @@ function timerState(wrapper: VueWrapper) {
 describe('WorkoutTracker', () => {
   beforeEach(() => {
     mockState.exercises = []
+    mockPrefsState.gyms = []
     localStorageMock.clear()
     vi.clearAllMocks()
     // clearAllMocks keeps implementations — reset return values explicitly
@@ -2618,6 +2625,190 @@ describe('WorkoutTracker', () => {
       await searchInput.setValue('press')
 
       expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
+    })
+  })
+
+  // ── Gym filtering (#961) ─────────────────────────────────────────
+  describe('gym filtering', () => {
+    /** Exercises spanning two gyms + shared (unassigned) equipment. */
+    function createGymExercises(): Exercise[] {
+      return [
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: ['Legs'], sets: [], gyms: ['Gym A'] },
+        { id: 'ex-2', name: 'Hack Squat (24h)', tags: ['Legs'], sets: [], gyms: ['Gym B'] },
+        { id: 'ex-3', name: 'Bench Press', tags: ['Chest'], sets: [] }, // unassigned = everywhere
+        { id: 'ex-4', name: 'Cable Row', tags: ['Back'], sets: [], gyms: ['Gym A', 'Gym B'] },
+      ]
+    }
+
+    function gymChipRow(wrapper: VueWrapper) {
+      return wrapper.find('[aria-label="Filter by gym"]')
+    }
+
+    function gymChip(wrapper: VueWrapper, label: string) {
+      return gymChipRow(wrapper).findAll('.wtTagChip').find(c => c.text() === label)!
+    }
+
+    function listedNames(wrapper: VueWrapper): string[] {
+      return wrapper.findAll('.wtExerciseName').map(n => n.text())
+    }
+
+    it('renders no gym chip row when no gyms are defined (zero-state = zero chrome)', () => {
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      expect(gymChipRow(wrapper).exists()).toBe(false)
+    })
+
+    it('renders the chip row (All Gyms + one chip per gym + manage) once gyms exist', () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      const chips = gymChipRow(wrapper).findAll('.wtTagChip')
+      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Gym A', 'Gym B', ''])
+      // Exclusive default: All Gyms is the active chip.
+      expect(chips[0].classes()).toContain('wtTagChipActive')
+      // Trailing icon-only chip opens the gym manager.
+      expect(gymChipRow(wrapper).find('[aria-label="Manage gyms"]').exists()).toBe(true)
+    })
+
+    it('filters exclusively: only the active gym\'s + unassigned exercises remain', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      const names = listedNames(wrapper)
+      expect(names).toContain('Hack Squat (PF)')   // Gym A
+      expect(names).toContain('Bench Press')        // unassigned = everywhere
+      expect(names).toContain('Cable Row')          // multi-gym incl. Gym A
+      expect(names).not.toContain('Hack Squat (24h)') // Gym B only
+    })
+
+    it('selecting a second gym replaces the first (exclusive, not additive)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      await gymChip(wrapper, 'Gym B').trigger('click')
+
+      expect(gymChip(wrapper, 'Gym B').classes()).toContain('wtTagChipActive')
+      expect(gymChip(wrapper, 'Gym A').classes()).not.toContain('wtTagChipActive')
+      const names = listedNames(wrapper)
+      expect(names).toContain('Hack Squat (24h)')
+      expect(names).not.toContain('Hack Squat (PF)')
+    })
+
+    it('tapping the active gym chip deselects back to All Gyms', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      expect(gymChip(wrapper, 'All Gyms').classes()).toContain('wtTagChipActive')
+      expect(listedNames(wrapper)).toHaveLength(4)
+    })
+
+    it('composes with the tag filter as AND (tags narrow within the gym)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym B').trigger('click')
+      // Tag chip row: pick "Legs" — within Gym B that's only the 24h hack squat.
+      const legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      await legsChip.trigger('click')
+
+      expect(listedNames(wrapper)).toEqual(['Hack Squat (24h)'])
+    })
+
+    it('scopes tag chip counts to the active gym', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      // Both hack squats carry Legs → count 2 without a gym filter.
+      let legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      expect(legsChip.find('.wtTagChipCount').text()).toBe('2')
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      expect(legsChip.find('.wtTagChipCount').text()).toBe('1')
+    })
+
+    it('keeps an exercise whose gyms are all orphaned visible under any gym (rename race safety net)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = [
+        ...createGymExercises(),
+        { id: 'ex-5', name: 'Ghost Machine', tags: [], sets: [], gyms: ['Renamed Away'] },
+      ]
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      expect(listedNames(wrapper)).toContain('Ghost Machine')
+    })
+
+    it('disables drag handles while a gym filter is active (filtered indices are unsafe)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBe(0)
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
+    })
+
+    it('passes the gym-filtered list to the quick-log exercise picker', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym B').trigger('click')
+
+      const picker = wrapper.findComponent({ name: 'ExercisePickerModal' })
+      const names = (picker.props('exercises') as Exercise[]).map(e => e.name)
+      expect(names).toContain('Hack Squat (24h)')
+      expect(names).toContain('Bench Press')
+      expect(names).not.toContain('Hack Squat (PF)')
+    })
+
+    it('persists the selection per device and restores it on mount', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const first = mountTracker()
+      await gymChip(first, 'Gym B').trigger('click')
+      expect(localStorageMock.getItem('active-gym-filter')).toBe(JSON.stringify('Gym B'))
+      first.unmount()
+
+      const second = mountTracker()
+      expect(gymChip(second, 'Gym B').classes()).toContain('wtTagChipActive')
+      expect(listedNames(second)).not.toContain('Hack Squat (PF)')
+    })
+
+    it('ignores a persisted selection for a gym that no longer exists (filter stays inert)', () => {
+      localStorageMock.setItem('active-gym-filter', JSON.stringify('Deleted Gym'))
+      mockPrefsState.gyms = ['Gym A']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      expect(gymChip(wrapper, 'All Gyms').classes()).toContain('wtTagChipActive')
+      expect(listedNames(wrapper)).toHaveLength(4)
+    })
+
+    it('shows the generalized empty state when the gym filter empties the list', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Empty Gym']
+      mockState.exercises = [
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: [], sets: [], gyms: ['Gym A'] },
+      ]
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Empty Gym').trigger('click')
+
+      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises match your filters.')
     })
   })
 })

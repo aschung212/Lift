@@ -13,6 +13,7 @@ import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
+import { sanitizeExerciseGyms } from '../lib/gyms'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
@@ -50,6 +51,7 @@ export interface Exercise {
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
   equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
+  gyms?: string[]                  // gym membership; empty/undefined = shows under every gym filter (#961)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -167,6 +169,13 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
       for (const tag of group[i].tags) tagSet.add(tag)
     }
     primary.tags = [...tagSet]
+    // Merge gym membership the same way so a cross-device duplicate's gym
+    // assignments aren't silently dropped when its row is absorbed (#961).
+    const gymSet = new Set(primary.gyms ?? [])
+    for (let i = 1; i < group.length; i++) {
+      for (const gym of group[i].gyms ?? []) gymSet.add(gym)
+    }
+    if (gymSet.size > 0) primary.gyms = [...gymSet]
     result.push(primary)
   }
 
@@ -185,6 +194,11 @@ function load(): Exercise[] {
       const eq = sanitizeExerciseEquipment(ex.equipment)
       if (eq) ex.equipment = eq
       else delete ex.equipment
+    }
+    if (ex && ex.gyms !== undefined) {
+      const gyms = sanitizeExerciseGyms(ex.gyms)
+      if (gyms.length > 0) ex.gyms = gyms
+      else delete ex.gyms
     }
   }
   return parsed
@@ -266,6 +280,8 @@ export const useWorkoutStore = defineStore('workout', () => {
       intensity_max_reps: exercise.intensityMaxReps ?? null,
       // Same always-send rule: "Auto" clears the Coach equipment classification.
       equipment: exercise.equipment ?? null,
+      // Same always-send rule: clearing gym membership must propagate (#961).
+      gyms: exercise.gyms ?? [],
     }
   }
 
@@ -412,6 +428,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (ex.equipment != null) {
         const eq = sanitizeExerciseEquipment(ex.equipment)
         if (eq) exercise.equipment = eq
+      }
+      if (ex.gyms && ex.gyms.length > 0) {
+        const gyms = sanitizeExerciseGyms(ex.gyms)
+        if (gyms.length > 0) exercise.gyms = gyms
       }
       if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
@@ -686,6 +706,27 @@ export const useWorkoutStore = defineStore('workout', () => {
     const eq = equipment === null ? undefined : sanitizeExerciseEquipment(equipment)
     if (eq) exercise.equipment = eq
     else delete exercise.equipment
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
+   * Set (or clear, with []) an exercise's gym membership (#961).
+   * Empty membership deletes the field — "unassigned" means the exercise
+   * shows under every gym filter.
+   */
+  function setExerciseGyms(exerciseId: string, gyms: string[]) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    const sanitized = sanitizeExerciseGyms(gyms)
+    if (sanitized.length > 0) exercise.gyms = sanitized
+    else delete exercise.gyms
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
@@ -985,6 +1026,70 @@ export const useWorkoutStore = defineStore('workout', () => {
         _enqueueExerciseUpsert(e, userId)
       }
     }
+  }
+
+  /**
+   * Rewrite a renamed gym across every exercise's membership (#961). The gym
+   * LIST lives in the preferences store; useGymActions orchestrates both.
+   * Mirrors renameTag: if an exercise already carries the new name, the old
+   * entry is dropped instead of duplicated.
+   */
+  function renameGymOnExercises(oldName: string, newName: string) {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldName) return
+    const modified: Exercise[] = []
+    exercises.value.forEach((e: Exercise) => {
+      if (!e.gyms) return
+      const idx = e.gyms.indexOf(oldName)
+      if (idx === -1) return
+      if (e.gyms.includes(trimmed)) {
+        e.gyms.splice(idx, 1)
+        if (e.gyms.length === 0) delete e.gyms
+      } else {
+        e.gyms[idx] = trimmed
+      }
+      e.updated_at = new Date().toISOString()
+      modified.push(e)
+    })
+    if (modified.length === 0) return
+    triggerRef(exercises)
+    _persist()
+
+    if (_userId) {
+      const userId = _userId
+      for (const e of modified.filter(e => !e.sample)) {
+        _enqueueExerciseUpsert(e, userId)
+      }
+    }
+  }
+
+  /**
+   * Strip a deleted gym from every exercise's membership (#961). Returns the
+   * ids of the exercises that carried it so the caller's undo toast can
+   * restore membership via setExerciseGyms.
+   */
+  function removeGymFromExercises(gymName: string): string[] {
+    const modified: Exercise[] = []
+    exercises.value.forEach((e: Exercise) => {
+      if (!e.gyms) return
+      const idx = e.gyms.indexOf(gymName)
+      if (idx === -1) return
+      e.gyms.splice(idx, 1)
+      if (e.gyms.length === 0) delete e.gyms
+      e.updated_at = new Date().toISOString()
+      modified.push(e)
+    })
+    if (modified.length === 0) return []
+    triggerRef(exercises)
+    _persist()
+
+    if (_userId) {
+      const userId = _userId
+      for (const e of modified.filter(e => !e.sample)) {
+        _enqueueExerciseUpsert(e, userId)
+      }
+    }
+    return modified.map(e => e.id)
   }
 
   function setTagRecoveryDays(tag: string, days: number | null) {
@@ -1356,6 +1461,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseBarWeight,
     setExerciseIntensityMaxReps,
     setExerciseEquipment,
+    setExerciseGyms,
     logSet,
     updateSet,
     deleteSet,
@@ -1371,6 +1477,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     reorderExercise,
     renameTag,
     deleteTag,
+    renameGymOnExercises,
+    removeGymFromExercises,
     setTagRecoveryDays,
     setTagRecoveryExcluded,
     addCustomTag,

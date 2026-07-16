@@ -103,6 +103,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
         archived_at: null,
         input_mode: 'numpad',
         bar_weight: 45,
+        gyms: ['Gym A'],
       })
 
       expect(error).toBeNull()
@@ -124,6 +125,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
         input_mode: 'numpad',
         deleted_at: null,
         archived_at: null,
+        gyms: ['Gym A'],
       })
     })
 

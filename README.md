@@ -54,6 +54,13 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Multi-tag filtering on both Workouts and Calendar tabs (ANY match)
 - Inline "× Clear" chip at end of tag row when filters are active — no layout shift
 
+### Gym Filtering
+- Assign exercises to the gyms you train at (multi-gym membership; leave empty to show an exercise everywhere)
+- Exclusive gym filter row above the tag chips — pick where you're training today and other gyms' equipment disappears
+- Composes with tags: gym narrows the list, tags filter within it (quick-log picker follows too)
+- Gym manager for create/rename/delete plus bulk per-gym exercise assignment; also reachable from Settings
+- Active gym selection remembered per device (not synced — your phone can be at Gym A while your iPad stays on All)
+
 ### Usual Ladder (One-Tap Set Logging)
 - Detects your habitual set progression per exercise across recent sessions (e.g. 45×10 → 95×10 → 135×10 …), tolerant of occasional deviations
 - The log modal shows the ladder as chips: done rungs strike through, skipped rungs dim, the next rung highlights

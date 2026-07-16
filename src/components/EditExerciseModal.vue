@@ -139,6 +139,24 @@
           </div>
           <span class="iosSettingsFooter">Used by Coach analytics: free-weight lifts anchor strength comparisons; machine and bodyweight numbers are flagged as not standards-comparable.</span>
         </div>
+        <!-- Gym membership (#961): which gyms this exercise is available at.
+             Hidden until the user has created a gym (progressive disclosure). -->
+        <div v-if="allGyms.length > 0" class="iosSettingsSection">
+          <span class="iosSettingsHeader">Gym</span>
+          <div class="wtTagPicker" role="group" aria-label="Gym membership">
+            <button
+              v-for="gym in allGyms"
+              :key="gym"
+              :aria-pressed="editGyms.includes(gym)"
+              :class="['wtTagPickerChip', { wtTagPickerChipActive: editGyms.includes(gym) }]"
+              :style="!editGyms.includes(gym)
+                ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
+                : {}"
+              @click="toggleEditGym(gym)"
+            >{{ gym }}</button>
+          </div>
+          <span class="iosSettingsFooter">Shown when filtering the exercise list by gym. Leave empty to show this exercise at every gym.</span>
+        </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmSave">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="emit('close')">Cancel</button>
@@ -187,6 +205,8 @@ export interface EditExerciseSave {
   intensityMaxReps: number | null
   /** Coach equipment classification; null = Auto (name heuristic). */
   equipment: ExerciseEquipment | null
+  /** Gym membership (#961); [] = unassigned (shows under every gym filter). */
+  gyms: string[]
 }
 </script>
 
@@ -210,6 +230,8 @@ const props = defineProps<{
   exercise: Exercise | null
   /** All known tags, for the tag picker chips. */
   allTags: string[]
+  /** The synced gym list (#961); empty hides the Gym section entirely. */
+  allGyms: string[]
 }>()
 
 const emit = defineEmits<{
@@ -258,6 +280,18 @@ const EQUIPMENT_OPTIONS: ReadonlyArray<{ value: ExerciseEquipment | null; label:
 ]
 const editEquipment = ref<ExerciseEquipment | null>(null)
 
+// ── Gym membership (#961) ───────────────────────────────────────
+// Multi-select over the synced gym list; empty = unassigned (everywhere).
+const editGyms = ref<string[]>([])
+
+function toggleEditGym(gym: string) {
+  if (editGyms.value.includes(gym)) {
+    editGyms.value = editGyms.value.filter(g => g !== gym)
+  } else {
+    editGyms.value.push(gym)
+  }
+}
+
 const AUTO_LABELS: Record<string, string> = {
   free_weight: 'free weight',
   machine: 'machine',
@@ -279,6 +313,7 @@ watch(() => props.exercise, async (exercise) => {
     editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
     editEquipment.value = exercise.equipment ?? null
+    editGyms.value = [...(exercise.gyms || [])]
     newTagInput.value = ''
     editTagAdding.value = false
     confirmDeleteExercise.value = false
@@ -352,6 +387,7 @@ function confirmSave() {
     barWeight: editBarWeight.value,
     intensityMaxReps: editIntensityMaxReps.value === DEFAULT_INTENSITY_MAX_REPS ? null : editIntensityMaxReps.value,
     equipment: editEquipment.value,
+    gyms: [...editGyms.value],
   })
 }
 </script>

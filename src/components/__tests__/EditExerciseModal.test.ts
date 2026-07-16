@@ -13,9 +13,9 @@ function makeExercise(overrides: Partial<Exercise> = {}): Exercise {
 
 /** Mount closed, then open by setting the exercise — mirrors how the parent drives it
  *  (the seed watcher is not `immediate`, so it only runs on the null → exercise change). */
-async function openWith(exercise: Exercise): Promise<VueWrapper> {
+async function openWith(exercise: Exercise, allGyms: string[] = []): Promise<VueWrapper> {
   const wrapper = mount(EditExerciseModal, {
-    props: { exercise: null as Exercise | null, allTags: [] },
+    props: { exercise: null as Exercise | null, allTags: [], allGyms },
     global: { stubs: { Teleport: true } },
   })
   await wrapper.setProps({ exercise })
@@ -26,7 +26,7 @@ async function openWith(exercise: Exercise): Promise<VueWrapper> {
 const stepperValue = (w: VueWrapper) => w.find('.iosStepperValue').text()
 const lastSavePayload = (w: VueWrapper) => {
   const calls = w.emitted('save')!
-  return calls[calls.length - 1][0] as { intensityMaxReps: number | null; equipment: string | null }
+  return calls[calls.length - 1][0] as { intensityMaxReps: number | null; equipment: string | null; gyms: string[] }
 }
 
 /** The equipment radio chips (inside the radiogroup, unlike the tag chips). */
@@ -113,5 +113,37 @@ describe('EditExerciseModal — Coach equipment classification (#931 phase C)', 
     await equipmentChip(wrapper, /^Auto/).trigger('click')
     await wrapper.find('.repMaxBtnCalc').trigger('click')
     expect(lastSavePayload(wrapper).equipment).toBeNull()
+  })
+})
+
+describe('EditExerciseModal — gym membership (#961)', () => {
+  const gymSection = (w: VueWrapper) => w.find('[aria-label="Gym membership"]')
+  const gymChip = (w: VueWrapper, label: string) =>
+    gymSection(w).findAll('.wtTagPickerChip').find(c => c.text() === label)!
+
+  it('hides the Gym section entirely when no gyms exist (progressive disclosure)', async () => {
+    const wrapper = await openWith(makeExercise())
+    expect(gymSection(wrapper).exists()).toBe(false)
+  })
+
+  it('seeds membership from the exercise', async () => {
+    const wrapper = await openWith(makeExercise({ gyms: ['Gym B'] }), ['Gym A', 'Gym B'])
+    expect(gymChip(wrapper, 'Gym B').attributes('aria-pressed')).toBe('true')
+    expect(gymChip(wrapper, 'Gym A').attributes('aria-pressed')).toBe('false')
+  })
+
+  it('toggles multi-select membership and emits it on save', async () => {
+    const wrapper = await openWith(makeExercise(), ['Gym A', 'Gym B'])
+    await gymChip(wrapper, 'Gym A').trigger('click')
+    await gymChip(wrapper, 'Gym B').trigger('click')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).gyms).toEqual(['Gym A', 'Gym B'])
+  })
+
+  it('emits [] when membership is cleared (unassigned = everywhere)', async () => {
+    const wrapper = await openWith(makeExercise({ gyms: ['Gym A'] }), ['Gym A', 'Gym B'])
+    await gymChip(wrapper, 'Gym A').trigger('click')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).gyms).toEqual([])
   })
 })
