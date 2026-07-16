@@ -17,4 +17,11 @@ describe('vite.config.js regression', () => {
     expect(viteConfig).toContain('process.env.SENTRY_AUTH_TOKEN')
     expect(viteConfig).toContain('filesToDeleteAfterUpload')
   })
+
+  it('should wire the default-view preload plugin into the build', () => {
+    // Removes the first-paint request waterfall for the always-rendered Workouts
+    // tab by emitting a <link rel="modulepreload"> for its lazy chunk. See LIFT-940.
+    expect(viteConfig).toContain('preloadDefaultViewPlugin')
+    expect(viteConfig).toContain("from './vite-plugin-preload-default-view'")
+  })
 })
