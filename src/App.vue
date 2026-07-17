@@ -81,6 +81,15 @@
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
+            <button
+              v-if="activeTab === 'calendar' && showCoachBtn"
+              class="topBarCoachBtn"
+              @click="coachOpen = true"
+              title="AI Review"
+              aria-label="Open AI Review"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+            </button>
           </div>
         </div>
         <div
@@ -133,6 +142,9 @@
 
       <!-- Settings bottom sheet (extracted to SettingsSheet.vue) -->
       <SettingsSheet v-if="settingsOpen" ref="settingsSheetRef" v-model="settingsOpen" @sign-out="handleSignOut" />
+
+      <!-- AI Review sheet (entry: Calendar-tab top-bar button) -->
+      <CoachSheet v-if="coachOpen" @close="coachOpen = false" />
     </template>
 
     <!-- Undo toast -->
@@ -261,6 +273,11 @@ const BodyweightTracker = defineAsyncComponent({
 // UI many users never open — split it (and its transitive deps) into an on-demand
 // chunk, gated by v-if="settingsOpen" so the chunk isn't fetched until first open.
 const SettingsSheet = defineAsyncComponent(() => import('./components/SettingsSheet.vue'))
+// AI Review sheet — reached only from the Calendar-tab top-bar button, so its
+// chunk (and the export/profile UI it pulls in) loads on first open.
+const CoachSheet = defineAsyncComponent(() => import('./views/CoachSheet.vue'))
+import { coachReviewEligibility } from './lib/coachDigest'
+import { COACH_MODE } from './lib/coachExport'
 import { useTheme, connectProgressionStore } from './composables/useTheme'
 import type { ThemeId } from './lib/themes'
 import { useProgressionStore } from './stores/progression'
@@ -338,6 +355,24 @@ const settingsOpen = ref(false)
 // resolve to the loader wrapper, not the SFC. It only exposes closeSettings(),
 // so type the ref by the exposed surface we actually call.
 const settingsSheetRef = ref<{ closeSettings: () => void } | null>(null)
+
+// ── AI Review entry (#972) ──────────────────────────────────────
+// Lives in the top bar on the Calendar tab (mirroring the contextual "+" on
+// Workouts) rather than as a card on the Workouts page: it's an infrequent,
+// retrospective feature, so it gets a compact nav-bar affordance on the
+// retrospective surface. Gate: enough training signal (a couple weeks + the
+// set floor), not a preview deploy, and — server transport only — a signed-in
+// user; the BYO export is 100% local, so it needs no account.
+const coachOpen = ref(false)
+const coachEligible = computed(
+  () => coachReviewEligibility(workoutStore.exercises, new Date()).eligible,
+)
+const showCoachBtn = computed(
+  () =>
+    coachEligible.value &&
+    !isPreviewMode.value &&
+    (COACH_MODE === 'byo' || user.value !== null),
+)
 
 // ── Focus traps for modals ─────────────────────────────────────
 const shortcutsFocus = useFocusTrap()

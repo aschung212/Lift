@@ -1,7 +1,7 @@
 /**
  * AI Coach — device-local insight history (LIFT-851, part of #842).
  *
- * Each generated Weekly Review costs a quota slot and real money to produce, so
+ * Each generated AI Review costs a quota slot and real money to produce, so
  * once a review exists it should not evaporate. This module persists generated
  * reviews to localStorage as a bounded **last-12 ring** (drop oldest), turning the
  * coach into an accruing coaching journal: re-opening a past insight is FREE — it
@@ -29,7 +29,7 @@ export const COACH_HISTORY_KEY = 'coach-insights-history'
 /** Ring capacity. Bounded so the PWA can't grow this key without limit. */
 export const COACH_HISTORY_LIMIT = 12
 
-/** One persisted Weekly Review plus the metadata needed to list and re-open it. */
+/** One persisted AI Review plus the metadata needed to list and re-open it. */
 export interface StoredCoachInsight {
   /** Stable unique id (for list keys + dedupe). */
   id: string

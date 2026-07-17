@@ -11,10 +11,10 @@
       <div class="repMaxModal coachSheet">
         <header class="coachHeader">
           <div class="coachHeaderText">
-            <h2 id="coachSheetTitle" class="coachTitle">Weekly Review</h2>
+            <h2 id="coachSheetTitle" class="coachTitle">AI Review</h2>
             <p class="coachSub">{{ mode === 'byo' ? 'Bring your own AI' : quotaLabel }}</p>
           </div>
-          <button class="coachClose" @click="close" aria-label="Close weekly review">
+          <button class="coachClose" @click="close" aria-label="Close AI review">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </header>
@@ -24,7 +24,7 @@
         <div v-if="mode === 'byo'" class="coachBody">
           <p class="coachIntro">
             Build a summary of your recent training, then paste it into your own AI
-            chat — Claude, ChatGPT, or any other — for a written weekly review.
+            chat — Claude, ChatGPT, or any other — for a written review.
           </p>
 
           <div class="coachModeRow" role="group" aria-label="Review depth">
@@ -233,7 +233,7 @@ function sectionLabel(type: CoachSectionType): string {
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
-  unauthorized: 'Sign in to get your weekly review.',
+  unauthorized: 'Sign in to get your AI review.',
   email_unverified: 'Verify your email to use Coach.',
   consent_required: "You'll need to accept the Coach privacy terms before your training is reviewed.",
   paused: 'Coach is resting for today — try again tomorrow.',

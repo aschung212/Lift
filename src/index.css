@@ -1074,7 +1074,8 @@ html.modal-open .tabContent {
 }
 
 .settingsGearBtn,
-.topBarPlusBtn {
+.topBarPlusBtn,
+.topBarCoachBtn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1120,6 +1121,24 @@ html.modal-open .tabContent {
 .topBarPlusBtn svg {
   width: 22px;
   height: 22px;
+}
+
+/* AI Review entry — subtle like the gear (accent fill is reserved for the
+   primary "+" action), with the coach's accent color on the icon. */
+.topBarCoachBtn {
+  background: var(--bg-elevated);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+.topBarCoachBtn:active {
+  background: var(--accent-subtle);
+  transform: scale(0.95);
+}
+
+.topBarCoachBtn svg {
+  width: 20px;
+  height: 20px;
 }
 
 .syncIndicator {
@@ -2198,70 +2217,6 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
   opacity: 0.85;
   font-variant-numeric: tabular-nums;
-}
-
-/* AI Coach weekly-review entry card + quota meter (LIFT-848). */
-.wtCoachCard {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  margin: 0 0 12px;
-  padding: 12px 16px;
-  min-height: 56px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: 16px;
-  color: var(--text-primary);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.wtCoachCard:active {
-  transform: scale(0.99);
-  background: var(--bg-secondary);
-}
-
-.wtCoachIcon {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--accent-subtle);
-  color: var(--accent);
-}
-
-.wtCoachText {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.wtCoachTitle {
-  font-size: var(--font-callout);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.wtCoachMeta {
-  font-family: var(--ff-mono);
-  font-size: var(--font-caption2);
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-.wtCoachChevron {
-  flex: 0 0 auto;
-  color: var(--text-muted);
 }
 
 /* Segmented control (Exercises / Timeline) — gold-filled active pill. */
