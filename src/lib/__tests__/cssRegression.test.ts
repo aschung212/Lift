@@ -200,6 +200,22 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.topBarCoachBtn AI Review entry (#972)', () => {
+    // The AI Review entry moved from a full-width Workouts card to a compact
+    // top-bar icon on the Calendar tab; it must inherit the shared 44px
+    // top-bar button sizing (.settingsGearBtn, .topBarPlusBtn, .topBarCoachBtn).
+    const lines = getRuleLines('.topBarCoachBtn')
+
+    it('meets the 44px iOS HIG touch target via the shared top-bar rule', () => {
+      expect(lines.some(l => l.startsWith('width') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('the removed Workouts entry card does not linger in the stylesheet', () => {
+      expect(css.includes('.wtCoachCard')).toBe(false)
+    })
+  })
+
   describe('Vue component touch target compliance', () => {
     // jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
     // cannot verify sizing in component tests. These CSS regression tests

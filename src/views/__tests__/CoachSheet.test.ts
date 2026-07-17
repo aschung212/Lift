@@ -72,7 +72,7 @@ describe('CoachSheet — states', () => {
     mountSheet()
     const html = document.body.textContent ?? ''
     expect(html).toContain('Generate review')
-    expect(html).toContain('Weekly Review')
+    expect(html).toContain('AI Review')
   })
 
   it('shows the quota meter in the header from the cached remaining count', async () => {
@@ -233,7 +233,7 @@ describe('CoachSheet — bring-your-own-AI export (open loop)', () => {
     dlBtn!.click()
     await nextTick()
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
-    expect(clickNames[0]).toMatch(/^lift-weekly-review-\d{4}-\d{2}-\d{2}\.md$/)
+    expect(clickNames[0]).toMatch(/^lift-ai-review-\d{4}-\d{2}-\d{2}\.md$/)
   })
 
   it('offers a review-depth control and a profile entry point', () => {
