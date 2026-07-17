@@ -72,6 +72,8 @@ export type Database = {
           bar_weight: number
           created_at: string
           deleted_at: string | null
+          equipment: string | null
+          gyms: string[]
           id: string
           input_mode: string | null
           intensity_max_reps: number | null
@@ -86,6 +88,8 @@ export type Database = {
           bar_weight?: number
           created_at?: string
           deleted_at?: string | null
+          equipment?: string | null
+          gyms?: string[]
           id?: string
           input_mode?: string | null
           intensity_max_reps?: number | null
@@ -100,6 +104,8 @@ export type Database = {
           bar_weight?: number
           created_at?: string
           deleted_at?: string | null
+          equipment?: string | null
+          gyms?: string[]
           id?: string
           input_mode?: string | null
           intensity_max_reps?: number | null

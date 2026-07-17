@@ -5,15 +5,14 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
+import { resetXPCeremony } from '../composables/xpCeremonyUI'
 import { useTheme } from '../composables/useTheme'
-import { useWeightUnit } from '../composables/useWeightUnit'
-import { useRestTimer } from '../composables/useRestTimer'
 import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
 import { logError } from '../lib/logger'
+import { clearReauthFlag } from '../lib/sessionHealth'
 import type { User, Provider } from '@supabase/supabase-js'
 import type { ColorMode } from '../lib/themes'
-import type { WeightUnit } from '../lib/themes'
 
 interface AuthError {
   message: string
@@ -37,31 +36,63 @@ const loading: Ref<boolean> = ref(true)
 
 let _initialized = false
 let _authUnsubscribe: (() => void) | null = null
+let _lifecycleCleanups: Array<() => void> = []
 
 /**
- * Push synced settings from the preferences store to the composable module-scope
- * refs, then set up one-directional watchers so future UI changes flow back into
- * the store (and from there to Supabase). Called once after all stores are hydrated.
+ * Re-arm supabase-js token auto-refresh on app resume (LIFT-784).
+ *
+ * supabase-js pauses its refresh timer while the document is hidden and relies
+ * on `visibilitychange` to resume — but that event is unreliable in
+ * WKWebView/Capacitor (the App Store target) when coming back from the
+ * background, so the access token can quietly expire mid-session. We listen to
+ * `visibilitychange` plus `focus` and `pageshow` as redundant resume signals;
+ * `startAutoRefresh()` immediately checks the token and refreshes it if it is
+ * within the expiry margin. `stopAutoRefresh()` on hide avoids a wasted timer.
+ */
+function setupSessionRefreshLifecycle(): void {
+  if (!supabase || typeof document === 'undefined') return
+  const client = supabase
+  const resume = () => { void client.auth.startAutoRefresh() }
+  const pause = () => { void client.auth.stopAutoRefresh() }
+  const onVisibility = () => {
+    if (document.visibilityState === 'visible') resume()
+    else pause()
+  }
+  document.addEventListener('visibilitychange', onVisibility)
+  window.addEventListener('focus', resume)
+  window.addEventListener('pageshow', resume)
+  _lifecycleCleanups.push(
+    () => document.removeEventListener('visibilitychange', onVisibility),
+    () => window.removeEventListener('focus', resume),
+    () => window.removeEventListener('pageshow', resume),
+  )
+  // Kick off the loop for the session that is already in the foreground.
+  if (document.visibilityState === 'visible') resume()
+}
+
+/**
+ * Bridge the theme + color-mode composable refs to the preferences store after
+ * hydration (LIFT-821).
+ *
+ * `weightUnit`, `restTimerEnabled`, and `restTimerAutoStart` no longer need a
+ * bridge: their composables (`useWeightUnit` / `useRestTimer`) now delegate
+ * directly to the store, which is the single source of truth. Theme and color
+ * mode still live as module-scope refs in `useTheme` because they are applied to
+ * the DOM by the pre-Pinia FOUC bootstrap (`initTheme`); we push the hydrated
+ * store value into those refs once and set up a one-directional watcher so future
+ * UI changes flow back to the store (and from there to Supabase).
  */
 function syncSettingsWithComposables(): void {
   const prefs = usePreferencesStore()
   const { currentTheme, colorMode } = useTheme()
-  const { weightUnit } = useWeightUnit()
-  const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
 
   // Push store → composable refs (Supabase values override local)
   currentTheme.value = prefs.theme
   colorMode.value = prefs.colorMode as ColorMode
-  weightUnit.value = prefs.weightUnit as WeightUnit
-  restTimerEnabled.value = prefs.restTimerEnabled
-  restTimerAutoStart.value = prefs.restTimerAutoStart
 
   // Composable refs → store (user interactions sync to Supabase)
   watch(currentTheme, (v) => { prefs.setTheme(v) })
   watch(colorMode, (v) => { prefs.setColorMode(v) })
-  watch(weightUnit, (v) => { prefs.setWeightUnit(v) })
-  watch(restTimerEnabled, (v) => { prefs.setRestTimer(v) })
-  watch(restTimerAutoStart, (v) => { prefs.setRestTimerAutoStart(v) })
 }
 
 async function initStores(userId: string): Promise<void> {
@@ -74,12 +105,21 @@ async function initStores(userId: string): Promise<void> {
   // server before the app last closed (LIFT-706). Safe + idempotent; runs
   // before store fetches so recovered writes are in flight during sync.
   await syncQueue.rehydrate()
-  await Promise.all([
+  // allSettled (not all): each store's init already swallows its own fetch
+  // failures, but allSettled is defense-in-depth so a future regression that
+  // lets one store's init reject can never abort the others' hydration and
+  // leave the app half-initialized (LIFT-820).
+  const results = await Promise.allSettled([
     workoutStore.init(userId),
     bodyweightStore.init(userId),
     preferencesStore.init(userId),
     progressionStore.init(userId),
   ])
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      logError(r.reason, { source: 'useAuth', action: 'initStores' })
+    }
+  }
   syncSettingsWithComposables()
 }
 
@@ -105,14 +145,19 @@ function init(): void {
     loading.value = false
   })
 
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     const prev = user.value
     user.value = session?.user ?? null
+    // A successful (re)auth means the token is healthy again — clear any
+    // pending "re-sign-in needed" prompt (LIFT-784).
+    if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') clearReauthFlag()
     if (session?.user && !prev) {
       initStores(session.user.id)
     }
   })
   _authUnsubscribe = () => subscription.unsubscribe()
+
+  setupSessionRefreshLifecycle()
 }
 
 async function signInWithProvider(provider: Provider): Promise<{ error: AuthError | null }> {
@@ -149,6 +194,10 @@ function resetStores(): void {
   useBodyweightStore().$reset()
   usePreferencesStore().$reset()
   useProgressionStore().$reset()
+  // Transient XP-ceremony UI lives outside the stores (LIFT-823); clear it and
+  // its auto-dismiss timer so a shared device never shows the previous user's
+  // toast/celebration.
+  resetXPCeremony()
 }
 
 async function signOut(): Promise<void> {
@@ -200,6 +249,7 @@ async function deleteAccount(): Promise<void> {
     'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
     'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
     'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
+    'coach-insights-history',
   ]
   for (const key of localStorageKeys) {
     localStorage.removeItem(key)
@@ -228,6 +278,8 @@ async function deleteAccount(): Promise<void> {
 function destroy(): void {
   _authUnsubscribe?.()
   _authUnsubscribe = null
+  for (const cleanup of _lifecycleCleanups) cleanup()
+  _lifecycleCleanups = []
   _initialized = false
 }
 

@@ -59,7 +59,7 @@ import { ref, computed } from 'vue'
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
-import { toLocalDateKey, formatShortDate } from '../lib/dates'
+import { setDayKey, formatShortDate } from '../lib/dates'
 
 const props = defineProps<{
   exercises: Exercise[]
@@ -92,7 +92,7 @@ const warmupSetIds = computed(() => {
 function filterSetsSinceBaseline<T extends { date: string }>(sets: T[]): T[] {
   const baseline = props.prBaselineDate
   if (!baseline) return sets
-  return sets.filter(s => s.date.slice(0, 10) >= baseline)
+  return sets.filter(s => setDayKey(s.date) >= baseline)
 }
 
 const timelineLimit = ref(50)
@@ -110,7 +110,7 @@ const timelineSets = computed((): TimelineEntry[] => {
       entries.push({ exerciseId: ex.id, exerciseName: ex.name, set: s })
     }
   }
-  return entries.sort((a, b) => b.set.date.slice(0, 10).localeCompare(a.set.date.slice(0, 10)))
+  return entries.sort((a, b) => setDayKey(b.set.date).localeCompare(setDayKey(a.set.date)))
 })
 
 // PR badge map: for each set, determine if it's the best e1RM (weight PR)
@@ -154,12 +154,14 @@ const visibleTimelineGroups = computed(() => {
   const limited = filteredTimelineSets.value.slice(0, timelineLimit.value)
   const groups: { key: string; label: string; sets: TimelineEntry[] }[] = []
   for (const entry of limited) {
-    const k = toLocalDateKey(entry.set.date)
+    const k = setDayKey(entry.set.date)
     const last = groups[groups.length - 1]
     if (last && last.key === k) {
       last.sets.push(entry)
     } else {
-      groups.push({ key: k, label: formatShortDate(entry.set.date), sets: [entry] })
+      // Label from the day key (anchored at noon) so an endOfDayISO set's
+      // header matches its group key instead of rolling +1 in UTC+ zones.
+      groups.push({ key: k, label: formatShortDate(k + 'T12:00:00'), sets: [entry] })
     }
   }
   return groups

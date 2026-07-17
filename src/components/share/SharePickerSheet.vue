@@ -39,7 +39,7 @@
         >
           <div class="spThumbCard" :class="{ spThumbCardStory: format === 'story' }">
             <div class="spThumbInner" :class="{ spThumbInnerStory: format === 'story' }">
-              <component :is="card.component" :summary="summary" />
+              <component :is="cardComponent(card.id)" :summary="summary" />
               <span v-if="showWatermark" class="spWatermark" aria-hidden="true">{{ WATERMARK_TEXT }}</span>
             </div>
           </div>
@@ -74,7 +74,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SessionSummary } from '../../lib/sessionSummary'
 import { WATERMARK_TEXT, type CardFormat } from '../../lib/shareImage'
-import { eligibleSquareCards, eligibleStoryCards, resolveInitialCard } from './cardRegistry'
+import { cardComponent, eligibleSquareCards, eligibleStoryCards, loadCardComponent, resolveInitialCard } from './cardRegistry'
 import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
 import { useModal } from '../../composables/useModal'
@@ -92,7 +92,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay' })
+// lockScroll:false — the parent (WorkoutCompleteView / PRBurst) already owns
+// the background-scroll lock for this surface. See the onMounted note below.
+const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay', lockScroll: false })
 const { currentTheme, resolvedMode } = useTheme()
 const { shareCard, downloadCard, isSharing } = useWorkoutShare()
 const { isSupporter } = useSupporter()
@@ -140,11 +142,14 @@ function selectCard(i: number) {
 watch(cards, () => { activeIndex.value = 0 })
 
 async function onShare() {
-  if (!activeCard.value) return
+  const card = activeCard.value
+  if (!card) return
   lastResult.value = null
+  const component = await loadCardComponent(card.id)
+  if (!component) return
   const res = await shareCard({
-    component: activeCard.value.component,
-    format: activeCard.value.format,
+    component,
+    format: card.format,
     summary: props.summary,
     theme: currentTheme.value,
     mode: resolvedMode.value,
@@ -156,11 +161,14 @@ async function onShare() {
 }
 
 async function onSave() {
-  if (!activeCard.value) return
+  const card = activeCard.value
+  if (!card) return
   lastResult.value = null
+  const component = await loadCardComponent(card.id)
+  if (!component) return
   const res = await downloadCard({
-    component: activeCard.value.component,
-    format: activeCard.value.format,
+    component,
+    format: card.format,
     summary: props.summary,
     theme: currentTheme.value,
     mode: resolvedMode.value,
@@ -176,9 +184,9 @@ async function onSave() {
 // to handle the same key is fragile with stopImmediatePropagation; one
 // owner is simpler and avoids closing the underlying summary by accident.
 //
-// `modal-open` is also owned by the parent. The picker doesn't toggle
-// it — doing so would re-enable background scroll the moment the picker
-// closes even though the parent is still up.
+// `modal-open` is owned by the parent (useModal lockScroll:false above).
+// If the picker locked too, closing it would drop the parent's count/boolean
+// and re-enable background scroll while the parent is still up.
 onMounted(() => {
   activateTrap()
   logEvent('share_opened', { format: format.value })

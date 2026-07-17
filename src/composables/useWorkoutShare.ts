@@ -3,7 +3,7 @@
  *   1. Mount a card component offscreen (detached Vue app, no Pinia needed —
  *      cards are pure presentational components that take a typed summary prop).
  *   2. Wait for the next tick so the DOM and CSS are settled, then rasterize
- *      the card to a PNG Blob via `html-to-image`.
+ *      the card to a PNG Blob via `modern-screenshot`.
  *   3. Share via the native iOS share sheet (Capacitor), the Web Share API
  *      (browser, iOS Safari 16.4+ supports image files), or fall back to a
  *      direct download — same Blob → URL.createObjectURL pattern App.vue
@@ -22,6 +22,10 @@ import {
 } from '../lib/shareImage'
 import type { SessionSummary } from '../lib/sessionSummary'
 import { useAnalytics } from './useAnalytics'
+import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
+
+/** Title shown in the share sheet for a rasterized workout card. */
+const SHARE_TITLE = 'Lift workout'
 
 export interface ShareCardRequest {
   /** The Vue component that renders the card. */
@@ -48,16 +52,27 @@ export type ShareResult =
   | { kind: 'error'; error: Error }
 
 /**
- * Browsers that support image files in the Web Share API.
+ * Pick the richest Web Share payload a platform will actually accept for a
+ * rendered card. We prefer a payload that carries both the card image AND a
+ * tappable link back to the app (#794) so a recipient can convert in one tap
+ * instead of retyping the printed handle — but some platforms reject a
+ * files+url combo via `canShare`, so we degrade to image-only rather than
+ * drop the share entirely. Returns null when no payload is sharable (caller
+ * falls back to download).
+ *
  * iOS Safari 16.4+ and Android Chrome both report `canShare({ files })` as true.
  */
-function canWebShareFiles(files: File[]): boolean {
-  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return false
+function pickWebSharePayload(file: File): ShareData | null {
+  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return null
+  const withLink: ShareData = { files: [file], title: SHARE_TITLE, text: APP_TAGLINE, url: APP_URL }
+  const imageOnly: ShareData = { files: [file], title: SHARE_TITLE }
   try {
-    return navigator.canShare({ files })
+    if (navigator.canShare(withLink)) return withLink
+    if (navigator.canShare(imageOnly)) return imageOnly
   } catch {
-    return false
+    return null
   }
+  return null
 }
 
 /** Triggers a download via a temporary anchor element. Matches the dataExport.ts pattern. */
@@ -83,7 +98,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 /**
  * The list of theme custom properties consumed by share cards. Snapshotted
  * from the live document at render time and inlined onto the offscreen
- * host so theme variables resolve inside `html-to-image`'s cloned subtree
+ * host so theme variables resolve inside `modern-screenshot`'s cloned subtree
  * (where the original `[data-theme="X"][data-mode="Y"]` selectors don't
  * reliably match — the clone lives outside the original cascade).
  */
@@ -122,9 +137,9 @@ function snapshotThemeVars(): string {
 async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
   const { width, height } = PREVIEW_SIZE[req.format]
   const host = document.createElement('div')
-  // Offscreen but rendered: html-to-image needs the node in the DOM with real
-  // layout. Inline the resolved theme variables onto the host so they survive
-  // html-to-image's clone-and-rehome step (the `[data-theme=…]` selectors
+  // Offscreen but rendered: modern-screenshot needs the node in the DOM with
+  // real layout. Inline the resolved theme variables onto the host so they
+  // survive modern-screenshot's clone-and-rehome step (the `[data-theme=…]` selectors
   // don't reliably match in the cloned subtree, which leaves the rasterized
   // image blank). Explicit `position: relative` on the inner provides the
   // containing block for cards' absolute children.
@@ -196,9 +211,10 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
       // alone would silently drop the rendered image, which is worse than
       // surfacing the download.
 
-      if (canWebShareFiles([file])) {
+      const sharePayload = pickWebSharePayload(file)
+      if (sharePayload) {
         try {
-          await navigator.share({ files: [file], title: 'Lift workout' })
+          await navigator.share(sharePayload)
           logEvent('share_completed', { format: req.format, method: 'share', outcome: 'shared' })
           return { kind: 'shared' }
         } catch (err) {

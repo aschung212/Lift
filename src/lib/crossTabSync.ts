@@ -19,7 +19,17 @@ export type CrossTabMessage =
   | { type: 'sync-status'; status: SyncStatus; timestamp: number }
   | { type: 'sw-update'; timestamp: number }
 
-export type StoreKey = 'workout' | 'bodyweight' | 'preferences' | 'progression'
+/**
+ * Single source of truth for the set of persisted Pinia stores.
+ *
+ * The `StoreKey` union, the cross-tab broadcast, and App.vue's reload map are
+ * all driven from this one array so adding a store can't silently desync the
+ * channel (LIFT-819). App.vue's `Record<StoreKey, …>` reload map then fails to
+ * compile until the new store is wired in.
+ */
+export const STORE_KEYS = ['workout', 'bodyweight', 'preferences', 'progression'] as const
+
+export type StoreKey = (typeof STORE_KEYS)[number]
 
 // ---- Singleton channel ----
 

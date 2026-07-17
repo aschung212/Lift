@@ -1,12 +1,14 @@
 <template>
   <div v-if="points.length >= 2" class="vtChart">
-    <button class="vtHeader" :aria-expanded="!collapsed" @click="$emit('toggleCollapsed')">
-      <p class="vtTitle">Volume Trend</p>
-      <div class="vtHeaderRight">
-        <span v-if="collapsed" class="vtCollapsedSummary">{{ formatVolume(totalVolume) }} {{ weightUnit }} total</span>
-        <svg class="vtChevron" :class="{ vtChevronOpen: !collapsed }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-    </button>
+    <h2 class="vtCardHeading">
+      <button class="vtHeader" :aria-expanded="!collapsed" @click="$emit('toggleCollapsed')">
+        <span class="vtTitle">Volume Trend</span>
+        <div class="vtHeaderRight">
+          <span v-if="collapsed" class="vtCollapsedSummary">{{ formatVolume(totalVolume) }} {{ weightUnit }} total</span>
+          <svg class="vtChevron" :class="{ vtChevronOpen: !collapsed }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </button>
+    </h2>
 
     <div v-if="!collapsed" class="wtGraphWrap vtGraphWrap">
       <p class="wtGraphTitle">Weekly Training Volume</p>
@@ -98,6 +100,13 @@ function formatVolume(lbs: number): string {
   background: var(--bg-secondary);
   border-radius: 12px;
   border: 1px solid var(--border);
+}
+
+/* Heading wrapper for the collapse toggle (WAI-ARIA accordion pattern) — reset
+   so it renders identically to the bare button it replaced. */
+.vtCardHeading {
+  margin: 0;
+  font: inherit;
 }
 
 .vtHeader {

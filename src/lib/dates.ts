@@ -10,7 +10,14 @@
  * in three components before this module existed.
  */
 
-function localDayKey(d: Date): string {
+/**
+ * Format a `Date` object as its local-calendar YYYY-MM-DD key.
+ * The single source of truth for turning a Date into a day key — use this
+ * anywhere a component needs `new Date(...)` → `YYYY-MM-DD` instead of
+ * hand-rolling `getFullYear()/getMonth()/getDate()` (which drifted into four
+ * divergent copies before this was shared — #918).
+ */
+export function localDateKey(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
@@ -19,7 +26,7 @@ function localDayKey(d: Date): string {
 
 /** Today's date as a local-calendar YYYY-MM-DD key. */
 export function todayISO(): string {
-  return localDayKey(new Date())
+  return localDateKey(new Date())
 }
 
 /**
@@ -29,7 +36,33 @@ export function todayISO(): string {
 export function toLocalDateKey(iso: string): string {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return iso.slice(0, 10)
-  return localDayKey(new Date(t))
+  return localDateKey(new Date(t))
+}
+
+/**
+ * Day key for a stored set/bodyweight date, correct for BOTH storage
+ * conventions the app produces:
+ *
+ *  - **endOfDayISO stamps** (`YYYY-MM-DDT23:59:ss.SSSZ`) — written by every
+ *    UI-logged set and bodyweight entry — carry the user's chosen LOCAL day
+ *    directly in the prefix. `slice(0, 10)` is the right key; `toLocalDateKey`
+ *    would shift it +1 in UTC+ timezones (`…T23:59Z` is the next morning local
+ *    in Tokyo).
+ *  - **Real-time stamps** (`logSet`'s no-date fallback, legacy data) are true
+ *    UTC instants. `toLocalDateKey` returns the correct local day, while
+ *    `slice(0, 10)` rolls an Americas-evening set forward to tomorrow.
+ *
+ * Detection mirrors `sessionSummary.isEndOfDayJitter`: the `23:59` UTC window is
+ * the signature of `endOfDayISO()`. A real-time stamp landing in that one-minute
+ * UTC window is the same unavoidable edge case that prior art already accepts.
+ *
+ * Use this for any day-bucketing or local-day comparison of a `set.date` /
+ * `entry.date`. A blanket swap to `toLocalDateKey` regresses every UTC+ user on
+ * the dominant endOfDayISO path; a blanket `slice(0, 10)` regresses Americas
+ * evenings on real-time data. This helper is the single reconciliation point.
+ */
+export function setDayKey(iso: string): string {
+  return iso.slice(11, 16) === '23:59' ? iso.slice(0, 10) : toLocalDateKey(iso)
 }
 
 /**

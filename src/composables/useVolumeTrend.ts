@@ -1,6 +1,7 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Exercise } from '../stores/workout'
 import type { TimeSeriesEntry } from './useSVGTimeSeries'
+import { localDateKey } from '../lib/dates'
 
 export interface UseVolumeTrendReturn {
   /**
@@ -22,7 +23,7 @@ function mondayOfWeek(dateKey: string): string {
   const dow = date.getDay()
   const daysSinceMonday = dow === 0 ? 6 : dow - 1
   date.setDate(date.getDate() - daysSinceMonday)
-  return toKey(date)
+  return localDateKey(date)
 }
 
 /** Advance a YYYY-MM-DD week-start key by 7 days. */
@@ -30,14 +31,7 @@ function nextWeek(weekStart: string): string {
   const [y, m, d] = weekStart.split('-').map(Number)
   const date = new Date(y, m - 1, d)
   date.setDate(date.getDate() + 7)
-  return toKey(date)
-}
-
-function toKey(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return localDateKey(date)
 }
 
 /**

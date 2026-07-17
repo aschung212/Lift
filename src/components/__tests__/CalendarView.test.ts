@@ -93,6 +93,16 @@ describe('CalendarView', () => {
       expect(wrapper.find('.calTitle').text()).toBe('Training Calendar')
     })
 
+    // LIFT-856: each top-level view needs a single page-level <h1> so screen-reader
+    // users get a consistent landmark and the hierarchy doesn't skip from h1 to h2.
+    it('exposes the calendar title as the single h1 (no skipped heading level)', () => {
+      const wrapper = mountCalendar()
+      const h1s = wrapper.findAll('h1')
+      expect(h1s.length).toBe(1)
+      expect(h1s[0].classes()).toContain('calTitle')
+      expect(h1s[0].text()).toBe('Training Calendar')
+    })
+
     it('shows Month and Week view toggle buttons', () => {
       const wrapper = mountCalendar()
       const btns = wrapper.findAll('.calToggleBtn')

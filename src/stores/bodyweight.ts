@@ -2,13 +2,13 @@ import { defineStore } from 'pinia'
 import { supabase, isPreviewMode } from '../lib/supabase'
 import type { Tables } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
+import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
-import { backupToIDB } from '../lib/durableStorage'
-import { logError, logWarn } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
-import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 
 const TOMBSTONE_STORE = 'bodyweight'
 
@@ -23,34 +23,21 @@ export interface BodyweightEntry {
 }
 
 function load(): BodyweightEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error('Expected array')
-    return parsed
-  } catch (e) {
-    logWarn('Corrupt bodyweight data in localStorage, using empty state', { error: String(e) })
-    return []
-  }
+  return loadStoreData<BodyweightEntry[]>('bodyweight', STORAGE_KEY, () => [], Array.isArray)
 }
 
 export const useBodyweightStore = defineStore('bodyweight', {
   state: () => ({
     entries: load() as BodyweightEntry[],
-    _userId: null as string | null
+    _userId: null as string | null,
+    // Uniform sync-status contract (LIFT-820): observable by the UI.
+    syncing: false,
+    lastSyncError: null as SyncErrorKind | null,
   }),
 
   actions: {
     _persist() {
-      const data = JSON.stringify(this.entries)
-      try {
-        localStorage.setItem(STORAGE_KEY, data)
-      } catch (e) {
-        logError(e, { source: 'bodyweight._persist', size: data.length })
-      }
-      backupToIDB(STORAGE_KEY, data)
-      broadcastStoreUpdate('bodyweight')
+      persistStoreData('bodyweight', STORAGE_KEY, JSON.stringify(this.entries))
     },
 
     /** Re-read state from localStorage (called by cross-tab sync listener). */
@@ -66,6 +53,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 
+      this.syncing = true
       let data: Tables<'bodyweight_entries'>[] | null
       try {
         const result = await supabase
@@ -76,15 +64,23 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .order('created_at')
         if (result.error) {
           reportFetchError('bodyweight', result.error)
+          this.lastSyncError = classifySyncError(result.error)
+          // A 401 means an expired token, not offline — refresh once so the next
+          // fetch recovers rather than staying local-only forever (LIFT-784).
+          if (isAuthError(result.error)) void ensureFreshSession()
           return
         }
         data = result.data
       } catch (err) {
         reportFetchError('bodyweight', err)
+        this.lastSyncError = classifySyncError(err)
         return
+      } finally {
+        this.syncing = false
       }
 
       if (!data) return
+      this.lastSyncError = null
 
       // Filter out tombstoned entries (deleted offline, not yet synced)
       const remoteIds = new Set(data.map(e => e.id))

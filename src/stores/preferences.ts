@@ -4,8 +4,12 @@ import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { backupToIDB } from '../lib/durableStorage'
-import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { persistStoreData } from '../lib/storePersistence'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
+import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
+import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
+import { localDateKey } from '../lib/dates'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -135,7 +139,14 @@ export const usePreferencesStore = defineStore('preferences', {
     appIcon: 'default' as string,
     /** Tappable intensity presets (% of max) in the log-set Intensity lens (#776). */
     intensityPresets: [...DEFAULT_INTENSITY_PRESETS] as number[],
+    /** AI Coach athlete profile — individualizes the export (#931). Synced in the blob. */
+    coachProfile: { ...DEFAULT_COACH_PROFILE, competition: { ...DEFAULT_COACH_PROFILE.competition } } as CoachProfile,
+    /** Gym names for per-gym exercise filtering (#961). Synced in the blob. */
+    gyms: [] as string[],
     _userId: null as string | null,
+    // Uniform sync-status contract (LIFT-820): observable by the UI.
+    syncing: false,
+    lastSyncError: null as SyncErrorKind | null,
   }),
 
   actions: {
@@ -153,22 +164,23 @@ export const usePreferencesStore = defineStore('preferences', {
         restTimerAutoStart: this.restTimerAutoStart,
         appIcon: this.appIcon,
         intensityPresets: this.intensityPresets,
+        coachProfile: this.coachProfile,
+        gyms: this.gyms,
       }
       const data = JSON.stringify(payload)
+      persistStoreData('preferences', STORAGE_KEY, data)
+      // Write individual keys so initTheme() can read them before Pinia for
+      // FOUC prevention on the next page load. These are preferences-specific
+      // mirror keys, not part of the shared primary-payload plumbing.
       try {
-        localStorage.setItem(STORAGE_KEY, data)
-        // Write individual keys so initTheme() can read them before Pinia
-        // for FOUC prevention on the next page load.
         localStorage.setItem('app-theme', this.theme)
         localStorage.setItem('app-mode', this.colorMode)
         localStorage.setItem('weight-unit', this.weightUnit)
         localStorage.setItem('rest-timer', this.restTimerEnabled ? 'on' : 'off')
         localStorage.setItem('rest-timer-autostart', this.restTimerAutoStart ? 'on' : 'off')
       } catch (e) {
-        logError(e, { source: 'preferences._persist' })
+        logError(e, { source: 'preferences._persist:fouc' })
       }
-      backupToIDB(STORAGE_KEY, data)
-      broadcastStoreUpdate('preferences')
       if (supabase && this._userId) {
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
@@ -199,6 +211,8 @@ export const usePreferencesStore = defineStore('preferences', {
         if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
         if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
         if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
+        if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
+        if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
       } catch { /* ignore corrupt data */ }
     },
 
@@ -231,6 +245,8 @@ export const usePreferencesStore = defineStore('preferences', {
           if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
           if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
           if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
+          if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
+          if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
         } catch { /* ignore corrupt data */ }
       }
 
@@ -270,6 +286,7 @@ export const usePreferencesStore = defineStore('preferences', {
 
       // Then try Supabase (overrides local if exists)
       if (supabase) {
+        this.syncing = true
         try {
           const { data, error } = await supabase
             .from('user_preferences')
@@ -277,10 +294,14 @@ export const usePreferencesStore = defineStore('preferences', {
             .eq('user_id', userId)
             .single()
           // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
-          // Any other error (network/auth/RLS) is classified so an RLS or auth
-          // regression is observable instead of silently swallowed (LIFT-786).
+          // A real error (network/auth/RLS) is classified for the per-store sync
+          // indicator (LIFT-820) and routed through reportFetchError so an RLS or
+          // auth regression is observable instead of silently swallowed (LIFT-786).
           if (error && error.code !== 'PGRST116') {
             reportFetchError('preferences', error)
+            this.lastSyncError = classifySyncError(error)
+          } else {
+            this.lastSyncError = null
           }
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
@@ -307,6 +328,8 @@ export const usePreferencesStore = defineStore('preferences', {
             if (typeof prefs.restTimerAutoStart === 'boolean') this.restTimerAutoStart = prefs.restTimerAutoStart as boolean
             if (typeof prefs.appIcon === 'string') this.appIcon = prefs.appIcon as string
             if (prefs.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(prefs.intensityPresets)
+            if (prefs.coachProfile) this.coachProfile = sanitizeCoachProfile(prefs.coachProfile)
+            if (prefs.gyms) this.gyms = sanitizeGymList(prefs.gyms)
             const synced = JSON.stringify({
               features: this.features, weightGoal: this.weightGoal,
               experience: this.experience, filters: this.filters,
@@ -315,14 +338,21 @@ export const usePreferencesStore = defineStore('preferences', {
               weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
               restTimerAutoStart: this.restTimerAutoStart, appIcon: this.appIcon,
               intensityPresets: this.intensityPresets,
+              coachProfile: this.coachProfile,
+              gyms: this.gyms,
             })
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
           }
         } catch (err) {
-          // Thrown (vs returned) error — typically a network failure. Classify
-          // so offline stays quiet but auth/server failures are observable.
+          // Thrown (vs returned) error — typically a network failure. Route
+          // through reportFetchError so offline stays quiet but auth/server
+          // failures are observable (LIFT-786), and record the per-store sync
+          // indicator so the UI can degrade visibly instead of silently (LIFT-820).
           reportFetchError('preferences', err)
+          this.lastSyncError = classifySyncError(err)
+        } finally {
+          this.syncing = false
         }
       }
     },
@@ -377,11 +407,7 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     startNewTrainingBlock() {
-      const d = new Date()
-      const y = d.getFullYear()
-      const m = String(d.getMonth() + 1).padStart(2, '0')
-      const day = String(d.getDate()).padStart(2, '0')
-      this.prBaselineDate = `${y}-${m}-${day}`
+      this.prBaselineDate = localDateKey(new Date())
       this._persist()
     },
 
@@ -423,6 +449,52 @@ export const usePreferencesStore = defineStore('preferences', {
     /** Replace the tappable intensity presets (sanitized: int, [1,100], deduped, sorted, capped). */
     setIntensityPresets(presets: number[]) {
       this.intensityPresets = sanitizeIntensityPresets(presets)
+      this._persist()
+    },
+
+    /** Replace the AI Coach athlete profile (sanitized + versioned). Syncs in the blob (#931). */
+    setCoachProfile(profile: Partial<CoachProfile>) {
+      this.coachProfile = sanitizeCoachProfile({ ...this.coachProfile, ...profile })
+      this._persist()
+    },
+
+    /** Replace the gym list (sanitized: trimmed, deduped, capped at MAX_GYMS) (#961). */
+    setGyms(gyms: string[]) {
+      this.gyms = sanitizeGymList(gyms)
+      this._persist()
+    },
+
+    /** Add a gym; returns the stored name, or null when invalid/duplicate/over cap. */
+    addGym(name: string): string | null {
+      const gym = sanitizeGymName(name)
+      if (!gym || this.gyms.includes(gym) || this.gyms.length >= MAX_GYMS) return null
+      this.gyms = [...this.gyms, gym]
+      this._persist()
+      return gym
+    },
+
+    /**
+     * Rename a gym in the list; returns the stored name, or null when the
+     * source is missing or the target invalid/taken. Exercise membership is
+     * rewritten by the workout store (useGymActions orchestrates both).
+     */
+    renameGym(oldName: string, newName: string): string | null {
+      const gym = sanitizeGymName(newName)
+      const idx = this.gyms.indexOf(oldName)
+      if (!gym || idx === -1) return null
+      if (gym === oldName) return gym
+      if (this.gyms.includes(gym)) return null
+      const next = [...this.gyms]
+      next[idx] = gym
+      this.gyms = next
+      this._persist()
+      return gym
+    },
+
+    /** Remove a gym from the list. Exercise membership cleanup is the caller's job. */
+    removeGym(name: string) {
+      if (!this.gyms.includes(name)) return
+      this.gyms = this.gyms.filter(g => g !== name)
       this._persist()
     },
   },
