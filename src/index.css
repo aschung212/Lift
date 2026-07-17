@@ -4871,11 +4871,32 @@ html.theme-fading .settingsSheet {
 .wtModalHeader h2 {
   flex: 1;
   text-align: center;
+  /* Reserve the leading/trailing 44px button zones so a long exercise
+     name never slides under the history / settings buttons (#971).
+     48px keeps the title clear of the 44px targets and stays on the
+     spacing scale. */
+  padding: 0 48px;
 }
 
 .wtPlateSettingsBtn {
   position: absolute;
   right: 0;
+  width: 44px;
+  height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* History shortcut: leading-side twin of the settings gear. Opens the
+   exercise's set-history detail view from the log-set modal (#971). */
+.wtLogHistoryBtn {
+  position: absolute;
+  left: 0;
   width: 44px;
   height: 44px;
   background: none;

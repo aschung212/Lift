@@ -710,6 +710,59 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  // #971: a "history" button in the log-set header jumps to the exercise's
+  // set-history detail view. The log sheet and detail modal share a z-index,
+  // so this is a swap (close sheet → open detail), not a stack.
+  describe('set history shortcut from log modal (#971)', () => {
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    it('opens the exercise set history from the log-set header, swapping out the log sheet', async () => {
+      const wrapper = mountTracker()
+      // Open the log-set modal for a known exercise (Bench Press is most-recent).
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.logSetSheet').exists()).toBe(true)
+      expect(wrapper.find('.wtDetailModal').exists()).toBe(false)
+
+      // Tap the leading history button.
+      const historyBtn = wrapper.find('.wtLogHistoryBtn')
+      expect(historyBtn.exists()).toBe(true)
+      await historyBtn.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // The log sheet is replaced by the detail "All Sets" view for the same exercise.
+      expect(wrapper.find('.logSetSheet').exists()).toBe(false)
+      expect(wrapper.find('.wtDetailModal').exists()).toBe(true)
+      expect(wrapper.find('.wtDetailTitle').text()).toBe('Bench Press')
+      expect(wrapper.find('.wtDetailTab.active').text()).toContain('All Sets')
+    })
+
+    it('routes back to logging via the detail "+ Log Set" footer', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.find('.wtLogHistoryBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // From the detail view, the footer re-opens the log-set modal.
+      await wrapper.find('.wtDetailFooterBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.logSetSheet').exists()).toBe(true)
+      expect(wrapper.find('#log-modal-title').text()).toBe('Bench Press')
+    })
+
+    it('hides the history button when creating a new exercise', async () => {
+      const wrapper = mountTracker()
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.logSetSheet').exists()).toBe(true)
+      expect(wrapper.find('.wtLogHistoryBtn').exists()).toBe(false)
+    })
+  })
+
   describe('PR history tab', () => {
     beforeEach(() => {
       mockState.exercises = createPRExercises()
