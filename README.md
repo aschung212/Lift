@@ -54,6 +54,14 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Multi-tag filtering on both Workouts and Calendar tabs (ANY match)
 - Inline "× Clear" chip at end of tag row when filters are active — no layout shift
 
+### Gym Filtering
+- Assign exercises to the gyms you train at (multi-gym membership; leave empty to show an exercise everywhere)
+- Exclusive gym filter row above the tag chips — pick where you're training today and other gyms' equipment disappears
+- Always-visible row defaulting to "All Gyms"; the zero state shows an "Add Gym" chip so your first gym is one tap away
+- Composes with tags: gym narrows the list, tags filter within it (quick-log picker follows too)
+- Gym manager for create/rename/delete plus bulk per-gym exercise assignment; gyms can also be created inline while editing an exercise, or from Settings
+- Active gym selection remembered per device (not synced — your phone can be at Gym A while your iPad stays on All)
+
 ### Usual Ladder (One-Tap Set Logging)
 - Detects your habitual set progression per exercise across recent sessions (e.g. 45×10 → 95×10 → 135×10 …), tolerant of occasional deviations
 - The log modal shows the ladder as chips: done rungs strike through, skipped rungs dim, the next rung highlights
@@ -90,7 +98,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Set count badge on each exercise tag
 - Log sets directly from the calendar
 - Tag filtering shared with workouts tab
-- Weekly view surfaces a muscle-group volume snapshot and a week-over-week training-volume trend line (hand-rolled SVG)
+- Weekly view surfaces a muscle-group volume snapshot (tap any tag to drill into its week-over-week volume trend) plus an overall training-volume trend line (hand-rolled SVG)
 
 ### Body Weight Tracking
 - Log daily weigh-ins with date
@@ -204,6 +212,7 @@ GitHub Actions runs on every push and PR to `master`:
 2. `npm run lint` — ESLint with Vue plugin (0 errors)
 3. `npm run build` — Vite production build
 4. `npm test` — full test suite
+5. **Lighthouse CI** (PRs only) — runs `@lhci/cli autorun` against `npm run preview` and asserts category budgets (accessibility ≥ 0.87 as a hard gate — the observed baseline, to be ratcheted toward 0.9 as the failing audits are fixed; performance/best-practices/SEO as advisory warnings). Config in `lighthouserc.json`; full HTML reports upload as the `lighthouse-report` artifact. Complements the static 512 KB JS bundle budget with real rendered-page Core Web Vitals.
 
 ### Code Quality
 
@@ -288,9 +297,11 @@ re-sync the `dist/` bundle into the native shell.
 │   ├── icon.svg
 │   ├── icon-192.png
 │   ├── icon-512.png
-│   └── apple-touch-icon.png
+│   ├── apple-touch-icon.png
+│   └── launch/                 # iOS PWA launch screens (apple-touch-startup-image), per device
 ├── scripts/
-│   └── generate-icons.js
+│   ├── generate-icons.js
+│   └── generate-launch-screens.js  # Renders themed iOS launch PNGs (pure Node, no deps)
 ├── src/
 │   ├── components/
 │   │   ├── WorkoutTracker.vue   # Exercise list, detail modal, log/edit modal, rest timer, tags

@@ -255,6 +255,41 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.wtSuggestionSegment touch target (#759)', () => {
+    // The Suggestions-drawer segmented control is a new interactive element;
+    // each segment must meet the project's 44pt iOS touch-target minimum.
+    const lines = getRuleLines('.wtSuggestionSegment')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtIntensitySlider touch target (#770)', () => {
+    // The Intensity-lens slider is a draggable control; its hit area must meet
+    // the project's 44pt iOS touch-target minimum.
+    const lines = getRuleLines('.wtIntensitySlider')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('intensity preset editor touch targets (#776)', () => {
+    // The Settings preset editor adds two new interactive controls; both must
+    // meet the project's 44pt iOS touch-target minimum.
+    it('.settingsPresetDelete is a 44x44 hit area', () => {
+      const lines = getRuleLines('.settingsPresetDelete')
+      expect(lines.some(l => l.includes('width') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.settingsPresetAdd has min-height: 44px', () => {
+      const lines = getRuleLines('.settingsPresetAdd')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('brace balance', () => {
     // Regression: an extra closing brace in index.css caused a CSS minifier
     // warning ("unexpected }") that could silently drop rules in production.

@@ -20,3 +20,32 @@ export const APP_NAME = 'Lift'
  */
 export const APP_TAGLINE =
   'Lift — a free, offline-capable workout tracker. Log sets, track estimated 1RM progress, and hit new PRs.'
+
+/**
+ * Attribution `?ref=` tokens stamped onto shared URLs so a share-driven install
+ * can be attributed back to the surface it came from (#798). These are the exact
+ * tokens the acquisition capture (#715) reads on first load — keep them short
+ * and matched there. Without a ref, every share-originated install logs as
+ * "direct" and the share→install funnel can't be measured.
+ */
+export const SHARE_REF = {
+  /** The "Share Lift" entry point that shares the app itself (#713). */
+  app: 'share_app',
+  /** A rasterized workout / PR card shared from the share sheet (#305 / #794). */
+  card: 'share_card',
+} as const
+
+export type ShareRef = (typeof SHARE_REF)[keyof typeof SHARE_REF]
+
+/**
+ * Build the canonical app URL with a `?ref=` attribution token appended, so the
+ * acquisition capture (#715) can close the share → install funnel. Returns
+ * `APP_URL` unchanged when no ref is supplied. Uses the URL API so an existing
+ * query (none today) would be preserved rather than clobbered.
+ */
+export function appUrlWithRef(ref?: ShareRef): string {
+  if (!ref) return APP_URL
+  const url = new URL(APP_URL)
+  url.searchParams.set('ref', ref)
+  return url.toString()
+}

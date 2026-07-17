@@ -9,10 +9,12 @@
  */
 
 import { THEMES } from './useTheme'
-import { useProgressionStore, showXPToast, showUnlockCelebration } from '../stores/progression'
+import { useProgressionStore } from '../stores/progression'
+import { showXPToast, showUnlockCelebration } from './xpCeremonyUI'
 import { XP_CONFIG } from '../lib/xp'
 import { logXPEvent, logBodyweightXPEvent } from '../lib/xpInstrumentation'
 import { useAppReview } from './useAppReview'
+import { useAnalytics } from './useAnalytics'
 import type { ThemeId } from './useTheme'
 
 export interface SetXPCeremonyInput {
@@ -46,6 +48,7 @@ export interface UseXPCeremonyReturn {
 export function useXPCeremony(): UseXPCeremonyReturn {
   const progressionStore = useProgressionStore()
   const { requestReviewAtMoment } = useAppReview()
+  const { logEvent } = useAnalytics()
 
   /**
    * Run the full XP ceremony for a logged workout set.
@@ -164,6 +167,22 @@ export function useXPCeremony(): UseXPCeremonyReturn {
   function _checkUnlocksAndCelebrate(onUnlock?: () => void): void {
     const newUnlocks = progressionStore.checkUnlocks()
     if (newUnlocks.length > 0) {
+      // Record each organically-earned unlock. Progression depth (how many
+      // themes a user has unlocked) is the strongest in-app correlate of
+      // long-term retention, so surface it in the analytics dashboard (#796).
+      // Fired from the in-session ceremony only — NOT the bulk migration path
+      // (celebrateUnlocks), which would otherwise log a burst of retroactive
+      // unlocks that don't reflect real engagement.
+      const unlockedCount = progressionStore.unlockedThemes.length
+      for (const themeId of newUnlocks) {
+        logEvent('theme_unlocked', {
+          theme: themeId,
+          totalXP: progressionStore.totalXP,
+          unlockedCount,
+          epoch: progressionStore.epoch,
+        })
+      }
+
       const theme = THEMES.find(t => t.id === newUnlocks[0])
       if (theme) {
         setTimeout(() => {

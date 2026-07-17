@@ -32,6 +32,23 @@
       </button>
     </header>
 
+    <!-- AI Coach weekly-review entry card + quota meter (only with enough data) -->
+    <button
+      v-if="showCoachCard"
+      class="wtCoachCard"
+      @click="openCoach"
+      aria-label="Open your AI weekly training review"
+    >
+      <span class="wtCoachIcon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+      </span>
+      <span class="wtCoachText">
+        <span class="wtCoachTitle">Weekly Review</span>
+        <span class="wtCoachMeta">{{ coachCardMeta }}</span>
+      </span>
+      <svg class="wtCoachChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+
     <!-- View toggle (Exercises / Timeline) -->
     <div v-if="store.exercises.length > 0" class="wtViewToggle">
       <button :class="['wtViewToggleBtn', { active: listView === 'exercises' }]" @click="listView = 'exercises'">Exercises</button>
@@ -51,6 +68,34 @@
       />
       <span v-if="searchQuery" class="wtSearchCount">{{ filteredExercises.length }} result{{ filteredExercises.length !== 1 ? 's' : '' }}</span>
     </div>
+
+    <!-- Gym filter chips (#961) — exclusive select, above the additive tag row.
+         Always visible in the exercises view: the zero state is "All Gyms" plus
+         a labeled "Add Gym" chip, so the first gym can be created right here
+         instead of only via Settings (#963 feedback). -->
+    <template v-if="listView === 'exercises'">
+      <div class="wtTagFilterBar" role="group" aria-label="Filter by gym">
+        <button
+          :class="['wtTagChip', { wtTagChipActive: !effectiveGymFilter }]"
+          @click="activeGymFilter = null"
+          aria-label="Show exercises from all gyms"
+        >All Gyms</button>
+        <button
+          v-for="gym in allGyms"
+          :key="gym"
+          :class="['wtTagChip', { wtTagChipActive: effectiveGymFilter === gym }]"
+          :aria-pressed="effectiveGymFilter === gym"
+          @click="toggleGymFilter(gym)"
+        >
+          <span class="wtTagChipLabel">{{ gym }}</span>
+        </button>
+        <button
+          class="wtTagChip wtTagChipManage"
+          @click="gymManagerOpen = true"
+          :aria-label="allGyms.length > 0 ? 'Manage gyms' : 'Add a gym'"
+        ><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg><template v-if="allGyms.length === 0">Add Gym</template></button>
+      </div>
+    </template>
 
     <!-- Tag filter chips with counts (exercises view only) -->
     <template v-if="listView === 'exercises' && store.allTags.length > 0">
@@ -98,7 +143,7 @@
       All your exercises are archived. Expand "Archived" below to bring one back, or tap "+ New Exercise".
     </p>
     <p v-else-if="filteredExercises.length === 0" class="wtEmpty">
-      No exercises match your search.
+      {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
     <ul v-if="filteredExercises.length > 0" class="wtExerciseList" ref="exerciseListEl">
@@ -208,7 +253,7 @@
     <!-- Timeline view (extracted to WorkoutTimeline.vue) -->
     <WorkoutTimeline
       v-else-if="listView === 'timeline'"
-      :exercises="store.exercises"
+      :exercises="liveExercises"
       :pr-baseline-date="prBaselineDate"
       :warmup-threshold="_prefs.filters.warmupThreshold"
       @log-set="openTimelineLogModal"
@@ -227,6 +272,9 @@
     @edit-set="openEditModal"
     @delete-set="undoDeleteSet"
   />
+
+  <!-- AI Coach weekly-review sheet -->
+  <CoachSheet v-if="coachOpen" @close="coachOpen = false" />
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
@@ -372,39 +420,124 @@
             </span>
           </p>
 
-          <!-- Usual ladder (routine-aware) / last session sets (quick-fill) -->
-          <div v-if="!isEditMode && isLogForExercise && (ladderActive || lastSession)" class="wtPrevSession">
-            <template v-if="ladderActive && usualLadder">
-              <span class="wtPrevSessionLabel">{{ ladderLabel }}</span>
-              <div ref="ladderChipsEl" class="wtPrevSessionChips">
+          <!--
+            Consolidated "Suggestions" drawer (#759 / #770) — one interaction
+            path, not three. Folds the usual-ladder / last-session quick-fill and
+            the PR-anchored Intensity table into a single segmented disclosure.
+            The routine ladder (or last-session) lens is the default and stays
+            expanded so the one-tap ghost-arm logging flow is preserved; the
+            Intensity slider is a tap away on the segmented control. The Intensity
+            lens ceils to a loadable plate increment, so its 100% end reaches
+            PR-beating loads — the former separate PR table is just this table
+            read at 100% (#770). Each lens reuses its existing chip/row markup.
+          -->
+          <div
+            v-if="!isEditMode && isLogForExercise && suggestionLenses.length"
+            :class="['wtPrTargets', 'wtSuggestions', { wtPrTargetsExpanded: suggestionsExpanded }]"
+          >
+            <button class="wtPrTargetsHeader" @click="suggestionsExpanded = !suggestionsExpanded" :aria-expanded="suggestionsExpanded">
+              <span class="wtPrTargetsTitleCol">
+                <span class="wtPrTargetsTitle">Suggestions</span>
+                <span class="wtPrTargetsSub">{{ suggestionHeaderSub }}</span>
+              </span>
+              <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: suggestionsExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+
+            <div v-if="suggestionsExpanded" class="wtSuggestionBody">
+              <div v-if="suggestionLenses.length > 1" class="wtSuggestionSegments" role="tablist" aria-label="Suggestion type">
                 <button
-                  v-for="(rung, i) in usualLadder.rungs"
-                  :key="i"
-                  class="wtPrevSessionChip"
-                  :class="{
-                    wtPrevSessionChipUsed: rungStates[i] === 'done',
-                    wtPrevSessionChipNext: rungStates[i] === 'next',
-                    wtPrevSessionChipSkipped: rungStates[i] === 'skipped',
-                  }"
-                  :aria-current="rungStates[i] === 'next' ? 'step' : undefined"
-                  :aria-label="rungStates[i] === 'done' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, logged`
-                    : rungStates[i] === 'skipped' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, skipped` : undefined"
-                  @click="fillFromRung(rung)"
-                >{{ displayWeight(rung.weightLbs) }} × {{ rung.reps }}</button>
+                  v-for="lens in suggestionLenses"
+                  :key="lens"
+                  type="button"
+                  role="tab"
+                  :aria-selected="currentLens === lens"
+                  :class="['wtSuggestionSegment', { wtSuggestionSegmentActive: currentLens === lens }]"
+                  @click="activeLens = lens"
+                >{{ lensLabel(lens) }}</button>
               </div>
-            </template>
-            <template v-else-if="lastSession">
-              <span class="wtPrevSessionLabel">Last session · {{ formatShortDate(lastSession.date + 'T12:00:00') }}</span>
-              <div class="wtPrevSessionChips">
-                <button
-                  v-for="(s, i) in lastSession.sets"
-                  :key="i"
-                  class="wtPrevSessionChip"
-                  :class="{ wtPrevSessionChipUsed: lastSessionUsed[i] }"
-                  @click="fillFromLastSession(s, i)"
-                >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
-              </div>
-            </template>
+
+              <!-- Routine: usual-ladder rungs (quick-fill + ghost-arm) -->
+              <template v-if="currentLens === 'routine' && usualLadder">
+                <span class="wtPrevSessionLabel">{{ ladderLabel }}</span>
+                <div ref="ladderChipsEl" class="wtPrevSessionChips">
+                  <button
+                    v-for="(rung, i) in usualLadder.rungs"
+                    :key="i"
+                    class="wtPrevSessionChip"
+                    :class="{
+                      wtPrevSessionChipUsed: rungStates[i] === 'done',
+                      wtPrevSessionChipNext: rungStates[i] === 'next',
+                      wtPrevSessionChipSkipped: rungStates[i] === 'skipped',
+                    }"
+                    :aria-current="rungStates[i] === 'next' ? 'step' : undefined"
+                    :aria-label="rungStates[i] === 'done' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, logged`
+                      : rungStates[i] === 'skipped' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, skipped` : undefined"
+                    @click="fillFromRung(rung)"
+                  >{{ displayWeight(rung.weightLbs) }} × {{ rung.reps }}</button>
+                </div>
+              </template>
+
+              <!-- Last session quick-fill (fallback when no routine is detected) -->
+              <template v-else-if="currentLens === 'last' && lastSession">
+                <span class="wtPrevSessionLabel">Last session · {{ formatShortDate(lastSession.date + 'T12:00:00') }}</span>
+                <div class="wtPrevSessionChips">
+                  <button
+                    v-for="(s, i) in lastSession.sets"
+                    :key="i"
+                    class="wtPrevSessionChip"
+                    :class="{ wtPrevSessionChipUsed: lastSessionUsed[i] }"
+                    @click="fillFromLastSession(s, i)"
+                  >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
+                </div>
+              </template>
+
+              <!-- Intensity: PR-anchored weight × reps at the chosen % of max.
+                   Ceiling rounding means the 100% end reaches PR-beating loads,
+                   so this one lens spans warmups → PR (#770). -->
+              <template v-else-if="currentLens === 'intensity'">
+                <span class="wtPrevSessionLabel">{{ intensityPct }}% of {{ displayWeight(intensityOneRM!) }} {{ weightUnit }} max</span>
+                <!-- Tappable presets (configured in Settings, #776) — the fast path;
+                     the slider below stays for one-off intensities. -->
+                <div v-if="intensityPresets.length" class="wtPrevSessionChips wtIntensityPresetChips" role="group" aria-label="Intensity presets">
+                  <button
+                    v-for="p in intensityPresets"
+                    :key="p"
+                    type="button"
+                    class="wtPrevSessionChip"
+                    :class="{ wtPrevSessionChipNext: intensityPct === p }"
+                    :aria-pressed="intensityPct === p"
+                    @click="intensityPct = p"
+                  >{{ p }}%</button>
+                </div>
+                <div class="wtIntensityControl">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    :step="INTENSITY_STEP"
+                    v-model.number="intensityPct"
+                    class="wtIntensitySlider"
+                    :aria-label="`Intensity, ${intensityPct} percent of max`"
+                  />
+                  <span class="wtIntensityValue">{{ intensityPct }}%</span>
+                </div>
+                <div v-if="intensityTable.length" class="wtPrTargetsList wtSuggestionList">
+                  <button
+                    v-for="(row, i) in intensityTable"
+                    :key="row.reps"
+                    :class="['wtPrTargetsRow', { wtPrTargetsRowActive: intensityUsed[i] }]"
+                    :aria-label="`${displayWeight(row.weightLbs)} ${weightUnit} for ${row.reps} reps, ${displayWeight(row.e1rm)} ${weightUnit} estimated 1RM`"
+                    @click="fillFromIntensity(row, i)"
+                  >
+                    <span class="wtPrTargetsReps">{{ row.reps }}</span>
+                    <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
+                    <span class="wtPrTargetsWeight">{{ displayWeight(row.weightLbs) }} {{ weightUnit }}</span>
+                    <span class="wtPrTargetsE1rm">~{{ displayWeight(row.e1rm) }} {{ weightUnit }} e1RM</span>
+                  </button>
+                </div>
+                <p v-else class="wtIntensityEmpty">Nothing loadable at {{ intensityPct }}% — slide higher.</p>
+              </template>
+            </div>
           </div>
 
           <!-- Weight + Reps (primary inputs — keep at top for keyboard visibility) -->
@@ -455,41 +588,6 @@
           <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
             <span class="repMaxResultLabel">Estimated 1RM</span>
             <span class="repMaxResultPlaceholderText">Enter weight and reps to see estimate</span>
-          </div>
-
-          <!--
-            PR Targets card per screens/07-pr-targets-expanded.png. Always
-            visible when the exercise has an established PR. Header is
-            tappable to expand/collapse the scrollable list. The row
-            matching the user's current reps value is highlighted in
-            accent so they can see at a glance "this is the weight to
-            hit at the rep count you've already chosen."
-          -->
-          <div v-if="!isEditMode && isLogForExercise && prTargetsTable" :class="['wtPrTargets', { wtPrTargetsExpanded: prTableExpanded }]">
-            <button class="wtPrTargetsHeader" @click="prTableExpanded = !prTableExpanded" :aria-expanded="prTableExpanded">
-              <span class="wtPrTargetsTitleCol">
-                <span class="wtPrTargetsTitle">PR Targets</span>
-                <span class="wtPrTargetsSub">
-                  Beat {{ displayWeight(store.getExercisePR(selectedExerciseId, prBaselineDate)) }} {{ weightUnit }} e1RM
-                  <span class="wtPrTargetsSubDot">·</span>
-                  <span class="wtPrTargetsSubCount">{{ prTargetsTable.length }} targets 🏆</span>
-                </span>
-              </span>
-              <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: prTableExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div v-if="prTableExpanded" class="wtPrTargetsList">
-              <button
-                v-for="row in prTargetsTable"
-                :key="row.reps"
-                :class="['wtPrTargetsRow', { wtPrTargetsRowActive: reps !== null && row.reps === reps }]"
-                @click="fillFromPRTable(row)"
-              >
-                <span class="wtPrTargetsReps">{{ row.reps }}</span>
-                <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
-                <span class="wtPrTargetsWeight">{{ row.displayWt }} {{ weightUnit }}</span>
-                <span class="wtPrTargetsE1rm">~{{ row.e1rm }} e1RM</span>
-              </button>
-            </div>
           </div>
 
           <!--
@@ -620,6 +718,8 @@
   <EditExerciseModal
     :exercise="editTargetExercise"
     :all-tags="store.allTags"
+    :all-gyms="allGyms"
+    @create-gym="gymActions.createGym"
     @close="editTarget = null"
     @save="onEditExerciseSave"
     @archive="handleArchiveFromEdit"
@@ -630,7 +730,7 @@
   <!-- Exercise Picker (timeline + Log Set; extracted to ExercisePickerModal.vue) -->
   <ExercisePickerModal
     :open="timelineLogPicking"
-    :exercises="store.activeExercises"
+    :exercises="exercisesByRecency"
     @close="timelineLogPicking = false"
     @select="pickExerciseForLog"
     @create-new="pickNewExerciseFromPicker"
@@ -640,12 +740,24 @@
   <TagManagerModal
     :open="tagManagerOpen"
     :all-tags="store.allTags"
-    :exercises="store.exercises"
+    :exercises="liveExercises"
     @close="tagManagerOpen = false"
     @create-tag="store.addCustomTag"
     @rename-tag="onRenameTag"
     @delete-tag="confirmDeleteTag"
     @toggle-exercise-tag="toggleExerciseTag"
+  />
+
+  <!-- Gym Manager Modal (#961) — create/rename/delete gyms + bulk membership -->
+  <GymManagerModal
+    :open="gymManagerOpen"
+    :gyms="allGyms"
+    :exercises="liveExercises"
+    @close="gymManagerOpen = false"
+    @create-gym="gymActions.createGym"
+    @rename-gym="onRenameGym"
+    @delete-gym="gymActions.deleteGym"
+    @toggle-exercise-gym="gymActions.toggleExerciseGym"
   />
 
   <!-- Rest timer bar -->
@@ -680,7 +792,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { buildSessionSummary } from '../lib/sessionSummary'
-import { todayISO, toLocalDateKey, formatShortDate, daysBetweenISO } from '../lib/dates'
+import { todayISO, localDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
 import type { Exercise, WorkoutSet, PlateCountMode, UsualLadder, UsualLadderRung } from '../stores/workout'
@@ -697,24 +809,69 @@ import { useLongPressReorder } from '../composables/useLongPressReorder'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useFirstSetCelebration } from '../composables/useFirstSetCelebration'
+import { useGoalCelebration } from '../composables/useGoalCelebration'
+import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
-import { calculateSetXP, calculateBest1RM, applyStreakMultiplier, checkRepPR, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
+import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
+import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
+import { scoreSet } from '../lib/setScoring'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
+const CoachSheet = defineAsyncComponent(() => import('../views/CoachSheet.vue'))
+import { coachReviewEligibility } from '../lib/coachDigest'
+import { COACH_MODE } from '../lib/coachExport'
+import { useCoach } from '../composables/useCoach'
+import { useAuth } from '../composables/useAuth'
+import { isPreviewMode } from '../lib/supabase'
 import RestTimerContent from './RestTimerContent.vue'
 import WorkoutTimeline from './WorkoutTimeline.vue'
 import EditExerciseModal, { type EditExerciseSave } from './EditExerciseModal.vue'
 import TagManagerModal from './TagManagerModal.vue'
+import GymManagerModal from './GymManagerModal.vue'
 import ExercisePickerModal from './ExercisePickerModal.vue'
+import { useGymActions } from '../composables/useGymActions'
 import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
+import { ladderChipScrollLeft } from '../lib/ladderScroll'
 import { MAX_WEIGHT, MAX_REPS } from '../lib/inputLimits'
 import { loadJSON } from '../lib/storage'
+import { matchesGymFilter, loadActiveGymFilter, saveActiveGymFilter } from '../lib/gyms'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
+const coach = useCoach()
+const { user: authUser } = useAuth()
+
+// ── AI Coach weekly review (LIFT-848) ────────────────────────────
+const coachOpen = ref(false)
+// Gate the entry card like the Suggestions drawer gates its lenses: only when
+// there's enough signal (a couple training weeks + the server's set floor) and
+// not on a preview deploy. In the server transport the proxy is auth-gated so we
+// also require a signed-in user; the BYO export is 100% local (nothing is sent),
+// so it needs no account — requiring sign-in to copy your own data would be odd.
+const coachEligible = computed(() => coachReviewEligibility(store.exercises, new Date()).eligible)
+const showCoachCard = computed(
+  () =>
+    coachEligible.value &&
+    !isPreviewMode.value &&
+    (COACH_MODE === 'byo' || authUser.value !== null),
+)
+const coachCardMeta = computed(() => {
+  if (COACH_MODE === 'byo') return 'Bring your own AI'
+  const n = coach.remaining.value
+  if (n === null) return 'AI-written · once a week'
+  if (n <= 0) {
+    const days = coach.resetDays.value
+    return days && days > 0 ? `Resets in ${days} ${days === 1 ? 'day' : 'days'}` : 'No reviews left'
+  }
+  return `${n} ${n === 1 ? 'review' : 'reviews'} left this week`
+})
+function openCoach() {
+  coachOpen.value = true
+}
 const { show: showUndo } = useUndoToast()
 const { currentTheme } = useTheme()
 const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
@@ -723,6 +880,11 @@ const { impactLight, notifySuccess } = useHaptics()
 const { logSetXPCeremony } = useXPCeremony()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+const { presentFirstSetCelebration } = useFirstSetCelebration()
+const { presentGoalCelebration } = useGoalCelebration()
+
+// One-time activation flag (#762): celebrate a brand-new user's first ever set.
+const FIRST_SET_FLAG = 'first-set-celebrated'
 
 // Rest timer controller — all timer state and logic extracted into composable
 const timerCtrl = useRestTimerController(
@@ -736,50 +898,20 @@ import { usePreferencesStore } from '../stores/preferences'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
 
-// Filter sets to those on/after the user-set PR baseline.
-// When no baseline is set, returns sets unchanged (legacy all-time behavior).
-function filterSetsSinceBaseline<T extends { date: string }>(sets: T[]): T[] {
-  const baseline = prBaselineDate.value
-  if (!baseline) return sets
-  return sets.filter(s => s.date.slice(0, 10) >= baseline)
-}
-
 function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
   const exercise = store.exercises.find(e => e.id === exerciseId)
   if (!exercise) return
 
-  // Best 1RM from existing sets (before this set was added, it's already in the array)
+  // Score against existing sets (the just-logged set is already in the array).
   const otherSets = exercise.sets.filter(s => s.id !== setId)
-  // Apply user-set PR baseline (falls back to rolling window when unset).
-  const rawBest1RM = calculateBest1RM(otherSets, { sinceDate: prBaselineDate.value })
-
-  // Suppress PR detection for immature exercises (all sets from same day)
-  const isEstablished = isExerciseEstablished(otherSets, date.value || todayISO())
-  const best1RM = isEstablished ? rawBest1RM : null
-
-  // Rep PR only awards bonus when NOT already in PR/Tied PR zone.
-  // When a baseline is set, rep PRs are also evaluated against sets since that date.
-  const repPRPriorSets = filterSetsSinceBaseline(otherSets)
-  const isPRZone = best1RM !== null && estimated1RM >= best1RM
-  const isRepPR = isEstablished && !isPRZone && checkRepPR(weight, reps, repPRPriorSets)
-
-  const setIndex = exercise.sets.length - 1
-  const baseXP = calculateSetXP({
-    setEstimated1RM: estimated1RM,
-    exerciseBest1RM: best1RM,
-    setIndex: best1RM === null ? setIndex : 0,
-    isRepPR,
+  const { best1RM, isPR, isTie, isRepPR, zone, baseXP } = scoreSet({
+    priorSets: otherSets,
+    estimated1RM,
+    weightLbs: weight,
+    reps,
+    dateKey: date.value || todayISO(),
+    baseline: prBaselineDate.value,
   })
-
-  // Determine zone for storage, instrumentation, and display
-  let zone: 'warmup' | 'working' | 'pr' | 'tie' | 'new_exercise'
-  const isPR = best1RM !== null && estimated1RM > best1RM
-  const isTie = best1RM !== null && estimated1RM === best1RM
-  if (best1RM === null) zone = 'new_exercise'
-  else if (isPR) zone = 'pr'
-  else if (isTie) zone = 'tie'
-  else if (estimated1RM / best1RM < XP_CONFIG.warmupThreshold) zone = 'warmup'
-  else zone = 'working'
 
   const mult = progressionStore.currentMultiplier
   let xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
@@ -830,6 +962,59 @@ function onTimelineEditSet(exerciseId: string, set: WorkoutSet) {
   if (exercise) openEditModal(exercise, set)
 }
 
+// ── Fresh-identity child bindings (#963) ─────────────────────────
+// The store mutates exercises IN PLACE behind a shallowRef and signals via
+// triggerRef, so the raw array's identity never changes. A child bound
+// straight to `store.exercises` freezes: on each mutation the parent
+// re-renders, Vue compares the child's props by identity, and skips it.
+// Children that must observe mutations while mounted (the timeline, the
+// tag/gym manager checklists) bind this computed instead — re-slicing on
+// every store trigger gives the prop a fresh identity.
+const liveExercises = computed(() => [...store.exercises])
+
+// ── Gym filtering (#961) ─────────────────────────────────────────
+// Exclusive (AND) filter applied BEFORE the additive tag filter: pick the gym
+// you're training at and exercises assigned only to other gyms disappear.
+// The gym list is a synced preference; the ACTIVE selection is device-local
+// ("which gym am I at" doesn't belong on other devices).
+const allGyms = computed(() => _prefs.gyms)
+const activeGymFilter = ref<string | null>(loadActiveGymFilter())
+
+/**
+ * The filter actually applied. A persisted selection is only honored once the
+ * gym exists in the (async-hydrated) list — before hydration, and for a gym
+ * deleted on another device, the filter is inert rather than hiding rows.
+ */
+const effectiveGymFilter = computed(() =>
+  activeGymFilter.value && allGyms.value.includes(activeGymFilter.value)
+    ? activeGymFilter.value
+    : null
+)
+
+/** Active exercises narrowed to the effective gym — the base for every list surface. */
+const gymFilteredExercises = computed(() => {
+  const gym = effectiveGymFilter.value
+  if (!gym) return store.activeExercises
+  return store.activeExercises.filter(e => matchesGymFilter(e.gyms, gym, allGyms.value))
+})
+
+function toggleGymFilter(gym: string) {
+  // Exclusive select: tapping the active gym deselects back to "All Gyms".
+  activeGymFilter.value = activeGymFilter.value === gym ? null : gym
+}
+
+watch(activeGymFilter, saveActiveGymFilter)
+
+// Reset a stale selection when its gym is renamed/deleted. Only prune against
+// a NON-EMPTY list: during the pre-hydration window the list is [] and pruning
+// would wipe the persisted device-local selection (effectiveGymFilter already
+// keeps the filter inert until the gym exists).
+watch(allGyms, (gyms) => {
+  if (gyms.length > 0 && activeGymFilter.value && !gyms.includes(activeGymFilter.value)) {
+    activeGymFilter.value = null
+  }
+})
+
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
 const activeTagFilters = ref<string[]>([])
@@ -870,8 +1055,53 @@ function clearSearchAndTags() {
   activeTagFilters.value = []
 }
 
+/**
+ * Most recent activity day-key per exercise — the max `setDayKey` across all
+ * of its sets, INCLUDING today (a set logged today floats the exercise to the
+ * top). Exercises never logged map to '' and sort to the bottom. Built once
+ * per set-data change so the recency sort in `filteredExercises` stays
+ * O(n·log n) rather than O(n·m) rescanned on every render. (#936)
+ */
+const lastActivityByExercise = computed(() => {
+  const map = new Map<string, string>()
+  for (const ex of store.activeExercises) {
+    let latest = ''
+    for (const s of ex.sets) {
+      const day = setDayKey(s.date)
+      if (day > latest) latest = day
+    }
+    map.set(ex.id, latest)
+  }
+  return map
+})
+
+/**
+ * Sort a list of exercises by most-recent activity (descending) without
+ * mutating the input. `.sort` is stable, so equal-recency exercises (including
+ * never-logged, key '') keep their incoming order, preserving any manual
+ * drag/keyboard reorder as a tiebreaker. (#936)
+ */
+function sortByRecency(list: readonly Exercise[]): Exercise[] {
+  const activity = lastActivityByExercise.value
+  return list.slice().sort((a, b) => {
+    const ka = activity.get(a.id) ?? ''
+    const kb = activity.get(b.id) ?? ''
+    if (ka === kb) return 0
+    return ka < kb ? 1 : -1
+  })
+}
+
+/**
+ * Active exercises ordered by recency, with no search/tag filter — feeds the
+ * "Choose Exercise" quick-log picker so the next exercise to train sits at the
+ * top of that list too. (#936) Gym-scoped (#961): the picker exists to answer
+ * "what am I logging right now?", so it respects the active gym like the list.
+ */
+const exercisesByRecency = computed(() => sortByRecency(gymFilteredExercises.value))
+
 const filteredExercises = computed(() => {
-  let result = store.activeExercises
+  // Gym filter first (#961) — exclusive AND; search/tags narrow within it.
+  let result = gymFilteredExercises.value
   // Text search — check both name and tags so "Push" matches tag-filtered rows.
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
@@ -888,7 +1118,11 @@ const filteredExercises = computed(() => {
       return activeTagFilters.value.some(t => tags.includes(t))
     })
   }
-  return result
+  // Recency ordering (#936): most recently logged exercise first, so the next
+  // exercise to perform is the easiest to reach. Applied AFTER filtering so
+  // tag / search subsets stay recency-ordered too — the most recent exercise
+  // within a muscle group floats to the top of that filtered view.
+  return sortByRecency(result)
 })
 
 /**
@@ -904,7 +1138,7 @@ const filteredExercises = computed(() => {
  * (previously only the tag-filter path was gated).
  */
 const isFilteringActive = computed(() =>
-  activeTagFilters.value.length > 0 || searchQuery.value.trim() !== ''
+  activeTagFilters.value.length > 0 || searchQuery.value.trim() !== '' || effectiveGymFilter.value !== null
 )
 
 /** Total exercise count, shown in the "Workouts" header stats. */
@@ -916,7 +1150,7 @@ const setsLoggedToday = computed(() => {
   let count = 0
   for (const ex of store.exercises) {
     for (const s of ex.sets) {
-      if (toLocalDateKey(s.date) === today) count++
+      if (setDayKey(s.date) === today) count++
     }
   }
   return count
@@ -965,14 +1199,45 @@ const weeklyGoalInfo = computed(() => {
 })
 
 /**
+ * Fire the weekly-goal celebration the first time the goal is met each week
+ * (LIFT-764). Called after a set is logged. Skipped while a PR burst is showing
+ * so the two overlays never stack — the week is left unmarked so the
+ * celebration still fires on the next non-PR set. The once-per-week guard lives
+ * in device-local storage, mirroring the overload nudge.
+ *
+ * Returns `true` when a celebration (and its success/milestone haptic) actually
+ * fired, so the caller can suppress the routine light tap and avoid two native
+ * haptics colliding into a muddy buzz on Capacitor/iOS.
+ */
+function maybeCelebrateWeeklyGoal(prShown: boolean): boolean {
+  if (prShown) return false
+  const info = weeklyGoalInfo.value
+  if (!info) return false
+  const state = readGoalCelebrationState()
+  const decision = decideGoalCelebration(info.met, progressionStore.streakWeeks, state.lastCelebratedWeek)
+  if (!decision) return false
+  markGoalWeekCelebrated(decision.weekKey)
+  const celebrated = presentGoalCelebration({ streak: decision.streak, milestone: decision.milestone, target: info.target })
+  logEvent('weekly_goal_celebrated', { streak: decision.streak, milestone: decision.milestone })
+  // A streak-tier crossing (2/4/8/12-week multiplier bump) is a distinct
+  // progression-depth signal from simply hitting the weekly goal — emit a
+  // dedicated event so streak retention is filterable in the dashboard (#796).
+  if (decision.milestone) {
+    logEvent('streak_milestone', { streak: decision.streak, target: info.target })
+  }
+  return celebrated
+}
+
+/**
  * Count of exercises carrying each tag — powers the "Push 23" suffix on tag
- * chips. Counts only active (non-archived) exercises so that the chip count
- * matches what the tag filter will actually show. Tags that exist solely on
- * archived exercises are filtered out by `filteredTags` below.
+ * chips. Counts only active (non-archived) exercises — narrowed to the active
+ * gym (#961) — so that the chip count matches what tapping the tag will
+ * actually show. Tags that exist solely on archived exercises are filtered
+ * out by `filteredTags` below.
  */
 const tagCounts = computed<Record<string, number>>(() => {
   const map: Record<string, number> = {}
-  for (const e of store.activeExercises) {
+  for (const e of gymFilteredExercises.value) {
     for (const t of e.tags || []) {
       map[t] = (map[t] || 0) + 1
     }
@@ -1138,6 +1403,79 @@ function fillFromLastSession(set: { weight: number; reps: number }, index: numbe
   lastSessionUsed.value = { ...lastSessionUsed.value, [index]: true }
 }
 
+// ── Intensity lens: PR/1RM-anchored weight × reps table (#770) ─────
+// A slider picks an intensity (% of the exercise's best e1RM); the table shows,
+// per rep count, the lightest LOADABLE weight whose e1RM MEETS OR BEATS that
+// intensity (ceiled to a plate increment). Ceiling is what lets one lens span
+// warmups (low %) through PR-beating loads (100%) — the former separate "PR"
+// table is just this table read at 100%. Reps are NOT prescribed — the user
+// taps the row matching their planned reps; each row carries its e1RM.
+const INTENSITY_DEFAULT_PCT = 80
+const INTENSITY_STEP = 5
+const intensityPct = ref(INTENSITY_DEFAULT_PCT)
+const intensityUsed = ref<Record<number, boolean>>({})
+
+// `intensityUsed` is keyed by row index; moving the slider rebuilds the table
+// with new weights at the same indices, so a stale "used" highlight would lie.
+// Clear it whenever the intensity changes.
+watch(intensityPct, () => { intensityUsed.value = {} })
+
+// Anchor: the exercise's best e1RM (its PR) — same source as the PR lens.
+const intensityOneRM = computed<number | null>(() => {
+  if (isEditMode.value || !isLogForExercise.value) return null
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return null
+  const pr = store.getExercisePR(id, prBaselineDate.value)
+  return pr > 0 ? pr : null
+})
+
+const intensityMaxReps = computed<number>(() => {
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  return ex?.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
+})
+
+// Global, user-configured intensity presets (Settings → Intensity Presets, #776).
+// Rendered as tappable chips above the slider; tapping one sets intensityPct.
+const intensityPresets = computed<number[]>(() => _prefs.intensityPresets)
+
+const intensityTable = computed<IntensityRow[]>(() => {
+  const oneRM = intensityOneRM.value
+  if (oneRM === null) return []
+  return generateIntensityTable(oneRM, intensityPct.value, {
+    barWeight: currentBarWeight.value,
+    perSide: isPerSide.value,
+    denominations: weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES,
+    maxReps: intensityMaxReps.value,
+    plateMode: plateMode.value,
+    unit: weightUnit.value,
+  })
+})
+
+// ── Consolidated "Suggestions" drawer (#759 / #770) ───────────────
+// One segmented disclosure over every "what should my next set be?" lens —
+// routine ladder / last-session quick-fill and the PR-anchored intensity table
+// (which spans warmups → PR-beating at 100%) — instead of stacked cards.
+// `suggestionLenses` (defined after the lenses' source computeds) lists what's
+// available; `currentLens` self-heals if the selected lens loses its data. The
+// drawer opens expanded on the quick-fill lens (routine/last) so the one-tap
+// ghost-arm flow is never a tap away.
+type SuggestionLens = 'routine' | 'last' | 'intensity'
+const suggestionsExpanded = ref(false)
+const activeLens = ref<SuggestionLens>('routine')
+
+/** Load an intensity row into the inputs (mirrors fillFromRung's plate handling). */
+function fillFromIntensity(row: IntensityRow, index: number) {
+  if (plateMode.value && row.plates) {
+    currentPlates.value = [...row.plates]
+    syncPlateWeight()
+  } else {
+    weightStr.value = String(displayWeight(row.weightLbs))
+  }
+  repsStr.value = String(row.reps)
+  intensityUsed.value = { ...intensityUsed.value, [index]: true }
+  impactLight()
+}
+
 // ── Usual ladder: routine-aware quick-fill + ghost logging (#741) ──
 // Captured once per modal open so the ladder never reshuffles mid-session
 // (detection excludes today, so re-opening between sets yields the same rungs).
@@ -1162,7 +1500,7 @@ const rungStates = computed<RungState[]>(() => {
   const rungs = usualLadder.value!.rungs
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   const today = todayISO()
-  const todaySets = ex ? ex.sets.filter(s => s.date.slice(0, 10) === today) : []
+  const todaySets = ex ? ex.sets.filter(s => setDayKey(s.date) === today) : []
 
   // Each today-set consumes the first pending rung within tolerance.
   const done = rungs.map(() => false)
@@ -1253,15 +1591,23 @@ const ghostArmed = computed(() =>
 )
 
 // Keep the highlighted "next" chip visible as the user works up the ladder.
+// HORIZONTAL ONLY: scrollIntoView() would scroll every ancestor, including the
+// vertical modal — yanking the inputs (and the just-saved confirmation) off
+// screen after each save (#780). We scroll the chip row by itself instead.
 const ladderChipsEl = ref<HTMLElement | null>(null)
 watch(nextRungIndex, async (idx) => {
   if (idx < 0 || !showModal.value) return
   await nextTick()
-  const el = ladderChipsEl.value?.querySelector('.wtPrevSessionChipNext')
-  if (el) {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    el.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: reduced ? 'auto' : 'smooth' })
-  }
+  const container = ladderChipsEl.value
+  const el = container?.querySelector<HTMLElement>('.wtPrevSessionChipNext')
+  if (!container || !el) return
+  const delta = ladderChipScrollLeft(
+    container.getBoundingClientRect(),
+    el.getBoundingClientRect(),
+  )
+  if (delta === 0) return
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  container.scrollBy({ left: delta, behavior: reduced ? 'auto' : 'smooth' })
 })
 
 // ── Overload nudge: rate-limited "go heavier" suggestion (#741) ───
@@ -1317,7 +1663,7 @@ function settleNudgeOutcome(exerciseId: string) {
     const ex = store.exercises.find(e => e.id === exerciseId)
     const topByDay = new Map<string, number>()
     for (const s of ex?.sets ?? []) {
-      const day = s.date.slice(0, 10)
+      const day = setDayKey(s.date)
       if (day <= mine.lastShownDay) continue
       topByDay.set(day, Math.max(topByDay.get(day) ?? 0, s.weight))
     }
@@ -1610,7 +1956,6 @@ const newExercisePlateMode = ref(false)
 const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
 const newExerciseBarWeight = ref(45)
 const newBarWeightEditing = ref(false)
-const prTableExpanded = ref(false)
 const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
 // Vue writing back the parsed number to el.value causes iOS Safari to dismiss
@@ -1657,7 +2002,7 @@ const dateDisplay = computed(() => {
   if (date.value === today) return 'Today'
   const prev = new Date()
   prev.setDate(prev.getDate() - 1)
-  const yest = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`
+  const yest = localDateKey(prev)
   if (date.value === yest) return 'Yesterday'
   return new Date(date.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 })
@@ -1763,8 +2108,16 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   lastSessionUsed.value = {}
+  intensityUsed.value = {}
+  intensityPct.value = INTENSITY_DEFAULT_PCT
   date.value = lastLogDate.value
   usualLadder.value = store.getUsualLadder(exerciseId, todayISO())
+  // Default the Suggestions drawer to the first available lens, opened only
+  // when that lens is a quick-fill (routine/last) so the one-tap ghost-arm flow
+  // is immediate; intensity/PR-only states start collapsed (clean surface).
+  const lenses = suggestionLenses.value
+  activeLens.value = lenses[0] ?? 'routine'
+  suggestionsExpanded.value = lenses[0] === 'routine' || lenses[0] === 'last'
   settleNudgeOutcome(exerciseId)
   // Initialize plate calculator: prefer the ladder's next rung, else last set
   const exercise = store.exercises.find(e => e.id === exerciseId)
@@ -1792,7 +2145,7 @@ function openLogForExercise(exerciseId: string) {
 function openEditModal(exercise: Exercise, set: WorkoutSet) {
   editingSet.value = { exerciseId: exercise.id, setId: set.id }
   selectedExerciseId.value = exercise.id
-  date.value = toLocalDateKey(set.date)
+  date.value = setDayKey(set.date)
   weight.value = displayWeight(set.weight)
   reps.value = set.reps
   showModal.value = true
@@ -1816,7 +2169,8 @@ function closeModal() {
   reps.value = null
   date.value = todayISO()
   plateNumpadOverride.value = false
-  prTableExpanded.value = false
+  suggestionsExpanded.value = false
+  activeLens.value = 'routine'
   usualLadder.value = null
   ghostJustSaved.value = false
   if (_ghostRearmTimer) { clearTimeout(_ghostRearmTimer); _ghostRearmTimer = null }
@@ -1919,38 +2273,31 @@ function _computeXPPreview(): XPPreviewResult | null {
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return null
 
-  const rawBest1RM = calculateBest1RM(exercise.sets, { sinceDate: prBaselineDate.value })
   const estimated1RM = liveEstimateLbs.value
   const w = toLbs(weight.value!)
   const r = reps.value!
 
-  const isEstablished = isExerciseEstablished(exercise.sets, date.value || todayISO())
-  const best1RM = isEstablished ? rawBest1RM : null
-
-  const repPRPriorSets = filterSetsSinceBaseline(exercise.sets)
-  const isPRZone = best1RM !== null && estimated1RM >= best1RM
-  const hasSetAtWeight = repPRPriorSets.some(s => s.weight === w)
-  const isRepPR = isEstablished && !isPRZone && checkRepPR(w, r, repPRPriorSets)
-  const isNewWeight = !isPRZone && !isRepPR && !hasSetAtWeight && best1RM !== null
-
-  const setIndex = exercise.sets.length
-  const baseXP = calculateSetXP({
-    setEstimated1RM: estimated1RM,
-    exerciseBest1RM: best1RM,
-    setIndex: best1RM === null ? setIndex : 0,
-    isRepPR,
+  const { best1RM, isRepPR, isNewWeight, ratio, baseXP } = scoreSet({
+    priorSets: exercise.sets,
+    estimated1RM,
+    weightLbs: w,
+    reps: r,
+    dateKey: date.value || todayISO(),
+    baseline: prBaselineDate.value,
   })
   const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
 
   let zone: string
-  if (best1RM === null) {
+  if (best1RM === null || ratio === null) {
     zone = 'New Exercise'
+  } else if (ratio > 1.0) {
+    zone = `PR! (${XP_CONFIG.prMultiplier}x)`
+  } else if (ratio === 1.0) {
+    zone = `Tied PR (${XP_CONFIG.tieMultiplier}x)`
+  } else if (ratio < XP_CONFIG.warmupThreshold) {
+    zone = 'Warmup'
   } else {
-    const ratio = estimated1RM / best1RM
-    if (ratio > 1.0) zone = `PR! (${XP_CONFIG.prMultiplier}x)`
-    else if (ratio === 1.0) zone = `Tied PR (${XP_CONFIG.tieMultiplier}x)`
-    else if (ratio < XP_CONFIG.warmupThreshold) zone = 'Warmup'
-    else zone = `${Math.round(ratio * 100)}% of best`
+    zone = `${Math.round(ratio * 100)}% of best`
   }
 
   return {
@@ -1993,84 +2340,41 @@ const prTargetReps = computed<number | null>(() => {
   return needed
 })
 
-// ── PR targets table (all weight/rep combos to beat PR) ─────────
-interface PRTargetRow {
-  reps: number
-  weightLbs: number
-  displayWt: number
-  e1rm: number
-}
-
-const prTargetsTable = computed<PRTargetRow[] | null>(() => {
-  if (isEditMode.value) return null
-  const id = selectedExerciseId.value
-  if (!id || id === '__new__') return null
-  const exercise = store.exercises.find(e => e.id === id)
-  if (!exercise) return null
-  if (!isExerciseEstablished(exercise.sets, date.value || todayISO())) return null
-  const pr = store.getExercisePR(id, prBaselineDate.value)
-  if (pr <= 0) return null
-
-  const target = pr + 0.5
-  const isPlate = plateMode.value
-  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-  const barWt = currentBarWeight.value
-  // Smallest total weight increment: smallest plate × 2 (per-side) or × 1 (total)
-  const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
-  const rows: PRTargetRow[] = []
-
-  for (let r = 1; r <= 20; r++) {
-    const rawLbs = r === 1 ? Math.ceil(target) : Math.ceil(target / (1 + r / 30))
-    // Round up to nearest achievable weight (5 lb increments for lbs, 2.5 kg for kg)
-    let finalLbs: number
-    if (isPlate) {
-      // Plate mode: round up to nearest plate increment above bar weight
-      const plateWeight = rawLbs - barWt
-      if (plateWeight <= 0) {
-        finalLbs = barWt
-      } else {
-        const roundedPlateWeight = Math.ceil(plateWeight / smallestIncrement) * smallestIncrement
-        finalLbs = barWt + roundedPlateWeight
-      }
-    } else if (weightUnit.value === 'kg') {
-      // Numpad kg mode: round in kg space, convert back to lbs
-      const rawKg = rawLbs * 0.453592
-      const roundedKg = Math.ceil(rawKg / 2.5) * 2.5
-      finalLbs = Math.round(roundedKg / 0.453592)
-    } else {
-      // Numpad lbs mode: round to nearest 5 lbs
-      finalLbs = Math.ceil(rawLbs / 5) * 5
-    }
-
-    const e1rm = r === 1 ? finalLbs : Math.round(finalLbs * (1 + r / 30))
-
-    rows.push({
-      reps: r,
-      weightLbs: finalLbs,
-      displayWt: displayWeight(finalLbs),
-      e1rm: displayWeight(e1rm),
-    })
-  }
-
-  return rows
+// Lenses available in the Suggestions drawer, in display order. Routine and
+// last-session are mutually exclusive (a detected routine supersedes the raw
+// last session); the intensity lens appends whenever there's a 1RM to anchor to
+// (the slider may land on an empty table at extreme positions — that's fine,
+// it's transient). The former separate "PR" lens is now the 100% end of the
+// intensity slider (ceiling rounding), so there's nothing extra to push (#770).
+const suggestionLenses = computed<SuggestionLens[]>(() => {
+  if (isEditMode.value || !isLogForExercise.value) return []
+  const lenses: SuggestionLens[] = []
+  if (ladderActive.value) lenses.push('routine')
+  else if (lastSession.value) lenses.push('last')
+  if (intensityOneRM.value !== null) lenses.push('intensity')
+  return lenses
 })
 
-function fillFromPRTable(row: PRTargetRow) {
-  if (plateMode.value) {
-    const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-    const barWt = currentBarWeight.value
-    const plates = weightToPlates(row.weightLbs, barWt, denoms)
-    if (plates) {
-      currentPlates.value = plates
-      syncPlateWeight()
-    }
-  } else {
-    weightStr.value = String(row.displayWt)
+// The effectively-shown lens: the user's selection if still available, else the
+// first available lens. Keeps the body coherent when data shifts (e.g. backdate
+// drops the routine lens) without needing a watcher to reset activeLens.
+const currentLens = computed<SuggestionLens | null>(() => {
+  const lenses = suggestionLenses.value
+  if (!lenses.length) return null
+  return lenses.includes(activeLens.value) ? activeLens.value : lenses[0]
+})
+
+function lensLabel(lens: SuggestionLens): string {
+  switch (lens) {
+    case 'routine': return 'Routine'
+    case 'last': return 'Last'
+    case 'intensity': return 'Intensity'
   }
-  repsStr.value = String(row.reps)
-  prTableExpanded.value = false
-  impactLight()
 }
+
+// Collapsed-header summary: the names of the available lenses (e.g.
+// "Routine · Intensity") so the drawer advertises its contents at a glance.
+const suggestionHeaderSub = computed(() => suggestionLenses.value.map(lensLabel).join(' · '))
 
 // ── Personal bests from actual history ──────────────────────────
 // Best reps at the entered weight (exact match in lbs)
@@ -2123,26 +2427,15 @@ function saveSet() {
       const set = ex?.sets.find(s => s.id === editSetId)
       if (ex && set) {
         const otherSets = ex.sets.filter(s => s.id !== editSetId)
-        const rawBest = calculateBest1RM(otherSets, { sinceDate: prBaselineDate.value })
-        const editEstablished = isExerciseEstablished(otherSets, set.date)
-        const best = editEstablished ? rawBest : null
-        const newXP = calculateSetXP({
-          setEstimated1RM: set.estimated1RM,
-          exerciseBest1RM: best,
-          setIndex: best === null ? ex.sets.indexOf(set) : 0,
+        const { isPR: editIsPR, isRepPR: editIsRepPR, zone: editZone, baseXP } = scoreSet({
+          priorSets: otherSets,
+          estimated1RM: set.estimated1RM,
+          weightLbs: set.weight,
+          reps: set.reps,
+          dateKey: set.date,
+          baseline: prBaselineDate.value,
         })
-        const xp = applyStreakMultiplier(newXP, progressionStore.streakHistory, set.date)
-        const editIsPR = best !== null && set.estimated1RM > best
-        const editIsTie = best !== null && set.estimated1RM === best
-        const editIsPRZone = editIsPR || editIsTie
-        const editRepPRPriorSets = filterSetsSinceBaseline(otherSets)
-        const editIsRepPR = editEstablished && !editIsPRZone && checkRepPR(set.weight, set.reps, editRepPRPriorSets)
-        let editZone: string
-        if (best === null) editZone = 'new_exercise'
-        else if (editIsPR) editZone = 'pr'
-        else if (editIsTie) editZone = 'tie'
-        else if (set.estimated1RM / best < XP_CONFIG.warmupThreshold) editZone = 'warmup'
-        else editZone = 'working'
+        const xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, set.date)
         progressionStore.recalcSetXP(editSetId, xp, { theme: currentTheme.value, epoch: progressionStore.epoch, zone: editZone, isPR: editIsPR, isRepPR: editIsRepPR })
       }
     }
@@ -2193,6 +2486,14 @@ function saveSet() {
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
       // Snapshot PR count before logging so we can detect the user's very first PR.
       const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
+      // Detect a brand-new user's very first ever set (#762): no sets logged yet
+      // anywhere, and the one-time flag hasn't fired. A first set can never be a
+      // PR (PRs need a prior established session), so this won't collide with the
+      // PR burst below.
+      const isFirstSetEver =
+        !wasPR &&
+        localStorage.getItem(FIRST_SET_FLAG) !== 'true' &&
+        store.exercises.every(e => e.sets.length === 0)
       store.logSet(exerciseId, effWeightLbs, effReps, date.value)
       recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
@@ -2208,6 +2509,11 @@ function saveSet() {
         // Full-bleed PR celebration (respects the PR baseline via oldE1RM,
         // and the prCelebrations opt-out inside presentPRBurst).
         const newE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
+        // Build the session summary here (WorkoutTracker owns store access) and
+        // hand it to the burst so the presentational PRBurst component can drive
+        // its "Share this PR" flow without reaching into stores (LIFT-916). The
+        // set is already persisted and its XP logged above, so this reflects it.
+        const prRawDate = date.value || todayISO()
         presentPRBurst({
           exerciseName: selectedExerciseName.value,
           oldE1RM,
@@ -2215,12 +2521,35 @@ function saveSet() {
           setWeight: effWeightLbs,
           setReps: effReps,
           isFirstPR: prCountBefore === 0,
-          rawDate: date.value || todayISO(),
+          shareSummary: buildSessionSummary({
+            rawDate: prRawDate,
+            exercises: store.exercises,
+            xpPerSet: progressionStore.xpPerSet,
+            streakWeeks: progressionStore.streakWeeks,
+            toDisplayUnits: displayWeight,
+            unitLabel: weightUnit.value,
+          }),
         })
         if (prCountBefore === 0) {
           logEvent('first_pr', { exercise: selectedExerciseName.value })
         }
-      } else {
+      } else if (isFirstSetEver) {
+        // Activation moment — celebrate the first set (fires its own haptic).
+        localStorage.setItem(FIRST_SET_FLAG, 'true')
+        logEvent('first_set', { exercise: selectedExerciseName.value })
+        presentFirstSetCelebration()
+      }
+      // Celebrate the first weekly-goal completion of the week (LIFT-764). When
+      // it fires its own success/milestone haptic, suppress the routine light
+      // tap: two native haptics fired back-to-back collapse into a muddy /
+      // truncated buzz on Capacitor/iOS. The light tap stays for the common
+      // non-PR, no-celebration path. (PRs already played notifySuccess above and
+      // skip the goal banner, so they never reach the light tap.) The first-set
+      // activation overlay likewise fires its own haptic and suppresses the goal
+      // banner (passed in below) so the two full-screen moments never stack — the
+      // week is left unmarked, so the goal celebration still fires on the next set.
+      const celebrated = maybeCelebrateWeeklyGoal(wasPR || isFirstSetEver)
+      if (!wasPR && !isFirstSetEver && !celebrated) {
         impactLight()
       }
       if (restTimerEnabled.value && restTimerAutoStart.value) {
@@ -2331,6 +2660,9 @@ function onEditExerciseSave(payload: EditExerciseSave) {
     store.setExercisePlateCountMode(editTarget.value, payload.plateCountMode)
     store.setExerciseBarWeight(editTarget.value, payload.barWeight)
   }
+  store.setExerciseIntensityMaxReps(editTarget.value, payload.intensityMaxReps)
+  store.setExerciseEquipment(editTarget.value, payload.equipment)
+  store.setExerciseGyms(editTarget.value, payload.gyms)
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).
@@ -2394,6 +2726,21 @@ function confirmDeleteTag(tag: string) {
   )
 }
 
+// ── Gym manager (#961) ──────────────────────────────────────────
+const gymManagerOpen = ref(false)
+const gymActions = useGymActions()
+
+function onRenameGym(oldName: string, newName: string) {
+  const stored = gymActions.renameGym(oldName, newName)
+  // Keep the active filter following its gym across a rename — without this
+  // the stale-selection watch would reset it to All Gyms. (Renames from the
+  // Settings-hosted manager intentionally take that reset path instead.)
+  if (stored && activeGymFilter.value === oldName) {
+    activeGymFilter.value = stored
+  }
+  logEvent('gym_rename')
+}
+
 
 // ── Focus traps for v-if modals ─────────────────────────────────
 watch(showModal, async (open) => {
@@ -2415,7 +2762,7 @@ watch(showModal, async (open) => {
 
 // ── Lock background scroll when any modal is open (iOS) ────────
 watch(
-  () => showModal.value || !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value,
+  () => showModal.value || !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value || gymManagerOpen.value,
   (open) => { document.documentElement.classList.toggle('modal-open', open) },
 )
 onUnmounted(() => {

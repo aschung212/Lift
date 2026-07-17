@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { shallowRef, triggerRef } from 'vue'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
+import EditExerciseModal from '../EditExerciseModal.vue'
 
 const localStorageMock = getLocalStorageMock()
 
@@ -9,10 +11,20 @@ vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
 vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 vi.mock('../../composables/useRestTimer', () => mockRestTimer())
+// Mutable container so gym-filter tests (#961) can drive the synced gym list.
+const mockPrefsState = { gyms: [] as string[] }
+const mockAddGym = vi.fn((name: string) => {
+  if (mockPrefsState.gyms.includes(name)) return null
+  mockPrefsState.gyms = [...mockPrefsState.gyms, name]
+  return name
+})
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
     filters: { warmupThreshold: 0.75 },
+    intensityPresets: [50, 70, 80, 90, 100],
+    get gyms() { return mockPrefsState.gyms },
+    addGym: mockAddGym,
   }),
 }))
 vi.mock('../../stores/progression', () => ({
@@ -94,9 +106,17 @@ function createPRExercises(): Exercise[] {
   ]
 }
 
-// Mock store state — isolated in an object so tests interact with an explicit container
-// rather than a bare module-level `let` that can be accidentally shadowed or leaked.
-const mockState = { exercises: [] as Exercise[] }
+// Mock store state — a shallowRef mutated in place + triggerRef, mirroring the
+// real store's reactivity contract (workout.ts trades deep reactivity for
+// explicit triggers). Faithfulness matters here: children only observe
+// in-place mutations when a fresh-identity prop reaches them (#963), and the
+// live-update regression tests must be able to reproduce exactly that. The
+// `mockState` getter/setter facade keeps the original container API.
+const mockExercises = shallowRef<Exercise[]>([])
+const mockState = {
+  get exercises() { return mockExercises.value },
+  set exercises(v: Exercise[]) { mockExercises.value = v },
+}
 
 function getExercisePR(id: string): number {
   const ex = mockState.exercises.find(e => e.id === id)
@@ -126,8 +146,23 @@ const mockSyncDeleteSet = vi.fn()
 const mockRestoreExercise = vi.fn()
 const mockSyncDeleteExercise = vi.fn()
 const mockRenameExercise = vi.fn()
-const mockUpdateExerciseTags = vi.fn()
 const mockReorderExercise = vi.fn()
+
+// Faithful to the real actions: mutate the exercise IN PLACE, then triggerRef —
+// the exact store contract the fresh-identity bindings (#963) exist to handle.
+const mockUpdateExerciseTags = vi.fn((exerciseId: string, tags: string[]) => {
+  const ex = mockExercises.value.find(e => e.id === exerciseId)
+  if (!ex) return
+  ex.tags = [...tags]
+  triggerRef(mockExercises)
+})
+const mockSetExerciseGyms = vi.fn((exerciseId: string, gyms: string[]) => {
+  const ex = mockExercises.value.find(e => e.id === exerciseId)
+  if (!ex) return
+  if (gyms.length > 0) ex.gyms = [...gyms]
+  else delete ex.gyms
+  triggerRef(mockExercises)
+})
 
 const mockArchiveExercise = vi.fn()
 const mockUnarchiveExercise = vi.fn()
@@ -166,6 +201,9 @@ vi.mock('../../stores/workout', () => ({
     reorderExercise: mockReorderExercise,
     reorderExercises: vi.fn(),
     updateExercise: vi.fn(),
+    setExerciseGyms: mockSetExerciseGyms,
+    renameGymOnExercises: vi.fn(),
+    removeGymFromExercises: vi.fn(() => []),
   })
 }))
 
@@ -220,6 +258,7 @@ function timerState(wrapper: VueWrapper) {
 describe('WorkoutTracker', () => {
   beforeEach(() => {
     mockState.exercises = []
+    mockPrefsState.gyms = []
     localStorageMock.clear()
     vi.clearAllMocks()
     // clearAllMocks keeps implementations — reset return values explicitly
@@ -243,9 +282,13 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtPageTitle').text()).toBe('Workouts')
     })
 
-    it('does not render tag filter bar when no tags', () => {
+    it('does not render the tag filter bar when no tags (only the gym row remains)', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+      // The gym row (#963) is always visible in the exercises view; the TAG
+      // bar still keeps its zero-chrome behavior.
+      const bars = wrapper.findAll('.wtTagFilterBar')
+      expect(bars).toHaveLength(1)
+      expect(bars[0].attributes('aria-label')).toBe('Filter by gym')
     })
 
     it('shows fresh-start transition card after clearing sample data', () => {
@@ -439,6 +482,90 @@ describe('WorkoutTracker', () => {
 
       await legsChip.trigger('click')
       expect(wrapper.findAll('.wtExerciseItem').length).toBe(3)
+    })
+  })
+
+  // Recency ordering (#936): the exercise list is sorted by the most recent
+  // set date (descending) so the next exercise to perform is easiest to reach,
+  // and that order is preserved inside tag/search-filtered subsets.
+  describe('recency ordering (#936)', () => {
+    /** Names in the order they render in the list. */
+    function renderedNames(wrapper: VueWrapper): string[] {
+      return wrapper.findAll('.wtExerciseItem .wtExerciseName').map(n => n.text())
+    }
+
+    it('orders exercises by most-recent set first, regardless of array order', () => {
+      // Array order deliberately does NOT match recency order.
+      mockState.exercises = [
+        {
+          id: 'ex-old', name: 'Deadlift', tags: ['Legs'],
+          sets: [{ id: 'so', date: '2026-01-05T12:00:00', weight: 315, reps: 3, estimated1RM: 344 }],
+        },
+        {
+          id: 'ex-new', name: 'Row', tags: ['Back'],
+          sets: [{ id: 'sn', date: '2026-03-10T12:00:00', weight: 135, reps: 8, estimated1RM: 168 }],
+        },
+        {
+          id: 'ex-mid', name: 'Curl', tags: ['Arms'],
+          sets: [{ id: 'sm', date: '2026-02-01T12:00:00', weight: 40, reps: 10, estimated1RM: 53 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Row', 'Curl', 'Deadlift'])
+    })
+
+    it('sorts never-logged exercises to the bottom', () => {
+      mockState.exercises = [
+        { id: 'ex-empty', name: 'Plank', tags: ['Core'], sets: [] },
+        {
+          id: 'ex-logged', name: 'Bench Press', tags: ['Push'],
+          sets: [{ id: 's', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Bench Press', 'Plank'])
+    })
+
+    it('keeps recency order inside a tag-filtered subset', async () => {
+      mockState.exercises = [
+        {
+          id: 'ex-a', name: 'Incline Press', tags: ['Push'],
+          sets: [{ id: 'a', date: '2026-01-05T12:00:00', weight: 135, reps: 8, estimated1RM: 168 }],
+        },
+        {
+          id: 'ex-b', name: 'Overhead Press', tags: ['Push'],
+          sets: [{ id: 'b', date: '2026-03-01T12:00:00', weight: 95, reps: 6, estimated1RM: 114 }],
+        },
+        {
+          id: 'ex-c', name: 'Squat', tags: ['Legs'],
+          sets: [{ id: 'c', date: '2026-04-01T12:00:00', weight: 225, reps: 5, estimated1RM: 263 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      const pushChip = wrapper.findAll('.wtTagChip')
+        .find(c => c.find('.wtTagChipLabel').exists() && c.find('.wtTagChipLabel').text() === 'Push')!
+      await pushChip.trigger('click')
+
+      // Only the two Push exercises, most-recent first — Squat is filtered out
+      // even though it is the most recently trained overall.
+      expect(renderedNames(wrapper)).toEqual(['Overhead Press', 'Incline Press'])
+    })
+
+    it('breaks recency ties by preserving array order (stable sort)', () => {
+      // Same day for both — the manual/array order is the tiebreaker so a
+      // drag/keyboard reorder still has meaning among same-day exercises.
+      mockState.exercises = [
+        {
+          id: 'ex-1', name: 'Second', tags: [],
+          sets: [{ id: '1', date: '2026-02-02T12:00:00', weight: 100, reps: 5, estimated1RM: 117 }],
+        },
+        {
+          id: 'ex-2', name: 'First', tags: [],
+          sets: [{ id: '2', date: '2026-02-02T18:00:00', weight: 100, reps: 5, estimated1RM: 117 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Second', 'First'])
     })
   })
 
@@ -1143,8 +1270,12 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.wtDateOverlayInput').setValue('2026-01-10')
       await wrapper.vm.$nextTick()
 
-      // No ladder UI, no ghost — getLastSession is null here so the row vanishes
-      expect(wrapper.find('.wtPrevSessionLabel').exists()).toBe(false)
+      // Ladder gated off (not today) → no routine chips and the ghost disarms.
+      // (The PR-anchored Intensity lens is date-independent and may still show
+      // its own preset chips, so scope to the non-preset chips.)
+      const routineChips = wrapper.findAll('.wtPrevSessionChip')
+        .filter(c => !c.element.closest('.wtIntensityPresetChips'))
+      expect(routineChips).toHaveLength(0)
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       expect(saveBtn.text()).toBe('Save')
       expect(saveBtn.attributes('disabled')).toBeDefined()
@@ -1411,6 +1542,223 @@ describe('WorkoutTracker', () => {
       const state = JSON.parse(localStorageMock.getItem('overload-nudge-state')!)
       expect(state.byExercise['ex-1'].outcome).toBe('accepted')
       expect(state.byExercise['ex-1'].ignoredCount).toBe(0)
+    })
+  })
+
+  describe('intensity lens (#770)', () => {
+    async function openBenchModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    // Bench's best e1RM in createExercises is 228 — the intensity anchor.
+    function priorSession() {
+      return {
+        date: '2026-01-20',
+        sets: [
+          { id: 's-a', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's-b', date: '2026-01-20T12:00:00', weight: 195, reps: 5, estimated1RM: 228 },
+        ],
+      }
+    }
+
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    // Activate a named lens in the Suggestions drawer (the drawer opens on the
+    // default quick-fill lens; intensity lives behind the segmented control).
+    async function selectLens(wrapper: VueWrapper, label: string) {
+      const seg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === label)
+      if (!seg) throw new Error(`no "${label}" suggestion segment`)
+      await seg.trigger('click')
+    }
+
+    it('exposes an Intensity lens anchored to the PR e1RM', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      // No routine detected → drawer defaults to the last-session lens, with the
+      // intensity lens available alongside it on the segmented control.
+      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).toEqual(['Last', 'Intensity'])
+      await selectLens(wrapper, 'Intensity')
+      // Anchor caption + the slider control.
+      expect(wrapper.find('.wtSuggestions').text()).toContain('228 lbs max')
+      expect(wrapper.find('.wtIntensitySlider').exists()).toBe(true)
+    })
+
+    it('renders tappable intensity presets that drive the slider (#776)', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      const chips = wrapper.findAll('.wtIntensityPresetChips .wtPrevSessionChip')
+      expect(chips.map(c => c.text())).toEqual(['50%', '70%', '80%', '90%', '100%'])
+      // Default intensity is 80% → that chip is highlighted as current.
+      expect(chips.find(c => c.classes().includes('wtPrevSessionChipNext'))?.text()).toBe('80%')
+
+      // Tapping a preset sets the intensity: caption + slider follow, highlight moves.
+      await chips.find(c => c.text() === '50%')!.trigger('click')
+      expect(wrapper.find('.wtSuggestions .wtPrevSessionLabel').text()).toContain('50% of')
+      expect((wrapper.find('.wtIntensitySlider').element as HTMLInputElement).value).toBe('50')
+      const after = wrapper.findAll('.wtIntensityPresetChips .wtPrevSessionChip')
+      expect(after.find(c => c.classes().includes('wtPrevSessionChipNext'))?.text()).toBe('50%')
+    })
+
+    it('shows weight rows at the default intensity and fills inputs on tap', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      const rows = wrapper.findAll('.wtPrTargetsRow')
+      // Default 80% of 228 e1RM, default 10 rep rows.
+      expect(rows).toHaveLength(10)
+      // Row 1 (1 rep = the 1RM, no Epley multiplier): ceil(80% × 228) = 185 lb,
+      // and each row surfaces its e1RM for context.
+      expect(rows[0].text()).toContain('185 lbs')
+      expect(rows[0].text()).toContain('e1RM')
+
+      await rows[0].trigger('click')
+      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('185')
+      expect((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value).toBe('1')
+      // Re-find: tapping mutates intensityUsed, so Vue re-renders and the held node goes stale.
+      expect(wrapper.findAll('.wtPrTargetsRow')[0].classes()).toContain('wtPrTargetsRowActive')
+    })
+
+    it('respects a per-exercise intensityMaxReps override', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      mockState.exercises[0].intensityMaxReps = 3
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      expect(wrapper.findAll('.wtPrTargetsRow')).toHaveLength(3)
+    })
+
+    it('recomputes (and can empty) the table as the slider moves', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
+      // 0% intensity has no loadable target at any rep count → empty state.
+      await wrapper.find('.wtIntensitySlider').setValue(0)
+      expect(wrapper.findAll('.wtPrTargetsRow')).toHaveLength(0)
+      expect(wrapper.find('.wtIntensityEmpty').exists()).toBe(true)
+    })
+
+    it('clears the row highlight when the slider moves (no stale index)', async () => {
+      mockGetLastSession.mockReturnValue(priorSession())
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      await selectLens(wrapper, 'Intensity')
+      await wrapper.findAll('.wtPrTargetsRow')[1].trigger('click')
+      expect(wrapper.findAll('.wtPrTargetsRow')[1].classes()).toContain('wtPrTargetsRowActive')
+
+      // Moving the slider rebuilds the table — the stale highlight must clear.
+      await wrapper.find('.wtIntensitySlider').setValue(70)
+      expect(wrapper.findAll('.wtPrTargetsRow').some(r => r.classes().includes('wtPrTargetsRowActive'))).toBe(false)
+    })
+
+    it('coexists with the usual ladder as a separate lens', async () => {
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [
+          { weightLbs: 45, reps: 10 },
+          { weightLbs: 135, reps: 8 },
+          { weightLbs: 225, reps: 5 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      // Routine is the default lens; intensity is available beside it.
+      expect(wrapper.findAll('.wtSuggestionSegment').map(s => s.text())).toEqual(['Routine', 'Intensity'])
+      expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Routine')
+
+      await selectLens(wrapper, 'Intensity')
+      expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
+    })
+
+    it('does not render the drawer with no routine, last session, or PR', async () => {
+      // An exercise with no sets has no PR to anchor the intensity lens to.
+      mockState.exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets: [] }]
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+      expect(wrapper.find('.wtSuggestions').exists()).toBe(false)
+    })
+  })
+
+  describe('suggestions drawer (#759)', () => {
+    async function openBenchModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    it('opens expanded on the routine lens so one-tap logging needs no extra tap', async () => {
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [
+          { weightLbs: 135, reps: 5 },
+          { weightLbs: 185, reps: 5 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      // Ladder chips are visible immediately — the ghost-arm flow is preserved.
+      expect(wrapper.find('.wtSuggestions').exists()).toBe(true)
+      expect(wrapper.findAll('.wtPrevSessionChip').length).toBe(2)
+    })
+
+    it('renders no segmented control when only one lens is available', async () => {
+      // Ladder only — a no-sets exercise has no PR, so no intensity lens either.
+      mockState.exercises = [{ id: 'ex-1', name: 'Bench Press', tags: [], sets: [] }]
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [
+          { weightLbs: 135, reps: 5 },
+          { weightLbs: 185, reps: 5 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      expect(wrapper.find('.wtSuggestions').exists()).toBe(true)
+      expect(wrapper.findAll('.wtSuggestionSegment')).toHaveLength(0)
+    })
+
+    it('switches the visible lens when a segment is tapped', async () => {
+      mockGetLastSession.mockReturnValue({
+        date: '2026-01-20',
+        sets: [
+          { id: 's-a', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+          { id: 's-b', date: '2026-01-20T12:00:00', weight: 225, reps: 3, estimated1RM: 248 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openBenchModal(wrapper)
+
+      // Defaults to the last-session lens (chips visible, no ramp rows).
+      expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Last')
+      expect(wrapper.findAll('.wtPrevSessionChip').length).toBe(2)
+      expect(wrapper.findAll('.wtPrTargetsRow')).toHaveLength(0)
+
+      const intensitySeg = wrapper.findAll('.wtSuggestionSegment').find(s => s.text() === 'Intensity')!
+      await intensitySeg.trigger('click')
+      // Now the intensity rows show and the last-session chips are gone (the
+      // intensity lens has its own preset chips, so scope to non-preset chips).
+      expect(wrapper.find('.wtSuggestionSegmentActive').text()).toBe('Intensity')
+      expect(wrapper.findAll('.wtPrTargetsRow').length).toBeGreaterThan(0)
+      const lastSessionChips = wrapper.findAll('.wtPrevSessionChip')
+        .filter(c => !c.element.closest('.wtIntensityPresetChips'))
+      expect(lastSessionChips).toHaveLength(0)
     })
   })
 
@@ -2312,6 +2660,272 @@ describe('WorkoutTracker', () => {
       await searchInput.setValue('press')
 
       expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
+    })
+  })
+
+  // ── Gym filtering (#961) ─────────────────────────────────────────
+  describe('gym filtering', () => {
+    /** Exercises spanning two gyms + shared (unassigned) equipment. */
+    function createGymExercises(): Exercise[] {
+      return [
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: ['Legs'], sets: [], gyms: ['Gym A'] },
+        { id: 'ex-2', name: 'Hack Squat (24h)', tags: ['Legs'], sets: [], gyms: ['Gym B'] },
+        { id: 'ex-3', name: 'Bench Press', tags: ['Chest'], sets: [] }, // unassigned = everywhere
+        { id: 'ex-4', name: 'Cable Row', tags: ['Back'], sets: [], gyms: ['Gym A', 'Gym B'] },
+      ]
+    }
+
+    function gymChipRow(wrapper: VueWrapper) {
+      return wrapper.find('[aria-label="Filter by gym"]')
+    }
+
+    function gymChip(wrapper: VueWrapper, label: string) {
+      return gymChipRow(wrapper).findAll('.wtTagChip').find(c => c.text() === label)!
+    }
+
+    function listedNames(wrapper: VueWrapper): string[] {
+      return wrapper.findAll('.wtExerciseName').map(n => n.text())
+    }
+
+    it('renders the zero-state chip row: All Gyms active + a labeled Add Gym chip (#963)', () => {
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      const chips = gymChipRow(wrapper).findAll('.wtTagChip')
+      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Add Gym'])
+      expect(chips[0].classes()).toContain('wtTagChipActive')
+      // The labeled manage chip is the create-first-gym entry point in the
+      // logging surface — Settings must not be the only way in.
+      expect(gymChipRow(wrapper).find('[aria-label="Add a gym"]').exists()).toBe(true)
+    })
+
+    it('opens the gym manager from the zero-state Add Gym chip', async () => {
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      await gymChipRow(wrapper).find('[aria-label="Add a gym"]').trigger('click')
+      expect(wrapper.find('[aria-labelledby="gym-manager-title"]').exists()).toBe(true)
+    })
+
+    it('routes EditExerciseModal create-gym to the preferences store (#963)', () => {
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      wrapper.findComponent(EditExerciseModal).vm.$emit('create-gym', 'Iron Temple')
+      expect(mockAddGym).toHaveBeenCalledWith('Iron Temple')
+      expect(mockPrefsState.gyms).toContain('Iron Temple')
+    })
+
+    it('renders the chip row (All Gyms + one chip per gym + manage) once gyms exist', () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      const chips = gymChipRow(wrapper).findAll('.wtTagChip')
+      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Gym A', 'Gym B', ''])
+      // Exclusive default: All Gyms is the active chip.
+      expect(chips[0].classes()).toContain('wtTagChipActive')
+      // Trailing icon-only chip opens the gym manager.
+      expect(gymChipRow(wrapper).find('[aria-label="Manage gyms"]').exists()).toBe(true)
+    })
+
+    it('filters exclusively: only the active gym\'s + unassigned exercises remain', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      const names = listedNames(wrapper)
+      expect(names).toContain('Hack Squat (PF)')   // Gym A
+      expect(names).toContain('Bench Press')        // unassigned = everywhere
+      expect(names).toContain('Cable Row')          // multi-gym incl. Gym A
+      expect(names).not.toContain('Hack Squat (24h)') // Gym B only
+    })
+
+    it('selecting a second gym replaces the first (exclusive, not additive)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      await gymChip(wrapper, 'Gym B').trigger('click')
+
+      expect(gymChip(wrapper, 'Gym B').classes()).toContain('wtTagChipActive')
+      expect(gymChip(wrapper, 'Gym A').classes()).not.toContain('wtTagChipActive')
+      const names = listedNames(wrapper)
+      expect(names).toContain('Hack Squat (24h)')
+      expect(names).not.toContain('Hack Squat (PF)')
+    })
+
+    it('tapping the active gym chip deselects back to All Gyms', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      expect(gymChip(wrapper, 'All Gyms').classes()).toContain('wtTagChipActive')
+      expect(listedNames(wrapper)).toHaveLength(4)
+    })
+
+    it('composes with the tag filter as AND (tags narrow within the gym)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym B').trigger('click')
+      // Tag chip row: pick "Legs" — within Gym B that's only the 24h hack squat.
+      const legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      await legsChip.trigger('click')
+
+      expect(listedNames(wrapper)).toEqual(['Hack Squat (24h)'])
+    })
+
+    it('scopes tag chip counts to the active gym', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      // Both hack squats carry Legs → count 2 without a gym filter.
+      let legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      expect(legsChip.find('.wtTagChipCount').text()).toBe('2')
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      expect(legsChip.find('.wtTagChipCount').text()).toBe('1')
+    })
+
+    it('keeps an exercise whose gyms are all orphaned visible under any gym (rename race safety net)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = [
+        ...createGymExercises(),
+        { id: 'ex-5', name: 'Ghost Machine', tags: [], sets: [], gyms: ['Renamed Away'] },
+      ]
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      expect(listedNames(wrapper)).toContain('Ghost Machine')
+    })
+
+    it('disables drag handles while a gym filter is active (filtered indices are unsafe)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBe(0)
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
+    })
+
+    it('passes the gym-filtered list to the quick-log exercise picker', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym B').trigger('click')
+
+      const picker = wrapper.findComponent({ name: 'ExercisePickerModal' })
+      const names = (picker.props('exercises') as Exercise[]).map(e => e.name)
+      expect(names).toContain('Hack Squat (24h)')
+      expect(names).toContain('Bench Press')
+      expect(names).not.toContain('Hack Squat (PF)')
+    })
+
+    it('persists the selection per device and restores it on mount', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const first = mountTracker()
+      await gymChip(first, 'Gym B').trigger('click')
+      expect(localStorageMock.getItem('active-gym-filter')).toBe(JSON.stringify('Gym B'))
+      first.unmount()
+
+      const second = mountTracker()
+      expect(gymChip(second, 'Gym B').classes()).toContain('wtTagChipActive')
+      expect(listedNames(second)).not.toContain('Hack Squat (PF)')
+    })
+
+    it('ignores a persisted selection for a gym that no longer exists (filter stays inert)', () => {
+      localStorageMock.setItem('active-gym-filter', JSON.stringify('Deleted Gym'))
+      mockPrefsState.gyms = ['Gym A']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      expect(gymChip(wrapper, 'All Gyms').classes()).toContain('wtTagChipActive')
+      expect(listedNames(wrapper)).toHaveLength(4)
+    })
+
+    it('shows the generalized empty state when the gym filter empties the list', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Empty Gym']
+      mockState.exercises = [
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: [], sets: [], gyms: ['Gym A'] },
+      ]
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Empty Gym').trigger('click')
+
+      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises match your filters.')
+    })
+  })
+
+  describe('fresh-identity child bindings (#963)', () => {
+    // The store mutates exercises in place behind a shallowRef; children bound
+    // to the raw array froze because their prop identity never changed. These
+    // tests drive the REAL host wiring (liveExercises) against the mock's
+    // faithful in-place-mutation contract — they fail if anyone reverts a
+    // binding to `store.exercises`.
+
+    it('gym manager checklist shows a toggled checkmark live, without reopening', async () => {
+      mockPrefsState.gyms = ['Gym A']
+      mockState.exercises = [
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: [], sets: [], gyms: ['Gym A'] },
+        { id: 'ex-3', name: 'Bench Press', tags: [], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      await wrapper.find('[aria-label="Manage gyms"]').trigger('click')
+      await wrapper.find('[aria-label="Show exercises for Gym A"]').trigger('click')
+
+      // Re-find rows after every state change — Vue may replace the nodes.
+      const benchRow = () =>
+        wrapper.findAll('.wtTagExerciseRow').find(r => r.text().includes('Bench Press'))!
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(false)
+      expect(wrapper.find('.wtTagManagerCount').text()).toBe('1')
+
+      await benchRow().trigger('click')
+
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(true)
+      expect(wrapper.find('.wtTagManagerCount').text()).toBe('2')
+    })
+
+    it('tag manager checklist shows a toggled checkmark live, without reopening', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      await wrapper.find('[aria-label="Manage tags"]').trigger('click')
+      await wrapper.find('[aria-label="Show exercises for Legs"]').trigger('click')
+
+      const benchRow = () =>
+        wrapper.findAll('.wtTagExerciseRow').find(r => r.text().includes('Bench Press'))!
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(false)
+
+      await benchRow().trigger('click')
+
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(true)
+    })
+
+    it('timeline reflects sets mutated in place while it is the active view', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      expect(wrapper.text()).not.toContain('205')
+
+      // The real store contract for logSet/updateSet/deleteSet: mutate the
+      // exercise in place, then triggerRef.
+      mockState.exercises[0].sets.push({
+        id: 's-new', date: '2026-01-21T12:00:00', weight: 205, reps: 5, estimated1RM: 239,
+      })
+      triggerRef(mockExercises)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.text()).toContain('205')
     })
   })
 })

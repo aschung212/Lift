@@ -1864,6 +1864,60 @@ html.theme-fading .settingsSheet {
   flex-shrink: 0;
 }
 
+/* Intensity presets editor (#776): a stepper + delete per preset value. */
+.settingsPresetRow {
+  gap: 12px;
+}
+
+.settingsPresetDelete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.settingsPresetDelete:active {
+  color: var(--danger);
+  background: var(--danger-subtle);
+}
+
+.settingsPresetAdd {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: var(--font-callout);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.settingsPresetAdd:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settingsPresetEmpty {
+  padding: 0 16px 4px;
+}
+
+.iosStepperBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .exportBtnGroup {
   display: flex;
   gap: 8px;
@@ -2144,6 +2198,70 @@ html.theme-fading .settingsSheet {
   color: var(--accent);
   opacity: 0.85;
   font-variant-numeric: tabular-nums;
+}
+
+/* AI Coach weekly-review entry card + quota meter (LIFT-848). */
+.wtCoachCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  min-height: 56px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.wtCoachCard:active {
+  transform: scale(0.99);
+  background: var(--bg-secondary);
+}
+
+.wtCoachIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.wtCoachText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wtCoachTitle {
+  font-size: var(--font-callout);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wtCoachMeta {
+  font-family: var(--ff-mono);
+  font-size: var(--font-caption2);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtCoachChevron {
+  flex: 0 0 auto;
+  color: var(--text-muted);
 }
 
 /* Segmented control (Exercises / Timeline) — gold-filled active pill. */
@@ -4495,6 +4613,97 @@ html.theme-fading .settingsSheet {
   white-space: nowrap;
 }
 
+/* ─── Suggestions drawer (#759): segmented ladder/warmup/PR-target lenses ── */
+/* Reuses the .wtPrTargets card chrome (border, radius, header, chevron). The
+   body holds a segmented control plus the active lens's existing chip/row
+   markup, so each lens inherits its prior styling unchanged. */
+.wtSuggestionBody {
+  border-top: 1px solid var(--border);
+  padding: 12px 0 4px;
+}
+
+/* iOS-style segmented control: a recessed track with the active segment as a
+   raised pill. Segments are 44px tall to meet the iOS HIG touch-target minimum. */
+.wtSuggestionSegments {
+  display: flex;
+  gap: 4px;
+  margin: 0 16px 12px;
+  padding: 4px;
+  background: var(--bg-base);
+  border-radius: 12px;
+}
+
+.wtSuggestionSegment {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--font-caption1);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+
+.wtSuggestionSegment.wtSuggestionSegmentActive {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* Inside the drawer the per-lens label/chips need the horizontal inset the
+   standalone card chrome used to provide; the row list drops its own top
+   border since the caption above already separates it. */
+.wtSuggestions .wtPrevSessionLabel {
+  padding: 0 16px;
+}
+
+.wtSuggestions .wtPrevSessionChips {
+  padding: 0 16px 4px;
+}
+
+.wtSuggestionList {
+  border-top: none;
+}
+
+/* Intensity lens (#770): a slider sets the % of 1RM; the table below shows the
+   loadable weight per rep count. The slider row + value readout get the same
+   16px inset as the rest of the drawer body. */
+.wtIntensityControl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 16px 12px;
+}
+
+.wtIntensitySlider {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.wtIntensityValue {
+  font-size: var(--font-callout);
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: right;
+}
+
+.wtIntensityEmpty {
+  margin: 0;
+  padding: 4px 16px 12px;
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+}
+
 .wtDateInline {
   position: relative;
 }
@@ -4920,6 +5129,21 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
   padding: 8px 0 0;
   line-height: 1.4;
+}
+
+/* ─── Intensity lens config: reset link in EditExerciseModal (#770) ──── */
+
+.wtIntensityEditReset {
+  display: block;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: var(--font-subhead);
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .iosToggle {

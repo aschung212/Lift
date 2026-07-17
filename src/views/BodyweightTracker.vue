@@ -1,5 +1,7 @@
 <template>
   <div class="wtCard bwCard">
+    <!-- Page-level heading for assistive tech (the hero shows the value, not a title) -->
+    <h1 class="srOnly">Weight</h1>
     <!-- Hero header: current weight + goal hint + log button -->
     <div class="bwHero">
       <span class="bwCurrentValue">{{ store.latestWeight ? `${displayWeight(store.latestWeight)} ${weightUnit}` : 'No entries' }}</span>
@@ -50,7 +52,10 @@
     <!-- Graph -->
     <div v-if="points.length >= 2" class="wtGraphWrap">
       <div class="bwGraphHeader">
-        <p class="wtGraphTitle">Weight Over Time</p>
+        <!-- Section heading under the "Weight" h1. Exposed via role/aria-level
+             rather than a native <h2> so it keeps its exact rendering inside the
+             baseline-aligned flex header (a real <h2>'s UA margins would shift the row). -->
+        <p class="wtGraphTitle" role="heading" aria-level="2">Weight Over Time</p>
         <span v-if="goalLine" class="bwGoalTag">{{ goalLine.direction === 'above' ? '↑' : goalLine.direction === 'below' ? '↓' : '→' }} Goal: {{ goalLine.label }} {{ weightUnit }}</span>
         <span v-else-if="rangeBand" class="bwGoalTag">Range: {{ prefs.weightGoal.maintainMin != null ? displayWeight(prefs.weightGoal.maintainMin) : '–' }}–{{ prefs.weightGoal.maintainMax != null ? displayWeight(prefs.weightGoal.maintainMax) : '–' }} {{ weightUnit }}</span>
       </div>
@@ -189,12 +194,12 @@
         role="button"
         tabindex="0"
         :aria-expanded="activeEntryId === entry.id"
-        :aria-label="`${formatShortDate(entry.date)}: ${displayWeight(entry.weight)} ${weightUnit}`"
+        :aria-label="`${formatShortDate(setDayKey(entry.date) + 'T12:00:00')}: ${displayWeight(entry.weight)} ${weightUnit}`"
         @click="toggleEntryActions(entry.id)"
         @keydown.enter="toggleEntryActions(entry.id)"
         @keydown.space.prevent="toggleEntryActions(entry.id)"
       >
-        <span class="wtSetDate">{{ formatShortDate(entry.date) }}</span>
+        <span class="wtSetDate">{{ formatShortDate(setDayKey(entry.date) + 'T12:00:00') }}</span>
         <span :class="['wtSetDetail', weightClass(entry.weight)]">
           {{ displayWeight(entry.weight) }} {{ weightUnit }}
           <span v-if="entry.weight === store.minWeight" :class="['bwEntryBadge', isLowGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time low">↓ Low</span>
@@ -239,7 +244,6 @@
           Weight ({{ weightUnit }})
           <div class="repMaxInputRow">
             <input
-              ref="weightInputEl"
               v-model.number="weight"
               type="number"
               inputmode="decimal"
@@ -266,7 +270,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
-import { todayISO, toLocalDateKey, formatShortDate } from '../lib/dates'
+import { todayISO, setDayKey, formatShortDate } from '../lib/dates'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
@@ -285,10 +289,13 @@ const { show: showUndo } = useUndoToast()
 const { logBodyweightXPCeremony } = useXPCeremony()
 
 // ── Modal state ──────────────────────────────────────────────────
-const weightInputEl = ref<HTMLInputElement | null>(null)
+// focusContainer: focus the dialog, not the weight input. Auto-focusing a
+// text input on open shows the caret but withholds the iOS keyboard, and a
+// later tap on the already-focused field won't summon it either. Letting the
+// user tap the field gives a fresh, gesture-driven focus that raises it (#830).
 const { isOpen: showModal, open: openModalTrap, close: closeModalTrap } = useModal({
   selector: '[aria-labelledby="bw-modal-title"]',
-  onOpen: () => weightInputEl.value?.focus(),
+  focusContainer: true,
 })
 const editing = ref<string | null>(null) // entry id when editing
 const weight = ref<number | null>(null)
@@ -312,7 +319,7 @@ function openModal(entry: BodyweightEntry | null = null) {
   if (entry) {
     editing.value = entry.id
     weight.value = displayWeight(entry.weight)
-    date.value = toLocalDateKey(entry.date)
+    date.value = setDayKey(entry.date)
   } else {
     editing.value = null
     weight.value = null
@@ -500,7 +507,7 @@ import { useChartScrubber } from '../composables/useChartScrubber'
 const dailyLatest = computed(() => {
   const byDate: Record<string, BodyweightEntry> = {}
   for (const e of store.entries) {
-    const day = e.date.slice(0, 10)
+    const day = setDayKey(e.date)
     if (!byDate[day] || e.id > byDate[day].id) byDate[day] = e
   }
   return Object.entries(byDate)

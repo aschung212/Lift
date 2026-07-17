@@ -66,7 +66,16 @@
             Unlock more themes by enabling <span class="badgeEnableLink">Progression</span> below.
           </p>
           <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
-          <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
+          <div
+            v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null"
+            class="badgeProgressBar"
+            role="progressbar"
+            aria-label="Progress to next theme unlock"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-valuenow="progressionStore.progressPercent"
+            :aria-valuetext="`${progressionStore.xpToNextUnlock.toLocaleString()} XP to next theme`"
+          >
             <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>
           </div>
           <div class="settingsRow">
@@ -136,8 +145,8 @@
           </div>
           <div class="settingsRow">
             <div class="settingsLabelGroup">
-              <span class="settingsLabel">PR celebration</span>
-              <span class="settingsHint">Full-screen burst on new PRs</span>
+              <span class="settingsLabel">Celebrations</span>
+              <span class="settingsHint">PR bursts & weekly goal hits</span>
             </div>
             <button
               :class="['glassToggle', { on: prefs.experience.prCelebrations }]"
@@ -343,6 +352,70 @@
           </div>
         </div>
 
+        <!-- Intensity presets (#776): tappable % chips in the log-set Intensity lens -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Intensity Presets</div>
+          <div
+            v-for="p in prefs.intensityPresets"
+            :key="p"
+            class="settingsRow settingsPresetRow"
+          >
+            <div class="iosStepper">
+              <button
+                class="iosStepperBtn"
+                @click="adjustPreset(p, -1)"
+                :disabled="nextPresetValue(prefs.intensityPresets, p, -1) === null"
+                :aria-label="`Lower ${p}% preset`"
+              >−</button>
+              <span class="iosStepperValue">{{ p }}%</span>
+              <button
+                class="iosStepperBtn"
+                @click="adjustPreset(p, 1)"
+                :disabled="nextPresetValue(prefs.intensityPresets, p, 1) === null"
+                :aria-label="`Raise ${p}% preset`"
+              >+</button>
+            </div>
+            <button
+              class="settingsPresetDelete"
+              @click="deletePreset(p)"
+              :aria-label="`Delete ${p}% preset`"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+          <p v-if="!prefs.intensityPresets.length" class="settingsHint settingsPresetEmpty">
+            No presets — the Intensity lens shows just the slider. Add one below.
+          </p>
+          <button
+            class="settingsPresetAdd"
+            @click="addPreset"
+            :disabled="prefs.intensityPresets.length >= MAX_INTENSITY_PRESETS"
+          >+ Add preset</button>
+          <div class="settingsRow">
+            <span class="settingsHint">
+              Tap these in the log-set Intensity lens to jump straight to a training intensity. The slider stays for one-off values.
+            </span>
+          </div>
+        </div>
+
+        <!-- Gyms (#961): the zero-state entry point for per-gym exercise filtering -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Gyms</div>
+          <button class="settingsRow settingsRowBtn" @click="gymManagerOpen = true">
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+              Manage Gyms
+            </span>
+            <span v-if="prefs.gyms.length" class="settingsHint">{{ prefs.gyms.length }}</span>
+            <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div class="settingsRow">
+            <span class="settingsHint">
+              Assign exercises to the gyms you train at, then filter the exercise list by gym. Exercises with no gym show everywhere.
+            </span>
+          </div>
+        </div>
+
         <!-- Dev tools — only on localhost/LAN -->
         <div v-if="isDev" class="settingsGroup">
           <div class="settingsHeader">Dev Tools</div>
@@ -531,6 +604,18 @@
   <!-- Legal modal (extracted to LegalSheet.vue) -->
   <LegalSheet :view="legalView" @close="legalView = null" />
 
+  <!-- Gym Manager (#961) — same modal the workout tab's gym row opens -->
+  <GymManagerModal
+    :open="gymManagerOpen"
+    :gyms="prefs.gyms"
+    :exercises="liveExercises"
+    @close="gymManagerOpen = false"
+    @create-gym="gymActions.createGym"
+    @rename-gym="gymActions.renameGym"
+    @delete-gym="gymActions.deleteGym"
+    @toggle-exercise-gym="gymActions.toggleExerciseGym"
+  />
+
   <!-- Custom confirmation dialog (Capacitor-safe, no window.confirm) -->
   <Teleport to="body">
     <Transition name="undoToast">
@@ -645,9 +730,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, type ComponentPublicInstance } from 'vue'
 import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
+import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
-import { useProgressionStore, UNLOCK_TIERS, showXPToast } from '../stores/progression'
+import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
+import { showXPToast } from '../composables/xpCeremonyUI'
 import { isNative } from '../lib/platform'
 import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
 import { setNativeAppIcon } from '../lib/nativeAppIcon'
@@ -663,6 +751,7 @@ import { renderReport, openReportWindow } from '../lib/reportRenderer'
 import { importCSV } from '../lib/csvImport'
 import { usePreferencesStore } from '../stores/preferences'
 import type { WeightGoalDirection } from '../stores/preferences'
+import { MAX_INTENSITY_PRESETS, nextPresetValue, pickNewPresetValue } from '../lib/intensityTable'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
@@ -670,6 +759,8 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 import { useAppShare } from '../composables/useAppShare'
 import LegalSheet from './LegalSheet.vue'
 import ThemeStatsSheet from './ThemeStatsSheet.vue'
+import GymManagerModal from './GymManagerModal.vue'
+import { useGymActions } from '../composables/useGymActions'
 
 const props = defineProps<{
   modelValue: boolean
@@ -680,7 +771,9 @@ const emit = defineEmits<{
   'sign-out': []
 }>()
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
 const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
@@ -688,9 +781,38 @@ const { user } = useAuth()
 const { logEvent } = useAnalytics()
 const prefs = usePreferencesStore()
 const workoutStore = useWorkoutStore()
+
+// ── Gym manager (#961) ──────────────────────────────────────────
+const gymManagerOpen = ref(false)
+const gymActions = useGymActions()
+// Fresh-identity exercises for the manager checklist (#963): the workout
+// store mutates in place behind a shallowRef, so binding the raw array would
+// freeze the modal's checkmarks/counts while open (see WorkoutTracker's
+// liveExercises for the full story).
+const liveExercises = computed(() => [...workoutStore.exercises])
 const bodyweightStore = useBodyweightStore()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+// ── Intensity presets editor (#776) ────────────────────────────
+// Edits the global preset list shown as tappable chips in the log-set Intensity
+// lens. Pure step/add logic lives in intensityTable.ts (unit-tested); these
+// thin wrappers apply the result through the store (which dedupes/sorts/persists).
+function adjustPreset(value: number, dir: 1 | -1) {
+  const next = nextPresetValue(prefs.intensityPresets, value, dir)
+  if (next === null) return
+  prefs.setIntensityPresets(prefs.intensityPresets.map(p => (p === value ? next : p)))
+}
+
+function deletePreset(value: number) {
+  prefs.setIntensityPresets(prefs.intensityPresets.filter(p => p !== value))
+}
+
+function addPreset() {
+  const candidate = pickNewPresetValue(prefs.intensityPresets)
+  if (candidate === null) return
+  prefs.setIntensityPresets([...prefs.intensityPresets, candidate])
+}
 
 // ── Share the app (word-of-mouth loop, #713) ───────────────────
 const { shareApp, isSharing: appShareInFlight } = useAppShare()

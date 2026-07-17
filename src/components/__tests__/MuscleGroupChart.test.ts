@@ -1,7 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
 import MuscleGroupChart from '../MuscleGroupChart.vue'
 import type { TagVolume } from '../../composables/useTagVolume'
+import type { TimeSeriesEntry } from '../../composables/useSVGTimeSeries'
+
+// The expandable rows render the real TagVolumeSparkline, which reads
+// weightUnit from the preferences store (LIFT-821) — needs an active Pinia.
+beforeEach(() => {
+  setActivePinia(createPinia())
+})
 
 const sampleVolume: TagVolume[] = [
   { tag: 'Chest', sets: 12 },
@@ -9,13 +17,28 @@ const sampleVolume: TagVolume[] = [
   { tag: 'Legs', sets: 10 },
 ]
 
-function mountChart(props?: Partial<{ weeklyVolume: TagVolume[]; maxSets: number; totalSets: number; collapsed: boolean }>) {
+const sampleTrends: Record<string, TimeSeriesEntry[]> = {
+  Chest: [
+    { date: '2026-03-02', value: 1000 },
+    { date: '2026-03-09', value: 1400 },
+    { date: '2026-03-16', value: 1200 },
+  ],
+  Back: [
+    { date: '2026-03-09', value: 800 },
+    { date: '2026-03-16', value: 900 },
+  ],
+  // Legs has only one week → not expandable.
+  Legs: [{ date: '2026-03-16', value: 600 }],
+}
+
+function mountChart(props?: Partial<{ weeklyVolume: TagVolume[]; maxSets: number; totalSets: number; collapsed: boolean; tagTrends: Record<string, TimeSeriesEntry[]> }>) {
   return mount(MuscleGroupChart, {
     props: {
       weeklyVolume: props?.weeklyVolume ?? sampleVolume,
       maxSets: props?.maxSets ?? 12,
       totalSets: props?.totalSets ?? 30,
       collapsed: props?.collapsed ?? false,
+      ...(props?.tagTrends !== undefined ? { tagTrends: props.tagTrends } : {}),
     },
   })
 }
@@ -111,6 +134,17 @@ describe('MuscleGroupChart', () => {
       expect(wrapper.find('.mgTitle').text()).toBe('Weekly Volume by Tag')
     })
 
+    // LIFT-856: the collapse toggle is wrapped in a level-2 heading (WAI-ARIA
+    // accordion pattern) so the section is reachable by heading navigation under
+    // the Calendar view's <h1> without the title being lost inside the button.
+    it('wraps the toggle in an h2 section heading', () => {
+      const wrapper = mountChart()
+      const h2 = wrapper.find('h2')
+      expect(h2.exists()).toBe(true)
+      expect(h2.text()).toContain('Weekly Volume by Tag')
+      expect(h2.find('button.mgHeader').exists()).toBe(true)
+    })
+
     it('emits toggleCollapsed when header is clicked', async () => {
       const wrapper = mountChart()
       await wrapper.find('.mgHeader').trigger('click')
@@ -133,6 +167,69 @@ describe('MuscleGroupChart', () => {
       const wrapper = mountChart()
       const header = wrapper.find('.mgHeader')
       expect(header.exists()).toBe(true)
+    })
+  })
+
+  describe('tag trend expansion', () => {
+    it('renders rows as non-interactive divs when no tagTrends provided', () => {
+      const wrapper = mountChart()
+      const mains = wrapper.findAll('.mgRowMain')
+      expect(mains).toHaveLength(3)
+      mains.forEach(m => expect(m.element.tagName).toBe('DIV'))
+      expect(wrapper.find('.mgRowChevron').exists()).toBe(false)
+    })
+
+    it('makes a tag with ≥2 weeks of history tappable', () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      const chestMain = wrapper.findAll('.mgRowMain')[0]
+      expect(chestMain.element.tagName).toBe('BUTTON')
+      expect(chestMain.attributes('aria-expanded')).toBe('false')
+    })
+
+    it('leaves a tag with <2 weeks of history non-interactive', () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      // Legs (index 2) has a single-week series.
+      const legsMain = wrapper.findAll('.mgRowMain')[2]
+      expect(legsMain.element.tagName).toBe('DIV')
+      expect(legsMain.attributes('aria-expanded')).toBeUndefined()
+    })
+
+    it('reveals the sparkline when an expandable row is tapped', async () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      expect(wrapper.findComponent({ name: 'TagVolumeSparkline' }).exists()).toBe(false)
+
+      await wrapper.findAll('.mgRowMain')[0].trigger('click')
+
+      const sparkline = wrapper.findComponent({ name: 'TagVolumeSparkline' })
+      expect(sparkline.exists()).toBe(true)
+      expect(sparkline.props('tag')).toBe('Chest')
+      expect(wrapper.findAll('.mgRowMain')[0].attributes('aria-expanded')).toBe('true')
+    })
+
+    it('collapses the sparkline when the open row is tapped again', async () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      await wrapper.findAll('.mgRowMain')[0].trigger('click')
+      expect(wrapper.findComponent({ name: 'TagVolumeSparkline' }).exists()).toBe(true)
+
+      await wrapper.findAll('.mgRowMain')[0].trigger('click')
+      expect(wrapper.findComponent({ name: 'TagVolumeSparkline' }).exists()).toBe(false)
+    })
+
+    it('only keeps one tag expanded at a time', async () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      await wrapper.findAll('.mgRowMain')[0].trigger('click') // Chest
+      await wrapper.findAll('.mgRowMain')[1].trigger('click') // Back
+
+      const sparklines = wrapper.findAllComponents({ name: 'TagVolumeSparkline' })
+      expect(sparklines).toHaveLength(1)
+      expect(sparklines[0].props('tag')).toBe('Back')
+    })
+
+    it('exposes a descriptive aria-label on the toggle', () => {
+      const wrapper = mountChart({ tagTrends: sampleTrends })
+      const chestMain = wrapper.findAll('.mgRowMain')[0]
+      expect(chestMain.attributes('aria-label')).toContain('Chest: 12 sets')
+      expect(chestMain.attributes('aria-label')).toContain('Show weekly volume trend')
     })
   })
 })

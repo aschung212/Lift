@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import { nextTick } from 'vue'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
 const { useRestTimer } = await import('../useRestTimer')
+const { usePreferencesStore } = await import('../../stores/preferences')
 
 describe('useRestTimer', () => {
   let timer: ReturnType<typeof useRestTimer>
@@ -12,6 +14,8 @@ describe('useRestTimer', () => {
   beforeEach(() => {
     localStorageMock.clear()
     localStorageMock.setItem.mockClear()
+    // The preferences store is now the single source of truth (LIFT-821).
+    setActivePinia(createPinia())
     timer = useRestTimer()
   })
 
@@ -46,5 +50,25 @@ describe('useRestTimer', () => {
     const b = useRestTimer()
     a.restTimerEnabled.value = false
     expect(b.restTimerEnabled.value).toBe(false)
+  })
+
+  // LIFT-821: composable and store are one owner — writes through either path
+  // are observable through the other.
+  describe('single source of truth (preferences store)', () => {
+    it('reflects composable writes in the store', () => {
+      const prefs = usePreferencesStore()
+      timer.restTimerEnabled.value = false
+      timer.restTimerAutoStart.value = false
+      expect(prefs.restTimerEnabled).toBe(false)
+      expect(prefs.restTimerAutoStart).toBe(false)
+    })
+
+    it('reflects store writes in the composable', () => {
+      const prefs = usePreferencesStore()
+      prefs.setRestTimer(false)
+      prefs.setRestTimerAutoStart(false)
+      expect(timer.restTimerEnabled.value).toBe(false)
+      expect(timer.restTimerAutoStart.value).toBe(false)
+    })
   })
 })
