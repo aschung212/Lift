@@ -70,8 +70,10 @@
     </div>
 
     <!-- Gym filter chips (#961) — exclusive select, above the additive tag row.
-         Zero chrome until the user creates a gym in the gym manager. -->
-    <template v-if="listView === 'exercises' && allGyms.length > 0">
+         Always visible in the exercises view: the zero state is "All Gyms" plus
+         a labeled "Add Gym" chip, so the first gym can be created right here
+         instead of only via Settings (#963 feedback). -->
+    <template v-if="listView === 'exercises'">
       <div class="wtTagFilterBar" role="group" aria-label="Filter by gym">
         <button
           :class="['wtTagChip', { wtTagChipActive: !effectiveGymFilter }]"
@@ -90,8 +92,8 @@
         <button
           class="wtTagChip wtTagChipManage"
           @click="gymManagerOpen = true"
-          aria-label="Manage gyms"
-        ><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></button>
+          :aria-label="allGyms.length > 0 ? 'Manage gyms' : 'Add a gym'"
+        ><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg><template v-if="allGyms.length === 0">Add Gym</template></button>
       </div>
     </template>
 
@@ -717,6 +719,7 @@
     :exercise="editTargetExercise"
     :all-tags="store.allTags"
     :all-gyms="allGyms"
+    @create-gym="gymActions.createGym"
     @close="editTarget = null"
     @save="onEditExerciseSave"
     @archive="handleArchiveFromEdit"

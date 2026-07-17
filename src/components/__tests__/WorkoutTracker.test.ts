@@ -3,6 +3,7 @@ import { shallowRef, triggerRef } from 'vue'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
+import EditExerciseModal from '../EditExerciseModal.vue'
 
 const localStorageMock = getLocalStorageMock()
 
@@ -12,12 +13,18 @@ vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 vi.mock('../../composables/useRestTimer', () => mockRestTimer())
 // Mutable container so gym-filter tests (#961) can drive the synced gym list.
 const mockPrefsState = { gyms: [] as string[] }
+const mockAddGym = vi.fn((name: string) => {
+  if (mockPrefsState.gyms.includes(name)) return null
+  mockPrefsState.gyms = [...mockPrefsState.gyms, name]
+  return name
+})
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
     filters: { warmupThreshold: 0.75 },
     intensityPresets: [50, 70, 80, 90, 100],
     get gyms() { return mockPrefsState.gyms },
+    addGym: mockAddGym,
   }),
 }))
 vi.mock('../../stores/progression', () => ({
@@ -275,9 +282,13 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtPageTitle').text()).toBe('Workouts')
     })
 
-    it('does not render tag filter bar when no tags', () => {
+    it('does not render the tag filter bar when no tags (only the gym row remains)', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+      // The gym row (#963) is always visible in the exercises view; the TAG
+      // bar still keeps its zero-chrome behavior.
+      const bars = wrapper.findAll('.wtTagFilterBar')
+      expect(bars).toHaveLength(1)
+      expect(bars[0].attributes('aria-label')).toBe('Filter by gym')
     })
 
     it('shows fresh-start transition card after clearing sample data', () => {
@@ -2676,10 +2687,30 @@ describe('WorkoutTracker', () => {
       return wrapper.findAll('.wtExerciseName').map(n => n.text())
     }
 
-    it('renders no gym chip row when no gyms are defined (zero-state = zero chrome)', () => {
+    it('renders the zero-state chip row: All Gyms active + a labeled Add Gym chip (#963)', () => {
       mockState.exercises = createGymExercises()
       const wrapper = mountTracker()
-      expect(gymChipRow(wrapper).exists()).toBe(false)
+      const chips = gymChipRow(wrapper).findAll('.wtTagChip')
+      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Add Gym'])
+      expect(chips[0].classes()).toContain('wtTagChipActive')
+      // The labeled manage chip is the create-first-gym entry point in the
+      // logging surface — Settings must not be the only way in.
+      expect(gymChipRow(wrapper).find('[aria-label="Add a gym"]').exists()).toBe(true)
+    })
+
+    it('opens the gym manager from the zero-state Add Gym chip', async () => {
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      await gymChipRow(wrapper).find('[aria-label="Add a gym"]').trigger('click')
+      expect(wrapper.find('[aria-labelledby="gym-manager-title"]').exists()).toBe(true)
+    })
+
+    it('routes EditExerciseModal create-gym to the preferences store (#963)', () => {
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      wrapper.findComponent(EditExerciseModal).vm.$emit('create-gym', 'Iron Temple')
+      expect(mockAddGym).toHaveBeenCalledWith('Iron Temple')
+      expect(mockPrefsState.gyms).toContain('Iron Temple')
     })
 
     it('renders the chip row (All Gyms + one chip per gym + manage) once gyms exist', () => {
