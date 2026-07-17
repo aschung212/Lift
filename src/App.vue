@@ -281,6 +281,8 @@ import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
 import { useServiceWorker } from './composables/useServiceWorker'
+import { useAppBadge } from './composables/useAppBadge'
+import { todayISO, toLocalDateKey } from './lib/dates'
 import { useOnboarding } from './composables/useOnboarding'
 import { useTabRouting } from './composables/useTabRouting'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
@@ -305,6 +307,37 @@ const bodyweightStore = useBodyweightStore()
 // ── PWA install prompt ──────────────────────────────────────────
 const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
 const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
+
+// ── Unfinished-workout app-icon badge ───────────────────────────
+// When the user backgrounds the app with sets logged today, badge the
+// Home-Screen icon with that count so they're nudged back to finish — and
+// clear it the moment they return. No-ops where the Badging API is
+// unsupported (see useAppBadge). Mirrors WorkoutTracker's `setsLoggedToday`,
+// which drives the in-app "Finish workout" affordance.
+const { setBadge: setAppBadge, clearBadge: clearAppBadge } = useAppBadge()
+// Plain function (not a computed) so `todayISO()` is re-evaluated every time the
+// app is backgrounded — a cached computed would badge yesterday's count after a
+// midnight rollover with no new sets to invalidate it.
+function countSetsLoggedToday(): number {
+  const today = todayISO()
+  let count = 0
+  for (const ex of workoutStore.exercises) {
+    for (const s of ex.sets) {
+      if (toLocalDateKey(s.date) === today) count++
+    }
+  }
+  return count
+}
+function onBadgeVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    const count = countSetsLoggedToday()
+    if (count > 0) setAppBadge(count)
+    else clearAppBadge()
+  } else {
+    // Back in the foreground — the nudge has served its purpose.
+    clearAppBadge()
+  }
+}
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -511,6 +544,11 @@ function onBeforeUnload() {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  document.addEventListener('visibilitychange', onBadgeVisibilityChange)
+  // Clear any badge left over from a prior session: visibilitychange does not
+  // fire on cold start (the document begins visible), so a badge set before a
+  // force-close would otherwise linger on the icon while the user is active.
+  clearAppBadge()
   logEvent('session_start')
 
   // Load Supabase SDK off the critical render path, then start auth.
@@ -617,6 +655,8 @@ onMounted(async () => {
 let unsubCrossTab: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  document.removeEventListener('visibilitychange', onBadgeVisibilityChange)
+  clearAppBadge()
   unsubCrossTab?.()
 })
 </script>
