@@ -343,28 +343,6 @@ describe('workout store', () => {
     })
   })
 
-  // ── reorderExercise ─────────────────────────────────────────────
-  describe('reorderExercise', () => {
-    it('reorders exercise from one index to another', () => {
-      const store = useWorkoutStore()
-      store.addExercise('A')
-      store.addExercise('B')
-      store.addExercise('C')
-      store.reorderExercise(2, 0) // Move C to front
-      expect(store.exercises.map(e => e.name)).toEqual(['C', 'A', 'B'])
-    })
-
-    it('does nothing for invalid reorder indices', () => {
-      const store = useWorkoutStore()
-      store.addExercise('A')
-      store.reorderExercise(-1, 0)
-      store.reorderExercise(0, -1)
-      store.reorderExercise(5, 0)
-      store.reorderExercise(0, 0) // same index
-      expect(store.exercises).toHaveLength(1)
-    })
-  })
-
   // ── renameTag / deleteTag ──────────────────────────────────────
   describe('renameTag', () => {
     it('renames a tag across all exercises', () => {

@@ -2834,41 +2834,6 @@ html.theme-fading .settingsSheet {
 .wtExerciseLogBtnCircle:hover  { background: var(--accent-hover, var(--accent)); }
 .wtExerciseLogBtnCircle:active { transform: scale(0.94); }
 
-/* ─── Drag handle ──────────────────────────────────────────────────────── */
-
-.wtDragHandle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  flex-shrink: 0;
-  font-size: 14px;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  user-select: none;
-  -webkit-user-select: none;
-  pointer-events: none;
-  transition: color 0.15s, opacity 0.15s;
-  opacity: 0.35;
-  align-self: center;
-}
-
-.wtDragHandleDisabled {
-  opacity: 0.25;
-}
-
-/* Long-press pickup feedback — lifts the row while dragging */
-.wt-dragging {
-  opacity: 0.4;
-  transform: scale(1.02);
-  transition: transform 0.12s;
-}
-
-.wt-drag-over {
-  box-shadow: 0 -2px 0 0 var(--accent);
-}
-
 /* ─── Exercise header icon buttons (rename, delete) ───────────────────── */
 
 .wtExHeaderIconBtn {

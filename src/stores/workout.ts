@@ -947,16 +947,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function reorderExercise(fromIndex: number, toIndex: number) {
-    if (fromIndex === toIndex) return
-    if (fromIndex < 0 || toIndex < 0) return
-    if (fromIndex >= exercises.value.length || toIndex >= exercises.value.length) return
-    const [item] = exercises.value.splice(fromIndex, 1)
-    exercises.value.splice(toIndex, 0, item)
-    triggerRef(exercises)
-    _persist()
-  }
-
   function renameTag(oldName: string, newName: string) {
     const trimmed = newName.trim()
     if (!trimmed || trimmed === oldName) return
@@ -1525,7 +1515,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     unarchiveExercise,
     syncDeleteSet,
     syncDeleteExercise,
-    reorderExercise,
     renameTag,
     deleteTag,
     renameGymOnExercises,
