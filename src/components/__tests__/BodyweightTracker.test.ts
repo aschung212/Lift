@@ -743,6 +743,33 @@ describe('BodyweightTracker', () => {
       const hero = wrapper.find('.bwHero')
       expect(hero.find('.wtLogBtn').exists()).toBe(true)
     })
+
+    // LIFT-856: the hero shows the current weight value, not a title — so the view
+    // had no page-level <h1>, breaking heading navigation across tab switches. A
+    // single visually-hidden h1 gives assistive tech a consistent landmark.
+    it('provides a single visually-hidden h1 page heading for assistive tech', () => {
+      const wrapper = mountTracker()
+      const h1s = wrapper.findAll('h1')
+      expect(h1s.length).toBe(1)
+      expect(h1s[0].text()).toBe('Weight')
+      expect(h1s[0].classes()).toContain('srOnly')
+    })
+
+    // LIFT-856: the "Weight Over Time" chart title is the one section heading
+    // under the page <h1>. It's exposed via role/aria-level (not a native <h2>)
+    // to avoid a UA-margin shift inside the baseline-aligned flex header.
+    it('exposes the chart title as a level-2 section heading', () => {
+      entries = [
+        makeEntry('e-1', 175, daysAgo(20)),
+        makeEntry('e-2', 170, daysAgo(2)),
+      ]
+      const wrapper = mountTracker()
+      const title = wrapper.find('.wtGraphTitle')
+      expect(title.exists()).toBe(true)
+      expect(title.text()).toBe('Weight Over Time')
+      expect(title.attributes('role')).toBe('heading')
+      expect(title.attributes('aria-level')).toBe('2')
+    })
   })
 
   describe('a11y: sentiment indicators (WCAG 1.4.1 — not color alone)', () => {

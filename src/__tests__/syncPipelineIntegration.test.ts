@@ -11,7 +11,7 @@
  * through the real enqueue wiring.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { getLocalStorageMock } from './helpers'
 
@@ -102,17 +102,25 @@ import { syncQueue } from '../lib/syncQueue'
 import { isTombstoned, _resetTombstones } from '../lib/tombstones'
 
 const localStorageMock = getLocalStorageMock()
-const tick = () => new Promise(resolve => setTimeout(resolve, 0))
+// Flush pending timers + the microtask chains kicked off by the synchronous
+// syncQueue mock. Driven by fake timers (not a real setTimeout) so tests don't
+// burn wall-clock time or flake under CI load (LIFT-895).
+const tick = () => vi.runAllTimersAsync()
 
 describe('Sync Pipeline Integration (LIFT-654)', () => {
   const TEST_USER = 'user-integration-test'
 
   beforeEach(() => {
+    vi.useFakeTimers()
     localStorageMock.clear()
     fakeSupabase.reset()
     _resetTombstones()
     vi.clearAllMocks()
     setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   // ── logSet → syncQueue.enqueue → Supabase upsert ──────────────

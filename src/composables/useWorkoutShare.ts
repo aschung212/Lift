@@ -23,8 +23,12 @@ import {
 import type { SessionSummary } from '../lib/sessionSummary'
 import { useAnalytics } from './useAnalytics'
 import { useShareFlow, isShareCancellation, type ShareResult } from './useShareFlow'
+import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
 
 export type { ShareResult }
+
+/** Title shown in the share sheet for a rasterized workout card. */
+const SHARE_TITLE = 'Lift workout'
 
 export interface ShareCardRequest {
   /** The Vue component that renders the card. */
@@ -45,16 +49,27 @@ export interface ShareCardRequest {
 }
 
 /**
- * Browsers that support image files in the Web Share API.
+ * Pick the richest Web Share payload a platform will actually accept for a
+ * rendered card. We prefer a payload that carries both the card image AND a
+ * tappable link back to the app (#794) so a recipient can convert in one tap
+ * instead of retyping the printed handle — but some platforms reject a
+ * files+url combo via `canShare`, so we degrade to image-only rather than
+ * drop the share entirely. Returns null when no payload is sharable (caller
+ * falls back to download).
+ *
  * iOS Safari 16.4+ and Android Chrome both report `canShare({ files })` as true.
  */
-function canWebShareFiles(files: File[]): boolean {
-  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return false
+function pickWebSharePayload(file: File): ShareData | null {
+  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return null
+  const withLink: ShareData = { files: [file], title: SHARE_TITLE, text: APP_TAGLINE, url: APP_URL }
+  const imageOnly: ShareData = { files: [file], title: SHARE_TITLE }
   try {
-    return navigator.canShare({ files })
+    if (navigator.canShare(withLink)) return withLink
+    if (navigator.canShare(imageOnly)) return imageOnly
   } catch {
-    return false
+    return null
   }
+  return null
 }
 
 /** Triggers a download via a temporary anchor element. Matches the dataExport.ts pattern. */
@@ -203,10 +218,12 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
         // install target) and then to download. Skipping the native sheet
         // entirely is intentional — calling `CapacitorShare.share({ text })`
         // alone would silently drop the rendered image, which is worse than
-        // surfacing the download.
-        if (canWebShareFiles([file])) {
+        // surfacing the download. `pickWebSharePayload` prefers a payload that
+        // also carries a tappable app link (#794) and degrades to image-only.
+        const sharePayload = pickWebSharePayload(file)
+        if (sharePayload) {
           try {
-            await navigator.share({ files: [file], title: 'Lift workout' })
+            await navigator.share(sharePayload)
             return { kind: 'shared' }
           } catch (err) {
             // Cancel = user dismissed sheet. Anything else falls to download.

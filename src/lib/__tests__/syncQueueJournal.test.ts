@@ -267,6 +267,20 @@ describe('replay allowlist (LIFT-785)', () => {
       })).toBe(true)
     })
 
+    it('accepts a set upsert carrying created_at (#846) so offline log-time survives replay', () => {
+      // _enqueueSetUpsert now sends the real log-time `created_at` so an offline
+      // set keeps its training time. The descriptor it journals must be
+      // replayable — otherwise rehydrate() drops the entry and the offline set
+      // is never synced (the exact failure #846 exists to prevent).
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'sets',
+        row: {
+          id: 's1', user_id: 'u1', exercise_id: 'e1', date: '2026-06-20T23:59:30.000Z',
+          weight: 185, reps: 5, estimated_1rm: 216, created_at: '2026-06-20T18:45:00.000Z',
+        },
+      })).toBe(true)
+    })
+
     it('tolerates retired-but-dormant DB columns so legacy offline writes still replay', () => {
       // warmup_scheme was retired in #770 but the column still exists in the DB.
       // An offline write journaled by a pre-#770 client must not be dropped.

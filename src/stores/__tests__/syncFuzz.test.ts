@@ -15,7 +15,7 @@
  * (row count dropped / unexpected delete call), not a regex mismatch.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
 // ── Fake Supabase client ─────────────────────────────────────────
@@ -171,16 +171,23 @@ import { useBodyweightStore } from '../bodyweight'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 import { _resetTombstones } from '../../lib/tombstones'
 
-// Helper: flush a microtask tick so any op() chained via syncQueue settles
-const tick = () => new Promise(resolve => setTimeout(resolve, 0))
+// Helper: flush pending timers + the microtask chains kicked off by the
+// synchronous syncQueue mock. Driven by fake timers (not a real setTimeout)
+// so tests don't burn wall-clock time or flake under CI load (LIFT-895).
+const tick = () => vi.runAllTimersAsync()
 
 describe('sync fuzz: SEV1 2026-04-12 regression', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     setActivePinia(createPinia())
     fakeSupabase.reset()
     getLocalStorageMock().clear()
     // Tombstones cache in-memory — must be reset or they leak between tests
     _resetTombstones()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   describe('workoutStore._fetchFromSupabase — READ path is read-only', () => {
