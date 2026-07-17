@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { backupToIDB } from '../lib/durableStorage'
 import { persistStoreData } from '../lib/storePersistence'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
@@ -292,8 +293,12 @@ export const usePreferencesStore = defineStore('preferences', {
             .select('preferences')
             .eq('user_id', userId)
             .single()
-          // PGRST116 (no row yet) is not a sync failure — only a real error is.
+          // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
+          // A real error (network/auth/RLS) is classified for the per-store sync
+          // indicator (LIFT-820) and routed through reportFetchError so an RLS or
+          // auth regression is observable instead of silently swallowed (LIFT-786).
           if (error && error.code !== 'PGRST116') {
+            reportFetchError('preferences', error)
             this.lastSyncError = classifySyncError(error)
           } else {
             this.lastSyncError = null
@@ -340,8 +345,11 @@ export const usePreferencesStore = defineStore('preferences', {
             backupToIDB(STORAGE_KEY, synced)
           }
         } catch (err) {
-          // Network-layer throw — local-first state stands; record it so the UI
-          // can surface a sync-failure indicator instead of degrading silently.
+          // Thrown (vs returned) error — typically a network failure. Route
+          // through reportFetchError so offline stays quiet but auth/server
+          // failures are observable (LIFT-786), and record the per-store sync
+          // indicator so the UI can degrade visibly instead of silently (LIFT-820).
+          reportFetchError('preferences', err)
           this.lastSyncError = classifySyncError(err)
         } finally {
           this.syncing = false
