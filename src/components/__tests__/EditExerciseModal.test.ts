@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise } from '../../stores/workout'
+import { MAX_GYMS } from '../../lib/gyms'
 import { mockWeightUnit } from '../../__tests__/helpers'
 
 vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
@@ -121,9 +122,56 @@ describe('EditExerciseModal — gym membership (#961)', () => {
   const gymChip = (w: VueWrapper, label: string) =>
     gymSection(w).findAll('.wtTagPickerChip').find(c => c.text() === label)!
 
-  it('hides the Gym section entirely when no gyms exist (progressive disclosure)', async () => {
+  it('renders the Gym section at zero gyms with just the add chip (first-gym path, #963)', async () => {
     const wrapper = await openWith(makeExercise())
-    expect(gymSection(wrapper).exists()).toBe(false)
+    expect(gymSection(wrapper).exists()).toBe(true)
+    // Only chip present is the inline "+" — the creation entry point.
+    expect(gymSection(wrapper).findAll('.wtTagPickerChip')).toHaveLength(1)
+    expect(gymSection(wrapper).find('[aria-label="Add gym"]').exists()).toBe(true)
+  })
+
+  it('creates a gym inline: emits create-gym, selects it, includes it on save', async () => {
+    const wrapper = await openWith(makeExercise())
+    await gymSection(wrapper).find('[aria-label="Add gym"]').trigger('click')
+    const input = gymSection(wrapper).find('[aria-label="New gym name"]')
+    await input.setValue('  Iron Temple  ')
+    await input.trigger('keyup.enter')
+
+    // Sanitized exactly as preferences.addGym will store it.
+    expect(wrapper.emitted('create-gym')).toEqual([['Iron Temple']])
+
+    // The parent adds it to the synced list; simulate the prop flowing back.
+    await wrapper.setProps({ allGyms: ['Iron Temple'] })
+    expect(gymChip(wrapper, 'Iron Temple').attributes('aria-pressed')).toBe('true')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).gyms).toEqual(['Iron Temple'])
+  })
+
+  it('selects an existing gym typed inline without emitting create-gym', async () => {
+    const wrapper = await openWith(makeExercise(), ['Gym A'])
+    await gymSection(wrapper).find('[aria-label="Add gym"]').trigger('click')
+    const input = gymSection(wrapper).find('[aria-label="New gym name"]')
+    await input.setValue('Gym A')
+    await input.trigger('keyup.enter')
+
+    expect(wrapper.emitted('create-gym')).toBeUndefined()
+    expect(gymChip(wrapper, 'Gym A').attributes('aria-pressed')).toBe('true')
+  })
+
+  it('commits pending gym text on Save (blur-less flow)', async () => {
+    const wrapper = await openWith(makeExercise())
+    await gymSection(wrapper).find('[aria-label="Add gym"]').trigger('click')
+    await gymSection(wrapper).find('[aria-label="New gym name"]').setValue('Iron Temple')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+
+    expect(wrapper.emitted('create-gym')).toEqual([['Iron Temple']])
+    expect(lastSavePayload(wrapper).gyms).toEqual(['Iron Temple'])
+  })
+
+  it('hides the inline add chip at the MAX_GYMS cap', async () => {
+    const gyms = Array.from({ length: MAX_GYMS }, (_, i) => `Gym ${i}`)
+    const wrapper = await openWith(makeExercise(), gyms)
+    expect(gymSection(wrapper).find('[aria-label="Add gym"]').exists()).toBe(false)
   })
 
   it('seeds membership from the exercise', async () => {

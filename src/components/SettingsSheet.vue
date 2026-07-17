@@ -608,7 +608,7 @@
   <GymManagerModal
     :open="gymManagerOpen"
     :gyms="prefs.gyms"
-    :exercises="workoutStore.exercises"
+    :exercises="liveExercises"
     @close="gymManagerOpen = false"
     @create-gym="gymActions.createGym"
     @rename-gym="gymActions.renameGym"
@@ -785,6 +785,11 @@ const workoutStore = useWorkoutStore()
 // ── Gym manager (#961) ──────────────────────────────────────────
 const gymManagerOpen = ref(false)
 const gymActions = useGymActions()
+// Fresh-identity exercises for the manager checklist (#963): the workout
+// store mutates in place behind a shallowRef, so binding the raw array would
+// freeze the modal's checkmarks/counts while open (see WorkoutTracker's
+// liveExercises for the full story).
+const liveExercises = computed(() => [...workoutStore.exercises])
 const bodyweightStore = useBodyweightStore()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)

@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { shallowRef, triggerRef } from 'vue'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
+import EditExerciseModal from '../EditExerciseModal.vue'
 
 const localStorageMock = getLocalStorageMock()
 
@@ -11,12 +13,18 @@ vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 vi.mock('../../composables/useRestTimer', () => mockRestTimer())
 // Mutable container so gym-filter tests (#961) can drive the synced gym list.
 const mockPrefsState = { gyms: [] as string[] }
+const mockAddGym = vi.fn((name: string) => {
+  if (mockPrefsState.gyms.includes(name)) return null
+  mockPrefsState.gyms = [...mockPrefsState.gyms, name]
+  return name
+})
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
     filters: { warmupThreshold: 0.75 },
     intensityPresets: [50, 70, 80, 90, 100],
     get gyms() { return mockPrefsState.gyms },
+    addGym: mockAddGym,
   }),
 }))
 vi.mock('../../stores/progression', () => ({
@@ -98,9 +106,17 @@ function createPRExercises(): Exercise[] {
   ]
 }
 
-// Mock store state — isolated in an object so tests interact with an explicit container
-// rather than a bare module-level `let` that can be accidentally shadowed or leaked.
-const mockState = { exercises: [] as Exercise[] }
+// Mock store state — a shallowRef mutated in place + triggerRef, mirroring the
+// real store's reactivity contract (workout.ts trades deep reactivity for
+// explicit triggers). Faithfulness matters here: children only observe
+// in-place mutations when a fresh-identity prop reaches them (#963), and the
+// live-update regression tests must be able to reproduce exactly that. The
+// `mockState` getter/setter facade keeps the original container API.
+const mockExercises = shallowRef<Exercise[]>([])
+const mockState = {
+  get exercises() { return mockExercises.value },
+  set exercises(v: Exercise[]) { mockExercises.value = v },
+}
 
 function getExercisePR(id: string): number {
   const ex = mockState.exercises.find(e => e.id === id)
@@ -130,8 +146,23 @@ const mockSyncDeleteSet = vi.fn()
 const mockRestoreExercise = vi.fn()
 const mockSyncDeleteExercise = vi.fn()
 const mockRenameExercise = vi.fn()
-const mockUpdateExerciseTags = vi.fn()
 const mockReorderExercise = vi.fn()
+
+// Faithful to the real actions: mutate the exercise IN PLACE, then triggerRef —
+// the exact store contract the fresh-identity bindings (#963) exist to handle.
+const mockUpdateExerciseTags = vi.fn((exerciseId: string, tags: string[]) => {
+  const ex = mockExercises.value.find(e => e.id === exerciseId)
+  if (!ex) return
+  ex.tags = [...tags]
+  triggerRef(mockExercises)
+})
+const mockSetExerciseGyms = vi.fn((exerciseId: string, gyms: string[]) => {
+  const ex = mockExercises.value.find(e => e.id === exerciseId)
+  if (!ex) return
+  if (gyms.length > 0) ex.gyms = [...gyms]
+  else delete ex.gyms
+  triggerRef(mockExercises)
+})
 
 const mockArchiveExercise = vi.fn()
 const mockUnarchiveExercise = vi.fn()
@@ -170,7 +201,7 @@ vi.mock('../../stores/workout', () => ({
     reorderExercise: mockReorderExercise,
     reorderExercises: vi.fn(),
     updateExercise: vi.fn(),
-    setExerciseGyms: vi.fn(),
+    setExerciseGyms: mockSetExerciseGyms,
     renameGymOnExercises: vi.fn(),
     removeGymFromExercises: vi.fn(() => []),
   })
@@ -251,9 +282,13 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtPageTitle').text()).toBe('Workouts')
     })
 
-    it('does not render tag filter bar when no tags', () => {
+    it('does not render the tag filter bar when no tags (only the gym row remains)', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+      // The gym row (#963) is always visible in the exercises view; the TAG
+      // bar still keeps its zero-chrome behavior.
+      const bars = wrapper.findAll('.wtTagFilterBar')
+      expect(bars).toHaveLength(1)
+      expect(bars[0].attributes('aria-label')).toBe('Filter by gym')
     })
 
     it('shows fresh-start transition card after clearing sample data', () => {
@@ -2652,10 +2687,30 @@ describe('WorkoutTracker', () => {
       return wrapper.findAll('.wtExerciseName').map(n => n.text())
     }
 
-    it('renders no gym chip row when no gyms are defined (zero-state = zero chrome)', () => {
+    it('renders the zero-state chip row: All Gyms active + a labeled Add Gym chip (#963)', () => {
       mockState.exercises = createGymExercises()
       const wrapper = mountTracker()
-      expect(gymChipRow(wrapper).exists()).toBe(false)
+      const chips = gymChipRow(wrapper).findAll('.wtTagChip')
+      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Add Gym'])
+      expect(chips[0].classes()).toContain('wtTagChipActive')
+      // The labeled manage chip is the create-first-gym entry point in the
+      // logging surface — Settings must not be the only way in.
+      expect(gymChipRow(wrapper).find('[aria-label="Add a gym"]').exists()).toBe(true)
+    })
+
+    it('opens the gym manager from the zero-state Add Gym chip', async () => {
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      await gymChipRow(wrapper).find('[aria-label="Add a gym"]').trigger('click')
+      expect(wrapper.find('[aria-labelledby="gym-manager-title"]').exists()).toBe(true)
+    })
+
+    it('routes EditExerciseModal create-gym to the preferences store (#963)', () => {
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+      wrapper.findComponent(EditExerciseModal).vm.$emit('create-gym', 'Iron Temple')
+      expect(mockAddGym).toHaveBeenCalledWith('Iron Temple')
+      expect(mockPrefsState.gyms).toContain('Iron Temple')
     })
 
     it('renders the chip row (All Gyms + one chip per gym + manage) once gyms exist', () => {
@@ -2809,6 +2864,68 @@ describe('WorkoutTracker', () => {
       await gymChip(wrapper, 'Empty Gym').trigger('click')
 
       expect(wrapper.find('.wtEmpty').text()).toContain('No exercises match your filters.')
+    })
+  })
+
+  describe('fresh-identity child bindings (#963)', () => {
+    // The store mutates exercises in place behind a shallowRef; children bound
+    // to the raw array froze because their prop identity never changed. These
+    // tests drive the REAL host wiring (liveExercises) against the mock's
+    // faithful in-place-mutation contract — they fail if anyone reverts a
+    // binding to `store.exercises`.
+
+    it('gym manager checklist shows a toggled checkmark live, without reopening', async () => {
+      mockPrefsState.gyms = ['Gym A']
+      mockState.exercises = [
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: [], sets: [], gyms: ['Gym A'] },
+        { id: 'ex-3', name: 'Bench Press', tags: [], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      await wrapper.find('[aria-label="Manage gyms"]').trigger('click')
+      await wrapper.find('[aria-label="Show exercises for Gym A"]').trigger('click')
+
+      // Re-find rows after every state change — Vue may replace the nodes.
+      const benchRow = () =>
+        wrapper.findAll('.wtTagExerciseRow').find(r => r.text().includes('Bench Press'))!
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(false)
+      expect(wrapper.find('.wtTagManagerCount').text()).toBe('1')
+
+      await benchRow().trigger('click')
+
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(true)
+      expect(wrapper.find('.wtTagManagerCount').text()).toBe('2')
+    })
+
+    it('tag manager checklist shows a toggled checkmark live, without reopening', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      await wrapper.find('[aria-label="Manage tags"]').trigger('click')
+      await wrapper.find('[aria-label="Show exercises for Legs"]').trigger('click')
+
+      const benchRow = () =>
+        wrapper.findAll('.wtTagExerciseRow').find(r => r.text().includes('Bench Press'))!
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(false)
+
+      await benchRow().trigger('click')
+
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(true)
+    })
+
+    it('timeline reflects sets mutated in place while it is the active view', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      expect(wrapper.text()).not.toContain('205')
+
+      // The real store contract for logSet/updateSet/deleteSet: mutate the
+      // exercise in place, then triggerRef.
+      mockState.exercises[0].sets.push({
+        id: 's-new', date: '2026-01-21T12:00:00', weight: 205, reps: 5, estimated1RM: 239,
+      })
+      triggerRef(mockExercises)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.text()).toContain('205')
     })
   })
 })

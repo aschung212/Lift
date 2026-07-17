@@ -57,8 +57,9 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 ### Gym Filtering
 - Assign exercises to the gyms you train at (multi-gym membership; leave empty to show an exercise everywhere)
 - Exclusive gym filter row above the tag chips — pick where you're training today and other gyms' equipment disappears
+- Always-visible row defaulting to "All Gyms"; the zero state shows an "Add Gym" chip so your first gym is one tap away
 - Composes with tags: gym narrows the list, tags filter within it (quick-log picker follows too)
-- Gym manager for create/rename/delete plus bulk per-gym exercise assignment; also reachable from Settings
+- Gym manager for create/rename/delete plus bulk per-gym exercise assignment; gyms can also be created inline while editing an exercise, or from Settings
 - Active gym selection remembered per device (not synced — your phone can be at Gym A while your iPad stays on All)
 
 ### Usual Ladder (One-Tap Set Logging)
