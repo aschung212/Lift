@@ -251,7 +251,7 @@
     <!-- Timeline view (extracted to WorkoutTimeline.vue) -->
     <WorkoutTimeline
       v-else-if="listView === 'timeline'"
-      :exercises="store.exercises"
+      :exercises="liveExercises"
       :pr-baseline-date="prBaselineDate"
       :warmup-threshold="_prefs.filters.warmupThreshold"
       @log-set="openTimelineLogModal"
@@ -737,7 +737,7 @@
   <TagManagerModal
     :open="tagManagerOpen"
     :all-tags="store.allTags"
-    :exercises="store.exercises"
+    :exercises="liveExercises"
     @close="tagManagerOpen = false"
     @create-tag="store.addCustomTag"
     @rename-tag="onRenameTag"
@@ -749,7 +749,7 @@
   <GymManagerModal
     :open="gymManagerOpen"
     :gyms="allGyms"
-    :exercises="store.exercises"
+    :exercises="liveExercises"
     @close="gymManagerOpen = false"
     @create-gym="gymActions.createGym"
     @rename-gym="onRenameGym"
@@ -953,6 +953,16 @@ function onTimelineEditSet(exerciseId: string, set: WorkoutSet) {
   const exercise = store.exercises.find(e => e.id === exerciseId)
   if (exercise) openEditModal(exercise, set)
 }
+
+// ── Fresh-identity child bindings (#963) ─────────────────────────
+// The store mutates exercises IN PLACE behind a shallowRef and signals via
+// triggerRef, so the raw array's identity never changes. A child bound
+// straight to `store.exercises` freezes: on each mutation the parent
+// re-renders, Vue compares the child's props by identity, and skips it.
+// Children that must observe mutations while mounted (the timeline, the
+// tag/gym manager checklists) bind this computed instead — re-slicing on
+// every store trigger gives the prop a fresh identity.
+const liveExercises = computed(() => [...store.exercises])
 
 // ── Gym filtering (#961) ─────────────────────────────────────────
 // Exclusive (AND) filter applied BEFORE the additive tag filter: pick the gym

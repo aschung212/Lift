@@ -77,7 +77,13 @@ const props = defineProps<{
   open: boolean
   /** The synced gym list (preferences store). */
   gyms: string[]
-  /** All exercises (including archived) — drives per-gym counts and the membership checklist. */
+  /**
+   * All exercises (including archived) — drives per-gym counts and the
+   * membership checklist. Hosts must bind a FRESH-IDENTITY array (e.g.
+   * `computed(() => [...store.exercises])`): the workout store mutates
+   * exercises in place behind a shallowRef, and a stable array identity lets
+   * Vue skip this modal's re-render on membership toggles (#963).
+   */
   exercises: Exercise[]
 }>()
 
