@@ -809,6 +809,7 @@ import { useLongPressReorder } from '../composables/useLongPressReorder'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useFirstSetCelebration } from '../composables/useFirstSetCelebration'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
@@ -879,7 +880,11 @@ const { impactLight, notifySuccess } = useHaptics()
 const { logSetXPCeremony } = useXPCeremony()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+const { presentFirstSetCelebration } = useFirstSetCelebration()
 const { presentGoalCelebration } = useGoalCelebration()
+
+// One-time activation flag (#762): celebrate a brand-new user's first ever set.
+const FIRST_SET_FLAG = 'first-set-celebrated'
 
 // Rest timer controller — all timer state and logic extracted into composable
 const timerCtrl = useRestTimerController(
@@ -2481,6 +2486,14 @@ function saveSet() {
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
       // Snapshot PR count before logging so we can detect the user's very first PR.
       const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
+      // Detect a brand-new user's very first ever set (#762): no sets logged yet
+      // anywhere, and the one-time flag hasn't fired. A first set can never be a
+      // PR (PRs need a prior established session), so this won't collide with the
+      // PR burst below.
+      const isFirstSetEver =
+        !wasPR &&
+        localStorage.getItem(FIRST_SET_FLAG) !== 'true' &&
+        store.exercises.every(e => e.sets.length === 0)
       store.logSet(exerciseId, effWeightLbs, effReps, date.value)
       recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
@@ -2520,15 +2533,23 @@ function saveSet() {
         if (prCountBefore === 0) {
           logEvent('first_pr', { exercise: selectedExerciseName.value })
         }
+      } else if (isFirstSetEver) {
+        // Activation moment — celebrate the first set (fires its own haptic).
+        localStorage.setItem(FIRST_SET_FLAG, 'true')
+        logEvent('first_set', { exercise: selectedExerciseName.value })
+        presentFirstSetCelebration()
       }
       // Celebrate the first weekly-goal completion of the week (LIFT-764). When
       // it fires its own success/milestone haptic, suppress the routine light
       // tap: two native haptics fired back-to-back collapse into a muddy /
       // truncated buzz on Capacitor/iOS. The light tap stays for the common
       // non-PR, no-celebration path. (PRs already played notifySuccess above and
-      // skip the goal banner, so they never reach the light tap.)
-      const celebrated = maybeCelebrateWeeklyGoal(wasPR)
-      if (!wasPR && !celebrated) {
+      // skip the goal banner, so they never reach the light tap.) The first-set
+      // activation overlay likewise fires its own haptic and suppresses the goal
+      // banner (passed in below) so the two full-screen moments never stack — the
+      // week is left unmarked, so the goal celebration still fires on the next set.
+      const celebrated = maybeCelebrateWeeklyGoal(wasPR || isFirstSetEver)
+      if (!wasPR && !isFirstSetEver && !celebrated) {
         impactLight()
       }
       if (restTimerEnabled.value && restTimerAutoStart.value) {
