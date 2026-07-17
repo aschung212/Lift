@@ -255,6 +255,13 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   lifetime PRs, per-set relative intensities, current-week volume, consistency, bodyweight
   trend, weights unit-converted, identifiers stripped — + 13 tests (validate round-trip +
   no-identifiers assertion).
+- `src/lib/coachHistory.ts` (LIFT-851) — device-local insight ring. Persists generated
+  reviews to localStorage (`coach-insights-history`) as a **last-12 ring** (drop oldest);
+  re-opening a cached review is **free** (no quota). `appendCoachInsight` / `loadCoachHistory`
+  (newest-first, corrupt + malformed entries dropped) / `clearCoachHistory`. The key is wired
+  into `deleteAccount`'s `localStorageKeys` clear. NOT synced — cross-device `coach_insights`
+  is a deliberate Phase 2 change. The CoachSheet "Past insights" list consumes this once #848
+  lands.
 
 - `CoachSheet` + the Workouts-tab entry card (LIFT-848): `src/lib/coachClient.ts` (pure status→
   result mapping + abort-timeout fetch + `daysUntilReset`), `src/composables/useCoach.ts`

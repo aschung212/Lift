@@ -249,6 +249,7 @@ async function deleteAccount(): Promise<void> {
     'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
     'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
     'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
+    'coach-insights-history',
   ]
   for (const key of localStorageKeys) {
     localStorage.removeItem(key)
