@@ -6,7 +6,7 @@ import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
-import { logWarn } from '../lib/logger'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 
@@ -63,7 +63,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .is('deleted_at', null)
           .order('created_at')
         if (result.error) {
-          logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(result.error) })
+          reportFetchError('bodyweight', result.error)
           this.lastSyncError = classifySyncError(result.error)
           // A 401 means an expired token, not offline — refresh once so the next
           // fetch recovers rather than staying local-only forever (LIFT-784).
@@ -72,7 +72,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         }
         data = result.data
       } catch (err) {
-        logWarn('Supabase fetch failed in bodyweight store — using local data', { error: String(err) })
+        reportFetchError('bodyweight', err)
         this.lastSyncError = classifySyncError(err)
         return
       } finally {

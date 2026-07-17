@@ -5,7 +5,8 @@ import type { Tables, TablesUpdate } from '../lib/database.types'
 import { syncQueue, type SyncTable, type SyncDescriptor } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
-import { logError, logWarn } from '../lib/logger'
+import { logError } from '../lib/logger'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
 import { todayISO, setDayKey } from '../lib/dates'
@@ -400,7 +401,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         supabase.from('sets').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at')
       ])
       if (exResult.error || setsResult.error) {
-        logWarn('Supabase fetch failed in workout store — using local data', {
+        reportFetchError('workout', exResult.error ?? setsResult.error, {
           exerciseError: String(exResult.error),
           setsError: String(setsResult.error),
         })
@@ -414,7 +415,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       remoteExData = exResult.data
       sets = setsResult.data
     } catch (err) {
-      logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      reportFetchError('workout', err)
       lastSyncError.value = classifySyncError(err)
       return
     } finally {
@@ -945,16 +946,6 @@ export const useWorkoutStore = defineStore('workout', () => {
       _enqueueSoftDelete(`exercise-sets:${exerciseId}`, 'sets', { exercise_id: exerciseId, user_id: _userId })
       _enqueueSoftDelete(`exercise:${exerciseId}`, 'exercises', { id: exerciseId, user_id: _userId })
     }
-  }
-
-  function reorderExercise(fromIndex: number, toIndex: number) {
-    if (fromIndex === toIndex) return
-    if (fromIndex < 0 || toIndex < 0) return
-    if (fromIndex >= exercises.value.length || toIndex >= exercises.value.length) return
-    const [item] = exercises.value.splice(fromIndex, 1)
-    exercises.value.splice(toIndex, 0, item)
-    triggerRef(exercises)
-    _persist()
   }
 
   function renameTag(oldName: string, newName: string) {
@@ -1525,7 +1516,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     unarchiveExercise,
     syncDeleteSet,
     syncDeleteExercise,
-    reorderExercise,
     renameTag,
     deleteTag,
     renameGymOnExercises,

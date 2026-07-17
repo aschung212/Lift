@@ -32,23 +32,6 @@
       </button>
     </header>
 
-    <!-- AI Coach weekly-review entry card + quota meter (only with enough data) -->
-    <button
-      v-if="showCoachCard"
-      class="wtCoachCard"
-      @click="openCoach"
-      aria-label="Open your AI weekly training review"
-    >
-      <span class="wtCoachIcon" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
-      </span>
-      <span class="wtCoachText">
-        <span class="wtCoachTitle">Weekly Review</span>
-        <span class="wtCoachMeta">{{ coachCardMeta }}</span>
-      </span>
-      <svg class="wtCoachChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
-    </button>
-
     <!-- View toggle (Exercises / Timeline) -->
     <div v-if="store.exercises.length > 0" class="wtViewToggle">
       <button :class="['wtViewToggleBtn', { active: listView === 'exercises' }]" @click="listView = 'exercises'">Exercises</button>
@@ -146,33 +129,14 @@
       {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
-    <ul v-if="filteredExercises.length > 0" class="wtExerciseList" ref="exerciseListEl">
+    <ul v-if="filteredExercises.length > 0" class="wtExerciseList">
       <li
-        v-for="(exercise, index) in filteredExercises"
+        v-for="exercise in filteredExercises"
         :key="exercise.id"
-        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit, index, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
+        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit]"
         class="wtExerciseItem"
-        :class="{
-          'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
-          'wt-drag-over': !isFilteringActive && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
-        }"
-        :data-index="index"
-        @touchstart="onItemTouchStart(index, $event)"
-        @touchmove="onItemTouchMove($event)"
-        @touchend="onItemTouchEnd()"
-        @touchcancel="onItemTouchEnd()"
-        @mousedown="onItemMouseDown(index, $event)"
-        @click.capture="onItemClickCapture($event)"
       >
         <div class="wtExerciseHeader">
-          <span
-            :class="['wtDragHandle', { wtDragHandleDisabled: isFilteringActive }]"
-            role="button"
-            tabindex="0"
-            :aria-label="`Reorder ${exercise.name}, position ${index + 1} of ${filteredExercises.length}`"
-            :aria-disabled="isFilteringActive ? 'true' : undefined"
-            @keydown="onReorderKeyDown(exercise.id, $event)"
-          >⠿</span>
           <button
             class="wtExerciseRow"
             @click="openDetailModal(exercise.id)"
@@ -273,8 +237,6 @@
     @delete-set="undoDeleteSet"
   />
 
-  <!-- AI Coach weekly-review sheet -->
-  <CoachSheet v-if="coachOpen" @close="coachOpen = false" />
 
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
@@ -808,10 +770,10 @@ import { useRestTimerController } from '../composables/useRestTimerController'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
-import { useLongPressReorder } from '../composables/useLongPressReorder'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useFirstSetCelebration } from '../composables/useFirstSetCelebration'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
@@ -822,12 +784,6 @@ import { scoreSet } from '../lib/setScoring'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
-const CoachSheet = defineAsyncComponent(() => import('../views/CoachSheet.vue'))
-import { coachReviewEligibility } from '../lib/coachDigest'
-import { COACH_MODE } from '../lib/coachExport'
-import { useCoach } from '../composables/useCoach'
-import { useAuth } from '../composables/useAuth'
-import { isPreviewMode } from '../lib/supabase'
 import RestTimerContent from './RestTimerContent.vue'
 import WorkoutTimeline from './WorkoutTimeline.vue'
 import EditExerciseModal, { type EditExerciseSave } from './EditExerciseModal.vue'
@@ -844,36 +800,6 @@ import { matchesGymFilter, loadActiveGymFilter, saveActiveGymFilter } from '../l
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
-const coach = useCoach()
-const { user: authUser } = useAuth()
-
-// ── AI Coach weekly review (LIFT-848) ────────────────────────────
-const coachOpen = ref(false)
-// Gate the entry card like the Suggestions drawer gates its lenses: only when
-// there's enough signal (a couple training weeks + the server's set floor) and
-// not on a preview deploy. In the server transport the proxy is auth-gated so we
-// also require a signed-in user; the BYO export is 100% local (nothing is sent),
-// so it needs no account — requiring sign-in to copy your own data would be odd.
-const coachEligible = computed(() => coachReviewEligibility(store.exercises, new Date()).eligible)
-const showCoachCard = computed(
-  () =>
-    coachEligible.value &&
-    !isPreviewMode.value &&
-    (COACH_MODE === 'byo' || authUser.value !== null),
-)
-const coachCardMeta = computed(() => {
-  if (COACH_MODE === 'byo') return 'Bring your own AI'
-  const n = coach.remaining.value
-  if (n === null) return 'AI-written · once a week'
-  if (n <= 0) {
-    const days = coach.resetDays.value
-    return days && days > 0 ? `Resets in ${days} ${days === 1 ? 'day' : 'days'}` : 'No reviews left'
-  }
-  return `${n} ${n === 1 ? 'review' : 'reviews'} left this week`
-})
-function openCoach() {
-  coachOpen.value = true
-}
 const { show: showUndo } = useUndoToast()
 const { currentTheme } = useTheme()
 const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
@@ -882,7 +808,11 @@ const { impactLight, notifySuccess } = useHaptics()
 const { logSetXPCeremony } = useXPCeremony()
 const { prBaselineDate } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+const { presentFirstSetCelebration } = useFirstSetCelebration()
 const { presentGoalCelebration } = useGoalCelebration()
+
+// One-time activation flag (#762): celebrate a brand-new user's first ever set.
+const FIRST_SET_FLAG = 'first-set-celebrated'
 
 // Rest timer controller — all timer state and logic extracted into composable
 const timerCtrl = useRestTimerController(
@@ -1301,80 +1231,6 @@ function openHistoryFromLog() {
   if (!id || id === '__new__') return
   closeModal()
   openDetailModal(id)
-}
-
-// ── Long-press to reorder (gesture in useLongPressReorder) ──────
-const exerciseListEl = ref<HTMLElement | null>(null)
-
-const {
-  dragState,
-  onItemTouchStart,
-  onItemTouchMove,
-  onItemTouchEnd,
-  onItemMouseDown,
-  onItemClickCapture,
-} = useLongPressReorder({
-  listEl: exerciseListEl,
-  itemSelector: '.wtExerciseItem',
-  // Never start a drag when pressing the "+ Log" affordance.
-  ignoreSelector: '.wtExerciseLogBtn',
-  // Block reorder whenever the list is filtered (tag filter OR search).
-  // Template indices are into the filtered subset, but the store splices
-  // the unfiltered array — a drop under a filter corrupts unrelated rows.
-  disabled: () => isFilteringActive.value,
-  // Haptic confirms pickup — Capacitor Haptics on native, Vibration API on web.
-  onPickup: () => impactLight(),
-  onReorder: (fromIndex, toIndex) => {
-    // Drag indices are positions in `filteredExercises` (active-only),
-    // but `store.reorderExercise` operates on the full `exercises` array.
-    // Map via exercise IDs so archived rows preserve their relative position
-    // and don't get accidentally reordered.
-    const fromEx = filteredExercises.value[fromIndex]
-    const toEx = filteredExercises.value[toIndex]
-    if (!fromEx || !toEx) return
-    const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
-    const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
-    if (fromStoreIdx === -1 || toStoreIdx === -1) return
-    store.reorderExercise(fromStoreIdx, toStoreIdx)
-    logEvent('exercise_reorder')
-  },
-})
-
-function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
-  if (isFilteringActive.value) return
-  const key = event.key
-  if (key !== 'ArrowUp' && key !== 'ArrowDown') return
-  event.preventDefault()
-
-  // Compute index dynamically from the current filtered list to avoid stale
-  // template indices when the user holds a key and events fire rapidly.
-  const filtered = filteredExercises.value
-  const index = filtered.findIndex(e => e.id === exerciseId)
-  if (index === -1) return
-
-  const newIndex = key === 'ArrowUp' ? index - 1 : index + 1
-  if (newIndex < 0 || newIndex >= filtered.length) return
-
-  const fromEx = filtered[index]
-  const toEx = filtered[newIndex]
-  if (!fromEx || !toEx) return
-
-  const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
-  const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
-  if (fromStoreIdx === -1 || toStoreIdx === -1) return
-
-  store.reorderExercise(fromStoreIdx, toStoreIdx)
-  impactLight()
-  logEvent('exercise_reorder')
-
-  // After Vue re-renders, focus the drag handle at the item's new position
-  nextTick(() => {
-    const list = exerciseListEl.value
-    if (!list) return
-    const items = list.querySelectorAll('.wtExerciseItem')
-    const handle = items[newIndex]?.querySelector<HTMLElement>('.wtDragHandle')
-    handle?.focus()
-  })
 }
 
 /** Relative time string used on the main exercise list ("today", "yesterday", "4 days ago"). */
@@ -2495,6 +2351,14 @@ function saveSet() {
       const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
       // Snapshot PR count before logging so we can detect the user's very first PR.
       const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
+      // Detect a brand-new user's very first ever set (#762): no sets logged yet
+      // anywhere, and the one-time flag hasn't fired. A first set can never be a
+      // PR (PRs need a prior established session), so this won't collide with the
+      // PR burst below.
+      const isFirstSetEver =
+        !wasPR &&
+        localStorage.getItem(FIRST_SET_FLAG) !== 'true' &&
+        store.exercises.every(e => e.sets.length === 0)
       store.logSet(exerciseId, effWeightLbs, effReps, date.value)
       recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
@@ -2534,15 +2398,23 @@ function saveSet() {
         if (prCountBefore === 0) {
           logEvent('first_pr', { exercise: selectedExerciseName.value })
         }
+      } else if (isFirstSetEver) {
+        // Activation moment — celebrate the first set (fires its own haptic).
+        localStorage.setItem(FIRST_SET_FLAG, 'true')
+        logEvent('first_set', { exercise: selectedExerciseName.value })
+        presentFirstSetCelebration()
       }
       // Celebrate the first weekly-goal completion of the week (LIFT-764). When
       // it fires its own success/milestone haptic, suppress the routine light
       // tap: two native haptics fired back-to-back collapse into a muddy /
       // truncated buzz on Capacitor/iOS. The light tap stays for the common
       // non-PR, no-celebration path. (PRs already played notifySuccess above and
-      // skip the goal banner, so they never reach the light tap.)
-      const celebrated = maybeCelebrateWeeklyGoal(wasPR)
-      if (!wasPR && !celebrated) {
+      // skip the goal banner, so they never reach the light tap.) The first-set
+      // activation overlay likewise fires its own haptic and suppresses the goal
+      // banner (passed in below) so the two full-screen moments never stack — the
+      // week is left unmarked, so the goal celebration still fires on the next set.
+      const celebrated = maybeCelebrateWeeklyGoal(wasPR || isFirstSetEver)
+      if (!wasPR && !isFirstSetEver && !celebrated) {
         impactLight()
       }
       if (restTimerEnabled.value && restTimerAutoStart.value) {
