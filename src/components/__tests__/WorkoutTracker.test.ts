@@ -146,7 +146,6 @@ const mockSyncDeleteSet = vi.fn()
 const mockRestoreExercise = vi.fn()
 const mockSyncDeleteExercise = vi.fn()
 const mockRenameExercise = vi.fn()
-const mockReorderExercise = vi.fn()
 
 // Faithful to the real actions: mutate the exercise IN PLACE, then triggerRef —
 // the exact store contract the fresh-identity bindings (#963) exist to handle.
@@ -198,8 +197,6 @@ vi.mock('../../stores/workout', () => ({
     unarchiveExercise: mockUnarchiveExercise,
     renameExercise: mockRenameExercise,
     updateExerciseTags: mockUpdateExerciseTags,
-    reorderExercise: mockReorderExercise,
-    reorderExercises: vi.fn(),
     updateExercise: vi.fn(),
     setExerciseGyms: mockSetExerciseGyms,
     renameGymOnExercises: vi.fn(),
@@ -351,10 +348,12 @@ describe('WorkoutTracker', () => {
       expect(logBtns[0].attributes('aria-label')).toContain('Log a set')
     })
 
-    it('renders drag handles for reordering', () => {
+    // Custom ordering was removed once the list became recency-ordered (#936):
+    // no drag handles, no long-press gesture, no keyboard reorder. This guards
+    // against any of those affordances being reintroduced by accident.
+    it('does not render drag handles (custom ordering removed)', () => {
       const wrapper = mountTracker()
-      const handles = wrapper.findAll('.wtDragHandle')
-      expect(handles.length).toBe(3)
+      expect(wrapper.findAll('.wtDragHandle').length).toBe(0)
     })
   })
 
@@ -465,14 +464,6 @@ describe('WorkoutTracker', () => {
       expect(items.length).toBe(2)
     })
 
-    it('disables drag handles when filter is active', async () => {
-      const wrapper = mountTracker()
-      const chips = tagChips(wrapper)
-      await chips[0].trigger('click')
-
-      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
-    })
-
     it('deactivates tag on second click', async () => {
       const wrapper = mountTracker()
       const chips = tagChips(wrapper)
@@ -552,8 +543,8 @@ describe('WorkoutTracker', () => {
     })
 
     it('breaks recency ties by preserving array order (stable sort)', () => {
-      // Same day for both — the manual/array order is the tiebreaker so a
-      // drag/keyboard reorder still has meaning among same-day exercises.
+      // Same day for both — the stored array (creation) order is the stable
+      // tiebreaker now that manual reorder is gone.
       mockState.exercises = [
         {
           id: 'ex-1', name: 'Second', tags: [],
@@ -2463,206 +2454,6 @@ describe('WorkoutTracker', () => {
     })
   })
 
-  /**
-   * Long-press reorder gesture.
-   *
-   * Regression: tapping the left-edge drag handle used to fire `touchstart`
-   * and immediately arm a drag, so brushing the handle while scrolling
-   * re-ordered exercises by accident. The gesture now requires a ~400ms hold
-   * on the row, and a movement > 8px before the timer fires cancels it.
-   * These tests pin that threshold so the behavior can't regress to the
-   * instant-drag model.
-   */
-  describe('long-press reorder gesture', () => {
-    const LONG_PRESS_MS = 400
-    const MOVE_TOLERANCE_PX = 8
-
-    function dispatchTouch(
-      el: Element,
-      type: 'touchstart' | 'touchmove' | 'touchend' | 'touchcancel',
-      clientX = 0,
-      clientY = 0,
-    ) {
-      const event = new Event(type, { bubbles: true, cancelable: true })
-      Object.defineProperty(event, 'touches', {
-        value: type === 'touchend' || type === 'touchcancel' ? [] : [{ clientX, clientY }],
-      })
-      Object.defineProperty(event, 'target', { value: el })
-      el.dispatchEvent(event)
-    }
-
-    beforeEach(() => {
-      mockState.exercises = createExercises()
-      vi.useFakeTimers()
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-    })
-
-    it('does not reorder from a brief tap on the row', () => {
-      const wrapper = mountTracker()
-      const items = wrapper.findAll('.wtExerciseItem')
-
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      vi.advanceTimersByTime(LONG_PRESS_MS - 50) // release before threshold
-      dispatchTouch(items[0].element, 'touchend')
-      vi.advanceTimersByTime(100)
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-    })
-
-    it('cancels the long-press when the finger moves past the tolerance', () => {
-      const wrapper = mountTracker()
-      const items = wrapper.findAll('.wtExerciseItem')
-
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      // Scroll-like movement well past tolerance, before the hold fires
-      dispatchTouch(items[0].element, 'touchmove', 20, 100 + MOVE_TOLERANCE_PX + 10)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 100) // would have fired
-      dispatchTouch(items[0].element, 'touchend')
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-    })
-
-    it('keeps the hold alive for sub-tolerance finger jitter', () => {
-      const wrapper = mountTracker()
-      const items = wrapper.findAll('.wtExerciseItem')
-
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      // Tiny tremor — still within tolerance
-      dispatchTouch(items[0].element, 'touchmove', 20 + 2, 100 + 3)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 10)
-      // Timer should have fired → dragging state is active
-      // (we can't observe it directly without exposing state, but the fact
-      // that the onEnd path commits the reorder proves pickup happened)
-      dispatchTouch(document.body, 'touchend')
-
-      // fromIndex === overIndex (no movement after pickup), so no reorder committed,
-      // but the gesture did not get cancelled by jitter — a follow-up touchmove
-      // past the pickup would reorder. Assert no error was thrown and list intact.
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-      expect(wrapper.findAll('.wtExerciseItem').length).toBe(3)
-    })
-
-    it('reorders when a long-press is followed by a drag to a new index', () => {
-      const wrapper = mountTracker()
-      const items = wrapper.findAll('.wtExerciseItem')
-
-      // Stub getBoundingClientRect so getItemIndexFromPoint can resolve indices
-      const rects: Record<number, DOMRect> = {
-        0: { top: 0, bottom: 40, left: 0, right: 300, height: 40, width: 300, x: 0, y: 0, toJSON: () => ({}) },
-        1: { top: 40, bottom: 80, left: 0, right: 300, height: 40, width: 300, x: 0, y: 40, toJSON: () => ({}) },
-        2: { top: 80, bottom: 120, left: 0, right: 300, height: 40, width: 300, x: 0, y: 80, toJSON: () => ({}) },
-      }
-      items.forEach((item, i) => {
-        vi.spyOn(item.element, 'getBoundingClientRect').mockReturnValue(rects[i])
-      })
-
-      // Press on row 0
-      dispatchTouch(items[0].element, 'touchstart', 20, 20)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 10) // pickup fires
-      // Drag down onto row 2 via document-level listener
-      const move = new Event('touchmove', { bubbles: true, cancelable: true })
-      Object.defineProperty(move, 'touches', { value: [{ clientX: 20, clientY: 100 }] })
-      document.dispatchEvent(move)
-      // Release
-      const end = new Event('touchend', { bubbles: true, cancelable: true })
-      Object.defineProperty(end, 'touches', { value: [] })
-      document.dispatchEvent(end)
-
-      expect(mockReorderExercise).toHaveBeenCalledWith(0, 2)
-    })
-
-    it('ignores long-press initiated on the "+ Log" button', () => {
-      const wrapper = mountTracker()
-      const logBtn = wrapper.findAll('.wtExerciseLogBtn')[0]
-
-      dispatchTouch(logBtn.element, 'touchstart', 20, 100)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 100)
-      dispatchTouch(logBtn.element, 'touchend')
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-    })
-
-    it('does not arm a long-press while a tag filter is active', async () => {
-      vi.useRealTimers() // click triggers need real Vue reactivity
-      const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      await chips[0].trigger('click')
-
-      vi.useFakeTimers()
-      const items = wrapper.findAll('.wtExerciseItem')
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 100)
-      dispatchTouch(items[0].element, 'touchend')
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-    })
-
-    /**
-     * Regression for #383 — the tag-filter gate above had a search-shaped
-     * hole in it. `v-for` indexes into `filteredExercises`, but
-     * `store.reorderExercise` splices the unfiltered `exercises` array,
-     * so a drag during search silently moved unrelated rows at the
-     * filtered index's position in the full list (e.g. dragging filtered
-     * row 0 would reorder absolute row 0 — often an exercise the user
-     * couldn't see). Gesture is now blocked whenever the list is
-     * filtered, matching the tag-filter case.
-     */
-    it('does not arm a long-press while a search query is active (#383)', async () => {
-      // Need ≥5 exercises for the search bar to render.
-      vi.useRealTimers()
-      mockState.exercises = [
-        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
-        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
-        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
-        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
-        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
-      ]
-      const wrapper = mountTracker()
-      const searchInput = wrapper.find('.wtSearchInput')
-      await searchInput.setValue('press') // filters to 2 rows
-
-      // Sanity: list is actually filtered before we try to drag.
-      expect(wrapper.findAll('.wtExerciseItem').length).toBe(2)
-
-      vi.useFakeTimers()
-      const items = wrapper.findAll('.wtExerciseItem')
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 100)
-      // Drive a drop gesture document-wide too, to make sure even if the
-      // timer somehow fired, no reorder call escapes the gate.
-      const end = new Event('touchend', { bubbles: true, cancelable: true })
-      Object.defineProperty(end, 'touches', { value: [] })
-      document.dispatchEvent(end)
-      dispatchTouch(items[0].element, 'touchend')
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-    })
-
-    /**
-     * Visual affordance — handle must be rendered in the "disabled" state
-     * so users see why reorder doesn't respond. Parallel to the existing
-     * tag-filter visual test.
-     */
-    it('disables drag handles while a search query is active (#383)', async () => {
-      vi.useRealTimers()
-      mockState.exercises = [
-        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
-        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
-        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
-        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
-        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
-      ]
-      const wrapper = mountTracker()
-      const searchInput = wrapper.find('.wtSearchInput')
-      await searchInput.setValue('press')
-
-      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
-    })
-  })
-
   // ── Gym filtering (#961) ─────────────────────────────────────────
   describe('gym filtering', () => {
     /** Exercises spanning two gyms + shared (unassigned) equipment. */
@@ -2804,17 +2595,6 @@ describe('WorkoutTracker', () => {
       await gymChip(wrapper, 'Gym A').trigger('click')
 
       expect(listedNames(wrapper)).toContain('Ghost Machine')
-    })
-
-    it('disables drag handles while a gym filter is active (filtered indices are unsafe)', async () => {
-      mockPrefsState.gyms = ['Gym A', 'Gym B']
-      mockState.exercises = createGymExercises()
-      const wrapper = mountTracker()
-      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBe(0)
-
-      await gymChip(wrapper, 'Gym A').trigger('click')
-
-      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
     })
 
     it('passes the gym-filtered list to the quick-log exercise picker', async () => {

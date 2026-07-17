@@ -146,33 +146,14 @@
       {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
-    <ul v-if="filteredExercises.length > 0" class="wtExerciseList" ref="exerciseListEl">
+    <ul v-if="filteredExercises.length > 0" class="wtExerciseList">
       <li
-        v-for="(exercise, index) in filteredExercises"
+        v-for="exercise in filteredExercises"
         :key="exercise.id"
-        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit, index, dragState.dragging && dragState.fromIndex === index, dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index, isFilteringActive]"
+        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit]"
         class="wtExerciseItem"
-        :class="{
-          'wt-dragging': !isFilteringActive && dragState.dragging && dragState.fromIndex === index,
-          'wt-drag-over': !isFilteringActive && dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
-        }"
-        :data-index="index"
-        @touchstart="onItemTouchStart(index, $event)"
-        @touchmove="onItemTouchMove($event)"
-        @touchend="onItemTouchEnd()"
-        @touchcancel="onItemTouchEnd()"
-        @mousedown="onItemMouseDown(index, $event)"
-        @click.capture="onItemClickCapture($event)"
       >
         <div class="wtExerciseHeader">
-          <span
-            :class="['wtDragHandle', { wtDragHandleDisabled: isFilteringActive }]"
-            role="button"
-            tabindex="0"
-            :aria-label="`Reorder ${exercise.name}, position ${index + 1} of ${filteredExercises.length}`"
-            :aria-disabled="isFilteringActive ? 'true' : undefined"
-            @keydown="onReorderKeyDown(exercise.id, $event)"
-          >⠿</span>
           <button
             class="wtExerciseRow"
             @click="openDetailModal(exercise.id)"
@@ -805,7 +786,6 @@ import { useRestTimerController } from '../composables/useRestTimerController'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
-import { useLongPressReorder } from '../composables/useLongPressReorder'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
@@ -1292,80 +1272,6 @@ const logSwipe = useSwipeToDismiss({
 
 function openDetailModal(id: string) {
   detailExerciseId.value = id
-}
-
-// ── Long-press to reorder (gesture in useLongPressReorder) ──────
-const exerciseListEl = ref<HTMLElement | null>(null)
-
-const {
-  dragState,
-  onItemTouchStart,
-  onItemTouchMove,
-  onItemTouchEnd,
-  onItemMouseDown,
-  onItemClickCapture,
-} = useLongPressReorder({
-  listEl: exerciseListEl,
-  itemSelector: '.wtExerciseItem',
-  // Never start a drag when pressing the "+ Log" affordance.
-  ignoreSelector: '.wtExerciseLogBtn',
-  // Block reorder whenever the list is filtered (tag filter OR search).
-  // Template indices are into the filtered subset, but the store splices
-  // the unfiltered array — a drop under a filter corrupts unrelated rows.
-  disabled: () => isFilteringActive.value,
-  // Haptic confirms pickup — Capacitor Haptics on native, Vibration API on web.
-  onPickup: () => impactLight(),
-  onReorder: (fromIndex, toIndex) => {
-    // Drag indices are positions in `filteredExercises` (active-only),
-    // but `store.reorderExercise` operates on the full `exercises` array.
-    // Map via exercise IDs so archived rows preserve their relative position
-    // and don't get accidentally reordered.
-    const fromEx = filteredExercises.value[fromIndex]
-    const toEx = filteredExercises.value[toIndex]
-    if (!fromEx || !toEx) return
-    const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
-    const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
-    if (fromStoreIdx === -1 || toStoreIdx === -1) return
-    store.reorderExercise(fromStoreIdx, toStoreIdx)
-    logEvent('exercise_reorder')
-  },
-})
-
-function onReorderKeyDown(exerciseId: string, event: KeyboardEvent) {
-  if (isFilteringActive.value) return
-  const key = event.key
-  if (key !== 'ArrowUp' && key !== 'ArrowDown') return
-  event.preventDefault()
-
-  // Compute index dynamically from the current filtered list to avoid stale
-  // template indices when the user holds a key and events fire rapidly.
-  const filtered = filteredExercises.value
-  const index = filtered.findIndex(e => e.id === exerciseId)
-  if (index === -1) return
-
-  const newIndex = key === 'ArrowUp' ? index - 1 : index + 1
-  if (newIndex < 0 || newIndex >= filtered.length) return
-
-  const fromEx = filtered[index]
-  const toEx = filtered[newIndex]
-  if (!fromEx || !toEx) return
-
-  const fromStoreIdx = store.exercises.findIndex(e => e.id === fromEx.id)
-  const toStoreIdx = store.exercises.findIndex(e => e.id === toEx.id)
-  if (fromStoreIdx === -1 || toStoreIdx === -1) return
-
-  store.reorderExercise(fromStoreIdx, toStoreIdx)
-  impactLight()
-  logEvent('exercise_reorder')
-
-  // After Vue re-renders, focus the drag handle at the item's new position
-  nextTick(() => {
-    const list = exerciseListEl.value
-    if (!list) return
-    const items = list.querySelectorAll('.wtExerciseItem')
-    const handle = items[newIndex]?.querySelector<HTMLElement>('.wtDragHandle')
-    handle?.focus()
-  })
 }
 
 /** Relative time string used on the main exercise list ("today", "yesterday", "4 days ago"). */
