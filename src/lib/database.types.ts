@@ -72,36 +72,48 @@ export type Database = {
           bar_weight: number
           created_at: string
           deleted_at: string | null
+          equipment: string | null
+          gyms: string[]
           id: string
           input_mode: string | null
+          intensity_max_reps: number | null
           name: string
           tags: string[]
           updated_at: string | null
           user_id: string
+          warmup_scheme: Json | null
         }
         Insert: {
           archived_at?: string | null
           bar_weight?: number
           created_at?: string
           deleted_at?: string | null
+          equipment?: string | null
+          gyms?: string[]
           id?: string
           input_mode?: string | null
+          intensity_max_reps?: number | null
           name: string
           tags?: string[]
           updated_at?: string | null
           user_id: string
+          warmup_scheme?: Json | null
         }
         Update: {
           archived_at?: string | null
           bar_weight?: number
           created_at?: string
           deleted_at?: string | null
+          equipment?: string | null
+          gyms?: string[]
           id?: string
           input_mode?: string | null
+          intensity_max_reps?: number | null
           name?: string
           tags?: string[]
           updated_at?: string | null
           user_id?: string
+          warmup_scheme?: Json | null
         }
         Relationships: []
       }

@@ -1,17 +1,21 @@
 import { defineStore } from 'pinia'
 import { shallowRef, triggerRef, computed } from 'vue'
 import { supabase, isPreviewMode } from '../lib/supabase'
-import type { Tables } from '../lib/database.types'
-import { syncQueue } from '../lib/syncQueue'
-import { backupToIDB } from '../lib/durableStorage'
+import type { Tables, TablesUpdate } from '../lib/database.types'
+import { syncQueue, type SyncTable, type SyncDescriptor } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError, logWarn } from '../lib/logger'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
-import { broadcastStoreUpdate } from '../lib/crossTabSync'
-import { todayISO } from '../lib/dates'
+import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
+import { persistStoreData, loadStoreData } from '../lib/storePersistence'
+import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
+import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
+import { sanitizeExerciseGyms } from '../lib/gyms'
+import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -23,6 +27,14 @@ export interface WorkoutSet {
   weight: number
   reps: number
   estimated1RM: number
+  /**
+   * Real timestamp the set was logged (ISO 8601), distinct from `date` (which is
+   * stamped end-of-day and carries no time). Optional and currently unpopulated —
+   * the set-time capture work fills it from logSet + the DB `created_at` column,
+   * which lights up time-of-day and within-workout exercise ordering in the AI
+   * Coach payload. See docs/ai-coach.md and the AI Coach issue.
+   */
+  createdAt?: string
 }
 
 export type ExerciseInputMode = 'numpad' | 'plates'
@@ -37,6 +49,9 @@ export interface Exercise {
   inputMode?: ExerciseInputMode    // remembered per exercise, default 'numpad'
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
+  intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
+  equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
+  gyms?: string[]                  // gym membership; empty/undefined = shows under every gym filter (#961)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -154,6 +169,13 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
       for (const tag of group[i].tags) tagSet.add(tag)
     }
     primary.tags = [...tagSet]
+    // Merge gym membership the same way so a cross-device duplicate's gym
+    // assignments aren't silently dropped when its row is absorbed (#961).
+    const gymSet = new Set(primary.gyms ?? [])
+    for (let i = 1; i < group.length; i++) {
+      for (const gym of group[i].gyms ?? []) gymSet.add(gym)
+    }
+    if (gymSet.size > 0) primary.gyms = [...gymSet]
     result.push(primary)
   }
 
@@ -161,16 +183,25 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
 }
 
 function load(): Exercise[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error('Expected array')
-    return parsed
-  } catch (e) {
-    logWarn('Corrupt workout data in localStorage, using empty state', { error: String(e) })
-    return []
+  const parsed = loadStoreData<Exercise[]>('workout', STORAGE_KEY, () => [], Array.isArray)
+  // Defensively normalize any persisted Intensity-lens config — corrupt or
+  // hand-edited storage must never feed a malformed rep cap into the table.
+  for (const ex of parsed) {
+    if (ex && ex.intensityMaxReps !== undefined) {
+      ex.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensityMaxReps)
+    }
+    if (ex && ex.equipment !== undefined) {
+      const eq = sanitizeExerciseEquipment(ex.equipment)
+      if (eq) ex.equipment = eq
+      else delete ex.equipment
+    }
+    if (ex && ex.gyms !== undefined) {
+      const gyms = sanitizeExerciseGyms(ex.gyms)
+      if (gyms.length > 0) ex.gyms = gyms
+      else delete ex.gyms
+    }
   }
+  return parsed
 }
 
 export const useWorkoutStore = defineStore('workout', () => {
@@ -179,24 +210,36 @@ export const useWorkoutStore = defineStore('workout', () => {
   // This avoids wrapping thousands of set objects in Proxy (5,000+ for heavy users).
   // Trade-off: every mutation must call triggerRef(exercises) to notify watchers.
   const exercises = shallowRef<Exercise[]>(load())
+  // Secondary state MUST hydrate through loadJSON (guarded parse + shape
+  // validation), never a raw JSON.parse. A corrupt key (truncated write,
+  // quota eviction mid-write, manual tampering) would otherwise throw in this
+  // setup-function body and the store would fail to construct at all — taking
+  // down the whole workout feature instead of degrading to defaults (#822).
   const customTags = shallowRef<string[]>(loadJSON('lift-custom-tags', [], Array.isArray))
   const tagRecoveryDays = shallowRef<Record<string, number>>(loadJSON('lift-tag-recovery-days', {}, isPlainObject))
   const tagRecoveryExcluded = shallowRef<string[]>(loadJSON('lift-tag-recovery-excluded', [], Array.isArray))
   let _userId: string | null = null
 
+  // ── Sync status (LIFT-820) ─────────────────────────────────────────
+  // Uniform, observable contract so the UI can surface "syncing" / "sync
+  // failed" instead of silently degrading to local-only. `lastSyncError` is
+  // typed so an expired session can be told apart from being offline.
+  const syncing = shallowRef(false)
+  const lastSyncError = shallowRef<SyncErrorKind | null>(null)
+
   // ── Persistence ────────────────────────────────────────────────────
   function _persist() {
-    const data = JSON.stringify(exercises.value)
+    // Secondary tag keys are workout-specific and not mirrored to the IndexedDB
+    // backup, so they're written here; the primary exercises payload goes
+    // through the shared helper (localStorage + IDB backup + cross-tab broadcast).
     try {
-      localStorage.setItem(STORAGE_KEY, data)
       localStorage.setItem('lift-custom-tags', JSON.stringify(customTags.value))
       localStorage.setItem('lift-tag-recovery-days', JSON.stringify(tagRecoveryDays.value))
       localStorage.setItem('lift-tag-recovery-excluded', JSON.stringify(tagRecoveryExcluded.value))
     } catch (e) {
-      logError(e, { source: 'workout._persist', size: data.length })
+      logError(e, { source: 'workout._persist:tags' })
     }
-    backupToIDB(STORAGE_KEY, data)
-    broadcastStoreUpdate('workout')
+    persistStoreData('workout', STORAGE_KEY, JSON.stringify(exercises.value))
   }
 
   /** Re-read state from localStorage (called by cross-tab sync listener). */
@@ -231,6 +274,14 @@ export const useWorkoutStore = defineStore('workout', () => {
       archived_at: exercise.archived_at ?? null,
       ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}),
       ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {}),
+      // Always send intensity_max_reps (null when unset) so "reset to default"
+      // actually clears the override server-side — omitting it would leave a
+      // stale value that re-applies on the next fetch.
+      intensity_max_reps: exercise.intensityMaxReps ?? null,
+      // Same always-send rule: "Auto" clears the Coach equipment classification.
+      equipment: exercise.equipment ?? null,
+      // Same always-send rule: clearing gym membership must propagate (#961).
+      gyms: exercise.gyms ?? [],
     }
   }
 
@@ -261,7 +312,7 @@ export const useWorkoutStore = defineStore('workout', () => {
 
   /** Durable set upsert with a journaled descriptor (LIFT-706). */
   function _enqueueSetUpsert(
-    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number },
+    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number; createdAt?: string },
     exerciseId: string,
     userId: string,
   ) {
@@ -269,6 +320,11 @@ export const useWorkoutStore = defineStore('workout', () => {
       id: set.id, user_id: userId, exercise_id: exerciseId,
       date: set.date, weight: set.weight, reps: set.reps,
       estimated_1rm: set.estimated1RM,
+      // Persist the real log-time timestamp so an offline set logged at 6pm but
+      // synced hours later keeps its training time instead of the DB insert-time
+      // default (#846). Omitted when absent so editing a legacy set (no local
+      // createdAt) leaves the server's created_at untouched on upsert.
+      ...(set.createdAt ? { created_at: set.createdAt } : {}),
     }
     syncQueue.enqueue(
       `set:${set.id}`,
@@ -281,6 +337,23 @@ export const useWorkoutStore = defineStore('workout', () => {
    * Durable soft-delete (UPDATE { deleted_at }). Routed through enqueueDelete
    * so the circuit breaker sees it, with a journaled descriptor (LIFT-706).
    */
+  /**
+   * Build a typed `update` SyncDescriptor for a table only known as a runtime
+   * `sets | exercises` union (LIFT-948). TypeScript can't distribute a
+   * non-literal `table` across the `SyncDescriptor` union, so the single
+   * unavoidable widening cast is isolated here — the signature still bounds
+   * `table` to a real `SyncTable` and `values` to that table's generated
+   * `Update` shape rather than an untyped record. Kept local (not exported from
+   * syncQueue) so the many `syncQueue` test mocks don't each need to re-stub it.
+   */
+  function _buildUpdateDescriptor<T extends SyncTable>(
+    table: T,
+    values: TablesUpdate<T>,
+    match: Record<string, string>,
+  ): SyncDescriptor {
+    return { op: 'update', table, values, match } as SyncDescriptor
+  }
+
   function _enqueueSoftDelete(key: string, table: 'sets' | 'exercises', match: Record<string, string>) {
     const deletedAt = new Date().toISOString()
     const values = { deleted_at: deletedAt }
@@ -291,7 +364,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         for (const [col, val] of Object.entries(match)) q = q.eq(col, val)
         return q
       },
-      { op: 'update', table, values, match },
+      _buildUpdateDescriptor(table, values, match),
     )
   }
 
@@ -305,7 +378,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         for (const [col, val] of Object.entries(match)) q = q.eq(col, val)
         return q
       },
-      { op: 'update', table, values, match },
+      _buildUpdateDescriptor(table, values, match),
     )
   }
 
@@ -318,6 +391,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
 
+    syncing.value = true
     let remoteExData: Tables<'exercises'>[] | null
     let sets: Tables<'sets'>[] | null
     try {
@@ -330,16 +404,25 @@ export const useWorkoutStore = defineStore('workout', () => {
           exerciseError: String(exResult.error),
           setsError: String(setsResult.error),
         })
+        lastSyncError.value = classifySyncError(exResult.error ?? setsResult.error)
+        // A 401 here means the token expired rather than the user being offline.
+        // Refresh once so the next fetch recovers instead of staying local-only
+        // until a manual reload (LIFT-784).
+        if (isAuthError(exResult.error) || isAuthError(setsResult.error)) void ensureFreshSession()
         return
       }
       remoteExData = exResult.data
       sets = setsResult.data
     } catch (err) {
       logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      lastSyncError.value = classifySyncError(err)
       return
+    } finally {
+      syncing.value = false
     }
 
     if (!remoteExData || !sets) return
+    lastSyncError.value = null
 
     // Filter out tombstoned exercises (deleted offline, not yet synced)
     const remoteIds = new Set(remoteExData.map(ex => ex.id))
@@ -358,6 +441,15 @@ export const useWorkoutStore = defineStore('workout', () => {
       }
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
+      if (ex.intensity_max_reps != null) exercise.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensity_max_reps)
+      if (ex.equipment != null) {
+        const eq = sanitizeExerciseEquipment(ex.equipment)
+        if (eq) exercise.equipment = eq
+      }
+      if (ex.gyms && ex.gyms.length > 0) {
+        const gyms = sanitizeExerciseGyms(ex.gyms)
+        if (gyms.length > 0) exercise.gyms = gyms
+      }
       if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
     })
@@ -379,7 +471,10 @@ export const useWorkoutStore = defineStore('workout', () => {
         date: s.date,
         weight: s.weight,
         reps: s.reps,
-        estimated1RM: s.estimated_1rm
+        estimated1RM: s.estimated_1rm,
+        // Surface the server insert timestamp so historical/synced sets carry a
+        // real time-of-day + within-workout order for the AI Coach payload (#846).
+        createdAt: s.created_at,
       })
     }
     remoteExercises.forEach(ex => {
@@ -593,6 +688,71 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Set (or clear) the per-exercise Intensity-lens rep-row count (#770).
+   * `null` clears the override so the default (10) applies again. Any other
+   * value is sanitized (floored, clamped to [1, 100]) before it is stored.
+   */
+  function setExerciseIntensityMaxReps(exerciseId: string, maxReps: number | null) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    if (maxReps === null) {
+      delete exercise.intensityMaxReps
+    } else {
+      exercise.intensityMaxReps = sanitizeIntensityMaxReps(maxReps)
+    }
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
+   * Set (or clear) the explicit Coach equipment classification (#931 phase C).
+   * `null` clears the override ("Auto") so the name heuristic applies again.
+   * Values are sanitized so only the known kinds are ever stored.
+   */
+  function setExerciseEquipment(exerciseId: string, equipment: ExerciseEquipment | null) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    const eq = equipment === null ? undefined : sanitizeExerciseEquipment(equipment)
+    if (eq) exercise.equipment = eq
+    else delete exercise.equipment
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
+   * Set (or clear, with []) an exercise's gym membership (#961).
+   * Empty membership deletes the field — "unassigned" means the exercise
+   * shows under every gym filter.
+   */
+  function setExerciseGyms(exerciseId: string, gyms: string[]) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    const sanitized = sanitizeExerciseGyms(gyms)
+    if (sanitized.length > 0) exercise.gyms = sanitized
+    else delete exercise.gyms
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
   function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
@@ -606,13 +766,19 @@ export const useWorkoutStore = defineStore('workout', () => {
       : new Date().toISOString()
     const id = uuid()
     const estimated1RM = epley(weight, reps)
-    exercise.sets.push({ id, date, weight, reps, estimated1RM })
+    // Real wall-clock log time, distinct from `date` (stamped end-of-day for the
+    // chosen calendar day, no time-of-day, per #746). Drives time-of-day +
+    // within-workout ordering in the AI Coach payload (#846): ≈ training time for
+    // live logging, and for an offline set it preserves the log moment rather
+    // than the later sync time.
+    const createdAt = new Date().toISOString()
+    exercise.sets.push({ id, date, weight, reps, estimated1RM, createdAt })
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
-      _enqueueSetUpsert({ id, date, weight, reps, estimated1RM }, exerciseId, _userId)
+      _enqueueSetUpsert({ id, date, weight, reps, estimated1RM, createdAt }, exerciseId, _userId)
     }
   }
 
@@ -879,6 +1045,70 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Rewrite a renamed gym across every exercise's membership (#961). The gym
+   * LIST lives in the preferences store; useGymActions orchestrates both.
+   * Mirrors renameTag: if an exercise already carries the new name, the old
+   * entry is dropped instead of duplicated.
+   */
+  function renameGymOnExercises(oldName: string, newName: string) {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldName) return
+    const modified: Exercise[] = []
+    exercises.value.forEach((e: Exercise) => {
+      if (!e.gyms) return
+      const idx = e.gyms.indexOf(oldName)
+      if (idx === -1) return
+      if (e.gyms.includes(trimmed)) {
+        e.gyms.splice(idx, 1)
+        if (e.gyms.length === 0) delete e.gyms
+      } else {
+        e.gyms[idx] = trimmed
+      }
+      e.updated_at = new Date().toISOString()
+      modified.push(e)
+    })
+    if (modified.length === 0) return
+    triggerRef(exercises)
+    _persist()
+
+    if (_userId) {
+      const userId = _userId
+      for (const e of modified.filter(e => !e.sample)) {
+        _enqueueExerciseUpsert(e, userId)
+      }
+    }
+  }
+
+  /**
+   * Strip a deleted gym from every exercise's membership (#961). Returns the
+   * ids of the exercises that carried it so the caller's undo toast can
+   * restore membership via setExerciseGyms.
+   */
+  function removeGymFromExercises(gymName: string): string[] {
+    const modified: Exercise[] = []
+    exercises.value.forEach((e: Exercise) => {
+      if (!e.gyms) return
+      const idx = e.gyms.indexOf(gymName)
+      if (idx === -1) return
+      e.gyms.splice(idx, 1)
+      if (e.gyms.length === 0) delete e.gyms
+      e.updated_at = new Date().toISOString()
+      modified.push(e)
+    })
+    if (modified.length === 0) return []
+    triggerRef(exercises)
+    _persist()
+
+    if (_userId) {
+      const userId = _userId
+      for (const e of modified.filter(e => !e.sample)) {
+        _enqueueExerciseUpsert(e, userId)
+      }
+    }
+    return modified.map(e => e.id)
+  }
+
   function setTagRecoveryDays(tag: string, days: number | null) {
     const recovery = { ...tagRecoveryDays.value }
     if (days === null || days <= 0) {
@@ -939,6 +1169,54 @@ export const useWorkoutStore = defineStore('workout', () => {
     return [...dates].sort()
   })
 
+  // ── PR memoization (LIFT-939) ───────────────────────────────────
+  // getExercisePR / getExercisePRSet are called many times per render
+  // (the exercise list calls getRowMeta 3× per row, prsThisWeek loops
+  // every exercise), and each call did an O(n) `.find` plus an O(m) scan
+  // over the exercise's sets — O(rows × (n + m)) per WorkoutTracker render.
+  // This computed rebuilds an id→exercise index and an empty result memo,
+  // and is invalidated only when `exercises` changes (ref reassignment or
+  // the store's in-place-mutation `triggerRef(exercises)` calls). Results
+  // are filled lazily per baseline date and cached until the next mutation,
+  // so repeat lookups are O(1) and each exercise is scanned at most once.
+  interface PRResult {
+    pr: number
+    prSet: WorkoutSet | null
+  }
+  const _prCache = computed<{ byId: Map<string, Exercise>; bySince: Map<string, Map<string, PRResult>> }>(() => {
+    const byId = new Map<string, Exercise>()
+    for (const e of exercises.value) byId.set(e.id, e)
+    return { byId, bySince: new Map<string, Map<string, PRResult>>() }
+  })
+
+  function _computePRResult(exercise: Exercise | undefined, sinceDate: string | null): PRResult {
+    if (!exercise || exercise.sets.length === 0) return { pr: 0, prSet: null }
+    let best: WorkoutSet | null = null
+    for (const s of exercise.sets) {
+      if (sinceDate && s.date.slice(0, 10) < sinceDate) continue
+      // Strict `>` keeps the first set that reaches the max, matching the
+      // prior reduce()/Math.max() tie-breaking behavior.
+      if (!best || s.estimated1RM > best.estimated1RM) best = s
+    }
+    return best ? { pr: best.estimated1RM, prSet: best } : { pr: 0, prSet: null }
+  }
+
+  function _prResult(exerciseId: string, sinceDate: string | null): PRResult {
+    const { byId, bySince } = _prCache.value
+    const key = sinceDate ?? ''
+    let memo = bySince.get(key)
+    if (!memo) {
+      memo = new Map<string, PRResult>()
+      bySince.set(key, memo)
+    }
+    let result = memo.get(exerciseId)
+    if (!result) {
+      result = _computePRResult(byId.get(exerciseId), sinceDate)
+      memo.set(exerciseId, result)
+    }
+    return result
+  }
+
   /**
    * Max estimated1RM across all sets for an exercise.
    * When `sinceDate` (YYYY-MM-DD) is provided, only sets on or after that
@@ -946,13 +1224,7 @@ export const useWorkoutStore = defineStore('workout', () => {
    * all-time behavior.
    */
   function getExercisePR(exerciseId: string, sinceDate?: string | null): number {
-    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise || exercise.sets.length === 0) return 0
-    const filtered = sinceDate
-      ? exercise.sets.filter((s: WorkoutSet) => s.date.slice(0, 10) >= sinceDate)
-      : exercise.sets
-    if (filtered.length === 0) return 0
-    return Math.max(...filtered.map((s: WorkoutSet) => s.estimated1RM))
+    return _prResult(exerciseId, sinceDate ?? null).pr
   }
 
   /**
@@ -960,15 +1232,7 @@ export const useWorkoutStore = defineStore('workout', () => {
    * Respects `sinceDate` like getExercisePR.
    */
   function getExercisePRSet(exerciseId: string, sinceDate?: string | null): WorkoutSet | null {
-    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise || exercise.sets.length === 0) return null
-    const filtered = sinceDate
-      ? exercise.sets.filter((s: WorkoutSet) => s.date.slice(0, 10) >= sinceDate)
-      : exercise.sets
-    if (filtered.length === 0) return null
-    return filtered.reduce((best: WorkoutSet, s: WorkoutSet) =>
-      s.estimated1RM > best.estimated1RM ? s : best
-    )
+    return _prResult(exerciseId, sinceDate ?? null).prSet
   }
 
   /**
@@ -983,7 +1247,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Group sets by day
     const byDay = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
-      const day = set.date.slice(0, 10)
+      const day = setDayKey(set.date)
       if (day === todayStr) continue
       if (!byDay.has(day)) byDay.set(day, [])
       byDay.get(day)!.push(set)
@@ -1027,7 +1291,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // intra-day ordering.
     const byDay = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
-      const day = set.date.slice(0, 10)
+      const day = setDayKey(set.date)
       if (day === todayStr) continue
       if (!byDay.has(day)) byDay.set(day, [])
       byDay.get(day)!.push(set)
@@ -1131,7 +1395,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // otherwise read as a regression and mask a legitimate suggestion.
     const sessions = new Map<string, WorkoutSet[]>()
     for (const set of exercise.sets) {
-      const day = set.date.slice(0, 10)
+      const day = setDayKey(set.date)
       if (day === today) continue
       if (!sessions.has(day)) sessions.set(day, [])
       sessions.get(day)!.push(set)
@@ -1221,6 +1485,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     tagRecoveryDays.value = {}
     tagRecoveryExcluded.value = []
     _userId = null
+    syncing.value = false
+    lastSyncError.value = null
     triggerRef(exercises)
     triggerRef(customTags)
     triggerRef(tagRecoveryDays)
@@ -1234,6 +1500,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     customTags,
     tagRecoveryDays,
     tagRecoveryExcluded,
+    syncing,
+    lastSyncError,
     // Actions
     $reset,
     init,
@@ -1242,6 +1510,9 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExercisePlateCountMode,
     setExerciseInputMode,
     setExerciseBarWeight,
+    setExerciseIntensityMaxReps,
+    setExerciseEquipment,
+    setExerciseGyms,
     logSet,
     updateSet,
     deleteSet,
@@ -1257,6 +1528,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     reorderExercise,
     renameTag,
     deleteTag,
+    renameGymOnExercises,
+    removeGymFromExercises,
     setTagRecoveryDays,
     setTagRecoveryExcluded,
     addCustomTag,

@@ -24,5 +24,17 @@ export let supabase: SupabaseClient<Database> | null = null
 export async function initSupabase(): Promise<void> {
   if (import.meta.env.DEV || !supabaseUrl || !supabaseAnonKey) return
   const { createClient } = await import('@supabase/supabase-js')
-  supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+  // Explicit auth lifecycle (LIFT-784). These match supabase-js defaults but are
+  // stated outright so the token-refresh contract is unambiguous: the session is
+  // persisted and the access token auto-refreshes. supabase-js drives refresh off
+  // a visibility timer that is unreliable in WKWebView/Capacitor when resuming
+  // from the background — useAuth re-arms it on visibility/focus/pageshow, and
+  // sessionHealth recovers any 401 that still slips through.
+  supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  })
 }

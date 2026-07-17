@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount, VueWrapper } from '@vue/test-utils'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { flushPromises, mount, VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
 import SharePickerSheet from '../SharePickerSheet.vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
@@ -66,9 +66,16 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
 describe('SharePickerSheet share-funnel analytics (#712)', () => {
   let wrapper: VueWrapper
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     wrapper = mount(SharePickerSheet, { props: { summary: makeSummary() } })
+    // Cards are code-split behind dynamic imports (#937); let the thumbnails'
+    // async components settle so their imports don't resolve after teardown.
+    await flushPromises()
+  })
+
+  afterEach(() => {
+    wrapper?.unmount()
   })
 
   it('logs share_opened when the sheet mounts', () => {

@@ -8,15 +8,20 @@ export interface Shortcut {
   global?: boolean
 }
 
-const helpOpen = ref(false)
-
 export interface UseKeyboardShortcutsReturn {
   helpOpen: DeepReadonly<Ref<boolean>>
   toggleHelp: () => void
   closeHelp: () => void
 }
 
+// `helpOpen` is per-consumer UI state, NOT an app-global singleton. It lives
+// inside the composable so each caller gets its own shortcut-help boolean —
+// unlike useWakeLock/useServiceWorker, whose module-scoped state deliberately
+// models a single shared system resource. Toggling the help overlay in one
+// component must never affect another (LIFT-882).
 export function useKeyboardShortcuts(shortcuts: () => Shortcut[]): UseKeyboardShortcutsReturn {
+  const helpOpen = ref(false)
+
   function handler(e: KeyboardEvent) {
     // Ignore when modifier keys are held (except Shift for ?)
     if (e.ctrlKey || e.metaKey || e.altKey) return

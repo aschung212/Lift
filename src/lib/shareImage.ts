@@ -8,8 +8,6 @@
  * the pixelRatio multiplier produces the resolution platforms expect.
  */
 
-import { toBlob } from 'html-to-image'
-
 export type CardFormat = 'square' | 'story'
 
 export interface ExportOptions {
@@ -34,19 +32,30 @@ export const EXPORT_PIXEL_RATIO = 3 // 360 → 1080, 640 → 1920
  *
  * The node is expected to be already mounted in the DOM. The caller's
  * positioning (typically `position:absolute; left:-10000px` to keep it
- * offscreen) is overridden via the `style` option below — html-to-image
+ * offscreen) is overridden via the `style` option below — modern-screenshot
  * preserves the cloned element's positioning into its SVG foreignObject,
  * and a clone with `left: -10000px` renders entirely outside the SVG
  * viewport, producing a transparent PNG. Forcing the clone to render at
  * (0,0) inside the foreignObject is what we want.
+ *
+ * `modern-screenshot` is loaded via a dynamic `import()` so the rasterizer
+ * (a heavy dependency only ever used when the user actually exports a share
+ * card) splits into its own chunk instead of riding along in whatever chunk
+ * imports this module's lightweight constants (SHARE_CARD_HANDLE, watermark,
+ * CardFormat) — many card components pull those in eagerly (#938).
  */
 export async function renderNodeToBlob(node: HTMLElement, opts: ExportOptions): Promise<Blob> {
-  const blob = await toBlob(node, {
+  const { domToBlob } = await import('modern-screenshot')
+  return domToBlob(node, {
     width: opts.width,
     height: opts.height,
-    pixelRatio: opts.pixelRatio ?? EXPORT_PIXEL_RATIO,
-    cacheBust: true,
-    backgroundColor: undefined,
+    // modern-screenshot calls the density multiplier `scale` (html-to-image
+    // called it `pixelRatio`); both mean "DPI = 96 * value".
+    scale: opts.pixelRatio ?? EXPORT_PIXEL_RATIO,
+    // Cache-bust embedded image fetches so a stale CORS-tainted response
+    // can't poison the canvas (html-to-image's `cacheBust: true`).
+    fetch: { bypassingCache: true },
+    backgroundColor: null,
     style: {
       position: 'static',
       left: 'auto',
@@ -57,8 +66,6 @@ export async function renderNodeToBlob(node: HTMLElement, opts: ExportOptions): 
       margin: '0',
     },
   })
-  if (!blob) throw new Error('html-to-image returned null blob')
-  return blob
 }
 
 /**
@@ -85,7 +92,7 @@ export const SHARE_CARD_HANDLE = 'spa-rho-sandy.vercel.app'
 /**
  * Build the watermark element used by the offscreen export pipeline.
  *
- * Styles are inlined (not class-based) so they survive `html-to-image`'s
+ * Styles are inlined (not class-based) so they survive `modern-screenshot`'s
  * clone-and-rehome step, which strips selectors that don't match in the
  * cloned subtree. Positioned absolute in the bottom-right corner of the
  * card's `position:relative` host.

@@ -532,6 +532,56 @@ describe('workout store', () => {
         expect(allTime).toBeGreaterThan(store.getExercisePR(id, '2026-01-01'))
       })
     })
+
+    // The PR cache (LIFT-939) is keyed off the reactive `exercises` ref, and
+    // most store mutations edit sets IN PLACE and only call triggerRef — the
+    // array identity never changes. These guard that the memo invalidates on
+    // every mutation path rather than serving a stale value.
+    describe('memoization invalidation', () => {
+      it('reflects a newly logged set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10) // ≈ 180
+        expect(store.getExercisePR(id)).toBe(store.getExercisePR(id)) // warm the cache
+        const before = store.getExercisePR(id)
+        store.logSet(id, 225, 3) // ≈ 248, higher
+        expect(store.getExercisePR(id)).toBeGreaterThan(before)
+        expect(store.getExercisePR(id)).toBe(248)
+      })
+
+      it('reflects an updated set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10)
+        const setId = store.exercises.find(e => e.id === id)!.sets[0].id
+        expect(store.getExercisePR(id)).toBeGreaterThan(0) // warm the cache
+        store.updateSet(id, setId, 315, 5) // much heavier
+        expect(store.getExercisePR(id)).toBe(store.getExercisePRSet(id)!.estimated1RM)
+        expect(store.getExercisePRSet(id)!.weight).toBe(315)
+      })
+
+      it('reflects a deleted PR set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10) // ≈ 180
+        store.logSet(id, 225, 3) // ≈ 248, the PR
+        const prSet = store.getExercisePRSet(id)! // warm the cache
+        expect(prSet.weight).toBe(225)
+        store.deleteSet(id, prSet.id)
+        expect(store.getExercisePRSet(id)!.weight).toBe(135)
+      })
+
+      it('caches distinct results per sinceDate baseline', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 315, 5, '2020-01-01T10:00:00Z') // high, pre-baseline
+        store.logSet(id, 135, 5, '2026-03-01T10:00:00Z') // low, post-baseline
+        // Interleave the two baselines to exercise the per-sinceDate memo maps.
+        expect(store.getExercisePR(id)).toBeGreaterThan(store.getExercisePR(id, '2026-01-01'))
+        expect(store.getExercisePR(id, '2026-01-01')).toBe(store.getExercisePRSet(id, '2026-01-01')!.estimated1RM)
+        expect(store.getExercisePRSet(id)!.weight).toBe(315)
+      })
+    })
   })
 
   describe('getLastSession', () => {
@@ -1140,6 +1190,90 @@ describe('workout store', () => {
       const { exercises: result } = deduplicateByName(exercises)
       expect(result).toHaveLength(1)
       expect(result[0].sets.map(s => s.id)).toEqual(['s1', 's2', 's3'])
+    })
+  })
+
+  // ── setExerciseIntensityMaxReps (#770) ──────────────────────────
+  describe('setExerciseIntensityMaxReps', () => {
+    it('stores a custom rep count and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench Press', [])
+      store.setExerciseIntensityMaxReps(id, 15)
+
+      expect(store.exercises[0].intensityMaxReps).toBe(15)
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].intensityMaxReps).toBe(15)
+    })
+
+    it('sanitizes out-of-range values before storing', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat', [])
+      store.setExerciseIntensityMaxReps(id, 500)
+      expect(store.exercises[0].intensityMaxReps).toBe(100)
+      store.setExerciseIntensityMaxReps(id, 0)
+      expect(store.exercises[0].intensityMaxReps).toBe(1)
+      store.setExerciseIntensityMaxReps(id, 8.9)
+      expect(store.exercises[0].intensityMaxReps).toBe(8)
+    })
+
+    it('clears the override when passed null', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Row', [])
+      store.setExerciseIntensityMaxReps(id, 12)
+      store.setExerciseIntensityMaxReps(id, null)
+      expect(store.exercises[0].intensityMaxReps).toBeUndefined()
+      expect('intensityMaxReps' in store.exercises[0]).toBe(false)
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExerciseIntensityMaxReps('nope', 12)).not.toThrow()
+    })
+  })
+
+  // ── setExerciseEquipment (#931 phase C) ─────────────────────────
+  describe('setExerciseEquipment', () => {
+    it('stores an explicit classification and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Hack Squat', [])
+      store.setExerciseEquipment(id, 'free_weight')
+
+      expect(store.exercises[0].equipment).toBe('free_weight')
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].equipment).toBe('free_weight')
+    })
+
+    it('clears the override ("Auto") when passed null', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench Press', [])
+      store.setExerciseEquipment(id, 'machine')
+      store.setExerciseEquipment(id, null)
+      expect('equipment' in store.exercises[0]).toBe(false)
+    })
+
+    it('refuses to store an unknown value (clears instead)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat', [])
+      store.setExerciseEquipment(id, 'machine')
+      // Corrupt/future value degrades to unset rather than persisting garbage.
+      store.setExerciseEquipment(id, 'cable_stack' as never)
+      expect('equipment' in store.exercises[0]).toBe(false)
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExerciseEquipment('nope', 'machine')).not.toThrow()
+    })
+
+    it('sanitizes a corrupt persisted equipment value on load', () => {
+      localStorageMock.setItem('workout-exercises', JSON.stringify([
+        { id: 'e1', name: 'Bench', tags: [], sets: [], equipment: 'laser_cannon' },
+        { id: 'e2', name: 'Squat', tags: [], sets: [], equipment: 'machine' },
+      ]))
+      setActivePinia(createPinia())
+      const store = useWorkoutStore()
+      expect('equipment' in store.exercises[0]).toBe(false)
+      expect(store.exercises[1].equipment).toBe('machine')
     })
   })
 })

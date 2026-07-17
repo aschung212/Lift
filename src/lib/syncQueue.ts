@@ -1,13 +1,43 @@
 import { ref } from 'vue'
 import { supabase, isPreviewMode } from './supabase'
+import type { Database } from './database.types'
 import { logError, logWarn } from './logger'
 import { broadcastSyncStatus } from './crossTabSync'
 import { backupToIDB, restoreFromIDB } from './durableStorage'
+import { isAuthError, ensureFreshSession } from './sessionHealth'
 
 type SyncOperation = () => PromiseLike<unknown>
 
+/** The public schema's writable tables, keyed by name (LIFT-948). */
+type PublicTables = Database['public']['Tables']
+
 /**
- * Serializable description of a Supabase mutation (LIFT-706).
+ * Table names a journaled descriptor may target — bound to the generated
+ * Supabase schema (LIFT-948). Modeling this as `keyof PublicTables` instead of
+ * a bare `string` means a descriptor built with a misspelled or stale table name
+ * fails typechecking at the producer instead of at runtime against the server.
+ */
+export type SyncTable = keyof PublicTables
+
+/**
+ * Serializable description of a single-table Supabase mutation, with its `row`
+ * / `values` / `match` typed against that table's generated Insert / Update /
+ * Row shapes (LIFT-948). Generic over the specific table `T` so the table
+ * literal is linked to the column names allowed in the payload — a descriptor
+ * carrying a column that doesn't exist on `T` no longer compiles.
+ */
+export type SyncDescriptorFor<T extends SyncTable> =
+  | { op: 'upsert'; table: T; row: PublicTables[T]['Insert'] }
+  | {
+      op: 'update'
+      table: T
+      values: PublicTables[T]['Update']
+      match: Partial<PublicTables[T]['Row']>
+    }
+
+/**
+ * Serializable description of a Supabase mutation (LIFT-706, hardened in
+ * LIFT-948).
  *
  * The in-memory queue holds closures, which cannot survive a tab close or
  * app restart. To harden offline writes — where every logged set is hard-won
@@ -20,10 +50,12 @@ type SyncOperation = () => PromiseLike<unknown>
  * idempotency invariant enforced in architecturalInvariants.test.ts — replay
  * is safe because re-running an upsert or a targeted update is a no-op once the
  * server already holds the value.
+ *
+ * The union is distributed over every known table so the discriminating `table`
+ * literal is tied to the payload columns for that specific table, rather than
+ * modeling rows as an untyped `Record<string, unknown>`.
  */
-export type SyncDescriptor =
-  | { op: 'upsert'; table: string; row: Record<string, unknown> }
-  | { op: 'update'; table: string; values: Record<string, unknown>; match: Record<string, unknown> }
+export type SyncDescriptor = { [T in SyncTable]: SyncDescriptorFor<T> }[SyncTable]
 
 interface JournalEntry {
   descriptor: SyncDescriptor
@@ -34,20 +66,106 @@ interface JournalEntry {
 const JOURNAL_KEY = 'lift-sync-journal'
 
 /**
+ * Allowlist of tables (and their writable columns) that a journaled descriptor
+ * is permitted to target on replay (LIFT-785).
+ *
+ * The journal lives in IndexedDB, which is user-writable. `rehydrate()` replays
+ * whatever was persisted, and `executeDescriptor` casts the typed client to a
+ * loose surface to target a dynamic table name — so without validation a
+ * tampered (or corrupted) journal entry could issue an upsert/update against an
+ * arbitrary table or column, with RLS as the only backstop. This allowlist is a
+ * client-side defense-in-depth layer: only the tables the app actually journals
+ * (`exercises`, `sets`) and only their real columns are replayable; anything
+ * else is dropped before a query is ever built.
+ *
+ * Keep this in sync with the descriptors built in `src/stores/workout.ts`
+ * (`_buildExerciseUpsert`, `_enqueueSetUpsert`, `_enqueueSoftDelete`,
+ * `_enqueueRestore`) — those are the only descriptor producers in the app.
+ */
+const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
+  exercises: new Set([
+    'id', 'user_id', 'name', 'tags', 'archived_at',
+    'input_mode', 'bar_weight', 'intensity_max_reps', 'deleted_at',
+    // Retired in #770 but the DB column still exists (left dormant, never
+    // dropped). Tolerated so an offline write journaled by a pre-#770 client
+    // still replays after an upgrade instead of being silently dropped.
+    'warmup_scheme',
+  ]),
+  sets: new Set([
+    'id', 'user_id', 'exercise_id', 'date', 'weight', 'reps',
+    'estimated_1rm', 'deleted_at',
+    // Real log-time timestamp sent by _enqueueSetUpsert (#846) so an offline set
+    // logged at 6pm keeps its training time when replayed after a reload rather
+    // than inheriting the later sync time. Must be allowlisted or the journaled
+    // descriptor is dropped on rehydrate() — defeating the durable queue for the
+    // exact offline-then-sync case it exists for.
+    'created_at',
+  ]),
+}
+
+/** True when `obj` is a non-empty plain map whose keys are all in `allowed`. */
+function isAllowedColumnMap(obj: unknown, allowed: ReadonlySet<string>): boolean {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false
+  const keys = Object.keys(obj)
+  // Empty maps are rejected: an empty upsert row is meaningless, and an empty
+  // update `match` would target EVERY row in the table — exactly the kind of
+  // unbounded write this allowlist exists to prevent.
+  if (keys.length === 0) return false
+  return keys.every(col => allowed.has(col))
+}
+
+/**
+ * Validate that a descriptor is safe to replay (LIFT-785): a known op, an
+ * allowlisted table, and only writable columns of that table in its row /
+ * values / match. Used both as the gate in `rehydrate()` (drop + warn) and as
+ * the final guard inside `executeDescriptor` (no-op) so a bad descriptor can
+ * never reach Supabase regardless of how it was enqueued.
+ */
+export function isReplayableDescriptor(descriptor: unknown): descriptor is SyncDescriptor {
+  if (!descriptor || typeof descriptor !== 'object') return false
+  const d = descriptor as Record<string, unknown>
+  if (typeof d.table !== 'string') return false
+  const allowed = REPLAYABLE_COLUMNS[d.table]
+  if (!allowed) return false
+  if (d.op === 'upsert') return isAllowedColumnMap(d.row, allowed)
+  if (d.op === 'update') {
+    return isAllowedColumnMap(d.values, allowed) && isAllowedColumnMap(d.match, allowed)
+  }
+  return false
+}
+
+/**
+ * The one place the dynamically-dispatched table name defeats the strongly-typed
+ * client surface (LIFT-948). A descriptor's `table` is only known at runtime, so
+ * `supabase.from(table)` can't be resolved to a single table's builder type —
+ * this helper isolates that single `any` cast rather than letting it leak across
+ * `executeDescriptor`. Callers reach it only after `isReplayableDescriptor` has
+ * bounded `table` to the known allowlist.
+ */
+function fromTable(table: SyncTable) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (supabase as any).from(table)
+}
+
+/**
  * Rebuild a runnable Supabase operation from its serializable descriptor.
  * Used to replay journaled writes after a reload. Returns a no-op promise when
- * Supabase is unavailable so replay degrades gracefully offline.
+ * Supabase is unavailable so replay degrades gracefully offline, or when the
+ * descriptor falls outside the replay allowlist (LIFT-785).
  */
 export function executeDescriptor(descriptor: SyncDescriptor): PromiseLike<unknown> {
   if (!supabase) return Promise.resolve()
-  // The table name is dynamic here (driven by the descriptor), so the strongly
-  // typed supabase client surface doesn't apply — cast to a loose client.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = supabase as any
-  if (descriptor.op === 'upsert') {
-    return client.from(descriptor.table).upsert(descriptor.row)
+  if (!isReplayableDescriptor(descriptor)) {
+    logWarn('Refusing to execute sync descriptor outside the replay allowlist', {
+      op: (descriptor as { op?: unknown } | null)?.op,
+      table: (descriptor as { table?: unknown } | null)?.table,
+    })
+    return Promise.resolve()
   }
-  let query = client.from(descriptor.table).update(descriptor.values)
+  if (descriptor.op === 'upsert') {
+    return fromTable(descriptor.table).upsert(descriptor.row)
+  }
+  let query = fromTable(descriptor.table).update(descriptor.values)
   for (const [col, val] of Object.entries(descriptor.match)) {
     query = query.eq(col, val)
   }
@@ -136,6 +254,25 @@ export class SyncQueue {
     this._journalActive = true
     this._journal.set(key, { descriptor, isDelete })
     this._persistJournal()
+  }
+
+  /**
+   * Extract a failure reason from a settled op result, or null on success.
+   *
+   * A rejection is always a failure. A *fulfilled* Supabase op resolves
+   * `{ data, error }` even on a 401 — so an expired-token write looks like a
+   * success and was silently dropped (LIFT-784). We surface a resolved AUTH
+   * error as a retryable failure so the write recovers after a refresh, while
+   * leaving non-auth resolved errors on the legacy fulfilled-is-success path to
+   * avoid changing unrelated sync behavior.
+   */
+  private _resultError(result: PromiseSettledResult<unknown>): unknown {
+    if (result.status === 'rejected') return result.reason
+    const val = result.value as { error?: unknown } | null | undefined
+    if (val && typeof val === 'object' && 'error' in val && val.error && isAuthError(val.error)) {
+      return val.error
+    }
+    return null
   }
 
   /**
@@ -274,32 +411,41 @@ export class SyncQueue {
         entries.map(([, op]) => op()),
       )
       let hasFailure = false
+      let sawAuthError = false
       let journalChanged = false
       results.forEach((result, i) => {
         const key = entries[i][0]
-        if (result.status === 'fulfilled') {
+        const error = this._resultError(result)
+        if (!error) {
           // Clear retry counter on success so future failures get full retries
           this._attemptMap.delete(key)
           // Write durably landed on the server — drop its journal entry.
           if (this._journal.delete(key)) journalChanged = true
-        } else if (result.status === 'rejected') {
-          hasFailure = true
-          const op = entries[i][1]
-          const prevAttempt = this._attemptMap.get(key) ?? 0
-          const attempt = prevAttempt + 1
-          if (attempt <= this._maxRetries) {
-            this._retryQueue.set(key, { op, attempt })
-            this._attemptMap.set(key, attempt)
-            logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
-          } else {
-            logError(result.reason, { source: 'SyncQueue', key, attempts: attempt })
-            // Retries exhausted — the op is dropped, so drop its journal entry
-            // too. (Reconciliation in the store's _fetchFromSupabase is the
-            // last line of defense for recovering such writes.)
-            if (this._journal.delete(key)) journalChanged = true
-          }
+          return
+        }
+        hasFailure = true
+        if (isAuthError(error)) sawAuthError = true
+        const op = entries[i][1]
+        const prevAttempt = this._attemptMap.get(key) ?? 0
+        const attempt = prevAttempt + 1
+        if (attempt <= this._maxRetries) {
+          this._retryQueue.set(key, { op, attempt })
+          this._attemptMap.set(key, attempt)
+          logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
+        } else {
+          logError(error, { source: 'SyncQueue', key, attempts: attempt })
+          // Retries exhausted — the op is dropped, so drop its journal entry
+          // too. (Reconciliation in the store's _fetchFromSupabase is the
+          // last line of defense for recovering such writes.)
+          if (this._journal.delete(key)) journalChanged = true
         }
       })
+      // An expired/stale token surfaces identically across every queued write.
+      // Refresh the session ONCE (single-flight) so the scheduled retry runs
+      // with a fresh token instead of burning all five retries on a dead one
+      // (LIFT-784). If the refresh fails, sessionHealth flips authNeedsReauth
+      // and the UI prompts a re-sign-in.
+      if (sawAuthError) void ensureFreshSession()
       if (journalChanged) this._persistJournal()
       if (this._retryQueue.size > 0) this._scheduleRetry()
       const newStatus = hasFailure ? 'error' : 'synced' as const
@@ -364,6 +510,17 @@ export class SyncQueue {
     }
     for (const entry of entries) {
       if (!entry || typeof entry.key !== 'string' || !entry.descriptor) continue
+      // Drop any journaled entry whose descriptor falls outside the replay
+      // allowlist (LIFT-785) — the journal is user-writable IndexedDB, so a
+      // tampered or corrupted entry must never be rebuilt into a query.
+      if (!isReplayableDescriptor(entry.descriptor)) {
+        logWarn('Dropping journaled descriptor outside the replay allowlist', {
+          key: entry.key,
+          op: (entry.descriptor as { op?: unknown }).op,
+          table: (entry.descriptor as { table?: unknown }).table,
+        })
+        continue
+      }
       const { key, descriptor, isDelete } = entry
       // Don't clobber a newer in-session write: if the user acted on this key
       // while the (async) journal read was in flight, the live queue/retry entry
