@@ -11,6 +11,9 @@ export default defineConfig({
     headless: true,
     viewport: { width: 390, height: 844 }, // iPhone 14 Pro
     actionTimeout: 10000,
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
   webServer: {
     command: isCI ? 'npm run preview' : 'npm run dev',
