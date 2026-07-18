@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { BodyweightEntry } from '../../stores/bodyweight'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit } from '../../__tests__/helpers'
@@ -76,8 +76,19 @@ function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
 }
 
+// Freeze the clock so "N days ago" day-key math is deterministic. Every fixture
+// here derives its date from live time via daysAgo()/new Date(), and the
+// component buckets those into `.slice(0,10)` day-keys — a run crossing a
+// midnight or DST boundary could produce off-by-one keys and a false failure
+// (LIFT-969). Faking only Date (not setTimeout/queueMicrotask) keeps Vue's
+// nextTick and promise flushing on the real event loop. Noon UTC on a
+// non-DST-transition date keeps the derived day-keys stable across timezones.
+const FROZEN_NOW = new Date('2026-06-15T12:00:00.000Z')
+
 describe('BodyweightTracker', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(FROZEN_NOW)
     entries = []
     localStorageMock.clear()
     mockWeightGoal.direction = 'lose'
@@ -85,6 +96,10 @@ describe('BodyweightTracker', () => {
     mockWeightGoal.gainTarget = null
     mockWeightGoal.maintainMin = null
     mockWeightGoal.maintainMax = null
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   describe('empty state', () => {
