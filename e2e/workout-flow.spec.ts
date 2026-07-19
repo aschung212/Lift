@@ -26,8 +26,11 @@ test.describe('Exercise CRUD', () => {
     // Fill exercise name
     await page.fill('input[placeholder="e.g. Bench Press"]', 'Squat')
 
-    // Add a tag via the inline tag add button
-    await page.locator('.wtTagAddChip').click()
+    // Add a tag via the inline tag add button. Target the accessible name, not
+    // .wtTagAddChip — the new-exercise form has TWO inline add chips sharing
+    // that class (tags and gym, #984), so the bare class is a strict-mode
+    // violation. The aria-label is unique and survives new pickers.
+    await page.getByRole('button', { name: 'Add tag' }).click()
     await page.fill('[aria-label="New tag name"]', 'Legs')
     await page.keyboard.press('Enter')
 

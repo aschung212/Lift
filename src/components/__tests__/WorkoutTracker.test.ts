@@ -2743,6 +2743,22 @@ describe('WorkoutTracker', () => {
         ).toEqual(['Gym A', 'Gym B', '+'])
       })
 
+      it('keeps the tag and gym inline-add chips distinguishable by accessible name', async () => {
+        // The form now has TWO .wtTagAddChip buttons. Anything selecting one
+        // by class alone matches both — that is exactly how the e2e spec broke
+        // when this feature landed. The accessible names are the stable
+        // discriminator, so pin them here where the fast suite catches it.
+        mockPrefsState.gyms = ['Gym A']
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper)
+
+        const form = wrapper.find('[aria-labelledby="log-modal-title"]')
+        const addChips = form.findAll('.wtTagAddChip')
+        expect(addChips).toHaveLength(2)
+        expect(addChips.map(c => c.attributes('aria-label')).sort()).toEqual(['Add gym', 'Add tag'])
+      })
+
       it('renders the picker with only the add chip when no gyms exist yet (first-gym path)', async () => {
         mockState.exercises = createGymExercises()
         const wrapper = mountTracker()
