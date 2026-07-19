@@ -634,7 +634,19 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function addExercise(name: string, tags: string[] = [], { sync = true }: { sync?: boolean } = {}): string | null {
+  /**
+   * Create an exercise. `gyms` seeds membership (#961) at creation time so the
+   * new-exercise form can assign gyms atomically instead of round-tripping
+   * through setExerciseGyms — the upsert enqueued below then carries membership
+   * on the very first push. Like `tags`, it applies ONLY on the create path: a
+   * name collision returns the existing exercise untouched, so typing an
+   * existing name can never silently rewrite that exercise's gyms.
+   */
+  function addExercise(
+    name: string,
+    tags: string[] = [],
+    { sync = true, gyms = [] }: { sync?: boolean; gyms?: string[] } = {},
+  ): string | null {
     const trimmed = name.trim()
     if (!trimmed) return null
     const existing = exercises.value.find(
@@ -642,7 +654,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     )
     if (existing) return existing.id
     const id = uuid()
-    const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) }
+    const sanitizedGyms = sanitizeExerciseGyms(gyms)
+    const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(sanitizedGyms.length > 0 ? { gyms: sanitizedGyms } : {}), ...(!sync ? { sample: true } : {}) }
     exercises.value.push(exercise)
     triggerRef(exercises)
     _persist()

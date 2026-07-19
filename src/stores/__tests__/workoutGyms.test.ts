@@ -85,6 +85,52 @@ describe('#961 exercise gym membership', () => {
     vi.useRealTimers()
   })
 
+  // #984 — gym membership assigned AT creation, not only after the fact.
+  describe('addExercise({ gyms })', () => {
+    it('seeds sanitized membership on the new exercise', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Hack Squat', [], { gyms: [' Gym A ', 'Gym A', 'Gym B'] })!
+      expect(store.exercises.find(e => e.id === id)!.gyms).toEqual(['Gym A', 'Gym B'])
+    })
+
+    it('omits the field entirely when no gyms are given (unassigned = everywhere)', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench')
+      expect('gyms' in store.exercises[0]).toBe(false)
+    })
+
+    it('omits the field when every entry sanitizes away', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', [], { gyms: ['', '   '] })
+      expect('gyms' in store.exercises[0]).toBe(false)
+    })
+
+    it('persists membership to localStorage in the same write', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', [], { gyms: ['Gym A'] })
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].gyms).toEqual(['Gym A'])
+    })
+
+    it('carries membership on the very first upsert (no setExerciseGyms round-trip)', async () => {
+      const store = useWorkoutStore()
+      await store.init('user-1')
+      const id = store.addExercise('Hack Squat', [], { gyms: ['Gym A'] })!
+      expect(exerciseUpsertRow(id)!.gyms).toEqual(['Gym A'])
+    })
+
+    it('does NOT rewrite gyms when the name collides with an existing exercise', () => {
+      // Typing an existing name returns that exercise untouched — same rule as
+      // `tags`. Silently rewriting membership here would be destructive.
+      const store = useWorkoutStore()
+      const first = store.addExercise('Bench', [], { gyms: ['Gym A'] })!
+      const second = store.addExercise('bench', [], { gyms: ['Gym B'] })
+      expect(second).toBe(first)
+      expect(store.exercises).toHaveLength(1)
+      expect(store.exercises[0].gyms).toEqual(['Gym A'])
+    })
+  })
+
   describe('setExerciseGyms', () => {
     it('stores sanitized membership and persists it to localStorage', () => {
       const store = useWorkoutStore()
