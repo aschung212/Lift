@@ -312,6 +312,44 @@
                 <button v-else class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startNewTagAdd" aria-label="Add tag">+</button>
               </div>
             </div>
+            <!--
+              Gym membership at creation time (#984). Mirrors EditExerciseModal's
+              Gym section so there is one interaction path, not two — but here it
+              seeds `gyms` through addExercise itself rather than round-tripping
+              through setExerciseGyms. Always rendered: with no gyms configured
+              the inline "+" is a first-gym creation path, same as #963.
+            -->
+            <div class="repMaxLabel">
+              Gym
+              <div class="wtTagPicker" role="group" aria-label="Gym membership">
+                <button
+                  v-for="gym in allGyms"
+                  :key="gym"
+                  :aria-pressed="newExerciseGyms.includes(gym)"
+                  :class="['wtTagPickerChip', { wtTagPickerChipActive: newExerciseGyms.includes(gym) }]"
+                  :style="!newExerciseGyms.includes(gym)
+                    ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
+                    : {}"
+                  @click="toggleNewExerciseGym(gym)"
+                >{{ gym }}</button>
+                <span v-if="newGymAdding" class="wtTagInlineAdd">
+                  <input
+                    v-model.trim="newExerciseGymInput"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Gym name"
+                    :maxlength="GYM_NAME_MAX_LENGTH"
+                    class="wtTagInlineInput"
+                    ref="newGymInputEl"
+                    aria-label="New gym name"
+                    @keyup.enter="addNewExerciseGym"
+                    @blur="finishNewGymAdd"
+                  />
+                </span>
+                <button v-else-if="allGyms.length < MAX_GYMS" class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startNewGymAdd" aria-label="Add gym">+</button>
+              </div>
+              <span class="iosSettingsFooter">Leave empty to show this exercise at every gym.</span>
+            </div>
             <!-- Plate calculator settings for new exercise -->
             <div class="iosSettingsSection">
               <span class="iosSettingsHeader">Input Mode</span>
@@ -795,7 +833,7 @@ import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
 import { ladderChipScrollLeft } from '../lib/ladderScroll'
 import { MAX_WEIGHT, MAX_REPS } from '../lib/inputLimits'
 import { loadJSON } from '../lib/storage'
-import { matchesGymFilter, loadActiveGymFilter, saveActiveGymFilter } from '../lib/gyms'
+import { matchesGymFilter, loadActiveGymFilter, saveActiveGymFilter, sanitizeGymName, MAX_GYMS, GYM_NAME_MAX_LENGTH } from '../lib/gyms'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
@@ -1899,6 +1937,15 @@ function openNewExerciseModal() {
   newExerciseTags.value = []
   newExerciseSessionTags.value = []
   newExerciseTagInput.value = ''
+  // Seed membership from the gym you're filtered to (#984). Creating an
+  // exercise while filtered to a gym almost always means "I do this here",
+  // and the alternative default is the silent failure this feature exists to
+  // fix: unassigned shows under EVERY filter, so the new exercise would leak
+  // to the other gym with nothing on screen suggesting it needs fixing. The
+  // seeded chip renders selected, so it stays visible and one tap undoes it.
+  newExerciseGyms.value = effectiveGymFilter.value ? [effectiveGymFilter.value] : []
+  newExerciseGymInput.value = ''
+  newGymAdding.value = false
   newExercisePlateMode.value = false
   newExercisePlateCountMode.value = 'per-side'
   newExerciseBarWeight.value = 45
@@ -1947,6 +1994,52 @@ function toggleNewExerciseTag(tag: string) {
     newExerciseTags.value = newExerciseTags.value.filter(t => t !== tag)
   } else {
     newExerciseTags.value.push(tag)
+  }
+}
+
+// ── Gym membership for a new exercise (#984) ────────────────────
+// Mirrors EditExerciseModal's inline-add flow, minus the emit hop: this
+// component already owns `gymActions`, so a typed gym is created in the
+// preferences store immediately and `allGyms` picks it up reactively. That
+// is why there is no "session gyms" list like `newExerciseSessionTags` —
+// the gym list is authoritative the moment the name is committed.
+const newExerciseGyms = ref<string[]>([])
+const newExerciseGymInput = ref('')
+const newGymInputEl = ref<HTMLInputElement | null>(null)
+const newGymAdding = ref(false)
+
+function startNewGymAdd() {
+  newGymAdding.value = true
+  nextTick(() => newGymInputEl.value?.focus())
+}
+
+/** Commit typed text as a gym: create it if new, then select it locally. */
+function commitNewExerciseGym() {
+  const name = sanitizeGymName(newExerciseGymInput.value)
+  newExerciseGymInput.value = ''
+  if (!name) return
+  if (!allGyms.value.includes(name)) {
+    if (allGyms.value.length >= MAX_GYMS) return
+    if (!gymActions.createGym(name)) return
+  }
+  if (!newExerciseGyms.value.includes(name)) newExerciseGyms.value.push(name)
+}
+
+function addNewExerciseGym() {
+  commitNewExerciseGym()
+  nextTick(() => newGymInputEl.value?.focus())
+}
+
+function finishNewGymAdd() {
+  commitNewExerciseGym()
+  newGymAdding.value = false
+}
+
+function toggleNewExerciseGym(gym: string) {
+  if (newExerciseGyms.value.includes(gym)) {
+    newExerciseGyms.value = newExerciseGyms.value.filter(g => g !== gym)
+  } else {
+    newExerciseGyms.value.push(gym)
   }
 }
 
@@ -2030,6 +2123,9 @@ function closeModal() {
   newExerciseTags.value = []
   newExerciseSessionTags.value = []
   newExerciseTagInput.value = ''
+  newExerciseGyms.value = []
+  newExerciseGymInput.value = ''
+  newGymAdding.value = false
   weight.value = null
   reps.value = null
   date.value = todayISO()
@@ -2314,7 +2410,10 @@ function saveSet() {
       if (pendingTag && !newExerciseTags.value.includes(pendingTag)) {
         newExerciseTags.value.push(pendingTag)
       }
-      const newId = store.addExercise(newExerciseName.value, newExerciseTags.value)
+      // Auto-add any pending gym text, mirroring the tag flush above, so a
+      // half-typed gym isn't silently dropped by tapping Save.
+      commitNewExerciseGym()
+      const newId = store.addExercise(newExerciseName.value, newExerciseTags.value, { gyms: newExerciseGyms.value })
       if (!newId) return
       exerciseId = newId
       selectedExerciseId.value = exerciseId
@@ -2328,6 +2427,9 @@ function saveSet() {
       newExerciseTags.value = []
       newExerciseSessionTags.value = []
       newExerciseTagInput.value = ''
+      newExerciseGyms.value = []
+      newExerciseGymInput.value = ''
+      newGymAdding.value = false
       newExercisePlateMode.value = false
       newExercisePlateCountMode.value = 'per-side'
       newExerciseBarWeight.value = 45

@@ -5072,6 +5072,16 @@ html.theme-fading .settingsSheet {
   line-height: 1.4;
 }
 
+/* Helper text inside a .repMaxLabel block (the new-exercise Gym hint, #984).
+   .repMaxLabel is uppercase/bold/tracked-out label chrome and that inherits
+   into the footer — fine for a one-word label, shouty for a sentence of
+   helper text. Reset to prose here only; the base rule above is untouched. */
+.repMaxLabel .iosSettingsFooter {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
 /* ─── Intensity lens config: reset link in EditExerciseModal (#770) ──── */
 
 .wtIntensityEditReset {

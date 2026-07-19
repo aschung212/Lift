@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { shallowRef, triggerRef } from 'vue'
+import { shallowRef, triggerRef, reactive } from 'vue'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
@@ -12,7 +12,11 @@ vi.mock('../../composables/useTheme', () => mockTheme())
 vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 vi.mock('../../composables/useRestTimer', () => mockRestTimer())
 // Mutable container so gym-filter tests (#961) can drive the synced gym list.
-const mockPrefsState = { gyms: [] as string[] }
+// `reactive` keeps the mock faithful to the real Pinia store: adding a gym has
+// to invalidate `allGyms` so newly created gyms render without a remount —
+// with a plain object the computed caches forever and inline-add tests pass
+// vacuously (same class of unfaithful-mock blind spot as #963).
+const mockPrefsState = reactive({ gyms: [] as string[] })
 const mockAddGym = vi.fn((name: string) => {
   if (mockPrefsState.gyms.includes(name)) return null
   mockPrefsState.gyms = [...mockPrefsState.gyms, name]
@@ -859,7 +863,9 @@ describe('WorkoutTracker', () => {
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       await saveBtn.trigger('click')
 
-      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', [])
+      // The options bag carries gym membership from creation (#984); with no
+      // gym filter active it is empty = unassigned = shows at every gym.
+      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', [], { gyms: [] })
     })
 
     it('calls addExercise with selected tags', async () => {
@@ -2697,6 +2703,183 @@ describe('WorkoutTracker', () => {
       await gymChip(wrapper, 'Empty Gym').trigger('click')
 
       expect(wrapper.find('.wtEmpty').text()).toContain('No exercises match your filters.')
+    })
+
+    // ── Assigning gyms at creation time (#984) ───────────────────
+    describe('gym assignment in the new-exercise form', () => {
+      /** The Gym picker inside the log sheet (EditExerciseModal has its own). */
+      function newExerciseGymPicker(wrapper: VueWrapper) {
+        return wrapper
+          .find('[aria-labelledby="log-modal-title"]')
+          .find('[aria-label="Gym membership"]')
+      }
+
+      function gymPickerChip(wrapper: VueWrapper, label: string) {
+        return newExerciseGymPicker(wrapper)
+          .findAll('.wtTagPickerChip')
+          .find(c => c.text() === label)!
+      }
+
+      async function openNewExerciseForm(wrapper: VueWrapper, name = 'Hack Squat') {
+        exposed(wrapper).openNewExerciseModal()
+        await wrapper.vm.$nextTick()
+        await wrapper.find('[aria-labelledby="log-modal-title"] input[type="text"]').setValue(name)
+        return wrapper
+      }
+
+      async function save(wrapper: VueWrapper) {
+        await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+      }
+
+      it('renders a Gym picker in the new-exercise form', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper)
+
+        expect(newExerciseGymPicker(wrapper).exists()).toBe(true)
+        expect(
+          newExerciseGymPicker(wrapper).findAll('.wtTagPickerChip').map(c => c.text()),
+        ).toEqual(['Gym A', 'Gym B', '+'])
+      })
+
+      it('keeps the tag and gym inline-add chips distinguishable by accessible name', async () => {
+        // The form now has TWO .wtTagAddChip buttons. Anything selecting one
+        // by class alone matches both — that is exactly how the e2e spec broke
+        // when this feature landed. The accessible names are the stable
+        // discriminator, so pin them here where the fast suite catches it.
+        mockPrefsState.gyms = ['Gym A']
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper)
+
+        const form = wrapper.find('[aria-labelledby="log-modal-title"]')
+        const addChips = form.findAll('.wtTagAddChip')
+        expect(addChips).toHaveLength(2)
+        expect(addChips.map(c => c.attributes('aria-label')).sort()).toEqual(['Add gym', 'Add tag'])
+      })
+
+      it('renders the picker with only the add chip when no gyms exist yet (first-gym path)', async () => {
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper)
+
+        expect(newExerciseGymPicker(wrapper).exists()).toBe(true)
+        expect(newExerciseGymPicker(wrapper).find('[aria-label="Add gym"]').exists()).toBe(true)
+      })
+
+      it('pre-selects the active gym filter — the gym you are at is the gym you are adding for', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await gymChip(wrapper, 'Gym A').trigger('click')
+
+        await openNewExerciseForm(wrapper)
+
+        expect(gymPickerChip(wrapper, 'Gym A').classes()).toContain('wtTagPickerChipActive')
+        expect(gymPickerChip(wrapper, 'Gym B').classes()).not.toContain('wtTagPickerChipActive')
+      })
+
+      it('passes the pre-selected gym through addExercise at creation', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+        await gymChip(wrapper, 'Gym A').trigger('click')
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], { gyms: ['Gym A'] })
+      })
+
+      it('leaves membership empty when no gym filter is active (unassigned = everywhere)', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], { gyms: [] })
+      })
+
+      it('deselecting the pre-seeded gym is one tap and sticks through save', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+        await gymChip(wrapper, 'Gym A').trigger('click')
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await gymPickerChip(wrapper, 'Gym A').trigger('click')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], { gyms: [] })
+      })
+
+      it('selects multiple gyms (shared equipment across gyms)', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await gymPickerChip(wrapper, 'Gym A').trigger('click')
+        await gymPickerChip(wrapper, 'Gym B').trigger('click')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], {
+          gyms: ['Gym A', 'Gym B'],
+        })
+      })
+
+      it('inline "+" creates the gym in preferences and selects it locally', async () => {
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+
+        await newExerciseGymPicker(wrapper).find('[aria-label="Add gym"]').trigger('click')
+        const input = newExerciseGymPicker(wrapper).find('[aria-label="New gym name"]')
+        await input.setValue('Iron Temple')
+        await input.trigger('keyup.enter')
+
+        expect(mockAddGym).toHaveBeenCalledWith('Iron Temple')
+        expect(mockPrefsState.gyms).toContain('Iron Temple')
+        expect(gymPickerChip(wrapper, 'Iron Temple').classes()).toContain('wtTagPickerChipActive')
+      })
+
+      it('flushes half-typed gym text on save instead of dropping it', async () => {
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+
+        await newExerciseGymPicker(wrapper).find('[aria-label="Add gym"]').trigger('click')
+        // Typed but never committed with Enter/blur — Save must not lose it.
+        await newExerciseGymPicker(wrapper).find('[aria-label="New gym name"]').setValue('Iron Temple')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], {
+          gyms: ['Iron Temple'],
+        })
+      })
+
+      it('does not leak a previous selection into the next new exercise', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await gymPickerChip(wrapper, 'Gym B').trigger('click')
+        await save(wrapper)
+
+        await openNewExerciseForm(wrapper, 'Belt Squat')
+        expect(gymPickerChip(wrapper, 'Gym B').classes()).not.toContain('wtTagPickerChipActive')
+      })
     })
   })
 
