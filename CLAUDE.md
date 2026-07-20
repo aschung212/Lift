@@ -59,7 +59,7 @@ This app will be wrapped with Capacitor for the App Store. Keep all code compati
 
 This app targets iOS App Store via Capacitor. Every UI element must meet Apple's Human Interface Guidelines:
 
-- **44pt minimum touch targets.** Buttons, toggles, tappable rows, icon buttons — all must be at least 44x44pt. Existing regression tests enforce this for known violations. When adding new interactive elements, verify and add a test.
+- **44pt minimum touch targets.** Buttons, toggles, tappable rows, icon buttons — all must be at least 44x44pt. Existing regression tests enforce this for known violations. When adding new interactive elements, verify and add a test. Two ways to reach 44pt, and the choice is not free: size the element (`min-height: 44px`) by default, or keep a compact visual and extend the hit area with an absolutely-positioned transparent `::before` (`.logSetFieldClear`). The overlay is only safe for a control ringed by inert whitespace — for controls that **tile**, like the `.wtTagPickerChip` rows (#990), overlays butt against each other and a near-miss activates the neighbour instead of doing nothing, so size those instead.
 - **Safe area insets.** All fixed/sticky elements must use `env(safe-area-inset-*)`. The Dynamic Island on newer iPhones hides content at the top. Test in PWA standalone mode — browser mode hides this issue.
 - **WCAG 2.1 AA contrast.** All 10 themes (20 variants) are tested via `themeContrast.test.ts`. When adding or modifying theme colors, run the contrast audit. Normal text needs 4.5:1, large text needs 3:1.
 - **No hover-gated interactions.** Touch-only. Hover can enhance but must never be the only way to access functionality.

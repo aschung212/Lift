@@ -3069,9 +3069,18 @@ html.theme-fading .settingsSheet {
   margin: 12px 0 4px;
 }
 
+/* Shared by five pickers: WorkoutTracker's new-exercise Tags + Gym rows and
+   EditExerciseModal's Tags, Equipment and Gym rows. min-height is the iOS HIG
+   44pt floor (#990) — the chips previously rendered 33px, or 38px in rows
+   containing the larger "+" add chip, which stretches its row. Deliberately
+   sized rather than padded out with a transparent ::before overlay: chips tile
+   in a wrapping 8px-gap row, so 44px overlays on 33px pills would leave no dead
+   space between wrapped rows and a near-miss would toggle the neighbouring chip
+   instead of doing nothing. */
 .wtTagPickerChip {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   font-size: var(--font-footnote);
   font-weight: 600;
   padding: 8px 16px;
@@ -3096,8 +3105,12 @@ html.theme-fading .settingsSheet {
   display: inline-flex;
 }
 
+/* Swaps in where the "+" add chip was, so it must match the chips' 44pt floor.
+   Stretch alone would not cover it: with no tags/gyms configured yet this input
+   is the only item in the row and has nothing to stretch against. */
 .wtTagInlineInput {
   width: 96px;
+  min-height: 44px;
   padding: 8px 12px;
   font-size: var(--font-footnote);
   font-family: inherit;
