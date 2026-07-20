@@ -78,11 +78,11 @@ describe('coachExport — buildCoachExportText', () => {
 
 describe('coachExport — coachExportFilename', () => {
   it('builds a dated markdown filename from a local date key', () => {
-    expect(coachExportFilename('2026-07-10')).toBe('lift-weekly-review-2026-07-10.md')
+    expect(coachExportFilename('2026-07-10')).toBe('lift-ai-review-2026-07-10.md')
   })
 
   it('falls back safely when handed a non-date-key string', () => {
-    expect(coachExportFilename('not-a-date')).toBe('lift-weekly-review-review.md')
+    expect(coachExportFilename('not-a-date')).toBe('lift-ai-review-review.md')
   })
 })
 

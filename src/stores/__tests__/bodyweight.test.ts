@@ -3,9 +3,11 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useBodyweightStore } from '../bodyweight'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
+const uuidCounter = vi.hoisted(() => ({ n: 0 }))
+
 vi.mock('../../lib/uuid', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
-  return { ...actual, uuid: () => 'bw-uuid-' + Math.random().toString(36).slice(2, 8) }
+  return { ...actual, uuid: () => `bw-uuid-${uuidCounter.n++}` }
 })
 
 const localStorageMock = getLocalStorageMock()
@@ -14,6 +16,7 @@ describe('useBodyweightStore', () => {
   let store: ReturnType<typeof useBodyweightStore>
 
   beforeEach(() => {
+    uuidCounter.n = 0
     localStorageMock.clear()
     setActivePinia(createPinia())
     store = useBodyweightStore()

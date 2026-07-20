@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { shallowRef, triggerRef, computed } from 'vue'
 import { supabase, isPreviewMode } from '../lib/supabase'
-import type { Tables } from '../lib/database.types'
-import { syncQueue } from '../lib/syncQueue'
+import type { Tables, TablesUpdate } from '../lib/database.types'
+import { syncQueue, type SyncTable, type SyncDescriptor } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
-import { logError, logWarn } from '../lib/logger'
+import { logError } from '../lib/logger'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
 import { todayISO, setDayKey } from '../lib/dates'
@@ -14,6 +15,7 @@ import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { parseExercises, parseStringArray, parseNumberRecord } from '../lib/parseGuards'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
+import { sanitizeExerciseGyms } from '../lib/gyms'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
@@ -51,6 +53,7 @@ export interface Exercise {
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
   equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
+  gyms?: string[]                  // gym membership; empty/undefined = shows under every gym filter (#961)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -168,6 +171,13 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
       for (const tag of group[i].tags) tagSet.add(tag)
     }
     primary.tags = [...tagSet]
+    // Merge gym membership the same way so a cross-device duplicate's gym
+    // assignments aren't silently dropped when its row is absorbed (#961).
+    const gymSet = new Set(primary.gyms ?? [])
+    for (let i = 1; i < group.length; i++) {
+      for (const gym of group[i].gyms ?? []) gymSet.add(gym)
+    }
+    if (gymSet.size > 0) primary.gyms = [...gymSet]
     result.push(primary)
   }
 
@@ -179,7 +189,8 @@ function load(): Exercise[] {
   // corrupt exercise or set (missing weight/reps, wrong-typed fields) must not
   // flow into 1RM math, charts, or sync payloads. parseExercises drops malformed
   // entries (logWarn), normalizes tags/sets, and sanitizes the Intensity-lens
-  // config + equipment classification through the same helpers the setters use.
+  // config, equipment classification, and gym membership (#961) through the same
+  // helpers the setters use.
   return parseExercises(loadStoreData<unknown[]>('workout', STORAGE_KEY, () => [], Array.isArray))
 }
 
@@ -262,6 +273,8 @@ export const useWorkoutStore = defineStore('workout', () => {
       intensity_max_reps: exercise.intensityMaxReps ?? null,
       // Same always-send rule: "Auto" clears the Coach equipment classification.
       equipment: exercise.equipment ?? null,
+      // Same always-send rule: clearing gym membership must propagate (#961).
+      gyms: exercise.gyms ?? [],
     }
   }
 
@@ -317,6 +330,23 @@ export const useWorkoutStore = defineStore('workout', () => {
    * Durable soft-delete (UPDATE { deleted_at }). Routed through enqueueDelete
    * so the circuit breaker sees it, with a journaled descriptor (LIFT-706).
    */
+  /**
+   * Build a typed `update` SyncDescriptor for a table only known as a runtime
+   * `sets | exercises` union (LIFT-948). TypeScript can't distribute a
+   * non-literal `table` across the `SyncDescriptor` union, so the single
+   * unavoidable widening cast is isolated here — the signature still bounds
+   * `table` to a real `SyncTable` and `values` to that table's generated
+   * `Update` shape rather than an untyped record. Kept local (not exported from
+   * syncQueue) so the many `syncQueue` test mocks don't each need to re-stub it.
+   */
+  function _buildUpdateDescriptor<T extends SyncTable>(
+    table: T,
+    values: TablesUpdate<T>,
+    match: Record<string, string>,
+  ): SyncDescriptor {
+    return { op: 'update', table, values, match } as SyncDescriptor
+  }
+
   function _enqueueSoftDelete(key: string, table: 'sets' | 'exercises', match: Record<string, string>) {
     const deletedAt = new Date().toISOString()
     const values = { deleted_at: deletedAt }
@@ -327,7 +357,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         for (const [col, val] of Object.entries(match)) q = q.eq(col, val)
         return q
       },
-      { op: 'update', table, values, match },
+      _buildUpdateDescriptor(table, values, match),
     )
   }
 
@@ -341,7 +371,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         for (const [col, val] of Object.entries(match)) q = q.eq(col, val)
         return q
       },
-      { op: 'update', table, values, match },
+      _buildUpdateDescriptor(table, values, match),
     )
   }
 
@@ -363,7 +393,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         supabase.from('sets').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at')
       ])
       if (exResult.error || setsResult.error) {
-        logWarn('Supabase fetch failed in workout store — using local data', {
+        reportFetchError('workout', exResult.error ?? setsResult.error, {
           exerciseError: String(exResult.error),
           setsError: String(setsResult.error),
         })
@@ -377,7 +407,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       remoteExData = exResult.data
       sets = setsResult.data
     } catch (err) {
-      logWarn('Supabase fetch failed in workout store — using local data', { error: String(err) })
+      reportFetchError('workout', err)
       lastSyncError.value = classifySyncError(err)
       return
     } finally {
@@ -408,6 +438,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (ex.equipment != null) {
         const eq = sanitizeExerciseEquipment(ex.equipment)
         if (eq) exercise.equipment = eq
+      }
+      if (ex.gyms && ex.gyms.length > 0) {
+        const gyms = sanitizeExerciseGyms(ex.gyms)
+        if (gyms.length > 0) exercise.gyms = gyms
       }
       if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
@@ -592,7 +626,19 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function addExercise(name: string, tags: string[] = [], { sync = true }: { sync?: boolean } = {}): string | null {
+  /**
+   * Create an exercise. `gyms` seeds membership (#961) at creation time so the
+   * new-exercise form can assign gyms atomically instead of round-tripping
+   * through setExerciseGyms — the upsert enqueued below then carries membership
+   * on the very first push. Like `tags`, it applies ONLY on the create path: a
+   * name collision returns the existing exercise untouched, so typing an
+   * existing name can never silently rewrite that exercise's gyms.
+   */
+  function addExercise(
+    name: string,
+    tags: string[] = [],
+    { sync = true, gyms = [] }: { sync?: boolean; gyms?: string[] } = {},
+  ): string | null {
     const trimmed = name.trim()
     if (!trimmed) return null
     const existing = exercises.value.find(
@@ -600,7 +646,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     )
     if (existing) return existing.id
     const id = uuid()
-    const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) }
+    const sanitizedGyms = sanitizeExerciseGyms(gyms)
+    const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(sanitizedGyms.length > 0 ? { gyms: sanitizedGyms } : {}), ...(!sync ? { sample: true } : {}) }
     exercises.value.push(exercise)
     triggerRef(exercises)
     _persist()
@@ -682,6 +729,27 @@ export const useWorkoutStore = defineStore('workout', () => {
     const eq = equipment === null ? undefined : sanitizeExerciseEquipment(equipment)
     if (eq) exercise.equipment = eq
     else delete exercise.equipment
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
+   * Set (or clear, with []) an exercise's gym membership (#961).
+   * Empty membership deletes the field — "unassigned" means the exercise
+   * shows under every gym filter.
+   */
+  function setExerciseGyms(exerciseId: string, gyms: string[]) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    const sanitized = sanitizeExerciseGyms(gyms)
+    if (sanitized.length > 0) exercise.gyms = sanitized
+    else delete exercise.gyms
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
@@ -885,16 +953,6 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function reorderExercise(fromIndex: number, toIndex: number) {
-    if (fromIndex === toIndex) return
-    if (fromIndex < 0 || toIndex < 0) return
-    if (fromIndex >= exercises.value.length || toIndex >= exercises.value.length) return
-    const [item] = exercises.value.splice(fromIndex, 1)
-    exercises.value.splice(toIndex, 0, item)
-    triggerRef(exercises)
-    _persist()
-  }
-
   function renameTag(oldName: string, newName: string) {
     const trimmed = newName.trim()
     if (!trimmed || trimmed === oldName) return
@@ -983,6 +1041,70 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Rewrite a renamed gym across every exercise's membership (#961). The gym
+   * LIST lives in the preferences store; useGymActions orchestrates both.
+   * Mirrors renameTag: if an exercise already carries the new name, the old
+   * entry is dropped instead of duplicated.
+   */
+  function renameGymOnExercises(oldName: string, newName: string) {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldName) return
+    const modified: Exercise[] = []
+    exercises.value.forEach((e: Exercise) => {
+      if (!e.gyms) return
+      const idx = e.gyms.indexOf(oldName)
+      if (idx === -1) return
+      if (e.gyms.includes(trimmed)) {
+        e.gyms.splice(idx, 1)
+        if (e.gyms.length === 0) delete e.gyms
+      } else {
+        e.gyms[idx] = trimmed
+      }
+      e.updated_at = new Date().toISOString()
+      modified.push(e)
+    })
+    if (modified.length === 0) return
+    triggerRef(exercises)
+    _persist()
+
+    if (_userId) {
+      const userId = _userId
+      for (const e of modified.filter(e => !e.sample)) {
+        _enqueueExerciseUpsert(e, userId)
+      }
+    }
+  }
+
+  /**
+   * Strip a deleted gym from every exercise's membership (#961). Returns the
+   * ids of the exercises that carried it so the caller's undo toast can
+   * restore membership via setExerciseGyms.
+   */
+  function removeGymFromExercises(gymName: string): string[] {
+    const modified: Exercise[] = []
+    exercises.value.forEach((e: Exercise) => {
+      if (!e.gyms) return
+      const idx = e.gyms.indexOf(gymName)
+      if (idx === -1) return
+      e.gyms.splice(idx, 1)
+      if (e.gyms.length === 0) delete e.gyms
+      e.updated_at = new Date().toISOString()
+      modified.push(e)
+    })
+    if (modified.length === 0) return []
+    triggerRef(exercises)
+    _persist()
+
+    if (_userId) {
+      const userId = _userId
+      for (const e of modified.filter(e => !e.sample)) {
+        _enqueueExerciseUpsert(e, userId)
+      }
+    }
+    return modified.map(e => e.id)
+  }
+
   function setTagRecoveryDays(tag: string, days: number | null) {
     const recovery = { ...tagRecoveryDays.value }
     if (days === null || days <= 0) {
@@ -1043,6 +1165,54 @@ export const useWorkoutStore = defineStore('workout', () => {
     return [...dates].sort()
   })
 
+  // ── PR memoization (LIFT-939) ───────────────────────────────────
+  // getExercisePR / getExercisePRSet are called many times per render
+  // (the exercise list calls getRowMeta 3× per row, prsThisWeek loops
+  // every exercise), and each call did an O(n) `.find` plus an O(m) scan
+  // over the exercise's sets — O(rows × (n + m)) per WorkoutTracker render.
+  // This computed rebuilds an id→exercise index and an empty result memo,
+  // and is invalidated only when `exercises` changes (ref reassignment or
+  // the store's in-place-mutation `triggerRef(exercises)` calls). Results
+  // are filled lazily per baseline date and cached until the next mutation,
+  // so repeat lookups are O(1) and each exercise is scanned at most once.
+  interface PRResult {
+    pr: number
+    prSet: WorkoutSet | null
+  }
+  const _prCache = computed<{ byId: Map<string, Exercise>; bySince: Map<string, Map<string, PRResult>> }>(() => {
+    const byId = new Map<string, Exercise>()
+    for (const e of exercises.value) byId.set(e.id, e)
+    return { byId, bySince: new Map<string, Map<string, PRResult>>() }
+  })
+
+  function _computePRResult(exercise: Exercise | undefined, sinceDate: string | null): PRResult {
+    if (!exercise || exercise.sets.length === 0) return { pr: 0, prSet: null }
+    let best: WorkoutSet | null = null
+    for (const s of exercise.sets) {
+      if (sinceDate && s.date.slice(0, 10) < sinceDate) continue
+      // Strict `>` keeps the first set that reaches the max, matching the
+      // prior reduce()/Math.max() tie-breaking behavior.
+      if (!best || s.estimated1RM > best.estimated1RM) best = s
+    }
+    return best ? { pr: best.estimated1RM, prSet: best } : { pr: 0, prSet: null }
+  }
+
+  function _prResult(exerciseId: string, sinceDate: string | null): PRResult {
+    const { byId, bySince } = _prCache.value
+    const key = sinceDate ?? ''
+    let memo = bySince.get(key)
+    if (!memo) {
+      memo = new Map<string, PRResult>()
+      bySince.set(key, memo)
+    }
+    let result = memo.get(exerciseId)
+    if (!result) {
+      result = _computePRResult(byId.get(exerciseId), sinceDate)
+      memo.set(exerciseId, result)
+    }
+    return result
+  }
+
   /**
    * Max estimated1RM across all sets for an exercise.
    * When `sinceDate` (YYYY-MM-DD) is provided, only sets on or after that
@@ -1050,13 +1220,7 @@ export const useWorkoutStore = defineStore('workout', () => {
    * all-time behavior.
    */
   function getExercisePR(exerciseId: string, sinceDate?: string | null): number {
-    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise || exercise.sets.length === 0) return 0
-    const filtered = sinceDate
-      ? exercise.sets.filter((s: WorkoutSet) => s.date.slice(0, 10) >= sinceDate)
-      : exercise.sets
-    if (filtered.length === 0) return 0
-    return Math.max(...filtered.map((s: WorkoutSet) => s.estimated1RM))
+    return _prResult(exerciseId, sinceDate ?? null).pr
   }
 
   /**
@@ -1064,15 +1228,7 @@ export const useWorkoutStore = defineStore('workout', () => {
    * Respects `sinceDate` like getExercisePR.
    */
   function getExercisePRSet(exerciseId: string, sinceDate?: string | null): WorkoutSet | null {
-    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise || exercise.sets.length === 0) return null
-    const filtered = sinceDate
-      ? exercise.sets.filter((s: WorkoutSet) => s.date.slice(0, 10) >= sinceDate)
-      : exercise.sets
-    if (filtered.length === 0) return null
-    return filtered.reduce((best: WorkoutSet, s: WorkoutSet) =>
-      s.estimated1RM > best.estimated1RM ? s : best
-    )
+    return _prResult(exerciseId, sinceDate ?? null).prSet
   }
 
   /**
@@ -1352,6 +1508,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseBarWeight,
     setExerciseIntensityMaxReps,
     setExerciseEquipment,
+    setExerciseGyms,
     logSet,
     updateSet,
     deleteSet,
@@ -1364,9 +1521,10 @@ export const useWorkoutStore = defineStore('workout', () => {
     unarchiveExercise,
     syncDeleteSet,
     syncDeleteExercise,
-    reorderExercise,
     renameTag,
     deleteTag,
+    renameGymOnExercises,
+    removeGymFromExercises,
     setTagRecoveryDays,
     setTagRecoveryExcluded,
     addCustomTag,

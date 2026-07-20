@@ -15,6 +15,7 @@ import {
   parseBodyweightEntry,
   parseBodyweightEntries,
 } from '../parseGuards'
+import { matchesGymFilter } from '../gyms'
 
 vi.mock('../logger', () => ({
   logWarn: vi.fn(),
@@ -146,6 +147,21 @@ describe('parseExercise', () => {
   it('drops an unrecognized equipment value', () => {
     const ex = parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], equipment: 'laser-beam' })
     expect(ex!.equipment).toBeUndefined()
+  })
+
+  // parseExercise builds a fresh object from an allowlist of known fields, so any
+  // field it forgets is silently dropped on every hydration. `gyms` (#961) landed
+  // on master while this guard was in review and was nearly lost in the merge —
+  // these pin the round-trip so a future Exercise field can't vanish the same way.
+  it('preserves and sanitizes gym membership', () => {
+    const ex = parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], gyms: ['Home', 'Home', '  Gold\'s  ', 42] })
+    expect(ex!.gyms).toEqual(['Home', "Gold's"])
+  })
+
+  it('leaves gyms unset when membership sanitizes to empty, so the exercise still shows under every gym filter', () => {
+    const ex = parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], gyms: [42, null] })
+    expect(ex!.gyms).toBeUndefined()
+    expect(matchesGymFilter(ex!.gyms, 'Home', ['Home'])).toBe(true)
   })
 
   it('defaults tags/sets to empty when absent or wrong-typed', () => {

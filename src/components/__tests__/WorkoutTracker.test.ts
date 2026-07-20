@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { shallowRef, triggerRef, reactive } from 'vue'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
+import EditExerciseModal from '../EditExerciseModal.vue'
 
 const localStorageMock = getLocalStorageMock()
 
@@ -9,11 +11,24 @@ vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
 vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
 vi.mock('../../composables/useRestTimer', () => mockRestTimer())
+// Mutable container so gym-filter tests (#961) can drive the synced gym list.
+// `reactive` keeps the mock faithful to the real Pinia store: adding a gym has
+// to invalidate `allGyms` so newly created gyms render without a remount —
+// with a plain object the computed caches forever and inline-add tests pass
+// vacuously (same class of unfaithful-mock blind spot as #963).
+const mockPrefsState = reactive({ gyms: [] as string[] })
+const mockAddGym = vi.fn((name: string) => {
+  if (mockPrefsState.gyms.includes(name)) return null
+  mockPrefsState.gyms = [...mockPrefsState.gyms, name]
+  return name
+})
 vi.mock('../../stores/preferences', () => ({
   usePreferencesStore: () => ({
     experience: { prCelebrations: true, haptics: true, screenWakeLock: true },
     filters: { warmupThreshold: 0.75 },
     intensityPresets: [50, 70, 80, 90, 100],
+    get gyms() { return mockPrefsState.gyms },
+    addGym: mockAddGym,
   }),
 }))
 vi.mock('../../stores/progression', () => ({
@@ -95,9 +110,17 @@ function createPRExercises(): Exercise[] {
   ]
 }
 
-// Mock store state — isolated in an object so tests interact with an explicit container
-// rather than a bare module-level `let` that can be accidentally shadowed or leaked.
-const mockState = { exercises: [] as Exercise[] }
+// Mock store state — a shallowRef mutated in place + triggerRef, mirroring the
+// real store's reactivity contract (workout.ts trades deep reactivity for
+// explicit triggers). Faithfulness matters here: children only observe
+// in-place mutations when a fresh-identity prop reaches them (#963), and the
+// live-update regression tests must be able to reproduce exactly that. The
+// `mockState` getter/setter facade keeps the original container API.
+const mockExercises = shallowRef<Exercise[]>([])
+const mockState = {
+  get exercises() { return mockExercises.value },
+  set exercises(v: Exercise[]) { mockExercises.value = v },
+}
 
 function getExercisePR(id: string): number {
   const ex = mockState.exercises.find(e => e.id === id)
@@ -127,8 +150,22 @@ const mockSyncDeleteSet = vi.fn()
 const mockRestoreExercise = vi.fn()
 const mockSyncDeleteExercise = vi.fn()
 const mockRenameExercise = vi.fn()
-const mockUpdateExerciseTags = vi.fn()
-const mockReorderExercise = vi.fn()
+
+// Faithful to the real actions: mutate the exercise IN PLACE, then triggerRef —
+// the exact store contract the fresh-identity bindings (#963) exist to handle.
+const mockUpdateExerciseTags = vi.fn((exerciseId: string, tags: string[]) => {
+  const ex = mockExercises.value.find(e => e.id === exerciseId)
+  if (!ex) return
+  ex.tags = [...tags]
+  triggerRef(mockExercises)
+})
+const mockSetExerciseGyms = vi.fn((exerciseId: string, gyms: string[]) => {
+  const ex = mockExercises.value.find(e => e.id === exerciseId)
+  if (!ex) return
+  if (gyms.length > 0) ex.gyms = [...gyms]
+  else delete ex.gyms
+  triggerRef(mockExercises)
+})
 
 const mockArchiveExercise = vi.fn()
 const mockUnarchiveExercise = vi.fn()
@@ -164,9 +201,10 @@ vi.mock('../../stores/workout', () => ({
     unarchiveExercise: mockUnarchiveExercise,
     renameExercise: mockRenameExercise,
     updateExerciseTags: mockUpdateExerciseTags,
-    reorderExercise: mockReorderExercise,
-    reorderExercises: vi.fn(),
     updateExercise: vi.fn(),
+    setExerciseGyms: mockSetExerciseGyms,
+    renameGymOnExercises: vi.fn(),
+    removeGymFromExercises: vi.fn(() => []),
   })
 }))
 
@@ -221,6 +259,7 @@ function timerState(wrapper: VueWrapper) {
 describe('WorkoutTracker', () => {
   beforeEach(() => {
     mockState.exercises = []
+    mockPrefsState.gyms = []
     localStorageMock.clear()
     vi.clearAllMocks()
     // clearAllMocks keeps implementations — reset return values explicitly
@@ -244,9 +283,13 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtPageTitle').text()).toBe('Workouts')
     })
 
-    it('does not render tag filter bar when no tags', () => {
+    it('does not render the tag filter bar when no tags (only the gym row remains)', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+      // The gym row (#963) is always visible in the exercises view; the TAG
+      // bar still keeps its zero-chrome behavior.
+      const bars = wrapper.findAll('.wtTagFilterBar')
+      expect(bars).toHaveLength(1)
+      expect(bars[0].attributes('aria-label')).toBe('Filter by gym')
     })
 
     it('shows fresh-start transition card after clearing sample data', () => {
@@ -309,10 +352,12 @@ describe('WorkoutTracker', () => {
       expect(logBtns[0].attributes('aria-label')).toContain('Log a set')
     })
 
-    it('renders drag handles for reordering', () => {
+    // Custom ordering was removed once the list became recency-ordered (#936):
+    // no drag handles, no long-press gesture, no keyboard reorder. This guards
+    // against any of those affordances being reintroduced by accident.
+    it('does not render drag handles (custom ordering removed)', () => {
       const wrapper = mountTracker()
-      const handles = wrapper.findAll('.wtDragHandle')
-      expect(handles.length).toBe(3)
+      expect(wrapper.findAll('.wtDragHandle').length).toBe(0)
     })
   })
 
@@ -423,14 +468,6 @@ describe('WorkoutTracker', () => {
       expect(items.length).toBe(2)
     })
 
-    it('disables drag handles when filter is active', async () => {
-      const wrapper = mountTracker()
-      const chips = tagChips(wrapper)
-      await chips[0].trigger('click')
-
-      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
-    })
-
     it('deactivates tag on second click', async () => {
       const wrapper = mountTracker()
       const chips = tagChips(wrapper)
@@ -440,6 +477,90 @@ describe('WorkoutTracker', () => {
 
       await legsChip.trigger('click')
       expect(wrapper.findAll('.wtExerciseItem').length).toBe(3)
+    })
+  })
+
+  // Recency ordering (#936): the exercise list is sorted by the most recent
+  // set date (descending) so the next exercise to perform is easiest to reach,
+  // and that order is preserved inside tag/search-filtered subsets.
+  describe('recency ordering (#936)', () => {
+    /** Names in the order they render in the list. */
+    function renderedNames(wrapper: VueWrapper): string[] {
+      return wrapper.findAll('.wtExerciseItem .wtExerciseName').map(n => n.text())
+    }
+
+    it('orders exercises by most-recent set first, regardless of array order', () => {
+      // Array order deliberately does NOT match recency order.
+      mockState.exercises = [
+        {
+          id: 'ex-old', name: 'Deadlift', tags: ['Legs'],
+          sets: [{ id: 'so', date: '2026-01-05T12:00:00', weight: 315, reps: 3, estimated1RM: 344 }],
+        },
+        {
+          id: 'ex-new', name: 'Row', tags: ['Back'],
+          sets: [{ id: 'sn', date: '2026-03-10T12:00:00', weight: 135, reps: 8, estimated1RM: 168 }],
+        },
+        {
+          id: 'ex-mid', name: 'Curl', tags: ['Arms'],
+          sets: [{ id: 'sm', date: '2026-02-01T12:00:00', weight: 40, reps: 10, estimated1RM: 53 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Row', 'Curl', 'Deadlift'])
+    })
+
+    it('sorts never-logged exercises to the bottom', () => {
+      mockState.exercises = [
+        { id: 'ex-empty', name: 'Plank', tags: ['Core'], sets: [] },
+        {
+          id: 'ex-logged', name: 'Bench Press', tags: ['Push'],
+          sets: [{ id: 's', date: '2026-01-20T12:00:00', weight: 185, reps: 5, estimated1RM: 216 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Bench Press', 'Plank'])
+    })
+
+    it('keeps recency order inside a tag-filtered subset', async () => {
+      mockState.exercises = [
+        {
+          id: 'ex-a', name: 'Incline Press', tags: ['Push'],
+          sets: [{ id: 'a', date: '2026-01-05T12:00:00', weight: 135, reps: 8, estimated1RM: 168 }],
+        },
+        {
+          id: 'ex-b', name: 'Overhead Press', tags: ['Push'],
+          sets: [{ id: 'b', date: '2026-03-01T12:00:00', weight: 95, reps: 6, estimated1RM: 114 }],
+        },
+        {
+          id: 'ex-c', name: 'Squat', tags: ['Legs'],
+          sets: [{ id: 'c', date: '2026-04-01T12:00:00', weight: 225, reps: 5, estimated1RM: 263 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      const pushChip = wrapper.findAll('.wtTagChip')
+        .find(c => c.find('.wtTagChipLabel').exists() && c.find('.wtTagChipLabel').text() === 'Push')!
+      await pushChip.trigger('click')
+
+      // Only the two Push exercises, most-recent first — Squat is filtered out
+      // even though it is the most recently trained overall.
+      expect(renderedNames(wrapper)).toEqual(['Overhead Press', 'Incline Press'])
+    })
+
+    it('breaks recency ties by preserving array order (stable sort)', () => {
+      // Same day for both — the stored array (creation) order is the stable
+      // tiebreaker now that manual reorder is gone.
+      mockState.exercises = [
+        {
+          id: 'ex-1', name: 'Second', tags: [],
+          sets: [{ id: '1', date: '2026-02-02T12:00:00', weight: 100, reps: 5, estimated1RM: 117 }],
+        },
+        {
+          id: 'ex-2', name: 'First', tags: [],
+          sets: [{ id: '2', date: '2026-02-02T18:00:00', weight: 100, reps: 5, estimated1RM: 117 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Second', 'First'])
     })
   })
 
@@ -593,6 +714,59 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  // #971: a "history" button in the log-set header jumps to the exercise's
+  // set-history detail view. The log sheet and detail modal share a z-index,
+  // so this is a swap (close sheet → open detail), not a stack.
+  describe('set history shortcut from log modal (#971)', () => {
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    it('opens the exercise set history from the log-set header, swapping out the log sheet', async () => {
+      const wrapper = mountTracker()
+      // Open the log-set modal for a known exercise (Bench Press is most-recent).
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.logSetSheet').exists()).toBe(true)
+      expect(wrapper.find('.wtDetailModal').exists()).toBe(false)
+
+      // Tap the leading history button.
+      const historyBtn = wrapper.find('.wtLogHistoryBtn')
+      expect(historyBtn.exists()).toBe(true)
+      await historyBtn.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // The log sheet is replaced by the detail "All Sets" view for the same exercise.
+      expect(wrapper.find('.logSetSheet').exists()).toBe(false)
+      expect(wrapper.find('.wtDetailModal').exists()).toBe(true)
+      expect(wrapper.find('.wtDetailTitle').text()).toBe('Bench Press')
+      expect(wrapper.find('.wtDetailTab.active').text()).toContain('All Sets')
+    })
+
+    it('routes back to logging via the detail "+ Log Set" footer', async () => {
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.find('.wtLogHistoryBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // From the detail view, the footer re-opens the log-set modal.
+      await wrapper.find('.wtDetailFooterBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.logSetSheet').exists()).toBe(true)
+      expect(wrapper.find('#log-modal-title').text()).toBe('Bench Press')
+    })
+
+    it('hides the history button when creating a new exercise', async () => {
+      const wrapper = mountTracker()
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.logSetSheet').exists()).toBe(true)
+      expect(wrapper.find('.wtLogHistoryBtn').exists()).toBe(false)
+    })
+  })
+
   describe('PR history tab', () => {
     beforeEach(() => {
       mockState.exercises = createPRExercises()
@@ -689,7 +863,9 @@ describe('WorkoutTracker', () => {
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       await saveBtn.trigger('click')
 
-      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', [])
+      // The options bag carries gym membership from creation (#984); with no
+      // gym filter active it is empty = unassigned = shows at every gym.
+      expect(mockAddExercise).toHaveBeenCalledWith('Deadlift', [], { gyms: [] })
     })
 
     it('calls addExercise with selected tags', async () => {
@@ -2337,203 +2513,435 @@ describe('WorkoutTracker', () => {
     })
   })
 
-  /**
-   * Long-press reorder gesture.
-   *
-   * Regression: tapping the left-edge drag handle used to fire `touchstart`
-   * and immediately arm a drag, so brushing the handle while scrolling
-   * re-ordered exercises by accident. The gesture now requires a ~400ms hold
-   * on the row, and a movement > 8px before the timer fires cancels it.
-   * These tests pin that threshold so the behavior can't regress to the
-   * instant-drag model.
-   */
-  describe('long-press reorder gesture', () => {
-    const LONG_PRESS_MS = 400
-    const MOVE_TOLERANCE_PX = 8
-
-    function dispatchTouch(
-      el: Element,
-      type: 'touchstart' | 'touchmove' | 'touchend' | 'touchcancel',
-      clientX = 0,
-      clientY = 0,
-    ) {
-      const event = new Event(type, { bubbles: true, cancelable: true })
-      Object.defineProperty(event, 'touches', {
-        value: type === 'touchend' || type === 'touchcancel' ? [] : [{ clientX, clientY }],
-      })
-      Object.defineProperty(event, 'target', { value: el })
-      el.dispatchEvent(event)
+  // ── Gym filtering (#961) ─────────────────────────────────────────
+  describe('gym filtering', () => {
+    /** Exercises spanning two gyms + shared (unassigned) equipment. */
+    function createGymExercises(): Exercise[] {
+      return [
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: ['Legs'], sets: [], gyms: ['Gym A'] },
+        { id: 'ex-2', name: 'Hack Squat (24h)', tags: ['Legs'], sets: [], gyms: ['Gym B'] },
+        { id: 'ex-3', name: 'Bench Press', tags: ['Chest'], sets: [] }, // unassigned = everywhere
+        { id: 'ex-4', name: 'Cable Row', tags: ['Back'], sets: [], gyms: ['Gym A', 'Gym B'] },
+      ]
     }
 
-    beforeEach(() => {
-      mockState.exercises = createExercises()
-      vi.useFakeTimers()
-    })
+    function gymChipRow(wrapper: VueWrapper) {
+      return wrapper.find('[aria-label="Filter by gym"]')
+    }
 
-    afterEach(() => {
-      vi.useRealTimers()
-    })
+    function gymChip(wrapper: VueWrapper, label: string) {
+      return gymChipRow(wrapper).findAll('.wtTagChip').find(c => c.text() === label)!
+    }
 
-    it('does not reorder from a brief tap on the row', () => {
+    function listedNames(wrapper: VueWrapper): string[] {
+      return wrapper.findAll('.wtExerciseName').map(n => n.text())
+    }
+
+    it('renders the zero-state chip row: All Gyms active + a labeled Add Gym chip (#963)', () => {
+      mockState.exercises = createGymExercises()
       const wrapper = mountTracker()
-      const items = wrapper.findAll('.wtExerciseItem')
-
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      vi.advanceTimersByTime(LONG_PRESS_MS - 50) // release before threshold
-      dispatchTouch(items[0].element, 'touchend')
-      vi.advanceTimersByTime(100)
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
+      const chips = gymChipRow(wrapper).findAll('.wtTagChip')
+      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Add Gym'])
+      expect(chips[0].classes()).toContain('wtTagChipActive')
+      // The labeled manage chip is the create-first-gym entry point in the
+      // logging surface — Settings must not be the only way in.
+      expect(gymChipRow(wrapper).find('[aria-label="Add a gym"]').exists()).toBe(true)
     })
 
-    it('cancels the long-press when the finger moves past the tolerance', () => {
+    it('opens the gym manager from the zero-state Add Gym chip', async () => {
+      mockState.exercises = createGymExercises()
       const wrapper = mountTracker()
-      const items = wrapper.findAll('.wtExerciseItem')
-
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      // Scroll-like movement well past tolerance, before the hold fires
-      dispatchTouch(items[0].element, 'touchmove', 20, 100 + MOVE_TOLERANCE_PX + 10)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 100) // would have fired
-      dispatchTouch(items[0].element, 'touchend')
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
+      await gymChipRow(wrapper).find('[aria-label="Add a gym"]').trigger('click')
+      expect(wrapper.find('[aria-labelledby="gym-manager-title"]').exists()).toBe(true)
     })
 
-    it('keeps the hold alive for sub-tolerance finger jitter', () => {
+    it('routes EditExerciseModal create-gym to the preferences store (#963)', () => {
+      mockState.exercises = createGymExercises()
       const wrapper = mountTracker()
-      const items = wrapper.findAll('.wtExerciseItem')
-
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      // Tiny tremor — still within tolerance
-      dispatchTouch(items[0].element, 'touchmove', 20 + 2, 100 + 3)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 10)
-      // Timer should have fired → dragging state is active
-      // (we can't observe it directly without exposing state, but the fact
-      // that the onEnd path commits the reorder proves pickup happened)
-      dispatchTouch(document.body, 'touchend')
-
-      // fromIndex === overIndex (no movement after pickup), so no reorder committed,
-      // but the gesture did not get cancelled by jitter — a follow-up touchmove
-      // past the pickup would reorder. Assert no error was thrown and list intact.
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-      expect(wrapper.findAll('.wtExerciseItem').length).toBe(3)
+      wrapper.findComponent(EditExerciseModal).vm.$emit('create-gym', 'Iron Temple')
+      expect(mockAddGym).toHaveBeenCalledWith('Iron Temple')
+      expect(mockPrefsState.gyms).toContain('Iron Temple')
     })
 
-    it('reorders when a long-press is followed by a drag to a new index', () => {
+    it('renders the chip row (All Gyms + one chip per gym + manage) once gyms exist', () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
       const wrapper = mountTracker()
-      const items = wrapper.findAll('.wtExerciseItem')
+      const chips = gymChipRow(wrapper).findAll('.wtTagChip')
+      expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Gym A', 'Gym B', ''])
+      // Exclusive default: All Gyms is the active chip.
+      expect(chips[0].classes()).toContain('wtTagChipActive')
+      // Trailing icon-only chip opens the gym manager.
+      expect(gymChipRow(wrapper).find('[aria-label="Manage gyms"]').exists()).toBe(true)
+    })
 
-      // Stub getBoundingClientRect so getItemIndexFromPoint can resolve indices
-      const rects: Record<number, DOMRect> = {
-        0: { top: 0, bottom: 40, left: 0, right: 300, height: 40, width: 300, x: 0, y: 0, toJSON: () => ({}) },
-        1: { top: 40, bottom: 80, left: 0, right: 300, height: 40, width: 300, x: 0, y: 40, toJSON: () => ({}) },
-        2: { top: 80, bottom: 120, left: 0, right: 300, height: 40, width: 300, x: 0, y: 80, toJSON: () => ({}) },
+    it('filters exclusively: only the active gym\'s + unassigned exercises remain', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      const names = listedNames(wrapper)
+      expect(names).toContain('Hack Squat (PF)')   // Gym A
+      expect(names).toContain('Bench Press')        // unassigned = everywhere
+      expect(names).toContain('Cable Row')          // multi-gym incl. Gym A
+      expect(names).not.toContain('Hack Squat (24h)') // Gym B only
+    })
+
+    it('selecting a second gym replaces the first (exclusive, not additive)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      await gymChip(wrapper, 'Gym B').trigger('click')
+
+      expect(gymChip(wrapper, 'Gym B').classes()).toContain('wtTagChipActive')
+      expect(gymChip(wrapper, 'Gym A').classes()).not.toContain('wtTagChipActive')
+      const names = listedNames(wrapper)
+      expect(names).toContain('Hack Squat (24h)')
+      expect(names).not.toContain('Hack Squat (PF)')
+    })
+
+    it('tapping the active gym chip deselects back to All Gyms', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      expect(gymChip(wrapper, 'All Gyms').classes()).toContain('wtTagChipActive')
+      expect(listedNames(wrapper)).toHaveLength(4)
+    })
+
+    it('composes with the tag filter as AND (tags narrow within the gym)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym B').trigger('click')
+      // Tag chip row: pick "Legs" — within Gym B that's only the 24h hack squat.
+      const legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      await legsChip.trigger('click')
+
+      expect(listedNames(wrapper)).toEqual(['Hack Squat (24h)'])
+    })
+
+    it('scopes tag chip counts to the active gym', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      // Both hack squats carry Legs → count 2 without a gym filter.
+      let legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      expect(legsChip.find('.wtTagChipCount').text()).toBe('2')
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+      legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().startsWith('Legs'))!
+      expect(legsChip.find('.wtTagChipCount').text()).toBe('1')
+    })
+
+    it('keeps an exercise whose gyms are all orphaned visible under any gym (rename race safety net)', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = [
+        ...createGymExercises(),
+        { id: 'ex-5', name: 'Ghost Machine', tags: [], sets: [], gyms: ['Renamed Away'] },
+      ]
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      expect(listedNames(wrapper)).toContain('Ghost Machine')
+    })
+
+    it('passes the gym-filtered list to the quick-log exercise picker', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym B').trigger('click')
+
+      const picker = wrapper.findComponent({ name: 'ExercisePickerModal' })
+      const names = (picker.props('exercises') as Exercise[]).map(e => e.name)
+      expect(names).toContain('Hack Squat (24h)')
+      expect(names).toContain('Bench Press')
+      expect(names).not.toContain('Hack Squat (PF)')
+    })
+
+    it('persists the selection per device and restores it on mount', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const first = mountTracker()
+      await gymChip(first, 'Gym B').trigger('click')
+      expect(localStorageMock.getItem('active-gym-filter')).toBe(JSON.stringify('Gym B'))
+      first.unmount()
+
+      const second = mountTracker()
+      expect(gymChip(second, 'Gym B').classes()).toContain('wtTagChipActive')
+      expect(listedNames(second)).not.toContain('Hack Squat (PF)')
+    })
+
+    it('ignores a persisted selection for a gym that no longer exists (filter stays inert)', () => {
+      localStorageMock.setItem('active-gym-filter', JSON.stringify('Deleted Gym'))
+      mockPrefsState.gyms = ['Gym A']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      expect(gymChip(wrapper, 'All Gyms').classes()).toContain('wtTagChipActive')
+      expect(listedNames(wrapper)).toHaveLength(4)
+    })
+
+    it('shows the generalized empty state when the gym filter empties the list', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Empty Gym']
+      mockState.exercises = [
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: [], sets: [], gyms: ['Gym A'] },
+      ]
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Empty Gym').trigger('click')
+
+      expect(wrapper.find('.wtEmpty').text()).toContain('No exercises match your filters.')
+    })
+
+    // ── Assigning gyms at creation time (#984) ───────────────────
+    describe('gym assignment in the new-exercise form', () => {
+      /** The Gym picker inside the log sheet (EditExerciseModal has its own). */
+      function newExerciseGymPicker(wrapper: VueWrapper) {
+        return wrapper
+          .find('[aria-labelledby="log-modal-title"]')
+          .find('[aria-label="Gym membership"]')
       }
-      items.forEach((item, i) => {
-        vi.spyOn(item.element, 'getBoundingClientRect').mockReturnValue(rects[i])
+
+      function gymPickerChip(wrapper: VueWrapper, label: string) {
+        return newExerciseGymPicker(wrapper)
+          .findAll('.wtTagPickerChip')
+          .find(c => c.text() === label)!
+      }
+
+      async function openNewExerciseForm(wrapper: VueWrapper, name = 'Hack Squat') {
+        exposed(wrapper).openNewExerciseModal()
+        await wrapper.vm.$nextTick()
+        await wrapper.find('[aria-labelledby="log-modal-title"] input[type="text"]').setValue(name)
+        return wrapper
+      }
+
+      async function save(wrapper: VueWrapper) {
+        await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+      }
+
+      it('renders a Gym picker in the new-exercise form', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper)
+
+        expect(newExerciseGymPicker(wrapper).exists()).toBe(true)
+        expect(
+          newExerciseGymPicker(wrapper).findAll('.wtTagPickerChip').map(c => c.text()),
+        ).toEqual(['Gym A', 'Gym B', '+'])
       })
 
-      // Press on row 0
-      dispatchTouch(items[0].element, 'touchstart', 20, 20)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 10) // pickup fires
-      // Drag down onto row 2 via document-level listener
-      const move = new Event('touchmove', { bubbles: true, cancelable: true })
-      Object.defineProperty(move, 'touches', { value: [{ clientX: 20, clientY: 100 }] })
-      document.dispatchEvent(move)
-      // Release
-      const end = new Event('touchend', { bubbles: true, cancelable: true })
-      Object.defineProperty(end, 'touches', { value: [] })
-      document.dispatchEvent(end)
+      it('keeps the tag and gym inline-add chips distinguishable by accessible name', async () => {
+        // The form now has TWO .wtTagAddChip buttons. Anything selecting one
+        // by class alone matches both — that is exactly how the e2e spec broke
+        // when this feature landed. The accessible names are the stable
+        // discriminator, so pin them here where the fast suite catches it.
+        mockPrefsState.gyms = ['Gym A']
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper)
 
-      expect(mockReorderExercise).toHaveBeenCalledWith(0, 2)
+        const form = wrapper.find('[aria-labelledby="log-modal-title"]')
+        const addChips = form.findAll('.wtTagAddChip')
+        expect(addChips).toHaveLength(2)
+        expect(addChips.map(c => c.attributes('aria-label')).sort()).toEqual(['Add gym', 'Add tag'])
+      })
+
+      it('renders the picker with only the add chip when no gyms exist yet (first-gym path)', async () => {
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper)
+
+        expect(newExerciseGymPicker(wrapper).exists()).toBe(true)
+        expect(newExerciseGymPicker(wrapper).find('[aria-label="Add gym"]').exists()).toBe(true)
+      })
+
+      it('pre-selects the active gym filter — the gym you are at is the gym you are adding for', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        const wrapper = mountTracker()
+        await gymChip(wrapper, 'Gym A').trigger('click')
+
+        await openNewExerciseForm(wrapper)
+
+        expect(gymPickerChip(wrapper, 'Gym A').classes()).toContain('wtTagPickerChipActive')
+        expect(gymPickerChip(wrapper, 'Gym B').classes()).not.toContain('wtTagPickerChipActive')
+      })
+
+      it('passes the pre-selected gym through addExercise at creation', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+        await gymChip(wrapper, 'Gym A').trigger('click')
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], { gyms: ['Gym A'] })
+      })
+
+      it('leaves membership empty when no gym filter is active (unassigned = everywhere)', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], { gyms: [] })
+      })
+
+      it('deselecting the pre-seeded gym is one tap and sticks through save', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+        await gymChip(wrapper, 'Gym A').trigger('click')
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await gymPickerChip(wrapper, 'Gym A').trigger('click')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], { gyms: [] })
+      })
+
+      it('selects multiple gyms (shared equipment across gyms)', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await gymPickerChip(wrapper, 'Gym A').trigger('click')
+        await gymPickerChip(wrapper, 'Gym B').trigger('click')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], {
+          gyms: ['Gym A', 'Gym B'],
+        })
+      })
+
+      it('inline "+" creates the gym in preferences and selects it locally', async () => {
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+
+        await newExerciseGymPicker(wrapper).find('[aria-label="Add gym"]').trigger('click')
+        const input = newExerciseGymPicker(wrapper).find('[aria-label="New gym name"]')
+        await input.setValue('Iron Temple')
+        await input.trigger('keyup.enter')
+
+        expect(mockAddGym).toHaveBeenCalledWith('Iron Temple')
+        expect(mockPrefsState.gyms).toContain('Iron Temple')
+        expect(gymPickerChip(wrapper, 'Iron Temple').classes()).toContain('wtTagPickerChipActive')
+      })
+
+      it('flushes half-typed gym text on save instead of dropping it', async () => {
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+
+        await newExerciseGymPicker(wrapper).find('[aria-label="Add gym"]').trigger('click')
+        // Typed but never committed with Enter/blur — Save must not lose it.
+        await newExerciseGymPicker(wrapper).find('[aria-label="New gym name"]').setValue('Iron Temple')
+        await save(wrapper)
+
+        expect(mockAddExercise).toHaveBeenCalledWith('Pendulum Squat', [], {
+          gyms: ['Iron Temple'],
+        })
+      })
+
+      it('does not leak a previous selection into the next new exercise', async () => {
+        mockPrefsState.gyms = ['Gym A', 'Gym B']
+        mockState.exercises = createGymExercises()
+        mockAddExercise.mockReturnValue('ex-new')
+        const wrapper = mountTracker()
+
+        await openNewExerciseForm(wrapper, 'Pendulum Squat')
+        await gymPickerChip(wrapper, 'Gym B').trigger('click')
+        await save(wrapper)
+
+        await openNewExerciseForm(wrapper, 'Belt Squat')
+        expect(gymPickerChip(wrapper, 'Gym B').classes()).not.toContain('wtTagPickerChipActive')
+      })
     })
+  })
 
-    it('ignores long-press initiated on the "+ Log" button', () => {
-      const wrapper = mountTracker()
-      const logBtn = wrapper.findAll('.wtExerciseLogBtn')[0]
+  describe('fresh-identity child bindings (#963)', () => {
+    // The store mutates exercises in place behind a shallowRef; children bound
+    // to the raw array froze because their prop identity never changed. These
+    // tests drive the REAL host wiring (liveExercises) against the mock's
+    // faithful in-place-mutation contract — they fail if anyone reverts a
+    // binding to `store.exercises`.
 
-      dispatchTouch(logBtn.element, 'touchstart', 20, 100)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 100)
-      dispatchTouch(logBtn.element, 'touchend')
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-    })
-
-    it('does not arm a long-press while a tag filter is active', async () => {
-      vi.useRealTimers() // click triggers need real Vue reactivity
-      const wrapper = mountTracker()
-      const chips = wrapper.findAll('.wtTagChip:not(.wtTagChipClear)')
-      await chips[0].trigger('click')
-
-      vi.useFakeTimers()
-      const items = wrapper.findAll('.wtExerciseItem')
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 100)
-      dispatchTouch(items[0].element, 'touchend')
-
-      expect(mockReorderExercise).not.toHaveBeenCalled()
-    })
-
-    /**
-     * Regression for #383 — the tag-filter gate above had a search-shaped
-     * hole in it. `v-for` indexes into `filteredExercises`, but
-     * `store.reorderExercise` splices the unfiltered `exercises` array,
-     * so a drag during search silently moved unrelated rows at the
-     * filtered index's position in the full list (e.g. dragging filtered
-     * row 0 would reorder absolute row 0 — often an exercise the user
-     * couldn't see). Gesture is now blocked whenever the list is
-     * filtered, matching the tag-filter case.
-     */
-    it('does not arm a long-press while a search query is active (#383)', async () => {
-      // Need ≥5 exercises for the search bar to render.
-      vi.useRealTimers()
+    it('gym manager checklist shows a toggled checkmark live, without reopening', async () => {
+      mockPrefsState.gyms = ['Gym A']
       mockState.exercises = [
-        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
-        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
-        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
-        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
-        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+        { id: 'ex-1', name: 'Hack Squat (PF)', tags: [], sets: [], gyms: ['Gym A'] },
+        { id: 'ex-3', name: 'Bench Press', tags: [], sets: [] },
       ]
       const wrapper = mountTracker()
-      const searchInput = wrapper.find('.wtSearchInput')
-      await searchInput.setValue('press') // filters to 2 rows
+      await wrapper.find('[aria-label="Manage gyms"]').trigger('click')
+      await wrapper.find('[aria-label="Show exercises for Gym A"]').trigger('click')
 
-      // Sanity: list is actually filtered before we try to drag.
-      expect(wrapper.findAll('.wtExerciseItem').length).toBe(2)
+      // Re-find rows after every state change — Vue may replace the nodes.
+      const benchRow = () =>
+        wrapper.findAll('.wtTagExerciseRow').find(r => r.text().includes('Bench Press'))!
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(false)
+      expect(wrapper.find('.wtTagManagerCount').text()).toBe('1')
 
-      vi.useFakeTimers()
-      const items = wrapper.findAll('.wtExerciseItem')
-      dispatchTouch(items[0].element, 'touchstart', 20, 100)
-      vi.advanceTimersByTime(LONG_PRESS_MS + 100)
-      // Drive a drop gesture document-wide too, to make sure even if the
-      // timer somehow fired, no reorder call escapes the gate.
-      const end = new Event('touchend', { bubbles: true, cancelable: true })
-      Object.defineProperty(end, 'touches', { value: [] })
-      document.dispatchEvent(end)
-      dispatchTouch(items[0].element, 'touchend')
+      await benchRow().trigger('click')
 
-      expect(mockReorderExercise).not.toHaveBeenCalled()
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(true)
+      expect(wrapper.find('.wtTagManagerCount').text()).toBe('2')
     })
 
-    /**
-     * Visual affordance — handle must be rendered in the "disabled" state
-     * so users see why reorder doesn't respond. Parallel to the existing
-     * tag-filter visual test.
-     */
-    it('disables drag handles while a search query is active (#383)', async () => {
-      vi.useRealTimers()
-      mockState.exercises = [
-        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
-        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
-        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
-        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
-        { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
-      ]
+    it('tag manager checklist shows a toggled checkmark live, without reopening', async () => {
+      mockState.exercises = createExercises()
       const wrapper = mountTracker()
-      const searchInput = wrapper.find('.wtSearchInput')
-      await searchInput.setValue('press')
+      await wrapper.find('[aria-label="Manage tags"]').trigger('click')
+      await wrapper.find('[aria-label="Show exercises for Legs"]').trigger('click')
 
-      expect(wrapper.findAll('.wtDragHandleDisabled').length).toBeGreaterThan(0)
+      const benchRow = () =>
+        wrapper.findAll('.wtTagExerciseRow').find(r => r.text().includes('Bench Press'))!
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(false)
+
+      await benchRow().trigger('click')
+
+      expect(benchRow().find('.wtTagExerciseCheck').exists()).toBe(true)
+    })
+
+    it('timeline reflects sets mutated in place while it is the active view', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtViewToggleBtn')[1].trigger('click')
+      expect(wrapper.text()).not.toContain('205')
+
+      // The real store contract for logSet/updateSet/deleteSet: mutate the
+      // exercise in place, then triggerRef.
+      mockState.exercises[0].sets.push({
+        id: 's-new', date: '2026-01-21T12:00:00', weight: 205, reps: 5, estimated1RM: 239,
+      })
+      triggerRef(mockExercises)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.text()).toContain('205')
     })
   })
 })

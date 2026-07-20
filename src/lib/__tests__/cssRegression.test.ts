@@ -200,6 +200,22 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.topBarCoachBtn AI Review entry (#972)', () => {
+    // The AI Review entry moved from a full-width Workouts card to a compact
+    // top-bar icon on the Calendar tab; it must inherit the shared 44px
+    // top-bar button sizing (.settingsGearBtn, .topBarPlusBtn, .topBarCoachBtn).
+    const lines = getRuleLines('.topBarCoachBtn')
+
+    it('meets the 44px iOS HIG touch target via the shared top-bar rule', () => {
+      expect(lines.some(l => l.startsWith('width') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('the removed Workouts entry card does not linger in the stylesheet', () => {
+      expect(css.includes('.wtCoachCard')).toBe(false)
+    })
+  })
+
   describe('Vue component touch target compliance', () => {
     // jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
     // cannot verify sizing in component tests. These CSS regression tests
@@ -286,6 +302,48 @@ describe('CSS regression tests', () => {
 
     it('.settingsPresetAdd has min-height: 44px', () => {
       const lines = getRuleLines('.settingsPresetAdd')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtTagPickerChip touch target (#990)', () => {
+    // Regression: the picker chips carried only `padding: 8px 16px` around
+    // 13px text, so they measured 33px tall (38px in rows containing the
+    // larger --font-body "+" add chip, which stretches its row) — well under
+    // the project's 44pt iOS floor. The class is shared by five pickers:
+    // WorkoutTracker's new-exercise Tags and Gym rows, and EditExerciseModal's
+    // Tags, Equipment and Gym rows, so the height must live on the shared rule
+    // rather than being patched per surface.
+    //
+    // Sized rather than padded out with a transparent ::before hit-area (the
+    // .logSetFieldClear approach): that trick suits an isolated control ringed
+    // by inert whitespace, but these chips tile in a wrapping 8px-gap row, so
+    // 44px overlays over 33px pills would tile edge-to-edge and a near-miss in
+    // the gutter would toggle the neighbouring chip instead of doing nothing.
+    it('.wtTagPickerChip has min-height: 44px for iOS HIG compliance', () => {
+      const lines = getRuleLines('.wtTagPickerChip')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    // The chip must carry the height itself: .wtTagPicker is a plain flex row,
+    // so a chip alone in its row has nothing to stretch against.
+    it('does not depend on a fixed height that would clip wrapped labels', () => {
+      const lines = getRuleLines('.wtTagPickerChip')
+      expect(lines.some(l => /^height:/.test(l))).toBe(false)
+    })
+
+    // The "+" chip is the narrowest in every picker; its 44pt width comes from
+    // min-width, not from a text label.
+    it('.wtTagAddChip keeps min-width: 44px so the "+" is a full target', () => {
+      const lines = getRuleLines('.wtTagAddChip')
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    // The inline add input replaces the "+" chip in the same row. With no tags
+    // or gyms configured it is the only item in that row, so flex stretch alone
+    // would leave it at its natural 33px.
+    it('.wtTagInlineInput matches the 44pt floor it swaps in for', () => {
+      const lines = getRuleLines('.wtTagInlineInput')
       expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
     })
   })

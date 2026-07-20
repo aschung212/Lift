@@ -19,6 +19,7 @@ import type { BodyweightEntry } from '../stores/bodyweight'
 import { epley } from './epley'
 import { sanitizeIntensityMaxReps } from './intensityTable'
 import { sanitizeExerciseEquipment } from './coachAnalytics'
+import { sanitizeExerciseGyms } from './gyms'
 import { logWarn } from './logger'
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -105,6 +106,14 @@ export function parseExercise(value: unknown): Exercise | null {
   if (o.equipment !== undefined) {
     const eq = sanitizeExerciseEquipment(o.equipment)
     if (eq) ex.equipment = eq
+  }
+  // Gym membership (#961). An empty result is left unset rather than stored as
+  // [], because `matchesGymFilter` treats "no gyms" as "shows under every gym
+  // filter" — an exercise must never become invisible because its membership
+  // failed to sanitize.
+  if (o.gyms !== undefined) {
+    const gyms = sanitizeExerciseGyms(o.gyms)
+    if (gyms.length > 0) ex.gyms = gyms
   }
   if (typeof o.updated_at === 'string') ex.updated_at = o.updated_at
   if (typeof o.archived_at === 'string') ex.archived_at = o.archived_at

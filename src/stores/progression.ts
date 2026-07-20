@@ -8,7 +8,7 @@ import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
-import { logWarn } from '../lib/logger'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import {
@@ -264,7 +264,10 @@ export const useProgressionStore = defineStore('progression', {
             this.lastSyncError = null
             this._syncToSupabase()
           } else {
-            logWarn('Supabase fetch failed in progression store — using local data', { error: String(error) })
+            // Network/auth/RLS error — route through reportFetchError so an
+            // RLS/auth regression is observable instead of silently swallowed
+            // (LIFT-786), and record the per-store sync indicator (LIFT-820).
+            reportFetchError('progression', error)
             this.lastSyncError = classifySyncError(error)
             // A 401 means an expired token, not offline — refresh once so the
             // next fetch recovers rather than staying local-only (LIFT-784).
@@ -274,7 +277,7 @@ export const useProgressionStore = defineStore('progression', {
         }
         data = result.data
       } catch (err) {
-        logWarn('Supabase fetch failed in progression store — using local data', { error: String(err) })
+        reportFetchError('progression', err)
         this.lastSyncError = classifySyncError(err)
         if (isAuthError(err)) void ensureFreshSession()
         return

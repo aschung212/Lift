@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { supabase, isPreviewMode } from './supabase'
+import type { Database } from './database.types'
 import { logError, logWarn } from './logger'
 import { broadcastSyncStatus } from './crossTabSync'
 import { backupToIDB, restoreFromIDB } from './durableStorage'
@@ -7,8 +8,36 @@ import { isAuthError, ensureFreshSession } from './sessionHealth'
 
 type SyncOperation = () => PromiseLike<unknown>
 
+/** The public schema's writable tables, keyed by name (LIFT-948). */
+type PublicTables = Database['public']['Tables']
+
 /**
- * Serializable description of a Supabase mutation (LIFT-706).
+ * Table names a journaled descriptor may target — bound to the generated
+ * Supabase schema (LIFT-948). Modeling this as `keyof PublicTables` instead of
+ * a bare `string` means a descriptor built with a misspelled or stale table name
+ * fails typechecking at the producer instead of at runtime against the server.
+ */
+export type SyncTable = keyof PublicTables
+
+/**
+ * Serializable description of a single-table Supabase mutation, with its `row`
+ * / `values` / `match` typed against that table's generated Insert / Update /
+ * Row shapes (LIFT-948). Generic over the specific table `T` so the table
+ * literal is linked to the column names allowed in the payload — a descriptor
+ * carrying a column that doesn't exist on `T` no longer compiles.
+ */
+export type SyncDescriptorFor<T extends SyncTable> =
+  | { op: 'upsert'; table: T; row: PublicTables[T]['Insert'] }
+  | {
+      op: 'update'
+      table: T
+      values: PublicTables[T]['Update']
+      match: Partial<PublicTables[T]['Row']>
+    }
+
+/**
+ * Serializable description of a Supabase mutation (LIFT-706, hardened in
+ * LIFT-948).
  *
  * The in-memory queue holds closures, which cannot survive a tab close or
  * app restart. To harden offline writes — where every logged set is hard-won
@@ -21,10 +50,12 @@ type SyncOperation = () => PromiseLike<unknown>
  * idempotency invariant enforced in architecturalInvariants.test.ts — replay
  * is safe because re-running an upsert or a targeted update is a no-op once the
  * server already holds the value.
+ *
+ * The union is distributed over every known table so the discriminating `table`
+ * literal is tied to the payload columns for that specific table, rather than
+ * modeling rows as an untyped `Record<string, unknown>`.
  */
-export type SyncDescriptor =
-  | { op: 'upsert'; table: string; row: Record<string, unknown> }
-  | { op: 'update'; table: string; values: Record<string, unknown>; match: Record<string, unknown> }
+export type SyncDescriptor = { [T in SyncTable]: SyncDescriptorFor<T> }[SyncTable]
 
 interface JournalEntry {
   descriptor: SyncDescriptor
@@ -104,6 +135,19 @@ export function isReplayableDescriptor(descriptor: unknown): descriptor is SyncD
 }
 
 /**
+ * The one place the dynamically-dispatched table name defeats the strongly-typed
+ * client surface (LIFT-948). A descriptor's `table` is only known at runtime, so
+ * `supabase.from(table)` can't be resolved to a single table's builder type —
+ * this helper isolates that single `any` cast rather than letting it leak across
+ * `executeDescriptor`. Callers reach it only after `isReplayableDescriptor` has
+ * bounded `table` to the known allowlist.
+ */
+function fromTable(table: SyncTable) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (supabase as any).from(table)
+}
+
+/**
  * Rebuild a runnable Supabase operation from its serializable descriptor.
  * Used to replay journaled writes after a reload. Returns a no-op promise when
  * Supabase is unavailable so replay degrades gracefully offline, or when the
@@ -118,15 +162,10 @@ export function executeDescriptor(descriptor: SyncDescriptor): PromiseLike<unkno
     })
     return Promise.resolve()
   }
-  // The table name is dynamic here (driven by the descriptor), so the strongly
-  // typed supabase client surface doesn't apply — cast to a loose client. The
-  // allowlist check above bounds `table` to the known set before we cast.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = supabase as any
   if (descriptor.op === 'upsert') {
-    return client.from(descriptor.table).upsert(descriptor.row)
+    return fromTable(descriptor.table).upsert(descriptor.row)
   }
-  let query = client.from(descriptor.table).update(descriptor.values)
+  let query = fromTable(descriptor.table).update(descriptor.values)
   for (const [col, val] of Object.entries(descriptor.match)) {
     query = query.eq(col, val)
   }

@@ -34,6 +34,19 @@ describe('VolumeTrendChart', () => {
     expect(wrapper.find('.wtGArea').exists()).toBe(true)
   })
 
+  // LIFT-856: the collapse toggle is wrapped in a level-2 heading (WAI-ARIA
+  // accordion pattern) so the section is reachable by heading navigation under
+  // the Calendar view's <h1>.
+  it('wraps the toggle in an h2 section heading', () => {
+    const wrapper = mount(VolumeTrendChart, {
+      props: { weeklyVolume: weeks, totalVolume: 30500, collapsed: false },
+    })
+    const h2 = wrapper.find('h2')
+    expect(h2.exists()).toBe(true)
+    expect(h2.text()).toContain('Volume Trend')
+    expect(h2.find('button.vtHeader').exists()).toBe(true)
+  })
+
   it('hides the chart body but keeps the header when collapsed', () => {
     const wrapper = mount(VolumeTrendChart, {
       props: { weeklyVolume: weeks, totalVolume: 30500, collapsed: true },

@@ -1,5 +1,5 @@
 /**
- * AI Coach — shared, pure contract + guardrail logic (issue: AI Coach "Weekly Review").
+ * AI Coach — shared, pure contract + guardrail logic (user-facing name: "AI Review", #972).
  *
  * This module is the single source of truth for what data leaves the device, what
  * shape the model must return, and the server-side validation/cost rules. It is

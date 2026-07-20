@@ -343,28 +343,6 @@ describe('workout store', () => {
     })
   })
 
-  // ── reorderExercise ─────────────────────────────────────────────
-  describe('reorderExercise', () => {
-    it('reorders exercise from one index to another', () => {
-      const store = useWorkoutStore()
-      store.addExercise('A')
-      store.addExercise('B')
-      store.addExercise('C')
-      store.reorderExercise(2, 0) // Move C to front
-      expect(store.exercises.map(e => e.name)).toEqual(['C', 'A', 'B'])
-    })
-
-    it('does nothing for invalid reorder indices', () => {
-      const store = useWorkoutStore()
-      store.addExercise('A')
-      store.reorderExercise(-1, 0)
-      store.reorderExercise(0, -1)
-      store.reorderExercise(5, 0)
-      store.reorderExercise(0, 0) // same index
-      expect(store.exercises).toHaveLength(1)
-    })
-  })
-
   // ── renameTag / deleteTag ──────────────────────────────────────
   describe('renameTag', () => {
     it('renames a tag across all exercises', () => {
@@ -530,6 +508,56 @@ describe('workout store', () => {
         // Older set has higher 1RM; without baseline it should win
         const allTime = store.getExercisePR(id)
         expect(allTime).toBeGreaterThan(store.getExercisePR(id, '2026-01-01'))
+      })
+    })
+
+    // The PR cache (LIFT-939) is keyed off the reactive `exercises` ref, and
+    // most store mutations edit sets IN PLACE and only call triggerRef — the
+    // array identity never changes. These guard that the memo invalidates on
+    // every mutation path rather than serving a stale value.
+    describe('memoization invalidation', () => {
+      it('reflects a newly logged set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10) // ≈ 180
+        expect(store.getExercisePR(id)).toBe(store.getExercisePR(id)) // warm the cache
+        const before = store.getExercisePR(id)
+        store.logSet(id, 225, 3) // ≈ 248, higher
+        expect(store.getExercisePR(id)).toBeGreaterThan(before)
+        expect(store.getExercisePR(id)).toBe(248)
+      })
+
+      it('reflects an updated set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10)
+        const setId = store.exercises.find(e => e.id === id)!.sets[0].id
+        expect(store.getExercisePR(id)).toBeGreaterThan(0) // warm the cache
+        store.updateSet(id, setId, 315, 5) // much heavier
+        expect(store.getExercisePR(id)).toBe(store.getExercisePRSet(id)!.estimated1RM)
+        expect(store.getExercisePRSet(id)!.weight).toBe(315)
+      })
+
+      it('reflects a deleted PR set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10) // ≈ 180
+        store.logSet(id, 225, 3) // ≈ 248, the PR
+        const prSet = store.getExercisePRSet(id)! // warm the cache
+        expect(prSet.weight).toBe(225)
+        store.deleteSet(id, prSet.id)
+        expect(store.getExercisePRSet(id)!.weight).toBe(135)
+      })
+
+      it('caches distinct results per sinceDate baseline', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 315, 5, '2020-01-01T10:00:00Z') // high, pre-baseline
+        store.logSet(id, 135, 5, '2026-03-01T10:00:00Z') // low, post-baseline
+        // Interleave the two baselines to exercise the per-sinceDate memo maps.
+        expect(store.getExercisePR(id)).toBeGreaterThan(store.getExercisePR(id, '2026-01-01'))
+        expect(store.getExercisePR(id, '2026-01-01')).toBe(store.getExercisePRSet(id, '2026-01-01')!.estimated1RM)
+        expect(store.getExercisePRSet(id)!.weight).toBe(315)
       })
     })
   })

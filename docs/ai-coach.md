@@ -1,11 +1,15 @@
-# AI Coach — Weekly Review (design)
+# AI Coach — AI Review (design)
+
+> **Naming (#972):** the user-facing feature name is **"AI Review"** (sheet title, aria-labels,
+> download filename `lift-ai-review-YYYY-MM-DD.md`). It was called "Weekly Review" until
+> 2026-07-16; the weekly *cadence* (quota window, digest framing) is unchanged — only the label.
 
 Status: **Phase 1 in progress** (backend scaffold landed; UI + consent + deletion wiring remain).
 The live transport today is the **bring-your-own-AI export** (open loop, no server) — see below —
 because the Anthropic key the server needs isn't provisioned yet. Flip `COACH_MODE` to `'server'`
 in `src/lib/coachExport.ts` once it is.
 
-An opt-in feature where a user taps once and gets an LLM-generated **Weekly Review** of
+An opt-in feature where a user taps once and gets an LLM-generated **AI Review** of
 their training — a fixed-shape digest rendered as themed cards. It is the smallest surface
 that delivers a genuine, differentiating coaching moment without the cost, abuse,
 hallucination, and prompt-injection blast radius of free-form chat.
@@ -23,7 +27,7 @@ This collapses the three UX options we considered into the best one:
 - **Not** free-form chat (biggest cost/abuse/injection surface; weekly cadence doesn't suit it).
 - **Not** an "ask N questions" menu (its value is absorbed by the digest's four sections,
   delivered proactively instead of making the user pick).
-- A single **Weekly Review** digest, server-validated against a fixed JSON schema.
+- A single weekly **AI Review** digest, server-validated against a fixed JSON schema.
 
 ## The load-bearing reality
 
@@ -63,7 +67,7 @@ destination. So until the key is provisioned we deliver the value with **zero se
   "nothing leaves Lift until you paste it" disclosure, and **Copy to clipboard** + **Download
   `.md`** actions. The server states stay intact behind `mode === 'server'`.
 - **Open loop by decision:** no paste-back / JSON round-trip — the coaching lives in the chat.
-- No key, no quota, no consent-to-transmit surface (nothing is sent), so the entry card drops the
+- No key, no quota, no consent-to-transmit surface (nothing is sent), so the entry point drops the
   sign-in gate in this mode. This also stands as a permanent **free / privacy tier** after the
   server exists: a user's data never leaves the device unless they paste it themselves.
 - **Privacy:** the profile adds sensitive fields (age, injuries). In BYO nothing is auto-sent — the
@@ -233,8 +237,11 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
 
 ## UX (Phase 1, after backend)
 
-- One entry point: a **"Coach" card** at the top of the Workouts tab that doubles as the quota
-  meter ("Coach · N reviews left this week"). Appears only with ≥2 weeks of data + a trend.
+- One entry point: a compact **top-bar icon button on the Calendar tab** (#972) — the
+  retrospective surface — mirroring the contextual "+" that shows on the Workouts tab. It
+  replaced the original full-width Workouts-page card, which was too prominent for an
+  infrequently used feature. Appears only with ≥2 weeks of data; the quota meter now lives
+  inside the sheet header, not the entry point.
 - Tapping opens `CoachSheet` (built on `useModal` for the #830 scroll lock) with four states:
   consent gate → loading skeleton → result cards → quota-exceeded ("Resets in N days").
 - No text input on the primary path → sidesteps the iOS-keyboard-modal bug class.
@@ -255,14 +262,22 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   lifetime PRs, per-set relative intensities, current-week volume, consistency, bodyweight
   trend, weights unit-converted, identifiers stripped — + 13 tests (validate round-trip +
   no-identifiers assertion).
+- `src/lib/coachHistory.ts` (LIFT-851) — device-local insight ring. Persists generated
+  reviews to localStorage (`coach-insights-history`) as a **last-12 ring** (drop oldest);
+  re-opening a cached review is **free** (no quota). `appendCoachInsight` / `loadCoachHistory`
+  (newest-first, corrupt + malformed entries dropped) / `clearCoachHistory`. The key is wired
+  into `deleteAccount`'s `localStorageKeys` clear. NOT synced — cross-device `coach_insights`
+  is a deliberate Phase 2 change. The CoachSheet "Past insights" list consumes this once #848
+  lands.
 
-- `CoachSheet` + the Workouts-tab entry card (LIFT-848): `src/lib/coachClient.ts` (pure status→
+- `CoachSheet` + the entry point (LIFT-848, moved in #972): `src/lib/coachClient.ts` (pure status→
   result mapping + abort-timeout fetch + `daysUntilReset`), `src/composables/useCoach.ts`
   (singleton UI state + device-local cosmetic quota cache + `getSession` token), and
   `src/views/CoachSheet.vue` (idle/loading/result/error states; output rendered via text
-  interpolation, NEVER `v-html`). The entry card lives in `WorkoutTracker`'s `wtPageHeader`,
-  gated by `coachReviewEligibility` (≥`MIN_SETS_FOR_REVIEW` sets across ≥2 weeks) AND signed-in
-  AND not a preview deploy; it doubles as the quota meter. The view wires `buildCoachPayload` to
+  interpolation, NEVER `v-html`). The entry is a `topBarCoachBtn` icon in `App.vue`'s top bar,
+  shown on the Calendar tab, gated by `coachReviewEligibility` (≥`MIN_SETS_FOR_REVIEW` sets across
+  ≥2 weeks) AND not a preview deploy AND (BYO mode OR signed-in). `CoachSheet` mounts from
+  `App.vue` (lazy chunk, fetched on first open) and wires `buildCoachPayload` to
   the stores (`getOverloadSuggestion` → `overloads`, `streakWeeks`/`weeklyTarget`, `toDisplayUnits`).
 
 - **Bring-your-own-AI export (#931)** — `src/lib/coachExport.ts` (`COACH_MODE`, analyst

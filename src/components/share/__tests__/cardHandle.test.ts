@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { SQUARE_CARDS, STORY_CARDS } from '../cardRegistry'
+import { SQUARE_CARDS, STORY_CARDS, loadCardComponent } from '../cardRegistry'
 import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 import type { SessionSummary } from '../../../lib/sessionSummary'
 
@@ -51,19 +51,23 @@ describe('share-card handle (issue #714)', () => {
     expect(SHARE_CARD_HANDLE).not.toMatch(/^https?:\/\//)
   })
 
-  it.each(ALL_CARDS.map((c) => [c.id, c.component] as const))(
+  it.each(ALL_CARDS.map((c) => c.id))(
     'renders the app handle on the %s card',
-    (_id, component) => {
+    async (id) => {
+      // Cards are code-split behind a dynamic import (#937); resolve the real
+      // component before mounting so we still assert on rendered card content.
+      const component = (await loadCardComponent(id))!
       const wrapper = mount(component, { props: { summary: makeSummary() } })
       expect(wrapper.text()).toContain(SHARE_CARD_HANDLE)
     },
   )
 
-  it('still renders the handle when there is no best set (defensive empty-day render)', () => {
+  it('still renders the handle when there is no best set (defensive empty-day render)', async () => {
     // PR Focus / Best Set bodies are v-if'd on bestSet; the handle lives
     // outside those guards so it must survive a null bestSet.
-    for (const { id, component } of ALL_CARDS) {
+    for (const { id } of ALL_CARDS) {
       if (id === 'pr-focus') continue // hidden entirely when prs === 0 / no bestSet
+      const component = (await loadCardComponent(id))!
       const wrapper = mount(component, {
         props: { summary: makeSummary({ bestSet: null, prs: 0, repPRs: 0, highlights: [] }) },
       })

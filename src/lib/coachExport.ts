@@ -23,7 +23,7 @@ import type { CoachPayload } from './aiCoach'
 import { buildCoachUserMessage } from './aiCoach'
 
 /**
- * Active transport for the Weekly Review.
+ * Active transport for the AI Review.
  *   - `'byo'`  — this module: user pastes into their own LLM. No key, no server.
  *   - `'server'` — the `api/coach.ts` proxy. Flip here once an Anthropic key is
  *     provisioned; the server code path stays intact meanwhile.
@@ -95,5 +95,5 @@ export function buildCoachExportText(payload: CoachPayload, athleteBlock = ''): 
  */
 export function coachExportFilename(dateKey: string): string {
   const safe = /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : 'review'
-  return `lift-weekly-review-${safe}.md`
+  return `lift-ai-review-${safe}.md`
 }

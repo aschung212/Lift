@@ -139,6 +139,41 @@
           </div>
           <span class="iosSettingsFooter">Used by Coach analytics: free-weight lifts anchor strength comparisons; machine and bodyweight numbers are flagged as not standards-comparable.</span>
         </div>
+        <!-- Gym membership (#961): which gyms this exercise is available at.
+             Always rendered — the inline "+" mirrors the tag add flow and is a
+             first-gym creation path, so Settings isn't the only zero-state
+             entry point (#963 feedback). -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Gym</span>
+          <div class="wtTagPicker" role="group" aria-label="Gym membership">
+            <button
+              v-for="gym in allGyms"
+              :key="gym"
+              :aria-pressed="editGyms.includes(gym)"
+              :class="['wtTagPickerChip', { wtTagPickerChipActive: editGyms.includes(gym) }]"
+              :style="!editGyms.includes(gym)
+                ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
+                : {}"
+              @click="toggleEditGym(gym)"
+            >{{ gym }}</button>
+            <span v-if="editGymAdding" class="wtTagInlineAdd">
+              <input
+                v-model.trim="newGymInput"
+                type="text"
+                autocomplete="off"
+                placeholder="Gym name"
+                :maxlength="GYM_NAME_MAX_LENGTH"
+                class="wtTagInlineInput"
+                aria-label="New gym name"
+                ref="editGymInputEl"
+                @keyup.enter="addEditGym"
+                @blur="finishEditGymAdd"
+              />
+            </span>
+            <button v-else-if="allGyms.length < MAX_GYMS" class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startEditGymAdd" aria-label="Add gym">+</button>
+          </div>
+          <span class="iosSettingsFooter">Shown when filtering the exercise list by gym. Leave empty to show this exercise at every gym.</span>
+        </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmSave">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="emit('close')">Cancel</button>
@@ -187,6 +222,8 @@ export interface EditExerciseSave {
   intensityMaxReps: number | null
   /** Coach equipment classification; null = Auto (name heuristic). */
   equipment: ExerciseEquipment | null
+  /** Gym membership (#961); [] = unassigned (shows under every gym filter). */
+  gyms: string[]
 }
 </script>
 
@@ -204,17 +241,22 @@ import {
   sanitizeIntensityMaxReps,
 } from '../lib/intensityTable'
 import { classifyExercise } from '../lib/coachAnalytics'
+import { MAX_GYMS, GYM_NAME_MAX_LENGTH, sanitizeGymName } from '../lib/gyms'
 
 const props = defineProps<{
   /** Exercise being edited; null renders nothing (modal closed). */
   exercise: Exercise | null
   /** All known tags, for the tag picker chips. */
   allTags: string[]
+  /** The synced gym list (#961); the section renders even when empty — the inline "+" creates the first gym. */
+  allGyms: string[]
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'save', payload: EditExerciseSave): void
+  /** Inline gym creation (#963) — parent routes this to useGymActions.createGym immediately. */
+  (e: 'create-gym', name: string): void
   (e: 'archive'): void
   (e: 'unarchive'): void
   (e: 'delete'): void
@@ -258,6 +300,54 @@ const EQUIPMENT_OPTIONS: ReadonlyArray<{ value: ExerciseEquipment | null; label:
 ]
 const editEquipment = ref<ExerciseEquipment | null>(null)
 
+// ── Gym membership (#961) ───────────────────────────────────────
+// Multi-select over the synced gym list; empty = unassigned (everywhere).
+const editGyms = ref<string[]>([])
+
+// Inline gym creation (#963): mirrors the tag inline-add flow above. A new
+// name is created in the synced list immediately (the parent routes the emit
+// to useGymActions.createGym, same as the manager modal) and selected
+// locally; membership itself still applies on Save. `sanitizeGymName` here
+// matches what preferences.addGym will store, so the local selection and the
+// list entry can't diverge.
+const editGymInputEl = ref<HTMLInputElement | null>(null)
+const editGymAdding = ref(false)
+const newGymInput = ref('')
+
+function startEditGymAdd() {
+  editGymAdding.value = true
+  nextTick(() => editGymInputEl.value?.focus())
+}
+
+function commitNewGym() {
+  const name = sanitizeGymName(newGymInput.value)
+  newGymInput.value = ''
+  if (!name) return
+  if (!props.allGyms.includes(name)) {
+    if (props.allGyms.length >= MAX_GYMS) return
+    emit('create-gym', name)
+  }
+  if (!editGyms.value.includes(name)) editGyms.value.push(name)
+}
+
+function addEditGym() {
+  commitNewGym()
+  nextTick(() => editGymInputEl.value?.focus())
+}
+
+function finishEditGymAdd() {
+  commitNewGym()
+  editGymAdding.value = false
+}
+
+function toggleEditGym(gym: string) {
+  if (editGyms.value.includes(gym)) {
+    editGyms.value = editGyms.value.filter(g => g !== gym)
+  } else {
+    editGyms.value.push(gym)
+  }
+}
+
 const AUTO_LABELS: Record<string, string> = {
   free_weight: 'free weight',
   machine: 'machine',
@@ -279,8 +369,11 @@ watch(() => props.exercise, async (exercise) => {
     editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
     editEquipment.value = exercise.equipment ?? null
+    editGyms.value = [...(exercise.gyms || [])]
     newTagInput.value = ''
     editTagAdding.value = false
+    newGymInput.value = ''
+    editGymAdding.value = false
     confirmDeleteExercise.value = false
     await nextTick()
     const el = document.querySelector<HTMLElement>('[aria-labelledby="edit-exercise-title"]')
@@ -342,6 +435,8 @@ function confirmSave() {
   if (pendingTag && !editTags.value.includes(pendingTag)) {
     editTags.value.push(pendingTag)
   }
+  // Auto-commit any pending gym text the same way (#963)
+  commitNewGym()
   // Store nothing when the rep count matches the default (keeps the override
   // clear); otherwise persist the per-exercise value.
   emit('save', {
@@ -352,6 +447,7 @@ function confirmSave() {
     barWeight: editBarWeight.value,
     intensityMaxReps: editIntensityMaxReps.value === DEFAULT_INTENSITY_MAX_REPS ? null : editIntensityMaxReps.value,
     equipment: editEquipment.value,
+    gyms: [...editGyms.value],
   })
 }
 </script>
