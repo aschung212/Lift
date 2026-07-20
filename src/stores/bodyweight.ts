@@ -9,6 +9,7 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
+import { parseBodyweightEntries } from '../lib/parseGuards'
 
 const TOMBSTONE_STORE = 'bodyweight'
 
@@ -23,7 +24,9 @@ export interface BodyweightEntry {
 }
 
 function load(): BodyweightEntry[] {
-  return loadStoreData<BodyweightEntry[]>('bodyweight', STORAGE_KEY, () => [], Array.isArray)
+  // Element-level validation (LIFT-946): drop entries missing id/date or with a
+  // non-numeric weight so a single corrupt row can't poison charts / e1RM / sync.
+  return parseBodyweightEntries(loadStoreData<unknown[]>('bodyweight', STORAGE_KEY, () => [], Array.isArray))
 }
 
 export const useBodyweightStore = defineStore('bodyweight', {

@@ -256,6 +256,19 @@ describe('useBodyweightStore', () => {
       const freshStore = useBodyweightStore()
       expect(freshStore.entries).toEqual([])
     })
+
+    it('drops individually malformed entries on load (LIFT-946)', () => {
+      localStorageMock.setItem('bodyweight-entries', JSON.stringify([
+        { id: 'good-1', date: '2024-01-01T12:00:00.000Z', weight: 180 },
+        { id: 'bad-1', date: '2024-01-02T12:00:00.000Z', weight: 'heavy' }, // non-numeric weight
+        { id: 'bad-2', weight: 178 }, // missing date
+        { id: 'good-2', date: '2024-01-03T12:00:00.000Z', weight: 179 },
+      ]))
+
+      setActivePinia(createPinia())
+      const freshStore = useBodyweightStore()
+      expect(freshStore.entries.map(e => e.id)).toEqual(['good-1', 'good-2'])
+    })
   })
 
   describe('deleteEntry with sync disabled', () => {
