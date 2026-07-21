@@ -49,7 +49,8 @@
         placeholder="Search exercises or tags…"
         aria-label="Search exercises or tags"
       />
-      <span v-if="searchQuery" class="wtSearchCount">{{ filteredExercises.length }} result{{ filteredExercises.length !== 1 ? 's' : '' }}</span>
+      <span v-if="searchQuery" class="wtSearchCount" aria-hidden="true">{{ filteredExercises.length }} result{{ filteredExercises.length !== 1 ? 's' : '' }}</span>
+      <span class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ searchResultAnnouncement }}</span>
     </div>
 
     <!-- Gym filter chips (#961) — exclusive select, above the additive tag row.
@@ -1089,6 +1090,19 @@ const filteredExercises = computed(() => {
   // tag / search subsets stay recency-ordered too — the most recent exercise
   // within a muscle group floats to the top of that filtered view.
   return sortByRecency(result)
+})
+
+/**
+ * Screen-reader announcement for the live search-result count (#989, WCAG 2.2
+ * SC 4.1.3 Status Messages). The visible `.wtSearchCount` badge is aria-hidden
+ * and only mounts while typing, so it can't reliably announce; this string
+ * feeds a persistent polite live region that voices the tally as the query
+ * narrows. Empty while no query is active so nothing is spoken on clear.
+ */
+const searchResultAnnouncement = computed(() => {
+  if (!searchQuery.value) return ''
+  const n = filteredExercises.value.length
+  return `${n} result${n !== 1 ? 's' : ''}`
 })
 
 /**
