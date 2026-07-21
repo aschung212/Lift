@@ -647,22 +647,27 @@
 /* https://developer.apple.com/design/human-interface-guidelines/typography */
 
 :root {
-  --font-caption2:   11px;  /* Caption 2 */
-  --font-caption1:   12px;  /* Caption 1 */
-  --font-footnote:   13px;  /* Footnote */
-  --font-subhead:    15px;  /* Subheadline */
-  --font-callout:    16px;  /* Callout */
-  --font-body:       17px;  /* Body (default) */
-  --font-headline:   17px;  /* Headline (semibold) */
-  --font-title3:     20px;  /* Title 3 */
-  --font-title2:     22px;  /* Title 2 */
-  --font-title1:     28px;  /* Title 1 */
-  --font-lg-title:   34px;  /* Large Title */
+  /* rem-anchored off the root font-size so text honors the user's preferred
+     browser/OS text size and iOS Dynamic Type (WCAG 1.4.4 Resize Text, AA).
+     The html element intentionally sets no fixed px font-size, so 1rem = the
+     user's chosen base (16px by default). rem values below are the HIG px
+     sizes ÷ 16 — visually identical at the default base, but now scalable. */
+  --font-caption2:   0.6875rem;  /* Caption 2   — 11px */
+  --font-caption1:   0.75rem;    /* Caption 1   — 12px */
+  --font-footnote:   0.8125rem;  /* Footnote    — 13px */
+  --font-subhead:    0.9375rem;  /* Subheadline — 15px */
+  --font-callout:    1rem;       /* Callout     — 16px */
+  --font-body:       1.0625rem;  /* Body        — 17px */
+  --font-headline:   1.0625rem;  /* Headline    — 17px */
+  --font-title3:     1.25rem;    /* Title 3     — 20px */
+  --font-title2:     1.375rem;   /* Title 2     — 22px */
+  --font-title1:     1.75rem;    /* Title 1     — 28px */
+  --font-lg-title:   2.125rem;   /* Large Title — 34px */
 
   /* Display sizes (beyond HIG scale — timers, modals, calculators) */
-  --font-display-sm: 30px;
-  --font-display:    36px;
-  --font-display-lg: 48px;
+  --font-display-sm: 1.875rem;   /* 30px */
+  --font-display:    2.25rem;    /* 36px */
+  --font-display-lg: 3rem;       /* 48px */
 
   /* Spacing scale (4pt grid) */
   --space-1:  4px;
@@ -782,7 +787,7 @@ button, [role="tab"], [role="switch"], a {
   color: var(--accent);
   border: 2px solid var(--accent);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-weight: 600;
   text-decoration: none;
 }
@@ -1298,7 +1303,7 @@ html.modal-open .tabContent {
 }
 
 .mysteryIcon {
-  font-size: 20px;
+  font-size: 1.25rem;  /* 20px */
   font-weight: 800;
   color: var(--text-muted);
 }
@@ -1363,7 +1368,7 @@ html.modal-open .tabContent {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   border-radius: 50%;
-  font-size: 20px;
+  font-size: 1.25rem;  /* 20px */
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1789,7 +1794,7 @@ html.theme-fading .settingsSheet {
   width: 44px;
   height: 44px;
   flex-shrink: 0;
-  font-size: 20px;
+  font-size: 1.25rem;  /* 20px */
   font-family: inherit;
   color: var(--text-muted);
   background: none;
@@ -2118,7 +2123,7 @@ html.theme-fading .settingsSheet {
 .wtPageTitle {
   margin: 0;
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 34px;
+  font-size: 2.125rem;  /* 34px */
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -2127,7 +2132,7 @@ html.theme-fading .settingsSheet {
 
 .wtPageStats {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   font-weight: 500;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
@@ -2151,7 +2156,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtWeeklyGoalText {
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   font-weight: 500;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
@@ -2234,7 +2239,7 @@ html.theme-fading .settingsSheet {
   flex: 1;
   padding: 0;
   min-height: 32px;
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-weight: 600;
   font-family: inherit;
   color: var(--text-secondary);
@@ -2678,7 +2683,7 @@ html.theme-fading .settingsSheet {
 
 .wtExerciseName {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 1rem;  /* 16px */
   line-height: 1.2;
   color: var(--text-primary);
   overflow: hidden;
@@ -2698,7 +2703,7 @@ html.theme-fading .settingsSheet {
   border: 1px solid var(--accent);
   border-radius: 99px;
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2706,7 +2711,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtExerciseNewPRIcon {
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
 }
 
 .wtExerciseMetaLine {
@@ -2714,7 +2719,7 @@ html.theme-fading .settingsSheet {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
   min-width: 0;
@@ -2726,14 +2731,14 @@ html.theme-fading .settingsSheet {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 99px;
-  font-size: 11px;
+  font-size: 0.6875rem;  /* 11px */
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .wtExerciseStat {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   line-height: 1.3;
 }
 
@@ -2843,7 +2848,7 @@ html.theme-fading .settingsSheet {
 .wtSearchInput {
   flex: 1;
   padding: 12px 12px 12px 32px;
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-family: inherit;
   color: var(--text-primary);
   background: var(--bg-elevated);
@@ -2867,7 +2872,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtSearchCount {
-  font-size: 12px;
+  font-size: 0.75rem;  /* 12px */
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -2885,7 +2890,7 @@ html.theme-fading .settingsSheet {
 .wtTagFilterBar::-webkit-scrollbar { display: none; }
 
 .wtTagChip {
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   font-weight: 600;
   padding: 8px 12px;
   min-height: 32px;
@@ -2915,7 +2920,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtTagChipCount {
-  font-size: 11px;
+  font-size: 0.6875rem;  /* 11px */
   font-weight: 700;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -3452,7 +3457,7 @@ html.theme-fading .settingsSheet {
   display: inline-block;
   width: 16px;
   text-align: center;
-  font-size: 18px;
+  font-size: 1.125rem;  /* 18px */
   line-height: 1;
   color: var(--text-secondary);
   transition: transform 150ms ease;
@@ -4004,7 +4009,7 @@ html.theme-fading .settingsSheet {
 
 .logSetSheet .logSetFieldLabel {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -4035,7 +4040,7 @@ html.theme-fading .settingsSheet {
   margin: 0;
   color: var(--accent);
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 44px;
+  font-size: 2.75rem;  /* 44px */
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.03em;
@@ -4055,13 +4060,13 @@ html.theme-fading .settingsSheet {
 
 .logSetSheet .logSetFieldInputReps {
   text-align: center;
-  font-size: 44px;
+  font-size: 2.75rem;  /* 44px */
   width: 100%;
   margin: 4px 0;
 }
 
 .logSetSheet .logSetFieldUnit {
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-weight: 600;
   color: var(--text-muted);
   flex-shrink: 0;
@@ -4078,7 +4083,7 @@ html.theme-fading .settingsSheet {
   border-radius: 99px;
   background: var(--bg-hover);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
@@ -4135,7 +4140,7 @@ html.theme-fading .settingsSheet {
   color: var(--text-primary);
   border-radius: 12px;
   font-family: inherit;
-  font-size: 20px;
+  font-size: 1.25rem;  /* 20px */
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.15s, transform 0.1s, opacity 0.15s;
@@ -4679,7 +4684,7 @@ html.theme-fading .settingsSheet {
   background: var(--bg-elevated);
   border: 1px solid var(--accent);
   border-radius: 12px;
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   color: var(--text-secondary);
   cursor: pointer;
   transition: opacity 0.2s;
@@ -4708,7 +4713,7 @@ html.theme-fading .settingsSheet {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: 1.125rem;  /* 18px */
   cursor: pointer;
   margin: -12px -8px -12px 0;
   border-radius: 8px;
@@ -4735,7 +4740,7 @@ html.theme-fading .settingsSheet {
 
 .wtPlateCardHeaderLabel {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -4762,7 +4767,7 @@ html.theme-fading .settingsSheet {
   min-height: 44px;
   padding: 0 4px;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   font-weight: 700;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
@@ -4812,7 +4817,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPlateCountNum {
-  font-size: 18px;
+  font-size: 1.125rem;  /* 18px */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
@@ -5211,7 +5216,7 @@ html.theme-fading .settingsSheet {
 }
 
 .logSetSheet .repMaxResultPlaceholder .repMaxResultLabel {
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
   letter-spacing: 0.6px;
 }
 
@@ -6034,7 +6039,7 @@ html.theme-fading .settingsSheet {
 }
 
 .bwGoalTag {
-  font-size: 9px;
+  font-size: 0.5625rem;  /* 9px */
   font-weight: 600;
   color: var(--success);
   letter-spacing: 0.3px;

@@ -795,3 +795,39 @@ describe('CSS regression tests', () => {
     })
   })
 })
+
+/**
+ * Regression: the type scale must stay anchored to rem, not fixed px, so text
+ * honors the user's preferred browser/OS text size and iOS Dynamic Type
+ * (WCAG 1.4.4 Resize Text, AA — LIFT-988). A fixed-px scale ignores text-only
+ * zoom, forcing low-vision users into full-page pinch-zoom + horizontal scroll.
+ */
+describe('type scale is rem-anchored (WCAG 1.4.4 — LIFT-988)', () => {
+  const fontTokens = [
+    '--font-caption2', '--font-caption1', '--font-footnote', '--font-subhead',
+    '--font-callout', '--font-body', '--font-headline', '--font-title3',
+    '--font-title2', '--font-title1', '--font-lg-title',
+    '--font-display-sm', '--font-display', '--font-display-lg',
+  ]
+
+  for (const token of fontTokens) {
+    it(`${token} is defined in rem, not px`, () => {
+      const decl = css.match(new RegExp(`${token}:\\s*([^;]+);`))
+      expect(decl, `${token} definition not found`).not.toBeNull()
+      const value = decl![1].trim()
+      expect(value, `${token} should be rem-based`).toMatch(/rem$/)
+      expect(value, `${token} must not use a fixed px size`).not.toMatch(/px/)
+    })
+  }
+
+  it('no font-size declaration in index.css uses a fixed px value', () => {
+    // Relative units (rem/em) scale with the user's text-size preference; px does not.
+    const pxFontSizes = css.match(/font-size:\s*[0-9.]+px/g)
+    expect(pxFontSizes, `found fixed-px font-size(s): ${pxFontSizes?.join(', ')}`).toBeNull()
+  })
+
+  it('does not pin the root font-size, so 1rem tracks the user preference', () => {
+    // A fixed `html { font-size: 16px }` would defeat rem-based scaling.
+    expect(css).not.toMatch(/\bhtml\s*\{[^}]*font-size:\s*\d+px/)
+  })
+})
