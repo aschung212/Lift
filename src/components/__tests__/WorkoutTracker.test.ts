@@ -1854,6 +1854,39 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtSearchCount').text()).toContain('2')
     })
 
+    it('announces the result count via a persistent polite live region (#989)', async () => {
+      const wrapper = mountTracker()
+      // The live region is always present so assistive tech observes mutations,
+      // and is empty (silent) before any query is typed.
+      const live = wrapper.find('.wtSearchBar .srOnly[aria-live="polite"]')
+      expect(live.exists()).toBe(true)
+      expect(live.attributes('role')).toBe('status')
+      expect(live.attributes('aria-atomic')).toBe('true')
+      expect(live.text()).toBe('')
+
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('press')
+      expect(live.text()).toBe('2 results')
+
+      await searchInput.setValue('bench')
+      expect(live.text()).toBe('1 result')
+
+      await searchInput.setValue('zzzzz')
+      expect(live.text()).toBe('0 results')
+
+      // Clearing the query silences the region again.
+      await searchInput.setValue('')
+      expect(live.text()).toBe('')
+    })
+
+    it('hides the visible result badge from assistive tech to avoid a double read (#989)', async () => {
+      const wrapper = mountTracker()
+      const searchInput = wrapper.find('.wtSearchInput')
+      await searchInput.setValue('press')
+
+      expect(wrapper.find('.wtSearchCount').attributes('aria-hidden')).toBe('true')
+    })
+
     it('shows no-match message for unmatched query', async () => {
       const wrapper = mountTracker()
       const searchInput = wrapper.find('.wtSearchInput')
