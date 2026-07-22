@@ -12,6 +12,7 @@ import { resolve } from 'path'
  */
 
 const publicDir = resolve(__dirname, '../../../public')
+const rootDir = resolve(__dirname, '../../..')
 const DEPLOYMENT_DOMAIN = 'spa-rho-sandy.vercel.app'
 
 describe('SEO file regression tests', () => {
@@ -76,6 +77,36 @@ describe('SEO file regression tests', () => {
     it('does not reference liftracker.app (competitor domain)', () => {
       const content = readFileSync(sitemapPath, 'utf-8')
       expect(content).not.toContain('liftracker.app')
+    })
+  })
+
+  /**
+   * The homepage advertises its own URL in three self-referential places:
+   * the <link rel="canonical">, the og:url meta, and the sitemap <loc>.
+   * Search engines treat a trailing-slash and non-trailing-slash form as the
+   * same page, but inconsistent self-referential signals dilute canonicalization
+   * and can split link equity (LIFT-1000). These three must be byte-identical.
+   */
+  describe('self-referential canonical URL consistency (LIFT-1000)', () => {
+    const html = readFileSync(resolve(rootDir, 'index.html'), 'utf-8')
+    const sitemap = readFileSync(resolve(publicDir, 'sitemap.xml'), 'utf-8')
+
+    const canonical = html.match(/<link rel="canonical" href="([^"]+)"/)?.[1]
+    const ogUrl = html.match(/<meta property="og:url" content="([^"]+)"/)?.[1]
+    const sitemapLoc = sitemap.match(/<loc>([^<]+)<\/loc>/)?.[1]
+
+    it('canonical, og:url, and sitemap <loc> are all present', () => {
+      expect(canonical).toBeDefined()
+      expect(ogUrl).toBeDefined()
+      expect(sitemapLoc).toBeDefined()
+    })
+
+    it('canonical and og:url are byte-identical', () => {
+      expect(ogUrl).toBe(canonical)
+    })
+
+    it('sitemap <loc> is byte-identical to the canonical URL', () => {
+      expect(sitemapLoc).toBe(canonical)
     })
   })
 })

@@ -45,7 +45,7 @@ describe('sitemap.xml', () => {
 
   it('contains root URL with real deployment domain', () => {
     const content = readFileSync(sitemapPath, 'utf-8')
-    expect(content).toContain(`<loc>https://${DEPLOYMENT_DOMAIN}/</loc>`)
+    expect(content).toContain(`<loc>https://${DEPLOYMENT_DOMAIN}</loc>`)
   })
 
   it('does not reference liftracker.app', () => {
