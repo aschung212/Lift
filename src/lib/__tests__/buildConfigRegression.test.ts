@@ -24,4 +24,11 @@ describe('vite.config.js regression', () => {
     expect(viteConfig).toContain('preloadDefaultViewPlugin')
     expect(viteConfig).toContain("from './vite-plugin-preload-default-view'")
   })
+
+  it('should wire the sitemap lastmod plugin into the build', () => {
+    // Stamps a build-time <lastmod> into dist/sitemap.xml so Google can schedule
+    // recrawls accurately after each deploy. See LIFT-1001.
+    expect(viteConfig).toContain('sitemapLastmodPlugin')
+    expect(viteConfig).toContain("from './vite-plugin-sitemap-lastmod'")
+  })
 })
