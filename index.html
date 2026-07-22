@@ -223,6 +223,56 @@
     }
   </style>
   <div id="app"></div>
+
+  <!--
+    Crawlable / no-JS fallback (LIFT-998). The app shell above renders entirely
+    client-side, so agents that do NOT execute JavaScript — Bing, DuckDuckGo,
+    most social-card scrapers, and LLM crawlers — would otherwise index an empty
+    body. This <noscript> block gives them real content (app name, tagline, core
+    features) and doubles as a graceful message for humans with JS disabled: its
+    inline style hides the (otherwise permanently stuck) splash and paints a
+    readable panel instead of a frozen "Loading local data…" screen.
+  -->
+  <noscript>
+    <style>
+      #splash { display: none !important; }
+      .noscriptFallback {
+        position: fixed;
+        inset: 0;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 32px;
+        text-align: center;
+        line-height: 1.5;
+        background: #0f0f0f;
+        color: #e8f0eb;
+        font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+      }
+      .noscriptFallback h1 {
+        margin: 0;
+        font-size: 32px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #d4af37;
+      }
+      .noscriptFallback p {
+        margin: 0;
+        max-width: 34rem;
+        font-size: 16px;
+        color: #c3d0c9;
+      }
+    </style>
+    <div class="noscriptFallback">
+      <h1>Lift — Workout Tracker</h1>
+      <p>A free, open-source, offline-capable PWA for strength training. Log sets, track estimated 1RM progress, visualize your training history across 10 themes, and celebrate new personal records.</p>
+      <p>Lift needs JavaScript to run. Please enable JavaScript in your browser to start tracking your workouts.</p>
+    </div>
+  </noscript>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
