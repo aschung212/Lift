@@ -62,6 +62,27 @@ describe('index.html meta tag regression tests', () => {
       expect(match).not.toBeNull()
       expect(match![1]).toBe('en_US')
     })
+
+    it('og:image:type declares the MIME type so scrapers fetch the card reliably', () => {
+      const match = html.match(/<meta property="og:image:type" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1]).toBe('image/png')
+    })
+
+    it('og:image:type matches the .png extension of the og:image URL', () => {
+      const image = html.match(/<meta property="og:image" content="([^"]+)"/)
+      const type = html.match(/<meta property="og:image:type" content="([^"]+)"/)
+      expect(image).not.toBeNull()
+      expect(type).not.toBeNull()
+      expect(image![1]).toMatch(/\.png$/)
+      expect(type![1]).toBe('image/png')
+    })
+
+    it('application-name labels the app for Android/Windows installs', () => {
+      const match = html.match(/<meta name="application-name" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1]).toBe('Lift')
+    })
   })
 
   describe('no references to domains we do not own', () => {
