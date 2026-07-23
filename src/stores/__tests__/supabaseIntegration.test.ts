@@ -26,8 +26,15 @@
  *
  * ## Running in CI
  *
- * The nightly workflow starts a local Supabase instance and sets the env vars
- * automatically. See `.github/workflows/integration.yml`.
+ * Two workflows run this suite against a spun-up local Supabase:
+ *   - `.github/workflows/ci.yml` (the `schema-drift` job) — a REQUIRED PR check
+ *     that runs whenever a PR touches the DB contract (migrations, DB types,
+ *     the JSON-column parsers / client config, the workout/bodyweight stores,
+ *     or this test/config), so schema drift fails the merge rather than
+ *     slipping to production before the nightly run (LIFT-1011).
+ *   - `.github/workflows/integration.yml` — the nightly full-suite safety net
+ *     that runs regardless of which paths changed.
+ * Both start a local Supabase instance and set the env vars automatically.
  *
  * ## Design decisions
  *
