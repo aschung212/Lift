@@ -16,26 +16,18 @@ import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
-// ── Supabase mock: resolves with error object (no throw) ────────────
-vi.mock('../../lib/supabase', () => {
-  function errorChain(): Record<string, unknown> {
-    const result = { data: null, error: { message: 'permission denied for table exercises', code: '42501' } }
-    const chain: Record<string, unknown> = {
-      select: () => chain,
-      eq: () => chain,
-      is: () => chain,
-      order: () => chain,
-      single: () => chain,
-      then: (resolve: (val: typeof result) => void) => Promise.resolve(result).then(resolve),
-    }
-    return chain
-  }
-
-  return {
-    supabase: { from: () => errorChain() },
-    isPreviewMode: { value: false },
-  }
+// ── Shared Supabase test double (LIFT-1009), apiError mode ──────────
+// Every query resolves { data: null, error } (a non-throwing RLS/API error),
+// matching what the real supabase-js client does for 500s/RLS denials.
+const { fakeSupabase } = await vi.hoisted(async () => {
+  const { createFakeSupabase } = await import('../../__tests__/fakeSupabase')
+  return { fakeSupabase: createFakeSupabase({ mode: 'apiError' }) }
 })
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: fakeSupabase,
+  isPreviewMode: { value: false },
+}))
 
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn(), clear: vi.fn() },

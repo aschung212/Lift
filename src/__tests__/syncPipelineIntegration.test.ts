@@ -15,61 +15,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { getLocalStorageMock } from './helpers'
 
-// ── Fake Supabase (chainable, thenable, in-memory) ─────────────
-const { fakeSupabase } = vi.hoisted(() => {
-  interface Row { id: string; [k: string]: unknown }
-
-  class FakeSupabase {
-    calls: Array<{
-      op: 'upsert' | 'update' | 'select'
-      table: string
-      filters: Record<string, unknown>
-      data?: unknown
-    }> = []
-
-    reset() { this.calls = [] }
-
-    from(table: string) { return new FakeBuilder(this, table) }
-
-    upsertsFor(table: string) {
-      return this.calls.filter(c => c.op === 'upsert' && c.table === table)
-    }
-
-    updatesFor(table: string) {
-      return this.calls.filter(c => c.op === 'update' && c.table === table)
-    }
-  }
-
-  class FakeBuilder implements PromiseLike<{ data: Row[]; error: null }> {
-    private _op: 'upsert' | 'update' | 'select' = 'select'
-    private _filters: Record<string, unknown> = {}
-    private _data: unknown = null
-
-    constructor(private _parent: FakeSupabase, private _table: string) {}
-
-    select(_cols: string) { this._op = 'select'; return this }
-    upsert(data: unknown) { this._op = 'upsert'; this._data = data; return this }
-    update(data: unknown) { this._op = 'update'; this._data = data; return this }
-    eq(col: string, val: unknown) { this._filters[col] = val; return this }
-    is(col: string, val: null | boolean) { this._filters[col] = val; return this }
-    order(_col: string) { return this }
-
-    then<T1 = { data: Row[]; error: null }, T2 = never>(
-      onfulfilled?: (v: { data: Row[]; error: null }) => T1 | PromiseLike<T1>,
-      _onrejected?: (r: unknown) => T2 | PromiseLike<T2>,
-    ): PromiseLike<T1 | T2> {
-      this._parent.calls.push({
-        op: this._op, table: this._table,
-        filters: { ...this._filters }, data: this._data,
-      })
-      return Promise.resolve({ data: [] as Row[], error: null as const }).then(onfulfilled)
-    }
-  }
-
-  return { fakeSupabase: new FakeSupabase() }
+// ── Shared Supabase test double (LIFT-1009) ────────────────────
+// One configurable fake, imported via async vi.hoisted so the vi.mock factory
+// below can reference the same instance the tests seed/assert against.
+const { fakeSupabase } = await vi.hoisted(async () => {
+  const { createFakeSupabase } = await import('./fakeSupabase')
+  return { fakeSupabase: createFakeSupabase({ mode: 'ok' }) }
 })
 
-// Wire FakeSupabase as the supabase module export
+// Wire the shared fake as the supabase module export
 vi.mock('../lib/supabase', () => ({
   supabase: fakeSupabase,
   isPreviewMode: { value: false },
