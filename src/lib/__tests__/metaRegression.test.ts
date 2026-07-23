@@ -64,6 +64,21 @@ describe('index.html meta tag regression tests', () => {
     })
   })
 
+  describe('robots directive for SERP presentation', () => {
+    it('declares a robots meta so the homepage is indexable', () => {
+      const match = html.match(/<meta name="robots" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1]).toContain('index')
+      expect(match![1]).toContain('follow')
+    })
+
+    it('opts into large image previews so Google renders the og-image, not a thumbnail', () => {
+      const match = html.match(/<meta name="robots" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1]).toContain('max-image-preview:large')
+    })
+  })
+
   describe('no references to domains we do not own', () => {
     it('does not reference liftracker.app (competitor domain)', () => {
       expect(html).not.toContain('liftracker.app')

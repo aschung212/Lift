@@ -101,8 +101,13 @@ describe('useTheme', () => {
 
   describe('glass (always on as of 2026 refresh)', () => {
     it('forces data-glass="on" on initTheme() and does not expose a toggle', () => {
+      // Assert the durable, order-independent contract rather than a mock
+      // call count: initTheme() drops the legacy `app-glass` key and forces
+      // glass on. (The removeItem call fires once per module because initTheme
+      // is double-init-guarded, so asserting the call count leaked across
+      // tests — the isolation-safe check is the resulting DOM + storage state.)
       expect(document.documentElement.getAttribute('data-glass')).toBe('on')
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith('app-glass')
+      expect(localStorageMock.getItem('app-glass')).toBeNull()
       // The composable should no longer expose glassEnabled.
       expect((theme as unknown as Record<string, unknown>).glassEnabled).toBeUndefined()
     })
