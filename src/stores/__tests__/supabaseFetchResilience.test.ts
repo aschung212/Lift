@@ -11,28 +11,18 @@ import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
-// ── Supabase mock: rejects all queries ──────────────────────────────
-vi.mock('../../lib/supabase', () => {
-  function rejectingChain(): Record<string, unknown> {
-    const chain: Record<string, unknown> = {
-      select: () => chain,
-      eq: () => chain,
-      is: () => chain,
-      order: () => chain,
-      single: () => chain,
-      then: (_resolve: unknown, reject: (err: Error) => void) => {
-        const err = new Error('Network request failed')
-        return Promise.reject(err).catch(reject || ((e: unknown) => { throw e }))
-      },
-    }
-    return chain
-  }
-
-  return {
-    supabase: { from: () => rejectingChain() },
-    isPreviewMode: { value: false },
-  }
+// ── Shared Supabase test double (LIFT-1009), reject mode ─────────────
+// Every query rejects (offline / auth expired / DNS failure). Stores must
+// preserve locally-cached data rather than replacing it with empty state.
+const { fakeSupabase } = await vi.hoisted(async () => {
+  const { createFakeSupabase } = await import('../../__tests__/fakeSupabase')
+  return { fakeSupabase: createFakeSupabase({ mode: 'reject' }) }
 })
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: fakeSupabase,
+  isPreviewMode: { value: false },
+}))
 
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn(), clear: vi.fn() },
