@@ -297,7 +297,15 @@ jobs:
         if: steps.detect.outputs.changed == 'true'
         run: |
           echo "url=http://127.0.0.1:54321" >> "$GITHUB_OUTPUT"
-          SERVICE_ROLE_KEY=$(supabase status --output json | jq -r '.SERVICE_ROLE_KEY // .service_role_key')
+          # `// empty` (not the raw key path) so a missing key yields an empty
+          # string, never the literal "null" — which the test's env-var gate
+          # would treat as present and pass to createClient, producing cryptic
+          # auth failures instead of a loud, actionable CI error.
+          SERVICE_ROLE_KEY=$(supabase status --output json | jq -r '.SERVICE_ROLE_KEY // .service_role_key // empty')
+          if [ -z "$SERVICE_ROLE_KEY" ]; then
+            echo "::error::Could not extract the Supabase service_role key from 'supabase status'."
+            exit 1
+          fi
           echo "service_role_key=$SERVICE_ROLE_KEY" >> "$GITHUB_OUTPUT"
 
       - name: Run integration tests
