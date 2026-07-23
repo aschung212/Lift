@@ -1,7 +1,6 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
-import { readFileSync, existsSync } from 'fs'
-import { resolve } from 'path'
+import { readRootFile, publicFileExists } from './staticArtifacts'
 
 /**
  * Regression tests for PWA manifest configuration.
@@ -9,10 +8,13 @@ import { resolve } from 'path'
  * Validates that the vite.config.js manifest includes required fields
  * for a richer PWA install experience (screenshots, categories) and
  * that referenced screenshot assets exist in public/.
+ *
+ * Reads route through the shared ./staticArtifacts fixture (LIFT-1012) so the
+ * same vite.config.js / index.html artifacts are read (and cached) once across
+ * the guardrail suites instead of each file re-implementing the boilerplate.
  */
 
-const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.js'), 'utf-8')
-const publicDir = resolve(__dirname, '../../../public')
+const viteConfig = readRootFile('vite.config.js')
 
 describe('PWA manifest regression tests', () => {
   describe('manifest includes explicit id for stable install identity', () => {
@@ -28,7 +30,7 @@ describe('PWA manifest regression tests', () => {
   })
 
   describe('manifest description aligns with meta description and leads with differentiators', () => {
-    const indexHtml = readFileSync(resolve(__dirname, '../../../index.html'), 'utf-8')
+    const indexHtml = readRootFile('index.html')
 
     it('uses the unified discoverability-focused description', () => {
       expect(viteConfig).toContain(
@@ -89,7 +91,7 @@ describe('PWA manifest regression tests', () => {
 
     it('shortcuts reference existing icon files', () => {
       // All shortcuts use icon-192.png
-      expect(existsSync(resolve(publicDir, 'icon-192.png'))).toBe(true)
+      expect(publicFileExists('icon-192.png')).toBe(true)
     })
   })
 
@@ -103,7 +105,7 @@ describe('PWA manifest regression tests', () => {
     })
 
     it('offline.html exists in public/', () => {
-      expect(existsSync(resolve(publicDir, 'offline.html'))).toBe(true)
+      expect(publicFileExists('offline.html')).toBe(true)
     })
   })
 
@@ -125,15 +127,15 @@ describe('PWA manifest regression tests', () => {
     })
 
     it('mobile screenshot file exists in public/', () => {
-      expect(existsSync(resolve(publicDir, 'screenshot-mobile.png'))).toBe(true)
+      expect(publicFileExists('screenshot-mobile.png')).toBe(true)
     })
 
     it('detail screenshot file exists in public/', () => {
-      expect(existsSync(resolve(publicDir, 'screenshot-detail.png'))).toBe(true)
+      expect(publicFileExists('screenshot-detail.png')).toBe(true)
     })
 
     it('calendar screenshot file exists in public/', () => {
-      expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
+      expect(publicFileExists('screenshot-calendar.png')).toBe(true)
     })
   })
 

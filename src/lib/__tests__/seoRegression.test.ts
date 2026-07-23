@@ -1,35 +1,37 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
-import { readFileSync, existsSync } from 'fs'
-import { resolve } from 'path'
+import {
+  DEPLOYMENT_DOMAIN,
+  readPublicFile,
+  publicFileExists,
+  expectNoUnownedDomains,
+} from './staticArtifacts'
 
 /**
- * Regression tests for SEO files: robots.txt and sitemap.xml.
+ * Regression tests for the STRUCTURE of the SEO files: robots.txt and
+ * sitemap.xml. These files live in public/ and are served at the root.
  *
- * These files live in public/ and are served at the root. The sitemap URL
- * in robots.txt and the <loc> in sitemap.xml must reference the real
- * deployment domain — not a hallucinated or competitor domain.
+ * Scope split (LIFT-1012): this suite owns structural validity + the
+ * no-unowned-domain safety net; the exact canonical values (the literal
+ * Sitemap: line and root <loc>) are pinned once in seoStaticFiles.test.ts.
+ * Both share one cached reader and one domain source (./staticArtifacts) so
+ * the two suites can no longer drift apart.
  */
-
-const publicDir = resolve(__dirname, '../../../public')
-const DEPLOYMENT_DOMAIN = 'spa-rho-sandy.vercel.app'
 
 describe('SEO file regression tests', () => {
   describe('robots.txt', () => {
-    const robotsPath = resolve(publicDir, 'robots.txt')
-
     it('exists in public/', () => {
-      expect(existsSync(robotsPath)).toBe(true)
+      expect(publicFileExists('robots.txt')).toBe(true)
     })
 
     it('allows all user agents', () => {
-      const content = readFileSync(robotsPath, 'utf-8')
+      const content = readPublicFile('robots.txt')
       expect(content).toContain('User-agent: *')
       expect(content).toContain('Allow: /')
     })
 
     it('references sitemap with the real deployment domain', () => {
-      const content = readFileSync(robotsPath, 'utf-8')
+      const content = readPublicFile('robots.txt')
       const sitemapLine = content.match(/Sitemap:\s*(\S+)/)
       expect(sitemapLine).not.toBeNull()
       expect(sitemapLine![1]).toContain(DEPLOYMENT_DOMAIN)
@@ -37,34 +39,31 @@ describe('SEO file regression tests', () => {
       expect(sitemapLine![1]).toContain('sitemap.xml')
     })
 
-    it('does not reference liftracker.app (competitor domain)', () => {
-      const content = readFileSync(robotsPath, 'utf-8')
-      expect(content).not.toContain('liftracker.app')
+    it('does not reference any domain we do not own', () => {
+      expectNoUnownedDomains(readPublicFile('robots.txt'))
     })
   })
 
   describe('sitemap.xml', () => {
-    const sitemapPath = resolve(publicDir, 'sitemap.xml')
-
     it('exists in public/', () => {
-      expect(existsSync(sitemapPath)).toBe(true)
+      expect(publicFileExists('sitemap.xml')).toBe(true)
     })
 
     it('is valid XML with urlset namespace', () => {
-      const content = readFileSync(sitemapPath, 'utf-8')
+      const content = readPublicFile('sitemap.xml')
       expect(content).toContain('<?xml version="1.0"')
       expect(content).toContain('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"')
     })
 
     it('contains at least one <loc> entry', () => {
-      const content = readFileSync(sitemapPath, 'utf-8')
+      const content = readPublicFile('sitemap.xml')
       const locs = content.match(/<loc>[^<]+<\/loc>/g)
       expect(locs).not.toBeNull()
       expect(locs!.length).toBeGreaterThanOrEqual(1)
     })
 
     it('all <loc> entries use the real deployment domain with HTTPS', () => {
-      const content = readFileSync(sitemapPath, 'utf-8')
+      const content = readPublicFile('sitemap.xml')
       const locs = content.match(/<loc>([^<]+)<\/loc>/g) || []
       for (const loc of locs) {
         const url = loc.replace(/<\/?loc>/g, '')
@@ -73,9 +72,8 @@ describe('SEO file regression tests', () => {
       }
     })
 
-    it('does not reference liftracker.app (competitor domain)', () => {
-      const content = readFileSync(sitemapPath, 'utf-8')
-      expect(content).not.toContain('liftracker.app')
+    it('does not reference any domain we do not own', () => {
+      expectNoUnownedDomains(readPublicFile('sitemap.xml'))
     })
   })
 })

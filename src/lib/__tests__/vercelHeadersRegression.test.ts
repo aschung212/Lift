@@ -7,8 +7,7 @@
  * test in the same PR as the policy change.
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readRootFile } from './staticArtifacts'
 
 interface HeaderRule {
   source: string
@@ -27,9 +26,7 @@ interface VercelConfig {
 }
 
 function loadVercelConfig(): VercelConfig {
-  const path = resolve(__dirname, '../../../vercel.json')
-  const raw = readFileSync(path, 'utf8')
-  return JSON.parse(raw) as VercelConfig
+  return JSON.parse(readRootFile('vercel.json')) as VercelConfig
 }
 
 function findGlobalHeaderRule(config: VercelConfig): HeaderRule {

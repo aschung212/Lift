@@ -1,63 +1,24 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
-import { readFileSync, existsSync } from 'fs'
-import { resolve } from 'path'
+import { DEPLOYMENT_ORIGIN, readPublicFile } from './staticArtifacts'
 
-const DEPLOYMENT_DOMAIN = 'spa-rho-sandy.vercel.app'
-const publicDir = resolve(__dirname, '../../../public')
-
-describe('robots.txt', () => {
-  const robotsPath = resolve(publicDir, 'robots.txt')
-
-  it('exists in public directory', () => {
-    expect(existsSync(robotsPath)).toBe(true)
+/**
+ * Exact-value pins for the shipped SEO artifacts (robots.txt, sitemap.xml).
+ *
+ * Scope split (LIFT-1012): this suite owns ONLY the literal canonical strings
+ * that must appear verbatim. Structural validity (namespace, HTTPS-only,
+ * exists, no-unowned-domain) lives in seoRegression.test.ts so no assertion is
+ * duplicated across the two suites. Both read through the shared cached reader
+ * and derive the domain from ./staticArtifacts — the single source of truth.
+ */
+describe('SEO static-file canonical values', () => {
+  it('robots.txt declares the canonical sitemap URL verbatim', () => {
+    expect(readPublicFile('robots.txt')).toContain(
+      `Sitemap: ${DEPLOYMENT_ORIGIN}/sitemap.xml`
+    )
   })
 
-  it('allows all user agents', () => {
-    const content = readFileSync(robotsPath, 'utf-8')
-    expect(content).toContain('User-agent: *')
-    expect(content).toContain('Allow: /')
-  })
-
-  it('references sitemap.xml with real deployment domain', () => {
-    const content = readFileSync(robotsPath, 'utf-8')
-    expect(content).toContain(`Sitemap: https://${DEPLOYMENT_DOMAIN}/sitemap.xml`)
-  })
-
-  it('does not reference liftracker.app', () => {
-    const content = readFileSync(robotsPath, 'utf-8')
-    expect(content).not.toContain('liftracker.app')
-  })
-})
-
-describe('sitemap.xml', () => {
-  const sitemapPath = resolve(publicDir, 'sitemap.xml')
-
-  it('exists in public directory', () => {
-    expect(existsSync(sitemapPath)).toBe(true)
-  })
-
-  it('is valid XML with urlset namespace', () => {
-    const content = readFileSync(sitemapPath, 'utf-8')
-    expect(content).toContain('<?xml version="1.0"')
-    expect(content).toContain('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"')
-  })
-
-  it('contains root URL with real deployment domain', () => {
-    const content = readFileSync(sitemapPath, 'utf-8')
-    expect(content).toContain(`<loc>https://${DEPLOYMENT_DOMAIN}/</loc>`)
-  })
-
-  it('does not reference liftracker.app', () => {
-    const content = readFileSync(sitemapPath, 'utf-8')
-    expect(content).not.toContain('liftracker.app')
-  })
-
-  it('all loc URLs use HTTPS', () => {
-    const content = readFileSync(sitemapPath, 'utf-8')
-    const locs = content.match(/<loc>(.*?)<\/loc>/g) ?? []
-    for (const loc of locs) {
-      expect(loc).toMatch(/https:\/\//)
-    }
+  it('sitemap.xml pins the root URL verbatim', () => {
+    expect(readPublicFile('sitemap.xml')).toContain(`<loc>${DEPLOYMENT_ORIGIN}/</loc>`)
   })
 })

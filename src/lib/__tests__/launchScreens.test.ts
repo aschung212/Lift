@@ -1,7 +1,6 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
-import { readFileSync, existsSync } from 'fs'
-import { resolve } from 'path'
+import { readRootFile, readIndexHtml, publicFileExists } from './staticArtifacts'
 // @ts-expect-error - plain JS generator script, no type declarations
 import { DEVICES } from '../../../scripts/generate-launch-screens.js'
 
@@ -16,9 +15,7 @@ import { DEVICES } from '../../../scripts/generate-launch-screens.js'
  * device list — so a future edit can't silently drop or mistype a launch image.
  */
 
-const root = resolve(__dirname, '../../..')
-const html = readFileSync(resolve(root, 'index.html'), 'utf-8')
-const publicDir = resolve(root, 'public')
+const html = readIndexHtml()
 
 interface StartupLink {
   media: string
@@ -45,8 +42,7 @@ describe('iOS launch screen (apple-touch-startup-image) regression tests', () =>
   it('every link href references a file that exists in public/launch/', () => {
     for (const { href } of links) {
       expect(href.startsWith('/launch/')).toBe(true)
-      const filePath = resolve(publicDir, href.replace(/^\//, ''))
-      expect(existsSync(filePath), `${href} missing on disk`).toBe(true)
+      expect(publicFileExists(href.replace(/^\//, '')), `${href} missing on disk`).toBe(true)
     }
   })
 
@@ -77,7 +73,7 @@ describe('iOS launch screen (apple-touch-startup-image) regression tests', () =>
   })
 
   it('excludes launch screens from the Workbox precache (loaded by Safari, not the app)', () => {
-    const viteConfig = readFileSync(resolve(root, 'vite.config.js'), 'utf-8')
+    const viteConfig = readRootFile('vite.config.js')
     expect(viteConfig).toContain("'launch/*.png'")
   })
 })

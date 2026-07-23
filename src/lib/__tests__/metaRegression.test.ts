@@ -1,9 +1,8 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
+import { DEPLOYMENT_DOMAIN, readIndexHtml, expectNoUnownedDomains } from './staticArtifacts'
 
-const html = readFileSync(resolve(__dirname, '../../../index.html'), 'utf-8')
+const html = readIndexHtml()
 
 /**
  * Regression tests for index.html meta tags.
@@ -13,9 +12,11 @@ const html = readFileSync(resolve(__dirname, '../../../index.html'), 'utf-8')
  * URL. This reached production because no test, CI check, or code review layer
  * verified URLs against the known deployment domain. Every URL in index.html
  * that references our domain must point to the real deployment.
+ *
+ * The deployment domain and the unowned-domain deny list come from the shared
+ * ./staticArtifacts fixture (LIFT-1012) so this suite can no longer drift from
+ * the SEO/manifest guards that pin the same values.
  */
-
-const DEPLOYMENT_DOMAIN = 'spa-rho-sandy.vercel.app'
 
 describe('index.html meta tag regression tests', () => {
   describe('canonical and OG URLs point to actual deployment', () => {
@@ -65,8 +66,8 @@ describe('index.html meta tag regression tests', () => {
   })
 
   describe('no references to domains we do not own', () => {
-    it('does not reference liftracker.app (competitor domain)', () => {
-      expect(html).not.toContain('liftracker.app')
+    it('does not reference any domain we do not own', () => {
+      expectNoUnownedDomains(html)
     })
 
     it('all absolute URLs in meta tags use HTTPS', () => {
