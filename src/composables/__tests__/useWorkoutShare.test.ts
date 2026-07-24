@@ -170,6 +170,36 @@ describe('useWorkoutShare', () => {
       )
     })
 
+    it('pre-fills a suggested caption + branded hashtag in the payload text (#1020)', async () => {
+      const shareFn = vi.fn().mockResolvedValue(undefined)
+      const canShareFn = vi.fn().mockReturnValue(true)
+      Object.defineProperty(navigator, 'share', { value: shareFn, writable: true, configurable: true })
+      Object.defineProperty(navigator, 'canShare', { value: canShareFn, writable: true, configurable: true })
+
+      const { shareCard } = await getComposable()
+      // makeSummary() has prs: 1, so the PR-led caption is expected.
+      await shareCard(makeRequest())
+
+      const payload = shareFn.mock.calls[0][0] as ShareData
+      expect(payload.text).toContain('#LiftedWithLift')
+      expect(payload.text).toContain('New PR')
+    })
+
+    it('carries the caption on the image-only fallback payload too (#1020)', async () => {
+      const shareFn = vi.fn().mockResolvedValue(undefined)
+      // Reject any url-carrying payload, accept files-only.
+      const canShareFn = vi.fn((data: ShareData) => !('url' in data))
+      Object.defineProperty(navigator, 'share', { value: shareFn, writable: true, configurable: true })
+      Object.defineProperty(navigator, 'canShare', { value: canShareFn, writable: true, configurable: true })
+
+      const { shareCard } = await getComposable()
+      await shareCard(makeRequest())
+
+      const payload = shareFn.mock.calls[0][0] as ShareData
+      expect('url' in payload).toBe(false)
+      expect(payload.text).toContain('#LiftedWithLift')
+    })
+
     it('degrades to an image-only payload when the link-carrying payload is rejected (#794)', async () => {
       const shareFn = vi.fn().mockResolvedValue(undefined)
       // canShare rejects any payload carrying a url, accepts files-only.

@@ -14,6 +14,14 @@ export const APP_URL = 'https://spa-rho-sandy.vercel.app'
 export const APP_NAME = 'Lift'
 
 /**
+ * Branded hashtag seeded into shared-card captions (#1020) so cross-posted
+ * cards form a single searchable UGC cluster on Instagram/TikTok/X. It must
+ * stay CONSTANT across releases — the whole value of a UGC hashtag is that
+ * every share funnels into the same tag, so never regenerate or A/B this.
+ */
+export const SHARE_HASHTAG = '#LiftedWithLift'
+
+/**
  * One-line pitch used when sharing the app itself (word-of-mouth loop, #713).
  * Kept in sync with index.html's og:description so the message a user sends
  * matches the link preview the recipient sees.

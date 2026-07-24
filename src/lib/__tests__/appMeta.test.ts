@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { APP_URL, APP_NAME, APP_TAGLINE, SHARE_REF, appUrlWithRef } from '../appMeta'
+import { APP_URL, APP_NAME, APP_TAGLINE, SHARE_HASHTAG, SHARE_REF, appUrlWithRef } from '../appMeta'
 
 /**
  * Pins the app-share identity constants. These feed the "Share Lift" entry
@@ -23,6 +23,11 @@ describe('appMeta', () => {
   it('APP_TAGLINE is non-empty and mentions the app', () => {
     expect(APP_TAGLINE.length).toBeGreaterThan(0)
     expect(APP_TAGLINE).toContain('Lift')
+  })
+
+  it('SHARE_HASHTAG is a single well-formed branded hashtag (#1020)', () => {
+    // One leading '#', no whitespace — a malformed tag would break UGC clustering.
+    expect(SHARE_HASHTAG).toMatch(/^#\w+$/)
   })
 })
 

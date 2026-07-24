@@ -23,7 +23,8 @@ import {
 import type { SessionSummary } from '../lib/sessionSummary'
 import { useAnalytics } from './useAnalytics'
 import { useShareFlow, isShareCancellation, type ShareResult } from './useShareFlow'
-import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
+import { APP_URL } from '../lib/appMeta'
+import { workoutShareCaption } from '../lib/shareCaption'
 
 export type { ShareResult }
 
@@ -57,12 +58,16 @@ export interface ShareCardRequest {
  * drop the share entirely. Returns null when no payload is sharable (caller
  * falls back to download).
  *
+ * Both tiers carry the suggested caption + branded hashtag (#1020) so the card
+ * lands with ready-to-post copy and becomes discoverable UGC even on the
+ * image-only fallback where the link is stripped.
+ *
  * iOS Safari 16.4+ and Android Chrome both report `canShare({ files })` as true.
  */
-function pickWebSharePayload(file: File): ShareData | null {
+function pickWebSharePayload(file: File, caption: string): ShareData | null {
   if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return null
-  const withLink: ShareData = { files: [file], title: SHARE_TITLE, text: APP_TAGLINE, url: APP_URL }
-  const imageOnly: ShareData = { files: [file], title: SHARE_TITLE }
+  const withLink: ShareData = { files: [file], title: SHARE_TITLE, text: caption, url: APP_URL }
+  const imageOnly: ShareData = { files: [file], title: SHARE_TITLE, text: caption }
   try {
     if (navigator.canShare(withLink)) return withLink
     if (navigator.canShare(imageOnly)) return imageOnly
@@ -219,8 +224,9 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
         // entirely is intentional — calling `CapacitorShare.share({ text })`
         // alone would silently drop the rendered image, which is worse than
         // surfacing the download. `pickWebSharePayload` prefers a payload that
-        // also carries a tappable app link (#794) and degrades to image-only.
-        const sharePayload = pickWebSharePayload(file)
+        // also carries a tappable app link (#794) and degrades to image-only,
+        // and both tiers carry the suggested caption + branded hashtag (#1020).
+        const sharePayload = pickWebSharePayload(file, workoutShareCaption(req.summary))
         if (sharePayload) {
           try {
             await navigator.share(sharePayload)
