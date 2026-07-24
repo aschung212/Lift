@@ -4,6 +4,7 @@ import {
   formatSessionDate,
   weekRange,
   formatDuration,
+  formatSpanLabel,
 } from '../sessionSummary'
 import type { Exercise } from '../../stores/workout'
 import type { SetXPEntry } from '../../stores/progression'
@@ -305,5 +306,126 @@ describe('buildSessionSummary', () => {
     expect(summary.unitLabel).toBe('kg')
     expect(summary.bestSet?.weight).toBeCloseTo(102.1, 1)
     expect(summary.totalVolume).toBeCloseTo(510.3, 1)
+  })
+})
+
+describe('formatSpanLabel', () => {
+  it('renders short spans in weeks', () => {
+    expect(formatSpanLabel(7)).toBe('1 week')
+    expect(formatSpanLabel(14)).toBe('2 weeks')
+    expect(formatSpanLabel(55)).toBe('8 weeks')
+  })
+
+  it('renders medium spans in months (floored at 2)', () => {
+    expect(formatSpanLabel(56)).toBe('2 months')
+    expect(formatSpanLabel(91)).toBe('3 months')
+    expect(formatSpanLabel(365)).toBe('12 months')
+  })
+
+  it('renders long spans in years with one decimal', () => {
+    expect(formatSpanLabel(548)).toBe('1.5 years')
+    expect(formatSpanLabel(730)).toBe('2 years')
+  })
+})
+
+describe('buildSessionSummary progress story (#1019)', () => {
+  it('is null when the trained exercise has only one recorded day', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [
+        { id: 's1', weight: 175, reps: 1, date: '2026-04-21T15:00:00Z' },
+      ]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.progress).toBeNull()
+  })
+
+  it('builds a first-day → peak transformation for a trained exercise', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [
+        { id: 'p1', weight: 135, reps: 1, date: '2026-01-20T15:00:00Z' }, // e1RM 135
+        { id: 's1', weight: 175, reps: 1, date: '2026-04-21T15:00:00Z' }, // e1RM 175 (today, peak)
+      ]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.progress).not.toBeNull()
+    expect(summary.progress?.name).toBe('Bench')
+    expect(summary.progress?.startE1RM).toBe(135)
+    expect(summary.progress?.currentE1RM).toBe(175)
+    expect(summary.progress?.delta).toBe(40)
+    expect(summary.progress?.spanDays).toBe(91)
+    expect(summary.progress?.spanLabel).toBe('3 months')
+  })
+
+  it('is null when the gain is below the meaningful threshold', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [
+        { id: 'p1', weight: 135, reps: 1, date: '2026-01-20T15:00:00Z' },
+        { id: 's1', weight: 138, reps: 1, date: '2026-04-21T15:00:00Z' }, // +3 lb only
+      ]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.progress).toBeNull()
+  })
+
+  it('is null when the span is too short to read as a journey', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [
+        { id: 'p1', weight: 135, reps: 1, date: '2026-04-10T15:00:00Z' },
+        { id: 's1', weight: 175, reps: 1, date: '2026-04-21T15:00:00Z' }, // +40 lb but 11 days
+      ]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.progress).toBeNull()
+  })
+
+  it('picks the biggest gainer among the exercises trained today', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [
+        { id: 'b1', weight: 135, reps: 1, date: '2026-01-20T15:00:00Z' },
+        { id: 'b2', weight: 175, reps: 1, date: '2026-04-21T15:00:00Z' }, // +40
+      ]),
+      makeExercise('Squat', 'ex2', [
+        { id: 'q1', weight: 205, reps: 1, date: '2026-01-20T15:00:00Z' },
+        { id: 'q2', weight: 315, reps: 1, date: '2026-04-21T15:00:00Z' }, // +110
+      ]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.progress?.name).toBe('Squat')
+    expect(summary.progress?.delta).toBe(110)
+  })
+
+  it('ignores an exercise not trained today even if its gain is larger', () => {
+    const exercises = [
+      // Huge gain, but the last set was days ago — not part of today's session.
+      makeExercise('Deadlift', 'ex1', [
+        { id: 'd1', weight: 135, reps: 1, date: '2026-01-20T15:00:00Z' },
+        { id: 'd2', weight: 405, reps: 1, date: '2026-04-15T15:00:00Z' }, // +270, not today
+      ]),
+      makeExercise('Bench', 'ex2', [
+        { id: 'b1', weight: 135, reps: 1, date: '2026-01-20T15:00:00Z' },
+        { id: 'b2', weight: 175, reps: 1, date: '2026-04-21T15:00:00Z' }, // +40, today
+      ]),
+    ]
+    const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+    expect(summary.progress?.name).toBe('Bench')
+    expect(summary.progress?.delta).toBe(40)
+  })
+
+  it('routes the progress e1RM values through toDisplayUnits', () => {
+    const exercises = [
+      makeExercise('Bench', 'ex1', [
+        { id: 'p1', weight: 135, reps: 1, date: '2026-01-20T15:00:00Z' },
+        { id: 's1', weight: 175, reps: 1, date: '2026-04-21T15:00:00Z' },
+      ]),
+    ]
+    const summary = buildSessionSummary({
+      rawDate: '2026-04-21',
+      exercises,
+      unitLabel: 'kg',
+      toDisplayUnits: (lb) => +(lb * 0.453592).toFixed(1),
+    })
+    expect(summary.progress?.startE1RM).toBeCloseTo(61.2, 1)
+    expect(summary.progress?.currentE1RM).toBeCloseTo(79.4, 1)
+    expect(summary.progress?.delta).toBeCloseTo(18.2, 1)
   })
 })
