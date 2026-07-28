@@ -33,7 +33,16 @@ vi.mock('../lib/supabase', () => ({ supabase: null }))
 // unaffected. `clear?.()` tolerates the occasional file that swaps in its own
 // localStorage stub without a clear() method (e.g. migrate.test.ts); those
 // files reset their own store in beforeEach, so nothing leaks.
+//
+// useRealTimers() closes the one leak class clearAllMocks() can't: 21 files
+// call vi.useFakeTimers() (all in beforeEach), but a file that forgets the
+// matching vi.useRealTimers() leaves fake timers armed for whatever runs next
+// — real setTimeout/Date.now() then silently freeze. Restoring here makes the
+// teardown self-sufficient regardless of per-file discipline; it's a harmless
+// no-op when timers were never faked, and because every fake-timer file arms
+// them per-test in beforeEach, resetting between tests never strands a suite.
 afterEach(() => {
   localStorage.clear?.()
+  vi.useRealTimers()
   vi.clearAllMocks()
 })
