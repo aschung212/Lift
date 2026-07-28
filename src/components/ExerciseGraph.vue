@@ -1,6 +1,17 @@
 <template>
   <div v-if="hasGraph" class="wtGraphWrap">
-    <p class="wtGraphTitle">{{ mode === 'prs' ? 'PR Progression' : 'Estimated 1RM Progress' }}</p>
+    <p class="wtGraphTitle">
+      {{ mode === 'prs' ? 'PR Progression' : 'Estimated 1RM Progress' }}
+      <span
+        v-if="plateau.isPlateau"
+        class="wtGraphPlateauBadge"
+        :aria-label="plateauLabel"
+        :title="plateauLabel"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+        Plateau
+      </span>
+    </p>
 
     <!-- Time-range selector -->
     <div class="exGraphPeriodRow" role="group" aria-label="Chart time range">
@@ -135,6 +146,7 @@ import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
 import { useChartScrubber } from '../composables/useChartScrubber'
+import { detectPlateau } from '../lib/plateau'
 import type { Exercise } from '../stores/workout'
 
 const { weightUnit, displayWeight } = useWeightUnit()
@@ -183,6 +195,18 @@ const dailyBest = computed((): [string, number][] => {
   }
   return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
 })
+
+// Plateau/stall detection (LIFT-1025). Computed over the full daily-best e1RM
+// history (baseline-scoped, but independent of the graph's mode and the
+// selected time window) so the badge reflects genuine stagnation in the
+// current training block rather than an artifact of the chosen range.
+const plateau = computed(() =>
+  detectPlateau(dailyBest.value.map(([date, value]) => ({ date, value })))
+)
+
+const plateauLabel = computed(
+  () => `No new estimated 1RM best in the last ${plateau.value.sessionsStalled} sessions`
+)
 
 const prOnly = computed((): [string, number][] => {
   const entries = dailyBest.value

@@ -5996,6 +5996,29 @@ html.theme-fading .settingsSheet {
   letter-spacing: 0.7px;
   color: var(--text-muted);
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Plateau/stall badge (LIFT-1025) — subtle attention chip surfaced beside the
+   chart title when e1RM has stalled across recent sessions. */
+.wtGraphPlateauBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--danger-subtle);
+  color: var(--danger);
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1;
+}
+
+.wtGraphPlateauBadge svg {
+  flex-shrink: 0;
 }
 
 .wtGraphSvg {
