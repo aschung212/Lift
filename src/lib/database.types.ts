@@ -75,9 +75,11 @@ export type Database = {
           equipment: string | null
           gyms: string[]
           id: string
-          input_mode: string | null
+          input_mode: string
           intensity_max_reps: number | null
           name: string
+          plate_count_mode: string | null
+          plate_loaded: boolean
           tags: string[]
           updated_at: string | null
           user_id: string
@@ -91,9 +93,11 @@ export type Database = {
           equipment?: string | null
           gyms?: string[]
           id?: string
-          input_mode?: string | null
+          input_mode?: string
           intensity_max_reps?: number | null
           name: string
+          plate_count_mode?: string | null
+          plate_loaded?: boolean
           tags?: string[]
           updated_at?: string | null
           user_id: string
@@ -107,9 +111,11 @@ export type Database = {
           equipment?: string | null
           gyms?: string[]
           id?: string
-          input_mode?: string | null
+          input_mode?: string
           intensity_max_reps?: number | null
           name?: string
+          plate_count_mode?: string | null
+          plate_loaded?: boolean
           tags?: string[]
           updated_at?: string | null
           user_id?: string
