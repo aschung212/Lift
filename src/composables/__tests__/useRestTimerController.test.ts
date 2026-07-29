@@ -21,6 +21,10 @@ vi.mock('vue', async () => {
 })
 
 vi.mock('../useNotification', () => ({
+  REST_TIMER_NOTIFICATION_ACTIONS: [
+    { action: 'rest-again', title: 'Rest Again' },
+    { action: 'log-set', title: 'Log Set' },
+  ],
   useNotification: () => ({
     notify: notifMocks.notify,
     requestPermission: notifMocks.requestPermission,
