@@ -11,6 +11,7 @@
         <div class="obHero">
           <div class="obLogo">Lift</div>
           <p class="obSubtitle">Strength tracking, quietly.</p>
+          <p class="obFreeBadge">Unlimited exercises &amp; full history — free, no paywall.</p>
         </div>
         <p class="obTagline">How would you like to get started?</p>
 
@@ -587,6 +588,25 @@ function chooseExplore() {
   color: var(--text-secondary);
   line-height: 1.4;
   margin: 0;
+}
+
+/*
+ * Honest positioning callout (LIFT-1028): unlike Strong/Hevy/Alpha Progression,
+ * Lift caps neither exercises nor history behind a subscription. Surfaced as a
+ * subtle accent pill so it reads as reassurance, not a sales pitch.
+ */
+.obFreeBadge {
+  align-self: center;
+  max-width: 100%;
+  font-size: var(--font-footnote, 13px);
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-subtle, rgba(212,175,55,0.12));
+  border: 1px solid var(--accent-subtle, rgba(212,175,55,0.20));
+  border-radius: 999px;
+  padding: 8px 16px;
+  margin: 4px 0 0;
+  line-height: 1.3;
 }
 
 .obTagline {

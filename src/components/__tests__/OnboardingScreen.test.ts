@@ -92,6 +92,13 @@ describe('OnboardingScreen', () => {
       expect(wrapper.text()).toContain('sample data')
     })
 
+    it('surfaces the unlimited / no-paywall positioning callout (LIFT-1028)', () => {
+      const badge = wrapper.find('.obFreeBadge')
+      expect(badge.exists()).toBe(true)
+      expect(badge.text().toLowerCase()).toContain('no paywall')
+      expect(badge.text().toLowerCase()).toContain('unlimited')
+    })
+
     it('features Popular exercises as the recommended option (gold glow)', () => {
       // Popular exercises is now the first / featured option in the restyled
       // onboarding per design_handoff_lift_ios_pwa/screens/01-auth.png.
