@@ -77,6 +77,7 @@ export type Database = {
           id: string
           input_mode: string | null
           intensity_max_reps: number | null
+          is_duration: boolean | null
           name: string
           tags: string[]
           updated_at: string | null
@@ -93,6 +94,7 @@ export type Database = {
           id?: string
           input_mode?: string | null
           intensity_max_reps?: number | null
+          is_duration?: boolean | null
           name: string
           tags?: string[]
           updated_at?: string | null
@@ -109,6 +111,7 @@ export type Database = {
           id?: string
           input_mode?: string | null
           intensity_max_reps?: number | null
+          is_duration?: boolean | null
           name?: string
           tags?: string[]
           updated_at?: string | null
@@ -161,6 +164,7 @@ export type Database = {
           created_at: string
           date: string
           deleted_at: string | null
+          duration: number | null
           estimated_1rm: number
           exercise_id: string
           id: string
@@ -173,6 +177,7 @@ export type Database = {
           created_at?: string
           date: string
           deleted_at?: string | null
+          duration?: number | null
           estimated_1rm: number
           exercise_id: string
           id?: string
@@ -185,6 +190,7 @@ export type Database = {
           created_at?: string
           date?: string
           deleted_at?: string | null
+          duration?: number | null
           estimated_1rm?: number
           exercise_id?: string
           id?: string

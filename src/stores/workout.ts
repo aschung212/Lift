@@ -14,6 +14,7 @@ import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { parseExercises, parseStringArray, parseNumberRecord } from '../lib/parseGuards'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
+import { sanitizeDuration } from '../lib/duration'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { sanitizeExerciseGyms } from '../lib/gyms'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -29,6 +30,13 @@ export interface WorkoutSet {
   weight: number
   reps: number
   estimated1RM: number
+  /**
+   * Seconds held, for duration/time-based exercises (planks, dead hangs, loaded
+   * carries, isometric holds) (LIFT-836). Present only on sets of a
+   * duration-mode exercise; `weight`/`reps`/`estimated1RM` are then 0 so the set
+   * is naturally excluded from 1RM/PR math (which maxes over `estimated1RM`).
+   */
+  duration?: number
   /**
    * Real timestamp the set was logged (ISO 8601), distinct from `date` (which is
    * stamped end-of-day and carries no time). Optional and currently unpopulated —
@@ -52,6 +60,7 @@ export interface Exercise {
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
+  isDuration?: boolean             // true = time-based sets (seconds held) instead of weight×reps (LIFT-836)
   equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
   gyms?: string[]                  // gym membership; empty/undefined = shows under every gym filter (#961)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
@@ -275,6 +284,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       equipment: exercise.equipment ?? null,
       // Same always-send rule: clearing gym membership must propagate (#961).
       gyms: exercise.gyms ?? [],
+      // Always send is_duration (LIFT-836) — a duration exercise reverting to
+      // weight×reps must clear server-side, same rationale as intensity_max_reps.
+      is_duration: exercise.isDuration ?? false,
     }
   }
 
@@ -305,7 +317,7 @@ export const useWorkoutStore = defineStore('workout', () => {
 
   /** Durable set upsert with a journaled descriptor (LIFT-706). */
   function _enqueueSetUpsert(
-    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number; createdAt?: string },
+    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number; duration?: number; createdAt?: string },
     exerciseId: string,
     userId: string,
   ) {
@@ -313,6 +325,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       id: set.id, user_id: userId, exercise_id: exerciseId,
       date: set.date, weight: set.weight, reps: set.reps,
       estimated_1rm: set.estimated1RM,
+      // Seconds held for a duration-mode set; null for a normal weight×reps set
+      // so switching an exercise's mode clears any stale value server-side (LIFT-836).
+      duration: set.duration ?? null,
       // Persist the real log-time timestamp so an offline set logged at 6pm but
       // synced hours later keeps its training time instead of the DB insert-time
       // default (#846). Omitted when absent so editing a legacy set (no local
@@ -443,6 +458,7 @@ export const useWorkoutStore = defineStore('workout', () => {
         const gyms = sanitizeExerciseGyms(ex.gyms)
         if (gyms.length > 0) exercise.gyms = gyms
       }
+      if (ex.is_duration) exercise.isDuration = true
       if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
     })
@@ -459,7 +475,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       }
       const exerciseId = s.exercise_id
       if (!remoteSetsMap.has(exerciseId)) remoteSetsMap.set(exerciseId, [])
-      remoteSetsMap.get(exerciseId)!.push({
+      const mappedSet: WorkoutSet = {
         id: s.id,
         date: s.date,
         weight: s.weight,
@@ -468,7 +484,10 @@ export const useWorkoutStore = defineStore('workout', () => {
         // Surface the server insert timestamp so historical/synced sets carry a
         // real time-of-day + within-workout order for the AI Coach payload (#846).
         createdAt: s.created_at,
-      })
+      }
+      const dur = sanitizeDuration(s.duration)
+      if (dur !== null) mappedSet.duration = dur
+      remoteSetsMap.get(exerciseId)!.push(mappedSet)
     }
     remoteExercises.forEach(ex => {
       ex.sets = remoteSetsMap.get(ex.id) || []
@@ -637,7 +656,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   function addExercise(
     name: string,
     tags: string[] = [],
-    { sync = true, gyms = [] }: { sync?: boolean; gyms?: string[] } = {},
+    { sync = true, gyms = [], isDuration = false }: { sync?: boolean; gyms?: string[]; isDuration?: boolean } = {},
   ): string | null {
     const trimmed = name.trim()
     if (!trimmed) return null
@@ -647,7 +666,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (existing) return existing.id
     const id = uuid()
     const sanitizedGyms = sanitizeExerciseGyms(gyms)
-    const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(sanitizedGyms.length > 0 ? { gyms: sanitizedGyms } : {}), ...(!sync ? { sample: true } : {}) }
+    const exercise: Exercise = { id, name: trimmed, tags: [...tags], sets: [], updated_at: new Date().toISOString(), ...(sanitizedGyms.length > 0 ? { gyms: sanitizedGyms } : {}), ...(isDuration ? { isDuration: true } : {}), ...(!sync ? { sample: true } : {}) }
     exercises.value.push(exercise)
     triggerRef(exercises)
     _persist()
@@ -759,6 +778,27 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Flip an exercise between weight×reps and duration/time-based logging (LIFT-836).
+   * Stored only when true; `false` deletes the field so the default (weight mode)
+   * applies again. Existing sets are left untouched — a mode change only affects
+   * how new sets are logged and how the list renders.
+   */
+  function setExerciseIsDuration(exerciseId: string, isDuration: boolean) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    if (isDuration) exercise.isDuration = true
+    else delete exercise.isDuration
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
   function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
@@ -785,6 +825,32 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
       _enqueueSetUpsert({ id, date, weight, reps, estimated1RM, createdAt }, exerciseId, _userId)
+    }
+  }
+
+  /**
+   * Log a duration/time-based set (planks, holds, carries) (LIFT-836). Stores
+   * the held seconds in `duration` and carries weight/reps/estimated1RM as 0 so
+   * the set is excluded from 1RM/PR math. Mirrors `logSet`'s date-stamping,
+   * sample-adoption and durable-upsert behavior.
+   */
+  function logDurationSet(exerciseId: string, durationSeconds: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    const seconds = sanitizeDuration(durationSeconds)
+    if (seconds === null) return
+    const wasAdopted = sync && !!exercise.sample
+    if (wasAdopted) _adoptExercise(exercise)
+    const date = dateStr ? endOfDayISO(dateStr) : new Date().toISOString()
+    const id = uuid()
+    const createdAt = new Date().toISOString()
+    exercise.sets.push({ id, date, weight: 0, reps: 0, estimated1RM: 0, duration: seconds, createdAt })
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (sync && supabase && !isPreviewMode.value && _userId) {
+      _enqueueSetUpsert({ id, date, weight: 0, reps: 0, estimated1RM: 0, duration: seconds, createdAt }, exerciseId, _userId)
     }
   }
 
@@ -1509,7 +1575,9 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseIntensityMaxReps,
     setExerciseEquipment,
     setExerciseGyms,
+    setExerciseIsDuration,
     logSet,
+    logDurationSet,
     updateSet,
     deleteSet,
     restoreSet,

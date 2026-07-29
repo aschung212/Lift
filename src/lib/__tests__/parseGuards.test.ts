@@ -81,6 +81,17 @@ describe('parseWorkoutSet', () => {
     expect(set?.estimated1RM).toBe(100)
   })
 
+  it('preserves a valid duration on a duration set (LIFT-836)', () => {
+    const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 0, reps: 0, estimated1RM: 0, duration: 90 })
+    expect(set?.duration).toBe(90)
+  })
+
+  it('drops an invalid duration but keeps the set as a plain weight×reps entry', () => {
+    const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 100, reps: 5, estimated1RM: 116, duration: 'oops' })
+    expect(set).not.toBeNull()
+    expect('duration' in set!).toBe(false)
+  })
+
   it('rejects a set missing weight or reps', () => {
     expect(parseWorkoutSet({ id: 's-1', date: '2026-05-01', reps: 5 })).toBeNull()
     expect(parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 100 })).toBeNull()
@@ -147,6 +158,16 @@ describe('parseExercise', () => {
   it('drops an unrecognized equipment value', () => {
     const ex = parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], equipment: 'laser-beam' })
     expect(ex!.equipment).toBeUndefined()
+  })
+
+  it('preserves the isDuration flag (LIFT-836)', () => {
+    const ex = parseExercise({ id: 'ex-1', name: 'Plank', tags: [], sets: [], isDuration: true })
+    expect(ex!.isDuration).toBe(true)
+  })
+
+  it('leaves isDuration unset for a normal exercise', () => {
+    const ex = parseExercise({ id: 'ex-1', name: 'Squat', tags: [], sets: [] })
+    expect(ex!.isDuration).toBeUndefined()
   })
 
   // parseExercise builds a fresh object from an allowlist of known fields, so any

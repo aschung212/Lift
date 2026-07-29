@@ -18,6 +18,7 @@ import type { Exercise, WorkoutSet, ExerciseInputMode, PlateCountMode } from '..
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { epley } from './epley'
 import { sanitizeIntensityMaxReps } from './intensityTable'
+import { sanitizeDuration } from './duration'
 import { sanitizeExerciseEquipment } from './coachAnalytics'
 import { sanitizeExerciseGyms } from './gyms'
 import { logWarn } from './logger'
@@ -69,6 +70,11 @@ export function parseWorkoutSet(value: unknown): WorkoutSet | null {
     reps: o.reps,
     estimated1RM: isFiniteNumber(o.estimated1RM) ? o.estimated1RM : epley(o.weight, o.reps),
   }
+  // Duration-mode sets (LIFT-836). sanitizeDuration returns null for anything
+  // that isn't a real positive hold time, so a bad value simply degrades the
+  // set to a plain weight×reps entry rather than dropping it.
+  const duration = sanitizeDuration(o.duration)
+  if (duration !== null) set.duration = duration
   if (typeof o.createdAt === 'string') set.createdAt = o.createdAt
   return set
 }
@@ -103,6 +109,7 @@ export function parseExercise(value: unknown): Exercise | null {
   if (isFiniteNumber(o.barWeight)) ex.barWeight = o.barWeight
   if (o.plateCountMode === 'per-side' || o.plateCountMode === 'total') ex.plateCountMode = o.plateCountMode as PlateCountMode
   if (o.intensityMaxReps !== undefined) ex.intensityMaxReps = sanitizeIntensityMaxReps(o.intensityMaxReps)
+  if (o.isDuration === true) ex.isDuration = true
   if (o.equipment !== undefined) {
     const eq = sanitizeExerciseEquipment(o.equipment)
     if (eq) ex.equipment = eq
