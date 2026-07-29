@@ -74,6 +74,24 @@ describe('Workbox runtime cache configuration', () => {
     })
   })
 
+  describe('rest-timer notification action handler (LIFT-751)', () => {
+    it('injects the custom notificationclick handler into the generated SW', () => {
+      // Without this importScripts entry, the notification action buttons render
+      // but clicking them does nothing (generateSW has no notification handling).
+      expect(viteConfig).toContain("importScripts: ['sw-notification-handler.js']")
+    })
+
+    it('ships the handler script that routes the rest-again action', () => {
+      const handler = readFileSync(
+        resolve(__dirname, '../../../public/sw-notification-handler.js'),
+        'utf-8',
+      )
+      expect(handler).toContain('notificationclick')
+      expect(handler).toContain('rest-again')
+      expect(handler).toContain('lift-rest-timer')
+    })
+  })
+
   describe('cache ordering is specific-first', () => {
     it('specific endpoint caches appear before the catch-all', () => {
       const setsPos = viteConfig.indexOf("cacheName: 'supabase-sets'")

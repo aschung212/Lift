@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useNotification, useBackgroundTracker } from '../useNotification'
+import { useNotification, useBackgroundTracker, REST_TIMER_NOTIFICATION_ACTIONS } from '../useNotification'
+
+describe('REST_TIMER_NOTIFICATION_ACTIONS (LIFT-751)', () => {
+  it('exposes exactly two actions with stable ids the service worker handles', () => {
+    // Two is the platform-supported maximum on most surfaces; the SW routes by these ids.
+    expect(REST_TIMER_NOTIFICATION_ACTIONS).toHaveLength(2)
+    expect(REST_TIMER_NOTIFICATION_ACTIONS.map((a) => a.action)).toEqual(['rest-again', 'log-set'])
+    for (const a of REST_TIMER_NOTIFICATION_ACTIONS) {
+      expect(a.title.length).toBeGreaterThan(0)
+    }
+  })
+})
 
 describe('useNotification', () => {
   let originalNotification: typeof globalThis.Notification
@@ -139,6 +150,31 @@ describe('useNotification', () => {
       expect(mockShowNotification).toHaveBeenCalledWith('Rest Complete', expect.objectContaining({
         body: 'Time to lift',
         tag: 'lift-rest-timer',
+      }))
+    })
+
+    it('forwards action buttons through to showNotification (LIFT-751)', async () => {
+      const mockShowNotification = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'serviceWorker', {
+        value: { getRegistration: vi.fn().mockResolvedValue({ showNotification: mockShowNotification }) },
+        configurable: true,
+      })
+      Object.defineProperty(globalThis, 'Notification', {
+        value: { permission: 'granted' },
+        writable: true,
+        configurable: true,
+      })
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+
+      const { notify } = useNotification()
+      const actions = [
+        { action: 'rest-again', title: 'Rest Again' },
+        { action: 'log-set', title: 'Log Set' },
+      ]
+      const result = await notify('Rest Complete', { body: 'Time to lift', actions })
+      expect(result).toBe(true)
+      expect(mockShowNotification).toHaveBeenCalledWith('Rest Complete', expect.objectContaining({
+        actions,
       }))
     })
 

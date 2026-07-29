@@ -15,6 +15,24 @@ import { ref, onUnmounted, type Ref } from 'vue'
 
 const PERMISSION_KEY = 'notification-permission-asked'
 
+/** A single notification action button (subset of the DOM NotificationAction type). */
+export interface NotifAction {
+  action: string
+  title: string
+  icon?: string
+}
+
+/**
+ * Action buttons attached to the "Rest Complete" notification (LIFT-751). They only
+ * render when the notification is shown via ServiceWorkerRegistration.showNotification
+ * and are handled by public/sw-notification-handler.js. Two is the platform-supported
+ * maximum on most surfaces, so keep this list to two.
+ */
+export const REST_TIMER_NOTIFICATION_ACTIONS: NotifAction[] = [
+  { action: 'rest-again', title: 'Rest Again' },
+  { action: 'log-set', title: 'Log Set' },
+]
+
 /** Whether the browser supports the Notification API */
 function isSupported(): boolean {
   return 'Notification' in window

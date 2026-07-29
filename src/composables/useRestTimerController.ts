@@ -1,6 +1,6 @@
-import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, watch, getCurrentInstance, onUnmounted, type Ref, type ComputedRef } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
-import { useNotification, useBackgroundTracker } from './useNotification'
+import { useNotification, useBackgroundTracker, REST_TIMER_NOTIFICATION_ACTIONS } from './useNotification'
 import { useRestTimer } from './useRestTimer'
 import { useRestTimerPresets } from './useRestTimerPresets'
 import { useRestTimerAlerts } from './useRestTimerAlerts'
@@ -147,6 +147,7 @@ export function useRestTimerController(
             sendNotification('Rest Complete', {
               body: 'Time to get back to work 💪',
               wasBackgrounded: wasBackgrounded.value,
+              actions: REST_TIMER_NOTIFICATION_ACTIONS,
             })
           }
           stopBgTracking()
@@ -171,6 +172,24 @@ export function useRestTimerController(
     timerEndTime = Date.now() + restDuration.value * 1000
     timerAnnouncement.value = `Rest timer started, ${formatTimerAnnouncement(restDuration.value)}`
     startInterval()
+  }
+
+  // ── Notification action buttons (LIFT-751) ────────────────────
+  // The "Rest Again" button on the completion notification is handled in the
+  // service worker (public/sw-notification-handler.js), which focuses the app and
+  // posts this message. Restart a fresh rest so the user can extend their break
+  // without reopening the log sheet.
+  function handleServiceWorkerMessage(event: MessageEvent) {
+    const data = event.data
+    if (data?.type === 'rest-timer-action' && data.action === 'rest-again') {
+      startRestTimer()
+    }
+  }
+  navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage)
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage)
+    })
   }
 
   function togglePause() {
