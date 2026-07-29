@@ -12,6 +12,14 @@ const notifMocks = vi.hoisted(() => ({
   wasBackgrounded: { value: false },
 }))
 
+// The controller registers a service-worker "message" listener and pairs it with
+// an unconditional onUnmounted cleanup (LIFT-751). Stub onUnmounted so the bare
+// (non-component) makeController calls in this suite don't warn — mirrors useModal.test.ts.
+vi.mock('vue', async () => {
+  const actual = await vi.importActual('vue')
+  return { ...(actual as object), onUnmounted: vi.fn() }
+})
+
 vi.mock('../useNotification', () => ({
   useNotification: () => ({
     notify: notifMocks.notify,
@@ -596,6 +604,18 @@ describe('useRestTimerController', () => {
         cb({ data: { type: 'rest-timer-action', action: 'something-else' } } as MessageEvent)
         cb({ data: null } as MessageEvent)
       })
+
+      expect(ctrl.timerActive.value).toBe(false)
+    })
+
+    it('does not restart when the rest timer has been disabled', () => {
+      const prefs = usePreferencesStore()
+      prefs.setRestTimer(false)
+      const { ctrl } = makeController()
+
+      swListeners.forEach((cb) =>
+        cb({ data: { type: 'rest-timer-action', action: 'rest-again' } } as MessageEvent),
+      )
 
       expect(ctrl.timerActive.value).toBe(false)
     })

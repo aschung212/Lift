@@ -1,4 +1,4 @@
-import { ref, computed, watch, getCurrentInstance, onUnmounted, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, watch, onUnmounted, type Ref, type ComputedRef } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 import { useNotification, useBackgroundTracker, REST_TIMER_NOTIFICATION_ACTIONS } from './useNotification'
 import { useRestTimer } from './useRestTimer'
@@ -78,7 +78,7 @@ export function useRestTimerController(
   const prefs = usePreferencesStore()
   const { notify: sendNotification, requestPermission: requestNotificationPermission } = useNotification()
   const { wasBackgrounded, startTracking: startBgTracking, stopTracking: stopBgTracking } = useBackgroundTracker()
-  const { setRestTimerEnabled } = useRestTimer()
+  const { restTimerEnabled, setRestTimerEnabled } = useRestTimer()
 
   const presets = useRestTimerPresets()
   const alerts = useRestTimerAlerts()
@@ -178,19 +178,21 @@ export function useRestTimerController(
   // The "Rest Again" button on the completion notification is handled in the
   // service worker (public/sw-notification-handler.js), which focuses the app and
   // posts this message. Restart a fresh rest so the user can extend their break
-  // without reopening the log sheet.
+  // without reopening the log sheet. Respect the user's rest-timer preference: a
+  // lingering notification must not restart a timer the user has since disabled.
   function handleServiceWorkerMessage(event: MessageEvent) {
     const data = event.data
-    if (data?.type === 'rest-timer-action' && data.action === 'rest-again') {
+    if (data?.type === 'rest-timer-action' && data.action === 'rest-again' && restTimerEnabled.value) {
       startRestTimer()
     }
   }
+  // Registration and cleanup are paired unconditionally (matching useBackgroundTracker /
+  // useModal) so the listener can never outlive the controller. The controller is only
+  // ever instantiated in WorkoutTracker's setup, so onUnmounted has an owning instance.
   navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage)
-  if (getCurrentInstance()) {
-    onUnmounted(() => {
-      navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage)
-    })
-  }
+  onUnmounted(() => {
+    navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage)
+  })
 
   function togglePause() {
     alerts.ensureAudio()
