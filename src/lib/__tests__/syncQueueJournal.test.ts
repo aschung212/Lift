@@ -281,6 +281,23 @@ describe('replay allowlist (LIFT-785)', () => {
       })).toBe(true)
     })
 
+    it('accepts a duration set upsert and the is_duration exercise flag (LIFT-836)', () => {
+      // Both new columns are ALWAYS sent by their upserts (duration: null for a
+      // normal set, is_duration: false for a normal exercise), so they must be
+      // allowlisted or EVERY set/exercise descriptor is rejected on rehydrate().
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'sets',
+        row: {
+          id: 's1', user_id: 'u1', exercise_id: 'e1', date: '2026-07-20T23:59:30.000Z',
+          weight: 0, reps: 0, estimated_1rm: 0, duration: 90, created_at: '2026-07-20T18:45:00.000Z',
+        },
+      })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'exercises',
+        row: { id: 'e1', user_id: 'u1', name: 'Plank', is_duration: true },
+      })).toBe(true)
+    })
+
     it('tolerates retired-but-dormant DB columns so legacy offline writes still replay', () => {
       // warmup_scheme was retired in #770 but the column still exists in the DB.
       // An offline write journaled by a pre-#770 client must not be dropped.
