@@ -14,6 +14,7 @@ import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { parseExercises, parseStringArray, parseNumberRecord } from '../lib/parseGuards'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
+import { sanitizeExerciseNotes } from '../lib/inputLimits'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { sanitizeExerciseGyms } from '../lib/gyms'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -54,6 +55,7 @@ export interface Exercise {
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
   equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
   gyms?: string[]                  // gym membership; empty/undefined = shows under every gym filter (#961)
+  notes?: string                   // durable free-form cue ("brace before unrack"); empty/undefined = no note (#619)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -275,6 +277,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       equipment: exercise.equipment ?? null,
       // Same always-send rule: clearing gym membership must propagate (#961).
       gyms: exercise.gyms ?? [],
+      // Same always-send rule: emptying the note must clear the column, not
+      // leave a stale value that re-applies on the next fetch (#619).
+      notes: exercise.notes ?? null,
     }
   }
 
@@ -444,6 +449,8 @@ export const useWorkoutStore = defineStore('workout', () => {
         if (gyms.length > 0) exercise.gyms = gyms
       }
       if (ex.archived_at) exercise.archived_at = ex.archived_at
+      const notes = sanitizeExerciseNotes(ex.notes)
+      if (notes) exercise.notes = notes
       return exercise
     })
 
@@ -750,6 +757,30 @@ export const useWorkoutStore = defineStore('workout', () => {
     const sanitized = sanitizeExerciseGyms(gyms)
     if (sanitized.length > 0) exercise.gyms = sanitized
     else delete exercise.gyms
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
+   * Set (or clear, with empty/whitespace) an exercise's durable free-form note
+   * (#619). The value is trimmed and length-capped; an empty result deletes the
+   * field so the synced column round-trips back to null.
+   */
+  function setExerciseNotes(exerciseId: string, notes: string) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    const sanitized = sanitizeExerciseNotes(notes)
+    // No-op if nothing actually changed — avoids a needless upsert + updated_at
+    // bump (and the sync traffic it triggers) when the note is unchanged.
+    if ((exercise.notes ?? undefined) === sanitized) return
+    if (exercise.sample) _adoptExercise(exercise)
+    if (sanitized) exercise.notes = sanitized
+    else delete exercise.notes
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
@@ -1509,6 +1540,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseIntensityMaxReps,
     setExerciseEquipment,
     setExerciseGyms,
+    setExerciseNotes,
     logSet,
     updateSet,
     deleteSet,

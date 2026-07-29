@@ -20,6 +20,7 @@ import { epley } from './epley'
 import { sanitizeIntensityMaxReps } from './intensityTable'
 import { sanitizeExerciseEquipment } from './coachAnalytics'
 import { sanitizeExerciseGyms } from './gyms'
+import { sanitizeExerciseNotes } from './inputLimits'
 import { logWarn } from './logger'
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -115,6 +116,8 @@ export function parseExercise(value: unknown): Exercise | null {
     const gyms = sanitizeExerciseGyms(o.gyms)
     if (gyms.length > 0) ex.gyms = gyms
   }
+  const notes = sanitizeExerciseNotes(o.notes)
+  if (notes) ex.notes = notes
   if (typeof o.updated_at === 'string') ex.updated_at = o.updated_at
   if (typeof o.archived_at === 'string') ex.archived_at = o.archived_at
   if (o.sample === true) ex.sample = true

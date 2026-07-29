@@ -78,6 +78,7 @@ export type Database = {
           input_mode: string | null
           intensity_max_reps: number | null
           name: string
+          notes: string | null
           tags: string[]
           updated_at: string | null
           user_id: string
@@ -94,6 +95,7 @@ export type Database = {
           input_mode?: string | null
           intensity_max_reps?: number | null
           name: string
+          notes?: string | null
           tags?: string[]
           updated_at?: string | null
           user_id: string
@@ -110,6 +112,7 @@ export type Database = {
           input_mode?: string | null
           intensity_max_reps?: number | null
           name?: string
+          notes?: string | null
           tags?: string[]
           updated_at?: string | null
           user_id?: string

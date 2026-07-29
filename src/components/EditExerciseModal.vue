@@ -44,6 +44,18 @@
             <button v-else class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startEditTagAdd" aria-label="Add tag">+</button>
           </div>
         </div>
+        <label class="repMaxLabel">
+          Notes
+          <textarea
+            v-model.trim="editNotes"
+            class="wtEditNotesInput"
+            rows="2"
+            :maxlength="MAX_EXERCISE_NOTES_LENGTH"
+            placeholder="Form cues, setup reminders…"
+            aria-label="Exercise notes"
+          ></textarea>
+          <span class="iosSettingsFooter">A durable cue shown on this exercise's detail screen — e.g. "brace before unrack, drive knees out".</span>
+        </label>
         <!-- Plate calculator settings (iOS grouped style) -->
         <div class="iosSettingsSection">
           <span class="iosSettingsHeader">Input Mode</span>
@@ -224,6 +236,8 @@ export interface EditExerciseSave {
   equipment: ExerciseEquipment | null
   /** Gym membership (#961); [] = unassigned (shows under every gym filter). */
   gyms: string[]
+  /** Durable per-exercise note (#619); '' = no note (clears the field). */
+  notes: string
 }
 </script>
 
@@ -233,7 +247,7 @@ import type { Exercise } from '../stores/workout'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
-import { MAX_WEIGHT } from '../lib/inputLimits'
+import { MAX_WEIGHT, MAX_EXERCISE_NOTES_LENGTH } from '../lib/inputLimits'
 import {
   DEFAULT_INTENSITY_MAX_REPS,
   MIN_INTENSITY_MAX_REPS,
@@ -274,6 +288,10 @@ const editBarWeight = ref<number>(45)
 const editBarWeightEditing = ref(false)
 const editBarWeightInputEl = ref<HTMLInputElement | null>(null)
 const confirmDeleteExercise = ref(false)
+
+// ── Durable per-exercise note (#619) ────────────────────────────
+// A free-form cue ("brace before unrack") surfaced on the detail screen.
+const editNotes = ref('')
 
 // ── Intensity lens config (#770) ────────────────────────────────
 // How many rep rows (1..N) the PR-anchored intensity table calculates when
@@ -370,6 +388,7 @@ watch(() => props.exercise, async (exercise) => {
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
     editEquipment.value = exercise.equipment ?? null
     editGyms.value = [...(exercise.gyms || [])]
+    editNotes.value = exercise.notes || ''
     newTagInput.value = ''
     editTagAdding.value = false
     newGymInput.value = ''
@@ -448,6 +467,7 @@ function confirmSave() {
     intensityMaxReps: editIntensityMaxReps.value === DEFAULT_INTENSITY_MAX_REPS ? null : editIntensityMaxReps.value,
     equipment: editEquipment.value,
     gyms: [...editGyms.value],
+    notes: editNotes.value,
   })
 }
 </script>

@@ -12,6 +12,10 @@
         </div>
 
         <div class="wtDetailBody">
+          <!-- Durable per-exercise note (#619): a form cue the user set in the
+               edit sheet, surfaced here at the top of the detail screen. -->
+          <p v-if="exercise.notes" class="wtDetailNote">{{ exercise.notes }}</p>
+
           <!-- Progress graph -->
           <ExerciseGraph :exercise="exercise" :mode="detailTab" />
 

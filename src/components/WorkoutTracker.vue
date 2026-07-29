@@ -2644,6 +2644,7 @@ function onEditExerciseSave(payload: EditExerciseSave) {
   store.setExerciseIntensityMaxReps(editTarget.value, payload.intensityMaxReps)
   store.setExerciseEquipment(editTarget.value, payload.equipment)
   store.setExerciseGyms(editTarget.value, payload.gyms)
+  store.setExerciseNotes(editTarget.value, payload.notes)
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).
