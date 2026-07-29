@@ -45,6 +45,7 @@ export type Database = {
           date: string
           deleted_at: string | null
           id: string
+          updated_at: string
           user_id: string
           weight: number
         }
@@ -53,6 +54,7 @@ export type Database = {
           date: string
           deleted_at?: string | null
           id?: string
+          updated_at?: string
           user_id: string
           weight: number
         }
@@ -61,8 +63,99 @@ export type Database = {
           date?: string
           deleted_at?: string | null
           id?: string
+          updated_at?: string
           user_id?: string
           weight?: number
+        }
+        Relationships: []
+      }
+      coach_consent: {
+        Row: {
+          accepted_at: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          accepted_at?: string
+          user_id: string
+          version: number
+        }
+        Update: {
+          accepted_at?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      coach_global_spend: {
+        Row: {
+          day: string
+          spent_cents: number
+          updated_at: string
+        }
+        Insert: {
+          day: string
+          spent_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          day?: string
+          spent_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      coach_usage: {
+        Row: {
+          limit_override: number | null
+          period_start: string
+          request_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          limit_override?: number | null
+          period_start?: string
+          request_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          limit_override?: number | null
+          period_start?: string
+          request_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      coach_usage_log: {
+        Row: {
+          created_at: string
+          est_cost_cents: number
+          id: string
+          input_tokens: number
+          model: string
+          output_tokens: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          est_cost_cents: number
+          id?: string
+          input_tokens: number
+          model: string
+          output_tokens: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          est_cost_cents?: number
+          id?: string
+          input_tokens?: number
+          model?: string
+          output_tokens?: number
+          user_id?: string
         }
         Relationships: []
       }
@@ -75,11 +168,14 @@ export type Database = {
           equipment: string | null
           gyms: string[]
           id: string
-          input_mode: string | null
+          input_mode: string
           intensity_max_reps: number | null
           name: string
+          notes: string | null
+          plate_loaded: boolean
           tags: string[]
-          updated_at: string | null
+          target_e1rm: number | null
+          updated_at: string
           user_id: string
           warmup_scheme: Json | null
         }
@@ -91,11 +187,14 @@ export type Database = {
           equipment?: string | null
           gyms?: string[]
           id?: string
-          input_mode?: string | null
+          input_mode?: string
           intensity_max_reps?: number | null
           name: string
+          notes?: string | null
+          plate_loaded?: boolean
           tags?: string[]
-          updated_at?: string | null
+          target_e1rm?: number | null
+          updated_at?: string
           user_id: string
           warmup_scheme?: Json | null
         }
@@ -107,11 +206,14 @@ export type Database = {
           equipment?: string | null
           gyms?: string[]
           id?: string
-          input_mode?: string | null
+          input_mode?: string
           intensity_max_reps?: number | null
           name?: string
+          notes?: string | null
+          plate_loaded?: boolean
           tags?: string[]
-          updated_at?: string | null
+          target_e1rm?: number | null
+          updated_at?: string
           user_id?: string
           warmup_scheme?: Json | null
         }
@@ -164,8 +266,10 @@ export type Database = {
           estimated_1rm: number
           exercise_id: string
           id: string
+          note: string | null
           reps: number
           session_id: string | null
+          updated_at: string
           user_id: string
           weight: number
         }
@@ -176,8 +280,10 @@ export type Database = {
           estimated_1rm: number
           exercise_id: string
           id?: string
+          note?: string | null
           reps: number
           session_id?: string | null
+          updated_at?: string
           user_id: string
           weight: number
         }
@@ -188,8 +294,10 @@ export type Database = {
           estimated_1rm?: number
           exercise_id?: string
           id?: string
+          note?: string | null
           reps?: number
           session_id?: string | null
+          updated_at?: string
           user_id?: string
           weight?: number
         }
@@ -337,7 +445,39 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      claim_coach_request: {
+        Args: {
+          p_daily_ceiling_cents: number
+          p_default_limit: number
+          p_max_cost_cents: number
+        }
+        Returns: {
+          allowed: boolean
+          reason: string
+          request_count: number
+          reset_at: string
+          remaining: number
+        }[]
+      }
+      delete_coach_data: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      record_coach_consent: {
+        Args: { p_version: number }
+        Returns: undefined
+      }
+      record_coach_usage: {
+        Args: {
+          p_actual_cost_cents: number
+          p_billed: boolean
+          p_input_tokens: number
+          p_model: string
+          p_output_tokens: number
+          p_pre_charge_cents: number
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
