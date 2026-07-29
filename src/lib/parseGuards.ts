@@ -30,6 +30,16 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
 }
 
+/**
+ * Validate a plate-counting mode from any untrusted boundary (localStorage or
+ * Supabase). Returns the enum value or `undefined` so callers leave the field
+ * unset and fall back to the 'per-side' default rather than trusting a stray
+ * string (LIFT-1039).
+ */
+export function sanitizePlateCountMode(value: unknown): PlateCountMode | undefined {
+  return value === 'per-side' || value === 'total' ? value : undefined
+}
+
 /** Keep only the string elements of an array; drop anything else. */
 export function parseStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -101,7 +111,8 @@ export function parseExercise(value: unknown): Exercise | null {
   }
   if (o.inputMode === 'numpad' || o.inputMode === 'plates') ex.inputMode = o.inputMode as ExerciseInputMode
   if (isFiniteNumber(o.barWeight)) ex.barWeight = o.barWeight
-  if (o.plateCountMode === 'per-side' || o.plateCountMode === 'total') ex.plateCountMode = o.plateCountMode as PlateCountMode
+  const plateCountMode = sanitizePlateCountMode(o.plateCountMode)
+  if (plateCountMode) ex.plateCountMode = plateCountMode
   if (o.intensityMaxReps !== undefined) ex.intensityMaxReps = sanitizeIntensityMaxReps(o.intensityMaxReps)
   if (o.equipment !== undefined) {
     const eq = sanitizeExerciseEquipment(o.equipment)

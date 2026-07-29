@@ -85,7 +85,14 @@ const JOURNAL_KEY = 'lift-sync-journal'
 const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
   exercises: new Set([
     'id', 'user_id', 'name', 'tags', 'archived_at',
-    'input_mode', 'bar_weight', 'intensity_max_reps', 'deleted_at',
+    'input_mode', 'bar_weight', 'plate_count_mode', 'intensity_max_reps',
+    // `equipment` (#931) and `gyms` (#961) are always present in the
+    // `_buildExerciseUpsert` row, so an exercise upsert descriptor journaled
+    // for offline replay carries them. They were missing here — meaning every
+    // journaled exercise write was silently rejected on rehydrate() (an empty
+    // subset would never match). Kept in lockstep with the producer per the
+    // note above (LIFT-1039).
+    'equipment', 'gyms', 'deleted_at',
     // Retired in #770 but the DB column still exists (left dormant, never
     // dropped). Tolerated so an offline write journaled by a pre-#770 client
     // still replays after an upgrade instead of being silently dropped.

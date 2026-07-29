@@ -12,7 +12,7 @@ import { epley } from '../lib/epley'
 import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
-import { parseExercises, parseStringArray, parseNumberRecord } from '../lib/parseGuards'
+import { parseExercises, parseStringArray, parseNumberRecord, sanitizePlateCountMode } from '../lib/parseGuards'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { sanitizeExerciseGyms } from '../lib/gyms'
@@ -267,6 +267,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       archived_at: exercise.archived_at ?? null,
       ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}),
       ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {}),
+      // Always send plate_count_mode (null when unset) so switching back to the
+      // 'per-side' default propagates instead of leaving a stale 'total' on the
+      // server (LIFT-1039).
+      plate_count_mode: exercise.plateCountMode ?? null,
       // Always send intensity_max_reps (null when unset) so "reset to default"
       // actually clears the override server-side — omitting it would leave a
       // stale value that re-applies on the next fetch.
@@ -434,6 +438,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       }
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
+      if (ex.plate_count_mode != null) {
+        const mode = sanitizePlateCountMode(ex.plate_count_mode)
+        if (mode) exercise.plateCountMode = mode
+      }
       if (ex.intensity_max_reps != null) exercise.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensity_max_reps)
       if (ex.equipment != null) {
         const eq = sanitizeExerciseEquipment(ex.equipment)
@@ -661,9 +669,15 @@ export const useWorkoutStore = defineStore('workout', () => {
   function setExercisePlateCountMode(exerciseId: string, mode: PlateCountMode) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
     exercise.plateCountMode = mode
+    exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
   }
 
   function setExerciseBarWeight(exerciseId: string, barWeight: number) {

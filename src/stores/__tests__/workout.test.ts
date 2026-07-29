@@ -1254,4 +1254,52 @@ describe('workout store', () => {
       expect(store.exercises[1].equipment).toBe('machine')
     })
   })
+
+  // ── setExercisePlateCountMode (LIFT-1039) ───────────────────────
+  describe('setExercisePlateCountMode', () => {
+    it('stores the mode and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Dumbbell Press', [])
+      store.setExercisePlateCountMode(id, 'total')
+
+      expect(store.exercises[0].plateCountMode).toBe('total')
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].plateCountMode).toBe('total')
+    })
+
+    it('stamps a fresh updated_at so the change wins last-write-wins merges', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Smith Squat', [])
+      // Seed a stale timestamp so the setter's fresh stamp is observably newer,
+      // without depending on sub-millisecond wall-clock resolution.
+      store.exercises[0].updated_at = '2000-01-01T00:00:00.000Z'
+      store.setExercisePlateCountMode(id, 'total')
+      expect(store.exercises[0].updated_at! > '2000-01-01T00:00:00.000Z').toBe(true)
+    })
+
+    it('round-trips through the localStorage boundary', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Leg Press', [])
+      store.setExercisePlateCountMode(id, 'total')
+      setActivePinia(createPinia())
+      const reloaded = useWorkoutStore()
+      expect(reloaded.exercises.find(e => e.id === id)!.plateCountMode).toBe('total')
+    })
+
+    it('drops a corrupt persisted plateCountMode on load', () => {
+      localStorageMock.setItem('workout-exercises', JSON.stringify([
+        { id: 'e1', name: 'Bench', tags: [], sets: [], plateCountMode: 'sideways' },
+        { id: 'e2', name: 'Squat', tags: [], sets: [], plateCountMode: 'total' },
+      ]))
+      setActivePinia(createPinia())
+      const store = useWorkoutStore()
+      expect('plateCountMode' in store.exercises[0]).toBe(false)
+      expect(store.exercises[1].plateCountMode).toBe('total')
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExercisePlateCountMode('nope', 'total')).not.toThrow()
+    })
+  })
 })
