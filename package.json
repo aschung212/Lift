@@ -11,6 +11,7 @@
     "generate-icons": "node scripts/generate-icons.js",
     "generate-launch-screens": "node scripts/generate-launch-screens.js",
     "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.js",
     "test:integration": "vitest run --config vitest.integration.config.js",
     "test:e2e": "playwright test",
     "lint": "eslint src/",

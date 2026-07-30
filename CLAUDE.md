@@ -81,6 +81,8 @@ Tests are not just for coverage — they prevent specific classes of regression:
 - **Manifest tests** (`manifestRegression.test.ts`) — verify PWA manifest fields and screenshot assets exist
 - **Spacing scale tests** — enforce the 4/8/12/16/24/32 scale, flag off-scale values
 
+Most tests run under **happy-dom** (`vitest.config.js`), which has no layout engine — `offsetHeight`/`scrollTop`/`getBoundingClientRect` report 0. Layout- and gesture-sensitive composables (`useSwipeToDismiss`, `useFocusTrap`, viewport logic) additionally get a real-Chromium **Browser Mode** suite: `*.browser.test.ts` files run under `vitest.browser.config.js` via `npm run test:browser` (opt-in; `@vitest/browser`/`playwright` kept out of the lockfile like lhci). The default suite excludes the `*.browser.test.ts` glob. See `docs/browser-mode-testing.md`.
+
 Every bug fix must include a regression test in the SAME commit. Before writing the test, ask: why didn't existing tests catch this? If it's a new class of failure, add a new test category.
 
 ## Settled Patterns (do not redesign)
