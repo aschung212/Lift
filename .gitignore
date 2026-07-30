@@ -18,6 +18,10 @@ playwright-report/
 # Lighthouse CI
 .lighthouseci/
 
+# Stryker mutation testing (LIFT-667)
+.stryker-tmp/
+reports/mutation/
+
 # local env files
 *.local
 .env

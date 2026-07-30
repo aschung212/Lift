@@ -81,6 +81,8 @@ Tests are not just for coverage — they prevent specific classes of regression:
 - **Manifest tests** (`manifestRegression.test.ts`) — verify PWA manifest fields and screenshot assets exist
 - **Spacing scale tests** — enforce the 4/8/12/16/24/32 scale, flag off-scale values
 
+**Mutation testing (LIFT-667).** Coverage proves code *ran*; it does not prove the tests would *fail* if that code broke. `npm run test:mutation` runs Stryker over the deterministic pure logic in `src/lib/` (1RM/XP math, conflict resolution, warmup classification, intensity/plate/scoring) and reports surviving mutants — concrete missing assertions. It is an on-demand local rigor tool, not a PR gate: Stryker is pulled via pinned `npx` (like `lhci`), never committed to the lockfile. See [`docs/mutation-testing.md`](docs/mutation-testing.md); the scope is pinned by `strykerConfigRegression.test.ts`.
+
 Every bug fix must include a regression test in the SAME commit. Before writing the test, ask: why didn't existing tests catch this? If it's a new class of failure, add a new test category.
 
 ## Settled Patterns (do not redesign)

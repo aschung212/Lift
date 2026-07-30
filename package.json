@@ -11,6 +11,7 @@
     "generate-icons": "node scripts/generate-icons.js",
     "generate-launch-screens": "node scripts/generate-launch-screens.js",
     "test": "vitest run",
+    "test:mutation": "npx --yes -p @stryker-mutator/core@^9 -p @stryker-mutator/vitest-runner@^9 stryker run",
     "test:integration": "vitest run --config vitest.integration.config.js",
     "test:e2e": "playwright test",
     "lint": "eslint src/",

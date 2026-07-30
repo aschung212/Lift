@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "npm",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.config.js"
+  },
+  "coverageAnalysis": "perTest",
+  "reporters": ["html", "clear-text", "progress"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
+  },
+  "tempDirName": ".stryker-tmp",
+  "concurrency": 4,
+  "mutate": [
+    "src/lib/xp.ts",
+    "src/lib/epley.ts",
+    "src/lib/conflictResolver.ts",
+    "src/lib/classifyWarmupSets.ts",
+    "src/lib/intensityTable.ts",
+    "src/lib/setScoring.ts",
+    "src/lib/plateCalculator.ts",
+    "src/lib/weeklyGoal.ts",
+    "src/lib/gyms.ts"
+  ],
+  "thresholds": {
+    "high": 90,
+    "low": 75,
+    "break": null
+  }
+}
