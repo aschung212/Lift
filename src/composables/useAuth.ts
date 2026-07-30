@@ -8,6 +8,7 @@ import { useProgressionStore } from '../stores/progression'
 import { resetXPCeremony } from '../composables/xpCeremonyUI'
 import { useTheme } from '../composables/useTheme'
 import { syncQueue } from '../lib/syncQueue'
+import { clearRuntimeCaches } from '../lib/runtimeCaches'
 import { closeDB } from '../lib/durableStorage'
 import { logError } from '../lib/logger'
 import { clearReauthFlag } from '../lib/sessionHealth'
@@ -209,6 +210,11 @@ async function signOut(): Promise<void> {
     // Cancel pending syncs and wipe the durable journal so the next user on a
     // shared device never replays this user's writes (LIFT-706).
     syncQueue.clear()
+    // Purge the Workbox runtime caches (supabase-*) — they hold the user's
+    // actual training data with TTLs up to 7 days and would otherwise remain
+    // readable by the next user on a shared device (LIFT-1048). deleteAccount()
+    // flows through here, so this covers both paths.
+    await clearRuntimeCaches()
     resetStores()
     user.value = null
   }

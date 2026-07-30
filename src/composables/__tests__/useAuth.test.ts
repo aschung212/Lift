@@ -65,6 +65,20 @@ vi.mock('../../lib/syncQueue', () => ({
   }
 }))
 
+// Stub Cache Storage so the LIFT-1048 runtime-cache purge has something to clear.
+// happy-dom does not provide `caches`, so without this the teardown no-ops.
+function stubCacheStorage(names: string[]): { deleted: string[] } {
+  const deleted: string[] = []
+  vi.stubGlobal('caches', {
+    keys: vi.fn().mockResolvedValue(names),
+    delete: vi.fn((name: string) => {
+      deleted.push(name)
+      return Promise.resolve(true)
+    }),
+  })
+  return { deleted }
+}
+
 // Need to reset modules to get fresh state for useAuth
 // since it runs init() at module level
 let useAuth: typeof import('../useAuth').useAuth
@@ -186,6 +200,24 @@ describe('useAuth', () => {
       expect(mockBodyweightReset).toHaveBeenCalledOnce()
       expect(mockPreferencesReset).toHaveBeenCalledOnce()
       expect(mockProgressionReset).toHaveBeenCalledOnce()
+    })
+
+    // Regression LIFT-1048: signOut must purge the Workbox runtime caches so a
+    // shared device never leaves the previous user's training data readable in
+    // Cache Storage.
+    it('deletes supabase-* runtime caches on sign out', async () => {
+      const { deleted } = stubCacheStorage([
+        'supabase-sets',
+        'supabase-exercises',
+        'workbox-precache-v2',
+      ])
+      const { signOut, devSignIn } = useAuth()
+      await devSignIn()
+
+      await signOut()
+
+      expect(deleted).toEqual(['supabase-sets', 'supabase-exercises'])
+      vi.stubGlobal('caches', undefined)
     })
 
     // Regression LIFT-497: stores must reset even when supabase throws
@@ -331,6 +363,33 @@ describe('useAuth', () => {
 
       // Restore indexedDB to default (undefined in test env)
       vi.stubGlobal('indexedDB', undefined)
+    })
+
+    // Regression LIFT-1048: deleteAccount promises to erase all local data, so
+    // no supabase-* runtime cache may survive.
+    it('deletes all supabase-* runtime caches on account deletion', async () => {
+      const { deleted } = stubCacheStorage([
+        'supabase-sets',
+        'supabase-exercises',
+        'supabase-bodyweight',
+        'supabase-progression',
+        'supabase-api',
+        'supabase-auth',
+      ])
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      await deleteAccount()
+
+      expect(deleted).toEqual([
+        'supabase-sets',
+        'supabase-exercises',
+        'supabase-bodyweight',
+        'supabase-progression',
+        'supabase-api',
+        'supabase-auth',
+      ])
+      vi.stubGlobal('caches', undefined)
     })
 
     it('falls back to deleting lift-backup when indexedDB.databases() is not supported', async () => {

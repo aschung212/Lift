@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { RUNTIME_CACHE_NAMES, RUNTIME_CACHE_PREFIX } from '../runtimeCaches'
 
 /**
  * Regression tests for Workbox runtime cache configuration.
@@ -71,6 +72,27 @@ describe('Workbox runtime cache configuration', () => {
         viteConfig.indexOf("cacheName: 'supabase-exercises'") + 300
       )
       expect(exercisesSection).toContain('maxEntries: 200')
+    })
+  })
+
+  // LIFT-1048: the sign-out/delete teardown deletes runtime caches by the
+  // `supabase-` prefix (src/lib/runtimeCaches.ts). Pin that centralized list
+  // against the actual Workbox config so the two can never silently drift and
+  // leave a user's cached training data behind on a shared device.
+  describe('runtime cache names stay in sync with the teardown list', () => {
+    it('every cacheName in the Workbox config is a known, prefixed runtime cache', () => {
+      const configuredNames = [...viteConfig.matchAll(/cacheName: '([^']+)'/g)].map((m) => m[1])
+      expect(configuredNames.length).toBeGreaterThan(0)
+      for (const name of configuredNames) {
+        expect(name.startsWith(RUNTIME_CACHE_PREFIX)).toBe(true)
+        expect(RUNTIME_CACHE_NAMES).toContain(name)
+      }
+    })
+
+    it('every known runtime cache name is actually configured in Workbox', () => {
+      for (const name of RUNTIME_CACHE_NAMES) {
+        expect(viteConfig).toContain(`cacheName: '${name}'`)
+      }
     })
   })
 
