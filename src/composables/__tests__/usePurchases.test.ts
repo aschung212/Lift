@@ -58,7 +58,7 @@ describe('usePurchases on native', () => {
     configurePurchases.mockResolvedValue(true)
     fetchActiveEntitlements.mockResolvedValue(['supporter'])
     await mod.initializePurchases('rc_key')
-    expect(configurePurchases).toHaveBeenCalledWith('rc_key')
+    expect(configurePurchases).toHaveBeenCalledWith('rc_key', undefined)
     expect(mod.usePurchases().isConfigured.value).toBe(true)
     expect(mod.usePurchases().isSupporter.value).toBe(true)
   })
