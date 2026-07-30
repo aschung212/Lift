@@ -98,8 +98,11 @@ describe('PWA manifest regression tests', () => {
       expect(viteConfig).toContain("navigateFallback: 'index.html'")
     })
 
-    it('has navigateFallbackDenylist to exclude API routes', () => {
-      expect(viteConfig).toContain('navigateFallbackDenylist:')
+    it('excludes same-origin /api/* from the app-shell fallback', () => {
+      // api/coach.ts is a Vercel serverless function served at /api/coach, so a
+      // navigation to /api/* must reach the network rather than be answered with
+      // the precached index.html shell. The denylist is meaningful, not a knob.
+      expect(viteConfig).toContain('navigateFallbackDenylist: [/^\\/api\\//]')
     })
 
     it('offline.html exists in public/', () => {
@@ -107,9 +110,13 @@ describe('PWA manifest regression tests', () => {
     })
   })
 
-  describe('workbox enables navigation preload for faster navigations', () => {
-    it('has navigationPreload: true in workbox config', () => {
-      expect(viteConfig).toContain('navigationPreload: true')
+  describe('workbox does not enable inert navigationPreload (LIFT-1050)', () => {
+    it('does not enable navigationPreload — it is inert with a cache-first navigateFallback', () => {
+      // navigationPreload only helps when the navigation handler consumes
+      // event.preloadResponse (network-first). Our navigateFallback serves the
+      // precached shell cache-first, so a preload would be fetched then
+      // discarded — a wasted request plus a Chrome console warning per nav.
+      expect(viteConfig).not.toContain('navigationPreload: true')
     })
   })
 

@@ -139,9 +139,22 @@ export default defineConfig({
           // tags, not fetched by the app — precaching them only bloats the SW.
           'launch/*.png',
         ],
+        // SPA navigations resolve from the precached app shell (index.html) so
+        // deep links work offline. Served cache-first via Workbox's precache
+        // handler — see the denylist note below and the deliberate omission of
+        // navigationPreload.
         navigateFallback: 'index.html',
+        // Keep same-origin /api/* off the app-shell fallback: api/coach.ts ships
+        // as a Vercel serverless function at /api/coach, so a navigation there
+        // must hit the network, not be answered with index.html. Not cargo-cult
+        // — there IS a same-origin API surface to exclude.
         navigateFallbackDenylist: [/^\/api\//],
-        navigationPreload: true,
+        // navigationPreload is intentionally NOT enabled. It only pays off when
+        // the navigation handler consumes event.preloadResponse (i.e. a
+        // network-first navigation strategy). Ours is cache-first from the
+        // precache, so a preload request would always be fetched and then
+        // discarded — a wasted request per navigation plus Chrome's
+        // "navigation preload response was not used" console warnings.
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
