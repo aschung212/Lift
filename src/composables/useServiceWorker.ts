@@ -1,5 +1,21 @@
 import { registerSW } from 'virtual:pwa-register'
 import { isNative } from '../lib/platform'
+import { syncQueue } from '../lib/syncQueue'
+
+/**
+ * A reload triggered by a newly-activated service worker must never destroy
+ * in-flight user work (LIFT-1047). Reloading is UNSAFE while:
+ *   - a modal is open — the set-logging sheet may hold unsaved weight/reps
+ *     typed but not yet saved (`html.modal-open` is set by every modal,
+ *     including the log-set sheet), or
+ *   - the syncQueue still has un-flushed writes that a reload could interrupt.
+ *
+ * Pure predicate so the data-integrity decision is unit-testable without a DOM
+ * or timers. `true` means "hold the reload for now".
+ */
+export function shouldDeferReload(modalOpen: boolean, pendingWrites: number): boolean {
+  return modalOpen || pendingWrites > 0
+}
 
 /**
  * Service worker lifecycle management for the web (PWA) build.
@@ -53,14 +69,43 @@ export function useServiceWorker(): { checkForSWUpdate: () => void } {
     if (document.visibilityState === 'visible') swRegistration?.update()
   })
 
+  // Is it safe to reload right now? Reads the live modal-open flag and the
+  // pending-write count and defers to the pure predicate above.
+  const isReloadUnsafe = () =>
+    shouldDeferReload(
+      document.documentElement.classList.contains('modal-open'),
+      syncQueue.pending,
+    )
+
+  // When a reload has to wait for a safe moment, poll for one. 3s is frequent
+  // enough to feel instant after the user closes the modal / writes drain, but
+  // idle-cheap while they keep logging.
+  const DEFER_POLL_MS = 3 * 1000
+  let deferTimer: ReturnType<typeof setInterval> | undefined
+  const reloadWhenSafe = () => {
+    if (isReloadUnsafe()) return
+    if (deferTimer !== undefined) clearInterval(deferTimer)
+    window.location.reload()
+  }
+  const scheduleDeferredReload = () => {
+    if (deferTimer !== undefined) return // already waiting
+    deferTimer = setInterval(reloadWhenSafe, DEFER_POLL_MS)
+  }
+
   // Listen for the controlling SW changing — means auto-update activated.
   // On first visit currentController is null; skip reload to avoid a surprise refresh.
   // On subsequent changes a new SW took over — reload to pick up fresh chunk hashes
   // (without this, lazy-loaded tabs request old hashed filenames that no longer exist).
+  // But NOT while the user is mid-set: a deploy landing during active logging must
+  // not discard unsaved input or interrupt a write — defer until it's safe (LIFT-1047).
   let currentController = navigator.serviceWorker?.controller
   navigator.serviceWorker?.addEventListener('controllerchange', () => {
     if (currentController) {
-      window.location.reload()
+      if (isReloadUnsafe()) {
+        scheduleDeferredReload()
+      } else {
+        window.location.reload()
+      }
     }
     currentController = navigator.serviceWorker?.controller ?? null
   })
