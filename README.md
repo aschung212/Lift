@@ -288,6 +288,11 @@ Deployments) for broad device coverage with modern APIs. The app should launch t
 auth screen with no white screen. Re-run `npm run cap:build` after any web change to
 re-sync the `dist/` bundle into the native shell.
 
+**In-app purchases (optional).** The Supporter tier is wired app-side but fails closed
+until a native build is provisioned — set `VITE_REVENUECAT_IOS_KEY` (RevenueCat's
+publishable iOS SDK key) and implement the `LiftPurchases` native plugin. With no key
+set, everyone stays on the free tier. See [`docs/iap.md`](docs/iap.md).
+
 ---
 
 ## Project Structure
