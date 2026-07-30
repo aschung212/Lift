@@ -6,7 +6,7 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { resetXPCeremony } from '../composables/xpCeremonyUI'
-import { resetPurchases } from '../composables/usePurchases'
+import { initializePurchases, resetPurchases } from '../composables/usePurchases'
 import { useTheme } from '../composables/useTheme'
 import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
@@ -122,6 +122,10 @@ async function initStores(userId: string): Promise<void> {
     }
   }
   syncSettingsWithComposables()
+  // Configure App Store IAP for the signed-in user (LIFT-598). No-ops on web and
+  // when unprovisioned; passing the user id lets RevenueCat tie entitlements to a
+  // stable identity across reinstalls rather than an anonymous one. See docs/iap.md.
+  await initializePurchases(import.meta.env.VITE_REVENUECAT_IOS_KEY as string | undefined, userId)
 }
 
 function init(): void {

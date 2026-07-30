@@ -17,7 +17,8 @@ provisioned with a RevenueCat key, everyone is on the free tier.
   of truth.
 - **`src/composables/useSupporter.ts`** — the stable read-only accessor gated
   surfaces consume (today: the share-card "Made with Lift" watermark).
-- **`src/lib/native.ts`** — calls `initializePurchases()` on native launch.
+- **`src/composables/useAuth.ts`** — `initStores(userId)` calls
+  `initializePurchases()` on sign-in, forwarding the Supabase user id.
 
 ## What's left: native provisioning (not done in the app repo)
 
