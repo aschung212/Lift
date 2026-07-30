@@ -136,6 +136,53 @@ describe('usePurchases on native', () => {
   })
 })
 
+describe('resetPurchases (sign-out / shared device)', () => {
+  beforeEach(() => vi.resetModules())
+
+  it('clears an active supporter entitlement and lets re-init re-hydrate', async () => {
+    const mod = await loadModule(true)
+    purchaseProduct.mockResolvedValue(['supporter'])
+    await mod.purchaseSupporter('lift.supporter')
+    expect(mod.usePurchases().isSupporter.value).toBe(true)
+
+    mod.resetPurchases()
+    expect(mod.usePurchases().isSupporter.value).toBe(false)
+    expect(mod.usePurchases().isConfigured.value).toBe(false)
+
+    // The next user can re-configure (the guard was reset).
+    configurePurchases.mockResolvedValue(true)
+    fetchActiveEntitlements.mockResolvedValue([])
+    await mod.initializePurchases('rc_key')
+    expect(configurePurchases).toHaveBeenCalledTimes(1)
+    expect(mod.usePurchases().isSupporter.value).toBe(false)
+  })
+
+  it('forwards the app user id to configure for stable identity', async () => {
+    const mod = await loadModule(true)
+    configurePurchases.mockResolvedValue(true)
+    fetchActiveEntitlements.mockResolvedValue([])
+    await mod.initializePurchases('rc_key', 'user-42')
+    expect(configurePurchases).toHaveBeenCalledWith('rc_key', 'user-42')
+  })
+
+  it('restore no-ops while a purchase is in flight (no cross-overwrite)', async () => {
+    const mod = await loadModule(true)
+    let resolvePurchase: (v: string[] | null) => void = () => {}
+    purchaseProduct.mockReturnValue(
+      new Promise<string[] | null>((r) => {
+        resolvePurchase = r
+      })
+    )
+    const purchasing = mod.purchaseSupporter('lift.supporter')
+    // Restore attempted mid-purchase must bail out and never touch the plugin.
+    await expect(mod.restoreSupporterPurchases()).resolves.toBe(false)
+    expect(restorePurchases).not.toHaveBeenCalled()
+    resolvePurchase(['supporter'])
+    await purchasing
+    expect(mod.usePurchases().isSupporter.value).toBe(true)
+  })
+})
+
 describe('useSupporter reads the purchase entitlement', () => {
   beforeEach(() => vi.resetModules())
 

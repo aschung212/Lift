@@ -40,3 +40,7 @@ provisioned with a RevenueCat key, everyone is on the free tier.
 - The entitlement fails closed: any error, cancel, or missing config → free tier.
 - `restoreSupporterPurchases` is required by App Store guidelines for
   non-consumable IAP — keep it wired into any purchase UI.
+- `resetPurchases()` runs on sign-out (`useAuth.resetStores`) so the entitlement
+  never survives a user switch on a shared device.
+- Pass the signed-in user id as `appUserId` to `initializePurchases` so
+  RevenueCat associates entitlements with a stable identity across reinstalls.

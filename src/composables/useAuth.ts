@@ -6,6 +6,7 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { resetXPCeremony } from '../composables/xpCeremonyUI'
+import { resetPurchases } from '../composables/usePurchases'
 import { useTheme } from '../composables/useTheme'
 import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
@@ -198,6 +199,10 @@ function resetStores(): void {
   // its auto-dismiss timer so a shared device never shows the previous user's
   // toast/celebration.
   resetXPCeremony()
+  // Supporter entitlement is a module-scope singleton (LIFT-598); reset it so a
+  // supporter signing out never leaves the next user on a shared device with a
+  // paid entitlement.
+  resetPurchases()
 }
 
 async function signOut(): Promise<void> {

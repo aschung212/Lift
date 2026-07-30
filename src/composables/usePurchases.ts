@@ -31,14 +31,25 @@ function applyEntitlements(entitlements: string[]): void {
   _isSupporter.value = entitlements.includes(SUPPORTER_ENTITLEMENT)
 }
 
+/** True while any purchase/restore is in flight — a single busy gate so a
+ * concurrent purchase and restore can't race to overwrite each other's result. */
+function isBusy(): boolean {
+  return _isPurchasing.value || _isRestoring.value
+}
+
 /**
  * Configure the purchase SDK and hydrate the current entitlement. Safe to call
  * on every launch: no-ops on web, configures at most once on native, and a
- * missing `apiKey` (an unprovisioned build) leaves the free tier intact.
+ * missing `apiKey` (an unprovisioned build) leaves the free tier intact. Pass
+ * the signed-in user id as `appUserId` so RevenueCat associates entitlements
+ * with a stable identity rather than an anonymous one.
  */
-export async function initializePurchases(apiKey: string | undefined): Promise<void> {
+export async function initializePurchases(
+  apiKey: string | undefined,
+  appUserId?: string
+): Promise<void> {
   if (!isNative || _isConfigured.value || !apiKey) return
-  if (await configurePurchases(apiKey)) {
+  if (await configurePurchases(apiKey, appUserId)) {
     _isConfigured.value = true
     applyEntitlements(await fetchActiveEntitlements())
   }
@@ -46,10 +57,11 @@ export async function initializePurchases(apiKey: string | undefined): Promise<v
 
 /**
  * Purchase the Supporter product. Resolves `true` once the entitlement is active.
- * Guards against concurrent taps; a cancelled purchase leaves state unchanged.
+ * No-ops while any purchase/restore is in flight; a cancelled purchase leaves
+ * state unchanged.
  */
 export async function purchaseSupporter(productId: string): Promise<boolean> {
-  if (!isNative || _isPurchasing.value) return false
+  if (!isNative || isBusy()) return false
   _isPurchasing.value = true
   try {
     const entitlements = await purchaseProduct(productId)
@@ -62,10 +74,11 @@ export async function purchaseSupporter(productId: string): Promise<boolean> {
 
 /**
  * Restore prior purchases (an App Store requirement). Resolves `true` if the
- * supporter entitlement is active afterwards. Guards against concurrent taps.
+ * supporter entitlement is active afterwards. No-ops while any purchase/restore
+ * is in flight.
  */
 export async function restoreSupporterPurchases(): Promise<boolean> {
-  if (!isNative || _isRestoring.value) return false
+  if (!isNative || isBusy()) return false
   _isRestoring.value = true
   try {
     const entitlements = await nativeRestorePurchases()
@@ -74,6 +87,19 @@ export async function restoreSupporterPurchases(): Promise<boolean> {
   } finally {
     _isRestoring.value = false
   }
+}
+
+/**
+ * Clear all purchase state on sign-out (shared-device safety). Resets the
+ * entitlement to the free tier and allows `initializePurchases` to re-configure
+ * and re-hydrate for the next signed-in user — a supporter signing out must
+ * never leave the next user with their entitlement.
+ */
+export function resetPurchases(): void {
+  _isSupporter.value = false
+  _isConfigured.value = false
+  _isPurchasing.value = false
+  _isRestoring.value = false
 }
 
 export interface UsePurchasesReturn {
