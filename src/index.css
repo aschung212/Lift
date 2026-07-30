@@ -6914,6 +6914,14 @@ html.theme-fading .settingsSheet {
   margin-bottom: 12px;
 }
 
+/* Metric selector inside the exercise progress chart card (e1RM / weight /
+   volume / reps). Sits above the time-range row; buttons reuse .bwPeriodBtn. */
+.exGraphMetricRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .exGraphRangeEmpty {
   font-size: var(--font-caption1);
   color: var(--text-muted);

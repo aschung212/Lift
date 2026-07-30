@@ -79,7 +79,7 @@ describe('ExerciseGraph', () => {
       const wrapper = mount(ExerciseGraph, {
         props: { exercise, mode: 'prs' }
       })
-      expect(wrapper.find('.wtGraphTitle').text()).toBe('PR Progression')
+      expect(wrapper.find('.wtGraphTitle').text()).toBe('Estimated 1RM PRs')
     })
 
     it('renders a circle dot for each data point', () => {
@@ -160,7 +160,7 @@ describe('ExerciseGraph', () => {
       const wrapper = mount(ExerciseGraph, {
         props: { exercise }
       })
-      expect(wrapper.find('svg').attributes('aria-label')).toContain('estimated 1RM progress')
+      expect(wrapper.find('svg').attributes('aria-label')).toContain('Estimated 1RM progress')
       expect(wrapper.find('svg').attributes('role')).toBe('img')
     })
 
@@ -235,7 +235,7 @@ describe('ExerciseGraph', () => {
 
     it('defaults to All (full history) with all points visible', () => {
       const wrapper = mount(ExerciseGraph, { props: { exercise: recentExercise } })
-      const active = wrapper.find('.bwPeriodBtn.active')
+      const active = wrapper.find('.exGraphPeriodRow .bwPeriodBtn.active')
       expect(active.text()).toBe('All')
       expect(wrapper.findAll('circle').length).toBe(3)
     })
@@ -244,7 +244,7 @@ describe('ExerciseGraph', () => {
       const wrapper = mount(ExerciseGraph, { props: { exercise: recentExercise } })
       // 3M window excludes the 200-days-ago point → 2 points remain
       await wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')[1].trigger('click')
-      expect(wrapper.find('.bwPeriodBtn.active').text()).toBe('3M')
+      expect(wrapper.find('.exGraphPeriodRow .bwPeriodBtn.active').text()).toBe('3M')
       expect(wrapper.findAll('circle').length).toBe(2)
     })
 
@@ -279,6 +279,70 @@ describe('ExerciseGraph', () => {
       const allBtn = wrapper.findAll('.exGraphPeriodRow .bwPeriodBtn')[3]
       expect(allBtn.attributes('aria-pressed')).toBe('true')
       expect(allBtn.attributes('aria-label')).toBe('Show all time')
+    })
+  })
+
+  describe('metric switcher', () => {
+    // Day volumes: 1080 / 930 / 700; day reps: 8 / 6 / 4; max weight: 175
+    const exercise = makeExercise([
+      makeSet(135, 8, '2026-01-01'),
+      makeSet(155, 6, '2026-01-15'),
+      makeSet(175, 4, '2026-02-01'),
+    ])
+
+    it('renders e1RM/Weight/Volume/Reps buttons with e1RM active by default', () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      const btns = wrapper.findAll('.exGraphMetricRow .bwPeriodBtn')
+      expect(btns.map(b => b.text())).toEqual(['e1RM', 'Weight', 'Volume', 'Reps'])
+      expect(wrapper.find('.exGraphMetricRow .bwPeriodBtn.active').text()).toBe('e1RM')
+    })
+
+    it('reprojects the Y axis to max weight when Weight is selected', async () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      await wrapper.findAll('.exGraphMetricRow .bwPeriodBtn')[1].trigger('click')
+      expect(wrapper.find('.wtGraphTitle').text()).toBe('Max Weight Progress')
+      // Top Y-axis label reflects the heaviest top set (175), still in lbs
+      expect(wrapper.findAll('.wtGYLabel')[0].text()).toBe('175 lbs')
+    })
+
+    it('reprojects to per-session volume when Volume is selected', async () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      await wrapper.findAll('.exGraphMetricRow .bwPeriodBtn')[2].trigger('click')
+      expect(wrapper.find('.wtGraphTitle').text()).toBe('Total Volume Progress')
+      // Largest session volume is 135×8 = 1080
+      expect(wrapper.findAll('.wtGYLabel')[0].text()).toBe('1080 lbs')
+    })
+
+    it('switches the unit to reps and sums reps per session for the Reps metric', async () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      await wrapper.findAll('.exGraphMetricRow .bwPeriodBtn')[3].trigger('click')
+      expect(wrapper.find('.wtGraphTitle').text()).toBe('Total Reps Progress')
+      // Reps carry no weight unit — labels read "N reps"
+      expect(wrapper.findAll('.wtGYLabel')[0].text()).toBe('8 reps')
+      expect(wrapper.find('svg').attributes('aria-label')).toContain('Total Reps progress')
+      expect(wrapper.find('svg').attributes('aria-label')).toContain('reps')
+    })
+
+    it('exposes aria-pressed state on the active metric button', async () => {
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      const btns = wrapper.findAll('.exGraphMetricRow .bwPeriodBtn')
+      expect(btns[0].attributes('aria-pressed')).toBe('true')
+      expect(btns[2].attributes('aria-pressed')).toBe('false')
+      await btns[2].trigger('click')
+      expect(btns[0].attributes('aria-pressed')).toBe('false')
+      expect(btns[2].attributes('aria-pressed')).toBe('true')
+    })
+
+    it('folds bodyweight into effective weight and volume metrics', async () => {
+      // Weighted pull-ups: +25 added, 180 bodyweight snapshot → 205 effective
+      const bwExercise = makeExercise([
+        { id: 'bw1', weight: 25, reps: 5, date: '2026-01-01T10:00:00', estimated1RM: 205 * (1 + 5 / 30), bodyweight: 180 },
+        { id: 'bw2', weight: 25, reps: 8, date: '2026-01-15T10:00:00', estimated1RM: 205 * (1 + 8 / 30), bodyweight: 180 },
+      ])
+      const wrapper = mount(ExerciseGraph, { props: { exercise: bwExercise } })
+      await wrapper.findAll('.exGraphMetricRow .bwPeriodBtn')[1].trigger('click')
+      // Max weight uses effective load (205), not the entered +25
+      expect(wrapper.findAll('.wtGYLabel')[0].text()).toBe('205 lbs')
     })
   })
 

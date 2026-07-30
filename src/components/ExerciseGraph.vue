@@ -1,6 +1,19 @@
 <template>
   <div v-if="hasGraph" class="wtGraphWrap">
-    <p class="wtGraphTitle">{{ mode === 'prs' ? 'PR Progression' : 'Estimated 1RM Progress' }}</p>
+    <p class="wtGraphTitle">{{ chartTitle }}</p>
+
+    <!-- Metric selector -->
+    <div class="exGraphMetricRow" role="group" aria-label="Chart metric">
+      <button
+        v-for="m in METRICS"
+        :key="m.key"
+        type="button"
+        :class="['bwPeriodBtn', { active: metricKey === m.key }]"
+        :aria-label="`Show ${m.title.toLowerCase()}`"
+        :aria-pressed="metricKey === m.key ? 'true' : 'false'"
+        @click="metricKey = m.key"
+      >{{ m.label }}</button>
+    </div>
 
     <!-- Time-range selector -->
     <div class="exGraphPeriodRow" role="group" aria-label="Chart time range">
@@ -21,14 +34,14 @@
       :viewBox="`0 0 ${W} ${H}`"
       class="wtGraphSvg"
       role="img"
-      :aria-label="`${exercise.name} ${mode === 'prs' ? 'PR progression' : 'estimated 1RM progress'} chart with ${points.length} data points, from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit}`"
+      :aria-label="`${exercise.name} ${chartDescriptor} chart with ${points.length} data points, from ${formatValue(minVal)} to ${formatValue(maxVal)} ${unitLabel}`"
       @pointerdown="onScrubStart"
       @pointermove="onScrubMove"
       @pointerup="onScrubEnd"
       @pointercancel="onScrubEnd"
       @pointerleave="onScrubEnd"
     >
-      <desc>{{ `${exercise.name} ${mode === 'prs' ? 'PR progression' : 'estimated 1RM progress'} from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit} across ${points.length} sessions.` }}</desc>
+      <desc>{{ `${exercise.name} ${chartDescriptor} from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${formatValue(minVal)} to ${formatValue(maxVal)} ${unitLabel} across ${points.length} sessions.` }}</desc>
       <!-- Horizontal grid lines -->
       <line
         v-for="gy in gridYs"
@@ -73,20 +86,20 @@
         :y="PAD_T + 4"
         class="wtGYLabel"
         text-anchor="end"
-      >{{ displayWeight(maxVal) }} {{ weightUnit }}</text>
+      >{{ formatValue(maxVal) }} {{ unitLabel }}</text>
       <text
-        v-if="displayWeight(midVal) !== displayWeight(maxVal) && displayWeight(midVal) !== displayWeight(minVal)"
+        v-if="formatValue(midVal) !== formatValue(maxVal) && formatValue(midVal) !== formatValue(minVal)"
         :x="PAD_L - 5"
         :y="PAD_T + chartH / 2 + 4"
         class="wtGYLabel wtGYLabelMid"
         text-anchor="end"
-      >{{ displayWeight(midVal) }} {{ weightUnit }}</text>
+      >{{ formatValue(midVal) }} {{ unitLabel }}</text>
       <text
         :x="PAD_L - 5"
         :y="PAD_T + chartH + 4"
         class="wtGYLabel"
         text-anchor="end"
-      >{{ displayWeight(minVal) }} {{ weightUnit }}</text>
+      >{{ formatValue(minVal) }} {{ unitLabel }}</text>
 
       <!-- X-axis date labels -->
       <text
@@ -135,6 +148,7 @@ import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
 import { useChartScrubber } from '../composables/useChartScrubber'
+import { effectiveWeight } from '../lib/bodyweightLoad'
 import type { Exercise } from '../stores/workout'
 
 const { weightUnit, displayWeight } = useWeightUnit()
@@ -146,6 +160,72 @@ const props = defineProps<{
 }>()
 
 const mode = computed(() => props.mode ?? 'sets')
+
+// ── Metric switcher ──────────────────────────────────────────────
+// The same date series can be reprojected onto four axes (Hevy/Jefit
+// parity): estimated 1RM, heaviest top-set weight, session volume, and
+// session reps. Each metric supplies how a day's sets collapse to one
+// value, whether the value is a max or a per-session sum, and whether it
+// reads in weight units (e1RM/weight/volume) or a bare rep count.
+type MetricKey = 'e1rm' | 'weight' | 'volume' | 'reps'
+interface MetricOption {
+  key: MetricKey
+  label: string
+  title: string
+  /** Reduce a day's sets to a single plotted value (canonical lbs for weight metrics). */
+  aggregate: (sets: Exercise['sets']) => number
+  /** Reps is a bare count; the others render in the user's weight unit. */
+  isWeight: boolean
+}
+const METRICS: MetricOption[] = [
+  {
+    key: 'e1rm',
+    label: 'e1RM',
+    title: 'Estimated 1RM',
+    aggregate: sets => Math.max(...sets.map(s => s.estimated1RM)),
+    isWeight: true,
+  },
+  {
+    key: 'weight',
+    label: 'Weight',
+    title: 'Max Weight',
+    aggregate: sets => Math.max(...sets.map(effectiveWeight)),
+    isWeight: true,
+  },
+  {
+    key: 'volume',
+    label: 'Volume',
+    title: 'Total Volume',
+    aggregate: sets => sets.reduce((sum, s) => sum + effectiveWeight(s) * s.reps, 0),
+    isWeight: true,
+  },
+  {
+    key: 'reps',
+    label: 'Reps',
+    title: 'Total Reps',
+    aggregate: sets => sets.reduce((sum, s) => sum + s.reps, 0),
+    isWeight: false,
+  },
+]
+const metricKey = ref<MetricKey>('e1rm')
+const currentMetric = computed(() => METRICS.find(m => m.key === metricKey.value) ?? METRICS[0])
+
+/** Chart title reflects both the milestone mode and the active metric. */
+const chartTitle = computed(() =>
+  mode.value === 'prs' ? `${currentMetric.value.title} PRs` : `${currentMetric.value.title} Progress`,
+)
+/** Phrase for aria-label/desc, e.g. "Estimated 1RM progress" or "Total Volume PRs". */
+const chartDescriptor = computed(() =>
+  `${currentMetric.value.title}${mode.value === 'prs' ? ' PRs' : ' progress'}`,
+)
+
+/** Format a plotted value for labels: weight metrics honour the unit converter,
+ *  reps stay a rounded bare count. */
+function formatValue(v: number): string {
+  return currentMetric.value.isWeight ? String(displayWeight(v)) : String(Math.round(v))
+}
+/** Unit suffix shown after values ("lbs"/"kg" for weight metrics, "reps" otherwise). */
+const unitLabel = computed(() => (currentMetric.value.isWeight ? weightUnit.value : 'reps'))
 
 // ── Time-range selector ──────────────────────────────────────────
 // Long-trained lifts compress the whole-history curve and hide recent
@@ -168,24 +248,25 @@ function rangeAriaLabel(p: RangeOption): string {
   return `Show last ${p.days} days`
 }
 
-// Best estimated1RM per calendar date, sorted chronologically.
-// Filters to sets on/after the PR baseline when set — keeps the graph aligned
-// with the user's current training block view.
-const dailyBest = computed((): [string, number][] => {
-  const byDate: Record<string, number> = {}
+// One aggregated value per calendar date for the active metric, sorted
+// chronologically. Filters to sets on/after the PR baseline when set — keeps the
+// graph aligned with the user's current training block view.
+const dailyValues = computed((): [string, number][] => {
+  const byDate: Record<string, Exercise['sets']> = {}
   const baseline = prBaselineDate.value
   for (const s of props.exercise.sets) {
     const day = s.date.slice(0, 10) // YYYY-MM-DD
     if (baseline && day < baseline) continue
-    if (!byDate[day] || s.estimated1RM > byDate[day]) {
-      byDate[day] = s.estimated1RM
-    }
+    ;(byDate[day] ??= []).push(s)
   }
-  return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
+  const aggregate = currentMetric.value.aggregate
+  return Object.entries(byDate)
+    .map(([day, sets]): [string, number] => [day, aggregate(sets)])
+    .sort(([a], [b]) => a.localeCompare(b))
 })
 
 const prOnly = computed((): [string, number][] => {
-  const entries = dailyBest.value
+  const entries = dailyValues.value
   const prs: [string, number][] = []
   let max = 0
   for (const [date, e1rm] of entries) {
@@ -198,7 +279,7 @@ const prOnly = computed((): [string, number][] => {
 })
 
 const graphDataAll = computed((): TimeSeriesEntry[] => {
-  const raw = mode.value === 'prs' ? prOnly.value : dailyBest.value
+  const raw = mode.value === 'prs' ? prOnly.value : dailyValues.value
   return raw.map(([date, value]) => ({ date, value }))
 })
 
@@ -264,7 +345,6 @@ const points = computed(() => {
   const prDate = allTimePRDate.value
   return pts.map(p => ({
     ...p,
-    e1rm: p.value,
     isPR: p.date === prDate,
   }))
 })
@@ -278,7 +358,7 @@ const readout = computed(() => {
   if (i == null) return null
   const p = points.value[i]
   if (!p) return null
-  const label = `${displayWeight(p.value)} ${weightUnit.value} · ${formatDate(p.date)}`
+  const label = `${formatValue(p.value)} ${unitLabel.value} · ${formatDate(p.date)}`
   return { point: p, label, box: readoutBox(p, label) }
 })
 </script>
