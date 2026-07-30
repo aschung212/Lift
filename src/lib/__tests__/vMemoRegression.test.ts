@@ -25,7 +25,7 @@ describe('v-memo performance directives', () => {
     // The main exercise v-for loop must include v-memo with exercise identity deps
     // v-memo and v-for must be on the same element (the <li>)
     expect(workoutTracker).toMatch(
-      /v-for="exercise in filteredExercises"[\s\S]{1,200}?v-memo="\[/
+      /v-for="row in filteredExerciseRows"[\s\S]{1,200}?v-memo="\[/
     )
   })
 
@@ -41,6 +41,6 @@ describe('v-memo performance directives', () => {
     // Recency ordering (#936) removed manual reorder, so the row no longer
     // depends on drag state — the memo keys on the data the row actually
     // renders (name, set count, last-set weight/reps, tags, baseline, unit).
-    expect(workoutTracker).toMatch(/v-memo=".*exercise\.sets\[exercise\.sets\.length - 1\]\?\.weight/)
+    expect(workoutTracker).toMatch(/v-memo=".*exercise\.sets\[row\.exercise\.sets\.length - 1\]\?\.weight/)
   })
 })
