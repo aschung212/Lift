@@ -24,6 +24,12 @@ const _isConfigured = ref(false)
 const _isPurchasing = ref(false)
 const _isRestoring = ref(false)
 
+// Bumped on every `resetPurchases()` (sign-out). An async purchase/restore/init
+// captures the epoch at entry and only writes entitlement state if it still
+// matches — so a call that resolves AFTER a sign-out can't leak the previous
+// user's entitlement into the next user's session on a shared device.
+let _epoch = 0
+
 /** Shared source of truth for the supporter entitlement — read via `useSupporter`. */
 export const supporterEntitlement: Readonly<Ref<boolean>> = readonly(_isSupporter)
 
@@ -49,10 +55,11 @@ export async function initializePurchases(
   appUserId?: string
 ): Promise<void> {
   if (!isNative || _isConfigured.value || !apiKey) return
-  if (await configurePurchases(apiKey, appUserId)) {
-    _isConfigured.value = true
-    applyEntitlements(await fetchActiveEntitlements())
-  }
+  const epoch = _epoch
+  if (!(await configurePurchases(apiKey, appUserId)) || epoch !== _epoch) return
+  _isConfigured.value = true
+  const entitlements = await fetchActiveEntitlements()
+  if (epoch === _epoch) applyEntitlements(entitlements)
 }
 
 /**
@@ -62,13 +69,15 @@ export async function initializePurchases(
  */
 export async function purchaseSupporter(productId: string): Promise<boolean> {
   if (!isNative || isBusy()) return false
+  const epoch = _epoch
   _isPurchasing.value = true
   try {
     const entitlements = await purchaseProduct(productId)
+    if (epoch !== _epoch) return false
     if (entitlements) applyEntitlements(entitlements)
     return _isSupporter.value
   } finally {
-    _isPurchasing.value = false
+    if (epoch === _epoch) _isPurchasing.value = false
   }
 }
 
@@ -79,13 +88,15 @@ export async function purchaseSupporter(productId: string): Promise<boolean> {
  */
 export async function restoreSupporterPurchases(): Promise<boolean> {
   if (!isNative || isBusy()) return false
+  const epoch = _epoch
   _isRestoring.value = true
   try {
     const entitlements = await nativeRestorePurchases()
+    if (epoch !== _epoch) return false
     if (entitlements) applyEntitlements(entitlements)
     return _isSupporter.value
   } finally {
-    _isRestoring.value = false
+    if (epoch === _epoch) _isRestoring.value = false
   }
 }
 
@@ -93,9 +104,12 @@ export async function restoreSupporterPurchases(): Promise<boolean> {
  * Clear all purchase state on sign-out (shared-device safety). Resets the
  * entitlement to the free tier and allows `initializePurchases` to re-configure
  * and re-hydrate for the next signed-in user — a supporter signing out must
- * never leave the next user with their entitlement.
+ * never leave the next user with their entitlement. Bumping the epoch also
+ * neutralizes any purchase/restore/init still in flight so it can't write the
+ * old user's entitlement after the reset.
  */
 export function resetPurchases(): void {
+  _epoch++
   _isSupporter.value = false
   _isConfigured.value = false
   _isPurchasing.value = false

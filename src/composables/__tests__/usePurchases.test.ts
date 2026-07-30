@@ -165,6 +165,23 @@ describe('resetPurchases (sign-out / shared device)', () => {
     expect(configurePurchases).toHaveBeenCalledWith('rc_key', 'user-42')
   })
 
+  it('a purchase resolving after sign-out does not grant the next user', async () => {
+    const mod = await loadModule(true)
+    let resolvePurchase: (v: string[] | null) => void = () => {}
+    purchaseProduct.mockReturnValue(
+      new Promise<string[] | null>((r) => {
+        resolvePurchase = r
+      })
+    )
+    const purchasing = mod.purchaseSupporter('lift.supporter')
+    // User signs out (shared device) while the StoreKit purchase is still open.
+    mod.resetPurchases()
+    // The purchase now resolves — it must NOT leak the entitlement post-reset.
+    resolvePurchase(['supporter'])
+    await expect(purchasing).resolves.toBe(false)
+    expect(mod.usePurchases().isSupporter.value).toBe(false)
+  })
+
   it('restore no-ops while a purchase is in flight (no cross-overwrite)', async () => {
     const mod = await loadModule(true)
     let resolvePurchase: (v: string[] | null) => void = () => {}
