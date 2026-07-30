@@ -68,7 +68,8 @@ export async function restoreSupporterPurchases(): Promise<boolean> {
   if (!isNative || _isRestoring.value) return false
   _isRestoring.value = true
   try {
-    applyEntitlements(await nativeRestorePurchases())
+    const entitlements = await nativeRestorePurchases()
+    if (entitlements) applyEntitlements(entitlements)
     return _isSupporter.value
   } finally {
     _isRestoring.value = false

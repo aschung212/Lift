@@ -116,11 +116,23 @@ describe('usePurchases on native', () => {
     expect(mod.usePurchases().isSupporter.value).toBe(true)
   })
 
-  it('restoreSupporterPurchases stays false when nothing to restore', async () => {
+  it('restoreSupporterPurchases stays false on a genuine empty restore', async () => {
     const mod = await loadModule(true)
     restorePurchases.mockResolvedValue([])
     await expect(mod.restoreSupporterPurchases()).resolves.toBe(false)
     expect(mod.usePurchases().isSupporter.value).toBe(false)
+  })
+
+  it('restoreSupporterPurchases does not downgrade an active supporter on failure', async () => {
+    const mod = await loadModule(true)
+    // Establish an active supporter via a successful purchase.
+    purchaseProduct.mockResolvedValue(['supporter'])
+    await mod.purchaseSupporter('lift.supporter')
+    expect(mod.usePurchases().isSupporter.value).toBe(true)
+    // A failed restore resolves null — the entitlement must survive.
+    restorePurchases.mockResolvedValue(null)
+    await expect(mod.restoreSupporterPurchases()).resolves.toBe(true)
+    expect(mod.usePurchases().isSupporter.value).toBe(true)
   })
 })
 

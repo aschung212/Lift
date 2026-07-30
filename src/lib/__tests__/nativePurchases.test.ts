@@ -45,9 +45,9 @@ describe('nativePurchases on web', () => {
     expect(purchaseProduct).not.toHaveBeenCalled()
   })
 
-  it('restorePurchases returns [] without touching the plugin', async () => {
+  it('restorePurchases returns null without touching the plugin', async () => {
     const { restorePurchases: restore } = await loadModule(false)
-    await expect(restore()).resolves.toEqual([])
+    await expect(restore()).resolves.toBeNull()
     expect(restorePurchases).not.toHaveBeenCalled()
   })
 })
@@ -110,9 +110,15 @@ describe('nativePurchases on native', () => {
     await expect(restore()).resolves.toEqual(['supporter'])
   })
 
-  it('restorePurchases returns [] when the plugin throws', async () => {
+  it('restorePurchases returns [] on a genuine empty restore', async () => {
+    const { restorePurchases: restore } = await loadModule(true)
+    restorePurchases.mockResolvedValue({ entitlements: [] })
+    await expect(restore()).resolves.toEqual([])
+  })
+
+  it('restorePurchases returns null when the plugin throws (no downgrade)', async () => {
     const { restorePurchases: restore } = await loadModule(true)
     restorePurchases.mockRejectedValue(new Error('boom'))
-    await expect(restore()).resolves.toEqual([])
+    await expect(restore()).resolves.toBeNull()
   })
 })

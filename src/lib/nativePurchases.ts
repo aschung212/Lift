@@ -80,15 +80,18 @@ export async function purchaseProduct(productId: string): Promise<string[] | nul
 
 /**
  * Restore prior purchases (an App Store requirement for non-consumable IAP).
- * Returns the restored entitlement list (`[]` on web or failure).
+ * Resolves with the restored entitlement list, or `null` when the restore did
+ * not complete — web or store failure. A `null` result means "no change" so a
+ * transient failure never downgrades an already-active supporter; a genuine
+ * empty restore resolves `[]`.
  */
-export async function restorePurchases(): Promise<string[]> {
-  if (!isNative) return []
+export async function restorePurchases(): Promise<string[] | null> {
+  if (!isNative) return null
   try {
     const { entitlements } = await Purchases.restorePurchases()
     return Array.isArray(entitlements) ? entitlements : []
   } catch (e) {
     logError(e, { source: 'nativePurchases.restorePurchases' })
-    return []
+    return null
   }
 }
