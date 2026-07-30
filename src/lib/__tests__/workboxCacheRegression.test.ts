@@ -1,87 +1,90 @@
-/// <reference types="node" />
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
+import {
+  runtimeCaching,
+  workboxOptions,
+} from '../../../vite-plugin-pwa-config'
 
 /**
  * Regression tests for Workbox runtime cache configuration.
  *
- * Validates that endpoint-specific caches are defined with appropriate
- * strategies and capacities. Prevents regression to a single catch-all
- * cache that would evict entries for power users with large datasets.
+ * These assert against the exported config *object* (the single source of truth
+ * that `vite.config.js` and the SW build both consume), not a string-slice of
+ * the config file. They are the cheap first line: they prove the config is
+ * shaped correctly. `swBuildOutput.test.ts` complements them by proving that
+ * this config actually produces a working service worker.
+ *
+ * Purpose: prevent regression to a single catch-all cache that would evict
+ * entries for power users with large datasets, and keep the endpoint-specific
+ * strategies/capacities/ordering intact.
  */
 
-const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.js'), 'utf-8')
+/** Find the rule whose cacheName matches. */
+const ruleFor = (cacheName: string) =>
+  runtimeCaching.find((r) => r.options?.cacheName === cacheName)
 
 describe('Workbox runtime cache configuration', () => {
   describe('endpoint-specific caches exist', () => {
     it('has a dedicated sets cache with StaleWhileRevalidate strategy', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-sets'")
+      const rule = ruleFor('supabase-sets')
+      expect(rule).toBeDefined()
       // StaleWhileRevalidate: fast offline load + background refresh for new sets
-      const setsSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-sets'") - 200,
-        viteConfig.indexOf("cacheName: 'supabase-sets'") + 100
-      )
-      expect(setsSection).toContain("handler: 'StaleWhileRevalidate'")
+      expect(rule?.handler).toBe('StaleWhileRevalidate')
     })
 
     it('has a dedicated exercises cache with NetworkFirst strategy', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-exercises'")
-      const exercisesSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-exercises'") - 200,
-        viteConfig.indexOf("cacheName: 'supabase-exercises'") + 100
-      )
-      expect(exercisesSection).toContain("handler: 'NetworkFirst'")
+      const rule = ruleFor('supabase-exercises')
+      expect(rule).toBeDefined()
+      expect(rule?.handler).toBe('NetworkFirst')
     })
 
     it('has a dedicated bodyweight cache', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-bodyweight'")
+      expect(ruleFor('supabase-bodyweight')).toBeDefined()
     })
 
     it('has a dedicated progression cache', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-progression'")
+      expect(ruleFor('supabase-progression')).toBeDefined()
     })
 
     it('has a catch-all supabase-api cache for unknown endpoints', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-api'")
+      expect(ruleFor('supabase-api')).toBeDefined()
     })
 
     it('keeps auth as NetworkOnly (never cache tokens)', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-auth'")
-      const authSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-auth'") - 200,
-        viteConfig.indexOf("cacheName: 'supabase-auth'") + 100
-      )
-      expect(authSection).toContain("handler: 'NetworkOnly'")
+      const rule = ruleFor('supabase-auth')
+      expect(rule).toBeDefined()
+      expect(rule?.handler).toBe('NetworkOnly')
     })
   })
 
   describe('cache capacities are tuned for power users', () => {
     it('sets cache allows 500 entries (100+ exercises × multiple pages)', () => {
-      const setsSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-sets'"),
-        viteConfig.indexOf("cacheName: 'supabase-sets'") + 300
-      )
-      expect(setsSection).toContain('maxEntries: 500')
+      expect(ruleFor('supabase-sets')?.options?.expiration?.maxEntries).toBe(500)
     })
 
     it('exercises cache allows 200 entries', () => {
-      const exercisesSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-exercises'"),
-        viteConfig.indexOf("cacheName: 'supabase-exercises'") + 300
+      expect(ruleFor('supabase-exercises')?.options?.expiration?.maxEntries).toBe(
+        200
       )
-      expect(exercisesSection).toContain('maxEntries: 200')
     })
   })
 
   describe('cache ordering is specific-first', () => {
     it('specific endpoint caches appear before the catch-all', () => {
-      const setsPos = viteConfig.indexOf("cacheName: 'supabase-sets'")
-      const exercisesPos = viteConfig.indexOf("cacheName: 'supabase-exercises'")
-      const catchAllPos = viteConfig.indexOf("cacheName: 'supabase-api'")
+      const names = runtimeCaching.map((r) => r.options?.cacheName)
+      const setsPos = names.indexOf('supabase-sets')
+      const exercisesPos = names.indexOf('supabase-exercises')
+      const catchAllPos = names.indexOf('supabase-api')
       // Specific caches must come before catch-all so Workbox matches them first
+      expect(setsPos).toBeGreaterThanOrEqual(0)
+      expect(exercisesPos).toBeGreaterThanOrEqual(0)
       expect(setsPos).toBeLessThan(catchAllPos)
       expect(exercisesPos).toBeLessThan(catchAllPos)
+    })
+  })
+
+  describe('navigation fallback', () => {
+    it('serves index.html for navigations (SPA fallback)', () => {
+      expect(workboxOptions.navigateFallback).toBe('index.html')
     })
   })
 })

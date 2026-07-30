@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
+import { workboxOptions } from '../../../vite-plugin-pwa-config'
 
 /**
  * Regression tests for PWA manifest configuration.
@@ -9,6 +10,10 @@ import { resolve } from 'path'
  * Validates that the vite.config.js manifest includes required fields
  * for a richer PWA install experience (screenshots, categories) and
  * that referenced screenshot assets exist in public/.
+ *
+ * Manifest fields live inline in vite.config.js (asserted via source text);
+ * the Workbox service-worker config lives in ../../../vite-plugin-pwa-config.ts
+ * and is asserted against the exported object.
  */
 
 const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.js'), 'utf-8')
@@ -95,11 +100,12 @@ describe('PWA manifest regression tests', () => {
 
   describe('workbox includes navigateFallback for offline navigation', () => {
     it('has navigateFallback set to index.html', () => {
-      expect(viteConfig).toContain("navigateFallback: 'index.html'")
+      expect(workboxOptions.navigateFallback).toBe('index.html')
     })
 
     it('has navigateFallbackDenylist to exclude API routes', () => {
-      expect(viteConfig).toContain('navigateFallbackDenylist:')
+      expect(Array.isArray(workboxOptions.navigateFallbackDenylist)).toBe(true)
+      expect(workboxOptions.navigateFallbackDenylist.length).toBeGreaterThan(0)
     })
 
     it('offline.html exists in public/', () => {
@@ -109,7 +115,7 @@ describe('PWA manifest regression tests', () => {
 
   describe('workbox enables navigation preload for faster navigations', () => {
     it('has navigationPreload: true in workbox config', () => {
-      expect(viteConfig).toContain('navigationPreload: true')
+      expect(workboxOptions.navigationPreload).toBe(true)
     })
   })
 
@@ -139,23 +145,23 @@ describe('PWA manifest regression tests', () => {
 
   describe('workbox globIgnores excludes non-essential large assets from precache', () => {
     it('excludes screenshot PNGs from precache', () => {
-      expect(viteConfig).toContain("'screenshot-*.png'")
+      expect(workboxOptions.globIgnores).toContain('screenshot-*.png')
     })
 
     it('excludes og-image.png from precache', () => {
-      expect(viteConfig).toContain("'og-image.png'")
+      expect(workboxOptions.globIgnores).toContain('og-image.png')
     })
 
     it('excludes icon-source.png from precache', () => {
-      expect(viteConfig).toContain("'icon-source.png'")
+      expect(workboxOptions.globIgnores).toContain('icon-source.png')
     })
 
     it('excludes og-preview.html from precache', () => {
-      expect(viteConfig).toContain("'og-preview.html'")
+      expect(workboxOptions.globIgnores).toContain('og-preview.html')
     })
 
     it('has globIgnores array in workbox config', () => {
-      expect(viteConfig).toContain('globIgnores:')
+      expect(Array.isArray(workboxOptions.globIgnores)).toBe(true)
     })
   })
 })

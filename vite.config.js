@@ -5,6 +5,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { readFileSync } from 'fs'
 import themeStripPlugin from './vite-plugin-theme-split'
 import preloadDefaultViewPlugin from './vite-plugin-preload-default-view'
+import { workboxOptions } from './vite-plugin-pwa-config'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
@@ -128,113 +129,11 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        globIgnores: [
-          'screenshot-*.png',
-          'og-image.png',
-          'icon-source.png',
-          'og-preview.html',
-          // iOS launch screens are loaded by Safari at cold launch via <link>
-          // tags, not fetched by the app — precaching them only bloats the SW.
-          'launch/*.png',
-        ],
-        navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api\//],
-        navigationPreload: true,
-        clientsClaim: true,
-        skipWaiting: true,
-        runtimeCaching: [
-          {
-            // Sets collection grows as new sets are logged — StaleWhileRevalidate
-            // serves cached response instantly for offline/fast load while updating
-            // the cache in the background so new sets from other devices appear next load
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/sets\b/i,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'supabase-sets',
-              expiration: {
-                maxEntries: 500,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            // Exercises change infrequently (renames, tag edits) — NetworkFirst with generous capacity
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/exercises\b/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-exercises',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 12, // 12 hours
-              },
-              networkTimeoutSeconds: 3,
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            // Bodyweight entries — moderate churn, NetworkFirst
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/bodyweight_entries\b/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-bodyweight',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 12, // 12 hours
-              },
-              networkTimeoutSeconds: 3,
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            // Progression/XP data — small payload, short TTL
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/(user_progression|xp_events|progression_snapshots)\b/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-progression',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 6, // 6 hours
-              },
-              networkTimeoutSeconds: 3,
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            // Catch-all for any other Supabase REST endpoints
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-api',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24, // 24 hours
-              },
-              networkTimeoutSeconds: 3,
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/auth\/v1\/.*/i,
-            handler: 'NetworkOnly',
-            options: {
-              cacheName: 'supabase-auth',
-            },
-          },
-        ],
-      },
+      // Workbox config lives in ./vite-plugin-pwa-config.ts as a single source
+      // of truth shared with the SW build-output test (swBuildOutput.test.ts),
+      // so the generated service worker is verified against the same object the
+      // build consumes — not a string-slice of this file.
+      workbox: workboxOptions,
     }),
     // Upload source maps to Sentry on production builds
     // Requires SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT env vars

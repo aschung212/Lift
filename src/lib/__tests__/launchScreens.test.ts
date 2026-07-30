@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
 // @ts-expect-error - plain JS generator script, no type declarations
 import { DEVICES } from '../../../scripts/generate-launch-screens.js'
+import { workboxOptions } from '../../../vite-plugin-pwa-config'
 
 /**
  * Regression tests for iOS PWA launch screens (apple-touch-startup-image).
@@ -77,7 +78,6 @@ describe('iOS launch screen (apple-touch-startup-image) regression tests', () =>
   })
 
   it('excludes launch screens from the Workbox precache (loaded by Safari, not the app)', () => {
-    const viteConfig = readFileSync(resolve(root, 'vite.config.js'), 'utf-8')
-    expect(viteConfig).toContain("'launch/*.png'")
+    expect(workboxOptions.globIgnores).toContain('launch/*.png')
   })
 })
