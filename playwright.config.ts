@@ -4,6 +4,10 @@ const isCI = !!process.env.CI
 
 export default defineConfig({
   testDir: './e2e',
+  // Visual-regression snapshots live under e2e/visual and run via their own
+  // config (playwright.visual.config.ts) — excluded here so the functional e2e
+  // gate never runs pixel diffs (LIFT-664).
+  testIgnore: '**/visual/**',
   timeout: 30000,
   retries: isCI ? 2 : 1,
   use: {
