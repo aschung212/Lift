@@ -119,6 +119,27 @@
           >Reset to default</button>
           <span class="iosSettingsFooter">How many rep counts (1–{{ editIntensityMaxReps }}) the Intensity table calculates when you log this exercise — from warmups up to PR-beating loads at 100%.</span>
         </div>
+        <!-- Bodyweight-loaded mode (LIFT-834): fold the lifter's tracked
+             bodyweight into the load so pull-ups/dips estimate real strength
+             instead of counting only the added plates. -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Load</span>
+          <div class="iosSettingsGroup">
+            <div class="iosSettingsRow">
+              <span class="iosSettingsRowLabel">Bodyweight exercise</span>
+              <button
+                class="iosToggle"
+                :class="{ iosToggleOn: editBodyweightLoaded }"
+                role="switch"
+                :aria-checked="editBodyweightLoaded"
+                @click="editBodyweightLoaded = !editBodyweightLoaded"
+              >
+                <span class="iosToggleKnob"></span>
+              </button>
+            </div>
+          </div>
+          <span class="iosSettingsFooter">For pull-ups, dips, and chins: adds your latest tracked bodyweight to the entered weight when estimating 1RM, so “+25 lb” counts your full effort. The Weight field still records only the added load.</span>
+        </div>
         <!-- Coach equipment classification (#931 phase C): explicit kind for the
              AI Coach's strength analytics. "Auto" stores nothing and shows what
              the name heuristic resolves to. -->
@@ -220,6 +241,8 @@ export interface EditExerciseSave {
   barWeight: number
   /** Intensity-table rep-row count; null = use the default (10). */
   intensityMaxReps: number | null
+  /** Bodyweight-loaded mode (LIFT-834): fold bodyweight into e1RM for pull-ups/dips. */
+  bodyweightLoaded: boolean
   /** Coach equipment classification; null = Auto (name heuristic). */
   equipment: ExerciseEquipment | null
   /** Gym membership (#961); [] = unassigned (shows under every gym filter). */
@@ -279,6 +302,9 @@ const confirmDeleteExercise = ref(false)
 // How many rep rows (1..N) the PR-anchored intensity table calculates when
 // logging this exercise. Default 10; a per-exercise override clamps to [1, 100].
 const editIntensityMaxReps = ref<number>(DEFAULT_INTENSITY_MAX_REPS)
+
+// ── Bodyweight-loaded mode (LIFT-834) ───────────────────────────
+const editBodyweightLoaded = ref(false)
 
 function adjustIntensityMaxReps(delta: number) {
   editIntensityMaxReps.value = sanitizeIntensityMaxReps(editIntensityMaxReps.value + delta)
@@ -368,6 +394,7 @@ watch(() => props.exercise, async (exercise) => {
     editPlateCountMode.value = exercise.plateCountMode || 'per-side'
     editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
+    editBodyweightLoaded.value = exercise.bodyweightLoaded ?? false
     editEquipment.value = exercise.equipment ?? null
     editGyms.value = [...(exercise.gyms || [])]
     newTagInput.value = ''
@@ -446,6 +473,7 @@ function confirmSave() {
     plateCountMode: editPlateCountMode.value,
     barWeight: editBarWeight.value,
     intensityMaxReps: editIntensityMaxReps.value === DEFAULT_INTENSITY_MAX_REPS ? null : editIntensityMaxReps.value,
+    bodyweightLoaded: editBodyweightLoaded.value,
     equipment: editEquipment.value,
     gyms: [...editGyms.value],
   })

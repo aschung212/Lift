@@ -27,8 +27,11 @@ async function openWith(exercise: Exercise, allGyms: string[] = []): Promise<Vue
 const stepperValue = (w: VueWrapper) => w.find('.iosStepperValue').text()
 const lastSavePayload = (w: VueWrapper) => {
   const calls = w.emitted('save')!
-  return calls[calls.length - 1][0] as { intensityMaxReps: number | null; equipment: string | null; gyms: string[] }
+  return calls[calls.length - 1][0] as { intensityMaxReps: number | null; equipment: string | null; gyms: string[]; bodyweightLoaded: boolean }
 }
+
+/** The bodyweight-loaded switch lives in the "Load" section — the 2nd toggle after the plate-calculator one. */
+const bodyweightToggle = (w: VueWrapper) => w.findAll('[role="switch"]')[1]
 
 /** The equipment radio chips (inside the radiogroup, unlike the tag chips). */
 const equipmentChips = (w: VueWrapper) => w.findAll('[role="radiogroup"] .wtTagPickerChip')
@@ -78,6 +81,28 @@ describe('EditExerciseModal — intensity rep-rows config (#770)', () => {
     expect(wrapper.find('.wtIntensityEditReset').exists()).toBe(false)
     await wrapper.find('.repMaxBtnCalc').trigger('click')
     expect(lastSavePayload(wrapper).intensityMaxReps).toBeNull()
+  })
+})
+
+describe('EditExerciseModal — bodyweight-loaded mode (LIFT-834)', () => {
+  it('defaults off and emits bodyweightLoaded: false', async () => {
+    const wrapper = await openWith(makeExercise())
+    expect(bodyweightToggle(wrapper).attributes('aria-checked')).toBe('false')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).bodyweightLoaded).toBe(false)
+  })
+
+  it('seeds on from an existing bodyweight-loaded exercise', async () => {
+    const wrapper = await openWith(makeExercise({ bodyweightLoaded: true }))
+    expect(bodyweightToggle(wrapper).attributes('aria-checked')).toBe('true')
+  })
+
+  it('toggles on and emits bodyweightLoaded: true', async () => {
+    const wrapper = await openWith(makeExercise())
+    await bodyweightToggle(wrapper).trigger('click')
+    expect(bodyweightToggle(wrapper).attributes('aria-checked')).toBe('true')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).bodyweightLoaded).toBe(true)
   })
 })
 

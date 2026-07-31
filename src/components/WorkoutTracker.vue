@@ -816,6 +816,8 @@ import { useFirstSetCelebration } from '../composables/useFirstSetCelebration'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
+import { useBodyweightStore } from '../stores/bodyweight'
+import { effective1RM } from '../lib/bodyweightLoad'
 import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
 import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
@@ -838,6 +840,7 @@ import { matchesGymFilter, loadActiveGymFilter, saveActiveGymFilter, sanitizeGym
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
+const bodyweightStore = useBodyweightStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme } = useTheme()
@@ -2191,8 +2194,11 @@ const liveEstimate = computed(() => {
 
 const liveEstimateLbs = computed(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
-  const w = toLbs(weight.value)
-  return reps.value === 1 ? Math.round(w) : Math.round(w * (1 + reps.value / 30))
+  // Fold bodyweight into the preview for bodyweight-loaded exercises so the live
+  // e1RM / PR flash matches what logSet will persist (LIFT-834). Standard
+  // exercises collapse to plain Epley — identical to the prior behavior.
+  const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
+  return effective1RM(toLbs(weight.value), reps.value, ex?.bodyweightLoaded, bodyweightStore.latestWeight)
 })
 
 const isNewPR = computed(() => {
@@ -2642,6 +2648,7 @@ function onEditExerciseSave(payload: EditExerciseSave) {
     store.setExerciseBarWeight(editTarget.value, payload.barWeight)
   }
   store.setExerciseIntensityMaxReps(editTarget.value, payload.intensityMaxReps)
+  store.setExerciseBodyweightLoaded(editTarget.value, payload.bodyweightLoaded)
   store.setExerciseEquipment(editTarget.value, payload.equipment)
   store.setExerciseGyms(editTarget.value, payload.gyms)
   editTarget.value = null

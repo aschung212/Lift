@@ -8,7 +8,8 @@ import { uuid, endOfDayISO } from '../lib/uuid'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
-import { epley } from '../lib/epley'
+import { effective1RM } from '../lib/bodyweightLoad'
+import { useBodyweightStore } from './bodyweight'
 import { todayISO, setDayKey } from '../lib/dates'
 import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
@@ -52,6 +53,7 @@ export interface Exercise {
   barWeight?: number               // bar weight in lbs, default 45
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
+  bodyweightLoaded?: boolean       // fold the lifter's bodyweight into load for e1RM (pull-ups/dips), LIFT-834
   equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
   gyms?: string[]                  // gym membership; empty/undefined = shows under every gym filter (#961)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
@@ -271,6 +273,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       // actually clears the override server-side — omitting it would leave a
       // stale value that re-applies on the next fetch.
       intensity_max_reps: exercise.intensityMaxReps ?? null,
+      // Always send bodyweight_loaded (false when unset) so turning the mode off
+      // propagates rather than leaving a stale true that re-applies on fetch (LIFT-834).
+      bodyweight_loaded: exercise.bodyweightLoaded ?? false,
       // Same always-send rule: "Auto" clears the Coach equipment classification.
       equipment: exercise.equipment ?? null,
       // Same always-send rule: clearing gym membership must propagate (#961).
@@ -435,6 +440,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
       if (ex.intensity_max_reps != null) exercise.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensity_max_reps)
+      if (ex.bodyweight_loaded) exercise.bodyweightLoaded = true
       if (ex.equipment != null) {
         const eq = sanitizeExerciseEquipment(ex.equipment)
         if (eq) exercise.equipment = eq
@@ -718,6 +724,27 @@ export const useWorkoutStore = defineStore('workout', () => {
   }
 
   /**
+   * Toggle bodyweight-loaded mode for an exercise (LIFT-834). When on, the
+   * lifter's tracked bodyweight is folded into the load for e1RM. `false`
+   * deletes the field (the unset/standard state). Existing sets keep their
+   * stored e1RM; the fold applies to sets logged or edited after the change.
+   */
+  function setExerciseBodyweightLoaded(exerciseId: string, value: boolean) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
+    if (value) exercise.bodyweightLoaded = true
+    else delete exercise.bodyweightLoaded
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
    * Set (or clear) the explicit Coach equipment classification (#931 phase C).
    * `null` clears the override ("Auto") so the name heuristic applies again.
    * Values are sanitized so only the known kinds are ever stored.
@@ -759,6 +786,16 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * The lifter's most recently logged bodyweight in lbs, or null when none is
+   * tracked yet. Read lazily from the bodyweight store so the workout store
+   * doesn't hold a stale snapshot — it reflects the value at log/edit time,
+   * which is what a bodyweight-loaded e1RM should be anchored to (LIFT-834).
+   */
+  function _currentBodyweight(): number | null {
+    return useBodyweightStore().latestWeight
+  }
+
   function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
@@ -771,7 +808,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       ? endOfDayISO(dateStr)
       : new Date().toISOString()
     const id = uuid()
-    const estimated1RM = epley(weight, reps)
+    // Bodyweight-loaded exercises (pull-ups/dips) fold the lifter's current
+    // bodyweight into the load so e1RM reflects real effort (LIFT-834). Standard
+    // exercises are unaffected — effective1RM collapses to plain Epley.
+    const estimated1RM = effective1RM(weight, reps, exercise.bodyweightLoaded, _currentBodyweight())
     // Real wall-clock log time, distinct from `date` (stamped end-of-day for the
     // chosen calendar day, no time-of-day, per #746). Drives time-of-day +
     // within-workout ordering in the AI Coach payload (#846): ≈ training time for
@@ -796,7 +836,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (exercise.sample) _adoptExercise(exercise)
     set.weight = weight
     set.reps = reps
-    set.estimated1RM = epley(weight, reps)
+    set.estimated1RM = effective1RM(weight, reps, exercise.bodyweightLoaded, _currentBodyweight())
     if (dateStr) {
       set.date = endOfDayISO(dateStr)
     }
@@ -1507,6 +1547,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseInputMode,
     setExerciseBarWeight,
     setExerciseIntensityMaxReps,
+    setExerciseBodyweightLoaded,
     setExerciseEquipment,
     setExerciseGyms,
     logSet,

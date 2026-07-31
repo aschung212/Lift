@@ -176,6 +176,10 @@ const mockGetOverloadSuggestion = vi.fn()
 const mockGetLastSession = vi.fn()
 const mockGetUsualLadder = vi.fn()
 
+vi.mock('../../stores/bodyweight', () => ({
+  useBodyweightStore: () => ({ latestWeight: null }),
+}))
+
 vi.mock('../../stores/workout', () => ({
   useWorkoutStore: () => ({
     get exercises() { return mockState.exercises },
