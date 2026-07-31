@@ -445,16 +445,20 @@ function goToToday() {
 
 function prev() {
   const d = new Date(cursor.value)
-  if (view.value === 'month') d.setMonth(d.getMonth() - 1)
-  else d.setDate(d.getDate() - 7)
+  if (view.value === 'month') {
+    d.setDate(1)
+    d.setMonth(d.getMonth() - 1)
+  } else d.setDate(d.getDate() - 7)
   cursor.value = d
   selectedDay.value = null
 }
 
 function next() {
   const d = new Date(cursor.value)
-  if (view.value === 'month') d.setMonth(d.getMonth() + 1)
-  else d.setDate(d.getDate() + 7)
+  if (view.value === 'month') {
+    d.setDate(1)
+    d.setMonth(d.getMonth() + 1)
+  } else d.setDate(d.getDate() + 7)
   cursor.value = d
   selectedDay.value = null
 }
