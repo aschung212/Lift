@@ -19,6 +19,7 @@
  *   ANTHROPIC_API_KEY=...         Console API key — usage-billed, NOT a Max subscription
  *   SUPABASE_URL / SUPABASE_ANON_KEY   server copies (used to verify the caller's JWT)
  *   COACH_DAILY_CEILING_CENTS=200 global spend brake (default $2/day)
+ *   SLACK_WEBHOOK_URL=...         optional; server copy for the 50%-of-ceiling spend alert
  *   COACH_DEV_ALLOW=1             local `vercel dev` escape hatch (never set in Vercel)
  *
  * See docs/ai-coach.md for the full design, the remaining Phase 1 work (consent UI,
@@ -43,6 +44,7 @@ import {
   supportsAdaptiveThinking,
   type CoachPayload,
 } from '../src/lib/aiCoach'
+import { buildSpendAlertText } from '../src/lib/coachSpendAlert'
 
 // Headroom for a large per-set payload + adaptive thinking on Opus (single-shot).
 export const config = { maxDuration: 60 }
@@ -88,6 +90,24 @@ function bearer(header: string | null): string | null {
   if (!header) return null
   const match = /^Bearer\s+(.+)$/i.exec(header.trim())
   return match ? match[1] : null
+}
+
+/**
+ * Best-effort early-warning Slack alert when the day's spend first crosses the
+ * threshold. An alert failure must NEVER surface to the caller or block their
+ * review, so every error is swallowed. The once-per-day guard lives in the
+ * record_coach_usage RPC — this only fires the message it already decided to send.
+ */
+async function postSpendAlert(webhook: string, spentCents: number, ceilingCents: number): Promise<void> {
+  try {
+    await fetch(webhook, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: buildSpendAlertText(spentCents, ceilingCents) }),
+    })
+  } catch {
+    // Swallow: alerting is observability, not a request-path dependency.
+  }
 }
 
 interface AnthropicResult {
@@ -249,19 +269,29 @@ export default async function handler(req: Request): Promise<Response> {
       p_output_tokens: 0,
       p_model: model,
       p_billed: false,
+      p_daily_ceiling_cents: ceilingCents,
     })
     return json(502, { error: 'coach_upstream_failed' }, cors)
   }
 
   const actualCostCents = costCents(model, result.inputTokens, result.outputTokens)
-  await supabase.rpc('record_coach_usage', {
+  const { data: usageData } = await supabase.rpc('record_coach_usage', {
     p_pre_charge_cents: maxCostCents,
     p_actual_cost_cents: actualCostCents,
     p_input_tokens: result.inputTokens,
     p_output_tokens: result.outputTokens,
     p_model: model,
     p_billed: true,
+    p_daily_ceiling_cents: ceilingCents,
   })
+
+  // Early-warning spend alert (LIFT-850): the RPC flags the first crossing of the
+  // 50% threshold today; fire the one-shot Slack alert if a webhook is provisioned.
+  const usage = Array.isArray(usageData) ? usageData[0] : usageData
+  const spendWebhook = env('SLACK_WEBHOOK_URL')
+  if (usage?.crossed_alert && spendWebhook) {
+    await postSpendAlert(spendWebhook, usage.spent_cents ?? 0, ceilingCents)
+  }
 
   // A safety refusal is a "used" request — spend stands, no refund.
   if (result.stopReason === 'refusal') return json(200, { error: 'coach_unavailable' }, cors)

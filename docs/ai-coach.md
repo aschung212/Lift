@@ -141,8 +141,8 @@ Hard backstops: `MAX_SETS` (1500), `MAX_INPUT_TOKENS` (80K → 413), `MAX_INPUT_
 A single Vercel serverless function at `api/coach.ts` holds the Anthropic key. The web client
 calls it same-origin (`/api/coach`); the native Capacitor build calls the absolute
 `https://spa-rho-sandy.vercel.app/api/coach` (read from the authoritative domain, never
-fabricated) and that origin must be added to the CSP `connect-src` + the function's CORS
-allowlist before the native build ships.
+fabricated). That origin is on the CSP `connect-src` (vercel.json) and the function's CORS
+allowlist (LIFT-850), so the native build can reach it.
 
 Gate order is load-bearing — every cheap check runs **before any spend**:
 
@@ -289,7 +289,28 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   `src/lib/coachAnalytics.ts` + contract/validator support in `aiCoach.ts`) landed as the
   follow-up. See the section above.
 
-**Remaining Phase 1:**
+**Launch-readiness code guardrails (LIFT-850, landed):**
+- **Native reachability** — `https://spa-rho-sandy.vercel.app` is on the CSP `connect-src`
+  (vercel.json) so the cross-origin native Capacitor build can reach `/api/coach`; it already
+  matches `COACH_PROD_ORIGIN` (coachClient.ts) and the function's CORS `ALLOWED_ORIGINS`
+  (api/coach.ts). Pinned by `vercelHeadersRegression.test.ts`.
+- **Egress leak tripwire** — `coachEgressLeak.test.ts` fails if `api.anthropic.com`, the
+  `ANTHROPIC_API_KEY`/`x-api-key` tokens, or any other LLM-provider host ever appear in the
+  client source, the built `dist/`, or the CSP `connect-src`. api/ is excluded (server-only).
+- **Spend alert** — `record_coach_usage` (migration `20260731000000`) reports the first time a
+  day's cumulative spend crosses 50% of `COACH_DAILY_CEILING_CENTS` (a `half_alert_sent` guard
+  makes it one-shot); api/coach.ts then POSTs a one-time Slack alert to `SLACK_WEBHOOK_URL`
+  (optional; best-effort, never blocks the response). Pure message formatting +
+  threshold in `src/lib/coachSpendAlert.ts` (unit-tested); auto-pause at 100% is unchanged.
+- **Netlify exclusion** — documented in `netlify.toml`: no functions block there, so the server
+  transport is scoped to the Vercel origin only.
+
+**Remaining Phase 1 (ops-only — requires the Vercel/Anthropic dashboards + a live DB):**
+- Provision env in Vercel Production scope (`COACH_ENABLED`, `COACH_MODEL`, `ANTHROPIC_API_KEY`,
+  `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `COACH_DAILY_CEILING_CENTS`, `SLACK_WEBHOOK_URL`) + the
+  provider-side monthly budget cap (≈ ceiling × 31 ≈ $62).
+- Vercel WAF per-IP rate rule + BotID on `/api/coach` (allowlist the 192.168.x.x LAN while
+  testing). Kill-switch runbook: flip `COACH_ENABLED` (Edge Config, sub-second) + WAF Attack Mode.
 - Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers
   (#849). Until it lands the server 403s `consent_required`; `CoachSheet` surfaces that as a
   non-retryable "accept the Coach privacy terms" message (the consent capture itself is #849).
@@ -298,16 +319,14 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   bug at `src/composables/useAuth.ts:225` (`Promise.allSettled` then `filter(status === 'rejected')`
   — supabase-js *resolves* `{ error }` on a failed delete, so a failed delete passes silently
   and leaves health data on the server). Add a regression test.
-- Provision env (`COACH_ENABLED`, `COACH_MODEL`, `ANTHROPIC_API_KEY`, `SUPABASE_URL`,
-  `SUPABASE_ANON_KEY`, `COACH_DAILY_CEILING_CENTS`) in Vercel Production scope, plus the
-  provider-side monthly budget cap and a Slack spend alert from the function.
-- WAF rate rule + BotID on `/api/coach`; CSP `connect-src` + CORS for the native origin.
 
 ## Known deploy gotcha
 
 `netlify.toml` is committed (publish=dist, `/*` → index.html, **zero functions**), so
-`/api/coach` 404s on any Netlify deploy. Confirm Netlify is dead/removed, or scope the feature
-to the Vercel origin and document the exclusion, before launch.
+`/api/coach` 404s on any Netlify deploy. **Reconciled (LIFT-850):** the AI Coach server
+transport is scoped to the Vercel origin only; `netlify.toml` documents the exclusion inline.
+Netlify is a static-only fallback host — port `api/coach.ts` to a Netlify Function before
+flipping `COACH_MODE` to `'server'` there.
 
 ## Local dev / testing
 

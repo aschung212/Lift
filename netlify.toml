@@ -1,3 +1,12 @@
+# Static-hosting config for the Lift PWA.
+#
+# LIFT-850 — AI Coach exclusion: this config has NO functions block, so the
+# serverless proxy at `/api/coach` (Lift's only server-side compute) does NOT
+# exist on a Netlify deploy and would 404. The AI Coach server transport is
+# therefore scoped to the Vercel origin only (spa-rho-sandy.vercel.app, which
+# hosts `api/coach.ts`). Netlify is a static-only fallback host. Do NOT flip
+# `COACH_MODE` to 'server' expecting it to work here — port `api/coach.ts` to a
+# Netlify Function first if this ever becomes the primary origin.
 [build]
   command   = "npm run build"
   publish   = "dist"

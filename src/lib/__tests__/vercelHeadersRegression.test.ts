@@ -132,6 +132,17 @@ describe('vercel.json security headers', () => {
       expect(csp).toContain('https://vitals.vercel-insights.com')
     })
 
+    /**
+     * Native reachability (LIFT-850): the native Capacitor build is cross-origin
+     * (ios scheme 'Lift') and calls the AI Coach proxy at the absolute production
+     * origin, so that origin must be on connect-src. This is our own deployment
+     * domain (matches COACH_PROD_ORIGIN in coachClient.ts and the CORS allowlist
+     * in api/coach.ts) — never an LLM-provider host (see coachEgressLeak test).
+     */
+    it('allows the native AI Coach proxy origin on connect-src', () => {
+      expect(csp).toContain('https://spa-rho-sandy.vercel.app')
+    })
+
     it('blocks framing (clickjacking defense)', () => {
       expect(csp).toMatch(/frame-ancestors\s+'none'/)
     })
