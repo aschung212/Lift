@@ -15,6 +15,15 @@ export interface BeforeInstallPromptEvent extends Event {
 const DISMISS_KEY = 'install-prompt-dismissed'
 const MIN_WORKOUT_DAYS = 3
 
+/** Analytics property values accepted by the injected logger (mirrors useAnalytics). */
+type InstallEventValue = string | number | boolean | null | undefined
+
+/** Optional analytics sink for install-funnel instrumentation (LIFT-1061). */
+export type InstallEventLogger = (
+  name: string,
+  props?: Record<string, InstallEventValue>,
+) => void
+
 /** Whether the app is running in standalone (installed) mode. */
 export function isStandalone(): boolean {
   if (typeof window === 'undefined') return false
@@ -50,8 +59,17 @@ export interface InstallPromptState {
  * - Already running as installed PWA / native Capacitor
  * - User previously dismissed the banner
  * - User hasn't reached the engagement threshold
+ *
+ * Pass `logEvent` to instrument the install funnel (LIFT-1061): the composable
+ * emits `install_prompt_available` (beforeinstallprompt intercepted),
+ * `install_banner_shown` (impression, once per session), `install_prompt_result`
+ * (native prompt accepted/dismissed), `install_banner_dismissed`, and
+ * `app_installed`. Analytics failures never affect banner behavior.
  */
-export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallPromptState {
+export function useInstallPrompt(
+  workoutDayCount: WatchSource<number>,
+  logEvent?: InstallEventLogger,
+): InstallPromptState {
   const showBanner = ref(false)
   const isIOSPrompt = ref(false)
 
@@ -59,6 +77,28 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
   // True when we intercepted beforeinstallprompt but haven't shown the banner yet
   // (waiting for workout data to hydrate past the threshold).
   let hasPendingPrompt = false
+  // Guard so the impression event fires at most once per composable lifetime,
+  // even though several code paths (immediate, iOS, post-hydration watch) reveal it.
+  let bannerShownLogged = false
+
+  function track(name: string, props?: Record<string, InstallEventValue>): void {
+    if (!logEvent) return
+    try { logEvent(name, props) } catch { /* analytics must never break the prompt */ }
+  }
+
+  /**
+   * Single reveal path for the banner so the impression is logged exactly once
+   * regardless of which trigger (Chromium intercept, iOS, or hydration watch)
+   * surfaces it.
+   */
+  function revealBanner(ios: boolean): void {
+    isIOSPrompt.value = ios
+    showBanner.value = true
+    if (!bannerShownLogged) {
+      bannerShownLogged = true
+      track('install_banner_shown', { platform: ios ? 'ios' : 'chromium' })
+    }
+  }
 
   function getDayCount(): number {
     return typeof workoutDayCount === 'function' ? workoutDayCount() : workoutDayCount.value
@@ -75,10 +115,12 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
   }
 
   function dismiss() {
+    const wasVisible = showBanner.value
     showBanner.value = false
     deferredPrompt = null
     hasPendingPrompt = false
     localStorage.setItem(DISMISS_KEY, 'true')
+    if (wasVisible) track('install_banner_dismissed', { platform: isIOSPrompt.value ? 'ios' : 'chromium' })
   }
 
   async function install() {
@@ -88,6 +130,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     deferredPrompt = null
     // Hide regardless of outcome — the native prompt can only be triggered once
     showBanner.value = false
+    track('install_prompt_result', { outcome })
     if (outcome === 'accepted') {
       localStorage.setItem(DISMISS_KEY, 'true')
     }
@@ -98,9 +141,10 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     e.preventDefault()
     deferredPrompt = e
 
-    if (shouldShow()) {
-      isIOSPrompt.value = false
-      showBanner.value = true
+    const ready = shouldShow()
+    track('install_prompt_available', { deferred: !ready })
+    if (ready) {
+      revealBanner(false)
     } else {
       // Store may not be hydrated yet — mark as pending
       hasPendingPrompt = true
@@ -112,6 +156,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     deferredPrompt = null
     hasPendingPrompt = false
     localStorage.setItem(DISMISS_KEY, 'true')
+    track('app_installed')
   }
 
   // Register listeners — cleaned up via destroy() if the consumer unmounts.
@@ -128,8 +173,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
   // iOS Safari: no beforeinstallprompt ever fires — show manual instructions
   if (isIOS && !isNative && !isStandalone()) {
     if (shouldShow()) {
-      isIOSPrompt.value = true
-      showBanner.value = true
+      revealBanner(true)
     } else if (!localStorage.getItem(DISMISS_KEY)) {
       // Data may not be loaded yet — watch for threshold crossing
       hasPendingPrompt = true
@@ -146,11 +190,9 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
 
     hasPendingPrompt = false
     if (deferredPrompt) {
-      isIOSPrompt.value = false
-      showBanner.value = true
+      revealBanner(false)
     } else if (isIOS && !isNative && !isStandalone()) {
-      isIOSPrompt.value = true
-      showBanner.value = true
+      revealBanner(true)
     }
   })
 
