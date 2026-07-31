@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { shallowRef, triggerRef, reactive } from 'vue'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
+import { planSupersetChange } from '../../lib/supersets'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
 import EditExerciseModal from '../EditExerciseModal.vue'
 
@@ -166,6 +167,20 @@ const mockSetExerciseGyms = vi.fn((exerciseId: string, gyms: string[]) => {
   else delete ex.gyms
   triggerRef(mockExercises)
 })
+// Faithful to the real store: route through planSupersetChange and mutate in
+// place, so the fresh-identity live binding (#963) is exercised for supersets too.
+let supersetIdCounter = 0
+const mockSetSuperset = vi.fn((memberIds: string[]) => {
+  const changes = planSupersetChange(mockExercises.value, memberIds, () => `ss-${++supersetIdCounter}`)
+  if (changes.length === 0) return
+  for (const change of changes) {
+    const ex = mockExercises.value.find(e => e.id === change.id)
+    if (!ex) continue
+    if (change.supersetId) ex.supersetId = change.supersetId
+    else delete ex.supersetId
+  }
+  triggerRef(mockExercises)
+})
 
 const mockArchiveExercise = vi.fn()
 const mockUnarchiveExercise = vi.fn()
@@ -203,6 +218,7 @@ vi.mock('../../stores/workout', () => ({
     updateExerciseTags: mockUpdateExerciseTags,
     updateExercise: vi.fn(),
     setExerciseGyms: mockSetExerciseGyms,
+    setSuperset: mockSetSuperset,
     renameGymOnExercises: vi.fn(),
     removeGymFromExercises: vi.fn(() => []),
   })
@@ -561,6 +577,108 @@ describe('WorkoutTracker', () => {
       ]
       const wrapper = mountTracker()
       expect(renderedNames(wrapper)).toEqual(['Second', 'First'])
+    })
+  })
+
+  // Superset / circuit grouping (#616): grouped exercises render contiguously
+  // with a connector rail + badges, and the "up next" hint rotates by today's
+  // set counts.
+  describe('superset grouping (#616)', () => {
+    function renderedNames(wrapper: VueWrapper): string[] {
+      return wrapper.findAll('.wtExerciseItem .wtExerciseName').map(n => n.text())
+    }
+
+    it('keeps superset members contiguous even when recency would separate them', () => {
+      // Bench (in g1) is most recent; Squat (unrelated) is mid; Row (in g1) is
+      // oldest. Recency alone → Bench, Squat, Row; grouping pulls Row up next to Bench.
+      mockState.exercises = [
+        {
+          id: 'ex-bench', name: 'Bench', tags: [], supersetId: 'g1',
+          sets: [{ id: 'b', date: '2026-03-10T12:00:00', weight: 185, reps: 5, estimated1RM: 216 }],
+        },
+        {
+          id: 'ex-squat', name: 'Squat', tags: [],
+          sets: [{ id: 's', date: '2026-02-01T12:00:00', weight: 225, reps: 5, estimated1RM: 263 }],
+        },
+        {
+          id: 'ex-row', name: 'Row', tags: [], supersetId: 'g1',
+          sets: [{ id: 'r', date: '2026-01-05T12:00:00', weight: 135, reps: 8, estimated1RM: 168 }],
+        },
+      ]
+      const wrapper = mountTracker()
+      expect(renderedNames(wrapper)).toEqual(['Bench', 'Row', 'Squat'])
+    })
+
+    it('draws the connector rail and Superset badge on grouped members only', () => {
+      mockState.exercises = [
+        { id: 'ex-a', name: 'A', tags: [], supersetId: 'g1', sets: [] },
+        { id: 'ex-b', name: 'B', tags: [], supersetId: 'g1', sets: [] },
+        { id: 'ex-c', name: 'C', tags: [], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const items = wrapper.findAll('.wtExerciseItem')
+      // First two are grouped, third is solo.
+      expect(items[0].classes()).toContain('wtSupersetMember')
+      expect(items[1].classes()).toContain('wtSupersetMember')
+      expect(items[2].classes()).not.toContain('wtSupersetMember')
+      // Rail present on members, absent on solo.
+      expect(items[0].find('.wtSupersetRail').exists()).toBe(true)
+      expect(items[2].find('.wtSupersetRail').exists()).toBe(false)
+      // "Superset" badge only on the run's first member.
+      expect(items[0].find('.wtSupersetBadge').exists()).toBe(true)
+      expect(items[1].find('.wtSupersetBadge').exists()).toBe(false)
+      // Ordinals number the members 1, 2.
+      expect(items[0].find('.wtSupersetOrdinal').text()).toBe('1')
+      expect(items[1].find('.wtSupersetOrdinal').text()).toBe('2')
+    })
+
+    it('degrades a member to solo when a search filter hides its partner', async () => {
+      // 5+ exercises so the search bar renders; "Bench" isolates one superset member.
+      mockState.exercises = [
+        { id: 'ex-a', name: 'Bench Press', tags: [], supersetId: 'g1', sets: [] },
+        { id: 'ex-b', name: 'Barbell Row', tags: [], supersetId: 'g1', sets: [] },
+        { id: 'ex-c', name: 'Squat', tags: [], sets: [] },
+        { id: 'ex-d', name: 'Curl', tags: [], sets: [] },
+        { id: 'ex-e', name: 'Plank', tags: [], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      await wrapper.find('.wtSearchInput').setValue('Bench')
+      const items = wrapper.findAll('.wtExerciseItem')
+      expect(items).toHaveLength(1)
+      expect(items[0].classes()).not.toContain('wtSupersetMember')
+    })
+
+    it('marks the member up next once the group is started today', () => {
+      // Local-calendar day key, matching the component's todayISO(). Deriving
+      // this from toISOString().slice(0, 10) uses the UTC day, which diverges
+      // from the local day near midnight in UTC-negative timezones and makes the
+      // endOfDayISO-style set below bucket to the wrong day (setDayKey uses the
+      // local-day prefix production writes).
+      const d = new Date()
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      mockState.exercises = [
+        {
+          id: 'ex-a', name: 'A', tags: [], supersetId: 'g1',
+          // One set today → A has had its turn.
+          sets: [{ id: 'a1', date: `${today}T23:59:59Z`, weight: 100, reps: 5, estimated1RM: 117 }],
+        },
+        { id: 'ex-b', name: 'B', tags: [], supersetId: 'g1', sets: [] },
+      ]
+      const wrapper = mountTracker()
+      const items = wrapper.findAll('.wtExerciseItem')
+      const nameToItem = new Map(items.map(i => [i.find('.wtExerciseName').text(), i]))
+      // B is up next (fewest sets today); A is not.
+      expect(nameToItem.get('B')!.find('.wtSupersetNext').exists()).toBe(true)
+      expect(nameToItem.get('A')!.find('.wtSupersetNext').exists()).toBe(false)
+    })
+
+    it('shows no "Next" hint before the group is started this session', () => {
+      mockState.exercises = [
+        { id: 'ex-a', name: 'A', tags: [], supersetId: 'g1', sets: [] },
+        { id: 'ex-b', name: 'B', tags: [], supersetId: 'g1', sets: [] },
+      ]
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtSupersetNext').exists()).toBe(false)
     })
   })
 
