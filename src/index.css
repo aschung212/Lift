@@ -964,6 +964,73 @@ button, [role="tab"], [role="switch"], a {
   padding-bottom: 0;
 }
 
+/* Storage-eviction warning banner (LIFT-1063) */
+.storageWarnBanner {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.storageWarnContent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.storageWarnIcon {
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.storageWarnText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.storageWarnTitle {
+  font-size: var(--font-subheadline);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.storageWarnDesc {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+}
+.storageWarnDismiss {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.storageWarnDismiss svg {
+  width: 20px;
+  height: 20px;
+}
+.storageWarn-enter-active,
+.storageWarn-leave-active {
+  transition: opacity 0.2s ease, max-height 0.2s ease;
+  max-height: 120px;
+  overflow: hidden;
+}
+.storageWarn-enter-from,
+.storageWarn-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .appTopBar {
   display: flex;
   justify-content: space-between;

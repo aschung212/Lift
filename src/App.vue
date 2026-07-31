@@ -32,6 +32,22 @@
           Viewing sample data — Tap to clear and start fresh
         </button>
 
+        <!-- Storage-eviction warning (LIFT-1063): persistent storage was denied -->
+        <Transition name="storageWarn">
+          <div v-if="storageWarningVisible" class="storageWarnBanner" role="status">
+            <div class="storageWarnContent">
+              <svg class="storageWarnIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <div class="storageWarnText">
+                <strong class="storageWarnTitle">Keep your data safe</strong>
+                <span class="storageWarnDesc">This browser may clear saved workouts to free up space. Add Lift to your Home Screen so your data stays put.</span>
+              </div>
+              <button class="storageWarnDismiss" @click="dismissStorageWarning" aria-label="Dismiss storage warning">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+        </Transition>
+
         <!-- PWA install banner -->
         <Transition name="installBanner">
           <div v-if="installBannerVisible" class="installBanner" role="banner">
@@ -285,6 +301,7 @@ import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } fro
 import { useXPCeremony } from './composables/useXPCeremony'
 import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
+import { shouldWarnStorageEviction, isPersistenceSupported, hasLocalUserData } from './lib/storagePersistence'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { captureAcquisitionSource } from './composables/useAcquisitionSource'
@@ -296,7 +313,7 @@ import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
-import { useInstallPrompt } from './composables/useInstallPrompt'
+import { useInstallPrompt, isStandalone } from './composables/useInstallPrompt'
 import { useServiceWorker } from './composables/useServiceWorker'
 import { useAppBadge } from './composables/useAppBadge'
 import { todayISO, toLocalDateKey } from './lib/dates'
@@ -324,6 +341,18 @@ const bodyweightStore = useBodyweightStore()
 // ── PWA install prompt ──────────────────────────────────────────
 const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
 const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
+
+// ── Storage-eviction warning (LIFT-1063) ────────────────────────
+// When the browser DENIES persistent storage, an un-installed PWA's local data
+// is evictable (iOS clears it after ~7 days idle). For a local-first app that
+// risks silently losing not-yet-synced workouts, so we nudge to install. The
+// dismissal is device-local (like the install prompt), never synced.
+const STORAGE_WARN_DISMISS_KEY = 'storage-eviction-warning-dismissed'
+const storageWarningVisible = ref(false)
+function dismissStorageWarning() {
+  storageWarningVisible.value = false
+  localStorage.setItem(STORAGE_WARN_DISMISS_KEY, 'true')
+}
 
 // ── Unfinished-workout app-icon badge ───────────────────────────
 // When the user backgrounds the app with sets logged today, badge the
@@ -593,8 +622,18 @@ onMounted(async () => {
     .then(() => initAuth())
     .catch(() => initAuth())
 
-  // Request persistent storage to prevent browser eviction
-  requestPersistentStorage()
+  // Request persistent storage to prevent browser eviction. If the browser
+  // DENIES it (iOS Safari commonly does for un-installed PWAs), surface a
+  // dismissible nudge to install so local-first data isn't silently evicted.
+  requestPersistentStorage().then((persisted) => {
+    storageWarningVisible.value = shouldWarnStorageEviction({
+      supported: isPersistenceSupported(),
+      persisted,
+      standalone: isStandalone(),
+      hasLocalData: hasLocalUserData(),
+      dismissed: localStorage.getItem(STORAGE_WARN_DISMISS_KEY) === 'true',
+    })
+  })
 
   // Restore from IndexedDB if localStorage was cleared
   const restored = await Promise.all([
