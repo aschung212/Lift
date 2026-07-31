@@ -12,8 +12,29 @@ export interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+/**
+ * Permanent suppression — set only when the user actually installs (accepts the
+ * native prompt or `appinstalled` fires). Once installed, never nudge again.
+ */
 const DISMISS_KEY = 'install-prompt-dismissed'
+/**
+ * Soft dismissal — a timestamp (epoch ms) until which the banner stays hidden.
+ * Tapping the banner's X snoozes rather than suppressing forever, so a user who
+ * dismisses before understanding the value gets a second chance ~30 days later.
+ */
+const SNOOZE_KEY = 'install-prompt-snoozed-until'
+const SNOOZE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 const MIN_WORKOUT_DAYS = 3
+
+/** True when a soft-dismiss snooze is currently active. */
+function isSnoozed(): boolean {
+  const raw = localStorage.getItem(SNOOZE_KEY)
+  if (!raw) return false
+  const until = Number(raw)
+  // A corrupt/non-numeric value should not wedge the banner off forever.
+  if (!Number.isFinite(until)) return false
+  return Date.now() < until
+}
 
 /** Whether the app is running in standalone (installed) mode. */
 export function isStandalone(): boolean {
@@ -29,10 +50,17 @@ export interface InstallPromptState {
   showBanner: Ref<boolean>
   /** True when this is an iOS device needing manual add-to-home-screen instructions. */
   isIOSPrompt: Ref<boolean>
-  /** Dismiss the banner and remember the preference. */
+  /** Soft-dismiss the banner (snoozes for ~30 days rather than forever). */
   dismiss: () => void
   /** Trigger the native install prompt (Chrome/Edge). No-op on iOS. */
   install: () => Promise<void>
+  /**
+   * Re-surface the banner at a peak engagement moment (a fresh PR, streak
+   * milestone, etc.). Bypasses the raw workout-day gate — a PR is a stronger
+   * install signal than 3 logged days — but still honors an installed device,
+   * an active snooze, and standalone/native. No-op when nothing to install.
+   */
+  resurface: () => void
   /** Remove event listeners. Call when the consumer unmounts. */
   destroy: () => void
 }
@@ -64,13 +92,19 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     return typeof workoutDayCount === 'function' ? workoutDayCount() : workoutDayCount.value
   }
 
-  function shouldShow(): boolean {
+  /**
+   * @param ignoreEngagementGate skip the MIN_WORKOUT_DAYS check — used by
+   *   {@link resurface} when a peak moment already proves engagement.
+   */
+  function shouldShow(ignoreEngagementGate = false): boolean {
     // Never show in native or already-installed PWA
     if (isNative || isStandalone()) return false
-    // User already dismissed
+    // User already installed — permanent suppression
     if (localStorage.getItem(DISMISS_KEY)) return false
-    // Not enough engagement
-    if (getDayCount() < MIN_WORKOUT_DAYS) return false
+    // User soft-dismissed recently — respect the snooze window
+    if (isSnoozed()) return false
+    // Not enough engagement (unless a peak moment overrides the gate)
+    if (!ignoreEngagementGate && getDayCount() < MIN_WORKOUT_DAYS) return false
     return true
   }
 
@@ -78,7 +112,21 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     showBanner.value = false
     deferredPrompt = null
     hasPendingPrompt = false
-    localStorage.setItem(DISMISS_KEY, 'true')
+    // Snooze rather than suppress forever — re-surface after the cooldown so a
+    // user who dismissed before seeing the value gets another chance.
+    localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS))
+  }
+
+  function resurface() {
+    if (showBanner.value) return
+    if (!shouldShow(true)) return
+    if (deferredPrompt) {
+      isIOSPrompt.value = false
+      showBanner.value = true
+    } else if (isIOS && !isNative && !isStandalone()) {
+      isIOSPrompt.value = true
+      showBanner.value = true
+    }
   }
 
   async function install() {
@@ -159,6 +207,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     isIOSPrompt,
     dismiss,
     install,
+    resurface,
     destroy,
   }
 }

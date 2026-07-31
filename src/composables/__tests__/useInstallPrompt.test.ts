@@ -196,7 +196,7 @@ describe('useInstallPrompt', () => {
   })
 
   describe('dismiss', () => {
-    it('hides banner and persists dismissal', () => {
+    it('hides banner and snoozes rather than suppressing forever', () => {
       const state = useInstallPrompt(() => 5)
       const mockEvent = { preventDefault: vi.fn() }
       fireWindowEvent('beforeinstallprompt', mockEvent)
@@ -205,7 +205,82 @@ describe('useInstallPrompt', () => {
 
       state.dismiss()
       expect(state.showBanner.value).toBe(false)
-      expect(localStorage.getItem('install-prompt-dismissed')).toBe('true')
+      // Soft dismiss: no permanent suppression flag, just a future snooze stamp
+      expect(localStorage.getItem('install-prompt-dismissed')).toBeNull()
+      const snoozeUntil = Number(localStorage.getItem('install-prompt-snoozed-until'))
+      expect(snoozeUntil).toBeGreaterThan(Date.now())
+    })
+
+    it('re-shows once the snooze window has elapsed', () => {
+      // Simulate a dismissal that happened well over 30 days ago
+      localStorage.setItem('install-prompt-snoozed-until', String(Date.now() - 1000))
+
+      const state = useInstallPrompt(() => 5)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      expect(state.showBanner.value).toBe(true)
+    })
+
+    it('stays hidden while the snooze window is still active', () => {
+      localStorage.setItem('install-prompt-snoozed-until', String(Date.now() + 60_000))
+
+      const state = useInstallPrompt(() => 5)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      expect(state.showBanner.value).toBe(false)
+    })
+
+    it('ignores a corrupt snooze value instead of wedging the banner off', () => {
+      localStorage.setItem('install-prompt-snoozed-until', 'not-a-number')
+
+      const state = useInstallPrompt(() => 5)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      expect(state.showBanner.value).toBe(true)
+    })
+  })
+
+  describe('resurface (peak-moment re-trigger)', () => {
+    it('shows the banner below the engagement gate when a deferred prompt exists', () => {
+      // Only 1 workout day — below MIN_WORKOUT_DAYS
+      const state = useInstallPrompt(() => 1)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+      // Gate not met yet
+      expect(state.showBanner.value).toBe(false)
+
+      state.resurface()
+      expect(state.showBanner.value).toBe(true)
+      expect(state.isIOSPrompt.value).toBe(false)
+    })
+
+    it('does not re-surface while a snooze is active', () => {
+      localStorage.setItem('install-prompt-snoozed-until', String(Date.now() + 60_000))
+      const state = useInstallPrompt(() => 1)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      state.resurface()
+      expect(state.showBanner.value).toBe(false)
+    })
+
+    it('does not re-surface once the app is installed', () => {
+      localStorage.setItem('install-prompt-dismissed', 'true')
+      const state = useInstallPrompt(() => 1)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      state.resurface()
+      expect(state.showBanner.value).toBe(false)
+    })
+
+    it('no-ops when there is nothing installable (no deferred prompt, non-iOS)', () => {
+      const state = useInstallPrompt(() => 5)
+      state.resurface()
+      expect(state.showBanner.value).toBe(false)
     })
   })
 

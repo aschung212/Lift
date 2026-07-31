@@ -249,6 +249,7 @@ import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './views/AuthScreen.vue'
 import OnboardingScreen from './views/OnboardingScreen.vue'
 import PRBurst from './components/PRBurst.vue'
+import { usePRBurst } from './composables/usePRBurst'
 import FirstSetCelebration from './components/FirstSetCelebration.vue'
 import GoalCelebration from './components/GoalCelebration.vue'
 
@@ -323,7 +324,17 @@ const bodyweightStore = useBodyweightStore()
 
 // ── PWA install prompt ──────────────────────────────────────────
 const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
-const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall, resurface: resurfaceInstallBanner } = useInstallPrompt(installWorkoutDays)
+
+// Re-surface the install prompt at a peak engagement moment. A fresh PR is a
+// far stronger install signal than the raw 3-workout-day gate, and it gives a
+// user who snoozed the banner a natural second touchpoint (once the snooze
+// window has elapsed). resurface() itself honors the installed/snooze/standalone
+// guards, so this only ever nudges an eligible, un-snoozed, non-installed user.
+const { visible: prBurstVisible } = usePRBurst()
+watch(prBurstVisible, (visible) => {
+  if (visible) resurfaceInstallBanner()
+})
 
 // ── Unfinished-workout app-icon badge ───────────────────────────
 // When the user backgrounds the app with sets logged today, badge the
