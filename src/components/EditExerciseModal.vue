@@ -174,6 +174,25 @@
           </div>
           <span class="iosSettingsFooter">Shown when filtering the exercise list by gym. Leave empty to show this exercise at every gym.</span>
         </div>
+        <!-- Superset / circuit grouping (#616): pick the other exercises this one
+             alternates with. Selecting 1+ forms a superset; they render linked in
+             the list and the "up next" prompt rotates between them. -->
+        <div class="iosSettingsSection" v-if="supersetCandidates.length > 0">
+          <span class="iosSettingsHeader">Superset</span>
+          <div class="wtTagPicker" role="group" aria-label="Superset exercises">
+            <button
+              v-for="cand in supersetCandidates"
+              :key="cand.id"
+              :aria-pressed="editSupersetMembers.includes(cand.id)"
+              :class="['wtTagPickerChip', { wtTagPickerChipActive: editSupersetMembers.includes(cand.id) }]"
+              :style="!editSupersetMembers.includes(cand.id)
+                ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
+                : {}"
+              @click="toggleSupersetMember(cand.id)"
+            >{{ cand.name }}</button>
+          </div>
+          <span class="iosSettingsFooter">Pair this exercise with others you alternate between (push/pull, tri-sets). Leave empty for a standalone exercise.</span>
+        </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmSave">Save</button>
           <button class="repMaxBtn repMaxBtnClose" @click="emit('close')">Cancel</button>
@@ -224,6 +243,12 @@ export interface EditExerciseSave {
   equipment: ExerciseEquipment | null
   /** Gym membership (#961); [] = unassigned (shows under every gym filter). */
   gyms: string[]
+  /**
+   * Superset partners (#616): the OTHER exercise ids that should form one
+   * superset with this exercise. [] = not in a superset. The parent routes
+   * this to `store.setSuperset([exercise.id, ...supersetMemberIds])`.
+   */
+  supersetMemberIds: string[]
 }
 </script>
 
@@ -250,6 +275,8 @@ const props = defineProps<{
   allTags: string[]
   /** The synced gym list (#961); the section renders even when empty — the inline "+" creates the first gym. */
   allGyms: string[]
+  /** Active exercises (#616), for the superset partner picker. Excludes this exercise in the UI. */
+  allExercises: Exercise[]
 }>()
 
 const emit = defineEmits<{
@@ -348,6 +375,24 @@ function toggleEditGym(gym: string) {
   }
 }
 
+// ── Superset partners (#616) ────────────────────────────────────
+// The other exercises this one is supersetted with. Seeded from the shared
+// supersetId on open; applied on Save via store.setSuperset. Candidates are
+// all other active exercises (supersets are often cross-muscle, e.g. push/pull).
+const editSupersetMembers = ref<string[]>([])
+
+const supersetCandidates = computed(() =>
+  props.allExercises.filter(e => e.id !== props.exercise?.id),
+)
+
+function toggleSupersetMember(id: string) {
+  if (editSupersetMembers.value.includes(id)) {
+    editSupersetMembers.value = editSupersetMembers.value.filter(m => m !== id)
+  } else {
+    editSupersetMembers.value.push(id)
+  }
+}
+
 const AUTO_LABELS: Record<string, string> = {
   free_weight: 'free weight',
   machine: 'machine',
@@ -370,6 +415,13 @@ watch(() => props.exercise, async (exercise) => {
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
     editEquipment.value = exercise.equipment ?? null
     editGyms.value = [...(exercise.gyms || [])]
+    // Seed superset partners from the shared id (#616). Only a real group (the
+    // id held by ≥1 OTHER exercise) pre-selects; a stale singleton id shows none.
+    editSupersetMembers.value = exercise.supersetId
+      ? props.allExercises
+          .filter(e => e.id !== exercise.id && e.supersetId === exercise.supersetId)
+          .map(e => e.id)
+      : []
     newTagInput.value = ''
     editTagAdding.value = false
     newGymInput.value = ''
@@ -448,6 +500,7 @@ function confirmSave() {
     intensityMaxReps: editIntensityMaxReps.value === DEFAULT_INTENSITY_MAX_REPS ? null : editIntensityMaxReps.value,
     equipment: editEquipment.value,
     gyms: [...editGyms.value],
+    supersetMemberIds: [...editSupersetMembers.value],
   })
 }
 </script>

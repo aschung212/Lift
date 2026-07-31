@@ -16,6 +16,7 @@ import { parseExercises, parseStringArray, parseNumberRecord } from '../lib/pars
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { sanitizeExerciseGyms } from '../lib/gyms'
+import { sanitizeSupersetId, planSupersetChange } from '../lib/supersets'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
@@ -54,6 +55,7 @@ export interface Exercise {
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
   equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
   gyms?: string[]                  // gym membership; empty/undefined = shows under every gym filter (#961)
+  supersetId?: string              // shared id linking alternating exercises into a superset/circuit (#616); undefined = ungrouped
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -275,6 +277,8 @@ export const useWorkoutStore = defineStore('workout', () => {
       equipment: exercise.equipment ?? null,
       // Same always-send rule: clearing gym membership must propagate (#961).
       gyms: exercise.gyms ?? [],
+      // Same always-send rule: dissolving a superset must clear the id server-side (#616).
+      superset_id: exercise.supersetId ?? null,
     }
   }
 
@@ -443,6 +447,8 @@ export const useWorkoutStore = defineStore('workout', () => {
         const gyms = sanitizeExerciseGyms(ex.gyms)
         if (gyms.length > 0) exercise.gyms = gyms
       }
+      const supersetId = sanitizeSupersetId(ex.superset_id)
+      if (supersetId) exercise.supersetId = supersetId
       if (ex.archived_at) exercise.archived_at = ex.archived_at
       return exercise
     })
@@ -757,6 +763,32 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (supabase && _userId) {
       _enqueueExerciseUpsert(exercise, _userId)
     }
+  }
+
+  /**
+   * Declare that `memberIds` form exactly one superset together (#616). A group
+   * needs ≥2 members; passing fewer (or a set that leaves a remnant of one)
+   * dissolves the affected membership. `planSupersetChange` computes the minimal
+   * set of exercises whose id actually changes — including any member pulled out
+   * of a prior group and any singleton remnant left behind — so only those rows
+   * bump `updated_at` and re-sync. Sample exercises are adopted on the way in
+   * so the assignment is durable.
+   */
+  function setSuperset(memberIds: string[]) {
+    const changes = planSupersetChange(exercises.value, memberIds, uuid)
+    if (changes.length === 0) return
+    const now = new Date().toISOString()
+    for (const change of changes) {
+      const exercise = exercises.value.find((e: Exercise) => e.id === change.id)
+      if (!exercise) continue
+      if (exercise.sample) _adoptExercise(exercise)
+      if (change.supersetId) exercise.supersetId = change.supersetId
+      else delete exercise.supersetId
+      exercise.updated_at = now
+      if (supabase && _userId) _enqueueExerciseUpsert(exercise, _userId)
+    }
+    triggerRef(exercises)
+    _persist()
   }
 
   function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
@@ -1509,6 +1541,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseIntensityMaxReps,
     setExerciseEquipment,
     setExerciseGyms,
+    setSuperset,
     logSet,
     updateSet,
     deleteSet,

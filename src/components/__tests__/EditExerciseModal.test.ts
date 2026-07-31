@@ -14,9 +14,13 @@ function makeExercise(overrides: Partial<Exercise> = {}): Exercise {
 
 /** Mount closed, then open by setting the exercise — mirrors how the parent drives it
  *  (the seed watcher is not `immediate`, so it only runs on the null → exercise change). */
-async function openWith(exercise: Exercise, allGyms: string[] = []): Promise<VueWrapper> {
+async function openWith(
+  exercise: Exercise,
+  allGyms: string[] = [],
+  allExercises: Exercise[] = [],
+): Promise<VueWrapper> {
   const wrapper = mount(EditExerciseModal, {
-    props: { exercise: null as Exercise | null, allTags: [], allGyms },
+    props: { exercise: null as Exercise | null, allTags: [], allGyms, allExercises },
     global: { stubs: { Teleport: true } },
   })
   await wrapper.setProps({ exercise })
@@ -27,7 +31,12 @@ async function openWith(exercise: Exercise, allGyms: string[] = []): Promise<Vue
 const stepperValue = (w: VueWrapper) => w.find('.iosStepperValue').text()
 const lastSavePayload = (w: VueWrapper) => {
   const calls = w.emitted('save')!
-  return calls[calls.length - 1][0] as { intensityMaxReps: number | null; equipment: string | null; gyms: string[] }
+  return calls[calls.length - 1][0] as {
+    intensityMaxReps: number | null
+    equipment: string | null
+    gyms: string[]
+    supersetMemberIds: string[]
+  }
 }
 
 /** The equipment radio chips (inside the radiogroup, unlike the tag chips). */
@@ -193,5 +202,55 @@ describe('EditExerciseModal — gym membership (#961)', () => {
     await gymChip(wrapper, 'Gym A').trigger('click')
     await wrapper.find('.repMaxBtnCalc').trigger('click')
     expect(lastSavePayload(wrapper).gyms).toEqual([])
+  })
+})
+
+describe('EditExerciseModal — superset partners (#616)', () => {
+  const supersetSection = (w: VueWrapper) => w.find('[aria-label="Superset exercises"]')
+  const supersetChip = (w: VueWrapper, label: string) =>
+    supersetSection(w).findAll('.wtTagPickerChip').find(c => c.text() === label)!
+  const others = () => [
+    { id: 'ex-2', name: 'Barbell Row', tags: [], sets: [] } as Exercise,
+    { id: 'ex-3', name: 'Pull Up', tags: [], sets: [] } as Exercise,
+  ]
+
+  it('hides the section when there are no other exercises', async () => {
+    const wrapper = await openWith(makeExercise(), [], [makeExercise()])
+    expect(supersetSection(wrapper).exists()).toBe(false)
+  })
+
+  it('lists the other exercises (never itself) as candidate chips', async () => {
+    const wrapper = await openWith(makeExercise(), [], [makeExercise(), ...others()])
+    const labels = supersetSection(wrapper).findAll('.wtTagPickerChip').map(c => c.text())
+    expect(labels).toEqual(['Barbell Row', 'Pull Up'])
+  })
+
+  it('seeds partners from the shared supersetId', async () => {
+    const all = [
+      makeExercise({ supersetId: 'g1' }),
+      { id: 'ex-2', name: 'Barbell Row', tags: [], sets: [], supersetId: 'g1' } as Exercise,
+      { id: 'ex-3', name: 'Pull Up', tags: [], sets: [] } as Exercise,
+    ]
+    const wrapper = await openWith(makeExercise({ supersetId: 'g1' }), [], all)
+    expect(supersetChip(wrapper, 'Barbell Row').attributes('aria-pressed')).toBe('true')
+    expect(supersetChip(wrapper, 'Pull Up').attributes('aria-pressed')).toBe('false')
+  })
+
+  it('emits the selected partner ids on save', async () => {
+    const wrapper = await openWith(makeExercise(), [], [makeExercise(), ...others()])
+    await supersetChip(wrapper, 'Barbell Row').trigger('click')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).supersetMemberIds).toEqual(['ex-2'])
+  })
+
+  it('emits [] when all partners are deselected (leaves the superset)', async () => {
+    const all = [
+      makeExercise({ supersetId: 'g1' }),
+      { id: 'ex-2', name: 'Barbell Row', tags: [], sets: [], supersetId: 'g1' } as Exercise,
+    ]
+    const wrapper = await openWith(makeExercise({ supersetId: 'g1' }), [], all)
+    await supersetChip(wrapper, 'Barbell Row').trigger('click')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).supersetMemberIds).toEqual([])
   })
 })

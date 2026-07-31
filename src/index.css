@@ -2714,6 +2714,74 @@ html.theme-fading .settingsSheet {
   font-size: 0.625rem;  /* 10px */
 }
 
+/* Superset / circuit grouping (#616). Grouped members are tied together by an
+   accent-colored left rail carrying sequential ordinals (1, 2, 3…) plus an
+   accent card border — a visual connector that reads as one unit without
+   fighting the card layout. All colors are theme vars so it renders in every
+   theme/mode. */
+.wtSupersetMember {
+  position: relative;
+  border-color: var(--accent);
+}
+
+.wtSupersetMember .wtExerciseHeader {
+  padding-left: 32px;  /* room for the 24px rail */
+}
+
+.wtSupersetRail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  display: flex;
+  justify-content: center;
+  padding-top: 16px;
+  background: var(--accent-subtle);
+  border-right: 1px solid var(--accent);
+  pointer-events: none;
+}
+
+.wtSupersetOrdinal {
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 0.625rem;  /* 10px */
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.wtSupersetBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: 99px;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 0.625rem;  /* 10px */
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.wtSupersetNext {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 99px;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 0.625rem;  /* 10px */
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
 .wtExerciseMetaLine {
   display: flex;
   flex-wrap: wrap;

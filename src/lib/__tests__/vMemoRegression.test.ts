@@ -22,10 +22,11 @@ const workoutTracker = readFileSync(
  */
 describe('v-memo performance directives', () => {
   it('exercise list items have v-memo on the v-for element', () => {
-    // The main exercise v-for loop must include v-memo with exercise identity deps
-    // v-memo and v-for must be on the same element (the <li>)
+    // The main exercise v-for loop must include v-memo with exercise identity deps.
+    // v-memo and v-for must be on the same element (the <li>). Supersets wrap each
+    // exercise in a row descriptor (`row.exercise`), so the loop iterates rows.
     expect(workoutTracker).toMatch(
-      /v-for="exercise in filteredExercises"[\s\S]{1,200}?v-memo="\[/
+      /v-for="row in filteredExerciseRows"[\s\S]{1,200}?v-memo="\[/
     )
   })
 
@@ -41,6 +42,7 @@ describe('v-memo performance directives', () => {
     // Recency ordering (#936) removed manual reorder, so the row no longer
     // depends on drag state — the memo keys on the data the row actually
     // renders (name, set count, last-set weight/reps, tags, baseline, unit).
-    expect(workoutTracker).toMatch(/v-memo=".*exercise\.sets\[exercise\.sets\.length - 1\]\?\.weight/)
+    // Supersets address the exercise via `row.exercise`.
+    expect(workoutTracker).toMatch(/v-memo=".*row\.exercise\.sets\[row\.exercise\.sets\.length - 1\]\?\.weight/)
   })
 })

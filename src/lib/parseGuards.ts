@@ -20,6 +20,7 @@ import { epley } from './epley'
 import { sanitizeIntensityMaxReps } from './intensityTable'
 import { sanitizeExerciseEquipment } from './coachAnalytics'
 import { sanitizeExerciseGyms } from './gyms'
+import { sanitizeSupersetId } from './supersets'
 import { logWarn } from './logger'
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -115,6 +116,11 @@ export function parseExercise(value: unknown): Exercise | null {
     const gyms = sanitizeExerciseGyms(o.gyms)
     if (gyms.length > 0) ex.gyms = gyms
   }
+  // Superset membership (#616): a shared id linking alternating exercises.
+  // Left unset when the id fails to sanitize — an unpaired exercise is simply
+  // ungrouped, and a dangling singleton id renders as solo anyway.
+  const supersetId = sanitizeSupersetId(o.supersetId)
+  if (supersetId) ex.supersetId = supersetId
   if (typeof o.updated_at === 'string') ex.updated_at = o.updated_at
   if (typeof o.archived_at === 'string') ex.archived_at = o.archived_at
   if (o.sample === true) ex.sample = true

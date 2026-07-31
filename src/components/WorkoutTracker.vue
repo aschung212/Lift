@@ -130,36 +130,46 @@
       {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
-    <ul v-if="filteredExercises.length > 0" class="wtExerciseList">
+    <ul v-if="filteredExerciseRows.length > 0" class="wtExerciseList">
       <li
-        v-for="exercise in filteredExercises"
-        :key="exercise.id"
-        v-memo="[exercise.name, exercise.sets.length, exercise.sets[exercise.sets.length - 1]?.weight, exercise.sets[exercise.sets.length - 1]?.reps, exercise.tags, prBaselineDate, weightUnit]"
+        v-for="row in filteredExerciseRows"
+        :key="row.exercise.id"
+        v-memo="[row.exercise.name, row.exercise.sets.length, row.exercise.sets[row.exercise.sets.length - 1]?.weight, row.exercise.sets[row.exercise.sets.length - 1]?.reps, row.exercise.tags, prBaselineDate, weightUnit, row.position, row.ordinal, supersetNextIds.has(row.exercise.id)]"
         class="wtExerciseItem"
+        :class="[
+          `wtSupersetPos-${row.position}`,
+          { wtSupersetMember: row.position !== 'solo' },
+        ]"
       >
+        <!-- Superset connector rail (#616): a colored spine linking grouped rows. -->
+        <span v-if="row.position !== 'solo'" class="wtSupersetRail" aria-hidden="true">
+          <span class="wtSupersetOrdinal">{{ row.ordinal }}</span>
+        </span>
         <div class="wtExerciseHeader">
           <button
             class="wtExerciseRow"
-            @click="openDetailModal(exercise.id)"
+            @click="openDetailModal(row.exercise.id)"
           >
             <div class="wtExerciseNameBlock">
               <div class="wtExerciseTopLine">
-                <span class="wtExerciseName">{{ exercise.name }}</span>
-                <span v-if="getRowMeta(exercise.id).isNewPRBadge" class="wtExerciseNewPR">
+                <span class="wtExerciseName">{{ row.exercise.name }}</span>
+                <span v-if="row.position === 'start'" class="wtSupersetBadge">Superset</span>
+                <span v-if="supersetNextIds.has(row.exercise.id)" class="wtSupersetNext">Next</span>
+                <span v-if="getRowMeta(row.exercise.id).isNewPRBadge" class="wtExerciseNewPR">
                   <span class="wtExerciseNewPRIcon" aria-hidden="true">🏆</span>
                   <span>NEW PR</span>
                 </span>
               </div>
               <div class="wtExerciseMetaLine">
                 <span
-                  v-for="tag in (exercise.tags || []).slice(0, 3)"
+                  v-for="tag in (row.exercise.tags || []).slice(0, 3)"
                   :key="tag"
                   class="wtExerciseTag"
                 >{{ tag }}</span>
-                <span v-if="getRowMeta(exercise.id).lastSet" class="wtExerciseStat">
-                  · {{ displayWeight(getRowMeta(exercise.id).lastSet!.weight) }} {{ weightUnit }}
-                  × {{ getRowMeta(exercise.id).lastSet!.reps }}
-                  · {{ getRowMeta(exercise.id).timeAgo }}
+                <span v-if="getRowMeta(row.exercise.id).lastSet" class="wtExerciseStat">
+                  · {{ displayWeight(getRowMeta(row.exercise.id).lastSet!.weight) }} {{ weightUnit }}
+                  × {{ getRowMeta(row.exercise.id).lastSet!.reps }}
+                  · {{ getRowMeta(row.exercise.id).timeAgo }}
                 </span>
                 <span v-else class="wtExerciseStat wtExerciseStatEmpty">· No sets yet</span>
               </div>
@@ -167,8 +177,8 @@
           </button>
           <button
             class="wtExerciseLogBtn wtExerciseLogBtnCircle"
-            @click="openLogForExercise(exercise.id)"
-            :aria-label="`Log a set for ${exercise.name}`"
+            @click="openLogForExercise(row.exercise.id)"
+            :aria-label="`Log a set for ${row.exercise.name}`"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
               <line x1="12" y1="5" x2="12" y2="19"/>
@@ -723,6 +733,7 @@
     :exercise="editTargetExercise"
     :all-tags="store.allTags"
     :all-gyms="allGyms"
+    :all-exercises="liveExercises"
     @create-gym="gymActions.createGym"
     @close="editTarget = null"
     @save="onEditExerciseSave"
@@ -835,6 +846,7 @@ import { ladderChipScrollLeft } from '../lib/ladderScroll'
 import { MAX_WEIGHT, MAX_REPS } from '../lib/inputLimits'
 import { loadJSON } from '../lib/storage'
 import { matchesGymFilter, loadActiveGymFilter, saveActiveGymFilter, sanitizeGymName, MAX_GYMS, GYM_NAME_MAX_LENGTH } from '../lib/gyms'
+import { orderWithSupersets, annotateSupersetRows, groupBySuperset, nextSupersetExerciseId } from '../lib/supersets'
 
 const store = useWorkoutStore()
 const progressionStore = useProgressionStore()
@@ -1089,7 +1101,49 @@ const filteredExercises = computed(() => {
   // exercise to perform is the easiest to reach. Applied AFTER filtering so
   // tag / search subsets stay recency-ordered too — the most recent exercise
   // within a muscle group floats to the top of that filtered view.
-  return sortByRecency(result)
+  // Then keep superset members contiguous (#616): each group anchors at its
+  // most-recent member's rank, so grouped exercises stay visually linked while
+  // the group as a whole still floats by recency.
+  return orderWithSupersets(sortByRecency(result))
+})
+
+/**
+ * The filtered/ordered list annotated with each row's superset position
+ * (#616) so the template can draw the connecting rail and badges. A run only
+ * counts as a superset when ≥2 members are adjacent in the CURRENT view, so a
+ * search/tag filter that hides a partner degrades the survivor to solo.
+ */
+const filteredExerciseRows = computed(() => annotateSupersetRows(filteredExercises.value))
+
+/**
+ * Sets logged TODAY per exercise (day-bucketed via setDayKey, #746) — the
+ * signal that drives the superset "up next" rotation. Only today's sets matter:
+ * the alternation is a within-session prompt.
+ */
+const setsTodayByExercise = computed(() => {
+  const today = todayISO()
+  const map = new Map<string, number>()
+  for (const ex of store.activeExercises) {
+    let count = 0
+    for (const s of ex.sets) if (setDayKey(s.date) === today) count++
+    map.set(ex.id, count)
+  }
+  return map
+})
+
+/**
+ * Per-superset "up next" exercise id (#616): the member with the fewest sets
+ * logged today, once the group has been started this session. Drives the subtle
+ * NEXT badge so the user knows whose turn it is without a text-heavy prompt.
+ */
+const supersetNextIds = computed(() => {
+  const counts = setsTodayByExercise.value
+  const next = new Set<string>()
+  for (const members of groupBySuperset(store.activeExercises).values()) {
+    const id = nextSupersetExerciseId(members, counts)
+    if (id) next.add(id)
+  }
+  return next
 })
 
 /**
@@ -2644,6 +2698,9 @@ function onEditExerciseSave(payload: EditExerciseSave) {
   store.setExerciseIntensityMaxReps(editTarget.value, payload.intensityMaxReps)
   store.setExerciseEquipment(editTarget.value, payload.equipment)
   store.setExerciseGyms(editTarget.value, payload.gyms)
+  // Superset membership (#616): the group is exactly this exercise plus the
+  // selected partners; the store dissolves any group that drops below two.
+  store.setSuperset([editTarget.value, ...payload.supersetMemberIds])
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).
