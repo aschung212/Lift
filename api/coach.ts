@@ -97,6 +97,11 @@ function bearer(header: string | null): string | null {
  * threshold. An alert failure must NEVER surface to the caller or block their
  * review, so every error is swallowed. The once-per-day guard lives in the
  * record_coach_usage RPC — this only fires the message it already decided to send.
+ *
+ * The single caller awaits this. That is deliberate: the RPC fires it for at most
+ * ONE request per day across ALL users (the global-spend crossing), so the extra
+ * round-trip is immaterial, and awaiting guarantees delivery on serverless (a
+ * floated promise can be cut off when the function suspends after the response).
  */
 async function postSpendAlert(webhook: string, spentCents: number, ceilingCents: number): Promise<void> {
   try {

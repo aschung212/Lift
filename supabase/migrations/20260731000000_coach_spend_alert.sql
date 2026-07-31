@@ -34,8 +34,6 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_spent integer;
-  v_already boolean;
-  v_threshold integer;
   v_crossed boolean := false;
 begin
   if v_uid is null then
@@ -48,8 +46,7 @@ begin
           + case when p_billed then p_actual_cost_cents else 0 end, 0),
         updated_at = now()
     where day = current_date
-    returning public.coach_global_spend.spent_cents, public.coach_global_spend.half_alert_sent
-      into v_spent, v_already;
+    returning public.coach_global_spend.spent_cents into v_spent;
 
   if p_billed then
     insert into public.coach_usage_log (user_id, model, input_tokens, output_tokens, est_cost_cents)
@@ -61,15 +58,17 @@ begin
       where user_id = v_uid;
   end if;
 
-  -- One-shot alert: fire only on the request that first crosses the threshold today.
-  v_threshold := p_daily_ceiling_cents / 2;
-  if p_daily_ceiling_cents > 0
-     and coalesce(v_spent, 0) >= v_threshold
-     and not coalesce(v_already, false) then
+  -- One-shot alert: a SINGLE atomic UPDATE both tests the threshold and flips the
+  -- guard, so two concurrent requests that both cross can't both alert — the row
+  -- lock lets exactly one win the `half_alert_sent = false` predicate. FOUND is
+  -- true only for that winning request (day is the PK, so 0-or-1 rows).
+  if p_daily_ceiling_cents > 0 then
     update public.coach_global_spend
       set half_alert_sent = true, updated_at = now()
-      where day = current_date;
-    v_crossed := true;
+      where day = current_date
+        and half_alert_sent = false
+        and public.coach_global_spend.spent_cents >= p_daily_ceiling_cents / 2;
+    v_crossed := found;
   end if;
 
   return query select v_crossed, coalesce(v_spent, 0);
