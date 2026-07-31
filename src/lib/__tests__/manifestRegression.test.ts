@@ -135,6 +135,24 @@ describe('PWA manifest regression tests', () => {
     it('calendar screenshot file exists in public/', () => {
       expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
     })
+
+    it('has a wide (desktop) screenshot entry for the richer install dialog', () => {
+      // Chromium only renders the screenshot-carousel install UI on desktop /
+      // wide surfaces when a form_factor:'wide' screenshot is present (LIFT-1064).
+      expect(viteConfig).toContain("form_factor: 'wide'")
+      expect(viteConfig).toContain("src: 'screenshot-wide.png'")
+    })
+
+    it('wide screenshot file exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'screenshot-wide.png'))).toBe(true)
+    })
+
+    it('wide screenshot declares a landscape (width > height) size', () => {
+      const match = viteConfig.match(/src: 'screenshot-wide\.png',\s*\n\s*sizes: '(\d+)x(\d+)'/)
+      expect(match).not.toBeNull()
+      const [, w, h] = match as RegExpMatchArray
+      expect(Number(w)).toBeGreaterThan(Number(h))
+    })
   })
 
   describe('workbox globIgnores excludes non-essential large assets from precache', () => {

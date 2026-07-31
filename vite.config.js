@@ -126,6 +126,18 @@ export default defineConfig({
             form_factor: 'narrow',
             label: 'Calendar view with workout summaries and PRs',
           },
+          {
+            // Wide (landscape) screenshot unlocks Chromium's richer install
+            // dialog on desktop Chrome/Edge and wide Android surfaces, which
+            // only render the screenshot-carousel UI when a form_factor:'wide'
+            // entry exists (LIFT-1064). Generated from the narrow captures by
+            // scripts/generate-wide-screenshot.js.
+            src: 'screenshot-wide.png',
+            sizes: '1920x1080',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Log sets, track 1RM progress, and review your calendar',
+          },
         ],
       },
       workbox: {
