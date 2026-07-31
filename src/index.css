@@ -894,7 +894,7 @@ button, [role="tab"], [role="switch"], a {
   min-width: 0;
 }
 .installBannerTitle {
-  font-size: var(--font-subheadline);
+  font-size: var(--font-subhead);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -991,7 +991,7 @@ button, [role="tab"], [role="switch"], a {
   flex: 1;
 }
 .storageWarnTitle {
-  font-size: var(--font-subheadline);
+  font-size: var(--font-subhead);
   font-weight: 600;
   color: var(--text-primary);
 }
