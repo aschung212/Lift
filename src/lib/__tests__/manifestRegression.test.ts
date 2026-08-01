@@ -135,6 +135,24 @@ describe('PWA manifest regression tests', () => {
     it('calendar screenshot file exists in public/', () => {
       expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
     })
+
+    it('has a wide (landscape) screenshot so Chromium shows the richer install carousel (#1064)', () => {
+      // Without a `wide` form_factor entry, the desktop/Android install dialog
+      // falls back to a minimal one-line prompt instead of the screenshot carousel.
+      expect(viteConfig).toContain("form_factor: 'wide'")
+    })
+
+    it('the wide screenshot reuses the committed 1200x630 social card', () => {
+      const wideBlock = viteConfig.match(/\{[^{}]*form_factor: 'wide'[^{}]*\}/)
+      expect(wideBlock).not.toBeNull()
+      const block = (wideBlock as RegExpMatchArray)[0]
+      expect(block).toContain("src: 'og-image.png'")
+      expect(block).toContain("sizes: '1200x630'")
+    })
+
+    it('the wide screenshot asset exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'og-image.png'))).toBe(true)
+    })
   })
 
   describe('workbox globIgnores excludes non-essential large assets from precache', () => {

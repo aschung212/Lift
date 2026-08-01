@@ -126,6 +126,19 @@ export default defineConfig({
             form_factor: 'narrow',
             label: 'Calendar view with workout summaries and PRs',
           },
+          {
+            // Chromium's richer install dialog (desktop Chrome/Edge + some Android
+            // surfaces) only renders the screenshot-carousel UI when a `wide`
+            // screenshot is present; without one it falls back to a minimal
+            // one-line prompt (#1064). Reuse the already-committed 1200x630 social
+            // card — a branded landscape app preview — as that wide entry so the
+            // install prompt shows a real preview on non-iOS surfaces.
+            src: 'og-image.png',
+            sizes: '1200x630',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Lift — free workout tracker with estimated 1RM progress and PR targets',
+          },
         ],
       },
       workbox: {
