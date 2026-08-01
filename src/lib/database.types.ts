@@ -70,6 +70,7 @@ export type Database = {
         Row: {
           archived_at: string | null
           bar_weight: number
+          bodyweight_loaded: boolean
           created_at: string
           deleted_at: string | null
           equipment: string | null
@@ -86,6 +87,7 @@ export type Database = {
         Insert: {
           archived_at?: string | null
           bar_weight?: number
+          bodyweight_loaded?: boolean
           created_at?: string
           deleted_at?: string | null
           equipment?: string | null
@@ -102,6 +104,7 @@ export type Database = {
         Update: {
           archived_at?: string | null
           bar_weight?: number
+          bodyweight_loaded?: boolean
           created_at?: string
           deleted_at?: string | null
           equipment?: string | null

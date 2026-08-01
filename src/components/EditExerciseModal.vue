@@ -97,6 +97,27 @@
             </template>
           </div>
         </div>
+        <!-- Bodyweight-loaded (LIFT-834): fold the lifter's bodyweight into the
+             load for calisthenic lifts (pull-ups, dips). The weight field then
+             means ADDED weight, and bodyweight is counted toward volume + e1RM. -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Load</span>
+          <div class="iosSettingsGroup">
+            <div class="iosSettingsRow">
+              <span class="iosSettingsRowLabel">Bodyweight-loaded</span>
+              <button
+                class="iosToggle"
+                :class="{ iosToggleOn: editBodyweightLoaded }"
+                role="switch"
+                :aria-checked="editBodyweightLoaded"
+                @click="editBodyweightLoaded = !editBodyweightLoaded"
+              >
+                <span class="iosToggleKnob"></span>
+              </button>
+            </div>
+          </div>
+          <span class="iosSettingsFooter">For pull-ups, dips, and other calisthenics: adds your tracked bodyweight to each set's load, so the weight you enter is the ADDED weight and pure-bodyweight reps still count toward volume and e1RM.</span>
+        </div>
         <!-- Intensity lens (#770): how many rep rows the PR-anchored intensity
              table calculates when logging this exercise. Default (10) stores
              nothing; any other value is a per-exercise override. -->
@@ -224,6 +245,8 @@ export interface EditExerciseSave {
   equipment: ExerciseEquipment | null
   /** Gym membership (#961); [] = unassigned (shows under every gym filter). */
   gyms: string[]
+  /** Fold the lifter's bodyweight into load for volume + e1RM (LIFT-834). */
+  bodyweightLoaded: boolean
 }
 </script>
 
@@ -274,6 +297,10 @@ const editBarWeight = ref<number>(45)
 const editBarWeightEditing = ref(false)
 const editBarWeightInputEl = ref<HTMLInputElement | null>(null)
 const confirmDeleteExercise = ref(false)
+
+// Bodyweight-loaded (LIFT-834): whether this exercise folds the lifter's
+// bodyweight into its load for volume + e1RM.
+const editBodyweightLoaded = ref(false)
 
 // ── Intensity lens config (#770) ────────────────────────────────
 // How many rep rows (1..N) the PR-anchored intensity table calculates when
@@ -370,6 +397,7 @@ watch(() => props.exercise, async (exercise) => {
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
     editEquipment.value = exercise.equipment ?? null
     editGyms.value = [...(exercise.gyms || [])]
+    editBodyweightLoaded.value = exercise.bodyweightLoaded ?? false
     newTagInput.value = ''
     editTagAdding.value = false
     newGymInput.value = ''
@@ -448,6 +476,7 @@ function confirmSave() {
     intensityMaxReps: editIntensityMaxReps.value === DEFAULT_INTENSITY_MAX_REPS ? null : editIntensityMaxReps.value,
     equipment: editEquipment.value,
     gyms: [...editGyms.value],
+    bodyweightLoaded: editBodyweightLoaded.value,
   })
 }
 </script>
