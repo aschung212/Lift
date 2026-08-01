@@ -297,6 +297,7 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
+import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
 import { useAppBadge } from './composables/useAppBadge'
 import { todayISO, toLocalDateKey } from './lib/dates'
@@ -323,7 +324,11 @@ const bodyweightStore = useBodyweightStore()
 
 // ── PWA install prompt ──────────────────────────────────────────
 const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
-const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
+// A PR celebration is a high-intent "peak moment" (#1060): re-surface the
+// install prompt then, even if the user snoozed the raw engagement-gated
+// banner — an active dismissal cooldown is still honored inside the composable.
+const { visible: prBurstVisible } = usePRBurst()
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays, prBurstVisible)
 
 // ── Unfinished-workout app-icon badge ───────────────────────────
 // When the user backgrounds the app with sets logged today, badge the
