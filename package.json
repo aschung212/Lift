@@ -47,7 +47,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
     "@eslint/js": "^10.0.1",
-    "@pinia/testing": "^1.0.3",
+    "@pinia/testing": "^2.0.1",
     "@playwright/test": "^1.62.1",
     "@sentry/vite-plugin": "^5.4.0",
     "@vitejs/plugin-vue": "^6.0.8",
