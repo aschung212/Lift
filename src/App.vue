@@ -249,7 +249,6 @@ import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './views/AuthScreen.vue'
 import OnboardingScreen from './views/OnboardingScreen.vue'
 import PRBurst from './components/PRBurst.vue'
-import { usePRBurst } from './composables/usePRBurst'
 import FirstSetCelebration from './components/FirstSetCelebration.vue'
 import GoalCelebration from './components/GoalCelebration.vue'
 
@@ -298,6 +297,7 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
+import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
 import { useAppBadge } from './composables/useAppBadge'
 import { todayISO, toLocalDateKey } from './lib/dates'
@@ -324,16 +324,14 @@ const bodyweightStore = useBodyweightStore()
 
 // ── PWA install prompt ──────────────────────────────────────────
 const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
-const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall, resurface: resurfaceInstallBanner } = useInstallPrompt(installWorkoutDays)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall, surfaceAtPeakMoment: surfaceInstallAtPeak } = useInstallPrompt(installWorkoutDays)
 
-// Re-surface the install prompt at a peak engagement moment. A fresh PR is a
-// far stronger install signal than the raw 3-workout-day gate, and it gives a
-// user who snoozed the banner a natural second touchpoint (once the snooze
-// window has elapsed). resurface() itself honors the installed/snooze/standalone
-// guards, so this only ever nudges an eligible, un-snoozed, non-installed user.
+// Re-surface the install prompt at a peak moment: once a PR celebration is
+// dismissed, the user is at a high point of engagement — a far better time to
+// ask than the raw 3-workout-day gate (#1060). Respects install/snooze state.
 const { visible: prBurstVisible } = usePRBurst()
-watch(prBurstVisible, (visible) => {
-  if (visible) resurfaceInstallBanner()
+watch(prBurstVisible, (visible, wasVisible) => {
+  if (wasVisible && !visible) surfaceInstallAtPeak()
 })
 
 // ── Unfinished-workout app-icon badge ───────────────────────────

@@ -14,8 +14,11 @@ import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { parseExercises, parseStringArray, parseNumberRecord } from '../lib/parseGuards'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
+import { sanitizeExerciseNotes } from '../lib/inputLimits'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { sanitizeExerciseGyms } from '../lib/gyms'
+import { effectiveSetWeight } from '../lib/bodyweightLoad'
+import { useBodyweightStore } from './bodyweight'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
@@ -37,6 +40,14 @@ export interface WorkoutSet {
    * Coach payload. See docs/ai-coach.md and the AI Coach issue.
    */
   createdAt?: string
+  /**
+   * Bodyweight (lbs) folded into this set's effective load for a
+   * bodyweight-loaded exercise (LIFT-834). Captured at log time so history stays
+   * stable as the lifter's weight drifts; absent for normal exercises. Persisted
+   * locally only — the stored `estimated1RM` already carries the fold, so it does
+   * not round-trip through Supabase (see `effectiveSetWeight`).
+   */
+  bodyweight?: number
 }
 
 export type ExerciseInputMode = 'numpad' | 'plates'
@@ -54,6 +65,8 @@ export interface Exercise {
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
   equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)
   gyms?: string[]                  // gym membership; empty/undefined = shows under every gym filter (#961)
+  notes?: string                   // durable free-form cue ("brace before unrack"); empty/undefined = no note (#619)
+  bodyweightLoaded?: boolean       // fold the lifter's bodyweight into load for volume + e1RM (LIFT-834)
   updated_at?: string              // ISO 8601, used for last-write-wins merge
   archived_at?: string             // ISO 8601, soft-hide from main list; data is preserved
   sample?: boolean                 // true for onboarding sample data — never synced to Supabase
@@ -250,6 +263,21 @@ export const useWorkoutStore = defineStore('workout', () => {
 
   // ── Internal helpers ─────────────────────────────────────────────
   /**
+   * Current bodyweight (lbs) to fold into a bodyweight-loaded set's load
+   * (LIFT-834). Reads the latest tracked entry; returns undefined when there is
+   * no usable value so `effectiveSetWeight` folds in nothing rather than guessing
+   * a zero. Guarded because it depends on the bodyweight store being resolvable.
+   */
+  function _currentBodyweight(): number | undefined {
+    try {
+      const bw = useBodyweightStore().latestWeight
+      return typeof bw === 'number' && Number.isFinite(bw) && bw > 0 ? bw : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
    * Build a comprehensive upsert payload for an exercise row.
    *
    * Always include every mutable column the client owns — including
@@ -267,6 +295,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       archived_at: exercise.archived_at ?? null,
       ...(exercise.inputMode ? { input_mode: exercise.inputMode } : {}),
       ...(exercise.barWeight != null ? { bar_weight: exercise.barWeight } : {}),
+      // Always send plate_count_mode (null = client default 'per-side') so a
+      // switch back to the default propagates instead of leaving a stale value
+      // that re-applies on the next fetch (LIFT-783).
+      plate_count_mode: exercise.plateCountMode ?? null,
       // Always send intensity_max_reps (null when unset) so "reset to default"
       // actually clears the override server-side — omitting it would leave a
       // stale value that re-applies on the next fetch.
@@ -275,6 +307,11 @@ export const useWorkoutStore = defineStore('workout', () => {
       equipment: exercise.equipment ?? null,
       // Same always-send rule: clearing gym membership must propagate (#961).
       gyms: exercise.gyms ?? [],
+      // Same always-send rule: emptying the note must clear the column, not
+      // leave a stale value that re-applies on the next fetch (#619).
+      notes: exercise.notes ?? null,
+      // Same always-send rule: turning bodyweight-loading off must propagate (LIFT-834).
+      bodyweight_loaded: exercise.bodyweightLoaded ?? false,
     }
   }
 
@@ -434,6 +471,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       }
       if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
       if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
+      if (ex.plate_count_mode === 'per-side' || ex.plate_count_mode === 'total') {
+        exercise.plateCountMode = ex.plate_count_mode
+      }
       if (ex.intensity_max_reps != null) exercise.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensity_max_reps)
       if (ex.equipment != null) {
         const eq = sanitizeExerciseEquipment(ex.equipment)
@@ -443,7 +483,10 @@ export const useWorkoutStore = defineStore('workout', () => {
         const gyms = sanitizeExerciseGyms(ex.gyms)
         if (gyms.length > 0) exercise.gyms = gyms
       }
+      if (ex.bodyweight_loaded) exercise.bodyweightLoaded = true
       if (ex.archived_at) exercise.archived_at = ex.archived_at
+      const notes = sanitizeExerciseNotes(ex.notes)
+      if (notes) exercise.notes = notes
       return exercise
     })
 
@@ -661,9 +704,15 @@ export const useWorkoutStore = defineStore('workout', () => {
   function setExercisePlateCountMode(exerciseId: string, mode: PlateCountMode) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
+    if (exercise.sample) _adoptExercise(exercise)
     exercise.plateCountMode = mode
+    exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
   }
 
   function setExerciseBarWeight(exerciseId: string, barWeight: number) {
@@ -759,6 +808,70 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Set (or clear, with empty/whitespace) an exercise's durable free-form note
+   * (#619). The value is trimmed and length-capped; an empty result deletes the
+   * field so the synced column round-trips back to null.
+   */
+  function setExerciseNotes(exerciseId: string, notes: string) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    const sanitized = sanitizeExerciseNotes(notes)
+    // No-op if nothing actually changed — avoids a needless upsert + updated_at
+    // bump (and the sync traffic it triggers) when the note is unchanged.
+    if ((exercise.notes ?? undefined) === sanitized) return
+    if (exercise.sample) _adoptExercise(exercise)
+    if (sanitized) exercise.notes = sanitized
+    else delete exercise.notes
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
+   * Toggle whether an exercise folds the lifter's bodyweight into its load
+   * (LIFT-834). Enabling recomputes every existing set's stored e1RM with the
+   * bodyweight added — capturing the current bodyweight onto any set that
+   * predates the flag so retroactively-flagged history gets credit; disabling
+   * reverts each e1RM to the bare added weight (captured bodyweight is kept so
+   * re-enabling restores the exact values). Recomputed sets are re-synced so the
+   * folded e1RM propagates to other devices.
+   */
+  function setExerciseBodyweightLoaded(exerciseId: string, loaded: boolean) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    const current = exercise.bodyweightLoaded ?? false
+    if (current === loaded) return
+    if (exercise.sample) _adoptExercise(exercise)
+    if (loaded) {
+      exercise.bodyweightLoaded = true
+      const bw = _currentBodyweight()
+      for (const s of exercise.sets) {
+        if (s.bodyweight === undefined && bw !== undefined) s.bodyweight = bw
+        s.estimated1RM = epley(effectiveSetWeight(s, exercise), s.reps)
+      }
+    } else {
+      delete exercise.bodyweightLoaded
+      for (const s of exercise.sets) {
+        s.estimated1RM = epley(s.weight, s.reps)
+      }
+    }
+    exercise.updated_at = new Date().toISOString()
+    triggerRef(exercises)
+    _persist()
+
+    if (supabase && _userId) {
+      _enqueueExerciseUpsert(exercise, _userId)
+      // The recomputed e1RMs live in the sets table; re-upsert so they aren't
+      // stale on other devices until each set is next edited.
+      for (const s of exercise.sets) _enqueueSetUpsert(s, exerciseId, _userId)
+    }
+  }
+
   function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
@@ -771,20 +884,26 @@ export const useWorkoutStore = defineStore('workout', () => {
       ? endOfDayISO(dateStr)
       : new Date().toISOString()
     const id = uuid()
-    const estimated1RM = epley(weight, reps)
+    // For a bodyweight-loaded exercise, capture the lifter's current bodyweight
+    // onto the set and fold it into the stored e1RM so PR/volume math counts the
+    // true load (LIFT-834). Normal exercises store nothing extra.
+    const bodyweight = exercise.bodyweightLoaded ? _currentBodyweight() : undefined
+    const estimated1RM = epley(effectiveSetWeight({ weight, bodyweight }, exercise), reps)
     // Real wall-clock log time, distinct from `date` (stamped end-of-day for the
     // chosen calendar day, no time-of-day, per #746). Drives time-of-day +
     // within-workout ordering in the AI Coach payload (#846): ≈ training time for
     // live logging, and for an offline set it preserves the log moment rather
     // than the later sync time.
     const createdAt = new Date().toISOString()
-    exercise.sets.push({ id, date, weight, reps, estimated1RM, createdAt })
+    const newSet: WorkoutSet = { id, date, weight, reps, estimated1RM, createdAt }
+    if (bodyweight !== undefined) newSet.bodyweight = bodyweight
+    exercise.sets.push(newSet)
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
 
     if (sync && supabase && !isPreviewMode.value && _userId) {
-      _enqueueSetUpsert({ id, date, weight, reps, estimated1RM, createdAt }, exerciseId, _userId)
+      _enqueueSetUpsert(newSet, exerciseId, _userId)
     }
   }
 
@@ -796,7 +915,13 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (exercise.sample) _adoptExercise(exercise)
     set.weight = weight
     set.reps = reps
-    set.estimated1RM = epley(weight, reps)
+    // Preserve the bodyweight captured at log time; only capture now if this set
+    // predates the bodyweight-loaded flag (LIFT-834).
+    if (exercise.bodyweightLoaded && set.bodyweight === undefined) {
+      const bw = _currentBodyweight()
+      if (bw !== undefined) set.bodyweight = bw
+    }
+    set.estimated1RM = epley(effectiveSetWeight(set, exercise), reps)
     if (dateStr) {
       set.date = endOfDayISO(dateStr)
     }
@@ -1508,7 +1633,9 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseBarWeight,
     setExerciseIntensityMaxReps,
     setExerciseEquipment,
+    setExerciseBodyweightLoaded,
     setExerciseGyms,
+    setExerciseNotes,
     logSet,
     updateSet,
     deleteSet,

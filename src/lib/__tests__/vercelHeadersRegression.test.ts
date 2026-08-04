@@ -132,6 +132,32 @@ describe('vercel.json security headers', () => {
       expect(csp).toContain('https://vitals.vercel-insights.com')
     })
 
+    /**
+     * AI Coach launch reachability (LIFT-850). The coach proxy lives at
+     * `/api/coach` on the deployment origin. On web/PWA that is same-origin
+     * (already covered by `'self'`), but the native Capacitor build is
+     * cross-origin and calls the absolute origin — pin it explicitly so the
+     * coach endpoint stays reachable and the intent is documented at the
+     * launch gate. This origin must match `COACH_PROD_ORIGIN` in coachClient.ts
+     * and the function CORS allowlist in api/coach.ts.
+     */
+    it('allows the AI Coach proxy origin on connect-src (LIFT-850)', () => {
+      expect(csp).toContain('https://spa-rho-sandy.vercel.app')
+    })
+
+    /**
+     * Egress tripwire (LIFT-850): the Anthropic key lives ONLY in the server
+     * function (api/coach.ts) and the browser must never talk to an LLM
+     * provider directly. If a provider origin ever appears on connect-src it
+     * means the proxy boundary was bypassed — fail loudly.
+     */
+    it('never allows an LLM-provider origin on connect-src (LIFT-850)', () => {
+      const connectSrc = /connect-src\s+([^;]*)/.exec(csp)?.[1] ?? ''
+      expect(connectSrc).not.toMatch(/anthropic\.com/i)
+      expect(connectSrc).not.toMatch(/openai\.com/i)
+      expect(connectSrc).not.toMatch(/api\.anthropic\.com/i)
+    })
+
     it('blocks framing (clickjacking defense)', () => {
       expect(csp).toMatch(/frame-ancestors\s+'none'/)
     })

@@ -70,14 +70,18 @@ export type Database = {
         Row: {
           archived_at: string | null
           bar_weight: number
+          bodyweight_loaded: boolean
           created_at: string
           deleted_at: string | null
           equipment: string | null
           gyms: string[]
           id: string
-          input_mode: string | null
+          input_mode: string
           intensity_max_reps: number | null
           name: string
+          notes: string | null
+          plate_count_mode: string | null
+          plate_loaded: boolean
           tags: string[]
           updated_at: string | null
           user_id: string
@@ -86,14 +90,18 @@ export type Database = {
         Insert: {
           archived_at?: string | null
           bar_weight?: number
+          bodyweight_loaded?: boolean
           created_at?: string
           deleted_at?: string | null
           equipment?: string | null
           gyms?: string[]
           id?: string
-          input_mode?: string | null
+          input_mode?: string
           intensity_max_reps?: number | null
           name: string
+          notes?: string | null
+          plate_count_mode?: string | null
+          plate_loaded?: boolean
           tags?: string[]
           updated_at?: string | null
           user_id: string
@@ -102,14 +110,18 @@ export type Database = {
         Update: {
           archived_at?: string | null
           bar_weight?: number
+          bodyweight_loaded?: boolean
           created_at?: string
           deleted_at?: string | null
           equipment?: string | null
           gyms?: string[]
           id?: string
-          input_mode?: string | null
+          input_mode?: string
           intensity_max_reps?: number | null
           name?: string
+          notes?: string | null
+          plate_count_mode?: string | null
+          plate_loaded?: boolean
           tags?: string[]
           updated_at?: string | null
           user_id?: string

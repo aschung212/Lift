@@ -12,29 +12,17 @@ export interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-/**
- * Permanent suppression — set only when the user actually installs (accepts the
- * native prompt or `appinstalled` fires). Once installed, never nudge again.
- */
+// Stores the timestamp (ms) of the user's last banner dismissal. A dismissal
+// used to write the literal string 'true' and suppress the prompt forever;
+// it now snoozes for SNOOZE_MS so a user who dismisses before understanding
+// the value gets a second chance (installed users convert ~5x better).
 const DISMISS_KEY = 'install-prompt-dismissed'
-/**
- * Soft dismissal — a timestamp (epoch ms) until which the banner stays hidden.
- * Tapping the banner's X snoozes rather than suppressing forever, so a user who
- * dismisses before understanding the value gets a second chance ~30 days later.
- */
-const SNOOZE_KEY = 'install-prompt-snoozed-until'
-const SNOOZE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+// Set once the app is actually installed (native prompt accepted / appinstalled
+// fired) — a permanent suppression, distinct from the temporary dismiss snooze.
+const INSTALLED_KEY = 'install-prompt-installed'
 const MIN_WORKOUT_DAYS = 3
-
-/** True when a soft-dismiss snooze is currently active. */
-function isSnoozed(): boolean {
-  const raw = localStorage.getItem(SNOOZE_KEY)
-  if (!raw) return false
-  const until = Number(raw)
-  // A corrupt/non-numeric value should not wedge the banner off forever.
-  if (!Number.isFinite(until)) return false
-  return Date.now() < until
-}
+// Re-surface a dismissed prompt after ~30 days.
+const SNOOZE_MS = 30 * 24 * 60 * 60 * 1000
 
 /** Whether the app is running in standalone (installed) mode. */
 export function isStandalone(): boolean {
@@ -50,17 +38,17 @@ export interface InstallPromptState {
   showBanner: Ref<boolean>
   /** True when this is an iOS device needing manual add-to-home-screen instructions. */
   isIOSPrompt: Ref<boolean>
-  /** Soft-dismiss the banner (snoozes for ~30 days rather than forever). */
+  /** Dismiss the banner and remember the preference. */
   dismiss: () => void
   /** Trigger the native install prompt (Chrome/Edge). No-op on iOS. */
   install: () => Promise<void>
   /**
-   * Re-surface the banner at a peak engagement moment (a fresh PR, streak
-   * milestone, etc.). Bypasses the raw workout-day gate — a PR is a stronger
-   * install signal than 3 logged days — but still honors an installed device,
-   * an active snooze, and standalone/native. No-op when nothing to install.
+   * Re-surface the banner at a high-engagement "peak moment" (a new PR, a
+   * streak milestone). Bypasses the MIN_WORKOUT_DAYS engagement gate — a peak
+   * moment is itself the engagement signal — but still respects an installed
+   * app and an active dismiss snooze. No-op if already visible/suppressed.
    */
-  resurface: () => void
+  surfaceAtPeakMoment: () => void
   /** Remove event listeners. Call when the consumer unmounts. */
   destroy: () => void
 }
@@ -92,19 +80,42 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     return typeof workoutDayCount === 'function' ? workoutDayCount() : workoutDayCount.value
   }
 
+  /** True once the app has actually been installed — a permanent suppression. */
+  function isInstallRemembered(): boolean {
+    return localStorage.getItem(INSTALLED_KEY) === '1'
+  }
+
   /**
-   * @param ignoreEngagementGate skip the MIN_WORKOUT_DAYS check — used by
-   *   {@link resurface} when a peak moment already proves engagement.
+   * True while a dismissal is still within its snooze window. Legacy dismissals
+   * (and legacy installs) wrote the literal 'true' before snoozing existed; we
+   * can't tell the two apart, so treat 'true' as a permanent suppression to
+   * avoid re-prompting someone who may already have installed.
    */
-  function shouldShow(ignoreEngagementGate = false): boolean {
+  function isSnoozeActive(): boolean {
+    const raw = localStorage.getItem(DISMISS_KEY)
+    if (raw === null) return false
+    if (raw === 'true') return true
+    const ts = Number(raw)
+    if (!Number.isFinite(ts)) return false
+    return Date.now() - ts < SNOOZE_MS
+  }
+
+  /** Permanently installed, or temporarily snoozed after a dismissal. */
+  function isSuppressed(): boolean {
+    return isInstallRemembered() || isSnoozeActive()
+  }
+
+  function rememberInstalled() {
+    localStorage.setItem(INSTALLED_KEY, '1')
+  }
+
+  function shouldShow(): boolean {
     // Never show in native or already-installed PWA
     if (isNative || isStandalone()) return false
-    // User already installed — permanent suppression
-    if (localStorage.getItem(DISMISS_KEY)) return false
-    // User soft-dismissed recently — respect the snooze window
-    if (isSnoozed()) return false
-    // Not enough engagement (unless a peak moment overrides the gate)
-    if (!ignoreEngagementGate && getDayCount() < MIN_WORKOUT_DAYS) return false
+    // User already installed, or dismissed within the snooze window
+    if (isSuppressed()) return false
+    // Not enough engagement
+    if (getDayCount() < MIN_WORKOUT_DAYS) return false
     return true
   }
 
@@ -112,20 +123,22 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     showBanner.value = false
     deferredPrompt = null
     hasPendingPrompt = false
-    // Snooze rather than suppress forever — re-surface after the cooldown so a
-    // user who dismissed before seeing the value gets another chance.
-    localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS))
+    // Snooze (timestamp) rather than suppress forever — re-surfaces after SNOOZE_MS.
+    localStorage.setItem(DISMISS_KEY, String(Date.now()))
   }
 
-  function resurface() {
+  function surfaceAtPeakMoment() {
     if (showBanner.value) return
-    if (!shouldShow(true)) return
+    if (isNative || isStandalone()) return
+    if (isSuppressed()) return
     if (deferredPrompt) {
       isIOSPrompt.value = false
       showBanner.value = true
+      hasPendingPrompt = false
     } else if (isIOS && !isNative && !isStandalone()) {
       isIOSPrompt.value = true
       showBanner.value = true
+      hasPendingPrompt = false
     }
   }
 
@@ -137,7 +150,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     // Hide regardless of outcome — the native prompt can only be triggered once
     showBanner.value = false
     if (outcome === 'accepted') {
-      localStorage.setItem(DISMISS_KEY, 'true')
+      rememberInstalled()
     }
   }
 
@@ -159,7 +172,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     showBanner.value = false
     deferredPrompt = null
     hasPendingPrompt = false
-    localStorage.setItem(DISMISS_KEY, 'true')
+    rememberInstalled()
   }
 
   // Register listeners — cleaned up via destroy() if the consumer unmounts.
@@ -178,7 +191,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     if (shouldShow()) {
       isIOSPrompt.value = true
       showBanner.value = true
-    } else if (!localStorage.getItem(DISMISS_KEY)) {
+    } else if (!isSuppressed()) {
       // Data may not be loaded yet — watch for threshold crossing
       hasPendingPrompt = true
     }
@@ -207,7 +220,7 @@ export function useInstallPrompt(workoutDayCount: WatchSource<number>): InstallP
     isIOSPrompt,
     dismiss,
     install,
-    resurface,
+    surfaceAtPeakMoment,
     destroy,
   }
 }
