@@ -126,6 +126,17 @@ export default defineConfig({
             form_factor: 'narrow',
             label: 'Calendar view with workout summaries and PRs',
           },
+          {
+            // Wide (landscape) preview so Chromium's richer install dialog (desktop
+            // Chrome/Edge + some Android surfaces) renders the screenshot-carousel UI
+            // instead of the minimal one-line prompt (#1064). Composited from the three
+            // narrow screenshots by `npm run generate-wide-screenshot`.
+            src: 'screenshot-wide.png',
+            sizes: '1920x1080',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Log sets, track 1RM progress, and review your training calendar',
+          },
         ],
       },
       workbox: {

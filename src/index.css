@@ -3271,7 +3271,7 @@ html.theme-fading .settingsSheet {
 
 .wtDetailNote {
   margin: 0 16px 12px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
@@ -3424,7 +3424,7 @@ html.theme-fading .settingsSheet {
   width: 100%;
   min-height: 44px;
   margin-top: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
   background: var(--bg-elevated);
@@ -6949,6 +6949,15 @@ html.theme-fading .settingsSheet {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+/* Metric selector inside the exercise progress chart card — reprojects the
+   date series onto e1RM / weight / volume / reps. Mirrors the time-range row
+   and reuses .bwPeriodBtn styling. */
+.exGraphMetricRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .exGraphRangeEmpty {

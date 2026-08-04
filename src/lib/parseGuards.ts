@@ -71,6 +71,10 @@ export function parseWorkoutSet(value: unknown): WorkoutSet | null {
     estimated1RM: isFiniteNumber(o.estimated1RM) ? o.estimated1RM : epley(o.weight, o.reps),
   }
   if (typeof o.createdAt === 'string') set.createdAt = o.createdAt
+  // Bodyweight folded into the effective load for a bodyweight-loaded exercise
+  // (LIFT-834); a non-positive/non-finite value is dropped so the fold degrades
+  // to the added weight rather than skewing e1RM.
+  if (isFiniteNumber(o.bodyweight) && o.bodyweight > 0) set.bodyweight = o.bodyweight
   return set
 }
 
@@ -118,6 +122,7 @@ export function parseExercise(value: unknown): Exercise | null {
   }
   const notes = sanitizeExerciseNotes(o.notes)
   if (notes) ex.notes = notes
+  if (o.bodyweightLoaded === true) ex.bodyweightLoaded = true
   if (typeof o.updated_at === 'string') ex.updated_at = o.updated_at
   if (typeof o.archived_at === 'string') ex.archived_at = o.archived_at
   if (o.sample === true) ex.sample = true
