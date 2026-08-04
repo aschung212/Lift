@@ -297,6 +297,7 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
+import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
 import { useAppBadge } from './composables/useAppBadge'
 import { todayISO, toLocalDateKey } from './lib/dates'
@@ -323,7 +324,15 @@ const bodyweightStore = useBodyweightStore()
 
 // ── PWA install prompt ──────────────────────────────────────────
 const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
-const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall, surfaceAtPeakMoment: surfaceInstallAtPeak } = useInstallPrompt(installWorkoutDays)
+
+// Re-surface the install prompt at a peak moment: once a PR celebration is
+// dismissed, the user is at a high point of engagement — a far better time to
+// ask than the raw 3-workout-day gate (#1060). Respects install/snooze state.
+const { visible: prBurstVisible } = usePRBurst()
+watch(prBurstVisible, (visible, wasVisible) => {
+  if (wasVisible && !visible) surfaceInstallAtPeak()
+})
 
 // ── Unfinished-workout app-icon badge ───────────────────────────
 // When the user backgrounds the app with sets logged today, badge the
