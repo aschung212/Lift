@@ -85,29 +85,30 @@ function openPicker() {
   pickerOpen.value = true
 }
 
-const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.wcOverlay' })
+// Background-scroll lock, focus trap, and the single Escape listener are all
+// owned by useModal now. onEscape closes the topmost open layer: the nested
+// share sheet if it's up (SharePickerSheet delegates its Escape to this
+// parent), otherwise the summary view itself.
+const { open: activateTrap, close: deactivateTrap } = useModal({
+  selector: '.wcOverlay',
+  onEscape: () => {
+    if (pickerOpen.value) {
+      pickerOpen.value = false
+      return
+    }
+    emit('close')
+  },
+})
 
 const summary = computed(() => props.summary)
 
 const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))
 
-function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  // Single Escape owner for both layers — close the topmost open thing.
-  if (pickerOpen.value) {
-    pickerOpen.value = false
-    return
-  }
-  emit('close')
-}
-onMounted(async () => {
-  // Background-scroll lock is owned by useModal (activateTrap) now.
-  window.addEventListener('keydown', onKey)
+onMounted(() => {
   activateTrap()
 })
 onUnmounted(() => {
-  window.removeEventListener('keydown', onKey)
   deactivateTrap()
 })
 </script>
