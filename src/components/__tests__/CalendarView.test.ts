@@ -93,6 +93,16 @@ describe('CalendarView', () => {
       expect(wrapper.find('.calTitle').text()).toBe('Training Calendar')
     })
 
+    // LIFT-856: each top-level view needs a single page-level <h1> so screen-reader
+    // users get a consistent landmark and the hierarchy doesn't skip from h1 to h2.
+    it('exposes the calendar title as the single h1 (no skipped heading level)', () => {
+      const wrapper = mountCalendar()
+      const h1s = wrapper.findAll('h1')
+      expect(h1s.length).toBe(1)
+      expect(h1s[0].classes()).toContain('calTitle')
+      expect(h1s[0].text()).toBe('Training Calendar')
+    })
+
     it('shows Month and Week view toggle buttons', () => {
       const wrapper = mountCalendar()
       const btns = wrapper.findAll('.calToggleBtn')
@@ -142,6 +152,37 @@ describe('CalendarView', () => {
       const now = new Date()
       const currentMonthName = now.toLocaleDateString(undefined, { month: 'long' })
       expect(label).not.toContain(currentMonthName)
+    })
+
+    // Regression (#1068): month nav used to stall/skip when the cursor sat on a
+    // 31st. `new Date(2026, 4, 31).setMonth(3)` (April, 30 days) overflows to
+    // May 1, so a naive setMonth left the label unchanged going back and skipped
+    // a month going forward. The fix pins the day to 1 before shifting the month.
+    // Pinned to May 31 because both neighbors (April, June) have 30 days, so a
+    // single click in each direction exercises the bug. The harness otherwise
+    // starts the cursor at the real "today", whose day-of-month may exist in
+    // every month — which is exactly why this never got caught.
+    it('navigates by exactly one month when the cursor is on a 31st (#1068)', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(2026, 4, 31, 12, 0, 0)) // Sun May 31, 2026
+      try {
+        const april = new Date(2026, 3, 1).toLocaleDateString(undefined, { month: 'long' })
+        const june = new Date(2026, 5, 1).toLocaleDateString(undefined, { month: 'long' })
+
+        const fwd = mountCalendar()
+        await fwd.findAll('.calNavBtn')[1].trigger('click') // next
+        await fwd.vm.$nextTick()
+        // Without the fix this reads "July" (June skipped entirely).
+        expect(fwd.find('.calNavLabel').text()).toContain(june)
+
+        const back = mountCalendar()
+        await back.findAll('.calNavBtn')[0].trigger('click') // prev
+        await back.vm.$nextTick()
+        // Without the fix this stays "May" (nav appears frozen).
+        expect(back.find('.calNavLabel').text()).toContain(april)
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 

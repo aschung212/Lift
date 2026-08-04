@@ -9,7 +9,8 @@
 
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
-import { toLocalDateKey } from './dates'
+import { toLocalDateKey, localDateKey } from './dates'
+import { effectiveSetWeight } from './bodyweightLoad'
 
 export interface SessionHighlight {
   exerciseId: string
@@ -89,10 +90,7 @@ export function weekRange(rawDate: string): string[] {
   for (let i = 0; i < 7; i++) {
     const day = new Date(monday)
     day.setDate(monday.getDate() + i)
-    const yyyy = day.getFullYear()
-    const mm = String(day.getMonth() + 1).padStart(2, '0')
-    const dd = String(day.getDate()).padStart(2, '0')
-    out.push(`${yyyy}-${mm}-${dd}`)
+    out.push(localDateKey(day))
   }
   return out
 }
@@ -164,7 +162,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
 
     for (const s of sets) {
       setsCompleted++
-      const vol = s.weight * s.reps
+      const vol = effectiveSetWeight(s, ex) * s.reps
       totalVolume += vol
       exVolume += vol
       if (s.estimated1RM > bestE1RM) {
@@ -246,10 +244,11 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
   for (const ex of exercises) {
     for (const s of ex.sets) {
       const k = toLocalDateKey(s.date)
+      const vol = effectiveSetWeight(s, ex) * s.reps
       if (weekVolumeMap.has(k)) {
-        weekVolumeMap.set(k, weekVolumeMap.get(k)! + s.weight * s.reps)
+        weekVolumeMap.set(k, weekVolumeMap.get(k)! + vol)
       } else if (priorWeekSet.has(k)) {
-        priorWeekTotal += s.weight * s.reps
+        priorWeekTotal += vol
       }
     }
   }
@@ -279,8 +278,5 @@ function shiftDateByDays(rawDate: string, days: number): string {
   const [y, m, d] = rawDate.split('-').map(Number)
   const base = new Date(y, m - 1, d)
   base.setDate(base.getDate() + days)
-  const yy = base.getFullYear()
-  const mm = String(base.getMonth() + 1).padStart(2, '0')
-  const dd = String(base.getDate()).padStart(2, '0')
-  return `${yy}-${mm}-${dd}`
+  return localDateKey(base)
 }

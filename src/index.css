@@ -647,22 +647,27 @@
 /* https://developer.apple.com/design/human-interface-guidelines/typography */
 
 :root {
-  --font-caption2:   11px;  /* Caption 2 */
-  --font-caption1:   12px;  /* Caption 1 */
-  --font-footnote:   13px;  /* Footnote */
-  --font-subhead:    15px;  /* Subheadline */
-  --font-callout:    16px;  /* Callout */
-  --font-body:       17px;  /* Body (default) */
-  --font-headline:   17px;  /* Headline (semibold) */
-  --font-title3:     20px;  /* Title 3 */
-  --font-title2:     22px;  /* Title 2 */
-  --font-title1:     28px;  /* Title 1 */
-  --font-lg-title:   34px;  /* Large Title */
+  /* rem-anchored off the root font-size so text honors the user's preferred
+     browser/OS text size and iOS Dynamic Type (WCAG 1.4.4 Resize Text, AA).
+     The html element intentionally sets no fixed px font-size, so 1rem = the
+     user's chosen base (16px by default). rem values below are the HIG px
+     sizes ÷ 16 — visually identical at the default base, but now scalable. */
+  --font-caption2:   0.6875rem;  /* Caption 2   — 11px */
+  --font-caption1:   0.75rem;    /* Caption 1   — 12px */
+  --font-footnote:   0.8125rem;  /* Footnote    — 13px */
+  --font-subhead:    0.9375rem;  /* Subheadline — 15px */
+  --font-callout:    1rem;       /* Callout     — 16px */
+  --font-body:       1.0625rem;  /* Body        — 17px */
+  --font-headline:   1.0625rem;  /* Headline    — 17px */
+  --font-title3:     1.25rem;    /* Title 3     — 20px */
+  --font-title2:     1.375rem;   /* Title 2     — 22px */
+  --font-title1:     1.75rem;    /* Title 1     — 28px */
+  --font-lg-title:   2.125rem;   /* Large Title — 34px */
 
   /* Display sizes (beyond HIG scale — timers, modals, calculators) */
-  --font-display-sm: 30px;
-  --font-display:    36px;
-  --font-display-lg: 48px;
+  --font-display-sm: 1.875rem;   /* 30px */
+  --font-display:    2.25rem;    /* 36px */
+  --font-display-lg: 3rem;       /* 48px */
 
   /* Spacing scale (4pt grid) */
   --space-1:  4px;
@@ -782,7 +787,7 @@ button, [role="tab"], [role="switch"], a {
   color: var(--accent);
   border: 2px solid var(--accent);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-weight: 600;
   text-decoration: none;
 }
@@ -1074,7 +1079,8 @@ html.modal-open .tabContent {
 }
 
 .settingsGearBtn,
-.topBarPlusBtn {
+.topBarPlusBtn,
+.topBarCoachBtn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1120,6 +1126,24 @@ html.modal-open .tabContent {
 .topBarPlusBtn svg {
   width: 22px;
   height: 22px;
+}
+
+/* AI Review entry — subtle like the gear (accent fill is reserved for the
+   primary "+" action), with the coach's accent color on the icon. */
+.topBarCoachBtn {
+  background: var(--bg-elevated);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+.topBarCoachBtn:active {
+  background: var(--accent-subtle);
+  transform: scale(0.95);
+}
+
+.topBarCoachBtn svg {
+  width: 20px;
+  height: 20px;
 }
 
 .syncIndicator {
@@ -1279,7 +1303,7 @@ html.modal-open .tabContent {
 }
 
 .mysteryIcon {
-  font-size: 20px;
+  font-size: 1.25rem;  /* 20px */
   font-weight: 800;
   color: var(--text-muted);
 }
@@ -1344,7 +1368,7 @@ html.modal-open .tabContent {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   border-radius: 50%;
-  font-size: 20px;
+  font-size: 1.25rem;  /* 20px */
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1770,7 +1794,7 @@ html.theme-fading .settingsSheet {
   width: 44px;
   height: 44px;
   flex-shrink: 0;
-  font-size: 20px;
+  font-size: 1.25rem;  /* 20px */
   font-family: inherit;
   color: var(--text-muted);
   background: none;
@@ -2099,7 +2123,7 @@ html.theme-fading .settingsSheet {
 .wtPageTitle {
   margin: 0;
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 34px;
+  font-size: 2.125rem;  /* 34px */
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -2108,7 +2132,7 @@ html.theme-fading .settingsSheet {
 
 .wtPageStats {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   font-weight: 500;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
@@ -2132,7 +2156,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtWeeklyGoalText {
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   font-weight: 500;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
@@ -2215,7 +2239,7 @@ html.theme-fading .settingsSheet {
   flex: 1;
   padding: 0;
   min-height: 32px;
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-weight: 600;
   font-family: inherit;
   color: var(--text-secondary);
@@ -2659,7 +2683,7 @@ html.theme-fading .settingsSheet {
 
 .wtExerciseName {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 1rem;  /* 16px */
   line-height: 1.2;
   color: var(--text-primary);
   overflow: hidden;
@@ -2679,7 +2703,7 @@ html.theme-fading .settingsSheet {
   border: 1px solid var(--accent);
   border-radius: 99px;
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2687,7 +2711,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtExerciseNewPRIcon {
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
 }
 
 .wtExerciseMetaLine {
@@ -2695,7 +2719,7 @@ html.theme-fading .settingsSheet {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
   min-width: 0;
@@ -2707,14 +2731,14 @@ html.theme-fading .settingsSheet {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 99px;
-  font-size: 11px;
+  font-size: 0.6875rem;  /* 11px */
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .wtExerciseStat {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   line-height: 1.3;
 }
 
@@ -2770,41 +2794,6 @@ html.theme-fading .settingsSheet {
 .wtExerciseLogBtnCircle:hover  { background: var(--accent-hover, var(--accent)); }
 .wtExerciseLogBtnCircle:active { transform: scale(0.94); }
 
-/* ─── Drag handle ──────────────────────────────────────────────────────── */
-
-.wtDragHandle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  flex-shrink: 0;
-  font-size: 14px;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  user-select: none;
-  -webkit-user-select: none;
-  pointer-events: none;
-  transition: color 0.15s, opacity 0.15s;
-  opacity: 0.35;
-  align-self: center;
-}
-
-.wtDragHandleDisabled {
-  opacity: 0.25;
-}
-
-/* Long-press pickup feedback — lifts the row while dragging */
-.wt-dragging {
-  opacity: 0.4;
-  transform: scale(1.02);
-  transition: transform 0.12s;
-}
-
-.wt-drag-over {
-  box-shadow: 0 -2px 0 0 var(--accent);
-}
-
 /* ─── Exercise header icon buttons (rename, delete) ───────────────────── */
 
 .wtExHeaderIconBtn {
@@ -2859,7 +2848,7 @@ html.theme-fading .settingsSheet {
 .wtSearchInput {
   flex: 1;
   padding: 12px 12px 12px 32px;
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-family: inherit;
   color: var(--text-primary);
   background: var(--bg-elevated);
@@ -2883,7 +2872,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtSearchCount {
-  font-size: 12px;
+  font-size: 0.75rem;  /* 12px */
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -2901,7 +2890,7 @@ html.theme-fading .settingsSheet {
 .wtTagFilterBar::-webkit-scrollbar { display: none; }
 
 .wtTagChip {
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   font-weight: 600;
   padding: 8px 12px;
   min-height: 32px;
@@ -2931,7 +2920,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtTagChipCount {
-  font-size: 11px;
+  font-size: 0.6875rem;  /* 11px */
   font-weight: 700;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -3085,9 +3074,18 @@ html.theme-fading .settingsSheet {
   margin: 12px 0 4px;
 }
 
+/* Shared by five pickers: WorkoutTracker's new-exercise Tags + Gym rows and
+   EditExerciseModal's Tags, Equipment and Gym rows. min-height is the iOS HIG
+   44pt floor (#990) — the chips previously rendered 33px, or 38px in rows
+   containing the larger "+" add chip, which stretches its row. Deliberately
+   sized rather than padded out with a transparent ::before overlay: chips tile
+   in a wrapping 8px-gap row, so 44px overlays on 33px pills would leave no dead
+   space between wrapped rows and a near-miss would toggle the neighbouring chip
+   instead of doing nothing. */
 .wtTagPickerChip {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   font-size: var(--font-footnote);
   font-weight: 600;
   padding: 8px 16px;
@@ -3112,8 +3110,12 @@ html.theme-fading .settingsSheet {
   display: inline-flex;
 }
 
+/* Swaps in where the "+" add chip was, so it must match the chips' 44pt floor.
+   Stretch alone would not cover it: with no tags/gyms configured yet this input
+   is the only item in the row and has nothing to stretch against. */
 .wtTagInlineInput {
   width: 96px;
+  min-height: 44px;
   padding: 8px 12px;
   font-size: var(--font-footnote);
   font-family: inherit;
@@ -3265,6 +3267,22 @@ html.theme-fading .settingsSheet {
   min-height: 50svh;
 }
 
+/* ─── Exercise note (#619) ─────────────────────────────────────────────── */
+
+.wtDetailNote {
+  margin: 0 16px 12px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: var(--font-footnote);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ─── Set rows ──────────────────────────────────────────────────────────── */
 
 .wtSetList {
@@ -3402,6 +3420,27 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
 }
 
+.wtEditNotesInput {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--font-callout);
+  line-height: 1.4;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.wtEditNotesInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .wtEditArchiveBtn {
   width: 100%;
   padding: 12px;
@@ -3455,7 +3494,7 @@ html.theme-fading .settingsSheet {
   display: inline-block;
   width: 16px;
   text-align: center;
-  font-size: 18px;
+  font-size: 1.125rem;  /* 18px */
   line-height: 1;
   color: var(--text-secondary);
   transition: transform 150ms ease;
@@ -4007,7 +4046,7 @@ html.theme-fading .settingsSheet {
 
 .logSetSheet .logSetFieldLabel {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -4038,7 +4077,7 @@ html.theme-fading .settingsSheet {
   margin: 0;
   color: var(--accent);
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 44px;
+  font-size: 2.75rem;  /* 44px */
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.03em;
@@ -4058,13 +4097,13 @@ html.theme-fading .settingsSheet {
 
 .logSetSheet .logSetFieldInputReps {
   text-align: center;
-  font-size: 44px;
+  font-size: 2.75rem;  /* 44px */
   width: 100%;
   margin: 4px 0;
 }
 
 .logSetSheet .logSetFieldUnit {
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-weight: 600;
   color: var(--text-muted);
   flex-shrink: 0;
@@ -4081,7 +4120,7 @@ html.theme-fading .settingsSheet {
   border-radius: 99px;
   background: var(--bg-hover);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 0.875rem;  /* 14px */
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
@@ -4138,7 +4177,7 @@ html.theme-fading .settingsSheet {
   color: var(--text-primary);
   border-radius: 12px;
   font-family: inherit;
-  font-size: 20px;
+  font-size: 1.25rem;  /* 20px */
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.15s, transform 0.1s, opacity 0.15s;
@@ -4682,7 +4721,7 @@ html.theme-fading .settingsSheet {
   background: var(--bg-elevated);
   border: 1px solid var(--accent);
   border-radius: 12px;
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   color: var(--text-secondary);
   cursor: pointer;
   transition: opacity 0.2s;
@@ -4711,7 +4750,7 @@ html.theme-fading .settingsSheet {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: 1.125rem;  /* 18px */
   cursor: pointer;
   margin: -12px -8px -12px 0;
   border-radius: 8px;
@@ -4738,7 +4777,7 @@ html.theme-fading .settingsSheet {
 
 .wtPlateCardHeaderLabel {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -4765,7 +4804,7 @@ html.theme-fading .settingsSheet {
   min-height: 44px;
   padding: 0 4px;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: 0.8125rem;  /* 13px */
   font-weight: 700;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
@@ -4815,7 +4854,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtPlateCountNum {
-  font-size: 18px;
+  font-size: 1.125rem;  /* 18px */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
@@ -4887,11 +4926,32 @@ html.theme-fading .settingsSheet {
 .wtModalHeader h2 {
   flex: 1;
   text-align: center;
+  /* Reserve the leading/trailing 44px button zones so a long exercise
+     name never slides under the history / settings buttons (#971).
+     48px keeps the title clear of the 44px targets and stays on the
+     spacing scale. */
+  padding: 0 48px;
 }
 
 .wtPlateSettingsBtn {
   position: absolute;
   right: 0;
+  width: 44px;
+  height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* History shortcut: leading-side twin of the settings gear. Opens the
+   exercise's set-history detail view from the log-set modal (#971). */
+.wtLogHistoryBtn {
+  position: absolute;
+  left: 0;
   width: 44px;
   height: 44px;
   background: none;
@@ -5067,6 +5127,16 @@ html.theme-fading .settingsSheet {
   line-height: 1.4;
 }
 
+/* Helper text inside a .repMaxLabel block (the new-exercise Gym hint, #984).
+   .repMaxLabel is uppercase/bold/tracked-out label chrome and that inherits
+   into the footer — fine for a one-word label, shouty for a sentence of
+   helper text. Reset to prose here only; the base rule above is untouched. */
+.repMaxLabel .iosSettingsFooter {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
 /* ─── Intensity lens config: reset link in EditExerciseModal (#770) ──── */
 
 .wtIntensityEditReset {
@@ -5183,7 +5253,7 @@ html.theme-fading .settingsSheet {
 }
 
 .logSetSheet .repMaxResultPlaceholder .repMaxResultLabel {
-  font-size: 10px;
+  font-size: 0.625rem;  /* 10px */
   letter-spacing: 0.6px;
 }
 
@@ -6006,7 +6076,7 @@ html.theme-fading .settingsSheet {
 }
 
 .bwGoalTag {
-  font-size: 9px;
+  font-size: 0.5625rem;  /* 9px */
   font-weight: 600;
   color: var(--success);
   letter-spacing: 0.3px;
@@ -6879,6 +6949,15 @@ html.theme-fading .settingsSheet {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+/* Metric selector inside the exercise progress chart card — reprojects the
+   date series onto e1RM / weight / volume / reps. Mirrors the time-range row
+   and reuses .bwPeriodBtn styling. */
+.exGraphMetricRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .exGraphRangeEmpty {

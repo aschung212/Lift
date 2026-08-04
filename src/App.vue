@@ -8,7 +8,7 @@
     <AuthScreen v-if="!user" />
 
     <!-- Onboarding -->
-    <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" @started="onboardingInProgress = true" />
+    <OnboardingScreen v-else-if="showOnboarding" @complete="completeOnboarding" @started="onboardingInProgress = true" />
 
     <!-- Authenticated app -->
     <template v-else>
@@ -81,9 +81,25 @@
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
+            <button
+              v-if="activeTab === 'calendar' && showCoachBtn"
+              class="topBarCoachBtn"
+              @click="coachOpen = true"
+              title="AI Review"
+              aria-label="Open AI Review"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+            </button>
           </div>
         </div>
-        <div id="main-content" ref="tabContentEl" class="tabContent" tabindex="-1">
+        <div
+          id="main-content"
+          ref="tabContentEl"
+          class="tabContent"
+          tabindex="-1"
+          role="tabpanel"
+          :aria-labelledby="`tab-${activeTab}`"
+        >
           <KeepAlive>
             <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
             <CalendarView v-else-if="activeTab === 'calendar'" />
@@ -92,9 +108,14 @@
         </div>
       </main>
 
+      <!-- Polite SPA view-change announcement for screen readers (WCAG 4.1.3).
+           switchTab swaps panel content via v-if with no native focus/route
+           change, so assistive tech would otherwise stay silent. -->
+      <div class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ viewAnnouncement }}</div>
+
       <!-- Tab bar -->
       <nav class="tabBar" aria-label="Main navigation">
-        <div class="tabBarTabs" role="tablist">
+        <div class="tabBarTabs" role="tablist" aria-label="Main navigation">
           <div
             class="tabIndicator"
             :style="tabIndicatorStyle"
@@ -103,10 +124,14 @@
           <button
             v-for="tab in visibleTabs"
             :key="tab.id"
+            :id="`tab-${tab.id}`"
             role="tab"
             :aria-selected="activeTab === tab.id"
+            aria-controls="main-content"
+            :tabindex="activeTab === tab.id ? 0 : -1"
             :class="['tabBtn', { active: activeTab === tab.id }]"
             @click="switchTab(tab.id)"
+            @keydown="onTablistKeydown"
           >
             <!-- eslint-disable-next-line vue/no-v-html, vue/html-self-closing -- icons are hardcoded SVG paths, not user input -->
             <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="tab.icon"></svg>
@@ -116,7 +141,10 @@
       </nav>
 
       <!-- Settings bottom sheet (extracted to SettingsSheet.vue) -->
-      <SettingsSheet ref="settingsSheetRef" v-model="settingsOpen" @sign-out="handleSignOut" />
+      <SettingsSheet v-if="settingsOpen" ref="settingsSheetRef" v-model="settingsOpen" @sign-out="handleSignOut" />
+
+      <!-- AI Review sheet (entry: Calendar-tab top-bar button) -->
+      <CoachSheet v-if="coachOpen" @close="coachOpen = false" />
     </template>
 
     <!-- Undo toast -->
@@ -159,7 +187,16 @@
       <div v-if="xpToast.visible" class="xpGlobalToast" role="status" aria-live="polite">
         <div class="xpToastEarned">{{ xpToast.text }}</div>
         <div class="xpToastTotal">{{ xpToast.nextThresholdXP ? `${xpToast.totalXP.toLocaleString()} / ${xpToast.nextThresholdXP.toLocaleString()} XP` : `${xpToast.totalXP.toLocaleString()} XP` }}</div>
-        <div v-if="xpToast.nextThresholdXP" class="xpToastProgress">
+        <div
+          v-if="xpToast.nextThresholdXP"
+          class="xpToastProgress"
+          role="progressbar"
+          aria-label="XP progress to next level"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          :aria-valuenow="xpToast.progressPercent"
+          :aria-valuetext="`${xpToast.totalXP.toLocaleString()} of ${xpToast.nextThresholdXP.toLocaleString()} XP`"
+        >
           <div class="xpToastProgressFill" :style="{ width: xpToast.progressPercent + '%' }"></div>
         </div>
       </div>
@@ -193,6 +230,12 @@
     <PRBurst />
   </Teleport>
 
+  <!-- First-set activation celebration (#762) — triggered on a new user's first
+       ever logged set via useFirstSetCelebration().presentFirstSetCelebration(). -->
+  <Teleport to="body">
+    <FirstSetCelebration />
+  </Teleport>
+
   <!-- Weekly-goal celebration — triggered via useGoalCelebration().presentGoalCelebration(). -->
   <Teleport to="body">
     <GoalCelebration />
@@ -205,8 +248,8 @@ import { isPreviewDeploy, isPreviewMode, initSupabase } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './views/AuthScreen.vue'
 import OnboardingScreen from './views/OnboardingScreen.vue'
-import SettingsSheet from './components/SettingsSheet.vue'
 import PRBurst from './components/PRBurst.vue'
+import FirstSetCelebration from './components/FirstSetCelebration.vue'
 import GoalCelebration from './components/GoalCelebration.vue'
 
 // Lazy-load tab content — split into separate chunks for faster initial load
@@ -226,9 +269,19 @@ const BodyweightTracker = defineAsyncComponent({
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
+// Settings is reachable only behind a tap and pulls in training-report/data-export
+// UI many users never open — split it (and its transitive deps) into an on-demand
+// chunk, gated by v-if="settingsOpen" so the chunk isn't fetched until first open.
+const SettingsSheet = defineAsyncComponent(() => import('./components/SettingsSheet.vue'))
+// AI Review sheet — reached only from the Calendar-tab top-bar button, so its
+// chunk (and the export/profile UI it pulls in) loads on first open.
+const CoachSheet = defineAsyncComponent(() => import('./views/CoachSheet.vue'))
+import { coachReviewEligibility } from './lib/coachDigest'
+import { COACH_MODE } from './lib/coachExport'
 import { useTheme, connectProgressionStore } from './composables/useTheme'
 import type { ThemeId } from './lib/themes'
-import { useProgressionStore, xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './stores/progression'
+import { useProgressionStore } from './stores/progression'
+import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './composables/xpCeremonyUI'
 import { useXPCeremony } from './composables/useXPCeremony'
 import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
@@ -244,7 +297,12 @@ import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
+import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
+import { useAppBadge } from './composables/useAppBadge'
+import { todayISO, toLocalDateKey } from './lib/dates'
+import { useOnboarding } from './composables/useOnboarding'
+import { useTabRouting } from './composables/useTabRouting'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
 
 const { currentTheme, THEME_PREVIEWS, resolvedMode, isThemeUnlocked } = useTheme()
@@ -258,10 +316,54 @@ const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
 
+// Acquire each store once and pass references to the lifecycle composables and
+// handlers below — Pinia returns the same instance per call, so re-calling the
+// hooks in scattered handlers was redundant noise.
+const workoutStore = useWorkoutStore()
+const bodyweightStore = useBodyweightStore()
+
 // ── PWA install prompt ──────────────────────────────────────────
-const workoutStoreForInstall = useWorkoutStore()
-const installWorkoutDays = computed(() => workoutStoreForInstall.workoutDates.length)
-const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
+const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall, surfaceAtPeakMoment: surfaceInstallAtPeak } = useInstallPrompt(installWorkoutDays)
+
+// Re-surface the install prompt at a peak moment: once a PR celebration is
+// dismissed, the user is at a high point of engagement — a far better time to
+// ask than the raw 3-workout-day gate (#1060). Respects install/snooze state.
+const { visible: prBurstVisible } = usePRBurst()
+watch(prBurstVisible, (visible, wasVisible) => {
+  if (wasVisible && !visible) surfaceInstallAtPeak()
+})
+
+// ── Unfinished-workout app-icon badge ───────────────────────────
+// When the user backgrounds the app with sets logged today, badge the
+// Home-Screen icon with that count so they're nudged back to finish — and
+// clear it the moment they return. No-ops where the Badging API is
+// unsupported (see useAppBadge). Mirrors WorkoutTracker's `setsLoggedToday`,
+// which drives the in-app "Finish workout" affordance.
+const { setBadge: setAppBadge, clearBadge: clearAppBadge } = useAppBadge()
+// Plain function (not a computed) so `todayISO()` is re-evaluated every time the
+// app is backgrounded — a cached computed would badge yesterday's count after a
+// midnight rollover with no new sets to invalidate it.
+function countSetsLoggedToday(): number {
+  const today = todayISO()
+  let count = 0
+  for (const ex of workoutStore.exercises) {
+    for (const s of ex.sets) {
+      if (toLocalDateKey(s.date) === today) count++
+    }
+  }
+  return count
+}
+function onBadgeVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    const count = countSetsLoggedToday()
+    if (count > 0) setAppBadge(count)
+    else clearAppBadge()
+  } else {
+    // Back in the foreground — the nudge has served its purpose.
+    clearAppBadge()
+  }
+}
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -291,7 +393,28 @@ window.addEventListener('offline', updateOnlineStatus)
 if (!navigator.onLine) syncStatus.value = 'offline'
 
 const settingsOpen = ref(false)
-const settingsSheetRef = ref<InstanceType<typeof SettingsSheet> | null>(null)
+// SettingsSheet is an async component, so a `typeof`-based InstanceType would
+// resolve to the loader wrapper, not the SFC. It only exposes closeSettings(),
+// so type the ref by the exposed surface we actually call.
+const settingsSheetRef = ref<{ closeSettings: () => void } | null>(null)
+
+// ── AI Review entry (#972) ──────────────────────────────────────
+// Lives in the top bar on the Calendar tab (mirroring the contextual "+" on
+// Workouts) rather than as a card on the Workouts page: it's an infrequent,
+// retrospective feature, so it gets a compact nav-bar affordance on the
+// retrospective surface. Gate: enough training signal (a couple weeks + the
+// set floor), not a preview deploy, and — server transport only — a signed-in
+// user; the BYO export is 100% local, so it needs no account.
+const coachOpen = ref(false)
+const coachEligible = computed(
+  () => coachReviewEligibility(workoutStore.exercises, new Date()).eligible,
+)
+const showCoachBtn = computed(
+  () =>
+    coachEligible.value &&
+    !isPreviewMode.value &&
+    (COACH_MODE === 'byo' || user.value !== null),
+)
 
 // ── Focus traps for modals ─────────────────────────────────────
 const shortcutsFocus = useFocusTrap()
@@ -302,47 +425,14 @@ const shortcutsFocus = useFocusTrap()
 const { checkForSWUpdate } = useServiceWorker()
 
 // ── Onboarding ──────────────────────────────────────────────────
-const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
-const workoutStoreForOnboarding = useWorkoutStore()
-const bodyweightStoreForOnboarding = useBodyweightStore()
-
-// Skip onboarding if user already has any data (exercises or bodyweight entries)
-// Reactive so it catches data that loads asynchronously after auth.
-// onboardingInProgress prevents the watcher from firing when the onboarding
-// screen itself adds exercises (e.g. Popular Exercises option).
-const onboardingInProgress = ref(false)
-watch(
-  () => workoutStoreForOnboarding.exercises.length + bodyweightStoreForOnboarding.entries.length,
-  (total) => {
-    if (!onboardingComplete.value && !onboardingInProgress.value && total > 0) {
-      localStorage.setItem('onboarding-complete', 'true')
-      onboardingComplete.value = true
-    }
-  },
-  { immediate: true },
-)
-const showOnboarding = computed(() => !onboardingComplete.value)
-const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
-
-function onOnboardingComplete() {
-  onboardingInProgress.value = false
-  onboardingComplete.value = true
-  hasSampleData.value = localStorage.getItem('sample-data') === 'true'
-}
-
-function clearSampleData() {
-  const workoutStore = useWorkoutStore()
-  const bwStore = useBodyweightStore()
-  const exerciseIds = [...workoutStore.exercises.map(e => e.id)]
-  for (const id of exerciseIds) {
-    workoutStore.deleteExercise(id)
-  }
-  bwStore.clearAll()
-  localStorage.removeItem('sample-data')
-  localStorage.setItem('fresh-start', 'true')
-  hasSampleData.value = false
-  window.dispatchEvent(new CustomEvent('fresh-start'))
-}
+const {
+  showOnboarding,
+  onboardingInProgress,
+  hasSampleData,
+  completeOnboarding,
+  clearSampleData,
+  resetOnboarding,
+} = useOnboarding({ workoutStore, bodyweightStore })
 
 function closeSettings() {
   settingsSheetRef.value?.closeSettings()
@@ -350,8 +440,7 @@ function closeSettings() {
 
 // ── Sign out handler (from SettingsSheet) ────────────────────────
 function handleSignOut() {
-  localStorage.removeItem('onboarding-complete')
-  onboardingComplete.value = false
+  resetOnboarding()
   signOut()
 }
 
@@ -362,19 +451,23 @@ function handleSignOut() {
 // measurable without a backend.
 captureAcquisitionSource()
 
-// ── Tab initialization (supports PWA manifest shortcuts via ?tab= param) ──
-const VALID_TABS = ['workouts', 'calendar', 'weight'] as const
-const urlTab = new URLSearchParams(window.location.search).get('tab')
-const initialTab = urlTab && VALID_TABS.includes(urlTab as typeof VALID_TABS[number])
-  ? urlTab
-  : localStorage.getItem('active-tab') || 'workouts'
-const activeTab = ref(initialTab)
-// Clean up the query param so it doesn't persist on reload
-if (urlTab) {
-  const url = new URL(window.location.href)
-  url.searchParams.delete('tab')
-  window.history.replaceState({}, '', url.pathname)
-}
+// ── Tab routing (supports PWA manifest shortcuts via ?tab= param) ─────
+// The scrollable tab-content element, used to preserve per-tab scroll offset.
+const tabContentEl = ref<HTMLElement | null>(null)
+const { activeTab, switchTab } = useTabRouting({
+  scrollContainer: tabContentEl,
+  // Runs on every tap (including the active tab) — dismiss the settings sheet.
+  onBeforeSwitch: closeSettings,
+  onSwitch: (from, to) => {
+    // Announce the newly shown view to assistive tech (LIFT-854, WCAG 4.1.3) —
+    // the panel content swaps via v-if with no native focus move, so screen
+    // readers would otherwise hear nothing.
+    const label = TAB_DEFS.find(t => t.id === to)?.label ?? to
+    viewAnnouncement.value = `${label} view`
+    tabSwitch(from, to)
+    checkForSWUpdate()
+  },
+})
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────
 const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeShortcuts } = useKeyboardShortcuts(() => [
@@ -438,28 +531,41 @@ watch(() => prefs.features, () => {
   }
 }, { deep: true })
 
-// ── Tab scroll position preservation ─────────────────────────────
-const tabContentEl = ref<HTMLElement | null>(null)
-const tabScrollPositions: Record<string, number> = {}
+// Polite live-region text announcing the active view after a tab switch.
+const viewAnnouncement = ref('')
 
-// ── Analytics ────────────────────────────────────────────────────
-function switchTab(tabId: string) {
-  const from = activeTab.value
-  closeSettings()
-  if (from === tabId) return
-  // Save scroll position of outgoing tab
-  if (tabContentEl.value) {
-    tabScrollPositions[from] = tabContentEl.value.scrollTop
+// Roving-tabindex keyboard navigation for the bottom tablist (ARIA APG Tabs
+// pattern, automatic-activation variant). Arrow/Home/End move focus between
+// tabs and activate the focused one; the active tab is the only one in the
+// tab order (tabindex 0), the rest are -1.
+function onTablistKeydown(e: KeyboardEvent) {
+  const tabs = visibleTabs.value
+  const currentIdx = tabs.findIndex(t => t.id === activeTab.value)
+  if (currentIdx < 0 || tabs.length === 0) return
+  let nextIdx: number
+  switch (e.key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      nextIdx = (currentIdx + 1) % tabs.length
+      break
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      nextIdx = (currentIdx - 1 + tabs.length) % tabs.length
+      break
+    case 'Home':
+      nextIdx = 0
+      break
+    case 'End':
+      nextIdx = tabs.length - 1
+      break
+    default:
+      return
   }
-  activeTab.value = tabId
-  localStorage.setItem('active-tab', tabId)
-  tabSwitch(from, tabId)
-  checkForSWUpdate()
-  // Restore scroll position of incoming tab (default to top)
+  e.preventDefault()
+  const nextTab = tabs[nextIdx]
+  switchTab(nextTab.id)
   nextTick(() => {
-    if (tabContentEl.value) {
-      tabContentEl.value.scrollTop = tabScrollPositions[tabId] ?? 0
-    }
+    document.getElementById(`tab-${nextTab.id}`)?.focus()
   })
 }
 
@@ -482,6 +588,11 @@ function onBeforeUnload() {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  document.addEventListener('visibilitychange', onBadgeVisibilityChange)
+  // Clear any badge left over from a prior session: visibilitychange does not
+  // fire on cold start (the document begins visible), so a badge set before a
+  // force-close would otherwise linger on the icon while the user is active.
+  clearAppBadge()
   logEvent('session_start')
 
   // Load Supabase SDK off the critical render path, then start auth.
@@ -509,7 +620,7 @@ onMounted(async () => {
 
   // Startup migration and streak catch-up
   if (progressionStore.progressionEnabled && !isMigrated()) {
-    const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
+    const result = computeRetroactiveXP(workoutStore.exercises, bodyweightStore.entries)
     if (result.totalXP > 0) {
       progressionStore.totalXP = result.totalXP
       progressionStore.xpPerSet = result.xpPerSet
@@ -535,23 +646,23 @@ onMounted(async () => {
         progressionStore.weeklyTarget = progressionStore.pendingTargetChange
         progressionStore.pendingTargetChange = null
         const setIdToDate: Record<string, string> = {}
-        for (const exercise of workoutStoreForOnboarding.exercises) {
+        for (const exercise of workoutStore.exercises) {
           for (const set of exercise.sets) {
             setIdToDate[set.id] = set.date.slice(0, 10)
           }
         }
-        progressionStore.reEvaluateStreaks(workoutStoreForOnboarding.workoutDates, new Date(), setIdToDate)
+        progressionStore.reEvaluateStreaks(workoutStore.workoutDates, new Date(), setIdToDate)
       }
     }
     // Evaluate missed weeks
     const setIdToDate: Record<string, string> = {}
-    for (const exercise of workoutStoreForOnboarding.exercises) {
+    for (const exercise of workoutStore.exercises) {
       for (const set of exercise.sets) {
         setIdToDate[set.id] = set.date.slice(0, 10)
       }
     }
     const streakBefore = progressionStore.streakWeeks
-    progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates, new Date(), setIdToDate)
+    progressionStore.evaluatePendingWeeks(workoutStore.workoutDates, new Date(), setIdToDate)
     const streakAfter = progressionStore.streakWeeks
     if (progressionStore.showProgression && streakAfter > streakBefore) {
       const MILESTONES = [12, 8, 4, 2] as const
@@ -572,8 +683,8 @@ onMounted(async () => {
 
   // Cross-tab sync: reload stores when another tab persists data
   const storeMap: Record<StoreKey, { _reloadFromStorage(): void }> = {
-    workout: useWorkoutStore(),
-    bodyweight: useBodyweightStore(),
+    workout: workoutStore,
+    bodyweight: bodyweightStore,
     preferences: usePreferencesStore(),
     progression: progressionStore,
   }
@@ -588,6 +699,8 @@ onMounted(async () => {
 let unsubCrossTab: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  document.removeEventListener('visibilitychange', onBadgeVisibilityChange)
+  clearAppBadge()
   unsubCrossTab?.()
 })
 </script>

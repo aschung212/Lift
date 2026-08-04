@@ -134,6 +134,17 @@ describe('MuscleGroupChart', () => {
       expect(wrapper.find('.mgTitle').text()).toBe('Weekly Volume by Tag')
     })
 
+    // LIFT-856: the collapse toggle is wrapped in a level-2 heading (WAI-ARIA
+    // accordion pattern) so the section is reachable by heading navigation under
+    // the Calendar view's <h1> without the title being lost inside the button.
+    it('wraps the toggle in an h2 section heading', () => {
+      const wrapper = mountChart()
+      const h2 = wrapper.find('h2')
+      expect(h2.exists()).toBe(true)
+      expect(h2.text()).toContain('Weekly Volume by Tag')
+      expect(h2.find('button.mgHeader').exists()).toBe(true)
+    })
+
     it('emits toggleCollapsed when header is clicked', async () => {
       const wrapper = mountChart()
       await wrapper.find('.mgHeader').trigger('click')

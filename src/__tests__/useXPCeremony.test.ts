@@ -34,7 +34,8 @@ vi.mock('../lib/durableStorage', () => ({
   backupToIDB: vi.fn(),
 }))
 
-import { useProgressionStore, xpToast, unlockCelebration } from '../stores/progression'
+import { useProgressionStore } from '../stores/progression'
+import { xpToast, unlockCelebration, resetXPCeremony } from '../composables/xpCeremonyUI'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { XP_CONFIG } from '../lib/xp'
 
@@ -45,8 +46,9 @@ describe('useXPCeremony', () => {
     vi.useFakeTimers()
     mockLogXPEvent.mockClear()
     mockLogBodyweightXPEvent.mockClear()
-    xpToast.visible = false
-    unlockCelebration.visible = false
+    // Clear transient ceremony UI (and any in-flight toast timer) so state can't
+    // bleed across test cases.
+    resetXPCeremony()
   })
 
   afterEach(() => {

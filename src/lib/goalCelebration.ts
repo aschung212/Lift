@@ -15,6 +15,7 @@
 
 import { XP_CONFIG } from './xp'
 import { loadJSON } from './storage'
+import { localDateKey } from './dates'
 
 /** Device-local localStorage key tracking which weeks already celebrated. */
 export const GOAL_CELEBRATION_KEY = 'goal-celebration-state'
@@ -33,14 +34,6 @@ export interface GoalCelebrationDecision {
   milestone: boolean
 }
 
-/** Local-calendar YYYY-MM-DD key for a Date. */
-function localDayKey(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 /**
  * Monday-based week key for the local calendar week containing `now`.
  * Matches the Mon–Sun week used by computeWeeklyGoal.
@@ -51,7 +44,7 @@ export function weekKeyOf(now: Date = new Date()): string {
   const monday = new Date(now)
   monday.setDate(now.getDate() - daysSinceMonday)
   monday.setHours(0, 0, 0, 0)
-  return localDayKey(monday)
+  return localDateKey(monday)
 }
 
 /** Streak-duration multiplier for a given consecutive-week count. */

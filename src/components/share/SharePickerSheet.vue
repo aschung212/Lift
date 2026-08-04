@@ -39,7 +39,7 @@
         >
           <div class="spThumbCard" :class="{ spThumbCardStory: format === 'story' }">
             <div class="spThumbInner" :class="{ spThumbInnerStory: format === 'story' }">
-              <component :is="card.component" :summary="summary" />
+              <component :is="cardComponent(card.id)" :summary="summary" />
               <span v-if="showWatermark" class="spWatermark" aria-hidden="true">{{ WATERMARK_TEXT }}</span>
             </div>
           </div>
@@ -74,7 +74,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SessionSummary } from '../../lib/sessionSummary'
 import { WATERMARK_TEXT, type CardFormat } from '../../lib/shareImage'
-import { eligibleSquareCards, eligibleStoryCards, resolveInitialCard } from './cardRegistry'
+import { cardComponent, eligibleSquareCards, eligibleStoryCards, loadCardComponent, resolveInitialCard } from './cardRegistry'
 import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
 import { useModal } from '../../composables/useModal'
@@ -142,11 +142,14 @@ function selectCard(i: number) {
 watch(cards, () => { activeIndex.value = 0 })
 
 async function onShare() {
-  if (!activeCard.value) return
+  const card = activeCard.value
+  if (!card) return
   lastResult.value = null
+  const component = await loadCardComponent(card.id)
+  if (!component) return
   const res = await shareCard({
-    component: activeCard.value.component,
-    format: activeCard.value.format,
+    component,
+    format: card.format,
     summary: props.summary,
     theme: currentTheme.value,
     mode: resolvedMode.value,
@@ -158,11 +161,14 @@ async function onShare() {
 }
 
 async function onSave() {
-  if (!activeCard.value) return
+  const card = activeCard.value
+  if (!card) return
   lastResult.value = null
+  const component = await loadCardComponent(card.id)
+  if (!component) return
   const res = await downloadCard({
-    component: activeCard.value.component,
-    format: activeCard.value.format,
+    component,
+    format: card.format,
     summary: props.summary,
     theme: currentTheme.value,
     mode: resolvedMode.value,

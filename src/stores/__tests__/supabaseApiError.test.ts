@@ -5,6 +5,10 @@
  * The Supabase JS client resolves with { data: null, error: {...} } for
  * API-level errors (500s, RLS failures, etc.) instead of rejecting. The stores
  * must check .error and bail out, preserving local state.
+ *
+ * LIFT-786: an RLS denial (Postgres 42501) is a SERVER error, not offline, so
+ * it must now be observable — routed to logError (Sentry) and reflected as a
+ * degraded sync status — rather than silently swallowed with a console warn.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -12,29 +16,27 @@ import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
-// ── Supabase mock: resolves with error object (no throw) ────────────
-vi.mock('../../lib/supabase', () => {
-  function errorChain(): Record<string, unknown> {
-    const result = { data: null, error: { message: 'permission denied for table exercises', code: '42501' } }
-    const chain: Record<string, unknown> = {
-      select: () => chain,
-      eq: () => chain,
-      is: () => chain,
-      order: () => chain,
-      single: () => chain,
-      then: (resolve: (val: typeof result) => void) => Promise.resolve(result).then(resolve),
-    }
-    return chain
-  }
-
-  return {
-    supabase: { from: () => errorChain() },
-    isPreviewMode: { value: false },
-  }
+// ── Shared Supabase test double (LIFT-1009), apiError mode ──────────
+// Every query resolves { data: null, error } (a non-throwing RLS/API error),
+// matching what the real supabase-js client does for 500s/RLS denials.
+const { fakeSupabase } = await vi.hoisted(async () => {
+  const { createFakeSupabase } = await import('../../__tests__/fakeSupabase')
+  return { fakeSupabase: createFakeSupabase({ mode: 'apiError' }) }
 })
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: fakeSupabase,
+  isPreviewMode: { value: false },
+}))
 
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn(), clear: vi.fn() },
+  syncStatus: { value: 'synced' },
+}))
+
+vi.mock('../../lib/crossTabSync', () => ({
+  broadcastStoreUpdate: vi.fn(),
+  broadcastSyncStatus: vi.fn(),
 }))
 
 vi.mock('../../lib/logger', () => ({
@@ -45,13 +47,15 @@ vi.mock('../../lib/logger', () => ({
 
 import { useWorkoutStore } from '../workout'
 import { useBodyweightStore } from '../bodyweight'
-import { logWarn } from '../../lib/logger'
+import { logError } from '../../lib/logger'
+import { syncStatus } from '../../lib/syncQueue'
 
 describe('Supabase API error resilience (#503)', () => {
   beforeEach(() => {
     localStorageMock.clear()
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    syncStatus.value = 'synced'
   })
 
   it('workout store preserves local data when Supabase returns API error', async () => {
@@ -76,10 +80,12 @@ describe('Supabase API error resilience (#503)', () => {
     expect(store.exercises).toHaveLength(1)
     expect(store.exercises[0].name).toBe('Squat')
 
-    expect(logWarn).toHaveBeenCalledWith(
-      expect.stringContaining('Supabase fetch failed in workout store'),
-      expect.any(Object),
+    // LIFT-786: RLS/server error is observable, not silently warned
+    expect(logError).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ store: 'workout', category: 'server' }),
     )
+    expect(syncStatus.value).toBe('error')
   })
 
   it('bodyweight store preserves local data when Supabase returns API error', async () => {
@@ -98,9 +104,11 @@ describe('Supabase API error resilience (#503)', () => {
     expect(store.entries).toHaveLength(1)
     expect(store.entries[0].weight).toBe(185)
 
-    expect(logWarn).toHaveBeenCalledWith(
-      expect.stringContaining('Supabase fetch failed in bodyweight store'),
-      expect.any(Object),
+    // LIFT-786: RLS/server error is observable, not silently warned
+    expect(logError).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ store: 'bodyweight', category: 'server' }),
     )
+    expect(syncStatus.value).toBe('error')
   })
 })

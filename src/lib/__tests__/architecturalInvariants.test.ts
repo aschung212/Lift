@@ -274,19 +274,24 @@ describe('Invariant: _fetchFromSupabase READ path is read-only (SEV1 2026-04-12 
 // Guard: if a store has _persist() but doesn't broadcast, cross-tab
 // sync silently breaks. This catches missing wiring when new stores
 // are added or _persist() is refactored.
+//
+// Stores broadcast either directly (broadcastStoreUpdate) or by delegating
+// the storage plumbing to persistStoreData, which broadcasts internally
+// (LIFT-819). Either satisfies the invariant.
 
 describe('Invariant: cross-tab sync completeness', () => {
-  it('every store with _persist() must call broadcastStoreUpdate()', () => {
+  it('every store with _persist() must broadcast cross-tab updates', () => {
     const violations: string[] = []
 
     for (const { name, content } of getStoreFiles()) {
       if (!content.includes('_persist()')) continue
 
-      if (!content.includes('broadcastStoreUpdate')) {
+      if (!content.includes('broadcastStoreUpdate') && !content.includes('persistStoreData')) {
         violations.push(
-          `${name} — has _persist() but does not import/call broadcastStoreUpdate. ` +
-          `Add: import { broadcastStoreUpdate } from '../lib/crossTabSync' ` +
-          `and call broadcastStoreUpdate('<storeName>') inside _persist().`,
+          `${name} — has _persist() but neither calls broadcastStoreUpdate ` +
+          `nor delegates to persistStoreData. Cross-tab sync needs one of these. ` +
+          `Either call broadcastStoreUpdate('<storeName>') inside _persist(), ` +
+          `or route the write through persistStoreData() from '../lib/storePersistence'.`,
         )
       }
     }

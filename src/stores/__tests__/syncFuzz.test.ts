@@ -15,123 +15,16 @@
  * (row count dropped / unexpected delete call), not a regex mismatch.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-// ── Fake Supabase client ─────────────────────────────────────────
-// Chainable, thenable, in-memory. Records every call for assertions.
-// Defined inside vi.hoisted so it's available to the vi.mock factory
-// below (which runs before imports).
-
-const { fakeSupabase } = vi.hoisted(() => {
-  interface Row { id: string; [k: string]: unknown }
-
-  class FakeSupabase {
-    tables: Record<string, Row[]> = {
-      exercises: [],
-      sets: [],
-      bodyweight_entries: [],
-    }
-    calls: Array<{
-      op: 'select' | 'delete' | 'upsert' | 'update'
-      table: string
-      filters: Record<string, unknown>
-      data?: unknown
-    }> = []
-
-    reset() {
-      this.tables = { exercises: [], sets: [], bodyweight_entries: [] }
-      this.calls = []
-    }
-
-    seed(table: string, rows: Row[]) {
-      this.tables[table] = rows.map(r => ({ ...r }))
-    }
-
-    from(table: string) {
-      return new FakeBuilder(this, table)
-    }
-
-    deletesFor(table: string) {
-      return this.calls.filter(c => c.op === 'delete' && c.table === table)
-    }
-
-    upsertsFor(table: string) {
-      return this.calls.filter(c => c.op === 'upsert' && c.table === table)
-    }
-
-    updatesFor(table: string) {
-      return this.calls.filter(c => c.op === 'update' && c.table === table)
-    }
-
-    _exec(
-      op: FakeSupabase['calls'][number]['op'],
-      table: string,
-      filters: Record<string, unknown>,
-      data?: unknown,
-    ): Row[] {
-      this.calls.push({ op, table, filters: { ...filters }, data })
-      const rows = this.tables[table] || (this.tables[table] = [])
-      const matches = rows.filter(r =>
-        Object.entries(filters).every(([k, v]) => {
-          // .is(col, null) sentinel: match NULL or missing
-          if (v !== null && typeof v === 'object' && v !== undefined && '__is' in v) {
-            const target = (v as { __is: unknown }).__is
-            if (target === null) return r[k] == null
-            return r[k] === target
-          }
-          return r[k] === v
-        }),
-      )
-
-      if (op === 'select') return matches
-      if (op === 'delete') {
-        const ids = new Set(matches.map(r => r.id))
-        this.tables[table] = rows.filter(r => !ids.has(r.id))
-        return matches
-      }
-      if (op === 'upsert') {
-        const records = Array.isArray(data) ? data : [data as Row]
-        for (const rec of records) {
-          const idx = rows.findIndex(r => r.id === rec.id)
-          if (idx >= 0) rows[idx] = { ...rows[idx], ...rec }
-          else rows.push({ ...rec })
-        }
-        return records
-      }
-      if (op === 'update') {
-        for (const m of matches) Object.assign(m, data as Row)
-        return matches
-      }
-      return []
-    }
-  }
-
-  class FakeBuilder implements PromiseLike<{ data: Row[]; error: null }> {
-    private _op: 'select' | 'delete' | 'upsert' | 'update' = 'select'
-    private _filters: Record<string, unknown> = {}
-    private _data: unknown = null
-
-    constructor(private _parent: FakeSupabase, private _table: string) {}
-
-    select(_cols: string) { this._op = 'select'; return this }
-    delete() { this._op = 'delete'; return this }
-    upsert(data: unknown) { this._op = 'upsert'; this._data = data; return this }
-    update(data: unknown) { this._op = 'update'; this._data = data; return this }
-    eq(col: string, val: unknown) { this._filters[col] = val; return this }
-    is(col: string, val: null | boolean) { this._filters[col] = { __is: val }; return this }
-    order(_col: string) { return this }
-
-    then<TResult1 = { data: Row[]; error: null }, TResult2 = never>(
-      onfulfilled?: (v: { data: Row[]; error: null }) => TResult1 | PromiseLike<TResult1>,
-      _onrejected?: (r: unknown) => TResult2 | PromiseLike<TResult2>,
-    ): PromiseLike<TResult1 | TResult2> {
-      const data = this._parent._exec(this._op, this._table, this._filters, this._data)
-      return Promise.resolve({ data, error: null as const }).then(onfulfilled)
-    }
-  }
-
-  return { fakeSupabase: new FakeSupabase() }
+// ── Shared Supabase test double (LIFT-1009) ──────────────────────
+// Chainable, thenable, in-memory. Records every call for assertions and mutates
+// seeded rows like a real backend. Imported via async vi.hoisted so the vi.mock
+// factory below can reference the same instance the tests seed/assert against.
+const { fakeSupabase } = await vi.hoisted(async () => {
+  const { createFakeSupabase } = await import('../../__tests__/fakeSupabase')
+  return { fakeSupabase: createFakeSupabase({ mode: 'ok' }) }
 })
 
 // Override the global setup.ts mock (supabase: null) with our fake
@@ -171,16 +64,23 @@ import { useBodyweightStore } from '../bodyweight'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 import { _resetTombstones } from '../../lib/tombstones'
 
-// Helper: flush a microtask tick so any op() chained via syncQueue settles
-const tick = () => new Promise(resolve => setTimeout(resolve, 0))
+// Helper: flush pending timers + the microtask chains kicked off by the
+// synchronous syncQueue mock. Driven by fake timers (not a real setTimeout)
+// so tests don't burn wall-clock time or flake under CI load (LIFT-895).
+const tick = () => vi.runAllTimersAsync()
 
 describe('sync fuzz: SEV1 2026-04-12 regression', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     setActivePinia(createPinia())
     fakeSupabase.reset()
     getLocalStorageMock().clear()
     // Tombstones cache in-memory — must be reset or they leak between tests
     _resetTombstones()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   describe('workoutStore._fetchFromSupabase — READ path is read-only', () => {

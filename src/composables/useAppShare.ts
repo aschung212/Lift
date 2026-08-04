@@ -8,27 +8,19 @@
  *   2. Web Share API: the OS sheet on the iOS Safari PWA / Android Chrome.
  *   3. Clipboard fallback: copy the URL so the user can paste it anywhere.
  *
- * Never throws on user cancel — resolves with a typed outcome the caller can
- * use to decide whether to surface a "link copied" confirmation.
+ * The native→Web-Share→fallback sequencing, re-entrancy guard, and
+ * cancel-never-throws contract all live in `useShareFlow` (#880); this
+ * composable only supplies the text/URL tiers. Resolves with a typed outcome
+ * the caller can use to decide whether to surface a "link copied" confirmation.
  */
 
-import { ref, type Ref } from 'vue'
 import { isNative } from '../lib/platform'
 import { appUrlWithRef, APP_NAME, APP_TAGLINE, SHARE_REF } from '../lib/appMeta'
+import { useShareFlow, isShareCancellation, type ShareResult } from './useShareFlow'
+import type { Ref } from 'vue'
 
-export type AppShareResult =
-  | { kind: 'shared' }       // native sheet / Web Share resolved
-  | { kind: 'copied' }       // fell back to clipboard
-  | { kind: 'cancelled' }    // user dismissed the share sheet
-  | { kind: 'unavailable' }  // no share + no clipboard (rare)
-  | { kind: 'error'; error: Error }
-
-/** A native-share cancel surfaces as a thrown error whose message mentions cancel/abort. */
-function isCancellation(err: unknown): boolean {
-  if (err instanceof DOMException && err.name === 'AbortError') return true
-  const message = (err as { message?: string })?.message?.toLowerCase() ?? ''
-  return message.includes('cancel') || message.includes('abort')
-}
+/** @deprecated Use the shared {@link ShareResult}; kept as an alias for clarity at call sites. */
+export type AppShareResult = ShareResult
 
 async function copyToClipboard(text: string): Promise<boolean> {
   try {
@@ -43,22 +35,23 @@ async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 export interface UseAppShareReturn {
-  shareApp: () => Promise<AppShareResult>
+  shareApp: () => Promise<ShareResult>
   isSharing: Ref<boolean>
+  lastError: Ref<Error | null>
 }
 
 export function useAppShare(): UseAppShareReturn {
-  const isSharing = ref(false)
+  const { isSharing, lastError, run } = useShareFlow()
 
-  async function shareApp(): Promise<AppShareResult> {
-    if (isSharing.value) return { kind: 'cancelled' }
-    isSharing.value = true
+  function shareApp(): Promise<ShareResult> {
     // Tag the shared link with the app-share attribution ref (#798) so a
     // share-driven install is credited to this surface instead of "direct".
     const shareUrl = appUrlWithRef(SHARE_REF.app)
-    try {
+
+    return run([
       // Tier 1: native system share sheet.
-      if (isNative) {
+      async () => {
+        if (!isNative) return null
         try {
           const { Share } = await import('@capacitor/share')
           await Share.share({
@@ -69,31 +62,30 @@ export function useAppShare(): UseAppShareReturn {
           })
           return { kind: 'shared' }
         } catch (err) {
-          if (isCancellation(err)) return { kind: 'cancelled' }
+          if (isShareCancellation(err)) return { kind: 'cancelled' }
           // Native plugin failed unexpectedly — fall through to clipboard.
+          return null
         }
-      }
+      },
 
       // Tier 2: Web Share API (iOS Safari PWA, Android Chrome).
-      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      async () => {
+        if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return null
         try {
           await navigator.share({ title: APP_NAME, text: APP_TAGLINE, url: shareUrl })
           return { kind: 'shared' }
         } catch (err) {
-          if (isCancellation(err)) return { kind: 'cancelled' }
+          if (isShareCancellation(err)) return { kind: 'cancelled' }
           // Anything else falls through to clipboard.
+          return null
         }
-      }
+      },
 
       // Tier 3: copy the link so the user can paste it anywhere.
-      if (await copyToClipboard(shareUrl)) return { kind: 'copied' }
-      return { kind: 'unavailable' }
-    } catch (err) {
-      return { kind: 'error', error: err as Error }
-    } finally {
-      isSharing.value = false
-    }
+      // When this also fails the runner resolves `{ kind: 'unavailable' }`.
+      async () => ((await copyToClipboard(shareUrl)) ? { kind: 'copied' } : null),
+    ])
   }
 
-  return { shareApp, isSharing }
+  return { shareApp, isSharing, lastError }
 }

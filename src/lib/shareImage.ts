@@ -8,8 +8,6 @@
  * the pixelRatio multiplier produces the resolution platforms expect.
  */
 
-import { domToBlob } from 'modern-screenshot'
-
 export type CardFormat = 'square' | 'story'
 
 export interface ExportOptions {
@@ -39,8 +37,15 @@ export const EXPORT_PIXEL_RATIO = 3 // 360 → 1080, 640 → 1920
  * and a clone with `left: -10000px` renders entirely outside the SVG
  * viewport, producing a transparent PNG. Forcing the clone to render at
  * (0,0) inside the foreignObject is what we want.
+ *
+ * `modern-screenshot` is loaded via a dynamic `import()` so the rasterizer
+ * (a heavy dependency only ever used when the user actually exports a share
+ * card) splits into its own chunk instead of riding along in whatever chunk
+ * imports this module's lightweight constants (SHARE_CARD_HANDLE, watermark,
+ * CardFormat) — many card components pull those in eagerly (#938).
  */
 export async function renderNodeToBlob(node: HTMLElement, opts: ExportOptions): Promise<Blob> {
+  const { domToBlob } = await import('modern-screenshot')
   return domToBlob(node, {
     width: opts.width,
     height: opts.height,

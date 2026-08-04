@@ -773,4 +773,41 @@ describe('usePreferencesStore', () => {
       expect(store.intensityPresets).toEqual([40, 60, 80])
     })
   })
+
+  describe('coachProfile (#931)', () => {
+    it('defaults to an empty deep_audit profile', () => {
+      expect(store.coachProfile.reviewMode).toBe('deep_audit')
+      expect(store.coachProfile.sex).toBe('')
+      expect(store.coachProfile.age).toBeNull()
+    })
+
+    it('setCoachProfile merges, sanitizes, and persists to the synced blob', () => {
+      store.setCoachProfile({ sex: 'male', age: 31, primaryGoal: 'hypertrophy' })
+      expect(store.coachProfile).toMatchObject({ sex: 'male', age: 31, primaryGoal: 'hypertrophy' })
+      // A later partial update preserves prior fields.
+      store.setCoachProfile({ daysPerWeek: 4 })
+      expect(store.coachProfile).toMatchObject({ sex: 'male', daysPerWeek: 4 })
+
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.coachProfile).toMatchObject({ sex: 'male', age: 31, daysPerWeek: 4 })
+    })
+
+    it('rejects an out-of-range value at the setter boundary', () => {
+      store.setCoachProfile({ age: 5, daysPerWeek: 99 })
+      expect(store.coachProfile.age).toBeNull()
+      expect(store.coachProfile.daysPerWeek).toBeNull()
+    })
+
+    it('_reloadFromStorage sanitizes a persisted profile', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        coachProfile: { sex: 'female', experience: 'advanced', reviewMode: 'quick_checkin', age: 'bad' },
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.coachProfile).toMatchObject({ sex: 'female', experience: 'advanced', reviewMode: 'quick_checkin' })
+      expect(store.coachProfile.age).toBeNull()
+    })
+  })
 })

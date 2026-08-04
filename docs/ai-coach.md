@@ -1,8 +1,15 @@
-# AI Coach — Weekly Review (design)
+# AI Coach — AI Review (design)
+
+> **Naming (#972):** the user-facing feature name is **"AI Review"** (sheet title, aria-labels,
+> download filename `lift-ai-review-YYYY-MM-DD.md`). It was called "Weekly Review" until
+> 2026-07-16; the weekly *cadence* (quota window, digest framing) is unchanged — only the label.
 
 Status: **Phase 1 in progress** (backend scaffold landed; UI + consent + deletion wiring remain).
+The live transport today is the **bring-your-own-AI export** (open loop, no server) — see below —
+because the Anthropic key the server needs isn't provisioned yet. Flip `COACH_MODE` to `'server'`
+in `src/lib/coachExport.ts` once it is.
 
-An opt-in feature where a user taps once and gets an LLM-generated **Weekly Review** of
+An opt-in feature where a user taps once and gets an LLM-generated **AI Review** of
 their training — a fixed-shape digest rendered as themed cards. It is the smallest surface
 that delivers a genuine, differentiating coaching moment without the cost, abuse,
 hallucination, and prompt-injection blast radius of free-form chat.
@@ -20,7 +27,7 @@ This collapses the three UX options we considered into the best one:
 - **Not** free-form chat (biggest cost/abuse/injection surface; weekly cadence doesn't suit it).
 - **Not** an "ask N questions" menu (its value is absorbed by the digest's four sections,
   delivered proactively instead of making the user pick).
-- A single **Weekly Review** digest, server-validated against a fixed JSON schema.
+- A single weekly **AI Review** digest, server-validated against a fixed JSON schema.
 
 ## The load-bearing reality
 
@@ -28,6 +35,72 @@ Lift is a pure static SPA today — **zero server-side compute** before this fea
 trust boundary (key secrecy, quota, consent) depends on a backend that did not exist. So the
 **first deliverable is the backend** (`api/coach.ts` + the migration), and the client-side
 counter is cosmetic — the server is the only real cap.
+
+## Bring-your-own-AI export (interim transport + permanent free tier) — #931
+
+The whole coaching brain is pure and client-side (`buildCoachPayload`, `COACH_SYSTEM_PROMPT`,
+`buildCoachUserMessage`); the server only ever added the API key, the quota, and the network
+destination. So until the key is provisioned we deliver the value with **zero server**:
+
+- `src/lib/coachExport.ts` composes the recommended prompt + the optional `<athlete>` block +
+  the `<data>` block into one paste-ready text (`buildCoachExportText`). The prompt is an
+  **analyst** prompt (analyze → synthesize → prescribe), not a summarizer: it asks the model to
+  derive per-exercise progression, ramp/frequency/recovery patterns, and e1RM reliability, then
+  name the single highest-leverage change and prescribe concretely — individualized to `<athlete>`
+  and adapting to bodybuilding / powerlifting / general fitness. It bakes in the known pitfalls
+  (e1RM inflation on high-rep sets; machine lifts aren't standard-comparable), keeps the DATA-ONLY
+  prompt-injection guard, and — because it's read in the user's chat, not parsed by the app — asks
+  for **prose of data-driven depth**, not the server's `CoachReview` JSON or a fixed length. It
+  references a `derived` analytics block "if present" (forward-compat for the Phase-B pre-computed
+  stats).
+- **Athlete profile (`src/lib/coachProfile.ts`) — the biggest quality lever.** A versioned,
+  sanitized `CoachProfile` (sex/age/height/experience/goal/priorities/effort-style/schedule/
+  injuries/equipment/competition/reviewMode) collected once and **synced in the preferences blob**
+  (no DB migration — the `intensityPresets` precedent). `buildAthleteBlock` serializes it into the
+  `<athlete>` block, **omitting empty fields** so a sparse profile stays clean and the prompt's
+  "state your assumption and proceed, then list what would sharpen it" path engages. Edited in
+  `CoachProfileSheet.vue` (reached from the export panel), which shows an "N/total added" meter.
+- **Tiered depth.** `reviewMode` (`quick_checkin` | `deep_audit`, default deep_audit) rides in the
+  `<athlete>` block and is chosen per export via a segmented control; one prompt serves both.
+- `CoachSheet` (when `COACH_MODE === 'byo'`) renders the export panel: review-depth control,
+  profile entry point, a bodyweight opt-out (passes `[]` to `buildCoachPayload`), a
+  "nothing leaves Lift until you paste it" disclosure, and **Copy to clipboard** + **Download
+  `.md`** actions. The server states stay intact behind `mode === 'server'`.
+- **Open loop by decision:** no paste-back / JSON round-trip — the coaching lives in the chat.
+- No key, no quota, no consent-to-transmit surface (nothing is sent), so the entry point drops the
+  sign-in gate in this mode. This also stands as a permanent **free / privacy tier** after the
+  server exists: a user's data never leaves the device unless they paste it themselves.
+- **Privacy:** the profile adds sensitive fields (age, injuries). In BYO nothing is auto-sent — the
+  disclosure states the profile is included only when the user copies/downloads. When `COACH_MODE`
+  flips to `'server'`, forwarding the profile to Anthropic is a **consent bump** (versioned via
+  `CURRENT_CONSENT_VERSION`) and an App Store health-data-label consideration; wire that with #849.
+- **Derived analytics (Phase B, landed):** a single LLM call has no compute, and making the model
+  do arithmetic over hundreds of sets drifts on exactly the numbers users care about — so the app
+  pre-computes the analyses in pure `src/lib/coachAnalytics.ts` and ships them as the payload's
+  `derived` block (`buildCoachPayload` attaches it; types/caps/validation live in the shared
+  `aiCoach.ts` contract, so the dormant server benefits the moment it wakes). Contents:
+  per-exercise progression (first/best/recent e1RM, gain, gain/week, reliability flags),
+  **reliable 1RM** (best ≤6-rep set of free-weight lifts, with strength-to-bodyweight ratio when
+  bodyweight is included — the opt-out passes `[]` → no ratio), warm-up ramp shape (median ramp
+  sets + first-set % of top), session shape medians, weekly volume & frequency per muscle tag
+  (incl. median rest-gap days), intensity distribution (at-the-time %: <60 / 60–85 / >85), rep-range
+  distribution (≤6 / 7–12 / ≥13), and within-session exercise order. Two honesty rules:
+  (1) equipment classification is **two-layered** (`resolveExerciseKind`, phase C): the explicit
+  per-exercise `Exercise.equipment` field wins — user-set in EditExerciseModal's "Equipment"
+  chips (Auto / Free weight / Machine / Bodyweight, where Auto stores nothing and shows what the
+  heuristic resolves to), synced via the additive `equipment` text column (always-send like
+  `intensity_max_reps`, so "Auto" clears server-side), sanitized at every boundary
+  (`sanitizeExerciseEquipment`: store setter, localStorage load, remote fetch — unknown values
+  degrade to unset, never trusted) — and the conservative NAME HEURISTIC (`classifyExercise`:
+  free_weight / machine / bodyweight / unknown; machine markers beat free-weight markers so
+  "Seated Row" is a cable stack) is the fallback for never-classified exercises;
+  (2) `exerciseOrder` computes ONLY from real `createdAt` timestamps (#846) — for
+  untimestamped sets, cross-exercise order within a day is array order, and we never feed the
+  model fabricated sequence.
+
+`COACH_MODE` (in `coachExport.ts`) is the single switch: `'byo'` today, `'server'` once
+`ANTHROPIC_API_KEY` et al. are provisioned. Consent (#849) and history (#851) remain their own
+follow-ups; the BYO disclosure is a lightweight stand-in, not the versioned consent modal.
 
 ## Locked decisions
 
@@ -113,10 +186,16 @@ in `src/lib/aiCoach.ts`):
 - **focus** — overload suggestions: `{ exerciseName, type, suggestedWeight, suggestedReps, reason }`
 - **bodyweight** (opt-out) — `{ trendDirection, deltaLbs }`
 
-> **`timeOfDay` and within-workout order are dormant until the set-time capture work lands.**
-> `set.date` is stamped end-of-day (no time), so the builder emits `timeOfDay`/real ordering only
-> once a real per-set timestamp (`WorkoutSet.createdAt`, currently unpopulated) is captured —
-> tracked as its own issue. `sessions` (split + rest-day cadence) works today.
+> **`timeOfDay` and within-workout order are now live (#846).** `set.date` stays end-of-day (no
+> time, per #746); a separate `WorkoutSet.createdAt` carries the real log time — surfaced from the
+> server `sets.created_at` column for synced/historical sets and stamped at log time in `logSet` for
+> new/offline sets. The builder reads it for `timeOfDay` ("HH:MM" local) and orders within a day by
+> real timestamp. **Accuracy caveat:** `created_at` is insert/sync time — ≈ training time for live
+> online logging, but skewed for log-offline-then-sync-later or backfilled sets. It also stores only
+> a UTC instant (no captured offset), and `timeOfDay` is rendered in the timezone of the device that
+> *builds* the digest — so a set trained while traveling reads in the digesting device's local time,
+> not the training-location time. Treat time-of-day as indicative, not exact. `sessions` (split +
+> rest-day cadence) works for all data regardless.
 
 **Never sent:** exercise/session/set UUIDs, user_id, email, auth tokens, XP log, preferences.
 Identifiers are used for quota/consent only and never forwarded to the model. Exercise names are
@@ -158,8 +237,11 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
 
 ## UX (Phase 1, after backend)
 
-- One entry point: a **"Coach" card** at the top of the Workouts tab that doubles as the quota
-  meter ("Coach · N reviews left this week"). Appears only with ≥2 weeks of data + a trend.
+- One entry point: a compact **top-bar icon button on the Calendar tab** (#972) — the
+  retrospective surface — mirroring the contextual "+" that shows on the Workouts tab. It
+  replaced the original full-width Workouts-page card, which was too prominent for an
+  infrequently used feature. Appears only with ≥2 weeks of data; the quota meter now lives
+  inside the sheet header, not the entry point.
 - Tapping opens `CoachSheet` (built on `useModal` for the #830 scroll lock) with four states:
   consent gate → loading skeleton → result cards → quota-exceeded ("Resets in N days").
 - No text input on the primary path → sidesteps the iOS-keyboard-modal bug class.
@@ -180,12 +262,38 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   lifetime PRs, per-set relative intensities, current-week volume, consistency, bodyweight
   trend, weights unit-converted, identifiers stripped — + 13 tests (validate round-trip +
   no-identifiers assertion).
+- `src/lib/coachHistory.ts` (LIFT-851) — device-local insight ring. Persists generated
+  reviews to localStorage (`coach-insights-history`) as a **last-12 ring** (drop oldest);
+  re-opening a cached review is **free** (no quota). `appendCoachInsight` / `loadCoachHistory`
+  (newest-first, corrupt + malformed entries dropped) / `clearCoachHistory`. The key is wired
+  into `deleteAccount`'s `localStorageKeys` clear. NOT synced — cross-device `coach_insights`
+  is a deliberate Phase 2 change. The CoachSheet "Past insights" list consumes this once #848
+  lands.
+
+- `CoachSheet` + the entry point (LIFT-848, moved in #972): `src/lib/coachClient.ts` (pure status→
+  result mapping + abort-timeout fetch + `daysUntilReset`), `src/composables/useCoach.ts`
+  (singleton UI state + device-local cosmetic quota cache + `getSession` token), and
+  `src/views/CoachSheet.vue` (idle/loading/result/error states; output rendered via text
+  interpolation, NEVER `v-html`). The entry is a `topBarCoachBtn` icon in `App.vue`'s top bar,
+  shown on the Calendar tab, gated by `coachReviewEligibility` (≥`MIN_SETS_FOR_REVIEW` sets across
+  ≥2 weeks) AND not a preview deploy AND (BYO mode OR signed-in). `CoachSheet` mounts from
+  `App.vue` (lazy chunk, fetched on first open) and wires `buildCoachPayload` to
+  the stores (`getOverloadSuggestion` → `overloads`, `streakWeeks`/`weeklyTarget`, `toDisplayUnits`).
+
+- **Bring-your-own-AI export (#931)** — `src/lib/coachExport.ts` (`COACH_MODE`, analyst
+  `RECOMMENDED_COACH_PROMPT`, `buildCoachExportText`, `coachExportFilename`), the versioned
+  athlete profile (`src/lib/coachProfile.ts` + preferences-store persistence + `CoachProfileSheet`),
+  tiered `reviewMode`, and the `CoachSheet` export panel (review depth / profile / copy / download /
+  bodyweight opt-out) + tests. This is the live transport while the server key is unprovisioned
+  (`COACH_MODE = 'byo'`). Phase B (the pre-computed `derived` analytics block,
+  `src/lib/coachAnalytics.ts` + contract/validator support in `aiCoach.ts`) landed as the
+  follow-up. See the section above.
 
 **Remaining Phase 1:**
-- `CoachSheet` + the Workouts-tab entry card; render output via text interpolation. The view
-  wires `buildCoachPayload` to the stores (passes `getOverloadSuggestion` results as `overloads`,
-  `streakWeeks`/`weeklyTarget`, and `toDisplayUnits`).
-- Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers.
+- Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers
+  (#849). Until it lands the server 403s `consent_required`; `CoachSheet` surfaces that as a
+  non-retryable "accept the Coach privacy terms" message (the consent capture itself is #849).
+- Past-insights history (#851) — `useCoach` deliberately holds only transient state today.
 - **Wire `deleteAccount()` to call `delete_coach_data`** and fix the verified resolved-error
   bug at `src/composables/useAuth.ts:225` (`Promise.allSettled` then `filter(status === 'rejected')`
   — supabase-js *resolves* `{ error }` on a failed delete, so a failed delete passes silently

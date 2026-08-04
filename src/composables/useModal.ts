@@ -122,12 +122,18 @@ export function useModal(options: UseModalOptions = {}) {
     if (isOpen.value) return
     isOpen.value = true
     acquireLock()
+    // Attach synchronously (not via the isOpen watcher, which flushes a tick
+    // later): the Escape listener has no DOM dependency, so it must be live the
+    // instant the modal opens — a user (or a test) that presses Escape on the
+    // same tick as open() must still close it. Idempotent via escapeAttached.
+    attachEscape()
   }
 
   function close() {
     if (!isOpen.value) return
     isOpen.value = false
     releaseLock()
+    detachEscape()
   }
 
   watch(isOpen, async (open) => {

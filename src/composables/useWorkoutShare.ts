@@ -11,7 +11,7 @@
  *   4. Always unmount and revoke the object URL.
  */
 
-import { ref, createApp, h, type Component, type Ref, nextTick } from 'vue'
+import { createApp, h, type Component, type Ref, nextTick } from 'vue'
 import {
   renderNodeToBlob,
   createWatermarkElement,
@@ -22,6 +22,13 @@ import {
 } from '../lib/shareImage'
 import type { SessionSummary } from '../lib/sessionSummary'
 import { useAnalytics } from './useAnalytics'
+import { useShareFlow, isShareCancellation, type ShareResult } from './useShareFlow'
+import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
+
+export type { ShareResult }
+
+/** Title shown in the share sheet for a rasterized workout card. */
+const SHARE_TITLE = 'Lift workout'
 
 export interface ShareCardRequest {
   /** The Vue component that renders the card. */
@@ -41,23 +48,28 @@ export interface ShareCardRequest {
   watermark?: boolean
 }
 
-export type ShareResult =
-  | { kind: 'shared' }                   // native sheet / Web Share resolved
-  | { kind: 'downloaded'; filename: string }
-  | { kind: 'cancelled' }
-  | { kind: 'error'; error: Error }
-
 /**
- * Browsers that support image files in the Web Share API.
+ * Pick the richest Web Share payload a platform will actually accept for a
+ * rendered card. We prefer a payload that carries both the card image AND a
+ * tappable link back to the app (#794) so a recipient can convert in one tap
+ * instead of retyping the printed handle — but some platforms reject a
+ * files+url combo via `canShare`, so we degrade to image-only rather than
+ * drop the share entirely. Returns null when no payload is sharable (caller
+ * falls back to download).
+ *
  * iOS Safari 16.4+ and Android Chrome both report `canShare({ files })` as true.
  */
-function canWebShareFiles(files: File[]): boolean {
-  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return false
+function pickWebSharePayload(file: File): ShareData | null {
+  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return null
+  const withLink: ShareData = { files: [file], title: SHARE_TITLE, text: APP_TAGLINE, url: APP_URL }
+  const imageOnly: ShareData = { files: [file], title: SHARE_TITLE }
   try {
-    return navigator.canShare({ files })
+    if (navigator.canShare(withLink)) return withLink
+    if (navigator.canShare(imageOnly)) return imageOnly
   } catch {
-    return false
+    return null
   }
+  return null
 }
 
 /** Triggers a download via a temporary anchor element. Matches the dataExport.ts pattern. */
@@ -169,9 +181,23 @@ export interface UseWorkoutShareReturn {
 }
 
 export function useWorkoutShare(): UseWorkoutShareReturn {
-  const isSharing = ref(false)
-  const lastError = ref<Error | null>(null)
+  const { isSharing, lastError, run } = useShareFlow()
   const { logEvent } = useAnalytics()
+
+  /**
+   * Map a terminal share outcome onto the share funnel (#712). Success and
+   * download both count as completions; a caught render/share failure is a
+   * `share_failed`; a user cancel is deliberately silent.
+   */
+  function logOutcome(result: ShareResult, format: CardFormat, method: 'share' | 'save'): void {
+    if (result.kind === 'shared') {
+      logEvent('share_completed', { format, method, outcome: 'shared' })
+    } else if (result.kind === 'downloaded') {
+      logEvent('share_completed', { format, method, outcome: 'downloaded' })
+    } else if (result.kind === 'error') {
+      logEvent('share_failed', { format, method })
+    }
+  }
 
   /**
    * Render → share. Resolves with the outcome; never throws on user-cancel.
@@ -179,64 +205,52 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
    * { kind: 'error' } so the caller can surface a toast.
    */
   async function shareCard(req: ShareCardRequest): Promise<ShareResult> {
-    if (isSharing.value) return { kind: 'cancelled' }
-    isSharing.value = true
-    lastError.value = null
-    try {
-      const blob = await renderCardOffscreen(req)
-      const filename = defaultShareFilename(req.summary.rawDate, req.format)
-      const file = new File([blob], filename, { type: 'image/png' })
+    const result = await run([
+      async () => {
+        const blob = await renderCardOffscreen(req)
+        const filename = defaultShareFilename(req.summary.rawDate, req.format)
+        const file = new File([blob], filename, { type: 'image/png' })
 
-      // Capacitor native path needs `@capacitor/filesystem` to write the
-      // blob to disk so the iOS share plugin can attach the file URL.
-      // Until that's wired, sharing on a native build falls through to the
-      // Web Share API (works on the iOS Safari PWA which is the current
-      // install target) and then to download. Skipping the native sheet
-      // entirely is intentional — calling `CapacitorShare.share({ text })`
-      // alone would silently drop the rendered image, which is worse than
-      // surfacing the download.
-
-      if (canWebShareFiles([file])) {
-        try {
-          await navigator.share({ files: [file], title: 'Lift workout' })
-          logEvent('share_completed', { format: req.format, method: 'share', outcome: 'shared' })
-          return { kind: 'shared' }
-        } catch (err) {
-          // AbortError = user dismissed sheet. Anything else falls to download.
-          if ((err as DOMException).name === 'AbortError') return { kind: 'cancelled' }
+        // Capacitor native path needs `@capacitor/filesystem` to write the
+        // blob to disk so the iOS share plugin can attach the file URL.
+        // Until that's wired, sharing on a native build falls through to the
+        // Web Share API (works on the iOS Safari PWA which is the current
+        // install target) and then to download. Skipping the native sheet
+        // entirely is intentional — calling `CapacitorShare.share({ text })`
+        // alone would silently drop the rendered image, which is worse than
+        // surfacing the download. `pickWebSharePayload` prefers a payload that
+        // also carries a tappable app link (#794) and degrades to image-only.
+        const sharePayload = pickWebSharePayload(file)
+        if (sharePayload) {
+          try {
+            await navigator.share(sharePayload)
+            return { kind: 'shared' }
+          } catch (err) {
+            // Cancel = user dismissed sheet. Anything else falls to download.
+            if (isShareCancellation(err)) return { kind: 'cancelled' }
+          }
         }
-      }
 
-      downloadBlob(blob, filename)
-      logEvent('share_completed', { format: req.format, method: 'share', outcome: 'downloaded' })
-      return { kind: 'downloaded', filename }
-    } catch (err) {
-      lastError.value = err as Error
-      logEvent('share_failed', { format: req.format, method: 'share' })
-      return { kind: 'error', error: err as Error }
-    } finally {
-      isSharing.value = false
-    }
+        downloadBlob(blob, filename)
+        return { kind: 'downloaded', filename }
+      },
+    ])
+    logOutcome(result, req.format, 'share')
+    return result
   }
 
   /** Skip the share sheet and download directly. */
   async function downloadCard(req: ShareCardRequest): Promise<ShareResult> {
-    if (isSharing.value) return { kind: 'cancelled' }
-    isSharing.value = true
-    lastError.value = null
-    try {
-      const blob = await renderCardOffscreen(req)
-      const filename = defaultShareFilename(req.summary.rawDate, req.format)
-      downloadBlob(blob, filename)
-      logEvent('share_completed', { format: req.format, method: 'save', outcome: 'downloaded' })
-      return { kind: 'downloaded', filename }
-    } catch (err) {
-      lastError.value = err as Error
-      logEvent('share_failed', { format: req.format, method: 'save' })
-      return { kind: 'error', error: err as Error }
-    } finally {
-      isSharing.value = false
-    }
+    const result = await run([
+      async () => {
+        const blob = await renderCardOffscreen(req)
+        const filename = defaultShareFilename(req.summary.rawDate, req.format)
+        downloadBlob(blob, filename)
+        return { kind: 'downloaded', filename }
+      },
+    ])
+    logOutcome(result, req.format, 'save')
+    return result
   }
 
   return { shareCard, downloadCard, isSharing, lastError }

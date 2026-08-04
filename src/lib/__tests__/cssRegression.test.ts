@@ -200,6 +200,22 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.topBarCoachBtn AI Review entry (#972)', () => {
+    // The AI Review entry moved from a full-width Workouts card to a compact
+    // top-bar icon on the Calendar tab; it must inherit the shared 44px
+    // top-bar button sizing (.settingsGearBtn, .topBarPlusBtn, .topBarCoachBtn).
+    const lines = getRuleLines('.topBarCoachBtn')
+
+    it('meets the 44px iOS HIG touch target via the shared top-bar rule', () => {
+      expect(lines.some(l => l.startsWith('width') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('the removed Workouts entry card does not linger in the stylesheet', () => {
+      expect(css.includes('.wtCoachCard')).toBe(false)
+    })
+  })
+
   describe('Vue component touch target compliance', () => {
     // jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
     // cannot verify sizing in component tests. These CSS regression tests
@@ -286,6 +302,48 @@ describe('CSS regression tests', () => {
 
     it('.settingsPresetAdd has min-height: 44px', () => {
       const lines = getRuleLines('.settingsPresetAdd')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtTagPickerChip touch target (#990)', () => {
+    // Regression: the picker chips carried only `padding: 8px 16px` around
+    // 13px text, so they measured 33px tall (38px in rows containing the
+    // larger --font-body "+" add chip, which stretches its row) — well under
+    // the project's 44pt iOS floor. The class is shared by five pickers:
+    // WorkoutTracker's new-exercise Tags and Gym rows, and EditExerciseModal's
+    // Tags, Equipment and Gym rows, so the height must live on the shared rule
+    // rather than being patched per surface.
+    //
+    // Sized rather than padded out with a transparent ::before hit-area (the
+    // .logSetFieldClear approach): that trick suits an isolated control ringed
+    // by inert whitespace, but these chips tile in a wrapping 8px-gap row, so
+    // 44px overlays over 33px pills would tile edge-to-edge and a near-miss in
+    // the gutter would toggle the neighbouring chip instead of doing nothing.
+    it('.wtTagPickerChip has min-height: 44px for iOS HIG compliance', () => {
+      const lines = getRuleLines('.wtTagPickerChip')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    // The chip must carry the height itself: .wtTagPicker is a plain flex row,
+    // so a chip alone in its row has nothing to stretch against.
+    it('does not depend on a fixed height that would clip wrapped labels', () => {
+      const lines = getRuleLines('.wtTagPickerChip')
+      expect(lines.some(l => /^height:/.test(l))).toBe(false)
+    })
+
+    // The "+" chip is the narrowest in every picker; its 44pt width comes from
+    // min-width, not from a text label.
+    it('.wtTagAddChip keeps min-width: 44px so the "+" is a full target', () => {
+      const lines = getRuleLines('.wtTagAddChip')
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    // The inline add input replaces the "+" chip in the same row. With no tags
+    // or gyms configured it is the only item in that row, so flex stretch alone
+    // would leave it at its natural 33px.
+    it('.wtTagInlineInput matches the 44pt floor it swaps in for', () => {
+      const lines = getRuleLines('.wtTagInlineInput')
       expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
     })
   })
@@ -735,5 +793,41 @@ describe('CSS regression tests', () => {
       expect(prBlock.length, 'PRBurst reduced-transparency block not found').toBeGreaterThan(0)
       expect(prBlock).toContain('backdrop-filter: none')
     })
+  })
+})
+
+/**
+ * Regression: the type scale must stay anchored to rem, not fixed px, so text
+ * honors the user's preferred browser/OS text size and iOS Dynamic Type
+ * (WCAG 1.4.4 Resize Text, AA — LIFT-988). A fixed-px scale ignores text-only
+ * zoom, forcing low-vision users into full-page pinch-zoom + horizontal scroll.
+ */
+describe('type scale is rem-anchored (WCAG 1.4.4 — LIFT-988)', () => {
+  const fontTokens = [
+    '--font-caption2', '--font-caption1', '--font-footnote', '--font-subhead',
+    '--font-callout', '--font-body', '--font-headline', '--font-title3',
+    '--font-title2', '--font-title1', '--font-lg-title',
+    '--font-display-sm', '--font-display', '--font-display-lg',
+  ]
+
+  for (const token of fontTokens) {
+    it(`${token} is defined in rem, not px`, () => {
+      const decl = css.match(new RegExp(`${token}:\\s*([^;]+);`))
+      expect(decl, `${token} definition not found`).not.toBeNull()
+      const value = decl![1].trim()
+      expect(value, `${token} should be rem-based`).toMatch(/rem$/)
+      expect(value, `${token} must not use a fixed px size`).not.toMatch(/px/)
+    })
+  }
+
+  it('no font-size declaration in index.css uses a fixed px value', () => {
+    // Relative units (rem/em) scale with the user's text-size preference; px does not.
+    const pxFontSizes = css.match(/font-size:\s*[0-9.]+px/g)
+    expect(pxFontSizes, `found fixed-px font-size(s): ${pxFontSizes?.join(', ')}`).toBeNull()
+  })
+
+  it('does not pin the root font-size, so 1rem tracks the user preference', () => {
+    // A fixed `html { font-size: 16px }` would defeat rem-based scaling.
+    expect(css).not.toMatch(/\bhtml\s*\{[^}]*font-size:\s*\d+px/)
   })
 })

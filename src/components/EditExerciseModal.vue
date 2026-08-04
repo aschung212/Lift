@@ -44,6 +44,18 @@
             <button v-else class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startEditTagAdd" aria-label="Add tag">+</button>
           </div>
         </div>
+        <label class="repMaxLabel">
+          Notes
+          <textarea
+            v-model.trim="editNotes"
+            class="wtEditNotesInput"
+            rows="2"
+            :maxlength="MAX_EXERCISE_NOTES_LENGTH"
+            placeholder="Form cues, setup reminders…"
+            aria-label="Exercise notes"
+          ></textarea>
+          <span class="iosSettingsFooter">A durable cue shown on this exercise's detail screen — e.g. "brace before unrack, drive knees out".</span>
+        </label>
         <!-- Plate calculator settings (iOS grouped style) -->
         <div class="iosSettingsSection">
           <span class="iosSettingsHeader">Input Mode</span>
@@ -97,6 +109,27 @@
             </template>
           </div>
         </div>
+        <!-- Bodyweight-loaded (LIFT-834): fold the lifter's bodyweight into the
+             load for calisthenic lifts (pull-ups, dips). The weight field then
+             means ADDED weight, and bodyweight is counted toward volume + e1RM. -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Load</span>
+          <div class="iosSettingsGroup">
+            <div class="iosSettingsRow">
+              <span class="iosSettingsRowLabel">Bodyweight-loaded</span>
+              <button
+                class="iosToggle"
+                :class="{ iosToggleOn: editBodyweightLoaded }"
+                role="switch"
+                :aria-checked="editBodyweightLoaded"
+                @click="editBodyweightLoaded = !editBodyweightLoaded"
+              >
+                <span class="iosToggleKnob"></span>
+              </button>
+            </div>
+          </div>
+          <span class="iosSettingsFooter">For pull-ups, dips, and other calisthenics: adds your tracked bodyweight to each set's load, so the weight you enter is the ADDED weight and pure-bodyweight reps still count toward volume and e1RM.</span>
+        </div>
         <!-- Intensity lens (#770): how many rep rows the PR-anchored intensity
              table calculates when logging this exercise. Default (10) stores
              nothing; any other value is a per-exercise override. -->
@@ -118,6 +151,61 @@
             @click="resetIntensityMaxReps"
           >Reset to default</button>
           <span class="iosSettingsFooter">How many rep counts (1–{{ editIntensityMaxReps }}) the Intensity table calculates when you log this exercise — from warmups up to PR-beating loads at 100%.</span>
+        </div>
+        <!-- Coach equipment classification (#931 phase C): explicit kind for the
+             AI Coach's strength analytics. "Auto" stores nothing and shows what
+             the name heuristic resolves to. -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Equipment</span>
+          <div class="wtTagPicker" role="radiogroup" aria-label="Equipment type">
+            <button
+              v-for="opt in EQUIPMENT_OPTIONS"
+              :key="opt.value ?? 'auto'"
+              role="radio"
+              :aria-checked="editEquipment === opt.value"
+              :class="['wtTagPickerChip', { wtTagPickerChipActive: editEquipment === opt.value }]"
+              :style="editEquipment !== opt.value
+                ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
+                : {}"
+              @click="editEquipment = opt.value"
+            >{{ opt.value === null ? `Auto (${autoEquipmentLabel})` : opt.label }}</button>
+          </div>
+          <span class="iosSettingsFooter">Used by Coach analytics: free-weight lifts anchor strength comparisons; machine and bodyweight numbers are flagged as not standards-comparable.</span>
+        </div>
+        <!-- Gym membership (#961): which gyms this exercise is available at.
+             Always rendered — the inline "+" mirrors the tag add flow and is a
+             first-gym creation path, so Settings isn't the only zero-state
+             entry point (#963 feedback). -->
+        <div class="iosSettingsSection">
+          <span class="iosSettingsHeader">Gym</span>
+          <div class="wtTagPicker" role="group" aria-label="Gym membership">
+            <button
+              v-for="gym in allGyms"
+              :key="gym"
+              :aria-pressed="editGyms.includes(gym)"
+              :class="['wtTagPickerChip', { wtTagPickerChipActive: editGyms.includes(gym) }]"
+              :style="!editGyms.includes(gym)
+                ? { borderColor: 'var(--border-strong)', color: 'var(--text-secondary)' }
+                : {}"
+              @click="toggleEditGym(gym)"
+            >{{ gym }}</button>
+            <span v-if="editGymAdding" class="wtTagInlineAdd">
+              <input
+                v-model.trim="newGymInput"
+                type="text"
+                autocomplete="off"
+                placeholder="Gym name"
+                :maxlength="GYM_NAME_MAX_LENGTH"
+                class="wtTagInlineInput"
+                aria-label="New gym name"
+                ref="editGymInputEl"
+                @keyup.enter="addEditGym"
+                @blur="finishEditGymAdd"
+              />
+            </span>
+            <button v-else-if="allGyms.length < MAX_GYMS" class="wtTagPickerChip wtTagAddChip" @mousedown.prevent @click="startEditGymAdd" aria-label="Add gym">+</button>
+          </div>
+          <span class="iosSettingsFooter">Shown when filtering the exercise list by gym. Leave empty to show this exercise at every gym.</span>
         </div>
         <div class="repMaxActions">
           <button class="repMaxBtn repMaxBtnCalc" :disabled="!editName" @click="confirmSave">Save</button>
@@ -154,6 +242,7 @@
 
 <script lang="ts">
 import type { PlateCountMode } from '../stores/workout'
+import type { ExerciseEquipment } from '../lib/coachAnalytics'
 
 /** Payload emitted on Save — the parent applies it to the store. */
 export interface EditExerciseSave {
@@ -164,6 +253,14 @@ export interface EditExerciseSave {
   barWeight: number
   /** Intensity-table rep-row count; null = use the default (10). */
   intensityMaxReps: number | null
+  /** Coach equipment classification; null = Auto (name heuristic). */
+  equipment: ExerciseEquipment | null
+  /** Gym membership (#961); [] = unassigned (shows under every gym filter). */
+  gyms: string[]
+  /** Durable per-exercise note (#619); '' = no note (clears the field). */
+  notes: string
+  /** Fold the lifter's bodyweight into load for volume + e1RM (LIFT-834). */
+  bodyweightLoaded: boolean
 }
 </script>
 
@@ -173,24 +270,30 @@ import type { Exercise } from '../stores/workout'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
-import { MAX_WEIGHT } from '../lib/inputLimits'
+import { MAX_WEIGHT, MAX_EXERCISE_NOTES_LENGTH } from '../lib/inputLimits'
 import {
   DEFAULT_INTENSITY_MAX_REPS,
   MIN_INTENSITY_MAX_REPS,
   MAX_INTENSITY_MAX_REPS,
   sanitizeIntensityMaxReps,
 } from '../lib/intensityTable'
+import { classifyExercise } from '../lib/coachAnalytics'
+import { MAX_GYMS, GYM_NAME_MAX_LENGTH, sanitizeGymName } from '../lib/gyms'
 
 const props = defineProps<{
   /** Exercise being edited; null renders nothing (modal closed). */
   exercise: Exercise | null
   /** All known tags, for the tag picker chips. */
   allTags: string[]
+  /** The synced gym list (#961); the section renders even when empty — the inline "+" creates the first gym. */
+  allGyms: string[]
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'save', payload: EditExerciseSave): void
+  /** Inline gym creation (#963) — parent routes this to useGymActions.createGym immediately. */
+  (e: 'create-gym', name: string): void
   (e: 'archive'): void
   (e: 'unarchive'): void
   (e: 'delete'): void
@@ -209,6 +312,14 @@ const editBarWeightEditing = ref(false)
 const editBarWeightInputEl = ref<HTMLInputElement | null>(null)
 const confirmDeleteExercise = ref(false)
 
+// ── Durable per-exercise note (#619) ────────────────────────────
+// A free-form cue ("brace before unrack") surfaced on the detail screen.
+const editNotes = ref('')
+
+// Bodyweight-loaded (LIFT-834): whether this exercise folds the lifter's
+// bodyweight into its load for volume + e1RM.
+const editBodyweightLoaded = ref(false)
+
 // ── Intensity lens config (#770) ────────────────────────────────
 // How many rep rows (1..N) the PR-anchored intensity table calculates when
 // logging this exercise. Default 10; a per-exercise override clamps to [1, 100].
@@ -222,6 +333,74 @@ function resetIntensityMaxReps() {
   editIntensityMaxReps.value = DEFAULT_INTENSITY_MAX_REPS
 }
 
+// ── Coach equipment classification (#931 phase C) ───────────────
+// null = "Auto" (store nothing; the name heuristic classifies). The Auto chip
+// shows what the heuristic currently resolves to so the user can see whether
+// it's already right before overriding.
+const EQUIPMENT_OPTIONS: ReadonlyArray<{ value: ExerciseEquipment | null; label: string }> = [
+  { value: null, label: 'Auto' },
+  { value: 'free_weight', label: 'Free weight' },
+  { value: 'machine', label: 'Machine' },
+  { value: 'bodyweight', label: 'Bodyweight' },
+]
+const editEquipment = ref<ExerciseEquipment | null>(null)
+
+// ── Gym membership (#961) ───────────────────────────────────────
+// Multi-select over the synced gym list; empty = unassigned (everywhere).
+const editGyms = ref<string[]>([])
+
+// Inline gym creation (#963): mirrors the tag inline-add flow above. A new
+// name is created in the synced list immediately (the parent routes the emit
+// to useGymActions.createGym, same as the manager modal) and selected
+// locally; membership itself still applies on Save. `sanitizeGymName` here
+// matches what preferences.addGym will store, so the local selection and the
+// list entry can't diverge.
+const editGymInputEl = ref<HTMLInputElement | null>(null)
+const editGymAdding = ref(false)
+const newGymInput = ref('')
+
+function startEditGymAdd() {
+  editGymAdding.value = true
+  nextTick(() => editGymInputEl.value?.focus())
+}
+
+function commitNewGym() {
+  const name = sanitizeGymName(newGymInput.value)
+  newGymInput.value = ''
+  if (!name) return
+  if (!props.allGyms.includes(name)) {
+    if (props.allGyms.length >= MAX_GYMS) return
+    emit('create-gym', name)
+  }
+  if (!editGyms.value.includes(name)) editGyms.value.push(name)
+}
+
+function addEditGym() {
+  commitNewGym()
+  nextTick(() => editGymInputEl.value?.focus())
+}
+
+function finishEditGymAdd() {
+  commitNewGym()
+  editGymAdding.value = false
+}
+
+function toggleEditGym(gym: string) {
+  if (editGyms.value.includes(gym)) {
+    editGyms.value = editGyms.value.filter(g => g !== gym)
+  } else {
+    editGyms.value.push(gym)
+  }
+}
+
+const AUTO_LABELS: Record<string, string> = {
+  free_weight: 'free weight',
+  machine: 'machine',
+  bodyweight: 'bodyweight',
+  unknown: 'unclassified',
+}
+const autoEquipmentLabel = computed(() => AUTO_LABELS[classifyExercise(editName.value)] ?? 'unclassified')
+
 const isArchived = computed(() => !!props.exercise?.archived_at)
 
 const focusTrap = useFocusTrap()
@@ -234,8 +413,14 @@ watch(() => props.exercise, async (exercise) => {
     editPlateCountMode.value = exercise.plateCountMode || 'per-side'
     editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
+    editEquipment.value = exercise.equipment ?? null
+    editGyms.value = [...(exercise.gyms || [])]
+    editNotes.value = exercise.notes || ''
+    editBodyweightLoaded.value = exercise.bodyweightLoaded ?? false
     newTagInput.value = ''
     editTagAdding.value = false
+    newGymInput.value = ''
+    editGymAdding.value = false
     confirmDeleteExercise.value = false
     await nextTick()
     const el = document.querySelector<HTMLElement>('[aria-labelledby="edit-exercise-title"]')
@@ -297,6 +482,8 @@ function confirmSave() {
   if (pendingTag && !editTags.value.includes(pendingTag)) {
     editTags.value.push(pendingTag)
   }
+  // Auto-commit any pending gym text the same way (#963)
+  commitNewGym()
   // Store nothing when the rep count matches the default (keeps the override
   // clear); otherwise persist the per-exercise value.
   emit('save', {
@@ -306,6 +493,10 @@ function confirmSave() {
     plateCountMode: editPlateCountMode.value,
     barWeight: editBarWeight.value,
     intensityMaxReps: editIntensityMaxReps.value === DEFAULT_INTENSITY_MAX_REPS ? null : editIntensityMaxReps.value,
+    equipment: editEquipment.value,
+    gyms: [...editGyms.value],
+    notes: editNotes.value,
+    bodyweightLoaded: editBodyweightLoaded.value,
   })
 }
 </script>

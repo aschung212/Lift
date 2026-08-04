@@ -74,7 +74,13 @@ import { useFocusTrap } from '../composables/useFocusTrap'
 const props = defineProps<{
   open: boolean
   allTags: string[]
-  /** All exercises (including archived) — drives per-tag counts and the membership list. */
+  /**
+   * All exercises (including archived) — drives per-tag counts and the
+   * membership list. Hosts must bind a FRESH-IDENTITY array (e.g.
+   * `computed(() => [...store.exercises])`): the workout store mutates
+   * exercises in place behind a shallowRef, and a stable array identity lets
+   * Vue skip this modal's re-render on membership toggles (#963).
+   */
   exercises: Exercise[]
 }>()
 
