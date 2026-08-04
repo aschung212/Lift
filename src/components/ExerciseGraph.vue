@@ -149,6 +149,7 @@ import { usePRBaseline } from '../composables/usePRBaseline'
 import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
 import { useChartScrubber } from '../composables/useChartScrubber'
 import type { Exercise } from '../stores/workout'
+import { effectiveSetWeight } from '../lib/bodyweightLoad'
 
 const { weightUnit, displayWeight } = useWeightUnit()
 const { prBaselineDate } = usePRBaseline()
@@ -229,19 +230,24 @@ function rangeAriaLabel(p: RangeOption): string {
 // e1RM/weight take the best (max) of the day; volume/reps sum the day's sets.
 // Filters to sets on/after the PR baseline when set — keeps the graph aligned
 // with the user's current training block view.
+// Weight/volume use the bodyweight-inclusive effective load (LIFT-834) so a
+// bodyweight-loaded lift (weighted pull-ups) charts consistently with its e1RM
+// metric — which already stores the folded load — instead of only the added
+// plate weight. effectiveSetWeight is exactly `s.weight` for normal exercises.
 const dailyBest = computed((): [string, number][] => {
   const byDate: Record<string, number> = {}
   const baseline = prBaselineDate.value
   const m = metric.value
-  for (const s of props.exercise.sets) {
+  const ex = props.exercise
+  for (const s of ex.sets) {
     const day = s.date.slice(0, 10) // YYYY-MM-DD
     if (baseline && day < baseline) continue
     if (m === 'volume') {
-      byDate[day] = (byDate[day] ?? 0) + s.weight * s.reps
+      byDate[day] = (byDate[day] ?? 0) + effectiveSetWeight(s, ex) * s.reps
     } else if (m === 'reps') {
       byDate[day] = (byDate[day] ?? 0) + s.reps
     } else {
-      const v = m === 'weight' ? s.weight : s.estimated1RM
+      const v = m === 'weight' ? effectiveSetWeight(s, ex) : s.estimated1RM
       if (byDate[day] === undefined || v > byDate[day]) byDate[day] = v
     }
   }

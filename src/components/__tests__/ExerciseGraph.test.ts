@@ -356,6 +356,36 @@ describe('ExerciseGraph', () => {
       expect(btns[1].attributes('aria-pressed')).toBe('false')
       expect(btns[0].attributes('aria-label')).toBe('Show e1RM')
     })
+
+    // Regression: the Weight and Volume metrics must use the bodyweight-inclusive
+    // effective load (LIFT-834) so a bodyweight-loaded lift charts consistently
+    // with its e1RM metric (which already stores the folded load) rather than only
+    // the added plate weight. The shipped metric switcher (#1042) aggregated raw
+    // set.weight; this reconciles it with bodyweight-loading.
+    it('folds captured bodyweight into the Weight and Volume metrics', async () => {
+      // Weighted pull-up: +25 added over a 180 lb bodyweight snapshot → 205 effective.
+      const bwExercise: Exercise = {
+        id: 'ex-bw',
+        name: 'Weighted Pull-up',
+        tags: [],
+        bodyweightLoaded: true,
+        sets: [
+          { id: 'bw1', weight: 25, reps: 5, date: '2026-01-01T10:00:00', estimated1RM: 205 * (1 + 5 / 30), bodyweight: 180 },
+          { id: 'bw2', weight: 25, reps: 8, date: '2026-01-15T10:00:00', estimated1RM: 205 * (1 + 8 / 30), bodyweight: 180 },
+        ],
+      }
+      const wrapper = mount(ExerciseGraph, { props: { exercise: bwExercise } })
+
+      // Weight: max effective load is 205 (folded), not the bare added 25.
+      await wrapper.findAll('.exGraphMetricRow .bwPeriodBtn')[1].trigger('click')
+      const weightTop = wrapper.findAll('.wtGYLabel')[0].text()
+      expect(weightTop).toContain('205')
+      expect(weightTop).not.toContain('25 ') // would read "25 lbs" without the fold
+
+      // Volume: top day is 205 × 8 = 1640 (folded), not the bare 25 × 8 = 200.
+      await wrapper.findAll('.exGraphMetricRow .bwPeriodBtn')[2].trigger('click')
+      expect(wrapper.findAll('.wtGYLabel')[0].text()).toContain('1640')
+    })
   })
 
   describe('same-day best aggregation', () => {
