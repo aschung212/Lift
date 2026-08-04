@@ -728,7 +728,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, type ComponentPublicInstance } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
@@ -924,8 +924,49 @@ function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
   }
 }
 
+/**
+ * Duration of `sheetSlideDown` in index.css. The fallback below waits a little
+ * longer than the animation so the event wins the race under normal conditions.
+ */
+const CLOSE_ANIM_MS = 150
+
+let closing = false
+let closeFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Commit the close exactly once, whatever settled it. */
+function settleClose() {
+  if (closeFallbackTimer) { clearTimeout(closeFallbackTimer); closeFallbackTimer = null }
+  closing = false
+  emit('update:modelValue', false)
+}
+
+/**
+ * Close the sheet. The slide-down animation is decoration — it must never be
+ * the thing that owns `modelValue`.
+ *
+ * This previously emitted the close from a bare one-shot `animationend`
+ * listener, so the app's `settingsOpen` flag only cleared if that event
+ * actually arrived. When it didn't — background the PWA mid-close and iOS
+ * freezes animations on a hidden page, so `sheetSlideDown` never completes —
+ * the emit never fired and `settingsOpen` stayed `true` forever with the sheet
+ * parked off-screen by `animation-fill-mode: forwards`. Nothing could recover
+ * it: the gear button reads `settingsOpen ? closeSettings() : (settingsOpen =
+ * true)`, so it could only ever re-enter this function, and `classList.add` of
+ * an already-present class does NOT restart a CSS animation — no further
+ * `animationend` was ever coming. Settings then refused to open until a full
+ * app reload, which is exactly how the bug was reported.
+ *
+ * Three guarantees now:
+ *  1. `closing` makes the close idempotent — one animation, one settle.
+ *  2. `animationend` bubbles, so the handler matches on this element and this
+ *     animation; a descendant's animation ending can no longer close the sheet
+ *     out from under the user.
+ *  3. A fallback timer settles the close even if the event never lands. CSS
+ *     still drives the motion — the timer only guarantees the state change,
+ *     the same safety net Vue's own <Transition> keeps.
+ */
 function closeSettings() {
-  if (!props.modelValue) return
+  if (!props.modelValue || closing) return
   // Revert any active theme preview
   if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
   if (previewingThemeId.value) {
@@ -933,12 +974,24 @@ function closeSettings() {
     revertPreview()
   }
   const el = settingsEl.value
-  if (!el) { emit('update:modelValue', false); return }
+  if (!el) { settleClose(); return }
+  closing = true
   el.classList.add('settingsSheetClosing')
-  el.addEventListener('animationend', () => {
-    emit('update:modelValue', false)
-  }, { once: true })
+  const onAnimationEnd = (e: AnimationEvent) => {
+    if (e.target !== el || e.animationName !== 'sheetSlideDown') return
+    el.removeEventListener('animationend', onAnimationEnd)
+    settleClose()
+  }
+  el.addEventListener('animationend', onAnimationEnd)
+  closeFallbackTimer = setTimeout(() => {
+    el.removeEventListener('animationend', onAnimationEnd)
+    settleClose()
+  }, CLOSE_ANIM_MS + 100)
 }
+
+onUnmounted(() => {
+  if (closeFallbackTimer) { clearTimeout(closeFallbackTimer); closeFallbackTimer = null }
+})
 
 defineExpose({ closeSettings })
 
