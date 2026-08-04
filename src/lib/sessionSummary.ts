@@ -10,6 +10,7 @@
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
 import { toLocalDateKey, localDateKey } from './dates'
+import { effectiveSetWeight } from './bodyweightLoad'
 
 export interface SessionHighlight {
   exerciseId: string
@@ -161,7 +162,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
 
     for (const s of sets) {
       setsCompleted++
-      const vol = s.weight * s.reps
+      const vol = effectiveSetWeight(s, ex) * s.reps
       totalVolume += vol
       exVolume += vol
       if (s.estimated1RM > bestE1RM) {
@@ -243,10 +244,11 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
   for (const ex of exercises) {
     for (const s of ex.sets) {
       const k = toLocalDateKey(s.date)
+      const vol = effectiveSetWeight(s, ex) * s.reps
       if (weekVolumeMap.has(k)) {
-        weekVolumeMap.set(k, weekVolumeMap.get(k)! + s.weight * s.reps)
+        weekVolumeMap.set(k, weekVolumeMap.get(k)! + vol)
       } else if (priorWeekSet.has(k)) {
-        priorWeekTotal += s.weight * s.reps
+        priorWeekTotal += vol
       }
     }
   }
