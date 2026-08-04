@@ -590,15 +590,17 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          # Include the Playwright config in the key so changing the browser
+          # set (e.g. adding webkit) busts the cache and reinstalls binaries.
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json', 'playwright.config.ts') }}
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Install Playwright system deps (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: npx playwright install-deps chromium webkit
 
       - name: Build app
         run: npm run build
