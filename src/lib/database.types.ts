@@ -79,6 +79,7 @@ export type Database = {
           input_mode: string
           intensity_max_reps: number | null
           name: string
+          notes: string | null
           plate_count_mode: string | null
           plate_loaded: boolean
           tags: string[]
@@ -98,6 +99,7 @@ export type Database = {
           input_mode?: string
           intensity_max_reps?: number | null
           name: string
+          notes?: string | null
           plate_count_mode?: string | null
           plate_loaded?: boolean
           tags?: string[]
@@ -117,6 +119,7 @@ export type Database = {
           input_mode?: string
           intensity_max_reps?: number | null
           name?: string
+          notes?: string | null
           plate_count_mode?: string | null
           plate_loaded?: boolean
           tags?: string[]
