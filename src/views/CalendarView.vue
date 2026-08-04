@@ -445,16 +445,26 @@ function goToToday() {
 
 function prev() {
   const d = new Date(cursor.value)
-  if (view.value === 'month') d.setMonth(d.getMonth() - 1)
-  else d.setDate(d.getDate() - 7)
+  // Set day to 1 before shifting months so a 31st never overflows into the
+  // wrong month (e.g. June 31 → July 1 would leave the month unchanged).
+  if (view.value === 'month') {
+    d.setDate(1)
+    d.setMonth(d.getMonth() - 1)
+  } else {
+    d.setDate(d.getDate() - 7)
+  }
   cursor.value = d
   selectedDay.value = null
 }
 
 function next() {
   const d = new Date(cursor.value)
-  if (view.value === 'month') d.setMonth(d.getMonth() + 1)
-  else d.setDate(d.getDate() + 7)
+  if (view.value === 'month') {
+    d.setDate(1)
+    d.setMonth(d.getMonth() + 1)
+  } else {
+    d.setDate(d.getDate() + 7)
+  }
   cursor.value = d
   selectedDay.value = null
 }
