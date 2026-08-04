@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ref, reactive } from 'vue'
 import { mount, VueWrapper } from '@vue/test-utils'
 
@@ -438,6 +438,109 @@ describe('SettingsSheet', () => {
       await wrapper.find('.settingsDeleteAccount').trigger('click')
       expect(wrapper.find('.deleteConfirmSheet').exists()).toBe(true)
       expect(mockLogEvent).toHaveBeenCalledWith('delete_account_opened')
+    })
+  })
+
+  // ── Close path ───────────────────────────────────────────────────
+  // Regression: closeSettings() used to emit the close from a bare one-shot
+  // `animationend` listener, so `modelValue` only cleared if that event
+  // arrived. Background the PWA mid-close (iOS freezes animations on a hidden
+  // page) and it never did — App's `settingsOpen` stayed true with the sheet
+  // parked off-screen by `animation-fill-mode: forwards`, and the gear button
+  // (`settingsOpen ? closeSettings() : (settingsOpen = true)`) could only ever
+  // re-enter closeSettings(). Re-adding an already-present class does not
+  // restart a CSS animation, so no further event was coming: settings refused
+  // to open until a full reload.
+  //
+  // These were never caught because the only close assertion in this suite went
+  // through the sign-out path, which emits synchronously — and jsdom never
+  // dispatches `animationend` on its own, so an animation-gated state change is
+  // invisible to the suite by construction. Each test below drives that event
+  // explicitly (or withholds it) to pin the contract.
+  describe('closing', () => {
+    /** jsdom's AnimationEvent support is patchy — build the event by hand. */
+    function animationEnd(animationName: string): Event {
+      const e = new Event('animationend', { bubbles: true })
+      Object.defineProperty(e, 'animationName', { value: animationName })
+      return e
+    }
+    const close = (wrapper: VueWrapper) =>
+      (wrapper.vm as unknown as { closeSettings: () => void }).closeSettings()
+    const closeEmits = (wrapper: VueWrapper) =>
+      (wrapper.emitted('update:modelValue') ?? []).filter(e => e[0] === false)
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('still closes when animationend never fires', () => {
+      vi.useFakeTimers()
+      const wrapper = mountSheet()
+      close(wrapper)
+      // The animation is never allowed to complete — the sheet must not be
+      // able to strand the app in a permanently-open state.
+      expect(closeEmits(wrapper)).toHaveLength(0)
+      vi.advanceTimersByTime(250)
+      expect(closeEmits(wrapper)).toHaveLength(1)
+    })
+
+    it('closes as soon as the slide-down animation ends, and only once', () => {
+      vi.useFakeTimers()
+      const wrapper = mountSheet()
+      const sheet = wrapper.find('.settingsSheet').element
+      close(wrapper)
+      expect(sheet.classList.contains('settingsSheetClosing')).toBe(true)
+
+      sheet.dispatchEvent(animationEnd('sheetSlideDown'))
+      expect(closeEmits(wrapper)).toHaveLength(1)
+
+      // The fallback timer must not fire a second close behind the event.
+      vi.advanceTimersByTime(500)
+      expect(closeEmits(wrapper)).toHaveLength(1)
+    })
+
+    it('ignores animationend bubbling up from a descendant', () => {
+      vi.useFakeTimers()
+      const wrapper = mountSheet()
+      const sheet = wrapper.find('.settingsSheet').element
+      close(wrapper)
+
+      // `animationend` bubbles: any animated descendant inside the sheet would
+      // otherwise satisfy the one-shot listener and close it out from under the
+      // user, mid slide-down.
+      const descendant = sheet.querySelector('.settingsScrollBody')!
+      descendant.dispatchEvent(animationEnd('sheetSlideDown'))
+      expect(closeEmits(wrapper)).toHaveLength(0)
+
+      // A different animation on the sheet itself is likewise not our cue.
+      sheet.dispatchEvent(animationEnd('sheetSlideUp'))
+      expect(closeEmits(wrapper)).toHaveLength(0)
+
+      sheet.dispatchEvent(animationEnd('sheetSlideDown'))
+      expect(closeEmits(wrapper)).toHaveLength(1)
+    })
+
+    it('is idempotent while a close is already in flight', () => {
+      vi.useFakeTimers()
+      const wrapper = mountSheet()
+      const sheet = wrapper.find('.settingsSheet').element
+      // Tapping the gear repeatedly during the 150ms animation must not queue
+      // extra closes — `classList.add` of a present class does not restart the
+      // animation, so re-registering listeners would strand them.
+      close(wrapper)
+      close(wrapper)
+      close(wrapper)
+      sheet.dispatchEvent(animationEnd('sheetSlideDown'))
+      vi.advanceTimersByTime(500)
+      expect(closeEmits(wrapper)).toHaveLength(1)
+    })
+
+    it('closes immediately when the sheet element was never captured', () => {
+      const wrapper = mountSheet(false)
+      // modelValue false → no sheet element, so there is nothing to animate.
+      // (Guarded early-return; the close is a no-op rather than a strand.)
+      close(wrapper)
+      expect(closeEmits(wrapper)).toHaveLength(0)
     })
   })
 })

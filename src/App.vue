@@ -435,7 +435,16 @@ const {
 } = useOnboarding({ workoutStore, bodyweightStore })
 
 function closeSettings() {
-  settingsSheetRef.value?.closeSettings()
+  const sheet = settingsSheetRef.value
+  // The sheet runs its own exit animation before emitting the close — but it can
+  // only do that if it actually mounted. SettingsSheet is an async component, so
+  // the ref is still null while its chunk is in flight and stays null forever if
+  // that chunk fails to resolve (offline, or a stale hash after a deploy). The
+  // bare `?.` here meant `settingsOpen` stayed true with nothing rendered, and
+  // since the gear reads `settingsOpen ? closeSettings() : (settingsOpen = true)`
+  // it could never reach the open branch again — settings was dead until reload.
+  if (sheet) sheet.closeSettings()
+  else settingsOpen.value = false
 }
 
 // ── Sign out handler (from SettingsSheet) ────────────────────────
