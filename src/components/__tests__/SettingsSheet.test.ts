@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ref, reactive, defineComponent } from 'vue'
+import { ref, reactive, defineComponent, nextTick } from 'vue'
 import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
 import { useModal } from '../../composables/useModal'
+import { mockIntersectionObservers } from '../../__tests__/setup'
+
+// The Support-group visibility observer (LIFT-906) is the most-recently armed
+// IntersectionObserver; grab it to fire an intersection deliberately.
+function lastIntersectionObserver() {
+  const observer = mockIntersectionObservers.at(-1)
+  if (!observer) throw new Error('no IntersectionObserver was armed')
+  return observer
+}
 
 // Unmount every wrapper after each test. The sheet now holds a background-
 // scroll lock while open, and useModal's reference count is module state
@@ -23,10 +32,10 @@ const mockSupportFunnel = vi.fn()
 vi.mock('../../composables/useAnalytics', () => ({
   useAnalytics: () => ({
     logEvent: mockLogEvent,
-    // The supporter-funnel impression (LIFT-906) fires on open. It was absent
-    // from this mock and nothing noticed, because the open branch was gated on
-    // a false→true prop transition that never happens — App.vue mounts the
-    // sheet with `v-if="settingsOpen"` (#955), so it arrives already-open.
+    // The supporter-funnel impression (LIFT-906) fires when the Support group
+    // actually scrolls into view (via IntersectionObserver), not on open — so
+    // tap/impression stays a meaningful conversion rate rather than counting
+    // every Settings open, where the Support group (12th of 14) is unseen.
     supportFunnel: mockSupportFunnel,
     tabSwitch: vi.fn(),
     flushEngagement: vi.fn(),
@@ -562,19 +571,40 @@ describe('SettingsSheet', () => {
   })
 
   describe('supporter funnel (LIFT-906)', () => {
-    it('logs one impression when the sheet is mounted open', () => {
-      // App.vue mounts the sheet with `v-if="settingsOpen"` (#955), so it is
-      // already open on mount. The impression used to hang off a non-immediate
-      // false→true prop watch, which that mounting pattern never triggers — so
-      // no impression was ever recorded on the only path that opens the sheet.
+    it('does not log an impression until the Support group scrolls into view', async () => {
+      // App.vue mounts the sheet already-open (#955), but the Support group is
+      // 12th of 14 groups — firing on open counted a mostly-unseen CTA. The
+      // impression must wait for the group to actually enter the viewport.
       mountSheet(true)
+      await nextTick()
+      expect(mockSupportFunnel).not.toHaveBeenCalled()
+
+      // The visibility observer for the Support group is the latest one armed.
+      lastIntersectionObserver().trigger(true)
       expect(mockSupportFunnel).toHaveBeenCalledWith('impression')
       expect(mockSupportFunnel).toHaveBeenCalledTimes(1)
     })
 
-    it('logs no impression when mounted closed', () => {
+    it('logs the impression only once even if the group re-enters view', async () => {
+      mountSheet(true)
+      await nextTick()
+      const observer = lastIntersectionObserver()
+      observer.trigger(true)
+      observer.trigger(true) // scrolled away and back within the same open
+      expect(mockSupportFunnel).toHaveBeenCalledTimes(1)
+    })
+
+    it('logs no impression when mounted closed', async () => {
       mountSheet(false)
+      await nextTick()
+      expect(mockIntersectionObservers).toHaveLength(0)
       expect(mockSupportFunnel).not.toHaveBeenCalled()
+    })
+
+    it('taps still report the CTA regardless of the impression gate', () => {
+      const wrapper = mountSheet(true)
+      wrapper.find('a[href="https://github.com/sponsors/aschung212"]').trigger('click')
+      expect(mockSupportFunnel).toHaveBeenCalledWith('tap', { cta: 'github_sponsors' })
     })
   })
 

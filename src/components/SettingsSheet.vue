@@ -545,7 +545,7 @@
         </div>
 
 
-        <div class="settingsGroup">
+        <div ref="supportGroupEl" class="settingsGroup">
           <div class="settingsHeader">Support</div>
           <button class="settingsRow settingsRowBtn" :disabled="appShareInFlight" @click="shareLift">
             <span class="settingsLabel">
@@ -837,11 +837,47 @@ async function shareLift() {
 
 // ── Supporter conversion funnel (LIFT-906) ─────────────────────
 // Instrument the Support-group CTAs so tip-jar vs. subscription can be a
-// data-driven decision before any IAP is wired. Impression fires once per
-// settings-open (proxy for "the Support group was reachable"); taps fire on
-// each external CTA. The default navigation is left untouched.
+// data-driven decision before any IAP is wired. Taps fire on each external
+// CTA; the default navigation is left untouched.
 function onSupportTap(cta: 'github_sponsors' | 'buymeacoffee') {
   supportFunnel('tap', { cta })
+}
+
+// The impression is the TOP of the funnel, so it must mean "the user actually
+// saw the Support CTAs" — not merely "opened Settings". The Support group is
+// the 12th of 14 groups, near the bottom of a long scroll, so firing on open
+// counted a mostly-unseen CTA and made tap/impression conversion meaningless.
+// Fire it once per settings-open, only when the group scrolls into view.
+const supportGroupEl = ref<HTMLElement | null>(null)
+let supportObserver: IntersectionObserver | null = null
+let impressionLogged = false
+
+function armSupportImpression() {
+  if (impressionLogged) return
+  const el = supportGroupEl.value
+  if (!el) return
+  // Platforms without IntersectionObserver (should not happen on iOS 12.2+ /
+  // modern Chromium) fall back to the old open-time proxy so the funnel top is
+  // never silently empty.
+  if (typeof IntersectionObserver === 'undefined') {
+    impressionLogged = true
+    supportFunnel('impression')
+    return
+  }
+  supportObserver = new IntersectionObserver((entries) => {
+    if (impressionLogged) return
+    if (entries.some((e) => e.isIntersecting)) {
+      impressionLogged = true
+      supportFunnel('impression')
+      disarmSupportImpression()
+    }
+  })
+  supportObserver.observe(el)
+}
+
+function disarmSupportImpression() {
+  supportObserver?.disconnect()
+  supportObserver = null
 }
 
 // ── App icon picker (native iOS only) ──────────────────────────
@@ -925,12 +961,15 @@ const confirmFocus = useFocusTrap()
 watch(() => props.modelValue, (open) => {
   if (open) {
     settingsModal.open()
-    // Top of the supporter funnel (LIFT-906): the Support group renders with
-    // the sheet, so an open is one impression opportunity for its CTAs.
-    supportFunnel('impression')
+    // Top of the supporter funnel (LIFT-906): arm a visibility observer so the
+    // impression fires only once the Support group actually scrolls into view,
+    // not merely because Settings opened. nextTick so the ref is populated.
+    nextTick(armSupportImpression)
   } else {
     settingsModal.close()
     settingsSwipe.detach()
+    disarmSupportImpression()
+    impressionLogged = false
   }
 }, { immediate: true })
 
@@ -1012,6 +1051,7 @@ function closeSettings() {
 
 onUnmounted(() => {
   if (closeFallbackTimer) { clearTimeout(closeFallbackTimer); closeFallbackTimer = null }
+  disarmSupportImpression()
 })
 
 defineExpose({ closeSettings })
