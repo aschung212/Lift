@@ -217,6 +217,44 @@ describe('useAuth', () => {
     })
   })
 
+  describe('guest mode (LIFT-1083)', () => {
+    it('continueAsGuest sets a local user without initializing stores/Supabase', async () => {
+      const { continueAsGuest, user, isGuest, loading } = useAuth()
+      continueAsGuest()
+      expect(user.value).toEqual({ id: 'guest-local', email: '' })
+      expect(isGuest.value).toBe(true)
+      expect(loading.value).toBe(false)
+      // A guest must never hit Supabase — no migration is kicked off.
+      const { migrateLocalStorageToSupabase } = await import('../../lib/migrate')
+      expect(migrateLocalStorageToSupabase).not.toHaveBeenCalled()
+    })
+
+    it('persists the guest flag so a reload restores the session', () => {
+      const { continueAsGuest } = useAuth()
+      continueAsGuest()
+      expect(localStorageMock.getItem('guest-mode')).toBe('true')
+    })
+
+    it('exitGuestMode returns to the auth screen without wiping local data', async () => {
+      const { continueAsGuest, exitGuestMode, user, isGuest } = useAuth()
+      continueAsGuest()
+      mockWorkoutReset.mockClear()
+
+      exitGuestMode()
+
+      expect(user.value).toBeNull()
+      expect(isGuest.value).toBe(false)
+      expect(localStorageMock.getItem('guest-mode')).toBeNull()
+      // Local data must be preserved so a later sign-up can migrate it.
+      expect(mockWorkoutReset).not.toHaveBeenCalled()
+    })
+
+    it('exposes isGuest as a reactive ref defaulting to false', () => {
+      const { isGuest } = useAuth()
+      expect(isGuest.value).toBe(false)
+    })
+  })
+
   describe('destroy', () => {
     it('calls unsubscribe on the auth state change subscription', () => {
       const mockUnsubscribe = vi.fn()

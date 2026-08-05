@@ -32,6 +32,14 @@
           Viewing sample data — Tap to clear and start fresh
         </button>
 
+        <div v-if="showGuestBackupPrompt" class="guestBackupBanner" role="status">
+          <span class="guestBackupText">Your workouts are saved on this device only.</span>
+          <button class="guestBackupCta" @click="createAccountFromGuest">Create account</button>
+          <button class="guestBackupDismiss" @click="dismissGuestBackupPrompt" aria-label="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
         <!-- PWA install banner -->
         <Transition name="installBanner">
           <div v-if="installBannerVisible" class="installBanner" role="banner">
@@ -304,6 +312,7 @@ import { todayISO, toLocalDateKey } from './lib/dates'
 import { useOnboarding } from './composables/useOnboarding'
 import { useTabRouting } from './composables/useTabRouting'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
+import { GUEST_BACKUP_PROMPT_DISMISSED_KEY } from './composables/useAuth'
 
 const { currentTheme, THEME_PREVIEWS, resolvedMode, isThemeUnlocked } = useTheme()
 
@@ -311,7 +320,7 @@ const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 const { celebrateUnlocks } = useXPCeremony()
 
-const { user, loading, init: initAuth, signOut } = useAuth()
+const { user, loading, isGuest, init: initAuth, signOut, exitGuestMode } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
@@ -449,8 +458,35 @@ function closeSettings() {
 
 // ── Sign out handler (from SettingsSheet) ────────────────────────
 function handleSignOut() {
+  // A guest has no server account — "signing out" just returns them to the
+  // auth screen so they can create one. Preserve local data (no resetStores)
+  // so signing up migrates their existing workouts (LIFT-1083).
+  if (isGuest.value) {
+    exitGuestMode()
+    return
+  }
   resetOnboarding()
   signOut()
+}
+
+// ── Guest "create an account to back up" nudge (LIFT-1083) ───────
+// Surfaced only once a guest has real (non-sample) workout data — the point at
+// which they have something worth losing. Dismissal persists so it doesn't nag.
+const guestPromptDismissed = ref(localStorage.getItem(GUEST_BACKUP_PROMPT_DISMISSED_KEY) === 'true')
+const showGuestBackupPrompt = computed(() =>
+  isGuest.value &&
+  !hasSampleData.value &&
+  !guestPromptDismissed.value &&
+  workoutStore.workoutDates.length > 0,
+)
+function createAccountFromGuest() {
+  logEvent('guest_create_account_tap')
+  exitGuestMode()
+}
+function dismissGuestBackupPrompt() {
+  guestPromptDismissed.value = true
+  localStorage.setItem(GUEST_BACKUP_PROMPT_DISMISSED_KEY, 'true')
+  logEvent('guest_backup_prompt_dismissed')
 }
 
 // ── Acquisition attribution ─────────────────────────────────────

@@ -873,6 +873,60 @@ button, [role="tab"], [role="switch"], a {
   flex-shrink: 0;
 }
 
+/* Guest "create an account to back up" nudge (LIFT-1083) */
+.guestBackupBanner {
+  width: 100%;
+  padding: 8px 12px;
+  min-height: 44px;
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guestBackupText {
+  flex: 1;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.guestBackupCta {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 4px 12px;
+  font-size: var(--font-caption1);
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--text-on-accent);
+  background: var(--accent);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.guestBackupDismiss {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.guestBackupDismiss svg {
+  width: 18px;
+  height: 18px;
+}
+
 /* PWA install banner */
 .installBanner {
   width: 100%;

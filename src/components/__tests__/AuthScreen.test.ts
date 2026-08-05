@@ -6,12 +6,16 @@ import AuthScreen from '../../views/AuthScreen.vue'
 const mockSignInWithProvider = vi.fn().mockResolvedValue({ error: null })
 const mockSignInWithEmail = vi.fn().mockResolvedValue({ error: null })
 const mockSignUp = vi.fn().mockResolvedValue({ error: null, needsConfirmation: false })
+const mockContinueAsGuest = vi.fn()
+const mockDevSignIn = vi.fn()
 
 vi.mock('../../composables/useAuth', () => ({
   useAuth: () => ({
     signInWithProvider: mockSignInWithProvider,
     signInWithEmail: mockSignInWithEmail,
     signUp: mockSignUp,
+    continueAsGuest: mockContinueAsGuest,
+    devSignIn: mockDevSignIn,
   })
 }))
 
@@ -233,6 +237,25 @@ describe('AuthScreen', () => {
       await wrapper.find('form').trigger('submit')
       await flushPromises()
       expect(wrapper.findAll('.authInput')[0].attributes('aria-invalid')).toBeUndefined()
+    })
+  })
+
+  describe('continue without an account (LIFT-1083)', () => {
+    it('renders a guest entry that defers sign-up', () => {
+      const btn = wrapper.find('.authGuestBtn')
+      expect(btn.exists()).toBe(true)
+      expect(btn.text()).toBe('Continue without an account')
+    })
+
+    it('explains that local-only data can be backed up later', () => {
+      const hint = wrapper.find('.authGuestHint')
+      expect(hint.exists()).toBe(true)
+      expect(hint.text()).toContain('this device')
+    })
+
+    it('enters guest mode when clicked', async () => {
+      await wrapper.find('.authGuestBtn').trigger('click')
+      expect(mockContinueAsGuest).toHaveBeenCalledOnce()
     })
   })
 
