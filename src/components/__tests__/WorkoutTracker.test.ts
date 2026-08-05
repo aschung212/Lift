@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { shallowRef, triggerRef, reactive } from 'vue'
-import { mount, VueWrapper } from '@vue/test-utils'
+import { shallowRef, triggerRef, reactive, defineComponent } from 'vue'
+import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
+import { useModal } from '../../composables/useModal'
+
+// Unmount every wrapper after each test. Without this, a tracker that was
+// mounted with a modal open stays mounted for the rest of the file and never
+// releases its background-scroll lock — useModal's reference count is module
+// state shared across this file, so a leak makes `html.modal-open` sticky and
+// the lock assertions below vacuous. This is a large part of why the
+// hand-rolled `classList.toggle('modal-open', …)` survived so long untested.
+enableAutoUnmount(afterEach)
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
 import EditExerciseModal from '../EditExerciseModal.vue'
@@ -2975,6 +2984,115 @@ describe('WorkoutTracker', () => {
       await wrapper.vm.$nextTick()
 
       expect(wrapper.text()).toContain('205')
+    })
+  })
+
+  // ── Background-scroll lock (#830) ────────────────────────────────
+  //
+  // WorkoutTracker used to hand-roll the lock:
+  //   watch(anyModalOpen, open => html.classList.toggle('modal-open', open))
+  // A boolean toggle only knows about ITS OWN modals. The moment another
+  // surface holds the lock — CalendarView's set editor, BodyweightTracker's
+  // log-weight sheet, both built on useModal — closing a WorkoutTracker modal
+  // stripped `modal-open` out from under it and re-enabled background scroll
+  // beneath a still-open `position: fixed` modal. On iOS that desyncs paint
+  // from hit-testing as soon as the keyboard opens, so taps land a row low.
+  // Only useModal's shared reference count knows when the LAST holder let go.
+  describe('background-scroll lock (#830)', () => {
+    const isLocked = () => document.documentElement.classList.contains('modal-open')
+
+    // A stand-in for any other useModal-based surface (CalendarView,
+    // BodyweightTracker, …) holding the shared lock at the same time.
+    const ForeignModalHost = defineComponent({
+      setup: () => ({ modal: useModal() }),
+      template: '<div />',
+    })
+    type ForeignHost = { modal: ReturnType<typeof useModal> }
+
+    it('locks background scroll while the log-set sheet is open', async () => {
+      const wrapper = mountTracker()
+      expect(isLocked()).toBe(false)
+
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(true)
+
+      await wrapper.find('.logSetOverlay').trigger('click')
+      expect(isLocked()).toBe(false)
+    })
+
+    it('locks background scroll while a child modal (exercise detail) is open', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(isLocked()).toBe(false)
+
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      expect(isLocked()).toBe(true)
+    })
+
+    it('keeps the lock applied when its modal closes under another modal', async () => {
+      const other = mount(ForeignModalHost)
+      ;(other.vm as unknown as ForeignHost).modal.open()
+      expect(isLocked()).toBe(true)
+
+      const wrapper = mountTracker()
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(true)
+
+      await wrapper.find('.logSetOverlay').trigger('click')
+      // The regression: the old boolean toggle cleared `modal-open` here,
+      // unlocking the background under the still-open foreign modal.
+      expect(isLocked()).toBe(true)
+
+      ;(other.vm as unknown as ForeignHost).modal.close()
+      expect(isLocked()).toBe(false)
+    })
+
+    it('keeps the lock applied when it unmounts under another modal', async () => {
+      const other = mount(ForeignModalHost)
+      ;(other.vm as unknown as ForeignHost).modal.open()
+
+      const wrapper = mountTracker()
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+      // The old onUnmounted did an unconditional classList.remove('modal-open').
+      wrapper.unmount()
+      expect(isLocked()).toBe(true)
+
+      ;(other.vm as unknown as ForeignHost).modal.close()
+      expect(isLocked()).toBe(false)
+    })
+
+    it('releases its lock on unmount with a modal still open', async () => {
+      const wrapper = mountTracker()
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(true)
+
+      wrapper.unmount()
+      expect(isLocked()).toBe(false)
+    })
+
+    it('stays locked across the log-sheet → detail-modal swap', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(true)
+
+      // openHistoryFromLog swaps the log sheet for the detail modal (they share
+      // a z-index, so it is a swap and not a stack). Two separate useModal
+      // instances hand the lock over here — it must not blink off in between.
+      await wrapper.find('.wtLogHistoryBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtDetailModal').exists()).toBe(true)
+      expect(isLocked()).toBe(true)
+
+      await wrapper.find('.wtDetailBack').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(false)
     })
   })
 })

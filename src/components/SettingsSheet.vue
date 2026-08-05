@@ -756,6 +756,7 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useModal } from '../composables/useModal'
 import { useAppShare } from '../composables/useAppShare'
 import LegalSheet from './LegalSheet.vue'
 import ThemeStatsSheet from './ThemeStatsSheet.vue'
@@ -898,29 +899,49 @@ const settingsSwipe = useSwipeToDismiss({
   onDismiss: () => { emit('update:modelValue', false) },
 })
 
-// ── Focus traps for modals ─────────────────────────────────────
-const settingsFocus = useFocusTrap()
+// ── Modal lifecycle: useModal owns the lock + focus trap ───────
+//
+// The settings sheet is a full-screen bottom sheet, so the background must
+// not stay scrollable underneath it — but this component never took the
+// lock at all. It is taken here through useModal so it goes through the
+// SAME reference count every other modal uses: a boolean `modal-open`
+// toggle would strip the class out from under whichever other surface
+// still had a modal open, and a scrollable background under a
+// `position: fixed` modal desyncs paint from hit-testing the moment the
+// iOS keyboard opens (taps land a row low, #830).
+//
+// The trap element comes from the `onSettingsSheetMounted` function ref
+// below — the sheet already needs that ref for the swipe gesture and the
+// close animation, so useModal reads it via `trapRef` rather than a
+// selector. Escape stays on the overlay's `@keydown.escape` handler,
+// which routes through closeSettings()'s animation/idempotency guards.
+const settingsModal = useModal()
 const confirmFocus = useFocusTrap()
 
+// `immediate` is REQUIRED, not incidental: App.vue mounts this component with
+// `v-if="settingsOpen"` (#955), so the sheet arrives already-open and the
+// false→true transition never happens here. Without it the lock would never
+// be acquired on the only path that actually opens the sheet.
 watch(() => props.modelValue, (open) => {
   if (open) {
+    settingsModal.open()
     // Top of the supporter funnel (LIFT-906): the Support group renders with
     // the sheet, so an open is one impression opportunity for its CTAs.
     supportFunnel('impression')
   } else {
+    settingsModal.close()
     settingsSwipe.detach()
-    settingsFocus.deactivate()
   }
-})
+}, { immediate: true })
 
 function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
   if (el && el instanceof HTMLElement && el !== settingsEl.value) {
     settingsEl.value = el
+    settingsModal.trapRef.value = el
     nextTick(() => {
       const handle = settingsHandleEl.value
       if (handle) settingsSwipe.attach(el, handle)
     })
-    settingsFocus.activate(el)
   }
 }
 
