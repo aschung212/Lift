@@ -21,18 +21,35 @@ interface AuthError {
 export interface UseAuthReturn {
   user: Ref<User | { id: string; email: string } | null>
   loading: Ref<boolean>
+  isGuest: Ref<boolean>
   init: () => void
   signInWithProvider: (provider: Provider) => Promise<{ error: AuthError | null }>
   signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signUp: (email: string, password: string) => Promise<{ error: AuthError | null; needsConfirmation?: boolean }>
   signOut: () => Promise<void>
   devSignIn: () => Promise<void>
+  continueAsGuest: () => void
+  exitGuestMode: () => void
   deleteAccount: () => Promise<void>
   destroy: () => void
 }
 
+// Local-only "guest" mode (LIFT-1083): the app is local-first (Pinia +
+// localStorage is the source of truth), so it fully works with no account.
+// A guest sets a local user identity WITHOUT calling initStores — so the
+// stores' `_userId` stays null and nothing is ever enqueued to Supabase. The
+// flag is persisted so the guest is restored on reload instead of being bounced
+// back to the auth gate. When a guest later creates a real account, the normal
+// SIGNED_IN path runs initStores → migrateLocalStorageToSupabase, so their
+// device-local data is backed up on conversion.
+const GUEST_MODE_KEY = 'guest-mode'
+const GUEST_USER_ID = 'guest-local'
+/** Persisted dismissal of the "create an account to back up" nudge (App.vue). */
+export const GUEST_BACKUP_PROMPT_DISMISSED_KEY = 'guest-backup-prompt-dismissed'
+
 const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
+const isGuest: Ref<boolean> = ref(false)
 
 let _initialized = false
 let _authUnsubscribe: (() => void) | null = null
@@ -123,41 +140,103 @@ async function initStores(userId: string): Promise<void> {
   syncSettingsWithComposables()
 }
 
+/** Clear guest mode (a real session supersedes it). */
+function clearGuestFlag(): void {
+  isGuest.value = false
+  localStorage.removeItem(GUEST_MODE_KEY)
+}
+
+/**
+ * Restore a persisted guest session so a reload keeps the user in the app
+ * instead of bouncing them back to the auth gate. Returns true if a guest was
+ * restored.
+ */
+function restoreGuestIfFlagged(): boolean {
+  if (localStorage.getItem(GUEST_MODE_KEY) === 'true') {
+    isGuest.value = true
+    user.value = { id: GUEST_USER_ID, email: '' }
+    return true
+  }
+  return false
+}
+
 function init(): void {
   if (_initialized) return
   _initialized = true
 
   // Dev mode or Supabase unavailable: fall back to local-only mode
   if (import.meta.env.DEV || !supabase) {
+    restoreGuestIfFlagged()
     loading.value = false
     return
   }
 
   supabase.auth.getSession().then(({ data: { session } }) => {
-    user.value = session?.user ?? null
     if (session?.user) {
+      user.value = session.user
+      // A real session supersedes any prior guest mode.
+      clearGuestFlag()
       initStores(session.user.id).then(() => { loading.value = false })
     } else {
+      user.value = null
+      restoreGuestIfFlagged()
       loading.value = false
     }
   }).catch((err) => {
     logError(err, { source: 'useAuth', action: 'getSession' })
+    restoreGuestIfFlagged()
     loading.value = false
   })
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     const prev = user.value
-    user.value = session?.user ?? null
+    // A guest converting to a real account has a truthy `prev` (the guest
+    // identity), so `!prev` alone would skip initStores — and with it the
+    // local→Supabase migration. Init when the previous state had no real
+    // account: either signed out (`!prev`) or a guest (LIFT-1083).
+    const wasUnauthenticated = !prev || isGuest.value
     // A successful (re)auth means the token is healthy again — clear any
     // pending "re-sign-in needed" prompt (LIFT-784).
     if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') clearReauthFlag()
-    if (session?.user && !prev) {
-      initStores(session.user.id)
+    if (session?.user) {
+      user.value = session.user
+      if (wasUnauthenticated) {
+        clearGuestFlag()
+        initStores(session.user.id)
+      }
+    } else if (event === 'SIGNED_OUT') {
+      // Only an explicit sign-out clears the user. A null-session
+      // INITIAL_SESSION event must NOT clobber a guest that getSession()
+      // restored, or the guest would be bounced back to the auth gate.
+      user.value = null
     }
   })
   _authUnsubscribe = () => subscription.unsubscribe()
 
   setupSessionRefreshLifecycle()
+}
+
+/**
+ * Enter local-only guest mode (LIFT-1083). Deliberately does NOT init stores:
+ * the stores already hydrated from localStorage at instantiation, and leaving
+ * `_userId` null keeps every write local (nothing is enqueued to Supabase). The
+ * user is prompted to create an account later to back up / sync.
+ */
+function continueAsGuest(): void {
+  localStorage.setItem(GUEST_MODE_KEY, 'true')
+  isGuest.value = true
+  user.value = { id: GUEST_USER_ID, email: '' }
+  loading.value = false
+}
+
+/**
+ * Leave guest mode to return to the auth screen (e.g. to create an account).
+ * Preserves all local data — does NOT resetStores — so signing up migrates the
+ * guest's existing workouts to their new account.
+ */
+function exitGuestMode(): void {
+  clearGuestFlag()
+  user.value = null
 }
 
 async function signInWithProvider(provider: Provider): Promise<{ error: AuthError | null }> {
@@ -249,7 +328,7 @@ async function deleteAccount(): Promise<void> {
     'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
     'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
     'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
-    'coach-insights-history',
+    'coach-insights-history', GUEST_MODE_KEY, GUEST_BACKUP_PROMPT_DISMISSED_KEY,
   ]
   for (const key of localStorageKeys) {
     localStorage.removeItem(key)
@@ -284,5 +363,5 @@ function destroy(): void {
 }
 
 export function useAuth(): UseAuthReturn {
-  return { user, loading, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, deleteAccount, destroy }
+  return { user, loading, isGuest, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, destroy }
 }

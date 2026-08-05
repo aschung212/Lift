@@ -57,6 +57,9 @@
         </button>
       </div>
 
+      <button class="authGuestBtn" @click="handleGuest">Continue without an account</button>
+      <p class="authGuestHint">Your workouts stay on this device. Create an account any time to back up &amp; sync.</p>
+
       <button v-if="isDev" class="authDevBtn" @click="devSignIn">Continue as Dev</button>
 
       <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" :id="isError ? 'auth-error' : undefined" role="status" aria-live="polite">{{ message }}</p>
@@ -70,7 +73,7 @@ import type { Provider } from '@supabase/supabase-js'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
 
-const { signInWithProvider, signInWithEmail, signUp, devSignIn } = useAuth()
+const { signInWithProvider, signInWithEmail, signUp, devSignIn, continueAsGuest } = useAuth()
 const { logEvent } = useAnalytics()
 // Show the dev sign-in button in local dev mode OR in CI e2e builds where
 // no Supabase backend is configured. import.meta.env values are inlined at
@@ -120,6 +123,11 @@ async function handleEmailSubmit() {
   }
 
   submitting.value = false
+}
+
+function handleGuest() {
+  logEvent('auth_continue_as_guest')
+  continueAsGuest()
 }
 
 async function handleOAuth(provider: Provider) {
@@ -303,6 +311,38 @@ async function handleOAuth(provider: Provider) {
 
 .authProviderIcon {
   flex-shrink: 0;
+}
+
+.authGuestBtn {
+  width: 100%;
+  padding: 12px 16px;
+  min-height: 44px;
+  margin-top: 12px;
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.authGuestBtn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+}
+
+.authGuestBtn:active {
+  opacity: 0.85;
+}
+
+.authGuestHint {
+  margin-top: 8px;
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .authDevBtn {
