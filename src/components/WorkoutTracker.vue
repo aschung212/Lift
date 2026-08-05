@@ -130,6 +130,15 @@
       {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
+    <!-- Explore-path one-time tip: point new users at the payoff charts
+         they'd otherwise miss (the sample journey is only demonstrative if
+         they open an exercise). Shown only while sample data is present. (LIFT-1086) -->
+    <div v-if="showChartTip" class="wtChartTip" role="note">
+      <svg class="wtChartTipIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+      <span class="wtChartTipText">Tap any exercise to see its progress chart</span>
+      <button class="wtChartTipDismiss" @click="dismissChartTip" aria-label="Dismiss tip">×</button>
+    </div>
+
     <ul v-if="filteredExercises.length > 0" class="wtExerciseList">
       <li
         v-for="exercise in filteredExercises"
@@ -1269,6 +1278,9 @@ const logSwipe = useSwipeToDismiss({
 })
 
 function openDetailModal(id: string) {
+  // Opening any exercise is exactly the action the explore-path chart tip
+  // encourages, so retire it once the user has done so (LIFT-1086).
+  if (hasSampleData.value && !chartTipDismissed.value) dismissChartTip()
   detailExerciseId.value = id
 }
 
@@ -1740,6 +1752,28 @@ function openSettingsFromHint() {
   dismissPlateHint()
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   if (ex) openEditExerciseModal(ex)
+}
+
+// ── Explore-path chart-discovery tip (LIFT-1086) ────────────────
+// The "Explore first" onboarding path seeds a rich sample journey, but the
+// only cue a new user sees frames the data as something to delete. Nudge them
+// to open an exercise and view its progress chart — the demonstrative payoff.
+// Gated on the sample-data flag so it never appears for real users, and shown
+// once (dismissed on the first exercise open or via the × button).
+const CHART_TIP_KEY = 'explore-chart-tip-dismissed'
+const chartTipDismissed = ref(!!localStorage.getItem(CHART_TIP_KEY))
+const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
+
+const showChartTip = computed(() =>
+  hasSampleData.value &&
+  !chartTipDismissed.value &&
+  listView.value === 'exercises' &&
+  filteredExercises.value.length > 0
+)
+
+function dismissChartTip() {
+  chartTipDismissed.value = true
+  localStorage.setItem(CHART_TIP_KEY, 'true')
 }
 
 function adjustReps(delta: number) {

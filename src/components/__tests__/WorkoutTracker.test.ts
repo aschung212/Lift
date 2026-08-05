@@ -1081,6 +1081,50 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
     })
 
+    // ── Explore-path chart-discovery tip (LIFT-1086) ────────────────
+    it('shows the chart tip when sample data is present (LIFT-1086)', () => {
+      localStorageMock.setItem('sample-data', 'true')
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(true)
+      expect(wrapper.find('.wtChartTipText').text()).toContain('progress chart')
+    })
+
+    it('does not show the chart tip for real users (no sample-data flag) (LIFT-1086)', () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
+    })
+
+    it('does not show the chart tip once dismissed via localStorage (LIFT-1086)', () => {
+      localStorageMock.setItem('sample-data', 'true')
+      localStorageMock.setItem('explore-chart-tip-dismissed', 'true')
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
+    })
+
+    it('chart tip dismiss button persists to localStorage (LIFT-1086)', async () => {
+      localStorageMock.setItem('sample-data', 'true')
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      await wrapper.find('.wtChartTipDismiss').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(localStorageMock.getItem('explore-chart-tip-dismissed')).toBe('true')
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
+    })
+
+    it('retires the chart tip after opening an exercise detail (LIFT-1086)', async () => {
+      localStorageMock.setItem('sample-data', 'true')
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(true)
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(localStorageMock.getItem('explore-chart-tip-dismissed')).toBe('true')
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
+    })
+
     it('debounces plate sync when typing weight (LIFT-634)', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: false })
       try {
