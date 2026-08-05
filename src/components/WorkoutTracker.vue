@@ -130,6 +130,18 @@
       {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
+    <!-- One-time coach-mark: guide the "Popular exercises" starter path to
+         the first log action (LIFT-1084). Points at the circular + button on
+         the first exercise row. -->
+    <div v-if="showStarterLogHint" class="wtLogHint" role="note">
+      <div class="wtLogHintBubble">
+        <svg class="wtLogHintIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        <span class="wtLogHintText">Tap the <span class="wtLogHintPlus" aria-hidden="true">+</span> on any exercise to log your first set</span>
+        <button class="wtLogHintDismiss" @click="dismissStarterLogHint" aria-label="Dismiss tip">×</button>
+      </div>
+      <span class="wtLogHintArrow" aria-hidden="true"></span>
+    </div>
+
     <ul v-if="filteredExercises.length > 0" class="wtExerciseList">
       <li
         v-for="exercise in filteredExercises"
@@ -1742,6 +1754,28 @@ function openSettingsFromHint() {
   if (ex) openEditExerciseModal(ex)
 }
 
+// ── One-time starter coach-mark (LIFT-1084) ──────────────────────
+// The "Popular exercises" onboarding path pre-loads exercises with zero sets
+// and lands the user on the exercise list, which offers no cue toward the core
+// log action (the fresh-start CTA only renders when there are no exercises).
+// OnboardingScreen arms this flag; we point at the first row's + button until
+// the first set is logged (or the tip is dismissed), then clear it for good.
+const STARTER_LOG_HINT_KEY = 'starter-log-set-hint'
+const starterLogHintPending = ref(localStorage.getItem(STARTER_LOG_HINT_KEY) === 'pending')
+
+const showStarterLogHint = computed(() =>
+  starterLogHintPending.value &&
+  listView.value === 'exercises' &&
+  !isFilteringActive.value &&
+  filteredExercises.value.length > 0 &&
+  store.exercises.every(e => e.sets.length === 0)
+)
+
+function dismissStarterLogHint() {
+  starterLogHintPending.value = false
+  localStorage.removeItem(STARTER_LOG_HINT_KEY)
+}
+
 function adjustReps(delta: number) {
   const current = reps.value ?? 0
   const next = Math.max(0, Math.min(MAX_REPS, current + delta))
@@ -2474,6 +2508,7 @@ function saveSet() {
         localStorage.getItem(FIRST_SET_FLAG) !== 'true' &&
         store.exercises.every(e => e.sets.length === 0)
       store.logSet(exerciseId, effWeightLbs, effReps, date.value)
+      if (starterLogHintPending.value) dismissStarterLogHint()
       recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       // XP: get the just-logged set (last in array) and compute XP

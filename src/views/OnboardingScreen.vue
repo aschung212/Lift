@@ -481,6 +481,10 @@ function chooseStarter() {
       workoutStore.setExerciseInputMode(id, ex.inputMode)
     }
   }
+  // Arm the one-time "log your first set" coach-mark (LIFT-1084): this path
+  // pre-loads exercises but zero sets, so the exercise list otherwise offers
+  // no cue toward the core log action. WorkoutTracker consumes + clears this.
+  localStorage.setItem('starter-log-set-hint', 'pending')
   goToStarter(false)
 }
 

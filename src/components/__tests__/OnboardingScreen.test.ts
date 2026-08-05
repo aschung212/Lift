@@ -136,6 +136,14 @@ describe('OnboardingScreen', () => {
       )
       expect(sampleDataCalls.length).toBe(0)
     })
+
+    it('does not arm the starter coach-mark flag (scoped to the Popular path)', async () => {
+      await chooseEmptyAndSkip()
+      const hintCalls = localStorageMock.setItem.mock.calls.filter(
+        ([key]: [string]) => key === 'starter-log-set-hint'
+      )
+      expect(hintCalls.length).toBe(0)
+    })
   })
 
   describe('Popular exercises', () => {
@@ -160,6 +168,11 @@ describe('OnboardingScreen', () => {
     it('does not log any sets', async () => {
       await wrapper.findAll('.obOption')[0].trigger('click')
       expect(mockLogSet).not.toHaveBeenCalled()
+    })
+
+    it('arms the one-time log-set coach-mark flag (LIFT-1084)', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('starter-log-set-hint', 'pending')
     })
 
     it('sets plate calculator mode on barbell exercises via store method', async () => {

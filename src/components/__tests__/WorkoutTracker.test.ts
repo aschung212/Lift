@@ -1123,6 +1123,71 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  describe('starter log-set coach-mark (LIFT-1084)', () => {
+    /** Starter-path fixture: exercises pre-loaded with zero sets, mirroring the
+     *  6-exercise "Popular exercises" onboarding pre-load (≥5 so the search bar
+     *  renders, matching the real path). */
+    function createStarterExercises(): Exercise[] {
+      return [
+        { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+        { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+        { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+        { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+        { id: 'ex-5', name: 'Row', tags: ['Back'], sets: [] },
+        { id: 'ex-6', name: 'Pull-ups', tags: ['Back'], sets: [] },
+      ]
+    }
+
+    it('shows the coach-mark on the starter path (flag pending, no sets yet)', () => {
+      localStorageMock.setItem('starter-log-set-hint', 'pending')
+      mockState.exercises = createStarterExercises()
+      const wrapper = mountTracker()
+
+      expect(wrapper.find('.wtLogHint').exists()).toBe(true)
+      expect(wrapper.find('.wtLogHintText').text()).toContain('log your first set')
+    })
+
+    it('does not show the coach-mark when the flag was never armed', () => {
+      mockState.exercises = createStarterExercises()
+      const wrapper = mountTracker()
+
+      expect(wrapper.find('.wtLogHint').exists()).toBe(false)
+    })
+
+    it('does not show once any exercise already has a logged set', () => {
+      localStorageMock.setItem('starter-log-set-hint', 'pending')
+      // createExercises() ships exercises that already carry sets.
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+
+      expect(wrapper.find('.wtLogHint').exists()).toBe(false)
+    })
+
+    it('hides while a search filter is active (the pointer targets the first row)', async () => {
+      localStorageMock.setItem('starter-log-set-hint', 'pending')
+      mockState.exercises = createStarterExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtLogHint').exists()).toBe(true)
+
+      await wrapper.find('input[type="search"]').setValue('Bench')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtLogHint').exists()).toBe(false)
+    })
+
+    it('dismiss button clears the flag and hides the coach-mark', async () => {
+      localStorageMock.setItem('starter-log-set-hint', 'pending')
+      mockState.exercises = createStarterExercises()
+      const wrapper = mountTracker()
+
+      await wrapper.find('.wtLogHintDismiss').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtLogHint').exists()).toBe(false)
+      expect(localStorageMock.getItem('starter-log-set-hint')).toBeNull()
+    })
+  })
+
   describe('usual ladder & ghost logging (#741)', () => {
     /** Local calendar date, matching the component's todayISO(). */
     function localDay(daysAgo = 0): string {
