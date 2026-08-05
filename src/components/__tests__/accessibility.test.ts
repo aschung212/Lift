@@ -241,7 +241,7 @@ describe('Accessibility', () => {
       const wrapper = mount(OnboardingScreen)
 
       const buttons = wrapper.findAll('.obOption')
-      expect(buttons[0].attributes('aria-label')).toContain('Pre-load 6 common lifts with tags')
+      expect(buttons[0].attributes('aria-label')).toContain('Choose from common lifts')
       expect(buttons[1].attributes('aria-label')).toContain('Add your own exercises from scratch')
       expect(buttons[2].attributes('aria-label')).toContain('See the app with sample data')
     })

@@ -18,7 +18,7 @@
           <button
             class="obOption obOptionFeatured"
             @click="chooseStarter"
-            aria-label="Popular Exercises — Pre-load 6 common lifts with tags, start logging in seconds"
+            aria-label="Popular Exercises — Choose from common lifts, start logging in seconds"
           >
             <span class="obOptionIcon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24">
@@ -31,7 +31,7 @@
             </span>
             <span class="obOptionText">
               <strong>Popular exercises</strong>
-              <span>Pre-load 6 common lifts with tags — start logging in seconds.</span>
+              <span>Choose from common lifts — start logging in seconds.</span>
             </span>
           </button>
 
@@ -71,6 +71,54 @@
         </div>
       </template>
 
+      <!-- Popular-exercise picker: grouped multi-select, defaults pre-checked -->
+      <template v-else-if="step === 'popular-pick'">
+        <div class="obLogo obLogoSm">Lift</div>
+        <h2 class="obPickHeading">Popular exercises</h2>
+        <p class="obPickSub">Pick the lifts you do — add, rename, or remove any later.</p>
+
+        <div class="obLiftList">
+          <section
+            v-for="grp in popularByGroup"
+            :key="grp.group"
+            class="obLiftGroup"
+            :aria-labelledby="`obGrp-${grp.group}`"
+          >
+            <h3 :id="`obGrp-${grp.group}`" class="obLiftGroupLabel">{{ grp.group }}</h3>
+            <button
+              v-for="lift in grp.lifts"
+              :key="lift.name"
+              type="button"
+              class="obLiftRow"
+              role="checkbox"
+              :aria-checked="selectedLifts.has(lift.name)"
+              @click="toggleLift(lift.name)"
+            >
+              <span
+                class="obLiftCheck"
+                :class="{ obLiftCheckOn: selectedLifts.has(lift.name) }"
+                aria-hidden="true"
+              >
+                <svg
+                  v-if="selectedLifts.has(lift.name)"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+                  width="16" height="16"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
+              <span class="obLiftName">{{ lift.name }}</span>
+            </button>
+          </section>
+        </div>
+
+        <div class="obPickActions">
+          <button class="obPickPrimary" type="button" @click="confirmPopular">{{ confirmLabel }}</button>
+          <button class="obPickSecondary" type="button" @click="backToSetup">Back</button>
+        </div>
+      </template>
+
       <!-- Steps 2-4: Progression explainer + starter pick + weekly goal -->
       <template v-else>
         <div class="obLogo">Lift</div>
@@ -102,7 +150,7 @@ const bwStore = useBodyweightStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 
-const step = ref<'setup' | 'starter-flow'>('setup')
+const step = ref<'setup' | 'popular-pick' | 'starter-flow'>('setup')
 const starterStep = ref<'explainer' | 'pick' | 'goal'>('explainer')
 let pendingSampleData = false
 let onboardingStartMs = 0
@@ -110,26 +158,68 @@ let chosenPath = ''
 
 const STEP_MAP = { explainer: 2, pick: 3, goal: 4 } as const
 const currentStep = computed(() =>
-  step.value === 'setup' ? 1 : STEP_MAP[starterStep.value]
+  step.value === 'starter-flow' ? STEP_MAP[starterStep.value] : 1
 )
 
 function onStarterStepChange(s: 'explainer' | 'pick' | 'goal') {
   starterStep.value = s
 }
 
-const STARTER_EXERCISES: {
+type StarterLift = {
   name: string
   tags: string[]
+  group: 'Push' | 'Pull' | 'Legs'
   inputMode?: ExerciseInputMode
   barWeight?: number
-}[] = [
-  { name: 'Bench Press', tags: ['Push', 'Chest'], inputMode: 'plates', barWeight: 45 },
-  { name: 'Squat', tags: ['Legs'], inputMode: 'plates', barWeight: 45 },
-  { name: 'Deadlift', tags: ['Pull', 'Legs'], inputMode: 'plates', barWeight: 45 },
-  { name: 'Overhead Press', tags: ['Push', 'Shoulders'], inputMode: 'plates', barWeight: 45 },
-  { name: 'Barbell Row', tags: ['Pull', 'Back'], inputMode: 'plates', barWeight: 45 },
-  { name: 'Pull-ups', tags: ['Pull', 'Back'] },
+  default?: boolean
+}
+
+// Common lifts offered on the "Popular exercises" path, grouped by movement so
+// dumbbell/machine/bodyweight lifters can pick relevant work instead of only
+// the six barbell defaults. The six `default: true` entries stay pre-checked so
+// accepting the defaults remains a fast, low-friction path.
+const POPULAR_LIFTS: StarterLift[] = [
+  // Push
+  { name: 'Bench Press', tags: ['Push', 'Chest'], group: 'Push', inputMode: 'plates', barWeight: 45, default: true },
+  { name: 'Overhead Press', tags: ['Push', 'Shoulders'], group: 'Push', inputMode: 'plates', barWeight: 45, default: true },
+  { name: 'Incline Dumbbell Press', tags: ['Push', 'Chest'], group: 'Push' },
+  { name: 'Dips', tags: ['Push', 'Chest'], group: 'Push' },
+  // Pull
+  { name: 'Deadlift', tags: ['Pull', 'Legs'], group: 'Pull', inputMode: 'plates', barWeight: 45, default: true },
+  { name: 'Barbell Row', tags: ['Pull', 'Back'], group: 'Pull', inputMode: 'plates', barWeight: 45, default: true },
+  { name: 'Pull-ups', tags: ['Pull', 'Back'], group: 'Pull', default: true },
+  { name: 'Lat Pulldown', tags: ['Pull', 'Back'], group: 'Pull' },
+  { name: 'Dumbbell Row', tags: ['Pull', 'Back'], group: 'Pull' },
+  // Legs
+  { name: 'Squat', tags: ['Legs'], group: 'Legs', inputMode: 'plates', barWeight: 45, default: true },
+  { name: 'Romanian Deadlift', tags: ['Legs'], group: 'Legs', inputMode: 'plates', barWeight: 45 },
+  { name: 'Leg Press', tags: ['Legs'], group: 'Legs' },
+  { name: 'Lunges', tags: ['Legs'], group: 'Legs' },
 ]
+
+const LIFT_GROUPS = ['Push', 'Pull', 'Legs'] as const
+const popularByGroup = LIFT_GROUPS.map(group => ({
+  group,
+  lifts: POPULAR_LIFTS.filter(l => l.group === group),
+}))
+
+// The six barbell defaults double as the demo set for the "Explore" path.
+const STARTER_EXERCISES = POPULAR_LIFTS.filter(l => l.default)
+
+const selectedLifts = ref<Set<string>>(new Set())
+
+function toggleLift(name: string) {
+  const next = new Set(selectedLifts.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  selectedLifts.value = next
+}
+
+const confirmLabel = computed(() => {
+  const n = selectedLifts.value.size
+  if (n === 0) return 'Continue without adding'
+  return `Add ${n} exercise${n === 1 ? '' : 's'}`
+})
 
 function daysAgo(n: number): string {
   const d = new Date()
@@ -475,7 +565,18 @@ function chooseStarter() {
   logEvent('onboarding_choice', { choice: 'starter' })
   logEvent('onboarding_step', { step: 'choice', value: 'starter' })
   emit('started')
-  for (const ex of STARTER_EXERCISES) {
+  selectedLifts.value = new Set(STARTER_EXERCISES.map(l => l.name))
+  step.value = 'popular-pick'
+}
+
+function backToSetup() {
+  step.value = 'setup'
+}
+
+function confirmPopular() {
+  logEvent('onboarding_step', { step: 'starter_picked', count: selectedLifts.value.size })
+  for (const ex of POPULAR_LIFTS) {
+    if (!selectedLifts.value.has(ex.name)) continue
     const id = workoutStore.addExercise(ex.name, ex.tags)
     if (id && ex.inputMode) {
       workoutStore.setExerciseInputMode(id, ex.inputMode)
@@ -670,6 +771,148 @@ function chooseExplore() {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+/* ── Popular-exercise picker ─────────────────────────────────── */
+.obLogoSm {
+  font-size: 44px;
+  margin-bottom: 12px;
+}
+
+.obPickHeading {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+  line-height: 1.2;
+}
+
+.obPickSub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0 0 16px;
+}
+
+.obLiftList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 46svh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  text-align: left;
+}
+
+.obLiftGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.obLiftGroupLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 4px;
+  padding-left: 4px;
+}
+
+.obLiftRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.obLiftRow[aria-checked='true'] {
+  border-color: var(--accent);
+}
+
+.obLiftRow:active {
+  opacity: 0.85;
+}
+
+.obLiftCheck {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-secondary);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.obLiftCheckOn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+}
+
+.obLiftName {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.obPickActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.obPickPrimary {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  border: none;
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.obPickPrimary:active {
+  transform: scale(0.98);
+  opacity: 0.9;
+}
+
+.obPickSecondary {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.obPickSecondary:active {
+  opacity: 0.7;
 }
 
 </style>

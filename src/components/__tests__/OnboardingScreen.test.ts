@@ -84,7 +84,7 @@ describe('OnboardingScreen', () => {
 
     it('shows Popular exercises option', () => {
       expect(wrapper.text()).toContain('Popular exercises')
-      expect(wrapper.text()).toContain('Pre-load 6 common lifts')
+      expect(wrapper.text()).toContain('Choose from common lifts')
     })
 
     it('shows Explore first option', () => {
@@ -139,9 +139,28 @@ describe('OnboardingScreen', () => {
   })
 
   describe('Popular exercises', () => {
-    it('adds 6 starter exercises with tags', async () => {
-      // Popular is the featured / first option after the 01-auth.png restyle.
+    // Popular is the featured / first option after the 01-auth.png restyle.
+    // Tapping it now opens a grouped multi-select picker; confirming adds the
+    // checked lifts (six defaults pre-checked).
+    async function openPopularPicker() {
       await wrapper.findAll('.obOption')[0].trigger('click')
+    }
+    async function confirmPopular() {
+      await openPopularPicker()
+      await wrapper.find('.obPickPrimary').trigger('click')
+    }
+
+    it('opens a grouped picker with the six defaults pre-checked', async () => {
+      await openPopularPicker()
+      expect(wrapper.find('.obLiftList').exists()).toBe(true)
+      const checked = wrapper.findAll('.obLiftRow[aria-checked="true"]')
+      expect(checked.length).toBe(6)
+      // Defaults confirm button reflects the count
+      expect(wrapper.find('.obPickPrimary').text()).toBe('Add 6 exercises')
+    })
+
+    it('adds the six default exercises with tags on confirm', async () => {
+      await confirmPopular()
       expect(mockAddExercise).toHaveBeenCalledTimes(6)
       expect(mockAddExercise).toHaveBeenCalledWith('Bench Press', ['Push', 'Chest'])
       expect(mockAddExercise).toHaveBeenCalledWith('Squat', ['Legs'])
@@ -151,19 +170,46 @@ describe('OnboardingScreen', () => {
       expect(mockAddExercise).toHaveBeenCalledWith('Pull-ups', ['Pull', 'Back'])
     })
 
+    it('deselecting a default reduces the added set', async () => {
+      await openPopularPicker()
+      // Uncheck the first checked row (Bench Press is first in the catalog)
+      const bench = wrapper.findAll('.obLiftRow').find(r => r.text().includes('Bench Press'))!
+      await bench.trigger('click')
+      expect(wrapper.find('.obPickPrimary').text()).toBe('Add 5 exercises')
+      await wrapper.find('.obPickPrimary').trigger('click')
+      expect(mockAddExercise).toHaveBeenCalledTimes(5)
+      expect(mockAddExercise).not.toHaveBeenCalledWith('Bench Press', ['Push', 'Chest'])
+    })
+
+    it('selecting an additional lift adds it too', async () => {
+      await openPopularPicker()
+      const dips = wrapper.findAll('.obLiftRow').find(r => r.text().includes('Dips'))!
+      await dips.trigger('click')
+      await wrapper.find('.obPickPrimary').trigger('click')
+      expect(mockAddExercise).toHaveBeenCalledTimes(7)
+      expect(mockAddExercise).toHaveBeenCalledWith('Dips', ['Push', 'Chest'])
+    })
+
+    it('Back returns to the setup screen without adding exercises', async () => {
+      await openPopularPicker()
+      await wrapper.find('.obPickSecondary').trigger('click')
+      expect(wrapper.findAll('.obOption').length).toBe(3)
+      expect(mockAddExercise).not.toHaveBeenCalled()
+    })
+
     it('emits complete event after skipping starter', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await confirmPopular()
       await wrapper.find('.spfSecondary').trigger('click')
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
     it('does not log any sets', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await confirmPopular()
       expect(mockLogSet).not.toHaveBeenCalled()
     })
 
     it('sets plate calculator mode on barbell exercises via store method', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await confirmPopular()
       // setExerciseInputMode should be called for each barbell exercise (not Pull-ups)
       expect(mockSetExerciseInputMode).toHaveBeenCalledTimes(5)
       const barbellNames = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
@@ -233,6 +279,7 @@ describe('OnboardingScreen', () => {
       // (the real store returns existing id for duplicates)
       mockAddExercise.mockReturnValue('existing-id')
       await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.find('.obPickPrimary').trigger('click')
       // Should still call addExercise 6 times — dedup is the store's job
       expect(mockAddExercise).toHaveBeenCalledTimes(6)
       // No sets should be logged for starter path
@@ -258,8 +305,10 @@ describe('OnboardingScreen', () => {
     })
 
     it('chooseStarter does NOT pass sync:false (starter data should sync)', async () => {
-      await wrapper.findAll('.obOption')[1].trigger('click')
+      await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.find('.obPickPrimary').trigger('click')
       const starterCalls = mockAddExercise.mock.calls
+      expect(starterCalls.length).toBe(6)
       for (const call of starterCalls) {
         // Starter exercises only pass (name, tags) — no options object
         expect(call.length).toBe(2)
@@ -290,22 +339,32 @@ describe('OnboardingScreen', () => {
       expect(dots[3].classes()).not.toContain('obDotActive')
     })
 
+    it('picker stays on step 1', async () => {
+      await wrapper.findAll('.obOption')[0].trigger('click') // → popular picker
+      const dots = wrapper.findAll('.obDot')
+      expect(dots[0].classes()).toContain('obDotActive')
+      expect(dots[1].classes()).not.toContain('obDotActive')
+    })
+
     it('second dot is active on explainer step', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.findAll('.obOption')[0].trigger('click') // → popular picker
+      await wrapper.find('.obPickPrimary').trigger('click') // → explainer
       const dots = wrapper.findAll('.obDot')
       expect(dots[0].classes()).not.toContain('obDotActive')
       expect(dots[1].classes()).toContain('obDotActive')
     })
 
     it('third dot is active on starter pick step', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.findAll('.obOption')[0].trigger('click') // → popular picker
+      await wrapper.find('.obPickPrimary').trigger('click') // → explainer
       await wrapper.find('.spfPrimary').trigger('click') // → pick
       const dots = wrapper.findAll('.obDot')
       expect(dots[2].classes()).toContain('obDotActive')
     })
 
     it('fourth dot is active on weekly goal step', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.findAll('.obOption')[0].trigger('click') // → popular picker
+      await wrapper.find('.obPickPrimary').trigger('click') // → explainer
       await wrapper.find('.spfPrimary').trigger('click') // → pick
       await wrapper.findAll('.spfCard')[0].trigger('click') // select Fire
       await wrapper.findAll('.spfPrimary').at(-1)!.trigger('click') // → goal
@@ -323,7 +382,8 @@ describe('OnboardingScreen', () => {
     })
 
     it('aria-label updates as steps progress', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.findAll('.obOption')[0].trigger('click') // → popular picker (step 1)
+      await wrapper.find('.obPickPrimary').trigger('click') // → explainer
       const dotsContainer = wrapper.find('.obDots')
       expect(dotsContainer.attributes('aria-valuenow')).toBe('2')
       expect(dotsContainer.attributes('aria-label')).toBe('Step 2 of 4')
@@ -332,12 +392,14 @@ describe('OnboardingScreen', () => {
 
   describe('starter theme picker', () => {
     async function goToStarterPicker() {
-      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.findAll('.obOption')[0].trigger('click') // → popular picker
+      await wrapper.find('.obPickPrimary').trigger('click') // → explainer
       await wrapper.find('.spfPrimary').trigger('click') // → starter picker
     }
 
     it('shows explainer before starter picker', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await wrapper.findAll('.obOption')[0].trigger('click') // → popular picker
+      await wrapper.find('.obPickPrimary').trigger('click') // → explainer
       expect(wrapper.text()).toContain('Theme Progression')
       expect(wrapper.text()).toContain('Every set you log earns XP')
     })
@@ -373,7 +435,8 @@ describe('OnboardingScreen', () => {
     })
 
     it('skipping from explainer does not call setStarterTheme', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click') // → explainer
+      await wrapper.findAll('.obOption')[0].trigger('click') // → popular picker
+      await wrapper.find('.obPickPrimary').trigger('click') // → explainer
       await wrapper.find('.spfSecondary').trigger('click') // skip
       expect(mockSetStarterTheme).not.toHaveBeenCalled()
       expect(wrapper.emitted('complete')).toHaveLength(1)
