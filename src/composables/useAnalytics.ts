@@ -10,7 +10,9 @@ let _tabStart = Date.now()
  * Supporter conversion funnel (LIFT-906). One event name (`support_funnel`)
  * with a `stage` discriminator so impression → tap → purchase → restore can be
  * grouped as a single funnel in the analytics dashboard, mirroring the existing
- * share funnel. `purchase`/`restore` are reserved for the native IAP wiring
+ * share funnel. `impression` means the Support CTAs actually scrolled into view
+ * (not merely that Settings opened), so tap/impression is a meaningful
+ * conversion rate. `purchase`/`restore` are reserved for the native IAP wiring
  * (LIFT-598 / LIFT-910); only `impression` and `tap` fire today.
  */
 export type SupportFunnelStage = 'impression' | 'tap' | 'purchase' | 'restore'
