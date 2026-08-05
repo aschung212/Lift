@@ -44,6 +44,14 @@ describe('AuthScreen', () => {
       expect(wrapper.find('.authGoogle').text()).toContain('Continue with Google')
     })
 
+    it('shows a trust/value reassurance line to reduce sign-up friction', () => {
+      const trust = wrapper.find('.authTrust')
+      expect(trust.exists()).toBe(true)
+      expect(trust.text()).toContain('Free forever')
+      expect(trust.text()).toContain('no paywall')
+      expect(trust.text()).toContain('syncs privately')
+    })
+
     it('has autocomplete attributes for accessibility', () => {
       const inputs = wrapper.findAll('.authInput')
       expect(inputs[0].attributes('autocomplete')).toBe('email')
