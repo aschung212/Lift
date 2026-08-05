@@ -62,6 +62,8 @@
 
       <button v-if="isDev" class="authDevBtn" @click="devSignIn">Continue as Dev</button>
 
+      <p class="authTrust">Free forever — no paywall. Your data syncs privately across your devices.</p>
+
       <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" :id="isError ? 'auth-error' : undefined" role="status" aria-live="polite">{{ message }}</p>
     </div>
   </div>
@@ -363,6 +365,13 @@ async function handleOAuth(provider: Provider) {
 
 .authDevBtn:active {
   opacity: 0.7;
+}
+
+.authTrust {
+  margin-top: 24px;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .authMessage {
