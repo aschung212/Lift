@@ -17,7 +17,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'fs'
-import { join, resolve } from 'path'
+import { join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 
@@ -26,6 +26,20 @@ import { dirname } from 'path'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const STORES_DIR = resolve(__dirname, '../../stores')
+const SRC_DIR = resolve(__dirname, '../..')
+
+/** Returns { path (relative to src/), content } for every non-test .ts/.vue file. */
+function getSourceFiles(dir = SRC_DIR, out: { path: string; content: string }[] = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === '__tests__' || entry.name === 'node_modules') continue
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) getSourceFiles(full, out)
+    else if (/\.(ts|vue)$/.test(entry.name)) {
+      out.push({ path: relative(SRC_DIR, full), content: readFileSync(full, 'utf-8') })
+    }
+  }
+  return out
+}
 
 /** Returns absolute paths of all non-test .ts files in src/stores/. */
 function getStoreFilePaths(): string[] {
@@ -314,5 +328,64 @@ describe('Invariant: cross-tab sync completeness', () => {
     }
 
     expect(violations).toEqual([])
+  })
+})
+
+// ── Modal background-scroll lock (#830 guard) ───────────────────────
+
+/**
+ * `html.modal-open` drives `overflow: hidden` on `.tabContent` — the only
+ * iOS-correct way to stop the background scrolling behind a modal
+ * (`touch-action: none` on the overlay does nothing in iOS Safari/WKWebView).
+ *
+ * useModal owns it behind a REFERENCE COUNT, and that ownership has to be
+ * exclusive. A component that toggles the class itself only knows about its
+ * own modals: when it closes one while another surface still has a modal up,
+ * its `toggle(…, false)` strips the class even though the count is > 0. The
+ * background then scrolls under a `position: fixed` modal, and the moment the
+ * iOS keyboard opens — visual viewport shifts, layout viewport does not —
+ * paint desyncs from hit-testing and taps land a row low.
+ *
+ * A behavioural test only catches this in the exact component it covers.
+ * This one catches it anywhere in the codebase, which is what let the
+ * WorkoutTracker copy survive: no test mounted two modal-owning components
+ * at once.
+ */
+describe('Invariant: useModal is the only owner of html.modal-open (#830)', () => {
+  const OWNER = join('composables', 'useModal.ts')
+
+  /**
+   * Drop `//`-style and block-comment lines. The migration comments that
+   * explain this rule quote the banned call, and a guard that flags its own
+   * documentation is a guard people delete.
+   */
+  function stripComments(source: string): string {
+    return source
+      .split('\n')
+      .filter(line => !/^\s*(\/\/|\/\*|\*|<!--)/.test(line))
+      .join('\n')
+  }
+
+  it('no component or composable toggles the modal-open class directly', () => {
+    const files = getSourceFiles()
+    // Non-vacuity: the walker must actually reach the .vue components and the
+    // owner itself, or this scan proves nothing.
+    expect(files.map(f => f.path)).toContain(OWNER)
+    expect(files.filter(f => f.path.endsWith('.vue')).length).toBeGreaterThan(20)
+
+    const violations = files
+      .filter(f => f.path !== OWNER)
+      .filter(f => /classList\s*\.\s*(add|remove|toggle|replace)\s*\(\s*['"`]modal-open/.test(stripComments(f.content)))
+      .map(f =>
+        `${f.path} — hand-rolls the background-scroll lock. Use useModal() so ` +
+        `the shared reference count decides when the class comes off.`,
+      )
+
+    expect(violations).toEqual([])
+  })
+
+  it('useModal applies the class from the reference count, not a boolean', () => {
+    const owner = readFileSync(join(SRC_DIR, OWNER), 'utf-8')
+    expect(owner).toMatch(/classList\.toggle\('modal-open', scrollLockCount > 0\)/)
   })
 })

@@ -808,7 +808,7 @@ import { useRestTimer } from '../composables/useRestTimer'
 import { useRestTimerController } from '../composables/useRestTimerController'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
-import { useFocusTrap } from '../composables/useFocusTrap'
+import { useModal } from '../composables/useModal'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
@@ -1256,8 +1256,6 @@ watch(() => store.allTags, (tags) => {
 
 // ── Exercise detail modal (extracted to ExerciseDetailModal.vue) ──
 const detailExerciseId = ref<string | null>(null)
-
-const logModalFocus = useFocusTrap()
 
 // ── Swipe-to-dismiss for log-set sheet (step 5f) ────────────────
 // Drag the handle (or the sheet body, when not scrolled) down past
@@ -2725,34 +2723,63 @@ function onRenameGym(oldName: string, newName: string) {
 }
 
 
-// ── Focus traps for v-if modals ─────────────────────────────────
-watch(showModal, async (open) => {
-  if (open) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('.repMaxModal')
-    if (el) logModalFocus.activate(el)
+// ── Modal lifecycle: useModal owns the lock + focus trap ────────
+//
+// Two instances, each contributing at most 1 to useModal's shared
+// reference count:
+//
+//   • logModal       — the log-set sheet: background-scroll lock, focus trap
+//                      (`.repMaxModal`), and the swipe-to-dismiss gesture.
+//   • childModalLock — the four prop-driven child modals (detail / edit /
+//                      tag manager / gym manager). They run their own focus
+//                      traps internally but hold no lock of their own, so
+//                      this instance takes one on their behalf.
+//
+// This replaced a hand-rolled `classList.toggle('modal-open', open)` watch.
+// A boolean toggle is wrong the moment ANY other surface can hold the lock:
+// closing a WorkoutTracker modal while, say, CalendarView's set editor was
+// open stripped `modal-open` out from under it, re-enabling background
+// scroll beneath a `position: fixed` modal. That is not cosmetic — once the
+// iOS keyboard opens, the visual viewport shifts but the still-scrollable
+// layout viewport does not, so paint desyncs from hit-testing and taps land
+// a row low (#830). Only the reference count in useModal knows when the
+// LAST holder has released.
+//
+// The focus trap deliberately does NOT pass `focusContainer` — that matches
+// the behaviour this replaced (`logModalFocus.activate(el)` with no options),
+// where the sheet's first focusable is the header history button, or the
+// name field in new-exercise mode.
+const logModal = useModal({
+  selector: '.repMaxModal',
+  onOpen: () => {
     // Attach swipe-to-dismiss gesture to the log-set sheet (step 5f).
     // The handle gets touch events so the gesture doesn't compete with
     // native scroll inside the sheet body.
     if (logSheetEl.value && logSheetHandleEl.value) {
       logSwipe.attach(logSheetEl.value, logSheetHandleEl.value)
     }
-  } else {
-    logModalFocus.deactivate()
-    logSwipe.detach()
-  }
+  },
+  onClose: () => { logSwipe.detach() },
+})
+watch(showModal, (open) => {
+  if (open) logModal.open()
+  else logModal.close()
 })
 
-// ── Lock background scroll when any modal is open (iOS) ────────
+const childModalLock = useModal()
 watch(
-  () => showModal.value || !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value || gymManagerOpen.value,
-  (open) => { document.documentElement.classList.toggle('modal-open', open) },
+  () => !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value || gymManagerOpen.value,
+  (open) => {
+    if (open) childModalLock.open()
+    else childModalLock.close()
+  },
 )
+
 onUnmounted(() => {
   timerCtrl.stopTimer()
   clearTimeout(_xpPreviewTimer)
   if (_plateSyncTimer) clearTimeout(_plateSyncTimer)
-  document.documentElement.classList.remove('modal-open')
+  // The scroll lock is released by useModal's own onUnmounted safety net.
 })
 
 // openNewExerciseModal is exposed so App.vue's top-bar "+" can open the

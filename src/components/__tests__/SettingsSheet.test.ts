@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ref, reactive } from 'vue'
-import { mount, VueWrapper } from '@vue/test-utils'
+import { ref, reactive, defineComponent } from 'vue'
+import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
+import { useModal } from '../../composables/useModal'
+
+// Unmount every wrapper after each test. The sheet now holds a background-
+// scroll lock while open, and useModal's reference count is module state
+// shared across this file — a wrapper left mounted keeps `html.modal-open`
+// applied forever and makes the lock assertions below vacuous.
+enableAutoUnmount(afterEach)
 
 // SettingsSheet is one of the two "god components" in the repo (the other,
 // WorkoutTracker, is already covered). It owns theme switching, the weight-unit
@@ -12,8 +19,18 @@ import { mount, VueWrapper } from '@vue/test-utils'
 
 // ── Analytics (stable spy so we can assert logged events) ──────────
 const mockLogEvent = vi.fn()
+const mockSupportFunnel = vi.fn()
 vi.mock('../../composables/useAnalytics', () => ({
-  useAnalytics: () => ({ logEvent: mockLogEvent, tabSwitch: vi.fn(), flushEngagement: vi.fn() }),
+  useAnalytics: () => ({
+    logEvent: mockLogEvent,
+    // The supporter-funnel impression (LIFT-906) fires on open. It was absent
+    // from this mock and nothing noticed, because the open branch was gated on
+    // a false→true prop transition that never happens — App.vue mounts the
+    // sheet with `v-if="settingsOpen"` (#955), so it arrives already-open.
+    supportFunnel: mockSupportFunnel,
+    tabSwitch: vi.fn(),
+    flushEngagement: vi.fn(),
+  }),
 }))
 
 // ── Theme (drives the Appearance section) ──────────────────────────
@@ -541,6 +558,90 @@ describe('SettingsSheet', () => {
       // (Guarded early-return; the close is a no-op rather than a strand.)
       close(wrapper)
       expect(closeEmits(wrapper)).toHaveLength(0)
+    })
+  })
+
+  describe('supporter funnel (LIFT-906)', () => {
+    it('logs one impression when the sheet is mounted open', () => {
+      // App.vue mounts the sheet with `v-if="settingsOpen"` (#955), so it is
+      // already open on mount. The impression used to hang off a non-immediate
+      // false→true prop watch, which that mounting pattern never triggers — so
+      // no impression was ever recorded on the only path that opens the sheet.
+      mountSheet(true)
+      expect(mockSupportFunnel).toHaveBeenCalledWith('impression')
+      expect(mockSupportFunnel).toHaveBeenCalledTimes(1)
+    })
+
+    it('logs no impression when mounted closed', () => {
+      mountSheet(false)
+      expect(mockSupportFunnel).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── Background-scroll lock (#830) ────────────────────────────────
+  //
+  // The settings sheet is a full-screen bottom sheet, but it used raw
+  // useFocusTrap and never took the lock at all — the page stayed scrollable
+  // behind it. It now goes through useModal, so it participates in the SAME
+  // reference count as every other modal instead of owning a boolean.
+  describe('background-scroll lock (#830)', () => {
+    const isLocked = () => document.documentElement.classList.contains('modal-open')
+
+    // A stand-in for any other useModal-based surface (WorkoutTracker's log
+    // sheet, CalendarView's set editor, …) holding the shared lock too.
+    const ForeignModalHost = defineComponent({
+      setup: () => ({ modal: useModal() }),
+      template: '<div />',
+    })
+    type ForeignHost = { modal: ReturnType<typeof useModal> }
+    const foreign = (w: VueWrapper) => (w.vm as unknown as ForeignHost).modal
+
+    it('locks background scroll while the sheet is open', async () => {
+      expect(isLocked()).toBe(false)
+      // App.vue mounts this with `v-if="settingsOpen"` (#955), so the sheet
+      // arrives already-open — the lock has to be taken on mount, not on a
+      // false→true prop transition that never happens.
+      const wrapper = mountSheet(true)
+      expect(isLocked()).toBe(true)
+
+      await wrapper.setProps({ modelValue: false })
+      expect(isLocked()).toBe(false)
+    })
+
+    it('does not lock when it is mounted closed', () => {
+      mountSheet(false)
+      expect(isLocked()).toBe(false)
+    })
+
+    it('keeps the lock applied when it closes under another modal', async () => {
+      const other = mount(ForeignModalHost)
+      foreign(other).open()
+
+      const wrapper = mountSheet(true)
+      expect(isLocked()).toBe(true)
+
+      await wrapper.setProps({ modelValue: false })
+      // The regression this guards: a boolean `modal-open` toggle here would
+      // unlock the background under the still-open foreign modal.
+      expect(isLocked()).toBe(true)
+
+      foreign(other).close()
+      expect(isLocked()).toBe(false)
+    })
+
+    it('releases its lock on unmount — App.vue closes it by tearing it down', () => {
+      const other = mount(ForeignModalHost)
+      foreign(other).open()
+
+      const wrapper = mountSheet(true)
+      // `v-if="settingsOpen"` unmounts the sheet on close, so the prop watcher
+      // never sees false — useModal's onUnmounted safety net is the only thing
+      // that releases the lock on the real close path.
+      wrapper.unmount()
+      expect(isLocked()).toBe(true)
+
+      foreign(other).close()
+      expect(isLocked()).toBe(false)
     })
   })
 })
