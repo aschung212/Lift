@@ -1,6 +1,12 @@
 /**
  * WCAG 2.1 AA contrast ratio audit for all 10 Lift themes (20 variants).
  *
+ * The theme palettes are parsed directly from src/index.css at test time —
+ * index.css is the single source of truth, so the audit can never validate a
+ * stale duplicate of the design tokens (LIFT-1095). If a theme block gains,
+ * loses, or renames a token, this suite either re-audits the real value or
+ * fails loudly on the missing token.
+ *
  * Checks every critical text/background pair against WCAG AA thresholds:
  *   - Normal text (< 18px): 4.5:1
  *   - Large text (≥ 18px or ≥ 14px bold): 3:1
@@ -8,12 +14,23 @@
  *
  * See: https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
 // ── Color utilities ──────────────────────────────────────────────────
 
+/** Expand a 3-digit hex (#fff) to its 6-digit form (#ffffff). */
+function normalizeHex(hex: string): string {
+  const h = hex.replace('#', '').trim()
+  if (h.length === 3) {
+    return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`.toLowerCase()
+  }
+  return `#${h}`.toLowerCase()
+}
+
 function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace('#', '')
+  const h = normalizeHex(hex).replace('#', '')
   return [
     parseInt(h.slice(0, 2), 16),
     parseInt(h.slice(2, 4), 16),
@@ -39,7 +56,7 @@ function contrastRatio(fg: string, bg: string): number {
   return (lighter + 0.05) / (darker + 0.05)
 }
 
-// ── Theme definitions (hex values from index.css) ────────────────────
+// ── Theme parsing (single source of truth: src/index.css) ────────────
 
 interface ThemeColors {
   bgPrimary: string
@@ -55,111 +72,69 @@ interface ThemeColors {
   success: string
 }
 
-// Values mirror the CSS custom properties declared per `[data-theme][data-mode]`
-// block in src/index.css. Keep this table in exact sync with those declarations —
-// a stale duplicate produces "false green" passes that mask real AA regressions.
-const themes: Record<string, ThemeColors> = {
-  'fire-dark': {
-    bgPrimary: '#0f0f0f', bgSecondary: '#1a1a1a', bgElevated: '#242424', bgHover: '#2e2e2e',
-    textPrimary: '#f2f2f2', textSecondary: '#8c8c8c', textMuted: '#777777',
-    accent: '#ff6363', textOnAccent: '#1a0000', danger: '#ff5a5a', success: '#30d158',
-  },
-  'fire-light': {
-    bgPrimary: '#f2eded', bgSecondary: '#ffffff', bgElevated: '#ffffff', bgHover: '#faf5f5',
-    textPrimary: '#1a1212', textSecondary: '#6e5858', textMuted: '#7c6767',
-    accent: '#ca313f', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
-  },
-  'water-dark': {
-    bgPrimary: '#0e1420', bgSecondary: '#182030', bgElevated: '#202c40', bgHover: '#28364e',
-    textPrimary: '#e0e8f8', textSecondary: '#8494bc', textMuted: '#687898',
-    accent: '#2070d8', textOnAccent: '#ffffff', danger: '#f87171', success: '#34d399',
-  },
-  'water-light': {
-    bgPrimary: '#dde4f5', bgSecondary: '#ffffff', bgElevated: '#ffffff', bgHover: '#f0f4ff',
-    textPrimary: '#1a1a2e', textSecondary: '#505088', textMuted: '#636384',
-    accent: '#005ce5', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
-  },
-  'luck-dark': {
-    bgPrimary: '#0a1210', bgSecondary: '#0f1a16', bgElevated: '#14221c', bgHover: '#1a2a24',
-    textPrimary: '#e8f0ec', textSecondary: '#88a898', textMuted: '#607868',
-    accent: '#d4af37', textOnAccent: '#0a1210', danger: '#ef4444', success: '#4ade80',
-  },
-  'luck-light': {
-    bgPrimary: '#f0f5f2', bgSecondary: '#f8faf9', bgElevated: '#ffffff', bgHover: '#e4ece8',
-    textPrimary: '#0a1a14', textSecondary: '#3a5a48', textMuted: '#597666',
-    accent: '#4a6058', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0a7a35',
-  },
-  'air-dark': {
-    bgPrimary: '#0c0a00', bgSecondary: '#141200', bgElevated: '#1c1a08', bgHover: '#242010',
-    textPrimary: '#f8f4e0', textSecondary: '#b0a870', textMuted: '#887840',
-    accent: '#ffd700', textOnAccent: '#0c0a00', danger: '#f87171', success: '#34d399',
-  },
-  'air-light': {
-    bgPrimary: '#f8f6e8', bgSecondary: '#ffffff', bgElevated: '#ffffff', bgHover: '#f0ecd8',
-    textPrimary: '#1a1800', textSecondary: '#6a6030', textMuted: '#7a7147',
-    accent: '#837000', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
-  },
-  'eternal-dark': {
-    bgPrimary: '#0c0c0c', bgSecondary: '#161614', bgElevated: '#1e1e1a', bgHover: '#262622',
-    textPrimary: '#eeeeee', textSecondary: '#a09878', textMuted: '#807860',
-    accent: '#c8a84c', textOnAccent: '#0a0a0a', danger: '#f87171', success: '#34d399',
-  },
-  'eternal-light': {
-    bgPrimary: '#f8f6f2', bgSecondary: '#ffffff', bgElevated: '#ffffff', bgHover: '#f0ece6',
-    textPrimary: '#1a1810', textSecondary: '#6a6050', textMuted: '#797062',
-    accent: '#886e20', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
-  },
-  'amethyst-dark': {
-    bgPrimary: '#111118', bgSecondary: '#1c1c28', bgElevated: '#26263a', bgHover: '#30304a',
-    textPrimary: '#e4e4f4', textSecondary: '#8c8cbc', textMuted: '#6868a0',
-    accent: '#7c50e6', textOnAccent: '#ffffff', danger: '#f87171', success: '#34d399',
-  },
-  'amethyst-light': {
-    bgPrimary: '#ededf5', bgSecondary: '#ffffff', bgElevated: '#ffffff', bgHover: '#f2f0fa',
-    textPrimary: '#18182a', textSecondary: '#5c5890', textMuted: '#6c6889',
-    accent: '#7c3aed', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
-  },
-  'pearl-dark': {
-    bgPrimary: '#111111', bgSecondary: '#1a1a1a', bgElevated: '#222222', bgHover: '#2a2a2a',
-    textPrimary: '#f0f0f0', textSecondary: '#a0a0a0', textMuted: '#707070',
-    accent: '#d0d0d0', textOnAccent: '#111111', danger: '#ef4444', success: '#4ade80',
-  },
-  'pearl-light': {
-    bgPrimary: '#f4f4f2', bgSecondary: '#ffffff', bgElevated: '#ffffff', bgHover: '#eaeae8',
-    textPrimary: '#1a1a1a', textSecondary: '#606060', textMuted: '#6f6f6f',
-    accent: '#505050', textOnAccent: '#ffffff', danger: '#dc2626', success: '#15803d',
-  },
-  'midnight-dark': {
-    bgPrimary: '#080c1a', bgSecondary: '#101428', bgElevated: '#181c34', bgHover: '#202440',
-    textPrimary: '#d8ddf0', textSecondary: '#8088b0', textMuted: '#606888',
-    accent: '#8898d0', textOnAccent: '#080c1a', danger: '#f87171', success: '#34d399',
-  },
-  'midnight-light': {
-    bgPrimary: '#eaecf5', bgSecondary: '#f5f6fc', bgElevated: '#ffffff', bgHover: '#e0e2f0',
-    textPrimary: '#0a1020', textSecondary: '#484870', textMuted: '#686888',
-    accent: '#5060a0', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
-  },
-  'love-light': {
-    bgPrimary: '#f0dff0', bgSecondary: '#ffffff', bgElevated: '#ffffff', bgHover: '#f8eef8',
-    textPrimary: '#1e1028', textSecondary: '#503e80', textMuted: '#725e80',
-    accent: '#b82c76', textOnAccent: '#ffffff', danger: '#dc2626', success: '#0d8a3a',
-  },
-  'love-dark': {
-    bgPrimary: '#1a1020', bgSecondary: '#261830', bgElevated: '#322040', bgHover: '#3e2850',
-    textPrimary: '#f0e4f4', textSecondary: '#a484c2', textMuted: '#806898',
-    accent: '#f472b6', textOnAccent: '#1a0818', danger: '#f87171', success: '#34d399',
-  },
-  'earth-dark': {
-    bgPrimary: '#141010', bgSecondary: '#1c1614', bgElevated: '#241c18', bgHover: '#2e2420',
-    textPrimary: '#e8dcd0', textSecondary: '#a08878', textMuted: '#7a6858',
-    accent: '#906040', textOnAccent: '#ffffff', danger: '#ef4444', success: '#84cc16',
-  },
-  'earth-light': {
-    bgPrimary: '#f5efe8', bgSecondary: '#ffffff', bgElevated: '#ffffff', bgHover: '#ede4d8',
-    textPrimary: '#1a1210', textSecondary: '#6a5444', textMuted: '#7d695a',
-    accent: '#7a5438', textOnAccent: '#ffffff', danger: '#dc2626', success: '#4d7c0f',
-  },
+/**
+ * CSS custom-property name → ThemeColors field. Every field the audit reads
+ * must be a hex-valued token in index.css; a missing one fails the parse.
+ */
+const TOKEN_MAP: Record<string, keyof ThemeColors> = {
+  '--bg-primary': 'bgPrimary',
+  '--bg-secondary': 'bgSecondary',
+  '--bg-elevated': 'bgElevated',
+  '--bg-hover': 'bgHover',
+  '--text-primary': 'textPrimary',
+  '--text-secondary': 'textSecondary',
+  '--text-muted': 'textMuted',
+  '--accent': 'accent',
+  '--text-on-accent': 'textOnAccent',
+  '--danger': 'danger',
+  '--success': 'success',
 }
+
+const HEX_TOKEN = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/
+
+/**
+ * Parse every `[data-theme="X"][data-mode="Y"]` token block out of index.css.
+ * Blocks contain only flat `--token: value;` declarations (no nested braces),
+ * so a non-greedy brace match is sufficient and unambiguous.
+ */
+function parseThemesFromCss(css: string): Record<string, ThemeColors> {
+  const blockRe = /\[data-theme="([\w-]+)"\]\[data-mode="(dark|light)"\]\s*\{([^}]*)\}/g
+  const declRe = /(--[\w-]+)\s*:\s*([^;]+);/g
+
+  const out: Record<string, ThemeColors> = {}
+  let block: RegExpExecArray | null
+
+  while ((block = blockRe.exec(css)) !== null) {
+    const [, theme, mode, body] = block
+    const key = `${theme}-${mode}`
+    const colors: Partial<ThemeColors> = {}
+
+    let decl: RegExpExecArray | null
+    while ((decl = declRe.exec(body)) !== null) {
+      const field = TOKEN_MAP[decl[1]]
+      if (!field) continue
+      const value = decl[2].trim()
+      if (!HEX_TOKEN.test(value)) {
+        throw new Error(
+          `${key}: token ${decl[1]} is "${value}", but the contrast audit only ` +
+            `understands hex values. Update the audit if this token is now non-hex.`,
+        )
+      }
+      colors[field] = normalizeHex(value)
+    }
+
+    const missing = Object.values(TOKEN_MAP).filter((f) => !(f in colors))
+    if (missing.length > 0) {
+      throw new Error(`${key}: missing required token(s): ${missing.join(', ')}`)
+    }
+    out[key] = colors as ThemeColors
+  }
+
+  return out
+}
+
+const cssPath = resolve(__dirname, '../../index.css')
+const themes = parseThemesFromCss(readFileSync(cssPath, 'utf8'))
 
 // ── Contrast pair definitions ────────────────────────────────────────
 
@@ -202,6 +177,12 @@ const largeText: ContrastPair[] = [
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe('theme contrast audit (WCAG 2.1 AA)', () => {
+  it('parses all 10 themes (20 variants) from index.css', () => {
+    // 10 themes × light/dark. Guards against a parser regression silently
+    // dropping variants and leaving the audit green on an empty set.
+    expect(Object.keys(themes).length).toBe(20)
+  })
+
   for (const [name, colors] of Object.entries(themes)) {
     describe(name, () => {
       for (const pair of normalText) {
