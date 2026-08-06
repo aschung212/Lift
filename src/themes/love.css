@@ -38,7 +38,7 @@
   --border:          #362048;
   --border-strong:   #503868;
   --text-primary:    #f0e4f4;
-  --text-secondary:  #a080c0;
+  --text-secondary:  #a484c2; /* AA 4.5:1 on bg-elevated (#322040) */
   --text-muted:      #806898;
   --accent:          #f472b6;
   --accent-hover:    #ec4899;
