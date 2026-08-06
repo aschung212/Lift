@@ -130,6 +130,30 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.previewBanner is data-mode aware, not OS-color-scheme aware (LIFT-1097)', () => {
+    const lines = getRuleLines('.previewBanner')
+
+    // The app resolves light/dark explicitly via the data-mode attribute
+    // (useTheme applyResolvedMode), so a user who forces a mode opposite their
+    // OS still gets consistent styling. The banner must follow the same tokens
+    // instead of hardcoding hex and switching on prefers-color-scheme.
+    it('uses theme tokens for color/background/border, not hardcoded hex', () => {
+      expect(lines.some(l => l.startsWith('color:') && l.includes('var(--accent'))).toBe(true)
+      expect(lines.some(l => l.startsWith('background:') && l.includes('var(--accent-subtle'))).toBe(true)
+      expect(lines.some(l => l.startsWith('border-bottom:') && l.includes('var(--border'))).toBe(true)
+    })
+
+    it('does not hardcode hex colors', () => {
+      expect(lines.some(l => /#[0-9a-fA-F]{3,6}/.test(l))).toBe(false)
+    })
+
+    // Regression guard: prefers-color-scheme couples visuals to the OS scheme,
+    // breaking the data-mode invariant. index.css must contain zero such rules.
+    it('index.css has no prefers-color-scheme override', () => {
+      expect(css.includes('@media (prefers-color-scheme')).toBe(false)
+    })
+  })
+
   describe('.wtDetailTabs segmented control', () => {
     const lines = getRuleLines('.wtDetailTabs')
 
