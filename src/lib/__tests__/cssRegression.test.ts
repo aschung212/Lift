@@ -36,6 +36,31 @@ function getVueStyleBlock(componentPath: string): string {
 }
 
 describe('CSS regression tests', () => {
+  describe('viewport-height unit convention (LIFT-1099)', () => {
+    // Full-height/max-height surfaces must all use `svh` (smallest viewport
+    // height). svh always fits regardless of browser-chrome state, so a nested
+    // surface can never exceed the 100svh #app shell and get clipped, nor jump
+    // when the URL bar collapses. `dvh`/`lvh`/bare `vh` are larger and are the
+    // exact overflow risk this convention forbids. Any `<number>vh` token in a
+    // property value must be prefixed with `s` (i.e. `svh`).
+    it('uses only svh for every viewport-height value', () => {
+      // Match a numeric length followed by an optional s/d/l prefix and `vh`
+      // (svh, dvh, lvh, or bare vh — all forbidden except svh).
+      const matches = css.match(/\d+(?:\.\d+)?(?:s|d|l)?vh\b/g) ?? []
+      expect(matches.length, 'expected viewport-height units to exist').toBeGreaterThan(0)
+      const offenders = matches.filter(m => !/svh\b/.test(m))
+      expect(
+        offenders,
+        `non-svh viewport-height units found (use svh — see LIFT-1099): ${offenders.join(', ')}`
+      ).toEqual([])
+    })
+
+    it('sizes the #app shell in svh', () => {
+      const lines = getRuleLines('#app')
+      expect(lines.some(l => l.startsWith('height: 100svh'))).toBe(true)
+    })
+  })
+
   describe('.tabContent base rule', () => {
     const lines = getRuleLines('.tabContent')
 
@@ -689,7 +714,7 @@ describe('CSS regression tests', () => {
 
   describe('log-set sheet sticky save bar', () => {
     // Regression: the log form (usual ladder + PR card + plate calc) grew
-    // taller than the 88dvh sheet, pushing Save/Done below the fold — users
+    // taller than the 88svh sheet, pushing Save/Done below the fold — users
     // had to scroll to find Save and could close the sheet thinking the set
     // was logged. The action bar must stay pinned/visible at the sheet
     // bottom while the form scrolls behind it.

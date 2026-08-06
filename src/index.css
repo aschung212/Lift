@@ -794,6 +794,17 @@ button, [role="tab"], [role="switch"], a {
 
 /* ─── App shell ─────────────────────────────────────────────────────────── */
 
+/*
+  Viewport-height convention (LIFT-1099): all full-height and max-height
+  surfaces are sized in `svh` (the SMALLEST viewport height). svh resolves to
+  the viewport with the mobile browser chrome EXPANDED, so an svh-sized element
+  always fits regardless of whether the URL bar is showing — it can never
+  overflow or jump as the chrome collapses. The outer shell (#app) is 100svh
+  with `overflow: hidden`, so any nested surface sized in a larger unit (`dvh`,
+  or bare `vh` which equals `lvh`) could exceed the shell and be clipped. Use
+  `dvh`/`lvh` ONLY where an element is intended to grow with the chrome — no
+  surface in Lift currently needs that. cssRegression.test.ts enforces this.
+*/
 #app {
   height: 100svh;
   display: flex;
@@ -1391,7 +1402,7 @@ html.modal-open .tabContent {
   border-top-left-radius: 24px;
   border-top-right-radius: 24px;
   padding: 24px 24px calc(24px + env(safe-area-inset-bottom, 0px));
-  max-height: 70vh;
+  max-height: 70svh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   animation: statsSlideUp 0.3s ease;
@@ -3923,7 +3934,7 @@ html.theme-fading .settingsSheet {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 96px);
+  max-height: calc(100svh - env(safe-area-inset-top, 0px) - 96px);
   touch-action: auto;
   background: var(--glass-fill, var(--bg-elevated));
   backdrop-filter: blur(32px) saturate(180%);
@@ -3957,8 +3968,8 @@ html.theme-fading .settingsSheet {
   --sheet-pad-x: 20px; /* shared with the sticky action bar's full-bleed margins */
   max-width: 100%;
   width: 100%;
-  height: 88dvh;
-  max-height: 88dvh;
+  height: 88svh;
+  max-height: 88svh;
   padding: 16px var(--sheet-pad-x) calc(24px + env(safe-area-inset-bottom, 0px));
   border-radius: 24px 24px 0 0;
   border-bottom: none;
@@ -5936,7 +5947,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtTimerEditListScroll {
-  max-height: 35vh;
+  max-height: 35svh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -7155,7 +7166,7 @@ html.theme-fading .settingsSheet {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100dvh;
+  min-height: 100svh;
   padding: 32px;
   text-align: center;
   background: var(--bg-primary);
@@ -7414,7 +7425,7 @@ html.theme-fading .settingsSheet {
   padding: 24px 32px;
   width: 100%;
   max-width: 480px;
-  max-height: 80vh;
+  max-height: 80svh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
