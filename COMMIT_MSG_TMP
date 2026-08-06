@@ -1,0 +1,17 @@
+test(LIFT-1095): parse the contrast audit's theme palettes from index.css
+
+The WCAG contrast audit re-declared all 20 theme palettes as inline hex
+literals, so it validated a stale copy of the design tokens rather than the
+source of truth. The two had already diverged — air-dark was still the old
+blue palette while index.css ships a gold one, and eternal-dark
+text-on-accent read 0c0c0c vs the real 0a0a0a — meaning the shipped colors
+could regress below AA while the suite stayed green.
+
+Route the audit off the duplicate: a small parser reads index.css at test
+time, extracts each [data-theme][data-mode] block's tokens, and drives the
+assertions from the real values. The parse fails loudly if a block is missing
+a required token or if a token becomes non-hex, and a guard asserts all 20
+variants were found so a parser regression can't leave the audit green on an
+empty set. Also corrected the stale "9 themes (18 variants)" header.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

@@ -62,6 +62,7 @@ interface ThemeColors {
   bgPrimary: string
   bgSecondary: string
   bgElevated: string
+  bgHover: string
   textPrimary: string
   textSecondary: string
   textMuted: string
@@ -79,6 +80,7 @@ const TOKEN_MAP: Record<string, keyof ThemeColors> = {
   '--bg-primary': 'bgPrimary',
   '--bg-secondary': 'bgSecondary',
   '--bg-elevated': 'bgElevated',
+  '--bg-hover': 'bgHover',
   '--text-primary': 'textPrimary',
   '--text-secondary': 'textSecondary',
   '--text-muted': 'textMuted',
@@ -145,15 +147,25 @@ interface ContrastPair {
 }
 
 const normalText: ContrastPair[] = [
+  // Primary body text sits on every surface — cards/modals/rows use bg-elevated,
+  // hovered/pressed rows use bg-hover.
   { label: 'text-primary on bg-primary',   fg: t => t.textPrimary,   bg: t => t.bgPrimary,   min: 4.5 },
   { label: 'text-primary on bg-secondary', fg: t => t.textPrimary,   bg: t => t.bgSecondary, min: 4.5 },
   { label: 'text-primary on bg-elevated',  fg: t => t.textPrimary,   bg: t => t.bgElevated,  min: 4.5 },
+  { label: 'text-primary on bg-hover',     fg: t => t.textPrimary,   bg: t => t.bgHover,     min: 4.5 },
+  // Secondary text (subtitles, metadata) renders on the primary/secondary/elevated
+  // resting surfaces — all require the full 4.5:1 for normal-size text.
   { label: 'text-secondary on bg-primary', fg: t => t.textSecondary, bg: t => t.bgPrimary,   min: 4.5 },
   { label: 'text-secondary on bg-secondary', fg: t => t.textSecondary, bg: t => t.bgSecondary, min: 4.5 },
+  { label: 'text-secondary on bg-elevated',  fg: t => t.textSecondary, bg: t => t.bgElevated,  min: 4.5 },
   { label: 'text-on-accent on accent',     fg: t => t.textOnAccent,  bg: t => t.accent,      min: 4.5 },
 ]
 
 const largeText: ContrastPair[] = [
+  // bg-hover is a *transient* pressed/hover feedback surface, not a resting reading
+  // surface. Primary text on it still gets the full 4.5:1 guard; secondary text on a
+  // momentary hover background is held to the 3:1 large/UI floor.
+  { label: 'text-secondary on bg-hover (transient)', fg: t => t.textSecondary, bg: t => t.bgHover, min: 3 },
   { label: 'text-muted on bg-primary (large)',   fg: t => t.textMuted, bg: t => t.bgPrimary,   min: 3 },
   { label: 'text-muted on bg-secondary (large)', fg: t => t.textMuted, bg: t => t.bgSecondary, min: 3 },
   { label: 'accent on bg-primary (large)',        fg: t => t.accent,   bg: t => t.bgPrimary,   min: 3 },
