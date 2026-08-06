@@ -249,6 +249,41 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('destructive controls track the per-theme --danger token (LIFT-1098)', () => {
+    // Regression: several destructive controls hardcoded red literals
+    // (#ff6b6b, #ff4444) or a literal #fff on-danger text instead of the
+    // per-theme --danger / --text-on-accent tokens. Because --danger varies
+    // per theme (e.g. #ff5a5a vs #dc2626 vs #f87171), the fixed values drifted
+    // from the palette and could fall out of AA contrast in some themes.
+
+    it('.devBtnDanger uses --danger / --danger-subtle, no hardcoded hex', () => {
+      const lines = getRuleLines('.devBtnDanger')
+      expect(lines.length, '.devBtnDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('color: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('border-color: var(--danger-subtle)'))).toBe(true)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+    })
+
+    it('.wtEditDeleteConfirmDanger uses --danger bg with --text-on-accent text', () => {
+      const lines = getRuleLines('.wtEditDeleteConfirmDanger')
+      expect(lines.length, '.wtEditDeleteConfirmDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('background: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('color: var(--text-on-accent)'))).toBe(true)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+    })
+
+    it('.resetConfirmDanger uses --danger and drops the !important literal', () => {
+      // Scoped to .unlockDismiss so the token wins on specificity, not !important.
+      const lines = getRuleLines('.unlockDismiss.resetConfirmDanger')
+      expect(lines.length, '.unlockDismiss.resetConfirmDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('background: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('!important'))).toBe(false)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+      // The unscoped literal must be gone so the accent base cannot win.
+      expect(css).not.toContain('#ff4444 !important')
+    })
+  })
+
   describe('.topBarCoachBtn AI Review entry (#972)', () => {
     // The AI Review entry moved from a full-width Workouts card to a compact
     // top-bar icon on the Calendar tab; it must inherit the shared 44px

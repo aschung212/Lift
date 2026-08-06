@@ -2077,8 +2077,8 @@ html.theme-fading .settingsSheet {
 .devBtn:active { opacity: 0.6; }
 
 .devBtnDanger {
-  color: #ff6b6b;
-  border-color: #ff6b6b33;
+  color: var(--danger);
+  border-color: var(--danger-subtle);
 }
 
 /* ─── Privacy transparency ──────────────────────────────────────────────── */
@@ -3672,7 +3672,7 @@ html.theme-fading .settingsSheet {
 
 .wtEditDeleteConfirmDanger {
   background: var(--danger);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 /* ─── PR History ───────────────────────────────────────────────────────── */
@@ -5458,8 +5458,11 @@ html.theme-fading .settingsSheet {
   margin-bottom: 24px;
 }
 
-.resetConfirmDanger {
-  background: #ff4444 !important;
+/* Scoped to .unlockDismiss so the per-theme --danger token wins on specificity
+   (0,2,0 > 0,1,0) without !important, which the base .unlockDismiss accent
+   background — declared later in the file — would otherwise override. */
+.unlockDismiss.resetConfirmDanger {
+  background: var(--danger);
 }
 
 .resetConfirmCancel {
