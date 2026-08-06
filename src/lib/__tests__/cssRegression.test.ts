@@ -880,3 +880,46 @@ describe('type scale is rem-anchored (WCAG 1.4.4 — LIFT-988)', () => {
     expect(css).not.toMatch(/\bhtml\s*\{[^}]*font-size:\s*\d+px/)
   })
 })
+
+describe('Custom-property token definitions', () => {
+  // Every design token consumed via var(--x) must be declared somewhere in
+  // index.css (a :root block or a theme block). A reference with no matching
+  // declaration and no fallback silently resolves to the initial value —
+  // `background: var(--bg-tertiary)` rendered transparent in all 20 theme
+  // variants for months because the token was never defined (LIFT-1094).
+  const definedTokens = new Set<string>()
+  for (const m of css.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) {
+    definedTokens.add(m[1])
+  }
+
+  it('parsed a non-trivial set of token definitions', () => {
+    // Guards the test itself: if the regex silently matched nothing, the
+    // undefined-reference check below would pass vacuously.
+    expect(definedTokens.size).toBeGreaterThan(20)
+    expect(definedTokens.has('--bg-hover')).toBe(true)
+  })
+
+  it('every var(--token) reference resolves to a declared token', () => {
+    const undefinedRefs = new Set<string>()
+    // Capture the token name up to a comma (fallback) or the closing paren.
+    for (const m of css.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)\s*[,)]/g)) {
+      const token = m[1]
+      // A reference carrying its own fallback (var(--x, y)) degrades
+      // gracefully, so only flag bare references.
+      const hasFallback = m[0].includes(',')
+      if (!hasFallback && !definedTokens.has(token)) {
+        undefinedRefs.add(token)
+      }
+    }
+    expect(
+      [...undefinedRefs],
+      `undefined CSS custom properties referenced without a fallback: ${[...undefinedRefs].join(', ')}`,
+    ).toEqual([])
+  })
+
+  it('does not reintroduce the undefined --bg-tertiary token', () => {
+    // Pin the specific token that regressed so the fix cannot silently revert.
+    expect(css.includes('var(--bg-tertiary)')).toBe(false)
+    expect(definedTokens.has('--bg-tertiary')).toBe(false)
+  })
+})
