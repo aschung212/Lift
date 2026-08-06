@@ -44,8 +44,9 @@ describe('CSS regression tests', () => {
     // exact overflow risk this convention forbids. Any `<number>vh` token in a
     // property value must be prefixed with `s` (i.e. `svh`).
     it('uses only svh for every viewport-height value', () => {
-      // Match a numeric length followed by an optional s/d prefix and `vh`.
-      const matches = css.match(/\d+(?:\.\d+)?(?:s|d)?vh\b/g) ?? []
+      // Match a numeric length followed by an optional s/d/l prefix and `vh`
+      // (svh, dvh, lvh, or bare vh — all forbidden except svh).
+      const matches = css.match(/\d+(?:\.\d+)?(?:s|d|l)?vh\b/g) ?? []
       expect(matches.length, 'expected viewport-height units to exist').toBeGreaterThan(0)
       const offenders = matches.filter(m => !/svh\b/.test(m))
       expect(
