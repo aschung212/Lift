@@ -16,6 +16,11 @@
           <template v-if="weeklyGoalInfo.met">Goal hit — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
           <template v-else-if="weeklyGoalInfo.atRisk">Streak at risk — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
           <template v-else>{{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days this week</template>
+          <span
+            v-if="weekStreak >= 1"
+            class="wtWeekStreak"
+            :aria-label="`${weekStreak}-week training streak`"
+          > · {{ weekStreak }}-week streak</span>
         </span>
       </div>
       <button
@@ -1185,6 +1190,21 @@ const prsThisWeek = computed(() => {
 const weeklyGoalInfo = computed(() => {
   if (!progressionStore.progressionEnabled) return null
   return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
+})
+
+/**
+ * The user's live consecutive-week streak, surfaced continuously in-app so the
+ * "don't want to lose it" retention effect is always visible — not just on the
+ * share card (LIFT-1109). `streakWeeks` holds only *completed* weeks (the
+ * current in-progress week isn't evaluated until the Monday boundary), so we
+ * project it forward by one when this week's goal is already met, mirroring the
+ * celebration semantics (`decideGoalCelebration` → `completedStreak + 1`).
+ * Zero (no active streak) hides the indicator.
+ */
+const weekStreak = computed(() => {
+  const info = weeklyGoalInfo.value
+  if (!info) return 0
+  return progressionStore.streakWeeks + (info.met ? 1 : 0)
 })
 
 /**

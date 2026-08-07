@@ -2223,6 +2223,13 @@ html.theme-fading .settingsSheet {
   font-variant-numeric: tabular-nums;
 }
 
+/* Consecutive-week streak count, appended inline to the goal banner (LIFT-1109).
+   Bolded so the always-visible streak reads as the emphasis of the banner;
+   inherits the banner's state color (secondary / accent / danger). */
+.wtWeekStreak {
+  font-weight: 700;
+}
+
 .wtWeeklyGoalMet {
   background: var(--accent-subtle);
 }

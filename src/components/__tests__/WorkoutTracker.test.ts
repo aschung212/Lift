@@ -40,9 +40,19 @@ vi.mock('../../stores/preferences', () => ({
     addGym: mockAddGym,
   }),
 }))
+// Mutable container so streak/goal tests (LIFT-1109) can drive the progression
+// state (enabled flag + weeklyTarget + streakWeeks) without a fixed mock. Reset
+// to the disabled default in beforeEach so the rest of the suite is unaffected.
+const mockProgressionState = reactive({
+  progressionEnabled: false,
+  weeklyTarget: 3,
+  streakWeeks: 0,
+})
 vi.mock('../../stores/progression', () => ({
   useProgressionStore: () => ({
-    progressionEnabled: false,
+    get progressionEnabled() { return mockProgressionState.progressionEnabled },
+    get weeklyTarget() { return mockProgressionState.weeklyTarget },
+    get streakWeeks() { return mockProgressionState.streakWeeks },
     showProgression: false,
     streakHistory: [],
     currentMultiplier: 1,
@@ -269,6 +279,9 @@ describe('WorkoutTracker', () => {
   beforeEach(() => {
     mockState.exercises = []
     mockPrefsState.gyms = []
+    mockProgressionState.progressionEnabled = false
+    mockProgressionState.weeklyTarget = 3
+    mockProgressionState.streakWeeks = 0
     localStorageMock.clear()
     vi.clearAllMocks()
     // clearAllMocks keeps implementations — reset return values explicitly
@@ -313,6 +326,55 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
       expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
+    })
+  })
+
+  describe('weekly streak indicator (LIFT-1109)', () => {
+    it('does not render the goal banner when progression is disabled', () => {
+      mockProgressionState.progressionEnabled = false
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtWeeklyGoal').exists()).toBe(false)
+      expect(wrapper.find('.wtWeekStreak').exists()).toBe(false)
+    })
+
+    it('hides the streak count when there is no active streak', () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.weeklyTarget = 7
+      mockProgressionState.streakWeeks = 0
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtWeeklyGoal').exists()).toBe(true)
+      expect(wrapper.find('.wtWeekStreak').exists()).toBe(false)
+    })
+
+    it('surfaces the completed consecutive-week streak when this week is not yet met', () => {
+      // High target with no current-week sets → goal not met, but the banked
+      // streak from prior weeks is still alive and must stay visible.
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.weeklyTarget = 7
+      mockProgressionState.streakWeeks = 5
+      const wrapper = mountTracker()
+      const streak = wrapper.find('.wtWeekStreak')
+      expect(streak.exists()).toBe(true)
+      expect(streak.text()).toContain('5-week streak')
+      expect(streak.attributes('aria-label')).toBe('5-week training streak')
+    })
+
+    it('projects the streak forward by one once this week\'s goal is met', () => {
+      // One set logged today with a target of 1 → goal met this week, so the
+      // live streak is streakWeeks + 1 (mirrors the celebration semantics).
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.weeklyTarget = 1
+      mockProgressionState.streakWeeks = 5
+      mockState.exercises = [{
+        id: 'ex-today',
+        name: 'Bench Press',
+        tags: [],
+        sets: [{ id: 's-today', date: new Date().toISOString(), weight: 185, reps: 5, estimated1RM: 216 }],
+      }]
+      const wrapper = mountTracker()
+      const banner = wrapper.find('.wtWeeklyGoal')
+      expect(banner.text()).toContain('Goal hit')
+      expect(wrapper.find('.wtWeekStreak').text()).toContain('6-week streak')
     })
   })
 
