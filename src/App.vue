@@ -40,6 +40,17 @@
           </button>
         </div>
 
+        <div v-if="showWelcomeBack" class="welcomeBackBanner" role="status">
+          <div class="welcomeBackText">
+            <strong class="welcomeBackTitle">Welcome back 👋</strong>
+            <span class="welcomeBackDesc">{{ welcomeBackMessage }}</span>
+          </div>
+          <button class="welcomeBackCta" @click="logFromWelcomeBack">Log today</button>
+          <button class="welcomeBackDismiss" @click="dismissWelcomeBack" aria-label="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
         <!-- PWA install banner -->
         <Transition name="installBanner">
           <div v-if="installBannerVisible" class="installBanner" role="banner">
@@ -313,6 +324,7 @@ import { useOnboarding } from './composables/useOnboarding'
 import { useTabRouting } from './composables/useTabRouting'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
 import { GUEST_BACKUP_PROMPT_DISMISSED_KEY } from './composables/useAuth'
+import { decideWelcomeBack, readWelcomeBackState, markWelcomedBack, type WelcomeBackDecision } from './lib/welcomeBack'
 
 const { currentTheme, THEME_PREVIEWS, resolvedMode, isThemeUnlocked } = useTheme()
 
@@ -489,6 +501,42 @@ function dismissGuestBackupPrompt() {
   logEvent('guest_backup_prompt_dismissed')
 }
 
+// ── Welcome-back re-entry moment (LIFT-1107) ─────────────────────
+// A lapsed user (≥14 days since their last workout) returns to a warm,
+// data-safe acknowledgement instead of a cold normal state. Evaluated once on
+// mount (workoutDates hydrates synchronously from localStorage); the decision
+// is device-local and keyed on the last-workout date so it shows once per
+// absence and re-arms only after a fresh workout is logged. Suppressed while
+// sample/onboarding data is present so a first-run user is never "welcomed back".
+const welcomeBack = ref<WelcomeBackDecision | null>(null)
+const showWelcomeBack = computed(() => welcomeBack.value !== null && !hasSampleData.value)
+const welcomeBackMessage = computed(() => {
+  const d = welcomeBack.value
+  if (!d) return ''
+  const weeks = Math.floor(d.daysAway / 7)
+  const gap = weeks >= 2 ? `${weeks} weeks` : `${d.daysAway} days`
+  return `It's been ${gap} since your last workout — your progress is all still here. Pick up right where you left off.`
+})
+function evaluateWelcomeBack() {
+  const state = readWelcomeBackState()
+  const decision = decideWelcomeBack(workoutStore.workoutDates, state.acknowledgedWorkoutDate)
+  welcomeBack.value = decision
+  if (decision) logEvent('welcome_back_impression', { days_away: decision.daysAway })
+}
+function acknowledgeWelcomeBack() {
+  if (welcomeBack.value) markWelcomedBack(welcomeBack.value.lastWorkoutDate)
+  welcomeBack.value = null
+}
+function dismissWelcomeBack() {
+  logEvent('welcome_back_dismissed')
+  acknowledgeWelcomeBack()
+}
+function logFromWelcomeBack() {
+  logEvent('welcome_back_log_tap')
+  acknowledgeWelcomeBack()
+  switchTab('workouts')
+}
+
 // ── Acquisition attribution ─────────────────────────────────────
 // Capture the inbound ?ref= / ?utm_*= source once, before the ?tab= cleanup
 // below strips the query string. Logs a single acquisition_source event and
@@ -662,6 +710,10 @@ onMounted(async () => {
     location.reload()
     return
   }
+
+  // Welcome-back re-entry moment (LIFT-1107) — evaluated after the restore guard
+  // so the banner never flashes ahead of a reload, and after stores hydrate.
+  evaluateWelcomeBack()
 
   // Startup migration and streak catch-up
   if (progressionStore.progressionEnabled && !isMigrated()) {
