@@ -6,7 +6,13 @@
     <div class="bwHero">
       <span class="bwCurrentValue">{{ store.latestWeight ? `${displayWeight(store.latestWeight)} ${weightUnit}` : 'No entries' }}</span>
       <span class="bwGoalProgressHint">{{ goalProgressText }}</span>
-      <button class="wtLogBtn" @click="openModal()">+ Log</button>
+      <div class="bwHeroActions">
+        <button class="wtLogBtn" @click="openModal()">+ Log</button>
+        <button class="wtLogBtn bwPhotosBtn" @click="showPhotos = true" aria-label="Open progress photos">
+          Progress Photos<span v-if="photosStore.count" class="bwPhotosCount">{{ photosStore.count }}</span>
+          <span class="bwPhotosChevron" aria-hidden="true">›</span>
+        </button>
+      </div>
     </div>
 
     <!-- Period selector -->
@@ -265,6 +271,8 @@
       </div>
     </div>
   </Teleport>
+
+  <ProgressPhotosView v-if="showPhotos" @close="showPhotos = false" />
 </template>
 
 <script setup lang="ts">
@@ -279,8 +287,12 @@ import { useUndoToast } from '../composables/useUndoToast'
 import { useModal } from '../composables/useModal'
 import { usePreferencesStore } from '../stores/preferences'
 import { useXPCeremony } from '../composables/useXPCeremony'
+import { usePhotosStore } from '../stores/photos'
+import ProgressPhotosView from './ProgressPhotosView.vue'
 
 const store = useBodyweightStore()
+const photosStore = usePhotosStore()
+const showPhotos = ref(false)
 const prefs = usePreferencesStore()
 const { currentTheme } = useTheme()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()

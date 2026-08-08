@@ -40,9 +40,15 @@ vi.mock('../../stores/preferences', () => ({
     addGym: mockAddGym,
   }),
 }))
+// Reactive so streak-badge tests (LIFT-1109) can flip progression on and set a
+// streak count without a remount — same mock-fidelity contract as
+// `mockPrefsState`: a plain object would cache the header computeds forever.
+const mockProgressionState = reactive({ progressionEnabled: false, streakWeeks: 0, weeklyTarget: 4 })
 vi.mock('../../stores/progression', () => ({
   useProgressionStore: () => ({
-    progressionEnabled: false,
+    get progressionEnabled() { return mockProgressionState.progressionEnabled },
+    get streakWeeks() { return mockProgressionState.streakWeeks },
+    get weeklyTarget() { return mockProgressionState.weeklyTarget },
     showProgression: false,
     streakHistory: [],
     currentMultiplier: 1,
@@ -269,6 +275,9 @@ describe('WorkoutTracker', () => {
   beforeEach(() => {
     mockState.exercises = []
     mockPrefsState.gyms = []
+    mockProgressionState.progressionEnabled = false
+    mockProgressionState.streakWeeks = 0
+    mockProgressionState.weeklyTarget = 4
     localStorageMock.clear()
     vi.clearAllMocks()
     // clearAllMocks keeps implementations — reset return values explicitly
@@ -313,6 +322,50 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
       expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
+    })
+  })
+
+  describe('consecutive-week streak badge (LIFT-1109)', () => {
+    it('is hidden when progression is disabled', () => {
+      mockProgressionState.progressionEnabled = false
+      mockProgressionState.streakWeeks = 12
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtStreakBadge').exists()).toBe(false)
+    })
+
+    it('is hidden when the streak is zero even with progression enabled', () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.streakWeeks = 0
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtWeeklyGoal').exists()).toBe(true)
+      expect(wrapper.find('.wtStreakBadge').exists()).toBe(false)
+    })
+
+    it('surfaces the multi-week streak count in the goal banner', () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.streakWeeks = 12
+      const wrapper = mountTracker()
+      const badge = wrapper.find('.wtStreakBadge')
+      expect(badge.exists()).toBe(true)
+      expect(badge.text()).toBe('12-week streak')
+      expect(badge.attributes('aria-label')).toBe('12-week training streak')
+    })
+
+    it('renders a one-week streak from the first completed week', () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.streakWeeks = 1
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtStreakBadge').text()).toBe('1-week streak')
+    })
+
+    it('reacts to a streak change without a remount', async () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.streakWeeks = 0
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtStreakBadge').exists()).toBe(false)
+      mockProgressionState.streakWeeks = 3
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtStreakBadge').text()).toBe('3-week streak')
     })
   })
 

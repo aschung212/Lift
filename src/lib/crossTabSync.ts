@@ -27,7 +27,7 @@ export type CrossTabMessage =
  * channel (LIFT-819). App.vue's `Record<StoreKey, …>` reload map then fails to
  * compile until the new store is wired in.
  */
-export const STORE_KEYS = ['workout', 'bodyweight', 'preferences', 'progression'] as const
+export const STORE_KEYS = ['workout', 'bodyweight', 'preferences', 'progression', 'photos'] as const
 
 export type StoreKey = (typeof STORE_KEYS)[number]
 

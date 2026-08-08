@@ -9,6 +9,7 @@ import { resetXPCeremony } from '../composables/xpCeremonyUI'
 import { useTheme } from '../composables/useTheme'
 import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
+import { closePhotoDB } from '../lib/progressPhotos'
 import { logError } from '../lib/logger'
 import { clearReauthFlag } from '../lib/sessionHealth'
 import type { User, Provider } from '@supabase/supabase-js'
@@ -328,7 +329,7 @@ async function deleteAccount(): Promise<void> {
     'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
     'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
     'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
-    'coach-insights-history', GUEST_MODE_KEY, GUEST_BACKUP_PROMPT_DISMISSED_KEY,
+    'coach-insights-history', 'progress-photos', GUEST_MODE_KEY, GUEST_BACKUP_PROMPT_DISMISSED_KEY,
   ]
   for (const key of localStorageKeys) {
     localStorage.removeItem(key)
@@ -338,6 +339,9 @@ async function deleteAccount(): Promise<void> {
   // deleteDatabase() blocks indefinitely while a connection is still open,
   // which would otherwise leave the durable backup (and sync journal) on disk.
   closeDB()
+  // Close the progress-photos DB too, or deleteDatabase() blocks on its open
+  // connection and the (sensitive, device-local) photo blobs survive deletion.
+  closePhotoDB()
   if (typeof indexedDB !== 'undefined') {
     try {
       const dbs = await indexedDB.databases()
@@ -345,8 +349,9 @@ async function deleteAccount(): Promise<void> {
         if (db.name) indexedDB.deleteDatabase(db.name)
       }
     } catch {
-      // indexedDB.databases() not supported in all browsers — delete known DB
+      // indexedDB.databases() not supported in all browsers — delete known DBs
       try { indexedDB.deleteDatabase('lift-backup') } catch { /* noop */ }
+      try { indexedDB.deleteDatabase('lift-photos') } catch { /* noop */ }
     }
   }
 

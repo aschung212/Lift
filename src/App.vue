@@ -312,6 +312,7 @@ import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
 import { authNeedsReauth } from './lib/sessionHealth'
 import { useBodyweightStore } from './stores/bodyweight'
+import { usePhotosStore } from './stores/photos'
 import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
@@ -784,6 +785,7 @@ onMounted(async () => {
     bodyweight: bodyweightStore,
     preferences: usePreferencesStore(),
     progression: progressionStore,
+    photos: usePhotosStore(),
   }
   unsubCrossTab = onCrossTabMessage((msg) => {
     if (msg.type === 'store-update') {

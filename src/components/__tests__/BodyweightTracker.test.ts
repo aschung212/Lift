@@ -32,6 +32,10 @@ vi.mock('../../stores/preferences', () => ({
   }),
 }))
 
+vi.mock('../../stores/photos', () => ({
+  usePhotosStore: () => ({ count: 0 }),
+}))
+
 // Reactive mock store
 let entries: BodyweightEntry[] = []
 
