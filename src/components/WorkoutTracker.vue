@@ -154,7 +154,7 @@
             <div class="wtExerciseNameBlock">
               <div class="wtExerciseTopLine">
                 <span class="wtExerciseName">{{ exercise.name }}</span>
-                <span v-if="getRowMeta(exercise.id).isNewPRBadge" class="wtExerciseNewPR">
+                <span v-if="rowMetaByExercise[exercise.id]?.isNewPRBadge" class="wtExerciseNewPR">
                   <span class="wtExerciseNewPRIcon" aria-hidden="true">🏆</span>
                   <span>NEW PR</span>
                 </span>
@@ -165,10 +165,10 @@
                   :key="tag"
                   class="wtExerciseTag"
                 >{{ tag }}</span>
-                <span v-if="getRowMeta(exercise.id).lastSet" class="wtExerciseStat">
-                  · {{ displayWeight(getRowMeta(exercise.id).lastSet!.weight) }} {{ weightUnit }}
-                  × {{ getRowMeta(exercise.id).lastSet!.reps }}
-                  · {{ getRowMeta(exercise.id).timeAgo }}
+                <span v-if="rowMetaByExercise[exercise.id]?.lastSet" class="wtExerciseStat">
+                  · {{ displayWeight(rowMetaByExercise[exercise.id]!.lastSet!.weight) }} {{ weightUnit }}
+                  × {{ rowMetaByExercise[exercise.id]!.lastSet!.reps }}
+                  · {{ rowMetaByExercise[exercise.id]!.timeAgo }}
                 </span>
                 <span v-else class="wtExerciseStat wtExerciseStatEmpty">· No sets yet</span>
               </div>
@@ -1245,11 +1245,10 @@ interface ExerciseRowMeta {
   isNewPRBadge: boolean
 }
 
-function getRowMeta(exerciseId: string): ExerciseRowMeta {
-  const ex = store.exercises.find(e => e.id === exerciseId)
-  if (!ex || ex.sets.length === 0) return { lastSet: null, timeAgo: null, isNewPRBadge: false }
+function computeRowMeta(ex: Exercise): ExerciseRowMeta {
+  if (ex.sets.length === 0) return { lastSet: null, timeAgo: null, isNewPRBadge: false }
   const last = ex.sets[ex.sets.length - 1]
-  const prSet = store.getExercisePRSet(exerciseId, prBaselineDate.value)
+  const prSet = store.getExercisePRSet(ex.id, prBaselineDate.value)
   const isFreshPR = !!prSet && (Date.now() - new Date(prSet.date).getTime()) < 7 * 86400000
   return {
     lastSet: { weight: last.weight, reps: last.reps, date: last.date },
@@ -1257,6 +1256,22 @@ function getRowMeta(exerciseId: string): ExerciseRowMeta {
     isNewPRBadge: isFreshPR,
   }
 }
+
+/**
+ * Per-row meta for every visible exercise, computed once per render pass and
+ * keyed by id (#1112). The template reads each row's meta up to 5× (badge, last
+ * set weight/reps, time-ago); computing it here — instead of calling a helper
+ * per template binding — collapses the per-row `getExercisePRSet` + date math
+ * from 5 invocations down to 1. Recomputes only when the visible list, the PR
+ * baseline, or a set changes (all reactive deps below).
+ */
+const rowMetaByExercise = computed<Record<string, ExerciseRowMeta>>(() => {
+  const map: Record<string, ExerciseRowMeta> = {}
+  for (const ex of filteredExercises.value) {
+    map[ex.id] = computeRowMeta(ex)
+  }
+  return map
+})
 
 // Remove stale tags from active filters
 watch(() => store.allTags, (tags) => {
