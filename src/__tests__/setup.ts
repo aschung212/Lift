@@ -47,6 +47,37 @@ class MockIntersectionObserver {
 export const mockIntersectionObservers: MockIntersectionObserver[] = []
 vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
 
+// ── Blob-aware structuredClone (for fake-indexeddb round-trips) ───
+// fake-indexeddb clones every value on insert via the global `structuredClone`
+// (per the IndexedDB "clone value" step). happy-dom's Blob keeps its bytes on a
+// symbol-keyed Buffer that Node's native structuredClone silently drops, so a
+// stored photo blob would come back as a byteless plain object with no `.text()`
+// (`blob.text is not a function`) — breaking the progress-photos IndexedDB layer
+// in tests only (real WebKit/WKWebView clones Blobs faithfully). Preserve Blob
+// (and File, which extends it) leaves — they're immutable, so sharing the
+// instance is safe — and delegate every other value to the native clone so
+// Dates, Maps, and typed arrays still survive. Assigned directly (not via
+// vi.stubGlobal) so a test file's own vi.unstubAllGlobals() can't wipe it
+// between cases.
+const nativeStructuredClone = globalThis.structuredClone.bind(globalThis)
+function blobAwareStructuredClone<T>(value: T): T {
+  if (value instanceof Blob) return value
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(blobAwareStructuredClone) as unknown as T
+  // Only hand-recurse plain records so nested Blobs survive; hand anything else
+  // (Date, Map, Set, TypedArray, …) to the native clone for a faithful copy.
+  const proto = Object.getPrototypeOf(value)
+  if (proto === Object.prototype || proto === null) {
+    const out: Record<string | symbol, unknown> = {}
+    for (const key of Reflect.ownKeys(value as object)) {
+      out[key] = blobAwareStructuredClone((value as Record<string | symbol, unknown>)[key])
+    }
+    return out as T
+  }
+  return nativeStructuredClone(value)
+}
+globalThis.structuredClone = blobAwareStructuredClone
+
 // ── Supabase mock ────────────────────────────────────────────────
 // Most tests need supabase stubbed to null (local-first architecture).
 vi.mock('../lib/supabase', () => ({ supabase: null }))

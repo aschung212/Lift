@@ -32,6 +32,15 @@ vi.mock('../../stores/preferences', () => ({
   }),
 }))
 
+// Progress-photos store (LIFT-1108): mounted BodyweightTracker reads its count
+// and hydrates it on mount. This test mounts without a Pinia, so stub the store.
+vi.mock('../../stores/progressPhotos', () => ({
+  useProgressPhotosStore: () => ({
+    count: 0,
+    hydrate: vi.fn(),
+  }),
+}))
+
 // Reactive mock store
 let entries: BodyweightEntry[] = []
 
@@ -137,7 +146,7 @@ describe('BodyweightTracker', () => {
 
     it('does not render SVG chart with only 1 day', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('svg').exists()).toBe(false)
+      expect(wrapper.find('svg.wtGraphSvg').exists()).toBe(false)
     })
 
     it('renders the entry in the list', () => {
@@ -183,8 +192,8 @@ describe('BodyweightTracker', () => {
 
     it('renders SVG chart with data points', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('svg').exists()).toBe(true)
-      const dots = wrapper.findAll('circle')
+      expect(wrapper.find('svg.wtGraphSvg').exists()).toBe(true)
+      const dots = wrapper.findAll('.wtGraphSvg circle')
       expect(dots.length).toBeGreaterThanOrEqual(2)
     })
 
@@ -242,7 +251,7 @@ describe('BodyweightTracker', () => {
 
     it('chart has accessible role="img" and aria-label', () => {
       const wrapper = mountTracker()
-      const svg = wrapper.find('svg')
+      const svg = wrapper.find('svg.wtGraphSvg')
       expect(svg.attributes('role')).toBe('img')
       expect(svg.attributes('aria-label')).toContain('Body weight')
     })

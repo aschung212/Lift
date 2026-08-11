@@ -9,6 +9,14 @@
       <button class="wtLogBtn" @click="openModal()">+ Log</button>
     </div>
 
+    <!-- Progress photos entry (LIFT-1108): visual transformation timeline -->
+    <button class="bwPhotosRow" @click="showPhotos = true" aria-label="Open progress photos">
+      <svg class="bwPhotosIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M21 17l-5-4-4 3-3-2-6 5"/></svg>
+      <span class="bwPhotosLabel">Progress Photos</span>
+      <span v-if="photosStore.count > 0" class="bwPhotosCount">{{ photosStore.count }}</span>
+      <svg class="bwPhotosChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+
     <!-- Period selector -->
     <div v-if="store.entries.length > 0" class="bwPeriodRow">
       <button
@@ -265,11 +273,15 @@
       </div>
     </div>
   </Teleport>
+
+  <ProgressPhotosSheet v-if="showPhotos" @close="showPhotos = false" />
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
+import { useProgressPhotosStore } from '../stores/progressPhotos'
+import ProgressPhotosSheet from './ProgressPhotosSheet.vue'
 import { todayISO, setDayKey, formatShortDate } from '../lib/dates'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
@@ -281,7 +293,13 @@ import { usePreferencesStore } from '../stores/preferences'
 import { useXPCeremony } from '../composables/useXPCeremony'
 
 const store = useBodyweightStore()
+const photosStore = useProgressPhotosStore()
 const prefs = usePreferencesStore()
+
+// Progress-photos timeline (LIFT-1108) — hydrate the count for the entry row;
+// blobs load lazily inside the sheet.
+const showPhotos = ref(false)
+onMounted(() => { void photosStore.hydrate() })
 const { currentTheme } = useTheme()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { logEvent } = useAnalytics()

@@ -7028,6 +7028,50 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
 }
 
+/* Progress-photos entry row (LIFT-1108) */
+.bwPhotosRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.bwPhotosIcon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.bwPhotosLabel {
+  flex: 1;
+  font-size: var(--font-body);
+  font-weight: 600;
+}
+
+.bwPhotosCount {
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.bwPhotosChevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
 .bwCurrentValue {
   font-size: var(--font-title2);
   font-weight: 700;
