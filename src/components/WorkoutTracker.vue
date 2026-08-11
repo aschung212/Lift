@@ -11,7 +11,7 @@
       <!-- Weekly training goal indicator (only when progression is enabled) -->
       <div v-if="weeklyGoalInfo" :class="['wtWeeklyGoal', { wtWeeklyGoalMet: weeklyGoalInfo.met, wtWeeklyGoalAtRisk: weeklyGoalInfo.atRisk }]">
         <!-- Flame icon (streak) -->
-        <svg class="wtWeeklyGoalIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14 0-5.5 3-7 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.5-2.5 1.5-3.5l1 1Z"/></svg>
+        <AppIcon name="flame" class="wtWeeklyGoalIcon" :size="14" aria-hidden="true" />
         <span class="wtWeeklyGoalText">
           <template v-if="weeklyGoalInfo.met">Goal hit — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
           <template v-else-if="weeklyGoalInfo.atRisk">Streak at risk — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
@@ -28,7 +28,7 @@
         <span class="wtFinishWorkoutMeta">
           {{ setsLoggedToday }} {{ setsLoggedToday === 1 ? 'set' : 'sets' }} today
         </span>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+        <AppIcon name="chevron-right" :size="18" aria-hidden="true" />
       </button>
     </header>
 
@@ -40,7 +40,7 @@
 
     <!-- Search bar (exercises view, shown when 5+ exercises) -->
     <div v-if="listView === 'exercises' && store.exercises.length >= 5" class="wtSearchBar">
-      <svg class="wtSearchIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <AppIcon name="search" class="wtSearchIcon" :size="16" aria-hidden="true" />
       <input
         v-model="searchQuery"
         type="search"
@@ -77,7 +77,7 @@
           class="wtTagChip wtTagChipManage"
           @click="gymManagerOpen = true"
           :aria-label="allGyms.length > 0 ? 'Manage gyms' : 'Add a gym'"
-        ><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg><template v-if="allGyms.length === 0">Add Gym</template></button>
+        ><AppIcon name="gym" :size="14" /><template v-if="allGyms.length === 0">Add Gym</template></button>
       </div>
     </template>
 
@@ -103,18 +103,18 @@
           class="wtTagChip wtTagChipManage"
           @click="openTagManager"
           aria-label="Manage tags"
-        ><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></button>
+        ><AppIcon name="tag" :size="14" /></button>
       </div>
     </template>
 
     <div v-if="store.exercises.length === 0 && showFreshStart" class="wtFreshStart">
       <div class="wtFreshStartIcon" aria-hidden="true">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        <AppIcon name="sun" :size="32" />
       </div>
       <p class="wtFreshStartTitle">You're starting fresh!</p>
       <p class="wtFreshStartBody">Add your first exercise to begin tracking your lifts.</p>
       <button class="wtFreshStartCta" @click="openNewExerciseModal">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <AppIcon name="plus" :size="16" aria-hidden="true" />
         Add Exercise
       </button>
     </div>
@@ -134,7 +134,7 @@
          they'd otherwise miss (the sample journey is only demonstrative if
          they open an exercise). Shown only while sample data is present. (LIFT-1086) -->
     <div v-if="showChartTip" class="wtChartTip" role="note">
-      <svg class="wtChartTipIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+      <AppIcon name="chart" class="wtChartTipIcon" :size="16" aria-hidden="true" />
       <span class="wtChartTipText">Tap any exercise to see its progress chart</span>
       <button class="wtChartTipDismiss" @click="dismissChartTip" aria-label="Dismiss tip">×</button>
     </div>
@@ -179,10 +179,7 @@
             @click="openLogForExercise(exercise.id)"
             :aria-label="`Log a set for ${exercise.name}`"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
+            <AppIcon name="plus" :size="20" aria-hidden="true" />
           </button>
         </div>
       </li>
@@ -270,11 +267,11 @@
         <template v-else>
           <div class="wtModalHeader">
             <button v-if="isLogForExercise" class="wtLogHistoryBtn" @click="openHistoryFromLog" aria-label="View set history">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+              <AppIcon name="history" :size="18" />
             </button>
             <h2 id="log-modal-title">{{ modalTitle }}</h2>
             <button v-if="isLogForExercise" class="wtPlateSettingsBtn" @click="openEditExerciseModal(store.exercises.find(e => e.id === selectedExerciseId)!)" aria-label="Exercise settings">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <AppIcon name="gear" :size="18" />
             </button>
           </div>
 
@@ -453,7 +450,7 @@
                 <span class="wtPrTargetsTitle">Suggestions</span>
                 <span class="wtPrTargetsSub">{{ suggestionHeaderSub }}</span>
               </span>
-              <svg :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: suggestionsExpanded }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <AppIcon name="chevron-down" :class="['wtPrTargetsChevron', { wtPrTargetsChevronOpen: suggestionsExpanded }]" :size="16" />
             </button>
 
             <div v-if="suggestionsExpanded" class="wtSuggestionBody">
@@ -685,7 +682,7 @@
             @click="openSettingsFromHint"
             @keydown.enter="openSettingsFromHint"
           >
-            <svg class="wtPlateHintIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <AppIcon name="info" class="wtPlateHintIcon" :size="16" />
             <span class="wtPlateHintText">Tip: Enable the plate calculator in exercise settings</span>
             <button class="wtPlateHintDismiss" @click.stop="dismissPlateHint" aria-label="Dismiss hint">×</button>
           </div>
@@ -782,12 +779,12 @@
   >
     <template v-if="timerCtrl.timerActive.value">
       <div class="wtRestBarProgress" :style="{ width: (timerCtrl.timerProgress.value * 100) + '%' }"></div>
-      <svg class="wtRestBarIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <AppIcon name="clock" class="wtRestBarIcon" :size="18" />
       <span class="wtRestBarTime">{{ timerCtrl.timerDisplay.value }}</span>
       <span class="wtRestBarLabel">remaining</span>
     </template>
     <template v-else>
-      <svg class="wtRestBarIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <AppIcon name="clock" class="wtRestBarIcon" :size="18" />
       <span class="wtRestBarLabel">Start Rest Timer</span>
     </template>
   </button>
@@ -838,6 +835,7 @@ import EditExerciseModal, { type EditExerciseSave } from './EditExerciseModal.vu
 import TagManagerModal from './TagManagerModal.vue'
 import GymManagerModal from './GymManagerModal.vue'
 import ExercisePickerModal from './ExercisePickerModal.vue'
+import AppIcon from './AppIcon.vue'
 import { useGymActions } from '../composables/useGymActions'
 import { scrollInputAboveKeyboard } from '../lib/keyboardViewport'
 import { ladderChipScrollLeft } from '../lib/ladderScroll'
