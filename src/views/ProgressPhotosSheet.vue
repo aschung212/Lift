@@ -156,8 +156,21 @@ function formatDay(dateKey: string): string {
   return formatShortDate(dateKey + 'T12:00:00')
 }
 
+/**
+ * Serialize URL reconciliation. The `watch` on `store.photos.length` and the
+ * explicit calls in `addPhoto`/`remove` can fire almost simultaneously; run
+ * concurrently they'd each snapshot the same stale `urls.value`, and the losing
+ * write-back would orphan a freshly-created object URL (leaked, never revoked).
+ * Chaining forces each run to read the map the previous run already committed.
+ */
+let urlSync: Promise<void> = Promise.resolve()
+function ensureUrls(): Promise<void> {
+  urlSync = urlSync.then(reconcileUrls)
+  return urlSync
+}
+
 /** Create object URLs for any photo metadata that doesn't have one yet. */
-async function ensureUrls() {
+async function reconcileUrls() {
   const next = new Map(urls.value)
   for (const meta of store.photos) {
     if (next.has(meta.id)) continue

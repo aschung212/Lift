@@ -114,10 +114,20 @@ export async function getProgressPhotoBlob(id: string): Promise<Blob | null> {
   })
 }
 
-/** Update just the caption on an existing record. No-ops if the id is gone. */
+/**
+ * Update just the caption on an existing record. No-ops if the id is gone.
+ * Degrades silently when IndexedDB is unavailable — the same "resolve, don't
+ * throw" contract as the reads, so store/UI callers never see a rejection they
+ * have no way to surface.
+ */
 export async function updateProgressPhotoCaption(id: string, caption: string): Promise<void> {
-  const database = await openDB()
-  return new Promise((resolve, reject) => {
+  let database: IDBDatabase
+  try {
+    database = await openDB()
+  } catch {
+    return
+  }
+  return new Promise((resolve) => {
     const tx = database.transaction(STORE_NAME, 'readwrite')
     const store = tx.objectStore(STORE_NAME)
     const getReq = store.get(id)
@@ -126,18 +136,23 @@ export async function updateProgressPhotoCaption(id: string, caption: string): P
       if (row) store.put({ ...row, caption })
     }
     tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
+    tx.onerror = () => resolve()
   })
 }
 
-/** Delete a single photo record (metadata + blob). */
+/** Delete a single photo record (metadata + blob). Degrades silently. */
 export async function deleteProgressPhoto(id: string): Promise<void> {
-  const database = await openDB()
-  return new Promise((resolve, reject) => {
+  let database: IDBDatabase
+  try {
+    database = await openDB()
+  } catch {
+    return
+  }
+  return new Promise((resolve) => {
     const tx = database.transaction(STORE_NAME, 'readwrite')
     tx.objectStore(STORE_NAME).delete(id)
     tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
+    tx.onerror = () => resolve()
   })
 }
 
