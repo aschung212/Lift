@@ -116,18 +116,16 @@ export async function getProgressPhotoBlob(id: string): Promise<Blob | null> {
 
 /**
  * Update just the caption on an existing record. No-ops if the id is gone.
- * Degrades silently when IndexedDB is unavailable — the same "resolve, don't
- * throw" contract as the reads, so store/UI callers never see a rejection they
- * have no way to surface.
+ * Rejects on a genuine write failure (unavailable IndexedDB or a failed tx, e.g.
+ * quota) — the store guards this and only mutates its in-memory copy AFTER the
+ * write resolves, so a failed persist never diverges from what `hydrate()` will
+ * read back on reload. (This path is unreachable when IndexedDB is entirely
+ * absent — no photo could have been stored to caption — but staying honest keeps
+ * the store's success-gated update correct.)
  */
 export async function updateProgressPhotoCaption(id: string, caption: string): Promise<void> {
-  let database: IDBDatabase
-  try {
-    database = await openDB()
-  } catch {
-    return
-  }
-  return new Promise((resolve) => {
+  const database = await openDB()
+  return new Promise((resolve, reject) => {
     const tx = database.transaction(STORE_NAME, 'readwrite')
     const store = tx.objectStore(STORE_NAME)
     const getReq = store.get(id)
@@ -136,23 +134,22 @@ export async function updateProgressPhotoCaption(id: string, caption: string): P
       if (row) store.put({ ...row, caption })
     }
     tx.oncomplete = () => resolve()
-    tx.onerror = () => resolve()
+    tx.onerror = () => reject(tx.error)
   })
 }
 
-/** Delete a single photo record (metadata + blob). Degrades silently. */
+/**
+ * Delete a single photo record (metadata + blob). Rejects on a genuine write
+ * failure so the store can keep the row in its in-memory list rather than
+ * dropping a photo that still lives in IndexedDB.
+ */
 export async function deleteProgressPhoto(id: string): Promise<void> {
-  let database: IDBDatabase
-  try {
-    database = await openDB()
-  } catch {
-    return
-  }
-  return new Promise((resolve) => {
+  const database = await openDB()
+  return new Promise((resolve, reject) => {
     const tx = database.transaction(STORE_NAME, 'readwrite')
     tx.objectStore(STORE_NAME).delete(id)
     tx.oncomplete = () => resolve()
-    tx.onerror = () => resolve()
+    tx.onerror = () => reject(tx.error)
   })
 }
 

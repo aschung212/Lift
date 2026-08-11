@@ -75,18 +75,34 @@ export const useProgressPhotosStore = defineStore('progressPhotos', {
       return getProgressPhotoBlob(id)
     },
 
-    /** Rename a photo's caption. */
+    /**
+     * Rename a photo's caption. The in-memory copy is updated ONLY after the
+     * IndexedDB write resolves, so a failed persist (e.g. quota) can't leave the
+     * session showing a caption that `hydrate()` would silently revert on reload.
+     */
     async setCaption(id: string, caption: string) {
       const trimmed = caption.trim()
       const meta = this.photos.find(p => p.id === id)
       if (!meta) return
-      await updateProgressPhotoCaption(id, trimmed)
+      try {
+        await updateProgressPhotoCaption(id, trimmed)
+      } catch {
+        return
+      }
       meta.caption = trimmed
     },
 
-    /** Delete a single photo (metadata + blob). */
+    /**
+     * Delete a single photo (metadata + blob). The row is dropped from the
+     * timeline ONLY after the IndexedDB delete resolves, so a failed write never
+     * hides a photo that still lives on disk.
+     */
     async removePhoto(id: string) {
-      await deleteProgressPhoto(id)
+      try {
+        await deleteProgressPhoto(id)
+      } catch {
+        return
+      }
       this.photos = this.photos.filter(p => p.id !== id)
     },
 
