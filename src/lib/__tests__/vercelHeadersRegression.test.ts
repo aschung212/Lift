@@ -166,6 +166,32 @@ describe('vercel.json security headers', () => {
       expect(csp).toMatch(/object-src\s+'none'/)
     })
 
+    /**
+     * Explicit fetch-directive hardening (LIFT-1125). For a
+     * service-worker-heavy PWA, leaving these unset lets them fall back to
+     * script-src/default-src, so a script injection could register an
+     * off-origin worker or embed a hostile iframe. Pin them as
+     * defense-in-depth:
+     *   - worker-src 'self' blob:  — SW is same-origin (/sw.js); blob: keeps
+     *     Workbox and any blob-backed workers functional.
+     *   - manifest-src 'self'      — only our own PWA manifest may load.
+     *   - frame-src / child-src 'none' — the app never embeds iframes or
+     *     nested browsing contexts.
+     */
+    it('scopes worker-src to self + blob (LIFT-1125)', () => {
+      expect(csp).toMatch(/worker-src\s+[^;]*'self'/)
+      expect(csp).toMatch(/worker-src\s+[^;]*blob:/)
+    })
+
+    it('pins manifest-src to self (LIFT-1125)', () => {
+      expect(csp).toMatch(/manifest-src\s+'self'/)
+    })
+
+    it('blocks nested browsing contexts via frame-src/child-src none (LIFT-1125)', () => {
+      expect(csp).toMatch(/frame-src\s+'none'/)
+      expect(csp).toMatch(/child-src\s+'none'/)
+    })
+
     it('pins base-uri + form-action to self', () => {
       expect(csp).toMatch(/base-uri\s+'self'/)
       expect(csp).toMatch(/form-action\s+'self'/)
