@@ -62,8 +62,45 @@ interface JournalEntry {
   isDelete: boolean
 }
 
+/** One journaled entry as persisted on disk. */
+interface PersistedEntry extends JournalEntry {
+  key: string
+}
+
+/**
+ * On-disk shape of the durable journal (LIFT-1132). The entry list is wrapped in
+ * a versioned envelope so a journal written under an older schema generation can
+ * be detected and discarded on rehydrate rather than replayed with stale column
+ * names. Pre-LIFT-1132 journals were persisted as a bare `PersistedEntry[]`;
+ * `rehydrate()` still reads that legacy shape (see below).
+ */
+interface PersistedJournal {
+  version: number
+  entries: PersistedEntry[]
+}
+
 /** IndexedDB key (in the shared durable-storage keyval store) for the queue journal. */
 const JOURNAL_KEY = 'lift-sync-journal'
+
+/**
+ * Schema generation of journaled descriptors (LIFT-1132).
+ *
+ * Journaled writes are replayed after an app auto-update — potentially across a
+ * schema migration that renamed or removed a column. The per-column allowlist
+ * (LIFT-785) already drops a descriptor carrying a column the app no longer
+ * knows, but that is a field-level check; this version tag is a coarser,
+ * whole-journal guard. `rehydrate()` discards any journal whose stamped version
+ * doesn't match, rather than replaying descriptors built against a schema this
+ * build no longer speaks — which would otherwise surface as silent PostgREST
+ * failures that TypeScript can't catch on a runtime-rebuilt query.
+ *
+ * BUMP THIS only for a BREAKING descriptor change — a column rename, a table
+ * drop, or a changed key/match shape — where replaying an old descriptor is
+ * unsafe. Do NOT bump for a purely additive column: an old descriptor that
+ * simply omits a new column still upserts cleanly, and bumping would needlessly
+ * drop legitimate pending offline writes.
+ */
+export const JOURNAL_SCHEMA_VERSION = 1
 
 /**
  * Allowlist of tables (and their writable columns) that a journaled descriptor
@@ -240,10 +277,11 @@ export class SyncQueue {
   private _persistJournal(): void {
     if (!this._journalActive) return
     try {
-      const serialized = JSON.stringify(
-        [...this._journal.entries()].map(([key, entry]) => ({ key, ...entry })),
-      )
-      backupToIDB(JOURNAL_KEY, serialized)
+      const payload: PersistedJournal = {
+        version: JOURNAL_SCHEMA_VERSION,
+        entries: [...this._journal.entries()].map(([key, entry]) => ({ key, ...entry })),
+      }
+      backupToIDB(JOURNAL_KEY, JSON.stringify(payload))
     } catch {
       // Serialization/IDB failure must never break the in-memory queue.
     }
@@ -500,14 +538,46 @@ export class SyncQueue {
       return
     }
     if (!raw) return
-    let entries: Array<{ key: string; descriptor: SyncDescriptor; isDelete: boolean }>
+    let parsed: unknown
     try {
-      const parsed = JSON.parse(raw)
-      if (!Array.isArray(parsed)) return
-      entries = parsed
+      parsed = JSON.parse(raw)
     } catch {
       return
     }
+    // Two on-disk shapes coexist: the versioned envelope { version, entries }
+    // (current) and the legacy bare `PersistedEntry[]` array (pre-LIFT-1132). A
+    // legacy array carries no version — assume it was written under the current
+    // generation, since dropping valid pending writes merely because they
+    // predate versioning would be worse than replaying them (each is still
+    // column-checked below).
+    let version: number
+    let rawEntries: unknown
+    if (Array.isArray(parsed)) {
+      version = JOURNAL_SCHEMA_VERSION
+      rawEntries = parsed
+    } else if (parsed && typeof parsed === 'object') {
+      const env = parsed as Partial<PersistedJournal>
+      version = typeof env.version === 'number' ? env.version : 0
+      rawEntries = env.entries
+    } else {
+      return
+    }
+    if (!Array.isArray(rawEntries)) return
+    // A journal stamped with a different schema generation may reference columns
+    // or a key/match shape a migration has since changed — discard it wholesale
+    // rather than replay stale rows into silent server failures (LIFT-1132), and
+    // wipe the durable record so it isn't re-read on the next launch.
+    if (version !== JOURNAL_SCHEMA_VERSION) {
+      logWarn('Discarding sync journal written under a mismatched schema version', {
+        journalVersion: version,
+        currentVersion: JOURNAL_SCHEMA_VERSION,
+        dropped: rawEntries.length,
+      })
+      this._journalActive = true
+      this._persistJournal()
+      return
+    }
+    const entries = rawEntries as PersistedEntry[]
     for (const entry of entries) {
       if (!entry || typeof entry.key !== 'string' || !entry.descriptor) continue
       // Drop any journaled entry whose descriptor falls outside the replay
