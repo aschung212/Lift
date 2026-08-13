@@ -70,21 +70,23 @@ function columnsFromMigrations(): Map<string, Set<string>> {
     const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf-8')
 
     // ALTER TABLE ... ADD COLUMN [IF NOT EXISTS] <col>
+    // The optional `(?:\w+\.)?` strips a schema qualifier (e.g. `public.sets`)
+    // so it isn't mistaken for the table name (which would drop the real column).
     for (const m of sql.matchAll(
-      /alter\s+table\s+(?:if\s+exists\s+)?(\w+)\s+add\s+column\s+(?:if\s+not\s+exists\s+)?(\w+)/gi,
+      /alter\s+table\s+(?:if\s+exists\s+)?(?:\w+\.)?(\w+)\s+add\s+column\s+(?:if\s+not\s+exists\s+)?(\w+)/gi,
     )) {
       ensure(m[1]).add(m[2].toLowerCase())
     }
 
     // ALTER TABLE ... DROP COLUMN [IF EXISTS] <col>
     for (const m of sql.matchAll(
-      /alter\s+table\s+(?:if\s+exists\s+)?(\w+)\s+drop\s+column\s+(?:if\s+exists\s+)?(\w+)/gi,
+      /alter\s+table\s+(?:if\s+exists\s+)?(?:\w+\.)?(\w+)\s+drop\s+column\s+(?:if\s+exists\s+)?(\w+)/gi,
     )) {
       ensure(m[1]).delete(m[2].toLowerCase())
     }
 
     // CREATE TABLE <name> ( ...body... )
-    for (const m of sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?(\w+)\s*\(([\s\S]*?)\n\)/gi)) {
+    for (const m of sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?(?:\w+\.)?(\w+)\s*\(([\s\S]*?)\n\)/gi)) {
       const cols = ensure(m[1])
       // Split the body on top-level commas (no nested parens appear in these
       // simple column defs, so a plain split is safe here).
@@ -112,7 +114,10 @@ function columnsFromTypes(): Map<string, { Row: Set<string>; Insert: Set<string>
 
   for (const table of CLIENT_TABLES) {
     const tableStart = src.indexOf(`\n      ${table}: {`)
-    expect(tableStart, `table "${table}" not found in database.types.ts`).toBeGreaterThan(-1)
+    // A missing table is reported by the dedicated "declares every client table"
+    // test below — skip it here rather than throwing during describe-phase setup,
+    // which would crash the whole file instead of failing one named test.
+    if (tableStart === -1) continue
 
     const shapes = { Row: new Set<string>(), Insert: new Set<string>(), Update: new Set<string>() }
     for (const shape of ['Row', 'Insert', 'Update'] as const) {
@@ -146,6 +151,11 @@ describe('database.types.ts schema-drift guard (LIFT-1131)', () => {
     expect(migrationCols.get('exercises')!.size).toBeGreaterThan(5)
     expect(migrationCols.get('sets')!.has('updated_at')).toBe(true)
     expect(migrationCols.get('bodyweight_entries')!.has('updated_at')).toBe(true)
+  })
+
+  it('database.types.ts declares every client-typed table', () => {
+    const missing = CLIENT_TABLES.filter(t => !typeCols.has(t))
+    expect(missing, `tables absent from database.types.ts: ${missing.join(', ')}`).toEqual([])
   })
 
   for (const table of CLIENT_TABLES) {
