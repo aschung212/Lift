@@ -416,9 +416,15 @@ function stripSqlComments(sql: string): string {
     .join('\n')
 }
 
+// Optional `schema.` qualifier (e.g. `public.exercises`) — captured and
+// discarded so the bare table name is always group 1. Without this, a
+// schema-qualified DDL would capture `public` and hide the real table from
+// the RLS check, letting an unprotected table pass silently.
+const SCHEMA = '(?:\\w+\\.)?'
+
 /** Every table name introduced by a `create table [if not exists] <name>`. */
 function createdTables(sql: string): string[] {
-  const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?["']?(\w+)["']?/gi
+  const re = new RegExp(`create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?["']?${SCHEMA}(\\w+)["']?`, 'gi')
   const names = new Set<string>()
   let m: RegExpExecArray | null
   while ((m = re.exec(sql)) !== null) names.add(m[1].toLowerCase())
@@ -427,7 +433,7 @@ function createdTables(sql: string): string[] {
 
 /** Every table with an `alter table <name> enable row level security`. */
 function rlsEnabledTables(sql: string): Set<string> {
-  const re = /alter\s+table\s+(?:only\s+)?["']?(\w+)["']?\s+enable\s+row\s+level\s+security/gi
+  const re = new RegExp(`alter\\s+table\\s+(?:only\\s+)?["']?${SCHEMA}(\\w+)["']?\\s+enable\\s+row\\s+level\\s+security`, 'gi')
   const names = new Set<string>()
   let m: RegExpExecArray | null
   while ((m = re.exec(sql)) !== null) names.add(m[1].toLowerCase())
@@ -437,7 +443,7 @@ function rlsEnabledTables(sql: string): Set<string> {
 /** The definition block for a `create table` — from its opening `(` to the
  *  matching `)` — used to tell whether a table is user-scoped (`user_id`). */
 function tableBody(sql: string, table: string): string {
-  const re = new RegExp(`create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?["']?${table}["']?`, 'i')
+  const re = new RegExp(`create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?["']?${SCHEMA}${table}["']?`, 'i')
   const start = sql.search(re)
   if (start === -1) return ''
   const open = sql.indexOf('(', start)
@@ -468,8 +474,9 @@ function tablesMissingRls(sql: string): string[] {
  */
 function policyStatements(sql: string): { table: string; text: string }[] {
   const out: { table: string; text: string }[] = []
+  const re = new RegExp(`create\\s+policy\\b[\\s\\S]*?\\bon\\s+["']?${SCHEMA}(\\w+)["']?`, 'i')
   for (const stmt of sql.split(';')) {
-    const m = /create\s+policy\b[\s\S]*?\bon\s+["']?(\w+)["']?/i.exec(stmt)
+    const m = re.exec(stmt)
     if (m) out.push({ table: m[1].toLowerCase(), text: stmt })
   }
   return out
@@ -529,6 +536,16 @@ describe('Invariant: RLS enabled on every Supabase table (LIFT-1130)', () => {
       '\ncreate policy "safe" on other for select using (auth.uid() = user_id);' +
       '\ncreate policy "leak" on leaky for select using (true);'
     expect(userTablesMissingScopedPolicy(stitched)).toContain('leaky')
+
+    // Schema-qualified DDL (`public.<table>`) must resolve to the bare table
+    // name, not the schema — otherwise an unprotected qualified table hides.
+    const qualified = stripSqlComments(`create table public.walled (
+      id uuid primary key,
+      user_id uuid not null
+    );`)
+    expect(createdTables(qualified)).toContain('walled')
+    expect(createdTables(qualified)).not.toContain('public')
+    expect(tablesMissingRls(qualified)).toContain('walled')
   })
 
   it('every created table has RLS enabled in some migration', () => {
