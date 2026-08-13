@@ -458,17 +458,31 @@ function tablesMissingRls(sql: string): string[] {
   return createdTables(sql).filter(t => !enabled.has(t))
 }
 
+/**
+ * Each `create policy` statement, mapped to the table it targets.
+ *
+ * SQL is tokenized on `;` FIRST so every policy is matched in isolation — a
+ * lazy `[\s\S]*?` run across the whole file could otherwise stitch two
+ * consecutive policies together (`create policy … on A … on B`) and let one
+ * table's `auth.uid()` clear another table's unscoped policy.
+ */
+function policyStatements(sql: string): { table: string; text: string }[] {
+  const out: { table: string; text: string }[] = []
+  for (const stmt of sql.split(';')) {
+    const m = /create\s+policy\b[\s\S]*?\bon\s+["']?(\w+)["']?/i.exec(stmt)
+    if (m) out.push({ table: m[1].toLowerCase(), text: stmt })
+  }
+  return out
+}
+
 /** User-scoped tables (have a `user_id` column) with no auth.uid()-scoped policy. */
 function userTablesMissingScopedPolicy(sql: string): string[] {
+  const policies = policyStatements(sql)
   const missing: string[] = []
   for (const table of createdTables(sql)) {
     if (!/\buser_id\b/.test(tableBody(sql, table))) continue
-    const policyRe = new RegExp(
-      `create\\s+policy\\b[\\s\\S]*?\\bon\\s+["']?${table}["']?\\b[\\s\\S]*?;`,
-      'gi',
-    )
-    const policies = sql.match(policyRe) ?? []
-    if (!policies.some(p => /auth\.uid\(\)/i.test(p))) missing.push(table)
+    const own = policies.filter(p => p.table === table)
+    if (!own.some(p => /auth\.uid\(\)/i.test(p.text))) missing.push(table)
   }
   return missing
 }
@@ -507,6 +521,14 @@ describe('Invariant: RLS enabled on every Supabase table (LIFT-1130)', () => {
       '\ncreate policy "p" on leaky for select using (auth.uid() = user_id);'
     expect(tablesMissingRls(good)).not.toContain('leaky')
     expect(userTablesMissingScopedPolicy(good)).not.toContain('leaky')
+
+    // Cross-statement stitching guard: a scoped policy on ANOTHER table must
+    // not launder an unscoped (or missing) policy on the target table.
+    const stitched = bad +
+      '\nalter table leaky enable row level security;' +
+      '\ncreate policy "safe" on other for select using (auth.uid() = user_id);' +
+      '\ncreate policy "leak" on leaky for select using (true);'
+    expect(userTablesMissingScopedPolicy(stitched)).toContain('leaky')
   })
 
   it('every created table has RLS enabled in some migration', () => {
