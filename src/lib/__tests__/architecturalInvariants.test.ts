@@ -27,6 +27,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const STORES_DIR = resolve(__dirname, '../../stores')
 const SRC_DIR = resolve(__dirname, '../..')
+const MIGRATIONS_DIR = resolve(SRC_DIR, '../supabase/migrations')
 
 /** Returns { path (relative to src/), content } for every non-test .ts/.vue file. */
 function getSourceFiles(dir = SRC_DIR, out: { path: string; content: string }[] = []) {
@@ -387,5 +388,152 @@ describe('Invariant: useModal is the only owner of html.modal-open (#830)', () =
   it('useModal applies the class from the reference count, not a boolean', () => {
     const owner = readFileSync(join(SRC_DIR, OWNER), 'utf-8')
     expect(owner).toMatch(/classList\.toggle\('modal-open', scrollLockCount > 0\)/)
+  })
+})
+
+// ── Invariant: Row-Level Security on every table (LIFT-1130) ─────────
+// Guard: tenant isolation depends ENTIRELY on RLS. The anon key ships in
+// the client bundle, so anyone can hit PostgREST directly; the client-side
+// .eq('user_id', ...) filters are trivially bypassable defense-in-depth,
+// not a real boundary. Each table's protection is a single hand-repeated
+// `alter table ... enable row level security` line in its migration. A
+// future `create table` (or a recreated table) that omits that one line
+// would silently expose every user's rows to any authenticated client,
+// with no behavioural test failing.
+//
+// This scans the migrations as text and treats a missing RLS enablement as
+// a build-blocking failure. It also asserts every user-scoped table carries
+// at least one auth.uid()-scoped policy, so RLS-on-but-unscoped can't slip
+// through either.
+
+/** Strip SQL line comments and block comments so commented-out DDL
+ *  (documentation) never counts as a real statement. */
+function stripSqlComments(sql: string): string {
+  return sql
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map(line => line.replace(/--.*$/, ''))
+    .join('\n')
+}
+
+/** Every table name introduced by a `create table [if not exists] <name>`. */
+function createdTables(sql: string): string[] {
+  const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?["']?(\w+)["']?/gi
+  const names = new Set<string>()
+  let m: RegExpExecArray | null
+  while ((m = re.exec(sql)) !== null) names.add(m[1].toLowerCase())
+  return [...names]
+}
+
+/** Every table with an `alter table <name> enable row level security`. */
+function rlsEnabledTables(sql: string): Set<string> {
+  const re = /alter\s+table\s+(?:only\s+)?["']?(\w+)["']?\s+enable\s+row\s+level\s+security/gi
+  const names = new Set<string>()
+  let m: RegExpExecArray | null
+  while ((m = re.exec(sql)) !== null) names.add(m[1].toLowerCase())
+  return names
+}
+
+/** The definition block for a `create table` — from its opening `(` to the
+ *  matching `)` — used to tell whether a table is user-scoped (`user_id`). */
+function tableBody(sql: string, table: string): string {
+  const re = new RegExp(`create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?["']?${table}["']?`, 'i')
+  const start = sql.search(re)
+  if (start === -1) return ''
+  const open = sql.indexOf('(', start)
+  if (open === -1) return ''
+  let depth = 1
+  let i = open + 1
+  while (i < sql.length && depth > 0) {
+    if (sql[i] === '(') depth++
+    else if (sql[i] === ')') depth--
+    i++
+  }
+  return sql.slice(open + 1, i - 1)
+}
+
+/** Created tables that never `enable row level security`. */
+function tablesMissingRls(sql: string): string[] {
+  const enabled = rlsEnabledTables(sql)
+  return createdTables(sql).filter(t => !enabled.has(t))
+}
+
+/** User-scoped tables (have a `user_id` column) with no auth.uid()-scoped policy. */
+function userTablesMissingScopedPolicy(sql: string): string[] {
+  const missing: string[] = []
+  for (const table of createdTables(sql)) {
+    if (!/\buser_id\b/.test(tableBody(sql, table))) continue
+    const policyRe = new RegExp(
+      `create\\s+policy\\b[\\s\\S]*?\\bon\\s+["']?${table}["']?\\b[\\s\\S]*?;`,
+      'gi',
+    )
+    const policies = sql.match(policyRe) ?? []
+    if (!policies.some(p => /auth\.uid\(\)/i.test(p))) missing.push(table)
+  }
+  return missing
+}
+
+describe('Invariant: RLS enabled on every Supabase table (LIFT-1130)', () => {
+  const migrations = readdirSync(MIGRATIONS_DIR)
+    .filter(f => f.endsWith('.sql'))
+    .sort()
+    .map(f => ({ name: f, content: readFileSync(join(MIGRATIONS_DIR, f), 'utf-8') }))
+
+  const sql = stripSqlComments(migrations.map(m => m.content).join('\n'))
+
+  it('reads the real migrations directory (non-vacuity)', () => {
+    // If this ever finds zero migrations the whole suite would pass for the
+    // wrong reason — pin the core tables so a broken path can't hide a gap.
+    expect(migrations.length).toBeGreaterThan(5)
+    expect(createdTables(sql)).toEqual(
+      expect.arrayContaining(['exercises', 'sets', 'bodyweight_entries']),
+    )
+  })
+
+  it('the scan actually flags a table missing RLS / a scoped policy (self-test)', () => {
+    // Proves the regexes aren't vacuously passing: a leaky table with a
+    // user_id column but no RLS and no policy must be caught by both checks.
+    const leaky = `create table leaky (
+      id uuid primary key,
+      user_id uuid not null references auth.users(id)
+    );`
+    const bad = stripSqlComments(leaky)
+    expect(tablesMissingRls(bad)).toContain('leaky')
+    expect(userTablesMissingScopedPolicy(bad)).toContain('leaky')
+
+    // And a well-formed table passes both.
+    const good = bad +
+      '\nalter table leaky enable row level security;' +
+      '\ncreate policy "p" on leaky for select using (auth.uid() = user_id);'
+    expect(tablesMissingRls(good)).not.toContain('leaky')
+    expect(userTablesMissingScopedPolicy(good)).not.toContain('leaky')
+  })
+
+  it('every created table has RLS enabled in some migration', () => {
+    const missing = tablesMissingRls(sql)
+
+    expect(
+      missing,
+      'These tables are created but never `enable row level security`. ' +
+      'The anon key is public, so RLS is the ONLY tenant boundary — a table ' +
+      'without it exposes every user\'s rows. Add ' +
+      '`alter table <name> enable row level security;` in the same migration:\n' +
+      missing.join('\n'),
+    ).toEqual([])
+  })
+
+  it('every user-scoped table carries at least one auth.uid()-scoped policy', () => {
+    // A `user_id` column means rows belong to a user; that table must have at
+    // least one policy that scopes access to auth.uid(). (Tables with no
+    // user_id — e.g. the day-keyed coach_global_spend, touched only by
+    // SECURITY DEFINER functions — are deliberately policy-free and skipped.)
+    const violations = userTablesMissingScopedPolicy(sql).map(
+      table =>
+        `${table} — has a user_id column but no create policy scoped to ` +
+        `auth.uid(). RLS with no scoped policy either denies all access or ` +
+        `(if a permissive policy exists) leaks across tenants.`,
+    )
+
+    expect(violations).toEqual([])
   })
 })
