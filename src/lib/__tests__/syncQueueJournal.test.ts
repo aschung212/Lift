@@ -60,6 +60,7 @@ import {
   _resetRateLimit,
   _resetCircuitBreaker,
   _getCircuitBreakerState,
+  JOURNAL_SCHEMA_VERSION,
   type SyncDescriptor,
 } from '../syncQueue'
 
@@ -85,8 +86,9 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
 
     expect(queue.journalSize).toBe(1)
     const persisted = JSON.parse(idbStore.get('lift-sync-journal')!)
-    expect(persisted).toHaveLength(1)
-    expect(persisted[0]).toMatchObject({ key: 'set:s1', isDelete: false, descriptor: UPSERT })
+    expect(persisted.version).toBe(JOURNAL_SCHEMA_VERSION)
+    expect(persisted.entries).toHaveLength(1)
+    expect(persisted.entries[0]).toMatchObject({ key: 'set:s1', isDelete: false, descriptor: UPSERT })
   })
 
   it('does NOT journal descriptor-less (legacy) operations', () => {
@@ -105,7 +107,7 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     await vi.advanceTimersByTimeAsync(100)
 
     expect(queue.journalSize).toBe(0)
-    expect(JSON.parse(idbStore.get('lift-sync-journal')!)).toHaveLength(0)
+    expect(JSON.parse(idbStore.get('lift-sync-journal')!).entries).toHaveLength(0)
   })
 
   it('keeps the entry journaled across retries, then drops it after exhausting them', async () => {
@@ -129,7 +131,7 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     queue.clear()
 
     expect(queue.journalSize).toBe(0)
-    expect(JSON.parse(idbStore.get('lift-sync-journal')!)).toHaveLength(0)
+    expect(JSON.parse(idbStore.get('lift-sync-journal')!).entries).toHaveLength(0)
   })
 
   // ── Rehydration ──────────────────────────────────────────────────
@@ -350,5 +352,98 @@ describe('replay allowlist (LIFT-785)', () => {
     // Exactly one write reached Supabase — the valid set upsert
     expect(fakeSupabase.calls).toHaveLength(1)
     expect(fakeSupabase.calls[0]).toMatchObject({ op: 'upsert', table: 'sets', data: { id: 's1', weight: 100 } })
+  })
+})
+
+// Schema-version envelope: a journal written under an older schema generation
+// may reference columns a migration has since renamed/removed, so it is dropped
+// wholesale on rehydrate rather than replayed into silent PostgREST failures
+// (LIFT-1132).
+describe('journal schema versioning (LIFT-1132)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    syncStatus.value = 'synced'
+    idbStore.clear()
+    fakeSupabase.reset()
+    _resetRateLimit()
+    _resetCircuitBreaker()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('persists journals inside a versioned envelope stamped with the current generation', () => {
+    const queue = new SyncQueue(500)
+    queue.enqueue('set:s1', () => Promise.resolve(), UPSERT)
+
+    const persisted = JSON.parse(idbStore.get('lift-sync-journal')!)
+    expect(persisted.version).toBe(JOURNAL_SCHEMA_VERSION)
+    expect(persisted.entries).toHaveLength(1)
+  })
+
+  it('rehydrate() replays a journal stamped with the current schema version', async () => {
+    idbStore.set('lift-sync-journal', JSON.stringify({
+      version: JOURNAL_SCHEMA_VERSION,
+      entries: [{ key: 'set:s1', isDelete: false, descriptor: UPSERT }],
+    }))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+    expect(queue.pending).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fakeSupabase.calls.filter(c => c.op === 'upsert')).toHaveLength(1)
+  })
+
+  it('rehydrate() discards a journal written under an older schema version', async () => {
+    idbStore.set('lift-sync-journal', JSON.stringify({
+      version: JOURNAL_SCHEMA_VERSION - 1,
+      entries: [{ key: 'set:s1', isDelete: false, descriptor: UPSERT }],
+    }))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+
+    // Nothing was enqueued or journaled from the stale generation…
+    expect(queue.pending).toBe(0)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fakeSupabase.calls).toHaveLength(0)
+    // …and the stale record on disk was wiped so it isn't re-read next launch.
+    expect(JSON.parse(idbStore.get('lift-sync-journal')!)).toEqual({
+      version: JOURNAL_SCHEMA_VERSION,
+      entries: [],
+    })
+  })
+
+  it('rehydrate() discards a journal from a newer (unknown) schema version', async () => {
+    idbStore.set('lift-sync-journal', JSON.stringify({
+      version: JOURNAL_SCHEMA_VERSION + 1,
+      entries: [{ key: 'set:s1', isDelete: false, descriptor: UPSERT }],
+    }))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+
+    expect(queue.pending).toBe(0)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fakeSupabase.calls).toHaveLength(0)
+  })
+
+  it('rehydrate() treats a legacy bare-array journal as the current generation and replays it', async () => {
+    // Pre-LIFT-1132 journals were a bare PersistedEntry[] with no version. They
+    // must still replay — dropping valid pending writes merely because they
+    // predate the envelope would defeat the durable queue on the very upgrade
+    // that introduces versioning.
+    idbStore.set('lift-sync-journal', JSON.stringify([
+      { key: 'set:s1', isDelete: false, descriptor: UPSERT },
+    ]))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+    expect(queue.pending).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fakeSupabase.calls.filter(c => c.op === 'upsert')).toHaveLength(1)
   })
 })
