@@ -45,6 +45,7 @@ export type Database = {
           date: string
           deleted_at: string | null
           id: string
+          updated_at: string
           user_id: string
           weight: number
         }
@@ -53,6 +54,7 @@ export type Database = {
           date: string
           deleted_at?: string | null
           id?: string
+          updated_at?: string
           user_id: string
           weight: number
         }
@@ -61,6 +63,7 @@ export type Database = {
           date?: string
           deleted_at?: string | null
           id?: string
+          updated_at?: string
           user_id?: string
           weight?: number
         }
@@ -83,7 +86,7 @@ export type Database = {
           plate_count_mode: string | null
           plate_loaded: boolean
           tags: string[]
-          updated_at: string | null
+          updated_at: string
           user_id: string
           warmup_scheme: Json | null
         }
@@ -103,7 +106,7 @@ export type Database = {
           plate_count_mode?: string | null
           plate_loaded?: boolean
           tags?: string[]
-          updated_at?: string | null
+          updated_at?: string
           user_id: string
           warmup_scheme?: Json | null
         }
@@ -123,7 +126,7 @@ export type Database = {
           plate_count_mode?: string | null
           plate_loaded?: boolean
           tags?: string[]
-          updated_at?: string | null
+          updated_at?: string
           user_id?: string
           warmup_scheme?: Json | null
         }
@@ -176,8 +179,10 @@ export type Database = {
           estimated_1rm: number
           exercise_id: string
           id: string
+          note: string | null
           reps: number
           session_id: string | null
+          updated_at: string
           user_id: string
           weight: number
         }
@@ -188,8 +193,10 @@ export type Database = {
           estimated_1rm: number
           exercise_id: string
           id?: string
+          note?: string | null
           reps: number
           session_id?: string | null
+          updated_at?: string
           user_id: string
           weight: number
         }
@@ -200,8 +207,10 @@ export type Database = {
           estimated_1rm?: number
           exercise_id?: string
           id?: string
+          note?: string | null
           reps?: number
           session_id?: string | null
+          updated_at?: string
           user_id?: string
           weight?: number
         }
