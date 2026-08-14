@@ -80,6 +80,7 @@ Tests are not just for coverage — they prevent specific classes of regression:
 - **WCAG contrast audit** (`themeContrast.test.ts`) — every theme variant checked against AA minimums
 - **Manifest tests** (`manifestRegression.test.ts`) — verify PWA manifest fields and screenshot assets exist
 - **Spacing scale tests** — enforce the 4/8/12/16/24/32 scale, flag off-scale values
+- **RLS invariant** (`architecturalInvariants.test.ts`, LIFT-1130) — scans `supabase/migrations` and fails the build if any `create table` lacks a matching `enable row level security`, or if a `user_id`-scoped table has no `auth.uid()` policy. RLS is the *only* real tenant boundary (the anon key ships in the client bundle), so **every new table MUST enable RLS and add its policies in the same migration** — a table without RLS silently exposes every user's rows.
 
 Every bug fix must include a regression test in the SAME commit. Before writing the test, ask: why didn't existing tests catch this? If it's a new class of failure, add a new test category.
 
