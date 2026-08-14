@@ -205,10 +205,22 @@ function init(): void {
         initStores(session.user.id)
       }
     } else if (event === 'SIGNED_OUT') {
-      // Only an explicit sign-out clears the user. A null-session
-      // INITIAL_SESSION event must NOT clobber a guest that getSession()
-      // restored, or the guest would be bounced back to the auth gate.
-      user.value = null
+      // A SIGNED_OUT event ends the session — either the user tapped sign-out,
+      // or the refresh token expired / was revoked server-side and supabase-js
+      // dropped the session automatically. Both must run the SAME teardown as
+      // manual signOut (clear the sync journal + reset stores), or the previous
+      // user's hydrated Pinia stores and durable IndexedDB journal would persist
+      // under a now-anonymous session — the exact shared-device leak the
+      // journal-wipe exists to prevent, reached via the automatic path
+      // (LIFT-1133). Guard on a real prior user: a guest keeps its local-only
+      // data (isGuest), and an already-signed-out state has nothing to tear
+      // down. A null-session INITIAL_SESSION event never reaches this branch, so
+      // it still can't clobber a guest that getSession() restored.
+      if (prev && !isGuest.value) {
+        teardownSession()
+      } else {
+        user.value = null
+      }
     }
   })
   _authUnsubscribe = () => subscription.unsubscribe()
@@ -279,17 +291,30 @@ function resetStores(): void {
   resetXPCeremony()
 }
 
+/**
+ * Shared teardown for the end of a real (non-guest) session, invoked by BOTH
+ * the manual `signOut()` and the automatic server-side sign-out branch of
+ * `onAuthStateChange` (LIFT-1133).
+ *
+ * Cancels pending syncs and wipes the durable IndexedDB journal so the next
+ * user on a shared device never replays this user's writes (LIFT-706), resets
+ * every Pinia store, and clears the user. Idempotent — running it twice is
+ * harmless, which matters because a manual `signOut()` also emits a `SIGNED_OUT`
+ * event that lands in the same teardown.
+ */
+function teardownSession(): void {
+  syncQueue.clear()
+  resetStores()
+  user.value = null
+}
+
 async function signOut(): Promise<void> {
   try {
     await supabase?.auth.signOut()
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
-    // Cancel pending syncs and wipe the durable journal so the next user on a
-    // shared device never replays this user's writes (LIFT-706).
-    syncQueue.clear()
-    resetStores()
-    user.value = null
+    teardownSession()
   }
 }
 

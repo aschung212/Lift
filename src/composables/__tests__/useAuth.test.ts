@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
@@ -50,6 +50,8 @@ vi.mock('../../lib/supabase', () => ({
       signOut: (...args: unknown[]) => mockSignOut(...args),
       getSession: (...args: unknown[]) => mockGetSession(...args),
       onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
+      startAutoRefresh: vi.fn(),
+      stopAutoRefresh: vi.fn(),
     },
     from: (...args: unknown[]) => mockFrom(...args),
   }
@@ -252,6 +254,88 @@ describe('useAuth', () => {
     it('exposes isGuest as a reactive ref defaulting to false', () => {
       const { isGuest } = useAuth()
       expect(isGuest.value).toBe(false)
+    })
+  })
+
+  // Regression LIFT-1133: an automatic server-side sign-out (expired/revoked
+  // refresh token surfacing as a SIGNED_OUT event) must run the SAME teardown as
+  // manual signOut, or the previous user's hydrated stores and durable sync
+  // journal persist on a shared device. These tests exercise the real
+  // onAuthStateChange handler, which init() only registers outside DEV mode.
+  describe('automatic sign-out teardown (LIFT-1133)', () => {
+    // Register init() with DEV disabled (so the supabase auth listener is wired
+    // up), seed a real signed-in session, and hand back the captured
+    // onAuthStateChange callback plus the fresh module's reactive user ref.
+    async function initWithSession(session: unknown) {
+      vi.stubEnv('DEV', false)
+      mockGetSession.mockResolvedValue({ data: { session } })
+      vi.resetModules()
+      const mod = await import('../useAuth')
+      const auth = mod.useAuth()
+      auth.init()
+      // init() registers the auth listener synchronously; flush a macrotask so
+      // the async getSession().then(...) settles user.value / guest state.
+      await vi.waitFor(() => expect(mockOnAuthStateChange).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const cb = mockOnAuthStateChange.mock.calls.at(-1)![0] as (
+        event: string,
+        session: unknown,
+      ) => void
+      return { cb, user: auth.user, isGuest: auth.isGuest }
+    }
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('clears the sync journal and resets stores on an automatic SIGNED_OUT', async () => {
+      const { cb, user } = await initWithSession({ user: { id: 'u1', email: 'a@b.co' } })
+      expect(user.value).not.toBeNull()
+
+      mockSyncQueueClear.mockClear()
+      mockWorkoutReset.mockClear()
+      mockBodyweightReset.mockClear()
+      mockPreferencesReset.mockClear()
+      mockProgressionReset.mockClear()
+
+      cb('SIGNED_OUT', null)
+
+      expect(mockSyncQueueClear).toHaveBeenCalledOnce()
+      expect(mockWorkoutReset).toHaveBeenCalledOnce()
+      expect(mockBodyweightReset).toHaveBeenCalledOnce()
+      expect(mockPreferencesReset).toHaveBeenCalledOnce()
+      expect(mockProgressionReset).toHaveBeenCalledOnce()
+      expect(user.value).toBeNull()
+    })
+
+    it('does NOT tear down stores on TOKEN_REFRESHED (a healthy session continues)', async () => {
+      const { cb, user } = await initWithSession({ user: { id: 'u1', email: 'a@b.co' } })
+
+      mockSyncQueueClear.mockClear()
+      mockWorkoutReset.mockClear()
+
+      cb('TOKEN_REFRESHED', { user: { id: 'u1', email: 'a@b.co' } })
+
+      expect(mockSyncQueueClear).not.toHaveBeenCalled()
+      expect(mockWorkoutReset).not.toHaveBeenCalled()
+      expect(user.value).not.toBeNull()
+    })
+
+    it('preserves a guest\'s local-only data on SIGNED_OUT (no store reset)', async () => {
+      localStorageMock.setItem('guest-mode', 'true')
+      const { cb, user, isGuest } = await initWithSession(null)
+      expect(isGuest.value).toBe(true)
+
+      mockSyncQueueClear.mockClear()
+      mockWorkoutReset.mockClear()
+
+      cb('SIGNED_OUT', null)
+
+      // A guest never synced to Supabase; wiping their stores would destroy the
+      // very local data they chose "continue without an account" to keep.
+      expect(mockSyncQueueClear).not.toHaveBeenCalled()
+      expect(mockWorkoutReset).not.toHaveBeenCalled()
+      expect(user.value).toBeNull()
     })
   })
 
