@@ -5,7 +5,7 @@ import type { Tables, TablesUpdate } from '../lib/database.types'
 import { syncQueue, type SyncTable, type SyncDescriptor } from '../lib/syncQueue'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
-import { logError } from '../lib/logger'
+import { logError, logWarn } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { epley } from '../lib/epley'
@@ -17,6 +17,7 @@ import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
 import { sanitizeExerciseNotes } from '../lib/inputLimits'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { sanitizeExerciseGyms } from '../lib/gyms'
+import { mapRemoteExercise, mapRemoteSet } from '../lib/remoteRows'
 import { effectiveSetWeight } from '../lib/bodyweightLoad'
 import { useBodyweightStore } from './bodyweight'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -461,34 +462,11 @@ export const useWorkoutStore = defineStore('workout', () => {
       ex => !isTombstoned(TOMBSTONE_STORE, ex.id)
     )
 
-    const remoteExercises = filteredExercises.map(ex => {
-      const exercise: Exercise = {
-        id: ex.id,
-        name: ex.name,
-        tags: ex.tags || [],
-        updated_at: ex.updated_at || ex.created_at || new Date().toISOString(),
-        sets: [] as WorkoutSet[],
-      }
-      if (ex.input_mode) exercise.inputMode = ex.input_mode as ExerciseInputMode
-      if (ex.bar_weight != null) exercise.barWeight = ex.bar_weight
-      if (ex.plate_count_mode === 'per-side' || ex.plate_count_mode === 'total') {
-        exercise.plateCountMode = ex.plate_count_mode
-      }
-      if (ex.intensity_max_reps != null) exercise.intensityMaxReps = sanitizeIntensityMaxReps(ex.intensity_max_reps)
-      if (ex.equipment != null) {
-        const eq = sanitizeExerciseEquipment(ex.equipment)
-        if (eq) exercise.equipment = eq
-      }
-      if (ex.gyms && ex.gyms.length > 0) {
-        const gyms = sanitizeExerciseGyms(ex.gyms)
-        if (gyms.length > 0) exercise.gyms = gyms
-      }
-      if (ex.bodyweight_loaded) exercise.bodyweightLoaded = true
-      if (ex.archived_at) exercise.archived_at = ex.archived_at
-      const notes = sanitizeExerciseNotes(ex.notes)
-      if (notes) exercise.notes = notes
-      return exercise
-    })
+    // Map + validate remote rows at the boundary (LIFT-1135): every column is
+    // guarded through mapRemoteExercise/mapRemoteSet rather than trusted inline,
+    // so a NaN weight or a bogus input_mode from a bad migration can't reach the
+    // PR getters or the plate calculator.
+    const remoteExercises = filteredExercises.map(mapRemoteExercise)
 
     // Build remote sets grouped by exercise, filtering tombstoned sets
     const remoteSetIds = new Set(sets.map(s => s.id))
@@ -500,18 +478,18 @@ export const useWorkoutStore = defineStore('workout', () => {
         _enqueueSoftDelete(`set:${s.id}`, 'sets', { id: s.id, user_id: _userId })
         continue
       }
+      // Validate weight/reps at the boundary and repair a missing e1RM from
+      // Epley (LIFT-1135); a set with a non-finite weight/reps is dropped rather
+      // than poisoning Math.max(estimated1RM). createdAt (the server insert
+      // timestamp) is preserved for the AI Coach payload (#846).
+      const set = mapRemoteSet(s)
+      if (!set) {
+        logWarn('Dropping malformed remote set during fetch', { id: s.id })
+        continue
+      }
       const exerciseId = s.exercise_id
       if (!remoteSetsMap.has(exerciseId)) remoteSetsMap.set(exerciseId, [])
-      remoteSetsMap.get(exerciseId)!.push({
-        id: s.id,
-        date: s.date,
-        weight: s.weight,
-        reps: s.reps,
-        estimated1RM: s.estimated_1rm,
-        // Surface the server insert timestamp so historical/synced sets carry a
-        // real time-of-day + within-workout order for the AI Coach payload (#846).
-        createdAt: s.created_at,
-      })
+      remoteSetsMap.get(exerciseId)!.push(set)
     }
     remoteExercises.forEach(ex => {
       ex.sets = remoteSetsMap.get(ex.id) || []

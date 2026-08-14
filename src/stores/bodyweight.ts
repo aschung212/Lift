@@ -10,6 +10,8 @@ import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '../lib/tombstones'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { parseBodyweightEntries } from '../lib/parseGuards'
+import { mapRemoteBodyweightEntry } from '../lib/remoteRows'
+import { logWarn } from '../lib/logger'
 
 const TOMBSTONE_STORE = 'bodyweight'
 
@@ -92,21 +94,24 @@ export const useBodyweightStore = defineStore('bodyweight', {
         e => !isTombstoned(TOMBSTONE_STORE, e.id)
       )
 
-      const remoteEntries = filteredData.map(e => ({
-        id: e.id,
-        date: e.date,
-        weight: e.weight,
-        updated_at: e.created_at || new Date().toISOString(),
-      }))
+      type BWWithTimestamp = BodyweightEntry & { updated_at: string }
+
+      // Validate weight at the boundary (LIFT-1135): an entry with a non-finite
+      // weight is dropped rather than skewing min/max/latest getters.
+      const remoteEntries: BWWithTimestamp[] = []
+      for (const e of filteredData) {
+        const entry = mapRemoteBodyweightEntry(e)
+        if (entry) remoteEntries.push(entry)
+        else logWarn('Dropping malformed remote bodyweight entry during fetch', { id: e.id })
+      }
 
       // Merge local + remote using last-write-wins
       // (#1 fix: local entries now carry updated_at from mutations)
-      type BWWithTimestamp = BodyweightEntry & { updated_at: string }
       const localWithTimestamps: BWWithTimestamp[] = this.entries.map((e) => ({
         ...e,
         updated_at: e.updated_at || new Date(0).toISOString(),
       }))
-      const { merged, localOnly, localWins } = mergeEntities<BWWithTimestamp>(localWithTimestamps, remoteEntries as BWWithTimestamp[])
+      const { merged, localOnly, localWins } = mergeEntities<BWWithTimestamp>(localWithTimestamps, remoteEntries)
 
       // Deduplicate by date for LOCAL display only — keep the entry with the
       // later updated_at per date. We intentionally do NOT push deletes to
