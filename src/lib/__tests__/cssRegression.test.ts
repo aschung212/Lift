@@ -284,6 +284,19 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.bwExportBtn bodyweight Health-export button (#1159)', () => {
+    const lines = getRuleLines('.bwExportBtn')
+
+    it('meets the 44px iOS HIG touch target in both dimensions', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    it('self-centers against the baseline-aligned hero row', () => {
+      expect(lines.some(l => l.includes('align-self') && l.includes('center'))).toBe(true)
+    })
+  })
+
   describe('.topBarCoachBtn AI Review entry (#972)', () => {
     // The AI Review entry moved from a full-width Workouts card to a compact
     // top-bar icon on the Calendar tab; it must inherit the shared 44px
