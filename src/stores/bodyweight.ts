@@ -11,6 +11,7 @@ import { addTombstone, removeTombstone, isTombstoned, cleanupTombstones } from '
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { parseBodyweightEntries } from '../lib/parseGuards'
 import { mapRemoteBodyweightEntry } from '../lib/remoteRows'
+import { fetchAllRows } from '../lib/supabasePagination'
 import { logWarn } from '../lib/logger'
 
 const TOMBSTONE_STORE = 'bodyweight'
@@ -57,16 +58,27 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
+      // Pin the narrowed client and user id: both bindings are mutable, so TS
+      // re-widens them inside the per-page query factory below.
+      const client = supabase
+      const userId = this._userId
 
       this.syncing = true
       let data: Tables<'bodyweight_entries'>[] | null
       try {
-        const result = await supabase
+        // Paged like every other collection read (#1152). This table sits well
+        // under PostgREST's 1000-row max_rows today (one entry per day), which
+        // is precisely why the workout truncation looked like selective data
+        // loss — bodyweight survived while sets did not. Daily logging reaches
+        // the cap in under three years, so it pages too rather than waiting to
+        // become the next silent truncation.
+        const result = await fetchAllRows(() => client
           .from('bodyweight_entries')
           .select('*')
-          .eq('user_id', this._userId)
+          .eq('user_id', userId)
           .is('deleted_at', null)
           .order('created_at')
+          .order('id'))
         if (result.error) {
           reportFetchError('bodyweight', result.error)
           this.lastSyncError = classifySyncError(result.error)
