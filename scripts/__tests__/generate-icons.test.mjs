@@ -1,108 +1,37 @@
 // @ts-nocheck
 import { describe, it, expect } from 'vitest'
-import zlib from 'node:zlib'
 import { readFileSync, statSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { encodePNG, renderIcon } from '../generate-icons.js'
+import { encodePNG, decodePNG, resampleBox, renderIcon } from '../generate-icons.js'
 
 /**
- * Behavioral coverage for the PWA icon generator (#1114).
+ * Behavioral coverage for the PWA icon generator (#1114, reworked in #1154).
  *
- * The generator hand-rolls a PNG encoder with no native deps. #1114 rebuilt that
- * encoder to emit colour-type-3 indexed PNGs with adaptive scanline filtering and
- * max deflate for the flat two-colour barbell art, shrinking icon-512.png from
- * ~248KB to a few KB — a payload that every installed PWA user downloads in the
- * service-worker precache. These tests pin (1) that the encoder is lossless on
- * both the indexed and truecolour paths, (2) that it actually picks the indexed
- * path for the icon art, and (3) that the committed public icons stay small so a
- * regression back to bloated truecolour output fails CI.
+ * Two failure classes are pinned here:
+ *
+ * 1. **Encoder regressions (#1114).** The generator hand-rolls a PNG encoder
+ *    (indexed when ≤256 colours, adaptive scanline filtering, max deflate).
+ *    These tests pin that it is lossless on both paths and that the committed
+ *    icons stay within a size budget, so a regression to unoptimised output
+ *    fails CI.
+ *
+ * 2. **Art regressions (#1154).** PR #1120 re-ran this generator while it still
+ *    drew a hardcoded March-27 placeholder (flat red dumbbell), silently
+ *    replacing the designed gold barbell+arrow icons that had shipped since
+ *    2026-03-31 — and every test passed, because nothing tied the committed
+ *    icons to the design source. The generator now DERIVES icons from
+ *    `public/icon-source.png`, and the tests below pin (a) that the committed
+ *    icons decode pixel-identical to the generator's output (drift guard, byte
+ *    comparisons deliberately avoided so zlib version differences can't flake
+ *    it), and (b) that the art is the rich gradient design, not a flat
+ *    placeholder.
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PUBLIC = resolve(__dirname, '..', '..', 'public')
 
 const SIG = [137, 80, 78, 71, 13, 10, 26, 10]
-
-// Minimal PNG decoder supporting the two colour types this encoder emits:
-// type 3 (8-bit indexed + PLTE) and type 6 (8-bit RGBA). Returns width/height,
-// the IHDR colour type, and the flattened RGBA pixel buffer.
-function decodePNG(buf) {
-  for (let i = 0; i < SIG.length; i++) {
-    if (buf[i] !== SIG[i]) throw new Error('bad PNG signature')
-  }
-  let o = 8
-  let width, height, bitDepth, colorType
-  let palette = null
-  const idat = []
-  while (o < buf.length) {
-    const len = buf.readUInt32BE(o)
-    const type = buf.toString('ascii', o + 4, o + 8)
-    const data = buf.subarray(o + 8, o + 8 + len)
-    if (type === 'IHDR') {
-      width = data.readUInt32BE(0)
-      height = data.readUInt32BE(4)
-      bitDepth = data[8]
-      colorType = data[9]
-    } else if (type === 'PLTE') {
-      palette = []
-      for (let i = 0; i < data.length; i += 3) palette.push([data[i], data[i + 1], data[i + 2]])
-    } else if (type === 'IDAT') {
-      idat.push(data)
-    } else if (type === 'IEND') {
-      break
-    }
-    o += 12 + len
-  }
-
-  const bpp = colorType === 6 ? 4 : 1
-  const stride = width * bpp
-  const raw = zlib.inflateSync(Buffer.concat(idat))
-  const rows = Buffer.alloc(stride * height)
-
-  for (let y = 0; y < height; y++) {
-    const ft = raw[y * (stride + 1)]
-    const ri = y * (stride + 1) + 1
-    for (let i = 0; i < stride; i++) {
-      const x = raw[ri + i]
-      const a = i >= bpp ? rows[y * stride + i - bpp] : 0
-      const b = y > 0 ? rows[(y - 1) * stride + i] : 0
-      const c = i >= bpp && y > 0 ? rows[(y - 1) * stride + i - bpp] : 0
-      let v
-      switch (ft) {
-        case 0: v = x; break
-        case 1: v = x + a; break
-        case 2: v = x + b; break
-        case 3: v = x + ((a + b) >> 1); break
-        case 4: {
-          const p = a + b - c
-          const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c)
-          v = x + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)
-          break
-        }
-        default: throw new Error(`unknown filter ${ft}`)
-      }
-      rows[y * stride + i] = v & 255
-    }
-  }
-
-  const rgba = new Uint8Array(width * height * 4)
-  for (let p = 0; p < width * height; p++) {
-    if (colorType === 6) {
-      rgba[p * 4] = rows[p * 4]
-      rgba[p * 4 + 1] = rows[p * 4 + 1]
-      rgba[p * 4 + 2] = rows[p * 4 + 2]
-      rgba[p * 4 + 3] = rows[p * 4 + 3]
-    } else {
-      const [r, g, bl] = palette[rows[p]]
-      rgba[p * 4] = r
-      rgba[p * 4 + 1] = g
-      rgba[p * 4 + 2] = bl
-      rgba[p * 4 + 3] = 255
-    }
-  }
-  return { width, height, bitDepth, colorType, rgba }
-}
 
 function uniqueColors(rgba) {
   const set = new Set()
@@ -150,41 +79,68 @@ describe('generate-icons PNG encoder', () => {
       10, 20, 30, 255, 40, 50, 60, 128,
       70, 80, 90, 0, 100, 110, 120, 200,
     ])
-    const dec = decodePNG(encodePNG(w, h, pixels))
-    // decoder above forces alpha 255 for indexed, so compare RGB only here and
-    // assert the encoder wrote a tRNS chunk so real decoders recover the alpha.
     const png = encodePNG(w, h, pixels)
     expect(png.includes(Buffer.from('tRNS', 'ascii'))).toBe(true)
-    for (let p = 0; p < w * h; p++) {
-      expect(dec.rgba[p * 4]).toBe(pixels[p * 4])
-      expect(dec.rgba[p * 4 + 1]).toBe(pixels[p * 4 + 1])
-      expect(dec.rgba[p * 4 + 2]).toBe(pixels[p * 4 + 2])
-    }
-  })
-
-  it('encodes the rendered barbell icon as a compact indexed PNG', () => {
-    const size = 192
-    const pixels = renderIcon(size)
-    // Flat two-colour art: anti-aliasing only blends the two colours, so the
-    // palette stays tiny — this is what makes indexed encoding a huge win.
-    expect(uniqueColors(pixels)).toBeLessThanOrEqual(256)
-    const png = encodePNG(size, size, pixels)
-    expect(decodePNG(png).colorType).toBe(3)
-    // Far smaller than the 4 bytes/pixel raw truecolour footprint.
-    expect(png.length).toBeLessThan(size * size * 4 * 0.1)
-    // Losslessness on the real icon content, not just synthetic bitmaps.
+    // The decoder honours tRNS, so the full RGBA round-trips exactly.
     expect(Array.from(decodePNG(png).rgba)).toEqual(Array.from(pixels))
   })
 })
 
+describe('icons derive from the committed source art (#1154)', () => {
+  const source = decodePNG(readFileSync(resolve(PUBLIC, 'icon-source.png')))
+
+  it('the source art is the rich gradient design, not a flat placeholder', () => {
+    expect(source.width).toBe(1024)
+    expect(source.height).toBe(1024)
+    // The March-27 placeholder rendered ≤17 unique colours; the designed gold
+    // barbell+arrow has thousands. This is the tripwire that would have caught
+    // #1120 swapping the art.
+    expect(uniqueColors(source.rgba)).toBeGreaterThan(256)
+  })
+
+  it('renderIcon output is a downscale of the source, not an in-code drawing', () => {
+    const size = 64
+    const rendered = renderIcon(size)
+    const reference = resampleBox(source.rgba, source.width, source.height, size, size)
+    expect(Array.from(rendered)).toEqual(Array.from(reference))
+  })
+
+  for (const [name, size] of [
+    ['icon-512.png', 512],
+    ['icon-192.png', 192],
+    ['apple-touch-icon.png', 180],
+  ]) {
+    it(`${name} decodes pixel-identical to the generator output (no drift)`, () => {
+      // Pixel comparison, not byte comparison: IDAT bytes may vary across zlib
+      // versions, but the decoded art must be exactly what the generator
+      // produces from icon-source.png. If this fails, someone changed the
+      // source art or the pipeline without regenerating (or vice versa) — run
+      // `npm run generate-icons` and commit the result.
+      const committed = decodePNG(readFileSync(resolve(PUBLIC, name)))
+      expect(committed.width).toBe(size)
+      expect(committed.height).toBe(size)
+      expect(Buffer.from(committed.rgba).equals(Buffer.from(renderIcon(size)))).toBe(true)
+    })
+
+    it(`${name} carries the designed art (rich palette, not a placeholder)`, () => {
+      const committed = decodePNG(readFileSync(resolve(PUBLIC, name)))
+      expect(uniqueColors(committed.rgba)).toBeGreaterThan(256)
+    })
+  }
+})
+
 describe('committed public PWA icons stay small (precache budget)', () => {
-  // Guards the #1114 shrink: a regression to unoptimised truecolour encoding
-  // (icon-512.png was ~248KB) would blow these budgets and fail CI. Budgets sit
-  // well above the current few-KB output but far below the old footprint.
+  // Budgets are calibrated to the DESIGNED art encoded losslessly with the
+  // #1114 encoder (adaptive filtering + max deflate): ~236KB / ~35KB / ~31KB.
+  // They exist to catch encoder regressions (e.g. a return to filter-None
+  // unoptimised output, which costs 2-4× more) — NOT to force the art itself
+  // to stay trivial: #1120 "won" its 248KB→3KB shrink mostly by replacing the
+  // gradient design with flat placeholder art, which is exactly the trade
+  // these tests no longer allow to happen silently.
   const budgets = [
-    ['icon-512.png', 60 * 1024],
-    ['icon-192.png', 20 * 1024],
-    ['apple-touch-icon.png', 20 * 1024],
+    ['icon-512.png', 300 * 1024],
+    ['icon-192.png', 48 * 1024],
+    ['apple-touch-icon.png', 44 * 1024],
   ]
   for (const [name, max] of budgets) {
     it(`${name} is well-formed and under ${Math.round(max / 1024)}KB`, () => {
