@@ -33,6 +33,9 @@ vi.mock('../../lib/supabase', () => {
       eq: () => chain,
       is: () => chain,
       order: () => chain,
+      // Collection reads page through .range() (#1152); the fixtures here are
+      // far under one page, so a single windowed request returns everything.
+      range: () => chain,
       upsert: () => Promise.resolve({ error: null }),
       then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
         Promise.resolve({ data: getData(), error: null }).then(resolve, reject),

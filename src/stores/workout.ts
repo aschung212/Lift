@@ -18,6 +18,7 @@ import { sanitizeExerciseNotes } from '../lib/inputLimits'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { sanitizeExerciseGyms } from '../lib/gyms'
 import { mapRemoteExercise, mapRemoteSet } from '../lib/remoteRows'
+import { fetchAllRows } from '../lib/supabasePagination'
 import { effectiveSetWeight } from '../lib/bodyweightLoad'
 import { useBodyweightStore } from './bodyweight'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -421,14 +422,32 @@ export const useWorkoutStore = defineStore('workout', () => {
 
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
+    // Pin the narrowed client and user id: both bindings are mutable, so TS
+    // re-widens them inside the per-page query factories below.
+    const client = supabase
+    const userId = _userId
 
     syncing.value = true
     let remoteExData: Tables<'exercises'>[] | null
     let sets: Tables<'sets'>[] | null
     try {
+      // Both collections MUST be paged (#1152). PostgREST caps a response at
+      // max_rows (1000) and signals the truncation nowhere, so an unpaged
+      // `.select()` under this ASCENDING sort silently returns only the OLDEST
+      // 1000 rows: a user past the cap hydrates a truncated history on a fresh
+      // device and the app reports that their training simply stopped.
+      //
+      // `.order('id')` is a tiebreaker, not decoration — `created_at` defaults
+      // to now(), so a CSV import writes many rows with an identical timestamp
+      // and a non-total sort lets the database order ties differently between
+      // two page requests, repeating some rows and skipping others.
       const [exResult, setsResult] = await Promise.all([
-        supabase.from('exercises').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at'),
-        supabase.from('sets').select('*').eq('user_id', _userId).is('deleted_at', null).order('created_at')
+        fetchAllRows(() =>
+          client.from('exercises').select('*').eq('user_id', userId)
+            .is('deleted_at', null).order('created_at').order('id')),
+        fetchAllRows(() =>
+          client.from('sets').select('*').eq('user_id', userId)
+            .is('deleted_at', null).order('created_at').order('id')),
       ])
       if (exResult.error || setsResult.error) {
         reportFetchError('workout', exResult.error ?? setsResult.error, {

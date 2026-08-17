@@ -285,6 +285,82 @@ describe('Invariant: _fetchFromSupabase READ path is read-only (SEV1 2026-04-12 
   })
 })
 
+// ── Invariant 3b: collection reads must page (#1152) ────────────────
+// Guard: PostgREST truncates every response at max_rows (1000) and reports it
+// nowhere. An unpaged `.select()` on a collection therefore returns the first
+// page and looks successful — which silently hid 454 of a real user's 1454 sets
+// and made the app claim they hadn't trained in four weeks.
+//
+// A read is exempt only when it can't return a collection: `.single()` /
+// `.maybeSingle()` (one row by contract) or a `head: true` count probe (no rows
+// at all). Everything else must go through `fetchAllRows`.
+
+describe('Invariant: Supabase collection reads are paged (#1152)', () => {
+  /** Collection tables — a per-user read of these can exceed max_rows. */
+  const COLLECTION_TABLES = ['sets', 'exercises', 'bodyweight_entries']
+
+  it('no store reads a collection table without fetchAllRows', () => {
+    const violations: string[] = []
+
+    for (const { name, content } of getStoreFiles()) {
+      for (const table of COLLECTION_TABLES) {
+        // Find each `.from('<table>')` and inspect the chain that follows it.
+        const pattern = new RegExp(`\\.from\\(\\s*['"\`]${table}['"\`]\\s*\\)`, 'g')
+        let match: RegExpExecArray | null
+        while ((match = pattern.exec(content)) !== null) {
+          // The chain runs to the end of the statement; 500 chars covers the
+          // longest multi-line query in the stores by a wide margin.
+          const chain = content.slice(match.index, match.index + 500)
+          const isSelect = /^\s*\.from\([^)]*\)\s*[\s\S]{0,80}?\.select\(/.test(chain)
+          if (!isSelect) continue // upsert/update/delete are unaffected by max_rows
+          if (/\.(single|maybeSingle)\s*\(/.test(chain.slice(0, 300))) continue
+          if (/head:\s*true/.test(chain.slice(0, 300))) continue
+
+          // The read must be wrapped by the paging helper, which appears just
+          // before `.from(` on the same expression.
+          const before = content.slice(Math.max(0, match.index - 200), match.index)
+          if (!/fetchAllRows\s*\(/.test(before)) {
+            const line = content.slice(0, match.index).split('\n').length
+            violations.push(
+              `${name}:${line} — reads the '${table}' collection without ` +
+              `fetchAllRows. PostgREST caps the response at max_rows (1000) ` +
+              `with no error, so this silently returns a partial collection.`,
+            )
+          }
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  it('every paged read carries a total sort order', () => {
+    // Pagination is only coherent under a deterministic order. `created_at` is
+    // `default now()`, so a CSV import writes many rows with an identical
+    // value; without a tiebreaker the database may order ties differently
+    // between two page requests, repeating some rows and skipping others.
+    const violations: string[] = []
+
+    for (const { name, content } of getStoreFiles()) {
+      const pattern = /fetchAllRows\s*\(/g
+      let match: RegExpExecArray | null
+      while ((match = pattern.exec(content)) !== null) {
+        const chain = content.slice(match.index, match.index + 500)
+        const orderCount = (chain.match(/\.order\(/g) || []).length
+        if (orderCount < 2) {
+          const line = content.slice(0, match.index).split('\n').length
+          violations.push(
+            `${name}:${line} — paged read has ${orderCount} .order() clause(s). ` +
+            `A paged read needs a total order (add .order('id') as a tiebreaker).`,
+          )
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+})
+
 // ── Invariant 4: Cross-tab sync completeness ────────────────────────
 // Guard: if a store has _persist() but doesn't broadcast, cross-tab
 // sync silently breaks. This catches missing wiring when new stores
