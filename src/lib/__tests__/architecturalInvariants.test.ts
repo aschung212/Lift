@@ -42,6 +42,19 @@ function getSourceFiles(dir = SRC_DIR, out: { path: string; content: string }[] 
   return out
 }
 
+/**
+ * Drop `//`-style and block-comment lines. Comments that explain a banned
+ * pattern often quote the banned call, and a guard that flags its own
+ * documentation is a guard people delete. Shared by the modal-open and
+ * reload-guard invariants.
+ */
+function stripComments(source: string): string {
+  return source
+    .split('\n')
+    .filter(line => !/^\s*(\/\/|\/\*|\*|<!--)/.test(line))
+    .join('\n')
+}
+
 /** Returns absolute paths of all non-test .ts files in src/stores/. */
 function getStoreFilePaths(): string[] {
   return readdirSync(STORES_DIR)
@@ -431,18 +444,6 @@ describe('Invariant: cross-tab sync completeness', () => {
 describe('Invariant: useModal is the only owner of html.modal-open (#830)', () => {
   const OWNER = join('composables', 'useModal.ts')
 
-  /**
-   * Drop `//`-style and block-comment lines. The migration comments that
-   * explain this rule quote the banned call, and a guard that flags its own
-   * documentation is a guard people delete.
-   */
-  function stripComments(source: string): string {
-    return source
-      .split('\n')
-      .filter(line => !/^\s*(\/\/|\/\*|\*|<!--)/.test(line))
-      .join('\n')
-  }
-
   it('no component or composable toggles the modal-open class directly', () => {
     const files = getSourceFiles()
     // Non-vacuity: the walker must actually reach the .vue components and the
@@ -650,5 +651,64 @@ describe('Invariant: RLS enabled on every Supabase table (LIFT-1130)', () => {
     )
 
     expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant: automatic reloads are circuit-broken (#1155) ─────────
+// Guard: 2026-08-17 — the installed iOS PWA hit "A problem repeatedly
+// occurred" (WebKit's kill screen for an app that fails repeatedly at boot).
+// An automatic `location.reload()` whose trigger condition recurs after the
+// reload loops the boot forever, with zero telemetry. guardedReload
+// (src/lib/reloadGuard.ts) bounds every automatic reload to one per trigger
+// per session and reports suppressed repeats to Sentry — but only if new
+// reload sites actually route through it. This scan makes that structural.
+
+describe('Invariant: automatic reloads go through guardedReload (#1155)', () => {
+  const OWNER = join('lib', 'reloadGuard.ts')
+
+  // USER-initiated reloads are exempt: a human tapping a button is not a
+  // loop — the danger is code reloading with no human in the path. Every
+  // entry here must be a reload behind an explicit user gesture.
+  const USER_INITIATED = new Set([
+    // Dev tools (localhost/LAN only), each behind an explicit tap.
+    join('components', 'SettingsSheet.vue'),
+  ])
+
+  const RELOAD_CALL = /\blocation\s*\.\s*reload\s*\(/
+
+  it('no source file calls location.reload() directly except the guard owner', () => {
+    const files = getSourceFiles()
+    // Non-vacuity: the walker must reach the owner and the known exempt
+    // file, or this scan proves nothing.
+    expect(files.map(f => f.path)).toContain(OWNER)
+    expect(files.map(f => f.path)).toContain(join('components', 'SettingsSheet.vue'))
+
+    const violations = files
+      .filter(f => f.path !== OWNER && !USER_INITIATED.has(f.path))
+      .filter(f => RELOAD_CALL.test(stripComments(f.content)))
+      .map(f =>
+        `${f.path} — calls location.reload() directly. An automatic reload ` +
+        `whose trigger recurs is a boot loop; route it through ` +
+        `guardedReload('<reason>') from src/lib/reloadGuard.ts. If this is a ` +
+        `USER-initiated reload behind an explicit tap, add the file to the ` +
+        `USER_INITIATED allowlist with a justification instead.`,
+      )
+
+    expect(violations).toEqual([])
+  })
+
+  it('the scan actually flags a direct reload and skips commented ones (self-test)', () => {
+    expect(RELOAD_CALL.test(stripComments('const a = 1\nwindow.location.reload()'))).toBe(true)
+    expect(RELOAD_CALL.test(stripComments('doRefresh()\nlocation.reload()'))).toBe(true)
+    expect(RELOAD_CALL.test(stripComments('// window.location.reload()'))).toBe(false)
+    expect(RELOAD_CALL.test(stripComments(' * `controllerchange → window.location.reload()`'))).toBe(false)
+  })
+
+  it('the exempt call sites are still the dev tools they were vetted as', () => {
+    // The allowlist is only sound while its reloads stay behind the
+    // localhost-gated dev tools. If SettingsSheet's dev gate disappears,
+    // re-vet every reload in the file before loosening this.
+    const settingsSheet = readFileSync(join(SRC_DIR, 'components', 'SettingsSheet.vue'), 'utf-8')
+    expect(settingsSheet).toMatch(/const isDev = /)
   })
 })

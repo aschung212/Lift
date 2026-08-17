@@ -304,6 +304,7 @@ import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } fro
 import { useXPCeremony } from './composables/useXPCeremony'
 import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
+import { guardedReload } from './lib/reloadGuard'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
 import { captureAcquisitionSource } from './composables/useAcquisitionSource'
@@ -706,9 +707,13 @@ onMounted(async () => {
     ensureLocalStorage('user-preferences'),
   ])
   if (restored.some(r => r)) {
-    // Data was restored from backup — reload stores
-    location.reload()
-    return
+    // Data was restored from backup — reload stores. Bounded (#1155): if the
+    // restore never sticks and this branch re-triggers every boot, the second
+    // reload in a session is suppressed and reported instead of looping the
+    // app into iOS's "A problem repeatedly occurred" kill screen. On
+    // suppression, fall through and finish init on current (empty) state —
+    // the restored localStorage still hydrates on the next launch.
+    if (guardedReload('idb-restore')) return
   }
 
   // Welcome-back re-entry moment (LIFT-1107) — evaluated after the restore guard
