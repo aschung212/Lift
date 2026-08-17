@@ -123,8 +123,12 @@ export function _migrateWeightGoal(raw: unknown): WeightGoalConfig {
   return goal
 }
 
-export const usePreferencesStore = defineStore('preferences', {
-  state: () => ({
+/**
+ * Pure-defaults state factory, shared by the store definition and $reset so
+ * the sign-out wipe can't drift from the initial shape when a field is added.
+ */
+function initialPreferencesState() {
+  return {
     features: { ...DEFAULTS } as FeatureFlags,
     weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
     experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
@@ -147,7 +151,11 @@ export const usePreferencesStore = defineStore('preferences', {
     // Uniform sync-status contract (LIFT-820): observable by the UI.
     syncing: false,
     lastSyncError: null as SyncErrorKind | null,
-  }),
+  }
+}
+
+export const usePreferencesStore = defineStore('preferences', {
+  state: initialPreferencesState,
 
   actions: {
     _persist() {
@@ -214,6 +222,25 @@ export const usePreferencesStore = defineStore('preferences', {
         if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
         if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
       } catch { /* ignore corrupt data */ }
+    },
+
+    /**
+     * Sign-out wipe (called by useAuth.resetStores). The state() factory is
+     * already pure defaults, but Pinia's built-in $reset leaves the persisted
+     * `user-preferences` payload behind — and init() "loads from localStorage
+     * first", so the NEXT account to sign in on this device would inherit the
+     * previous user's coach profile (sex/age/injuries), gyms, and settings,
+     * then sync them into its own row on the first _persist(). Reset to
+     * defaults AND persist the cleared payload. The assign nulls `_userId`
+     * before _persist runs, so no upsert is enqueued against the just-ended
+     * session (the FOUC mirror keys are rewritten to defaults by the same
+     * _persist call).
+     */
+    $reset() {
+      this.$patch(($state) => {
+        Object.assign($state, initialPreferencesState())
+      })
+      this._persist()
     },
 
     async init(userId: string) {
