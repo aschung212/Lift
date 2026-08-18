@@ -278,6 +278,11 @@
             </button>
           </div>
 
+          <!-- Screen-reader confirmation of the last saved/edited set (#1148).
+               The modal stays open with cleared fields after a save, so this
+               polite live region is the only save feedback a blind user gets. -->
+          <span class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ setLogAnnouncement }}</span>
+
           <!-- New exercise mode: name + tags input -->
           <template v-if="!isEditMode && selectedExerciseId === '__new__'">
             <label class="repMaxLabel">
@@ -994,6 +999,20 @@ watch(allGyms, (gyms) => {
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
 const activeTagFilters = ref<string[]>([])
+
+/**
+ * Screen-reader confirmation for the set-save path (#1148, WCAG 2.2 SC 4.1.3
+ * Status Messages). The log-set modal stays open with cleared fields after a
+ * save, so a sighted user sees the freshly-emptied form as feedback, but a
+ * blind user gets nothing — no toast, no focus move, no announcement. This
+ * string feeds a persistent polite live region inside the modal; `announceSet`
+ * sets it (clearing first so an identical re-log still re-fires the region).
+ */
+const setLogAnnouncement = ref('')
+function announceSet(message: string) {
+  setLogAnnouncement.value = ''
+  nextTick(() => { setLogAnnouncement.value = message })
+}
 
 /**
  * Tag chips visible in the filter row. When the user is searching we narrow
@@ -2178,6 +2197,7 @@ function closeModal() {
   }
   showModal.value = false
   timerCtrl.editingPresets.value = false
+  setLogAnnouncement.value = ''
   editingSet.value = null
   selectedExerciseId.value = ''
   newExerciseName.value = ''
@@ -2443,6 +2463,7 @@ function saveSet() {
     const editSetId = editingSet.value.setId
     store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value)
     logEvent('set_edit')
+    announceSet(`Set updated: ${displayWeight(toLbs(weight.value))} ${weightUnit.value} × ${reps.value} rep${reps.value === 1 ? '' : 's'}`)
     // Recalc XP for the edited set
     if (progressionStore.progressionEnabled) {
       const ex = store.exercises.find(e => e.id === editExId)
@@ -2525,6 +2546,7 @@ function saveSet() {
       store.logSet(exerciseId, effWeightLbs, effReps, date.value)
       recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
+      announceSet(`Logged ${selectedExerciseName.value}: ${displayWeight(effWeightLbs)} ${weightUnit.value} × ${effReps} rep${effReps === 1 ? '' : 's'}${wasPR ? ', new personal record' : ''}`)
       // XP: get the just-logged set (last in array) and compute XP
       const exercise = store.exercises.find(e => e.id === exerciseId)
       if (exercise && exercise.sets.length > 0) {
