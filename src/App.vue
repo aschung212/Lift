@@ -84,7 +84,7 @@
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
-            <span v-if="syncStatus !== 'synced'" class="syncIndicator" :class="'syncIndicator--' + syncStatus" :title="syncStatusLabel" role="status">
+            <span v-if="syncStatus !== 'synced'" class="syncIndicator" :class="'syncIndicator--' + syncStatus" :title="syncStatusLabel" role="img" :aria-label="syncStatusLabel">
               <svg v-if="syncStatus === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               <svg v-else-if="syncStatus === 'offline'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
               <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
@@ -131,6 +131,11 @@
            switchTab swaps panel content via v-if with no native focus/route
            change, so assistive tech would otherwise stay silent. -->
       <div class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ viewAnnouncement }}</div>
+
+      <!-- Polite sync/connectivity announcement for screen readers (LIFT-1149,
+           WCAG 4.1.3). The visual syncIndicator is icon-only, so assistive tech
+           would otherwise never hear the app drop offline or a sync fail. -->
+      <div class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ syncAnnouncement }}</div>
 
       <!-- Tab bar -->
       <nav class="tabBar" aria-label="Main navigation">
@@ -627,6 +632,23 @@ watch(() => prefs.features, () => {
 
 // Polite live-region text announcing the active view after a tab switch.
 const viewAnnouncement = ref('')
+
+// Polite live-region text announcing sync/connectivity changes (LIFT-1149).
+// The visual syncIndicator is icon-only and its :title is not reliably surfaced
+// by VoiceOver, so screen-reader users would otherwise get no notice when the
+// app drops offline or a sync fails. Transient 'syncing' is deliberately not
+// announced (it fires on every batch and would be noise); recovery to 'synced'
+// is announced only when coming back from an offline/error state.
+const syncAnnouncement = ref('')
+watch(syncStatus, (status, prev) => {
+  if (status === 'offline' || status === 'error') {
+    syncAnnouncement.value = syncStatusLabel.value
+  } else if (status === 'synced' && (prev === 'offline' || prev === 'error')) {
+    syncAnnouncement.value = 'Back online — changes synced'
+  } else {
+    syncAnnouncement.value = ''
+  }
+})
 
 // Roving-tabindex keyboard navigation for the bottom tablist (ARIA APG Tabs
 // pattern, automatic-activation variant). Arrow/Home/End move focus between
