@@ -61,6 +61,19 @@ describe('AuthScreen', () => {
       expect(inputs[0].attributes('autocomplete')).toBe('email')
       expect(inputs[1].attributes('autocomplete')).toBe('current-password')
     })
+
+    it('uses autocomplete="new-password" in sign-up mode so managers offer to generate a strong credential (WCAG 2.2 SC 3.3.8)', async () => {
+      // Sign-in mode (default) → current-password
+      expect(wrapper.findAll('.authInput')[1].attributes('autocomplete')).toBe('current-password')
+
+      // Switch to sign-up mode → new-password
+      await wrapper.find('.authModeSwitch').trigger('click')
+      expect(wrapper.findAll('.authInput')[1].attributes('autocomplete')).toBe('new-password')
+
+      // Switch back → current-password again
+      await wrapper.find('.authModeSwitch').trigger('click')
+      expect(wrapper.findAll('.authInput')[1].attributes('autocomplete')).toBe('current-password')
+    })
   })
 
   describe('mode toggling', () => {
