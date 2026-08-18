@@ -947,6 +947,39 @@ describe('WorkoutTracker', () => {
       expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String))
     })
 
+    // LIFT-1148: the log-set modal stays open with cleared fields after a save,
+    // so a sighted user sees the emptied form as confirmation but a screen-reader
+    // user gets no feedback. A polite live region inside the modal announces the
+    // saved set (WCAG 2.2 SC 4.1.3 Status Messages).
+    it('announces the logged set via a polite live region (#1148)', async () => {
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // The region is present and silent before any save.
+      const live = wrapper.find('.repMaxModal .srOnly[aria-live="polite"]')
+      expect(live.exists()).toBe(true)
+      expect(live.attributes('role')).toBe('status')
+      expect(live.attributes('aria-atomic')).toBe('true')
+      expect(live.text()).toBe('')
+
+      const inputs = wrapper.findAll('.repMaxModal input')
+      const weightInput = inputs.find(i => i.attributes('inputmode') === 'decimal')!
+      const repsInput = inputs.find(i => i.attributes('inputmode') === 'numeric')!
+      await weightInput.setValue('185')
+      await repsInput.setValue('5')
+
+      await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+      // announceSet clears then re-sets on nextTick so identical re-logs re-fire.
+      await wrapper.vm.$nextTick()
+      await wrapper.vm.$nextTick()
+
+      // Re-find: Vue replaces the text node on update, so the held wrapper is stale.
+      const liveAfter = wrapper.find('.repMaxModal .srOnly[aria-live="polite"]')
+      expect(liveAfter.text()).toBe('Logged Bench Press: 185 lbs × 5 reps')
+    })
+
     // LIFT-683: the set-logging inputs declare enterkeyhint so iOS labels the
     // keyboard return key for the weight -> reps -> done flow. Without these,
     // the return key shows a generic label and breaks the native flow that is
