@@ -745,7 +745,7 @@ import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } fr
 import { clearIDB } from '../lib/durableStorage'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
-import { hashUserId, buildJsonExport, buildCsvExport } from '../lib/dataExport'
+import { hashUserId, buildJsonExport, buildCsvExport, downloadBlob } from '../lib/dataExport'
 import { buildTrainingReport, type ReportPeriod } from '../lib/trainingReport'
 import { renderReport, openReportWindow } from '../lib/reportRenderer'
 import { importCSV } from '../lib/csvImport'
@@ -1557,15 +1557,7 @@ async function exportData(format: 'csv' | 'json') {
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  downloadBlob(new Blob([content], { type: mimeType }), filename)
 }
 
 // ── Training Report ─────────────────────────────────────────────

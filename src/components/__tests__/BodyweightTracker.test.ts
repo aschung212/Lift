@@ -58,6 +58,21 @@ vi.mock('../../stores/bodyweight', () => ({
   })
 }))
 
+// Health-export share surface (#1159): mocked so component tests assert the
+// wiring without exercising Web Share / object URLs (unavailable in jsdom).
+const exportCsvMock = vi.fn().mockResolvedValue({ kind: 'downloaded', filename: 'x.csv' })
+
+vi.mock('../../composables/useBodyweightExport', async () => {
+  const { ref } = await import('vue')
+  return {
+    useBodyweightExport: () => ({
+      exportCsv: exportCsvMock,
+      isExporting: ref(false),
+      lastError: ref(null),
+    }),
+  }
+})
+
 import BodyweightTracker from '../../views/BodyweightTracker.vue'
 
 function mountTracker(): VueWrapper {
@@ -111,6 +126,31 @@ describe('BodyweightTracker', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('.bwPeriodRow').exists()).toBe(false)
     })
+
+    it('does not show the export button with nothing to export', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwExportBtn').exists()).toBe(false)
+    })
+  })
+
+  describe('Health CSV export (#1159)', () => {
+    beforeEach(() => {
+      entries = [makeEntry('e-1', 170, daysAgo(2))]
+      exportCsvMock.mockClear()
+    })
+
+    it('shows a labelled export button once entries exist', () => {
+      const wrapper = mountTracker()
+      const btn = wrapper.find('.bwExportBtn')
+      expect(btn.exists()).toBe(true)
+      expect(btn.attributes('aria-label')).toBe('Export weight history')
+    })
+
+    it('runs the export share flow on tap', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.bwExportBtn').trigger('click')
+      expect(exportCsvMock).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('single entry', () => {
@@ -137,7 +177,7 @@ describe('BodyweightTracker', () => {
 
     it('does not render SVG chart with only 1 day', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('svg').exists()).toBe(false)
+      expect(wrapper.find('svg.wtGraphSvg').exists()).toBe(false)
     })
 
     it('renders the entry in the list', () => {
@@ -183,7 +223,7 @@ describe('BodyweightTracker', () => {
 
     it('renders SVG chart with data points', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('svg').exists()).toBe(true)
+      expect(wrapper.find('svg.wtGraphSvg').exists()).toBe(true)
       const dots = wrapper.findAll('circle')
       expect(dots.length).toBeGreaterThanOrEqual(2)
     })
@@ -242,7 +282,7 @@ describe('BodyweightTracker', () => {
 
     it('chart has accessible role="img" and aria-label', () => {
       const wrapper = mountTracker()
-      const svg = wrapper.find('svg')
+      const svg = wrapper.find('svg.wtGraphSvg')
       expect(svg.attributes('role')).toBe('img')
       expect(svg.attributes('aria-label')).toContain('Body weight')
     })

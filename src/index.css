@@ -7028,6 +7028,27 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
 }
 
+/* Health-export share button in the hero (#1159): icon-only sibling of
+   "+ Log". Self-centered because the hero row baseline-aligns its text. */
+.bwExportBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  align-self: center;
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.bwExportBtn:active { opacity: 0.5; }
+.bwExportBtn:disabled { opacity: 0.4; cursor: default; }
+
 .bwCurrentValue {
   font-size: var(--font-title2);
   font-weight: 700;

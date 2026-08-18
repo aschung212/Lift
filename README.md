@@ -135,6 +135,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Service worker update prompt — "New version available" banner with one-tap update
 - Keyboard shortcuts for power users — press `?` to view the shortcut help dialog
 - CSV and JSON data export from settings
+- Apple Health-compatible bodyweight CSV export from the Weight tab (share sheet → Files / AirDrop / Health importer apps)
 - Active tab persisted across sessions
 - All touch targets meet iOS 44pt minimum
 - All text meets 11pt minimum font size

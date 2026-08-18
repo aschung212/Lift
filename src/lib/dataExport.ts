@@ -63,6 +63,26 @@ export function buildJsonExport(
   }
 }
 
+/**
+ * Trigger a client-side download of a Blob via a temporary anchor. The single
+ * shared copy of this helper — SettingsSheet's data export, workout share
+ * cards, and the bodyweight Health export all route through it (#1159).
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  try {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+}
+
 export function csvEscape(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
     return `"${value.replace(/"/g, '""')}"`
