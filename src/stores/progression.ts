@@ -236,6 +236,24 @@ export const useProgressionStore = defineStore('progression', {
       this.$patch({ ...fresh })
     },
 
+    /**
+     * Sign-out wipe (called by useAuth.resetStores). Pinia's built-in
+     * options-store $reset re-runs the state() factory — whose `...load()`
+     * would re-hydrate the signed-out user's XP/streaks/unlocks straight back
+     * out of localStorage. A fresh account's first fetch then hits PGRST116
+     * (no row) and _syncToSupabase pushes whatever is in memory into the NEW
+     * user's row — so the wipe must land both in memory and in the persisted
+     * payload. Object.assign inside $patch replaces each top-level key
+     * wholesale (a plain object-form $patch would deep-merge maps like
+     * xpPerSet, keeping the old user's keys).
+     */
+    $reset() {
+      this.$patch(($state) => {
+        Object.assign($state, defaultState(), { _userId: null, syncing: false, lastSyncError: null })
+      })
+      this._persist()
+    },
+
     async init(userId: string) {
       this._userId = userId
       await this._fetchFromSupabase()

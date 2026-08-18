@@ -51,6 +51,25 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this.entries = load()
     },
 
+    /**
+     * Sign-out wipe (called by useAuth.resetStores). Pinia's built-in
+     * options-store $reset re-runs the state() factory — whose `load()` would
+     * re-hydrate the signed-out user's entries straight back out of
+     * localStorage, and the surviving `bodyweight-entries` payload would then
+     * be pushed into the NEXT empty account that signs in on this device by
+     * migrateLocalStorageToSupabase. Wipe to defaults and persist the cleared
+     * payload (localStorage + IDB mirror) instead, mirroring the workout
+     * store's $reset. `_userId` is nulled first so nothing below can enqueue
+     * against the just-ended session.
+     */
+    $reset() {
+      this._userId = null
+      this.entries = []
+      this.syncing = false
+      this.lastSyncError = null
+      this._persist()
+    },
+
     async init(userId: string) {
       this._userId = userId
       await this._fetchFromSupabase()
