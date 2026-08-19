@@ -91,10 +91,19 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Self-heal on a cache miss/eviction: the install job's cache can be
+      # evicted between jobs (GitHub's 10GB/7-day policy), which would
+      # otherwise hard-fail this job with no node_modules. Fall back to a
+      # fresh install so a transient miss recovers instead of red-Xing the PR.
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - run: npm run lint
 
@@ -115,10 +124,15 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - run: npm run typecheck
 
@@ -152,10 +166,15 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - name: Run tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         run: >-
@@ -199,10 +218,15 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - name: Build app
         run: npm run build
@@ -238,10 +262,15 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - run: npm run build
 
@@ -581,10 +610,15 @@ jobs:
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - name: Cache Playwright browsers
         id: playwright-cache
