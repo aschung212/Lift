@@ -29,6 +29,7 @@ jobs:
   workflow-lint:
     name: Lint workflow YAML (actionlint)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -201,6 +202,7 @@ jobs:
   # dependency-review gate for a tool that only ever runs in CI.
   lighthouse:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [lint, typecheck]
     if: github.event_name == 'pull_request'
     permissions:
@@ -240,6 +242,7 @@ jobs:
 
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [lint, typecheck, test]
     permissions:
       contents: read
