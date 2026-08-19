@@ -645,6 +645,65 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
+  # Smoke-test the live production deploy before Slack announces success.
+  # Vercel deploys via its OWN git integration, entirely OUTSIDE GitHub Actions,
+  # so a green CI graph does NOT prove the site is live: a failed/rolled-back
+  # Vercel build, a broken bundle, or an SSO/edge misconfig would still let
+  # notify-deploy post "✅ Deployed to production". This job curls the real prod
+  # domain and asserts HTTP 200 + the app-shell <title> marker before the notify
+  # jobs run. The domain is READ from CLAUDE.md (single source of truth) rather
+  # than hardcoded, per the SEV1 "never fabricate external identifiers" rule.
+  # Both notify-deploy (success()) and notify-failure (failure()) gate on this
+  # job, so a dead deploy routes to the failure notification instead of a false
+  # "Deployed to production".
+  verify-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-and-test, e2e, migrate-db, ratchet-baseline]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Smoke-test production deploy
+        env:
+          # The app-shell <title> from index.html — a stable marker proving the
+          # real Lift HTML was served, not a Vercel error/SSO/rollback page.
+          EXPECTED_MARKER: 'Lift — Workout Tracker'
+        run: |
+          set -euo pipefail
+
+          # Read the canonical prod domain from CLAUDE.md (**Live:** line) instead
+          # of hardcoding it — keeps the smoke test correct if the deployment
+          # domain ever changes, and honours the SEV1 no-fabricated-identifiers rule.
+          PROD_DOMAIN=$(grep -m1 '^\*\*Live:\*\*' CLAUDE.md | sed -E 's/^\*\*Live:\*\*[[:space:]]+([^[:space:]]+).*/\1/')
+          if [ -z "$PROD_DOMAIN" ]; then
+            echo "::error::Could not read the production domain from CLAUDE.md (**Live:** line)."
+            exit 1
+          fi
+          PROD_URL="https://${PROD_DOMAIN}"
+          echo "Smoke-testing ${PROD_URL} …"
+
+          # Vercel's git-integrated deploy runs concurrently with CI and can lag
+          # slightly behind this job, so poll with backoff before declaring failure.
+          attempts=6
+          delay=15
+          for i in $(seq 1 "$attempts"); do
+            body=$(mktemp)
+            code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 20 "$PROD_URL" || echo "000")
+            if [ "$code" = "200" ] && grep -qF "$EXPECTED_MARKER" "$body"; then
+              echo "✅ Production is live (HTTP 200, marker present) on attempt ${i}."
+              exit 0
+            fi
+            if grep -qF "$EXPECTED_MARKER" "$body"; then marker=present; else marker=missing; fi
+            echo "Attempt ${i}/${attempts}: HTTP ${code}, marker ${marker}. Retrying in ${delay}s…"
+            sleep "$delay"
+          done
+
+          echo "::error::Production smoke test failed — ${PROD_URL} did not return HTTP 200 with the expected app-shell marker after ${attempts} attempts. The Vercel deploy may have failed or rolled back."
+          exit 1
+
   # Notify Slack on post-merge success (push to master only).
   # SECURITY: commit message + URL come in via env var, NOT direct
   # `${{ ... }}` interpolation into the bash body. Inline interpolation
@@ -655,7 +714,7 @@ jobs:
   notify-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline, verify-deploy]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
@@ -674,7 +733,7 @@ jobs:
   notify-failure:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline, verify-deploy]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
