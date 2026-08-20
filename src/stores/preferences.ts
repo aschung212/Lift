@@ -4,7 +4,8 @@ import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { backupToIDB } from '../lib/durableStorage'
-import { persistStoreData } from '../lib/storePersistence'
+import { persistStoreData, loadStoreData } from '../lib/storePersistence'
+import { isPlainObject } from '../lib/storage'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
 import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
@@ -202,26 +203,44 @@ export const usePreferencesStore = defineStore('preferences', {
       }
     },
 
+    /**
+     * Apply a parsed preferences payload (from localStorage or Supabase) onto
+     * state. Every field is independently conditional, so a partial payload
+     * only overrides the keys it actually carries. Extracted (LIFT-1178) as the
+     * single reconciliation point for all three read paths — the localStorage
+     * hydrate (`init`), the cross-tab reload (`_reloadFromStorage`), and the
+     * Supabase override (`init`) — so they can't drift field-by-field. That
+     * drift had already happened: `_reloadFromStorage` silently dropped
+     * `prBaselineDate`, so a baseline-date change made in one tab never reached
+     * the others.
+     */
+    _applyPreferences(parsed: Record<string, unknown>) {
+      if (parsed.features) this.features = { ...DEFAULTS, ...(parsed.features as Record<string, boolean>) }
+      if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
+      if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...(parsed.experience as Partial<ExperienceFlags>) }
+      if (parsed.filters) this.filters = { ...DEFAULT_FILTERS, ...(parsed.filters as Partial<FilterSettings>) }
+      if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
+        this.prBaselineDate = parsed.prBaselineDate
+      } else if ('prBaselineDate' in parsed && parsed.prBaselineDate === null) {
+        this.prBaselineDate = null
+      }
+      if (typeof parsed.theme === 'string') this.theme = parsed.theme
+      if (typeof parsed.colorMode === 'string') this.colorMode = parsed.colorMode
+      if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
+      if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
+      if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
+      if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
+      if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
+      if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
+      if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
+    },
+
     /** Re-read state from localStorage (called by cross-tab sync listener). */
     _reloadFromStorage() {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return
-      try {
-        const parsed = JSON.parse(raw)
-        if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
-        if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
-        if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
-        if (parsed.filters) this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
-        if (typeof parsed.theme === 'string') this.theme = parsed.theme
-        if (typeof parsed.colorMode === 'string') this.colorMode = parsed.colorMode
-        if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
-        if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
-        if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
-        if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
-        if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
-        if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
-        if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
-      } catch { /* ignore corrupt data */ }
+      const parsed = loadStoreData<Record<string, unknown> | null>(
+        'preferences', STORAGE_KEY, () => null, isPlainObject,
+      )
+      if (parsed) this._applyPreferences(parsed)
     },
 
     /**
@@ -246,36 +265,12 @@ export const usePreferencesStore = defineStore('preferences', {
     async init(userId: string) {
       this._userId = userId
 
-      // Load from localStorage first (instant)
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw)
-          if (parsed.features) this.features = { ...DEFAULTS, ...parsed.features }
-          if (parsed.weightGoal) {
-            this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
-          }
-          if (parsed.experience) {
-            this.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
-          }
-          if (parsed.filters) {
-            this.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
-          }
-          if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
-            this.prBaselineDate = parsed.prBaselineDate
-          }
-          // Load synced settings from JSON blob
-          if (typeof parsed.theme === 'string') this.theme = parsed.theme
-          if (typeof parsed.colorMode === 'string') this.colorMode = parsed.colorMode
-          if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
-          if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
-          if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
-          if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
-          if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
-          if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
-          if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
-        } catch { /* ignore corrupt data */ }
-      }
+      // Load from localStorage first (instant), through the same guarded read
+      // + single apply point as the cross-tab reload path.
+      const local = loadStoreData<Record<string, unknown> | null>(
+        'preferences', STORAGE_KEY, () => null, isPlainObject,
+      )
+      if (local) this._applyPreferences(local)
 
       // Migrate standalone localStorage keys into the synced payload.
       // These keys predate the preferences store — read them as fallbacks
@@ -332,31 +327,7 @@ export const usePreferencesStore = defineStore('preferences', {
           }
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
-            this.features = { ...DEFAULTS, ...prefs.features as Record<string, boolean> }
-            if (prefs.weightGoal) {
-              this.weightGoal = _migrateWeightGoal(prefs.weightGoal)
-            }
-            if (prefs.experience) {
-              this.experience = { ...DEFAULT_EXPERIENCE, ...(prefs.experience as Partial<ExperienceFlags>) }
-            }
-            if (prefs.filters) {
-              this.filters = { ...DEFAULT_FILTERS, ...(prefs.filters as Partial<FilterSettings>) }
-            }
-            if (typeof prefs.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefs.prBaselineDate as string)) {
-              this.prBaselineDate = prefs.prBaselineDate as string
-            } else if ('prBaselineDate' in prefs && prefs.prBaselineDate === null) {
-              this.prBaselineDate = null
-            }
-            // Sync appearance/behavior settings from Supabase
-            if (typeof prefs.theme === 'string') this.theme = prefs.theme as string
-            if (typeof prefs.colorMode === 'string') this.colorMode = prefs.colorMode as string
-            if (typeof prefs.weightUnit === 'string') this.weightUnit = prefs.weightUnit as string
-            if (typeof prefs.restTimerEnabled === 'boolean') this.restTimerEnabled = prefs.restTimerEnabled as boolean
-            if (typeof prefs.restTimerAutoStart === 'boolean') this.restTimerAutoStart = prefs.restTimerAutoStart as boolean
-            if (typeof prefs.appIcon === 'string') this.appIcon = prefs.appIcon as string
-            if (prefs.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(prefs.intensityPresets)
-            if (prefs.coachProfile) this.coachProfile = sanitizeCoachProfile(prefs.coachProfile)
-            if (prefs.gyms) this.gyms = sanitizeGymList(prefs.gyms)
+            this._applyPreferences(prefs)
             const synced = JSON.stringify({
               features: this.features, weightGoal: this.weightGoal,
               experience: this.experience, filters: this.filters,
