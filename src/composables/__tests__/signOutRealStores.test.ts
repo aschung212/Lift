@@ -11,7 +11,9 @@
  * LIFT-1133) through the real store implementations, under production
  * NODE_ENV semantics, and asserts the post-condition that matters on a
  * shared device: no store — memory or persisted payload — still holds the
- * previous user's data.
+ * previous user's data. It also covers the transient XP-ceremony UI, which
+ * lives OUTSIDE Pinia (LIFT-823/1181) and is only cleared if the teardown
+ * explicitly calls resetXPCeremony.
  *
  * Only module boundaries are mocked: the Supabase client (null — the app is
  * local-first and fully functional without it), the sync queue, and the IDB
@@ -121,6 +123,39 @@ describe('signOut() with real stores (no store mocks)', () => {
     const prefsPayload = JSON.parse(localStorage.getItem('user-preferences')!)
     expect(prefsPayload.theme).toBe('eternal')
     expect(prefsPayload.coachProfile.age).toBeNull()
+  })
+
+  it('clears the transient XP-ceremony UI (toast + celebration + timer) on sign-out', async () => {
+    const { useAuth } = await import('../useAuth')
+    const { xpToast, unlockCelebration, showXPToast, showUnlockCelebration } =
+      await import('../xpCeremonyUI')
+
+    const auth = useAuth()
+    await auth.devSignIn()
+
+    // Arm a visible toast (which starts its auto-dismiss timer) and a visible
+    // unlock celebration, as the ceremony pipeline would mid-session.
+    showXPToast('+100 XP', 42, 1234, 5000)
+    showUnlockCelebration('fire', 'Intensity')
+    expect(xpToast.visible).toBe(true)
+    expect(xpToast._timer).not.toBeNull()
+    expect(unlockCelebration.visible).toBe(true)
+
+    await auth.signOut()
+
+    // The XP ceremony lives OUTSIDE Pinia (LIFT-823), so it is only cleared if
+    // the sign-out teardown explicitly calls resetXPCeremony via resetStores.
+    // This proves the wiring end-to-end — the unit test can only prove the
+    // reset function works in isolation, not that sign-out invokes it. A stale
+    // toast/celebration surviving here would carry the previous user's PR
+    // celebration onto the next account on a shared device.
+    expect(xpToast.visible).toBe(false)
+    expect(xpToast.text).toBe('')
+    expect(unlockCelebration.visible).toBe(false)
+    expect(unlockCelebration.themeId).toBeNull()
+    // The auto-dismiss timer must be cancelled too, so a leaked setTimeout can't
+    // fire against the next user's session.
+    expect(xpToast._timer).toBeNull()
   })
 
   it('a sign-in after sign-out starts from clean stores (shared-device handoff)', async () => {
