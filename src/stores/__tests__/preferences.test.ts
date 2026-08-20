@@ -655,6 +655,38 @@ describe('usePreferencesStore', () => {
       expect(store.restTimerAutoStart).toBe(false)
     })
 
+    it('_reloadFromStorage propagates prBaselineDate across tabs (LIFT-1178 drift fix)', () => {
+      // Before the three read paths were unified behind _applyPreferences, the
+      // cross-tab reload path silently omitted prBaselineDate, so starting a new
+      // training block in one tab never reached the others.
+      store.setPRBaselineDate('2026-01-15')
+      expect(store.prBaselineDate).toBe('2026-01-15')
+
+      // Another tab clears the baseline and writes the payload; this tab reloads.
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        prBaselineDate: '2026-06-20',
+      }))
+      store._reloadFromStorage()
+      expect(store.prBaselineDate).toBe('2026-06-20')
+
+      // An explicit null in the payload (baseline cleared elsewhere) propagates too.
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        prBaselineDate: null,
+      }))
+      store._reloadFromStorage()
+      expect(store.prBaselineDate).toBeNull()
+    })
+
+    it('_reloadFromStorage ignores a corrupt (non-object) payload without throwing', () => {
+      store.setTheme('fire')
+      localStorageMock.setItem('user-preferences', 'not-json{')
+      expect(() => store._reloadFromStorage()).not.toThrow()
+      // State is left untouched by the guarded read rather than reset.
+      expect(store.theme).toBe('fire')
+    })
+
     it('synced settings are included in persist payload alongside existing fields', () => {
       store.setTheme('earth')
       const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
