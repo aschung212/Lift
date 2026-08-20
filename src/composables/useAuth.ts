@@ -346,17 +346,20 @@ async function deleteAccount(): Promise<void> {
     }
   }
 
-  // Clear all localStorage keys used by the app
-  const localStorageKeys = [
-    'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
-    'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
-    'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
-    'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
-    'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
-    'coach-insights-history', GUEST_MODE_KEY, GUEST_BACKUP_PROMPT_DISMISSED_KEY,
-  ]
-  for (const key of localStorageKeys) {
-    localStorage.removeItem(key)
+  // Wipe ALL app localStorage rather than a hand-maintained key list. Account
+  // deletion ("delete my data") must leave nothing behind, and the previous
+  // enumerated list had silently drifted from the keys the app actually writes
+  // (LIFT-1176) — welcome-back, goal-celebration-state, active-gym-filter,
+  // lift-tombstones, acquisition-source, install-prompt, notification-permission,
+  // app-review and others survived deletion, so a shared device leaked one user's
+  // data to the next. localStorage on this origin is exclusively the app's, so a
+  // full clear is the drift-proof reconciliation the two sign-out paths need and
+  // can never fall out of sync with a newly-added key. (signOut() below re-persists
+  // the four stores' CLEARED payloads via $reset, so only defaults are written back.)
+  try {
+    localStorage.clear()
+  } catch (e) {
+    logError(e, { source: 'deleteAccount:clearStorage' })
   }
 
   // Delete IndexedDB backup database. Close the cached connection first —

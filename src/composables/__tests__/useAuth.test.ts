@@ -360,7 +360,13 @@ describe('useAuth', () => {
       const { deleteAccount, devSignIn } = useAuth()
       await devSignIn()
 
-      // Set all localStorage keys used by the app
+      // The core store keys plus a sampling of the AUXILIARY keys that the old
+      // hand-maintained list in deleteAccount() had drifted away from (LIFT-1176).
+      // deleteAccount now wipes ALL app localStorage, so keys never present in
+      // that list — welcome-back, goal-celebration-state, active-gym-filter,
+      // lift-tombstones, acquisition-source, install-prompt, etc. — must also be
+      // gone. This is a drift GUARD: it deliberately checks keys the old list
+      // omitted so an incomplete enumeration would fail here.
       const allKeys = [
         'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
         'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
@@ -368,6 +374,11 @@ describe('useAuth', () => {
         'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
         'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
         'coach-insights-history',
+        // Keys the old enumerated list omitted — the actual drift LIFT-1176 fixes:
+        'welcome-back', 'goal-celebration-state', 'active-gym-filter', 'lift-tombstones',
+        'acquisition-source', 'app-installed', 'install-prompt-dismissed',
+        'notification-permission-granted', 'app-review-prompts', 'overload-nudge-state',
+        'guest-mode', 'guest-backup-prompt-dismissed',
       ]
       for (const key of allKeys) {
         localStorage.setItem(key, 'test-value')
