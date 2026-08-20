@@ -30,6 +30,47 @@ describe('usePreferencesStore', () => {
     })
   })
 
+  // LIFT-1177: appearance/behavior settings are hydrated in the STATE FACTORY
+  // (like bodyweight/workout) so the store holds the user's real values the
+  // instant it is first touched — before init() resolves and even for a
+  // local-only guest who never calls init(). This is what lets useTheme /
+  // useWeightUnit / useRestTimer read the store as the single source of truth.
+  describe('instantiation-time hydration (LIFT-1177)', () => {
+    it('hydrates synced settings from the blob without calling init()', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        theme: 'water', colorMode: 'light', weightUnit: 'kg',
+        restTimerEnabled: false, restTimerAutoStart: false,
+      }))
+      setActivePinia(createPinia())
+      const guestStore = usePreferencesStore()
+      // No init() — the guest path never runs it.
+      expect(guestStore.theme).toBe('water')
+      expect(guestStore.colorMode).toBe('light')
+      expect(guestStore.weightUnit).toBe('kg')
+      expect(guestStore.restTimerEnabled).toBe(false)
+      expect(guestStore.restTimerAutoStart).toBe(false)
+    })
+
+    it('falls back to legacy standalone keys when the blob lacks them', () => {
+      localStorageMock.setItem('app-theme', 'fire')
+      localStorageMock.setItem('weight-unit', 'kg')
+      localStorageMock.setItem('rest-timer', 'off')
+      setActivePinia(createPinia())
+      const guestStore = usePreferencesStore()
+      expect(guestStore.theme).toBe('fire')
+      expect(guestStore.weightUnit).toBe('kg')
+      expect(guestStore.restTimerEnabled).toBe(false)
+    })
+
+    it('degrades to defaults on a corrupt blob without throwing', () => {
+      localStorageMock.setItem('user-preferences', 'not-valid-json')
+      setActivePinia(createPinia())
+      const guestStore = usePreferencesStore()
+      expect(guestStore.theme).toBe('eternal')
+      expect(guestStore.weightUnit).toBe('lbs')
+    })
+  })
+
   describe('toggleFeature', () => {
     it('disables a feature when toggled off', () => {
       store.toggleFeature('calendar')

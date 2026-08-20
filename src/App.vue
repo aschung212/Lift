@@ -302,7 +302,7 @@ const SettingsSheet = defineAsyncComponent(() => import('./components/SettingsSh
 const CoachSheet = defineAsyncComponent(() => import('./views/CoachSheet.vue'))
 import { coachReviewEligibility } from './lib/coachDigest'
 import { COACH_MODE } from './lib/coachExport'
-import { useTheme, connectProgressionStore } from './composables/useTheme'
+import { useTheme, connectProgressionStore, connectThemeStore } from './composables/useTheme'
 import type { ThemeId } from './lib/themes'
 import { useProgressionStore } from './stores/progression'
 import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './composables/xpCeremonyUI'
@@ -333,6 +333,10 @@ import { GUEST_BACKUP_PROMPT_DISMISSED_KEY } from './composables/useAuth'
 import { decideWelcomeBack, readWelcomeBackState, markWelcomedBack, type WelcomeBackDecision } from './lib/welcomeBack'
 
 const { currentTheme, THEME_PREVIEWS, resolvedMode, isThemeUnlocked } = useTheme()
+// The preferences store is the single source of truth for theme/colorMode
+// (LIFT-1177); drive DOM application from it so cross-tab and Supabase updates
+// are always reflected. Idempotent — the connect is guarded against re-runs.
+connectThemeStore()
 
 const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)

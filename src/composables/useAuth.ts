@@ -1,4 +1,4 @@
-import { ref, watch, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { supabase } from '../lib/supabase'
 import { migrateLocalStorageToSupabase } from '../lib/migrate'
 import { useWorkoutStore } from '../stores/workout'
@@ -6,13 +6,11 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { resetXPCeremony } from '../composables/xpCeremonyUI'
-import { useTheme } from '../composables/useTheme'
 import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
 import { logError } from '../lib/logger'
 import { clearReauthFlag } from '../lib/sessionHealth'
 import type { User, Provider } from '@supabase/supabase-js'
-import type { ColorMode } from '../lib/themes'
 
 interface AuthError {
   message: string
@@ -87,31 +85,6 @@ function setupSessionRefreshLifecycle(): void {
   if (document.visibilityState === 'visible') resume()
 }
 
-/**
- * Bridge the theme + color-mode composable refs to the preferences store after
- * hydration (LIFT-821).
- *
- * `weightUnit`, `restTimerEnabled`, and `restTimerAutoStart` no longer need a
- * bridge: their composables (`useWeightUnit` / `useRestTimer`) now delegate
- * directly to the store, which is the single source of truth. Theme and color
- * mode still live as module-scope refs in `useTheme` because they are applied to
- * the DOM by the pre-Pinia FOUC bootstrap (`initTheme`); we push the hydrated
- * store value into those refs once and set up a one-directional watcher so future
- * UI changes flow back to the store (and from there to Supabase).
- */
-function syncSettingsWithComposables(): void {
-  const prefs = usePreferencesStore()
-  const { currentTheme, colorMode } = useTheme()
-
-  // Push store → composable refs (Supabase values override local)
-  currentTheme.value = prefs.theme
-  colorMode.value = prefs.colorMode as ColorMode
-
-  // Composable refs → store (user interactions sync to Supabase)
-  watch(currentTheme, (v) => { prefs.setTheme(v) })
-  watch(colorMode, (v) => { prefs.setColorMode(v) })
-}
-
 async function initStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
@@ -137,7 +110,9 @@ async function initStores(userId: string): Promise<void> {
       logError(r.reason, { source: 'useAuth', action: 'initStores' })
     }
   }
-  syncSettingsWithComposables()
+  // Theme/colorMode are read directly from the preferences store via computeds
+  // now (LIFT-1177); connectThemeStore() (App.vue) keeps the DOM in sync, so no
+  // one-shot bridge is needed here.
 }
 
 /** Clear guest mode (a real session supersedes it). */
