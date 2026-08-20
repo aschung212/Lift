@@ -19,8 +19,9 @@ vi.mock('../../lib/syncQueue', () => ({
 }))
 
 // Module no longer runs side effects at import — safe to import directly.
-import { useTheme, initTheme, THEMES, THEME_PREVIEWS, connectProgressionStore } from '../useTheme'
+import { useTheme, initTheme, THEMES, THEME_PREVIEWS, connectProgressionStore, connectThemeStore } from '../useTheme'
 import { useProgressionStore } from '../../stores/progression'
+import { usePreferencesStore } from '../../stores/preferences'
 
 describe('useTheme', () => {
   let theme: ReturnType<typeof useTheme>
@@ -96,6 +97,54 @@ describe('useTheme', () => {
       // matchMedia mock returns matches: false (light), so auto → light
       theme.colorMode.value = 'auto'
       expect(theme.resolvedMode.value).toBe('light')
+    })
+  })
+
+  // LIFT-1177: the preferences store is the single source of truth for theme +
+  // colorMode. The composable exposes writable computeds bound to it — there is
+  // no second module-scope ref that a direct store mutation (cross-tab
+  // _reloadFromStorage, Supabase override during init) could leave stale.
+  describe('single source of truth (LIFT-1177)', () => {
+    it('currentTheme reflects a direct store mutation', () => {
+      const prefs = usePreferencesStore()
+      prefs.setTheme('water')
+      expect(theme.currentTheme.value).toBe('water')
+    })
+
+    it('colorMode reflects a direct store mutation', () => {
+      const prefs = usePreferencesStore()
+      prefs.setColorMode('light')
+      expect(theme.colorMode.value).toBe('light')
+      expect(theme.resolvedMode.value).toBe('light')
+    })
+
+    it('writing currentTheme flows through to the store', () => {
+      const prefs = usePreferencesStore()
+      theme.currentTheme.value = 'fire'
+      expect(prefs.theme).toBe('fire')
+    })
+
+    it('writing colorMode flows through to the store', () => {
+      const prefs = usePreferencesStore()
+      theme.colorMode.value = 'auto'
+      expect(prefs.colorMode).toBe('auto')
+    })
+  })
+
+  // connectThemeStore() makes the DOM a pure function of the store: any store
+  // change (from any code path) is applied. The old one-shot ref bridge dropped
+  // these, so cross-tab / Supabase updates silently diverged from the DOM.
+  describe('connectThemeStore drives the DOM from the store', () => {
+    it('applies later store mutations to the DOM', async () => {
+      const prefs = usePreferencesStore()
+      connectThemeStore()
+      // Simulate a cross-tab _reloadFromStorage / Supabase override arriving
+      // after the initial paint.
+      prefs.setTheme('luck')
+      prefs.setColorMode('light')
+      await nextTick()
+      expect(document.documentElement.getAttribute('data-theme')).toBe('luck')
+      expect(document.documentElement.getAttribute('data-mode')).toBe('light')
     })
   })
 

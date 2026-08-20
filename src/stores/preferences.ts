@@ -155,8 +155,65 @@ function initialPreferencesState() {
   }
 }
 
+type PreferencesState = ReturnType<typeof initialPreferencesState>
+
+/**
+ * Parse the persisted local settings blob (plus the legacy standalone keys)
+ * into a partial state overlay applied at store INSTANTIATION (LIFT-1177).
+ *
+ * The store is the single source of truth for appearance/behavior settings —
+ * `useTheme`/`useWeightUnit`/`useRestTimer` read it via computeds — so it must
+ * hold the user's real values the instant it is first touched, for EVERY path:
+ * a signed-in user (before init() resolves), a local-only guest (who never
+ * calls init()), and the pre-login auth screen. Mirrors bodyweight/workout,
+ * which likewise hydrate in their state factory. Fails safe to defaults on
+ * corrupt/unavailable storage — never throws into store construction.
+ */
+function loadLocalSettings(): Partial<PreferencesState> {
+  const out: Partial<PreferencesState> = {}
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.features) out.features = { ...DEFAULTS, ...parsed.features }
+      if (parsed.weightGoal) out.weightGoal = _migrateWeightGoal(parsed.weightGoal)
+      if (parsed.experience) out.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
+      if (parsed.filters) out.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
+      if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) out.prBaselineDate = parsed.prBaselineDate
+      if (typeof parsed.theme === 'string') out.theme = parsed.theme
+      if (typeof parsed.colorMode === 'string') out.colorMode = parsed.colorMode
+      if (typeof parsed.weightUnit === 'string') out.weightUnit = parsed.weightUnit
+      if (typeof parsed.restTimerEnabled === 'boolean') out.restTimerEnabled = parsed.restTimerEnabled
+      if (typeof parsed.restTimerAutoStart === 'boolean') out.restTimerAutoStart = parsed.restTimerAutoStart
+      if (typeof parsed.appIcon === 'string') out.appIcon = parsed.appIcon
+      if (parsed.intensityPresets) out.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
+      if (parsed.coachProfile) out.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
+      if (parsed.gyms) out.gyms = sanitizeGymList(parsed.gyms)
+    }
+    // Legacy standalone keys (pre-preferences-store) as a fallback when the blob
+    // lacks them — so a guest who never logs in still gets their persisted
+    // appearance settings. init() performs the same fallback with a write-back;
+    // here we only read (no migration side effects in the state factory).
+    if (out.theme === undefined) {
+      const legacy = localStorage.getItem('app-theme')
+      if (legacy && legacy !== 'eternal') out.theme = legacy
+    }
+    if (out.colorMode === undefined) {
+      const legacy = localStorage.getItem('app-mode')
+      if (legacy && legacy !== 'dark') out.colorMode = legacy
+    }
+    if (out.weightUnit === undefined) {
+      const legacy = localStorage.getItem('weight-unit')
+      if (legacy && legacy !== 'lbs') out.weightUnit = legacy
+    }
+    if (out.restTimerEnabled === undefined && localStorage.getItem('rest-timer') === 'off') out.restTimerEnabled = false
+    if (out.restTimerAutoStart === undefined && localStorage.getItem('rest-timer-autostart') === 'off') out.restTimerAutoStart = false
+  } catch { /* corrupt / unavailable storage → defaults */ }
+  return out
+}
+
 export const usePreferencesStore = defineStore('preferences', {
-  state: initialPreferencesState,
+  state: (): PreferencesState => ({ ...initialPreferencesState(), ...loadLocalSettings() }),
 
   actions: {
     _persist() {
