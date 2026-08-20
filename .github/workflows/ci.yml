@@ -673,6 +673,50 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
+  # Verify the live production deploy actually serves the new build before
+  # Slack claims success (LIFT-1167). Vercel deploys via its own git
+  # integration, entirely OUTSIDE GitHub Actions — a green CI graph does NOT
+  # mean the site is live. A failed/rolled-back Vercel build, a broken bundle,
+  # or an SSO/edge misconfig would otherwise still trip the "✅ Deployed"
+  # message. The prod domain is READ FROM CLAUDE.md (never hardcoded — the
+  # SEV1 anti-hallucination rule) and polled with retries because the Vercel
+  # build runs asynchronously and usually lags behind the CI graph.
+  smoke-test-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [migrate-db]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Smoke-test production deploy
+        run: |
+          set -uo pipefail
+          # Read the canonical deploy domain from CLAUDE.md rather than
+          # hardcoding it (SEV1 rule: never fabricate external identifiers).
+          DOMAIN=$(grep -oE 'spa-[a-z0-9-]+\.vercel\.app' CLAUDE.md | head -1)
+          if [ -z "$DOMAIN" ]; then
+            echo "::error::Could not read the production domain from CLAUDE.md — aborting smoke test."
+            exit 1
+          fi
+          URL="https://${DOMAIN}/"
+          echo "Smoke-testing ${URL}"
+          attempts=24
+          delay=15
+          for i in $(seq 1 "$attempts"); do
+            status=$(curl -sL -o response.html -w '%{http_code}' --max-time 20 "$URL" || echo "000")
+            if [ "$status" = "200" ] && grep -q '<div id="app">' response.html; then
+              echo "✅ Production is live and serving the app shell (HTTP 200, attempt ${i})."
+              exit 0
+            fi
+            echo "Attempt ${i}/${attempts}: HTTP ${status}, app marker not confirmed — retrying in ${delay}s…"
+            sleep "$delay"
+          done
+          echo "::error::Production smoke test failed — ${URL} did not return HTTP 200 + app marker after $((attempts * delay))s. Slack will report a deploy FAILURE."
+          exit 1
+
   # Notify Slack on post-merge success (push to master only).
   # SECURITY: commit message + URL come in via env var, NOT direct
   # `${{ ... }}` interpolation into the bash body. Inline interpolation
@@ -683,7 +727,7 @@ jobs:
   notify-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline, smoke-test-production]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
@@ -702,7 +746,7 @@ jobs:
   notify-failure:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline, smoke-test-production]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
