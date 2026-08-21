@@ -673,6 +673,31 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
+  # Smoke-test the real production deploy before Slack claims success.
+  # Vercel deploys via its OWN git integration, entirely outside GitHub
+  # Actions — so a green CI graph does NOT mean the site is live (a
+  # failed/rolled-back Vercel build, a broken bundle, or an SSO/edge
+  # misconfig would still leave CI green). This polls the prod domain
+  # (read from CLAUDE.md, never hardcoded — SEV1 rule) and asserts an
+  # HTTP 200 app-shell response; a failure fails this job and routes to
+  # `notify-failure` instead of a false "Deployed" message (LIFT-1167).
+  verify-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-and-test, e2e, migrate-db]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+
+      - name: Verify production deploy is live
+        run: node scripts/verify-deploy.mjs
+
   # Notify Slack on post-merge success (push to master only).
   # SECURITY: commit message + URL come in via env var, NOT direct
   # `${{ ... }}` interpolation into the bash body. Inline interpolation
@@ -683,7 +708,7 @@ jobs:
   notify-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline, verify-deploy]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
@@ -702,7 +727,7 @@ jobs:
   notify-failure:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline, verify-deploy]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
