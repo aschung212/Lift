@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { expectNoA11yViolations } from './support/axe'
 
 test.describe('Onboarding Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -111,5 +112,15 @@ test.describe('Onboarding Flow', () => {
     // Should go straight to main app, no onboarding
     await expect(page.getByRole('heading', { name: 'Workouts', level: 1 })).toBeVisible({ timeout: 10000 })
     await expect(page.locator('.obScreen')).not.toBeVisible()
+  })
+
+  // Page-level axe scan of the fully-rendered onboarding screen (LIFT-1192).
+  // Like the auth screen, this pre-app surface renders no landmark/skip-link
+  // chrome, so `bypass` (WCAG 2.4.1) is not applicable here.
+  test('onboarding screen has no serious/critical accessibility violations', async ({ page }) => {
+    await expect(page.locator('.authScreen')).toBeVisible({ timeout: 10000 })
+    await page.locator('.authDevBtn').click()
+    await expect(page.locator('.obScreen')).toBeVisible({ timeout: 10000 })
+    await expectNoA11yViolations(page, { disableRules: ['bypass'] })
   })
 })

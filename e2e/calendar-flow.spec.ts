@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { expectNoA11yViolations } from './support/axe'
 
 // Seed a deterministic workout into localStorage before the app boots so the
 // calendar has something to render in detail/week views. Done via addInitScript
@@ -289,6 +290,20 @@ test.describe('Calendar View', () => {
 
     // Only one of the 7 days has seeded data, so we expect 6 Rest placeholders.
     await expect(page.locator('.calWeekRest')).toHaveCount(6)
+  })
+
+  // Full-page WCAG A/AA scan of the Calendar view (LIFT-1192), in both the
+  // month grid and the expanded day-detail state, which composes tag chips,
+  // the summary bar and the exercise/set rows.
+  test('calendar month view has no serious/critical accessibility violations', async ({ page }) => {
+    await expect(page.locator('.calGrid')).toBeVisible()
+    await expectNoA11yViolations(page)
+  })
+
+  test('calendar day detail has no serious/critical accessibility violations', async ({ page }) => {
+    await page.locator('.calCell.calCellToday').click()
+    await expect(page.locator('.calDetail')).toBeVisible()
+    await expectNoA11yViolations(page)
   })
 
   test('today date string in seeded data resolves cleanly (smoke)', async ({ page }) => {

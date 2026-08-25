@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { expectNoA11yViolations } from './support/axe'
 
 // In dev mode, we sign in via the dev button.
 // We skip onboarding and disable rest timer for clean test flow.
@@ -124,6 +125,17 @@ test.describe('Settings', () => {
     await expect(page.locator('.settingsThemeGrid')).toBeVisible()
     // Check that at least one theme preview button exists with a known theme label
     await expect(page.locator('.themePreview').first()).toBeVisible()
+  })
+})
+
+test.describe('Accessibility (page-level axe)', () => {
+  // Full-page WCAG A/AA scan of the authenticated app shell on the default
+  // Workouts view (LIFT-1192). Unlike the pre-auth screens this surface ships
+  // the skip-link + <main> + <nav> chrome, so `bypass` stays enabled and is
+  // genuinely verified here.
+  test('workouts view has no serious/critical accessibility violations', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: 'Workouts', level: 1 })).toBeVisible()
+    await expectNoA11yViolations(page)
   })
 })
 

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { expectNoA11yViolations } from './support/axe'
 
 test.describe('Auth Screen', () => {
   test.beforeEach(async ({ page }) => {
@@ -74,5 +75,21 @@ test.describe('Auth Screen', () => {
     const passwordInput = page.locator('input[aria-label="Password"]')
     await expect(passwordInput).toHaveAttribute('type', 'password')
     await expect(passwordInput).toHaveAttribute('autocomplete', 'current-password')
+  })
+
+  // Page-level axe scan of the fully-rendered auth screen (LIFT-1192). `bypass`
+  // is disabled: this pre-auth surface intentionally ships no landmark/skip-link
+  // chrome (that arrives with the authenticated app shell), so the WCAG 2.4.1
+  // "bypass blocks" check doesn't apply here.
+  test('auth screen has no serious/critical accessibility violations', async ({ page }) => {
+    await expect(page.locator('.authScreen')).toBeVisible({ timeout: 10000 })
+    await expectNoA11yViolations(page, { disableRules: ['bypass'] })
+  })
+
+  test('auth screen in sign-up mode has no serious/critical accessibility violations', async ({ page }) => {
+    await expect(page.locator('.authScreen')).toBeVisible({ timeout: 10000 })
+    await page.locator('.authModeSwitch').click()
+    await expect(page.locator('.authSubmitBtn')).toHaveText('Create Account')
+    await expectNoA11yViolations(page, { disableRules: ['bypass'] })
   })
 })

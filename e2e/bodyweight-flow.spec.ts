@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { expectNoA11yViolations } from './support/axe'
 
 test.describe('Bodyweight Tracking', () => {
   test.beforeEach(async ({ page }) => {
@@ -134,5 +135,22 @@ test.describe('Bodyweight Tracking', () => {
 
     // Verify updated weight
     await expect(bw(page).locator('.wtSetRow')).toContainText('188')
+  })
+
+  // Full-page WCAG A/AA scan of the Weight tab (LIFT-1192), in both the empty
+  // state and after an entry has been logged (which surfaces the current-weight
+  // hero, period filter chips, chart and entry rows).
+  test('weight tab empty state has no serious/critical accessibility violations', async ({ page }) => {
+    await expect(bw(page).locator('.wtEmpty')).toBeVisible()
+    await expectNoA11yViolations(page)
+  })
+
+  test('weight tab with an entry has no serious/critical accessibility violations', async ({ page }) => {
+    bw(page).locator('.wtLogBtn').click()
+    await page.locator('.repMaxModal input[type="number"]').fill('182')
+    await page.locator('.repMaxBtnCalc').click()
+    await expect(page.locator('.repMaxModal')).not.toBeVisible()
+    await expect(bw(page).locator('.wtSetRow')).toBeVisible()
+    await expectNoA11yViolations(page)
   })
 })
