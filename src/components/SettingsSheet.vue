@@ -571,6 +571,21 @@
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
+          <button
+            v-if="isNative"
+            class="settingsRow settingsRowBtn"
+            :disabled="isRestoringPurchases"
+            @click="restorePurchases"
+          >
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M3 2v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L3 8"/></svg>
+              Restore Purchases
+            </span>
+            <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div v-if="restoreFeedback" class="settingsImportResult" role="status">
+            <span class="settingsImportSuccess">{{ restoreFeedback }}</span>
+          </div>
         </div>
 
         <div class="settingsGroup">
@@ -758,6 +773,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useModal } from '../composables/useModal'
 import { useAppShare } from '../composables/useAppShare'
+import { useRestorePurchases } from '../composables/useRestorePurchases'
 import LegalSheet from './LegalSheet.vue'
 import ThemeStatsSheet from './ThemeStatsSheet.vue'
 import GymManagerModal from './GymManagerModal.vue'
@@ -819,6 +835,15 @@ function addPreset() {
 const { shareApp, isSharing: appShareInFlight } = useAppShare()
 const appShareFeedback = ref<string | null>(null)
 let appShareFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+// Restore Purchases (App Store Guideline 3.1.1, LIFT-1201) — native-only, since
+// the web build sells nothing via IAP. The composable owns the funnel event and
+// the auto-clearing status line.
+const {
+  isRestoring: isRestoringPurchases,
+  feedback: restoreFeedback,
+  restore: restorePurchases,
+} = useRestorePurchases()
 
 async function shareLift() {
   appShareFeedback.value = null

@@ -423,6 +423,25 @@ describe('SettingsSheet', () => {
     })
   })
 
+  describe('support group', () => {
+    // The Restore Purchases control (App Store Guideline 3.1.1, LIFT-1201) only
+    // makes sense on the native IAP build — the web build sells nothing to
+    // restore. This suite runs on the web (isNative=false), so the row must be
+    // absent; the flow itself is covered by useRestorePurchases.test.ts.
+    it('hides Restore Purchases on the web build (native-only, LIFT-1201)', () => {
+      const wrapper = mountSheet()
+      const restoreBtn = wrapper.findAll('.settingsRowBtn').find(b => b.text().includes('Restore Purchases'))
+      expect(restoreBtn).toBeUndefined()
+    })
+
+    it('keeps the external support CTAs available on the web build', () => {
+      const wrapper = mountSheet()
+      const labels = wrapper.findAll('.settingsRowBtn').map(b => b.text())
+      expect(labels.some(t => t.includes('Sponsor on GitHub'))).toBe(true)
+      expect(labels.some(t => t.includes('Buy Me a Coffee'))).toBe(true)
+    })
+  })
+
   describe('gym manager modal', () => {
     it('opens the gym manager when Manage Gyms is tapped', async () => {
       const wrapper = mountSheet()
