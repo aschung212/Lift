@@ -571,6 +571,45 @@
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
+          <!-- Web-sponsor entitlement (LIFT-1204): redeem a sponsor code to unlock supporter perks. -->
+          <div v-if="isSupporter" class="settingsRow" role="status">
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              Supporter
+            </span>
+            <span class="settingsLabel settingsLabelSecondary">Perks active — thank you</span>
+          </div>
+          <template v-else-if="canRedeemSupporter">
+            <button
+              v-if="!showSupporterRedeem"
+              class="settingsRow settingsRowBtn"
+              @click="showSupporterRedeem = true"
+            >
+              <span class="settingsLabel">Redeem sponsor code</span>
+              <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <div v-else class="settingsRow">
+              <div class="settingsInputWrap">
+                <input
+                  v-model="supporterCodeInput"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  class="settingsInput"
+                  placeholder="Sponsor code"
+                  aria-label="Sponsor code"
+                  @keydown.enter="redeemSupporter"
+                />
+              </div>
+              <div class="exportBtnGroup">
+                <button class="exportBtn exportBtnPrimary" :disabled="!supporterCodeInput.trim()" @click="redeemSupporter">Apply</button>
+              </div>
+            </div>
+          </template>
+          <div v-if="supporterRedeemFeedback" class="settingsImportResult" role="status">
+            <span :class="supporterRedeemOk ? 'settingsImportSuccess' : 'settingsImportError'">{{ supporterRedeemFeedback }}</span>
+          </div>
         </div>
 
         <div class="settingsGroup">
@@ -758,6 +797,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useModal } from '../composables/useModal'
 import { useAppShare } from '../composables/useAppShare'
+import { useSupporter } from '../composables/useSupporter'
 import LegalSheet from './LegalSheet.vue'
 import ThemeStatsSheet from './ThemeStatsSheet.vue'
 import GymManagerModal from './GymManagerModal.vue'
@@ -832,6 +872,31 @@ async function shareLift() {
   if (appShareFeedback.value) {
     if (appShareFeedbackTimer) clearTimeout(appShareFeedbackTimer)
     appShareFeedbackTimer = setTimeout(() => { appShareFeedback.value = null }, 3000)
+  }
+}
+
+// ── Web-sponsor Supporter redemption (LIFT-1204) ───────────────
+// The web build's revenue channel is GitHub Sponsors / Buy Me a Coffee. A
+// paying sponsor redeems a code here to actually receive the perks (#601/#603)
+// they funded — the entitlement then rides the synced preferences blob. The
+// redeem UI only appears when a code is configured for this build (canRedeem).
+const { isSupporter, canRedeem: canRedeemSupporter, redeem: redeemSupporterCode } = useSupporter()
+const showSupporterRedeem = ref(false)
+const supporterCodeInput = ref('')
+const supporterRedeemFeedback = ref<string | null>(null)
+const supporterRedeemOk = ref(false)
+
+function redeemSupporter() {
+  const ok = redeemSupporterCode(supporterCodeInput.value)
+  supporterRedeemOk.value = ok
+  if (ok) {
+    supporterRedeemFeedback.value = 'Supporter unlocked — thank you!'
+    supporterCodeInput.value = ''
+    showSupporterRedeem.value = false
+    // A redeemed code is a genuine web-channel conversion (LIFT-906 funnel).
+    supportFunnel('purchase', { cta: 'sponsor_code' })
+  } else {
+    supporterRedeemFeedback.value = 'That code didn’t work. Check it and try again.'
   }
 }
 

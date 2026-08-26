@@ -158,6 +158,11 @@ const mockToggleFeature = vi.fn((id: string) => {
 })
 const mockSetWarmupThreshold = vi.fn()
 const mockSetIntensityPresets = vi.fn((v: number[]) => { mockPrefs.intensityPresets = v })
+// LIFT-1204: valid code grants the synced entitlement, invalid returns false.
+const mockRedeemSupporterCode = vi.fn((code: string) => {
+  if (code.trim().toUpperCase() === 'GOLD2026') { mockPrefs.isSupporter = true; return true }
+  return false
+})
 const mockSetWeightGoalDirection = vi.fn((dir: string) => { mockPrefs.weightGoal.direction = dir })
 const mockPrefs = reactive({
   experience: { haptics: true, prCelebrations: true, screenWakeLock: true, restTimerNotification: true },
@@ -171,6 +176,8 @@ const mockPrefs = reactive({
   currentTarget: null as number | null,
   prBaselineDate: null as string | null,
   appIcon: 'default',
+  isSupporter: false,
+  redeemSupporterCode: mockRedeemSupporterCode,
   setExperienceFlag: mockSetExperienceFlag,
   toggleFeature: mockToggleFeature,
   setWarmupThreshold: mockSetWarmupThreshold,
@@ -277,7 +284,9 @@ describe('SettingsSheet', () => {
     mockPrefs.intensityPresets = [50, 70, 80, 90, 100]
     mockPrefs.gyms = []
     mockPrefs.weightGoal = { direction: 'maintain', maintainMin: null, maintainMax: null, loseTarget: null, gainTarget: null }
+    mockPrefs.isSupporter = false
     mockProgression.progressionEnabled = false
+    vi.unstubAllEnvs()
     vi.clearAllMocks()
   })
 
@@ -605,6 +614,59 @@ describe('SettingsSheet', () => {
       const wrapper = mountSheet(true)
       wrapper.find('a[href="https://github.com/sponsors/aschung212"]').trigger('click')
       expect(mockSupportFunnel).toHaveBeenCalledWith('tap', { cta: 'github_sponsors' })
+    })
+  })
+
+  // Web-sponsor Supporter redemption (LIFT-1204): a paying GitHub/BMC sponsor
+  // redeems a code here to actually receive the perks they funded.
+  describe('supporter redemption (LIFT-1204)', () => {
+    const applyButton = (wrapper: VueWrapper) =>
+      wrapper.findAll('button').find(b => b.text() === 'Apply')!
+
+    it('hides the redeem UI when no code is configured for this build', () => {
+      // No VITE_SUPPORTER_CODE stubbed → isSupporterCodeConfigured() is false,
+      // so we never show a dead input the sponsor can't use.
+      const wrapper = mountSheet(true)
+      expect(wrapper.findAll('button').some(b => b.text() === 'Redeem sponsor code')).toBe(false)
+      expect(wrapper.find('input[aria-label="Sponsor code"]').exists()).toBe(false)
+    })
+
+    it('reveals the input and grants the entitlement for a valid code', async () => {
+      vi.stubEnv('VITE_SUPPORTER_CODE', 'GOLD2026')
+      const wrapper = mountSheet(true)
+      const reveal = wrapper.findAll('button').find(b => b.text() === 'Redeem sponsor code')!
+      await reveal.trigger('click')
+
+      await wrapper.find('input[aria-label="Sponsor code"]').setValue('gold2026')
+      await applyButton(wrapper).trigger('click')
+
+      expect(mockRedeemSupporterCode).toHaveBeenCalledWith('gold2026')
+      expect(mockPrefs.isSupporter).toBe(true)
+      // A redeemed code is a genuine web-channel conversion.
+      expect(mockSupportFunnel).toHaveBeenCalledWith('purchase', { cta: 'sponsor_code' })
+      await nextTick()
+      expect(wrapper.find('.settingsImportSuccess').exists()).toBe(true)
+    })
+
+    it('shows an error and stays free for an invalid code', async () => {
+      vi.stubEnv('VITE_SUPPORTER_CODE', 'GOLD2026')
+      const wrapper = mountSheet(true)
+      await wrapper.findAll('button').find(b => b.text() === 'Redeem sponsor code')!.trigger('click')
+      await wrapper.find('input[aria-label="Sponsor code"]').setValue('WRONG')
+      await applyButton(wrapper).trigger('click')
+
+      expect(mockPrefs.isSupporter).toBe(false)
+      expect(mockSupportFunnel).not.toHaveBeenCalledWith('purchase', expect.anything())
+      await nextTick()
+      expect(wrapper.find('.settingsImportError').exists()).toBe(true)
+    })
+
+    it('shows the active-supporter status instead of the redeem control', () => {
+      vi.stubEnv('VITE_SUPPORTER_CODE', 'GOLD2026')
+      mockPrefs.isSupporter = true
+      const wrapper = mountSheet(true)
+      expect(wrapper.findAll('button').some(b => b.text() === 'Redeem sponsor code')).toBe(false)
+      expect(wrapper.text()).toContain('Perks active — thank you')
     })
   })
 

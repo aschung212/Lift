@@ -9,6 +9,7 @@ import { isPlainObject } from '../lib/storage'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
 import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
+import { verifySupporterCode } from '../lib/supporterCode'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 
@@ -148,6 +149,13 @@ function initialPreferencesState() {
     coachProfile: { ...DEFAULT_COACH_PROFILE, competition: { ...DEFAULT_COACH_PROFILE.competition } } as CoachProfile,
     /** Gym names for per-gym exercise filtering (#961). Synced in the blob. */
     gyms: [] as string[],
+    /**
+     * Web-sponsor Supporter entitlement (LIFT-1204). Granted by redeeming a
+     * sponsor code; delivers the #601/#603 perks. Synced in the blob so a
+     * sponsor who redeems on one device is a supporter on all of them, and
+     * wiped by $reset on sign-out so it never leaks to the next account.
+     */
+    isSupporter: false,
     _userId: null as string | null,
     // Uniform sync-status contract (LIFT-820): observable by the UI.
     syncing: false,
@@ -189,6 +197,7 @@ function loadLocalSettings(): Partial<PreferencesState> {
       if (parsed.intensityPresets) out.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
       if (parsed.coachProfile) out.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
       if (parsed.gyms) out.gyms = sanitizeGymList(parsed.gyms)
+      if (typeof parsed.isSupporter === 'boolean') out.isSupporter = parsed.isSupporter
     }
     // Legacy standalone keys (pre-preferences-store) as a fallback when the blob
     // lacks them — so a guest who never logs in still gets their persisted
@@ -232,6 +241,7 @@ export const usePreferencesStore = defineStore('preferences', {
         intensityPresets: this.intensityPresets,
         coachProfile: this.coachProfile,
         gyms: this.gyms,
+        isSupporter: this.isSupporter,
       }
       const data = JSON.stringify(payload)
       persistStoreData('preferences', STORAGE_KEY, data)
@@ -290,6 +300,7 @@ export const usePreferencesStore = defineStore('preferences', {
       if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
       if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
       if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
+      if (typeof parsed.isSupporter === 'boolean') this.isSupporter = parsed.isSupporter
     },
 
     /** Re-read state from localStorage (called by cross-tab sync listener). */
@@ -395,6 +406,7 @@ export const usePreferencesStore = defineStore('preferences', {
               intensityPresets: this.intensityPresets,
               coachProfile: this.coachProfile,
               gyms: this.gyms,
+              isSupporter: this.isSupporter,
             })
             localStorage.setItem(STORAGE_KEY, synced)
             backupToIDB(STORAGE_KEY, synced)
@@ -551,6 +563,21 @@ export const usePreferencesStore = defineStore('preferences', {
       if (!this.gyms.includes(name)) return
       this.gyms = this.gyms.filter(g => g !== name)
       this._persist()
+    },
+
+    /**
+     * Redeem a web-sponsor code to grant the Supporter entitlement (LIFT-1204).
+     * Returns true when the code is valid (entitlement granted + persisted +
+     * synced), false otherwise. Idempotent — an already-supporter who re-enters
+     * a valid code stays a supporter and still returns true.
+     */
+    redeemSupporterCode(code: string): boolean {
+      if (!verifySupporterCode(code)) return false
+      if (!this.isSupporter) {
+        this.isSupporter = true
+        this._persist()
+      }
+      return true
     },
   },
 
