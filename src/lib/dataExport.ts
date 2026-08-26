@@ -22,6 +22,8 @@ export interface ExportMetadata {
 }
 
 export interface JsonExportData extends ExportMetadata {
+  /** Unit of every weight in this file — canonical storage is lbs (LIFT-1215). */
+  units: 'lbs'
   exercises: {
     name: string
     tags: string[]
@@ -45,6 +47,9 @@ export function buildJsonExport(
 ): JsonExportData {
   return {
     ...metadata,
+    // All weights below are canonical lbs; label them so a re-import (ours or
+    // a third-party tool's) never has to guess the unit (LIFT-1215).
+    units: 'lbs',
     exercises: exercises.map(e => ({
       name: e.name,
       tags: e.tags,
@@ -97,8 +102,11 @@ export function buildCsvExport(
 ): string {
   const timestamp = metadata.exportDate.slice(0, 10)
   const lines = [
-    `# Lift Export — ${timestamp} — v${metadata.appVersion} — ${metadata.userIdHash}`,
-    'Exercise,Date,Weight,Reps,Estimated 1RM,Tags',
+    // Weights are canonical lbs — labeled in the comment and the column
+    // header so re-imports never guess (LIFT-1215). importLift accepts both
+    // the labeled header and the legacy bare "Weight" for old exports.
+    `# Lift Export — ${timestamp} — v${metadata.appVersion} — ${metadata.userIdHash} — weights in lbs`,
+    'Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags',
   ]
   for (const ex of exercises) {
     for (const s of ex.sets) {
@@ -109,7 +117,7 @@ export function buildCsvExport(
   }
   if (bodyweight.length > 0) {
     lines.push('')
-    lines.push('Date,Body Weight')
+    lines.push('Date,Body Weight (lbs)')
     for (const e of bodyweight) {
       lines.push(`${e.date.slice(0, 10)},${e.weight}`)
     }
