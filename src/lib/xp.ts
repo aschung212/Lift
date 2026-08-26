@@ -8,6 +8,7 @@
  */
 
 import type { WorkoutSet } from '../stores/workout'
+import { setDayKey } from './dates'
 
 // --- Types ---
 
@@ -238,16 +239,30 @@ function findStreakEntry(
   history: StreakHistoryEntry[],
   dateStr: string
 ): StreakHistoryEntry | null {
-  const date = new Date(dateStr)
+  // Normalize to a LOCAL day key first (LIFT-1214). A bare YYYY-MM-DD is
+  // already the local day key and must pass through untouched; timestamps go
+  // through setDayKey, which reconciles both stored shapes (endOfDayISO
+  // stamps carry the local day in their prefix; real-time toISOString()
+  // instants need local conversion). Local-midnight parsing then keeps
+  // getMonday's local read on that exact calendar day. Previously a
+  // real-time stamp from a US Sunday-evening set resolved to UTC-Monday and
+  // looked up the wrong week's streak entry for the XP multiplier.
+  const dayKey = dateStr.length === 10 ? dateStr : setDayKey(dateStr)
+  const date = new Date(dayKey + 'T00:00:00')
   const monday = getMonday(date)
   const mondayKey = toDateKey(monday)
 
   return history.find(e => e.weekStart === mondayKey) ?? null
 }
 
-/** Get the Monday of the week containing the given date (UTC to avoid timezone drift). */
+/**
+ * Get the Monday of the week containing the given date's LOCAL calendar day.
+ * Anchored at UTC midnight of that Monday so stepping/formatting stay exact.
+ * LIFT-1214: was pure UTC, which rolled US Sunday evenings into next week.
+ * Keep this in sync with the identical helper in src/stores/progression.ts.
+ */
 function getMonday(date: Date): Date {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
   const day = d.getUTCDay()
   // getUTCDay: 0=Sun, 1=Mon, ..., 6=Sat
   // Shift so Monday=0: (day + 6) % 7
