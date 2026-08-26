@@ -1512,7 +1512,8 @@ const ladderLabel = computed(() => {
 
 function fillFromRung(rung: UsualLadderRung) {
   if (plateMode.value) {
-    const plates = weightToPlates(rung.weightLbs, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    // Rung weights are canonical lbs; the plate layer works in display units.
+    const plates = weightToPlates(displayWeight(rung.weightLbs), currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
     if (plates) {
       currentPlates.value = plates
       syncPlateWeight()
@@ -1731,7 +1732,8 @@ function acceptOverloadNudge() {
   const n = overloadNudge.value
   if (!n) return
   if (plateMode.value) {
-    const plates = weightToPlates(toLbs(n.displayWeight), currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    // n.displayWeight is already display units — decompose it directly.
+    const plates = weightToPlates(n.displayWeight, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
     if (plates) {
       currentPlates.value = plates
       syncPlateWeight()
@@ -1832,13 +1834,14 @@ const weightHasValue = computed(() => weightStr.value.trim().length > 0)
 
 function loadPRTarget() {
   if (!prTargetWeight.value) return
-  const targetLbs = toLbs(prTargetWeight.value)
+  // prTargetWeight is display units, same space as the denoms and bar (LIFT-1211).
+  const target = prTargetWeight.value
   const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
   const barWt = currentBarWeight.value
   // Smallest weight increment: smallest plate × 2 for per-side, × 1 for total
   const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
   // Round up to nearest achievable weight above bar
-  const plateWeight = targetLbs - barWt
+  const plateWeight = target - barWt
   if (plateWeight <= 0) {
     currentPlates.value = []
     syncPlateWeight()
@@ -1861,8 +1864,8 @@ function loadPRTargetReps() {
 const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   if (ex?.barWeight !== undefined) return ex.barWeight
-  // Default: 45 for per-side (barbell), 0 for total (machine)
-  return isPerSide.value ? 45 : 0
+  // Default: standard bar for per-side (45 lbs / 20 kg), 0 for total (machine)
+  return isPerSide.value ? defaultBarWeight() : 0
 })
 
 const isPerSide = computed(() => {
@@ -1884,7 +1887,15 @@ const plateCounts = computed(() => {
   return counts
 })
 
-const plateWeightLbs = computed(() => {
+// Total shown by the plate card, in the user's DISPLAY unit. The whole plate
+// subsystem — denominations (KG_PLATES/LBS_PLATES), ex.barWeight, and this
+// total — operates in display units: kg users stack kg plates on a kg bar.
+// Canonical-lbs values cross the boundary only via displayWeight() on the way
+// in (ladder rungs) and toLbs() at set-save time. LIFT-1211: this computed was
+// named plateWeightLbs and fed through displayWeight(), which multiplied kg
+// users' already-kg totals by 0.4536 — every plate-mode set they logged was
+// silently corrupted.
+const plateWeightDisplay = computed(() => {
   if (isPerSide.value) {
     return platesToWeight(currentPlates.value, currentBarWeight.value)
   }
@@ -1894,7 +1905,7 @@ const plateWeightLbs = computed(() => {
 
 function syncPlateWeight() {
   _plateSync = true
-  weight.value = displayWeight(plateWeightLbs.value)
+  weight.value = plateWeightDisplay.value
   nextTick(() => { _plateSync = false })
 }
 
@@ -1908,9 +1919,11 @@ function syncPlatesFromWeight() {
     currentPlates.value = []
     return
   }
-  const lbs = toLbs(w)
+  // w is already in display units — the same space as the denominations and
+  // bar weight. Converting it to lbs here (pre-LIFT-1211) decomposed an lbs
+  // total against kg plates for kg users.
   const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-  const plates = weightToPlates(lbs, currentBarWeight.value, denoms)
+  const plates = weightToPlates(w, currentBarWeight.value, denoms)
   currentPlates.value = plates || []
 }
 
@@ -1937,7 +1950,11 @@ const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
 const newExercisePlateMode = ref(false)
 const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
-const newExerciseBarWeight = ref(45)
+/** Default bar in the user's display unit: 20 kg / 45 lbs (LIFT-1211). */
+function defaultBarWeight(): number {
+  return weightUnit.value === 'kg' ? 20 : 45
+}
+const newExerciseBarWeight = ref(defaultBarWeight())
 const newBarWeightEditing = ref(false)
 const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
@@ -2028,7 +2045,7 @@ function openNewExerciseModal() {
   newGymAdding.value = false
   newExercisePlateMode.value = false
   newExercisePlateCountMode.value = 'per-side'
-  newExerciseBarWeight.value = 45
+  newExerciseBarWeight.value = defaultBarWeight()
   date.value = lastLogDate.value
   showModal.value = true
 }
@@ -2514,7 +2531,7 @@ function saveSet() {
       newGymAdding.value = false
       newExercisePlateMode.value = false
       newExercisePlateCountMode.value = 'per-side'
-      newExerciseBarWeight.value = 45
+      newExerciseBarWeight.value = defaultBarWeight()
       logEvent('exercise_add')
     }
     const typedSet = hasSetData.value && weight.value !== null && reps.value !== null
