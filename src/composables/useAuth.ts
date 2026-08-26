@@ -85,7 +85,34 @@ function setupSessionRefreshLifecycle(): void {
   if (document.visibilityState === 'visible') resume()
 }
 
-async function initStores(userId: string): Promise<void> {
+// LIFT-1212: on a signed-in cold start BOTH the getSession() resolution and
+// the INITIAL_SESSION/SIGNED_IN auth event fire, and each called initStores
+// unguarded (the event path's `wasUnauthenticated` check only helps when
+// getSession wins the race). A double run means a duplicate localStorage→
+// Supabase migration, duplicate store hydration, and duplicate settings
+// watchers — the reachable trigger for the #787 migration race. Coalesce per
+// user: concurrent and repeat calls for the same user share one run. The
+// cache clears on teardown (sign-out) so the same user re-inits on their next
+// sign-in, and on failure so a transient error doesn't poison future inits.
+let _storesInitUserId: string | null = null
+let _storesInitPromise: Promise<void> | null = null
+
+function resetInitStoresGuard(): void {
+  _storesInitUserId = null
+  _storesInitPromise = null
+}
+
+function initStores(userId: string): Promise<void> {
+  if (_storesInitUserId === userId && _storesInitPromise) return _storesInitPromise
+  _storesInitUserId = userId
+  _storesInitPromise = doInitStores(userId).catch((err) => {
+    if (_storesInitUserId === userId) resetInitStoresGuard()
+    throw err
+  })
+  return _storesInitPromise
+}
+
+async function doInitStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
   const preferencesStore = usePreferencesStore()
@@ -281,6 +308,8 @@ function teardownSession(): void {
   syncQueue.clear()
   resetStores()
   user.value = null
+  // The next sign-in (same user included) must re-hydrate from scratch.
+  resetInitStoresGuard()
 }
 
 async function signOut(): Promise<void> {
@@ -363,6 +392,7 @@ function destroy(): void {
   for (const cleanup of _lifecycleCleanups) cleanup()
   _lifecycleCleanups = []
   _initialized = false
+  resetInitStoresGuard()
 }
 
 export function useAuth(): UseAuthReturn {
