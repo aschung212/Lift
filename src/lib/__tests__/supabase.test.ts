@@ -39,7 +39,7 @@ describe('initSupabase — client construction contract', () => {
     vi.unstubAllEnvs()
   })
 
-  it('constructs the client with explicit persistSession / autoRefreshToken / detectSessionInUrl', async () => {
+  it('constructs the client with explicit persistSession / autoRefreshToken / detectSessionInUrl / PKCE', async () => {
     vi.stubEnv('DEV', false)
     vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
     vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key-123')
@@ -61,6 +61,10 @@ describe('initSupabase — client construction contract', () => {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      // LIFT-808: PKCE, not the implicit-flow default — implicit returns the
+      // access token in the URL fragment (browser-history exposure). Pinned
+      // so a future options refactor cannot silently drop back to implicit.
+      flowType: 'pkce',
     })
     expect(mod.supabase).not.toBeNull()
   })
