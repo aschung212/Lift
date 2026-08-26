@@ -295,6 +295,17 @@ export class SyncQueue {
   }
 
   /**
+   * Delete a key's journal entry only if it is still the exact entry captured
+   * at flush time (LIFT-1213). _journalSet stores a fresh object per write, so
+   * identity inequality means a newer same-key write replaced the entry while
+   * the flush was in flight — that newer durable record must survive.
+   */
+  private _journalDeleteIfCurrent(key: string, snapshot: JournalEntry | undefined): boolean {
+    if (this._journal.get(key) !== snapshot) return false
+    return this._journal.delete(key)
+  }
+
+  /**
    * Extract a failure reason from a settled op result, or null on success.
    *
    * A rejection is always a failure. A *fulfilled* Supabase op resolves
@@ -442,6 +453,13 @@ export class SyncQueue {
     syncStatus.value = 'syncing'
     broadcastSyncStatus('syncing')
     const entries = [...this._queue.entries()]
+    // Identity snapshot of each key's journal entry at flush time (LIFT-1213).
+    // A same-key enqueue that lands while the flush below is awaited REPLACES
+    // the journal object (_journalSet always stores a fresh object). Guarding
+    // the completion-time deletes on identity stops the OLD write's completion
+    // from deleting the NEWER write's durable record — which would silently
+    // lose the correction if the app reloaded before the next flush.
+    const journalSnapshots = entries.map(([key]) => this._journal.get(key))
     this._queue.clear()
 
     try {
@@ -457,8 +475,9 @@ export class SyncQueue {
         if (!error) {
           // Clear retry counter on success so future failures get full retries
           this._attemptMap.delete(key)
-          // Write durably landed on the server — drop its journal entry.
-          if (this._journal.delete(key)) journalChanged = true
+          // Write durably landed on the server — drop its journal entry,
+          // unless a newer same-key write superseded it mid-flight (LIFT-1213).
+          if (this._journalDeleteIfCurrent(key, journalSnapshots[i])) journalChanged = true
           return
         }
         hasFailure = true
@@ -473,9 +492,10 @@ export class SyncQueue {
         } else {
           logError(error, { source: 'SyncQueue', key, attempts: attempt })
           // Retries exhausted — the op is dropped, so drop its journal entry
-          // too. (Reconciliation in the store's _fetchFromSupabase is the
+          // too, unless a newer same-key write superseded it (LIFT-1213).
+          // (Reconciliation in the store's _fetchFromSupabase is the
           // last line of defense for recovering such writes.)
-          if (this._journal.delete(key)) journalChanged = true
+          if (this._journalDeleteIfCurrent(key, journalSnapshots[i])) journalChanged = true
         }
       })
       // An expired/stale token surfaces identically across every queued write.

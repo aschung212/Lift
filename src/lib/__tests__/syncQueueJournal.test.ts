@@ -123,6 +123,38 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     expect(queue.journalSize).toBe(0)
   })
 
+  // Regression LIFT-1213: a same-key correction enqueued while the previous
+  // write's flush was still in flight had its journal entry deleted by the
+  // OLD write's completion — the correction survived in memory but its
+  // durable record was gone, so a reload before the next flush lost it.
+  it('does not drop a newer same-key journal entry when an older in-flight op completes (LIFT-1213)', async () => {
+    const UPSERT_V2: SyncDescriptor = { op: 'upsert', table: 'sets', row: { id: 's1', weight: 105 } }
+    const queue = new SyncQueue(100)
+
+    let resolveOld!: (v: unknown) => void
+    queue.enqueue('set:s1', () => new Promise((r) => { resolveOld = r }), UPSERT)
+
+    // Flush starts; the old write is now in flight (queue snapshotted+cleared).
+    await vi.advanceTimersByTimeAsync(100)
+
+    // Mid-flight correction to the same record replaces the journal entry.
+    queue.enqueue('set:s1', () => Promise.resolve({ data: [], error: null }), UPSERT_V2)
+    expect(queue.journalSize).toBe(1)
+
+    // The OLD write completes — it must NOT delete the correction's record.
+    resolveOld({ data: [], error: null })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(queue.journalSize).toBe(1)
+    const persisted = JSON.parse(idbStore.get('lift-sync-journal')!)
+    expect(persisted.entries).toHaveLength(1)
+    expect(persisted.entries[0].descriptor.row).toEqual({ id: 's1', weight: 105 })
+
+    // The correction's own flush still drains the journal normally.
+    await vi.advanceTimersByTimeAsync(100)
+    expect(queue.journalSize).toBe(0)
+  })
+
   it('clear() wipes the in-memory journal and persists the empty journal', () => {
     const queue = new SyncQueue(500)
     queue.enqueue('set:s1', () => Promise.resolve(), UPSERT)
