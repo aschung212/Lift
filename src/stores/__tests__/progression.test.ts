@@ -17,6 +17,20 @@ function unlockedIds(store: ReturnType<typeof useProgressionStore>): string[] {
   return getUnlockedThemeIds(store.unlockedThemes)
 }
 
+/**
+ * Run `fn` with the process timezone temporarily forced to `tz` (same pattern
+ * as dates.test.ts) — Node honors runtime TZ reassignment for Date ops.
+ */
+function withTZ(tz: string, fn: () => void) {
+  const prev = process.env.TZ
+  process.env.TZ = tz
+  try {
+    fn()
+  } finally {
+    process.env.TZ = prev
+  }
+}
+
 describe('progression store', () => {
   beforeEach(() => {
     localStorageMock.clear()
@@ -563,6 +577,40 @@ describe('progression store', () => {
       ]
       store.evaluatePendingWeeks(dates, new Date('2026-04-01T10:00:00Z'))
       expect(store.streakHistory).toHaveLength(0)
+    })
+
+    // Regression LIFT-1214: getMonday used UTC calendar components, so for a
+    // US-timezone user a Sunday evening (already Monday in UTC) closed the
+    // current week before their Sunday session was counted — one workout
+    // short, streak reset. Week boundaries must follow the LOCAL calendar,
+    // matching the local set-date keys (#746).
+    it('keeps the current week open on a US-timezone Sunday evening (LIFT-1214)', () => {
+      withTZ('America/Los_Angeles', () => {
+        const store = useProgressionStore()
+        // Only Monday logged so far — the user is about to log their Sunday
+        // session when they open the app at 6 PM PDT (= Monday 01:00 UTC).
+        const dates = ['2026-03-23T10:00:00Z']
+        store.evaluatePendingWeeks(dates, new Date(2026, 2, 29, 18, 0, 0))
+        // Pre-fix: the Mar 23 week was evaluated as missed right here.
+        expect(store.streakHistory).toHaveLength(0)
+      })
+    })
+
+    it('closes the finished week on a UTC+ Monday morning (LIFT-1214)', () => {
+      withTZ('Asia/Tokyo', () => {
+        const store = useProgressionStore()
+        const dates = [
+          '2026-03-23T10:00:00Z',
+          '2026-03-25T10:00:00Z',
+          '2026-03-27T10:00:00Z',
+        ]
+        // Monday Mar 30, 8 AM JST is still Sunday 23:00 UTC — pre-fix the
+        // finished week wasn't evaluated until UTC caught up.
+        store.evaluatePendingWeeks(dates, new Date(2026, 2, 30, 8, 0, 0))
+        expect(store.streakHistory).toHaveLength(1)
+        expect(store.streakHistory[0].weekStart).toBe('2026-03-23')
+        expect(store.streakWeeks).toBe(1)
+      })
     })
 
     it('skips weeks already in history', () => {
