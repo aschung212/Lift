@@ -105,11 +105,18 @@ function resetInitStoresGuard(): void {
 function initStores(userId: string): Promise<void> {
   if (_storesInitUserId === userId && _storesInitPromise) return _storesInitPromise
   _storesInitUserId = userId
-  _storesInitPromise = doInitStores(userId).catch((err) => {
-    if (_storesInitUserId === userId) resetInitStoresGuard()
+  const p: Promise<void> = doInitStores(userId).catch((err) => {
+    // Clear only OUR OWN registration (promise identity, not userId): after a
+    // sign-out + fast re-sign-in of the same user, a NEWER init generation
+    // owns the guard, and a stale rejection from this superseded run must not
+    // wipe it — that would let a later call start a third, duplicate init.
+    // (Same identity discipline as the LIFT-1213 journal guard; flagged by
+    // the 2026-08-26 adversarial review.)
+    if (_storesInitPromise === p) resetInitStoresGuard()
     throw err
   })
-  return _storesInitPromise
+  _storesInitPromise = p
+  return p
 }
 
 async function doInitStores(userId: string): Promise<void> {

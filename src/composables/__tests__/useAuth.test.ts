@@ -546,5 +546,47 @@ describe('useAuth', () => {
 
       expect(migrate).toHaveBeenCalledTimes(2)
     })
+
+    // Adversarial-review follow-up (2026-08-26): the failure-path guard reset
+    // must clear only its OWN generation. A slow first init that rejects
+    // AFTER a sign-out + re-sign-in must not wipe the newer generation's
+    // registration — that would let a later trigger (here: the late
+    // getSession resolution) start a third, duplicate init.
+    it('a stale init rejection cannot wipe a newer generation of the guard', async () => {
+      const { cb, resolveGetSession, migrate } = await initWithHeldSession()
+
+      // Swallow the deliberately-orphaned rejection from the superseded init.
+      const onUnhandled = () => {}
+      process.on('unhandledRejection', onUnhandled)
+      try {
+        // First init hangs on a migrate we control, then will REJECT later.
+        let rejectFirstMigrate!: (e: unknown) => void
+        migrate.mockReturnValueOnce(new Promise((_, rej) => { rejectFirstMigrate = rej }))
+
+        cb('INITIAL_SESSION', session)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(migrate).toHaveBeenCalledTimes(1)
+
+        // Sign out mid-init, same user signs straight back in (generation 2).
+        cb('SIGNED_OUT', null)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        cb('SIGNED_IN', session)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(migrate).toHaveBeenCalledTimes(2)
+
+        // The superseded generation-1 init now fails.
+        rejectFirstMigrate(new Error('offline'))
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        // A late getSession resolution re-triggers initStores for the same
+        // user — it must coalesce into generation 2, not start a third run.
+        resolveGetSession({ data: { session } })
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(migrate).toHaveBeenCalledTimes(2)
+      } finally {
+        process.off('unhandledRejection', onUnhandled)
+      }
+    })
   })
 })
