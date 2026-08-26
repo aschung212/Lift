@@ -608,6 +608,20 @@ describe('SettingsSheet', () => {
     })
   })
 
+  describe('support-funding transparency (LIFT-1203)', () => {
+    it('states what supporter dollars fund alongside the CTAs', () => {
+      const wrapper = mountSheet(true)
+      const note = wrapper.find('.settingsGroupNote')
+      expect(note.exists()).toBe(true)
+      const text = note.text()
+      expect(text).toContain('AI Coach')
+      expect(text).toContain('sync server')
+      // Reinforces the existing "no ads / no data sales" trust promise.
+      expect(text).toMatch(/ad-free/i)
+      expect(text).toMatch(/never sells your data/i)
+    })
+  })
+
   // ── Background-scroll lock (#830) ────────────────────────────────
   //
   // The settings sheet is a full-screen bottom sheet, but it used raw
