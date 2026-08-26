@@ -482,4 +482,69 @@ describe('useAuth', () => {
       vi.stubGlobal('indexedDB', undefined)
     })
   })
+
+  // Regression LIFT-1212: on a signed-in cold start BOTH the getSession()
+  // resolution and the INITIAL_SESSION auth event fire, and each called
+  // initStores. When the event won the race, the user's stores were hydrated
+  // twice and the localStorage->Supabase migration ran twice (the reachable
+  // trigger for the #787 migration race). initStores is now coalesced per
+  // user; the migrate mock is the once-per-init probe.
+  describe('initStores idempotence (LIFT-1212)', () => {
+    const session = { user: { id: 'u1', email: 'a@b.co' } }
+
+    // Like initWithSession above, but getSession resolution is held manually
+    // so the test controls which side of the race runs first.
+    async function initWithHeldSession() {
+      vi.stubEnv('DEV', false)
+      let resolveGetSession!: (v: unknown) => void
+      mockGetSession.mockReturnValue(new Promise((r) => { resolveGetSession = r }))
+      vi.resetModules()
+      const mod = await import('../useAuth')
+      const auth = mod.useAuth()
+      auth.init()
+      await vi.waitFor(() => expect(mockOnAuthStateChange).toHaveBeenCalled())
+      const cb = mockOnAuthStateChange.mock.calls.at(-1)![0] as (
+        event: string,
+        session: unknown,
+      ) => void
+      const { migrateLocalStorageToSupabase } = await import('../../lib/migrate')
+      const migrate = vi.mocked(migrateLocalStorageToSupabase)
+      migrate.mockClear()
+      return { cb, resolveGetSession, migrate }
+    }
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('inits stores once when the auth event wins the race against getSession', async () => {
+      const { cb, resolveGetSession, migrate } = await initWithHeldSession()
+
+      // The INITIAL_SESSION event lands first...
+      cb('INITIAL_SESSION', session)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      // ...then getSession resolves with the same session.
+      resolveGetSession({ data: { session } })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(migrate).toHaveBeenCalledTimes(1)
+    })
+
+    it('re-inits after sign-out so the next sign-in hydrates from scratch', async () => {
+      const { cb, resolveGetSession, migrate } = await initWithHeldSession()
+
+      cb('INITIAL_SESSION', session)
+      resolveGetSession({ data: { session } })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(migrate).toHaveBeenCalledTimes(1)
+
+      // Sign out (teardown resets the guard), then the same user signs back in.
+      cb('SIGNED_OUT', null)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      cb('SIGNED_IN', session)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(migrate).toHaveBeenCalledTimes(2)
+    })
+  })
 })
