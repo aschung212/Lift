@@ -62,7 +62,8 @@ export interface Exercise {
   tags: string[]
   sets: WorkoutSet[]
   inputMode?: ExerciseInputMode    // remembered per exercise, default 'numpad'
-  barWeight?: number               // bar weight in lbs, default 45
+  barWeight?: number               // bar weight in the USER'S DISPLAY UNIT (kg users store kg — the create/edit
+                                   // UI labels and saves it in display units; see LIFT-1211). Default 45 lbs / 20 kg.
   plateCountMode?: PlateCountMode  // how plates are counted, default 'per-side'
   intensityMaxReps?: number        // rep rows shown in the Intensity lens; undefined = default (10) (#770)
   equipment?: ExerciseEquipment    // explicit Coach classification; undefined = name heuristic (#931 phase C)

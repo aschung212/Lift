@@ -18,7 +18,26 @@ const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
-vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
+// Switchable unit mock (LIFT-1211): defaults to lbs with the same rounding the
+// plain mockWeightUnit() provided, so every pre-existing test is unaffected.
+// The unit lives in a factory-scoped ref (module consts hit the vi.mock TDZ,
+// and a factory-created computed over plain state would cache forever); the
+// kg plate-mode suite flips it through the mocked module's __setMockUnit.
+vi.mock('../../composables/useWeightUnit', async () => {
+  const { shallowRef } = await import('vue')
+  const unit = shallowRef<'lbs' | 'kg'>('lbs')
+  return {
+    __setMockUnit: (u: 'lbs' | 'kg') => { unit.value = u },
+    ...mockWeightUnit({
+      weightUnit: unit,
+      displayWeight: (lbs: number) => unit.value === 'kg' ? +(lbs * 0.453592).toFixed(1) : Math.round(lbs),
+      toLbs: (w: number) => unit.value === 'kg' ? +(w / 0.453592).toFixed(1) : w,
+    }),
+  }
+})
+import * as weightUnitMockModule from '../../composables/useWeightUnit'
+const setMockUnit = (u: 'lbs' | 'kg') =>
+  (weightUnitMockModule as unknown as { __setMockUnit: (u: 'lbs' | 'kg') => void }).__setMockUnit(u)
 vi.mock('../../composables/useRestTimer', () => mockRestTimer())
 // Mutable container so gym-filter tests (#961) can drive the synced gym list.
 // `reactive` keeps the mock faithful to the real Pinia store: adding a gym has
@@ -3170,6 +3189,82 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.wtDetailBack').trigger('click')
       await wrapper.vm.$nextTick()
       expect(isLocked()).toBe(false)
+    })
+  })
+
+  /**
+   * Regression: LIFT-1211 — the plate calculator double-converted for kg
+   * users. The plate subsystem operates entirely in display units (kg plates
+   * on a kg bar), but the computed total was piped through displayWeight(),
+   * multiplying an already-kg total by 0.4536 — every plate-mode set a kg
+   * user logged was silently corrupted (20 kg bar + 2×20 kg plates filled
+   * the weight field with 27.2 instead of 60). The reverse path had the
+   * mirror bug: typed kg weights were converted to lbs before being
+   * decomposed against kg denominations.
+   */
+  describe('kg plate mode (LIFT-1211)', () => {
+    afterEach(() => { setMockUnit('lbs') })
+
+    // ex-3 (Overhead Press) has no sets, so the log modal opens with an empty
+    // weight field — no ladder auto-fill to interfere with plate math.
+    function mountPlateTracker(unit: 'lbs' | 'kg', barWeight: number) {
+      setMockUnit(unit)
+      mockState.exercises = createExercises()
+      mockState.exercises[2].inputMode = 'plates'
+      mockState.exercises[2].plateCountMode = 'per-side'
+      mockState.exercises[2].barWeight = barWeight
+      return mountTracker()
+    }
+
+    async function openLogModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[2].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    it('fills the weight field with the true kg total, not a double-converted one', async () => {
+      const wrapper = mountPlateTracker('kg', 20)
+      await openLogModal(wrapper)
+
+      // kg users see kg denominations
+      const addBtns = wrapper.findAll('.wtPlateBtnAdd')
+      expect(addBtns.map(b => b.text())).toContain('+20')
+
+      // 20 kg bar + one 20 kg plate per side = 60 kg. Pre-fix, the total was
+      // piped through displayWeight() and the field showed 27.2.
+      await addBtns.find(b => b.text() === '+20')!.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const input = wrapper.find('input[aria-label="Weight"]')
+      expect((input.element as HTMLInputElement).value).toBe('60')
+    })
+
+    it('decomposes a typed kg weight against kg plates (reverse sync)', async () => {
+      const wrapper = mountPlateTracker('kg', 20)
+      await openLogModal(wrapper)
+
+      // Type 60 kg — after the 250ms debounce the calculator should show one
+      // 20 kg plate per side. Pre-fix this decomposed toLbs(60)=132.3 against
+      // kg denominations and produced a nonsense stack.
+      await wrapper.find('input[aria-label="Weight"]').setValue('60')
+      await new Promise(r => setTimeout(r, 350))
+      await wrapper.vm.$nextTick()
+
+      const col20 = wrapper.findAll('.wtPlateCol')
+        .find(c => c.find('.wtPlateBtnAdd').text() === '+20')
+      expect(col20).toBeDefined()
+      expect(col20!.find('.wtPlateCountNum').text()).toBe('1')
+    })
+
+    it('keeps lbs plate math unchanged (45 bar + 2×45 = 135)', async () => {
+      const wrapper = mountPlateTracker('lbs', 45)
+      await openLogModal(wrapper)
+
+      const addBtns = wrapper.findAll('.wtPlateBtnAdd')
+      await addBtns.find(b => b.text() === '+45')!.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const input = wrapper.find('input[aria-label="Weight"]')
+      expect((input.element as HTMLInputElement).value).toBe('135')
     })
   })
 })
