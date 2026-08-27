@@ -93,6 +93,24 @@ describe('ErrorBoundary', () => {
     expect(guardedReload).toHaveBeenCalledExactlyOnceWith('error-boundary')
   })
 
+  it('surfaces a relaunch hint when a reload is suppressed (no silent no-op)', async () => {
+    vi.mocked(guardedReload).mockReturnValueOnce(false)
+
+    const wrapper = mount(ErrorBoundary, {
+      slots: { default: '<div>OK</div>' },
+    })
+
+    wrapper.vm.error = new Error('Crash')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.errorBoundaryHint').exists()).toBe(false)
+
+    await wrapper.findAll('.errorBoundaryBtn').at(-1)?.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.errorBoundaryHint').exists()).toBe(true)
+  })
+
   it('a re-throwing child keeps the fallback visible after a soft retry', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
 

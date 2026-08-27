@@ -7286,6 +7286,11 @@ html.theme-fading .settingsSheet {
   word-break: break-word;
 }
 
+.errorBoundaryHint {
+  color: var(--danger);
+  margin-top: -12px;
+}
+
 .errorBoundaryActions {
   display: flex;
   flex-wrap: wrap;

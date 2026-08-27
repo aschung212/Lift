@@ -4,6 +4,10 @@
     <div class="errorBoundaryIcon">!</div>
     <h2 class="errorBoundaryTitle">Something went wrong</h2>
     <p class="errorBoundaryMessage">{{ error.message }}</p>
+    <p v-if="reloadSuppressed" class="errorBoundaryMessage errorBoundaryHint">
+      Reloading didn't clear the problem. Fully close and reopen Lift to try a
+      fresh start.
+    </p>
     <div class="errorBoundaryActions">
       <button
         v-if="canSoftRetry"
@@ -39,6 +43,12 @@ const MAX_SOFT_RECOVERIES = 1
 
 const canSoftRetry = computed(() => softRecoveries.value < MAX_SOFT_RECOVERIES)
 
+// guardedReload allows one reload per session; a repeat is suppressed to break
+// a boot loop. When that happens the Reload button would otherwise appear dead
+// (no browser chrome in an installed PWA to fall back to), so surface a hint
+// pointing to the one thing that DOES reset the session guard: relaunching.
+const reloadSuppressed = ref(false)
+
 onErrorCaptured((err) => {
   error.value = err
   logError(err, { source: 'ErrorBoundary', softRecoveries: softRecoveries.value })
@@ -52,8 +62,8 @@ function tryAgain() {
 
 function reload() {
   // guardedReload logs + returns false when suppressed (already reloaded once
-  // this session) — keep the fallback rendered so the user isn't left on a
-  // frozen blank screen if the reload can't fire.
-  guardedReload('error-boundary')
+  // this session). Reflect that in the UI so the button isn't a silent no-op —
+  // relaunching the app is the recovery path once the guard has fired.
+  reloadSuppressed.value = !guardedReload('error-boundary')
 }
 </script>
