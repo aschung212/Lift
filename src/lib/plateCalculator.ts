@@ -117,3 +117,28 @@ export function formatDelta(delta: { add: PlateSet; remove: PlateSet }): string 
   if (delta.add.length > 0) parts.push(`Add ${formatPlates(delta.add)}`)
   return parts.join(' · ')
 }
+
+/** Pounds per kilogram — the same factor used by useWeightUnit's display conversion. */
+const KG_PER_LB = 0.453592
+
+/**
+ * Convert a stored bar weight from one display unit to another (LIFT-1223).
+ *
+ * `Exercise.barWeight` is stored in the user's display unit (see the note in
+ * `workout.ts`), so toggling the global weight unit reinterprets the raw number
+ * unless it is converted — a 20 saved in kg mode would otherwise feed plate math
+ * as 20 lbs. Bars are whole-number values in the edit UI (the stepper rounds on
+ * blur), so the converted result is rounded to the nearest whole unit — this maps
+ * the standard 45 lb bar to 20 kg and back to a sensible 44 lb. A no-op unit or a
+ * non-finite value is returned unchanged.
+ */
+export function convertBarWeight(
+  value: number,
+  from: 'lbs' | 'kg',
+  to: 'lbs' | 'kg'
+): number {
+  if (from === to || !Number.isFinite(value)) return value
+  const lbs = from === 'kg' ? value / KG_PER_LB : value
+  const converted = to === 'kg' ? lbs * KG_PER_LB : lbs
+  return Math.round(converted)
+}

@@ -5,6 +5,7 @@ import {
   plateDelta,
   formatPlates,
   formatDelta,
+  convertBarWeight,
   KG_PLATES,
 } from '../plateCalculator'
 
@@ -157,6 +158,34 @@ describe('plateCalculator', () => {
 
     it('formats mixed', () => {
       expect(formatDelta({ add: [25, 10], remove: [45] })).toBe('Remove 1×45 · Add 1×25 + 1×10')
+    })
+  })
+
+  describe('convertBarWeight', () => {
+    it('returns the value unchanged when units match', () => {
+      expect(convertBarWeight(45, 'lbs', 'lbs')).toBe(45)
+      expect(convertBarWeight(20, 'kg', 'kg')).toBe(20)
+    })
+
+    it('maps the standard 45 lb bar to 20 kg', () => {
+      expect(convertBarWeight(45, 'lbs', 'kg')).toBe(20)
+    })
+
+    it('converts kg back to a sensible whole-pound bar', () => {
+      // 20 kg / 0.453592 ≈ 44.09 → 44 (whole-number bar, as the edit UI stores it)
+      expect(convertBarWeight(20, 'kg', 'lbs')).toBe(44)
+    })
+
+    it('rounds to whole units', () => {
+      expect(convertBarWeight(35, 'lbs', 'kg')).toBe(16) // 15.88 → 16
+      expect(convertBarWeight(15, 'kg', 'lbs')).toBe(33) // 33.07 → 33
+    })
+
+    it('passes through non-finite values untouched', () => {
+      expect(convertBarWeight(Number.NaN, 'lbs', 'kg')).toBeNaN()
+      expect(convertBarWeight(Number.POSITIVE_INFINITY, 'lbs', 'kg')).toBe(
+        Number.POSITIVE_INFINITY
+      )
     })
   })
 })

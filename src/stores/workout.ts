@@ -14,6 +14,7 @@ import { loadJSON, isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { parseExercises, parseStringArray, parseNumberRecord } from '../lib/parseGuards'
 import { sanitizeIntensityMaxReps } from '../lib/intensityTable'
+import { convertBarWeight } from '../lib/plateCalculator'
 import { sanitizeExerciseNotes } from '../lib/inputLimits'
 import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachAnalytics'
 import { sanitizeExerciseGyms } from '../lib/gyms'
@@ -724,6 +725,37 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     if (supabase && _userId) {
       _enqueueExerciseUpsert(exercise, _userId)
+    }
+  }
+
+  /**
+   * Convert every explicitly-stored bar weight when the global display unit
+   * toggles (LIFT-1223). `Exercise.barWeight` is stored in the user's display
+   * unit, so without this a bar saved as 20 in kg mode is silently reinterpreted
+   * as 20 lbs after switching to lbs — feeding wrong numbers into the plate math.
+   * Exercises with no explicit barWeight are skipped: they fall back to the
+   * unit-aware default (45 lbs / 20 kg), so they need no conversion and must not
+   * be adopted from sample state just to stamp one. Called from
+   * preferences.setWeightUnit, the sole user-initiated unit-toggle path.
+   */
+  function convertBarWeightsForUnitChange(from: 'lbs' | 'kg', to: 'lbs' | 'kg') {
+    if (from === to) return
+    let changed = false
+    for (const exercise of exercises.value) {
+      if (exercise.barWeight == null) continue
+      const next = convertBarWeight(exercise.barWeight, from, to)
+      if (next === exercise.barWeight) continue
+      if (exercise.sample) _adoptExercise(exercise)
+      exercise.barWeight = next
+      exercise.updated_at = new Date().toISOString()
+      changed = true
+      if (supabase && _userId) {
+        _enqueueExerciseUpsert(exercise, _userId)
+      }
+    }
+    if (changed) {
+      triggerRef(exercises)
+      _persist()
     }
   }
 
@@ -1629,6 +1661,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExercisePlateCountMode,
     setExerciseInputMode,
     setExerciseBarWeight,
+    convertBarWeightsForUnitChange,
     setExerciseIntensityMaxReps,
     setExerciseEquipment,
     setExerciseBodyweightLoaded,
