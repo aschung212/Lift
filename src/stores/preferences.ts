@@ -11,6 +11,7 @@ import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -364,52 +365,79 @@ export const usePreferencesStore = defineStore('preferences', {
       }
 
       // Then try Supabase (overrides local if exists)
-      if (supabase) {
-        this.syncing = true
-        try {
-          const { data, error } = await supabase
-            .from('user_preferences')
-            .select('preferences')
-            .eq('user_id', userId)
-            .single()
-          // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
-          // A real error (network/auth/RLS) is classified for the per-store sync
-          // indicator (LIFT-820) and routed through reportFetchError so an RLS or
-          // auth regression is observable instead of silently swallowed (LIFT-786).
-          if (error && error.code !== 'PGRST116') {
-            reportFetchError('preferences', error)
-            this.lastSyncError = classifySyncError(error)
-          } else {
-            this.lastSyncError = null
-          }
-          const prefs = data?.preferences as Record<string, unknown> | null
-          if (prefs?.features) {
-            this._applyPreferences(prefs)
-            const synced = JSON.stringify({
-              features: this.features, weightGoal: this.weightGoal,
-              experience: this.experience, filters: this.filters,
-              prBaselineDate: this.prBaselineDate,
-              theme: this.theme, colorMode: this.colorMode,
-              weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
-              restTimerAutoStart: this.restTimerAutoStart, appIcon: this.appIcon,
-              intensityPresets: this.intensityPresets,
-              coachProfile: this.coachProfile,
-              gyms: this.gyms,
-            })
-            localStorage.setItem(STORAGE_KEY, synced)
-            backupToIDB(STORAGE_KEY, synced)
-          }
-        } catch (err) {
-          // Thrown (vs returned) error — typically a network failure. Route
-          // through reportFetchError so offline stays quiet but auth/server
-          // failures are observable (LIFT-786), and record the per-store sync
-          // indicator so the UI can degrade visibly instead of silently (LIFT-820).
-          reportFetchError('preferences', err)
-          this.lastSyncError = classifySyncError(err)
-        } finally {
-          this.syncing = false
+      await this._fetchFromSupabase()
+    },
+
+    /**
+     * Pull the synced preferences blob from Supabase and apply it over the
+     * local values. Split out of `init` so it can be re-run WITHOUT re-doing
+     * the localStorage load + legacy-key migration (LIFT-1226): a read failure
+     * here is swallowed into `lastSyncError` with no retry, so a transient
+     * blip / token expiry / offline cold start otherwise leaves stale
+     * local-only settings until a full relaunch. No-ops when signed out or
+     * when Supabase is unavailable.
+     */
+    async _fetchFromSupabase() {
+      if (!supabase || !this._userId) return
+      const userId = this._userId
+      this.syncing = true
+      try {
+        const { data, error } = await supabase
+          .from('user_preferences')
+          .select('preferences')
+          .eq('user_id', userId)
+          .single()
+        // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
+        // A real error (network/auth/RLS) is classified for the per-store sync
+        // indicator (LIFT-820) and routed through reportFetchError so an RLS or
+        // auth regression is observable instead of silently swallowed (LIFT-786).
+        if (error && error.code !== 'PGRST116') {
+          reportFetchError('preferences', error)
+          this.lastSyncError = classifySyncError(error)
+          // A 401 means an expired token, not offline — refresh once so the next
+          // fetch recovers rather than staying local-only (LIFT-784).
+          if (isAuthError(error)) void ensureFreshSession()
+        } else {
+          this.lastSyncError = null
         }
+        const prefs = data?.preferences as Record<string, unknown> | null
+        if (prefs?.features) {
+          this._applyPreferences(prefs)
+          const synced = JSON.stringify({
+            features: this.features, weightGoal: this.weightGoal,
+            experience: this.experience, filters: this.filters,
+            prBaselineDate: this.prBaselineDate,
+            theme: this.theme, colorMode: this.colorMode,
+            weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
+            restTimerAutoStart: this.restTimerAutoStart, appIcon: this.appIcon,
+            intensityPresets: this.intensityPresets,
+            coachProfile: this.coachProfile,
+            gyms: this.gyms,
+          })
+          localStorage.setItem(STORAGE_KEY, synced)
+          backupToIDB(STORAGE_KEY, synced)
+        }
+      } catch (err) {
+        // Thrown (vs returned) error — typically a network failure. Route
+        // through reportFetchError so offline stays quiet but auth/server
+        // failures are observable (LIFT-786), and record the per-store sync
+        // indicator so the UI can degrade visibly instead of silently (LIFT-820).
+        reportFetchError('preferences', err)
+        this.lastSyncError = classifySyncError(err)
+      } finally {
+        this.syncing = false
       }
+    },
+
+    /**
+     * Re-pull from Supabase without re-running migration (LIFT-1226). Read-side
+     * recovery entry point, called on reconnect / resume / post-token-refresh.
+     * No-ops when signed out or when a fetch is already in flight (overlap
+     * guard against reconnect flaps).
+     */
+    async refetch() {
+      if (!this._userId || this.syncing) return
+      await this._fetchFromSupabase()
     },
 
     toggleFeature(featureId: string) {

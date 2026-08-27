@@ -260,6 +260,19 @@ export const useProgressionStore = defineStore('progression', {
       await this._fetchFromSupabase()
     },
 
+    /**
+     * Re-pull from Supabase without re-running migration (LIFT-1226). The
+     * read-side recovery entry point: `_fetchFromSupabase` swallows read
+     * failures into `lastSyncError` with no retry, so a transient blip / token
+     * expiry / offline cold start leaves stale local-only data until a full
+     * relaunch. Called on reconnect / resume / post-token-refresh. No-ops when
+     * signed out or when a fetch is already in flight (overlap guard).
+     */
+    async refetch() {
+      if (!this._userId || this.syncing) return
+      await this._fetchFromSupabase()
+    },
+
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 

@@ -421,6 +421,21 @@ export const useWorkoutStore = defineStore('workout', () => {
     await _fetchFromSupabase()
   }
 
+  /**
+   * Re-pull from Supabase without re-running the localStorage→Supabase
+   * migration (LIFT-1226). `_fetchFromSupabase` swallows read failures into
+   * `lastSyncError` with no retry, so a transient offline blip, a mid-session
+   * token expiry, or an offline cold start leaves the app on stale local-only
+   * data until a full relaunch. This is the read-side recovery entry point,
+   * called on reconnect / resume / post-token-refresh. No-ops when signed out
+   * (`_userId` null) and when a fetch is already in flight, so rapid reconnect
+   * flaps can't stack overlapping requests.
+   */
+  async function refetch() {
+    if (!_userId || syncing.value) return
+    await _fetchFromSupabase()
+  }
+
   async function _fetchFromSupabase() {
     if (!supabase || !_userId) return
     // Pin the narrowed client and user id: both bindings are mutable, so TS
@@ -1624,6 +1639,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Actions
     $reset,
     init,
+    refetch,
     _reloadFromStorage,
     addExercise,
     setExercisePlateCountMode,

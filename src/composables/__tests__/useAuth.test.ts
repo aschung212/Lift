@@ -15,17 +15,21 @@ const mockWorkoutReset = vi.fn()
 const mockBodyweightReset = vi.fn()
 const mockPreferencesReset = vi.fn()
 const mockProgressionReset = vi.fn()
+const mockWorkoutRefetch = vi.fn()
+const mockBodyweightRefetch = vi.fn()
+const mockPreferencesRefetch = vi.fn()
+const mockProgressionRefetch = vi.fn()
 vi.mock('../../stores/workout', () => ({
-  useWorkoutStore: () => ({ init: vi.fn(), $reset: mockWorkoutReset })
+  useWorkoutStore: () => ({ init: vi.fn(), $reset: mockWorkoutReset, refetch: mockWorkoutRefetch })
 }))
 vi.mock('../../stores/bodyweight', () => ({
-  useBodyweightStore: () => ({ init: vi.fn(), $reset: mockBodyweightReset })
+  useBodyweightStore: () => ({ init: vi.fn(), $reset: mockBodyweightReset, refetch: mockBodyweightRefetch })
 }))
 vi.mock('../../stores/preferences', () => ({
-  usePreferencesStore: () => ({ init: vi.fn(), $reset: mockPreferencesReset })
+  usePreferencesStore: () => ({ init: vi.fn(), $reset: mockPreferencesReset, refetch: mockPreferencesRefetch })
 }))
 vi.mock('../../stores/progression', () => ({
-  useProgressionStore: () => ({ init: vi.fn(), $reset: mockProgressionReset })
+  useProgressionStore: () => ({ init: vi.fn(), $reset: mockProgressionReset, refetch: mockProgressionRefetch })
 }))
 vi.mock('../../lib/migrate', () => ({
   migrateLocalStorageToSupabase: vi.fn()
@@ -60,10 +64,12 @@ vi.mock('../../lib/supabase', () => ({
 // Mock syncQueue
 const mockSyncQueueClear = vi.fn()
 const mockSyncQueueRehydrate = vi.fn().mockResolvedValue(undefined)
+const mockSyncQueueFlush = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: {
     clear: () => mockSyncQueueClear(),
     rehydrate: () => mockSyncQueueRehydrate(),
+    flush: () => mockSyncQueueFlush(),
   }
 }))
 
@@ -319,6 +325,48 @@ describe('useAuth', () => {
       expect(mockSyncQueueClear).not.toHaveBeenCalled()
       expect(mockWorkoutReset).not.toHaveBeenCalled()
       expect(user.value).not.toBeNull()
+    })
+
+    // LIFT-1226: a recovered token (TOKEN_REFRESHED on an already-initialized
+    // session) must re-pull every store and flush the write queue so reads
+    // reconcile immediately instead of staying stale until a full relaunch.
+    it('re-pulls stores and flushes the queue on TOKEN_REFRESHED (LIFT-1226)', async () => {
+      const { cb } = await initWithSession({ user: { id: 'u1', email: 'a@b.co' } })
+
+      mockWorkoutRefetch.mockClear()
+      mockBodyweightRefetch.mockClear()
+      mockPreferencesRefetch.mockClear()
+      mockProgressionRefetch.mockClear()
+      mockSyncQueueFlush.mockClear()
+
+      cb('TOKEN_REFRESHED', { user: { id: 'u1', email: 'a@b.co' } })
+      // refetchStores() is fire-and-forget (void) — flush a macrotask so its
+      // allSettled resolves before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(mockWorkoutRefetch).toHaveBeenCalledOnce()
+      expect(mockBodyweightRefetch).toHaveBeenCalledOnce()
+      expect(mockPreferencesRefetch).toHaveBeenCalledOnce()
+      expect(mockProgressionRefetch).toHaveBeenCalledOnce()
+      expect(mockSyncQueueFlush).toHaveBeenCalledOnce()
+    })
+
+    // A signed-out session has no _storesInitUserId, so refetchStores must be a
+    // no-op — nothing to reconcile, and calling a store's refetch would fetch
+    // against a dead session (LIFT-1226).
+    it('refetchStores no-ops when no session has been initialized', async () => {
+      const { cb } = await initWithSession({ user: { id: 'u1', email: 'a@b.co' } })
+      // Tear the session down so _storesInitUserId is cleared.
+      cb('SIGNED_OUT', null)
+
+      mockWorkoutRefetch.mockClear()
+      mockSyncQueueFlush.mockClear()
+
+      const mod = await import('../useAuth')
+      await mod.useAuth().refetchStores()
+
+      expect(mockWorkoutRefetch).not.toHaveBeenCalled()
+      expect(mockSyncQueueFlush).not.toHaveBeenCalled()
     })
 
     it('preserves a guest\'s local-only data on SIGNED_OUT (no store reset)', async () => {

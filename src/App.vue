@@ -343,7 +343,7 @@ const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 const { celebrateUnlocks } = useXPCeremony()
 
-const { user, loading, isGuest, init: initAuth, signOut, exitGuestMode } = useAuth()
+const { user, loading, isGuest, init: initAuth, signOut, exitGuestMode, refetchStores } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
@@ -429,10 +429,36 @@ const syncStatusLabel = computed(() => {
   return ''
 })
 
+// Reconcile from the server on reconnect / resume (LIFT-1226). Store reads
+// swallow failures into `lastSyncError` with no retry, so without this a
+// transient offline blip or a backgrounded resume leaves the app on stale
+// local-only data until a full relaunch. Debounced so a focus+visibility+online
+// burst on a single resume triggers ONE refetch; re-checks `navigator.onLine`
+// at fire time so a flap that ends offline doesn't fetch into the void.
+let _reconnectRefetchTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleReconnectRefetch() {
+  if (_reconnectRefetchTimer) clearTimeout(_reconnectRefetchTimer)
+  _reconnectRefetchTimer = setTimeout(() => {
+    _reconnectRefetchTimer = null
+    if (navigator.onLine) void refetchStores()
+  }, 400)
+}
+
 // Detect offline/online
 function updateOnlineStatus() {
-  if (!navigator.onLine) syncStatus.value = 'offline'
-  else if (syncStatus.value === 'offline') syncStatus.value = 'synced'
+  if (!navigator.onLine) {
+    syncStatus.value = 'offline'
+  } else if (syncStatus.value === 'offline') {
+    syncStatus.value = 'synced'
+    // offline→online transition: re-pull reads and flush queued writes.
+    scheduleReconnectRefetch()
+  }
+}
+// Re-pull on a foreground resume too: the token may have expired while
+// backgrounded, or another device may have written since. Mirrors the
+// visibility/focus resume signals useAuth already uses to re-arm token refresh.
+function onResumeRefetch() {
+  if (document.visibilityState === 'visible' && navigator.onLine) scheduleReconnectRefetch()
 }
 window.addEventListener('online', updateOnlineStatus)
 window.addEventListener('offline', updateOnlineStatus)
@@ -724,6 +750,9 @@ function onBeforeUnload() {
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
   document.addEventListener('visibilitychange', onBadgeVisibilityChange)
+  // Re-pull from the server on resume (LIFT-1226) — see scheduleReconnectRefetch.
+  document.addEventListener('visibilitychange', onResumeRefetch)
+  window.addEventListener('focus', onResumeRefetch)
   // Clear any badge left over from a prior session: visibilitychange does not
   // fire on cold start (the document begins visible), so a badge set before a
   // force-close would otherwise linger on the icon while the user is active.
@@ -843,6 +872,9 @@ let unsubCrossTab: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
   document.removeEventListener('visibilitychange', onBadgeVisibilityChange)
+  document.removeEventListener('visibilitychange', onResumeRefetch)
+  window.removeEventListener('focus', onResumeRefetch)
+  if (_reconnectRefetchTimer) clearTimeout(_reconnectRefetchTimer)
   clearAppBadge()
   unsubCrossTab?.()
 })

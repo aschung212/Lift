@@ -29,6 +29,7 @@ export interface UseAuthReturn {
   continueAsGuest: () => void
   exitGuestMode: () => void
   deleteAccount: () => Promise<void>
+  refetchStores: () => Promise<void>
   destroy: () => void
 }
 
@@ -149,6 +150,41 @@ async function doInitStores(userId: string): Promise<void> {
   // one-shot bridge is needed here.
 }
 
+/**
+ * Re-pull every store from Supabase and flush pending writes — the read-side
+ * recovery backbone (LIFT-1226).
+ *
+ * Each store's `_fetchFromSupabase` swallows read failures into `lastSyncError`
+ * with NO retry, and the only reconnect signal (App.vue's `online` listener)
+ * merely relabels the sync indicator. So an offline cold start, a transient
+ * network blip, or a mid-session token expiry leaves the app showing stale
+ * local-only data — new cross-device rows and the reconciliation pushes inside
+ * `_fetchFromSupabase` don't resume until a full relaunch. Callers (reconnect,
+ * resume, post-token-refresh) invoke this to reconcile immediately.
+ *
+ * No-ops unless a real (non-guest) session has already been initialized — a
+ * guest keeps `_userId` null, so there is nothing to fetch. Overlapping fetches
+ * are coalesced by each store's own `syncing` guard inside `refetch()`, so
+ * rapid reconnect flaps can't stack requests.
+ */
+async function refetchStores(): Promise<void> {
+  if (!user.value || isGuest.value || !_storesInitUserId) return
+  const results = await Promise.allSettled([
+    useWorkoutStore().refetch(),
+    useBodyweightStore().refetch(),
+    usePreferencesStore().refetch(),
+    useProgressionStore().refetch(),
+    // Also drain the write queue: a reconnect should push writes that queued
+    // while offline, not only pull reads. Idempotent and self-guarded.
+    syncQueue.flush(),
+  ])
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      logError(r.reason, { source: 'useAuth', action: 'refetchStores' })
+    }
+  }
+}
+
 /** Clear guest mode (a real session supersedes it). */
 function clearGuestFlag(): void {
   isGuest.value = false
@@ -212,6 +248,13 @@ function init(): void {
       if (wasUnauthenticated) {
         clearGuestFlag()
         initStores(session.user.id)
+      } else if (event === 'TOKEN_REFRESHED') {
+        // The token just recovered (e.g. ensureFreshSession succeeded after a
+        // mid-session expiry). Reconcile from the server immediately rather
+        // than leaving reads stale until relaunch (LIFT-1226). initStores
+        // already fetches on the wasUnauthenticated path, so only the
+        // already-signed-in refresh case needs this.
+        void refetchStores()
       }
     } else if (event === 'SIGNED_OUT') {
       // A SIGNED_OUT event ends the session — either the user tapped sign-out,
@@ -403,5 +446,5 @@ function destroy(): void {
 }
 
 export function useAuth(): UseAuthReturn {
-  return { user, loading, isGuest, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, destroy }
+  return { user, loading, isGuest, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, refetchStores, destroy }
 }
