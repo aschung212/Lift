@@ -899,9 +899,9 @@ describe('usePreferencesStore', () => {
       store.setWeightUnit('lbs')
 
       const bar = workout.exercises.find((e) => e.id === id)!.barWeight
-      expect(bar).toBe(44) // 20 kg ≈ 44 lb, not a raw reinterpretation as 20
+      expect(bar).toBe(45) // 20 kg snaps to the standard 45 lb bar, not a raw 20
       // Plate math now loads against the converted lbs bar.
-      expect(platesToWeight([45], bar!)).toBe(134)
+      expect(platesToWeight([45], bar!)).toBe(135)
     })
 
     it('converts stored bar weights when toggling lbs → kg', () => {

@@ -167,18 +167,28 @@ describe('plateCalculator', () => {
       expect(convertBarWeight(20, 'kg', 'kg')).toBe(20)
     })
 
-    it('maps the standard 45 lb bar to 20 kg', () => {
+    it('snaps the standard bars to their real equivalents', () => {
       expect(convertBarWeight(45, 'lbs', 'kg')).toBe(20)
+      expect(convertBarWeight(20, 'kg', 'lbs')).toBe(45)
+      expect(convertBarWeight(35, 'lbs', 'kg')).toBe(15)
+      expect(convertBarWeight(15, 'kg', 'lbs')).toBe(35)
     })
 
-    it('converts kg back to a sensible whole-pound bar', () => {
-      // 20 kg / 0.453592 ≈ 44.09 → 44 (whole-number bar, as the edit UI stores it)
-      expect(convertBarWeight(20, 'kg', 'lbs')).toBe(44)
+    it('is stable across a full round trip for standard bars', () => {
+      // A plain factor conversion drifts 45 → 20 → 44, which makes
+      // weightToPlates(135, 44) return null. Snapping keeps it at 45.
+      for (const bar of [45, 35, 25, 15, 10]) {
+        const kg = convertBarWeight(bar, 'lbs', 'kg')
+        expect(convertBarWeight(kg, 'kg', 'lbs')).toBe(bar)
+      }
+      // The standard 45 lb bar keeps plate math achievable after a round trip.
+      const roundTripped = convertBarWeight(convertBarWeight(45, 'lbs', 'kg'), 'kg', 'lbs')
+      expect(weightToPlates(135, roundTripped)).not.toBeNull()
     })
 
-    it('rounds to whole units', () => {
-      expect(convertBarWeight(35, 'lbs', 'kg')).toBe(16) // 15.88 → 16
-      expect(convertBarWeight(15, 'kg', 'lbs')).toBe(33) // 33.07 → 33
+    it('rounds off-standard values to a whole unit', () => {
+      // 60 lb is not a standard bar → 27.2 kg → no snap → rounds to 27.
+      expect(convertBarWeight(60, 'lbs', 'kg')).toBe(27)
     })
 
     it('passes through non-finite values untouched', () => {
