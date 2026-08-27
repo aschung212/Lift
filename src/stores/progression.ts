@@ -275,6 +275,7 @@ export const useProgressionStore = defineStore('progression', {
 
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
+      const userId = this._userId
 
       this.syncing = true
       let data: Tables<'user_progression'> | null
@@ -286,8 +287,14 @@ export const useProgressionStore = defineStore('progression', {
         const result = await supabase
           .from('user_progression')
           .select('*')
-          .eq('user_id', this._userId)
+          .eq('user_id', userId)
           .single()
+        // A SIGNED_OUT teardown ($reset) may have landed while this fetch was
+        // awaited — refetch now fires on TOKEN_REFRESHED/reconnect, so that
+        // teardown can race a refetch (LIFT-1226). $reset restores defaults and
+        // nulls _userId; merging this stale response would rehydrate (and
+        // re-sync) the signed-out user's XP/streaks on a shared device. Bail.
+        if (this._userId !== userId) return
         const error = result.error
         if (error) {
           if (error.code === 'PGRST116') {

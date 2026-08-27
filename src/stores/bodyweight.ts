@@ -111,6 +111,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .is('deleted_at', null)
           .order('created_at')
           .order('id'))
+        // A SIGNED_OUT teardown ($reset) may have landed while this fetch was
+        // awaited — refetch now fires on TOKEN_REFRESHED/reconnect, so that
+        // teardown can race a refetch (LIFT-1226). $reset nulls _userId and
+        // persists cleared defaults; applying this stale response would
+        // rehydrate the signed-out user's entries on a shared device. Bail.
+        if (this._userId !== userId) return
         if (result.error) {
           reportFetchError('bodyweight', result.error)
           this.lastSyncError = classifySyncError(result.error)

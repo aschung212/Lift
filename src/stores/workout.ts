@@ -465,6 +465,12 @@ export const useWorkoutStore = defineStore('workout', () => {
           client.from('sets').select('*').eq('user_id', userId)
             .is('deleted_at', null).order('created_at').order('id')),
       ])
+      // A SIGNED_OUT teardown ($reset) may have landed while this fetch was
+      // awaited — refetch now fires on TOKEN_REFRESHED/reconnect, so that
+      // teardown can race a refetch (LIFT-1226). $reset nulls _userId and
+      // persists the cleared payload; applying this stale response would
+      // rehydrate the signed-out user's exercises on a shared device. Bail.
+      if (_userId !== userId) return
       if (exResult.error || setsResult.error) {
         reportFetchError('workout', exResult.error ?? setsResult.error, {
           exerciseError: String(exResult.error),

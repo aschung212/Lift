@@ -182,4 +182,42 @@ describe('store refetch() — read-side recovery (LIFT-1226)', () => {
       expect(fakeSupabase.selectsFor('user_preferences')).toHaveLength(0)
     })
   })
+
+  // Now that refetch fires on TOKEN_REFRESHED / reconnect, a SIGNED_OUT
+  // teardown ($reset) can land WHILE a refetch is awaited. The in-flight fetch
+  // captured the old userId; if it applied its response after the wipe it would
+  // rehydrate the signed-out user's data onto a shared device. Each fetch
+  // re-checks _userId after the await and bails when the session changed.
+  describe('signed-out race (LIFT-1226)', () => {
+    it('workout: a fetch resolving after $reset does not rehydrate the old user', async () => {
+      const store = useWorkoutStore()
+      await store.init('u1')
+      fakeSupabase.seed('exercises', [
+        { id: 'ex-remote', user_id: 'u1', name: 'Deadlift', tags: [], deleted_at: null,
+          updated_at: '2026-08-27T00:00:00.000Z', created_at: '2026-08-27T00:00:00.000Z' },
+      ])
+
+      // Start the fetch, then sign out synchronously before it resolves.
+      const pending = store.refetch()
+      store.$reset()
+      await pending
+
+      expect(store.exercises).toHaveLength(0)
+    })
+
+    it('preferences: a fetch resolving after $reset does not rewrite the old user prefs', async () => {
+      const store = usePreferencesStore()
+      await store.init('u1')
+      fakeSupabase.seed('user_preferences', [
+        { id: 'pref-remote', user_id: 'u1',
+          preferences: { features: { workouts: true }, weightUnit: 'kg' } },
+      ])
+
+      const pending = store.refetch()
+      store.$reset()
+      await pending
+
+      expect(store.weightUnit).toBe('lbs')
+    })
+  })
 })

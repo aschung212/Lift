@@ -387,6 +387,13 @@ export const usePreferencesStore = defineStore('preferences', {
           .select('preferences')
           .eq('user_id', userId)
           .single()
+        // A SIGNED_OUT teardown ($reset) may have landed while this fetch was
+        // awaited — now that refetch fires on TOKEN_REFRESHED/reconnect, that
+        // teardown can race a refetch (LIFT-1226). $reset nulls _userId and
+        // persists cleared defaults; applying this now-stale response would
+        // rewrite the signed-out user's prefs into localStorage on a shared
+        // device. Bail if the session changed under us.
+        if (this._userId !== userId) return
         // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
         // A real error (network/auth/RLS) is classified for the per-store sync
         // indicator (LIFT-820) and routed through reportFetchError so an RLS or
