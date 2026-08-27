@@ -211,7 +211,14 @@ function init(): void {
       user.value = session.user
       if (wasUnauthenticated) {
         clearGuestFlag()
-        initStores(session.user.id)
+        // Fire-and-forget re-auth init: `initStores` rethrows on failure, so
+        // catch at the source rather than leaking an unhandled rejection to the
+        // global floor (LIFT-1227). The stores each swallow their own fetch
+        // errors; a rejection here means the guard/migration wrapper itself
+        // failed and is worth logging.
+        initStores(session.user.id).catch((err) => {
+          logError(err, { source: 'useAuth', action: 'onAuthStateChange:initStores' })
+        })
       }
     } else if (event === 'SIGNED_OUT') {
       // A SIGNED_OUT event ends the session — either the user tapped sign-out,
