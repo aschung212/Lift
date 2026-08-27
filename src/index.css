@@ -7286,7 +7286,15 @@ html.theme-fading .settingsSheet {
   word-break: break-word;
 }
 
+.errorBoundaryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
 .errorBoundaryBtn {
+  min-height: 44px;
   padding: 12px 32px;
   border-radius: 12px;
   border: none;
@@ -7296,6 +7304,12 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+.errorBoundaryBtnSecondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
 }
 
 /* ─── Undo toast ─────────────────────────────────────────────────────── */
