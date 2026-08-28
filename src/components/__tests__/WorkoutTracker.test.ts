@@ -989,7 +989,7 @@ describe('WorkoutTracker', () => {
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       await saveBtn.trigger('click')
 
-      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String))
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String), expect.objectContaining({}))
     })
 
     // LIFT-1148: the log-set modal stays open with cleared fields after a save,
@@ -1353,7 +1353,7 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
       await wrapper.vm.$nextTick()
 
-      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 45, 10, expect.any(String))
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 45, 10, expect.any(String), expect.objectContaining({}))
       // Modal stays open, fields remain genuinely empty
       expect(wrapper.find('.repMaxModal').exists()).toBe(true)
       expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('')
@@ -1719,7 +1719,7 @@ describe('WorkoutTracker', () => {
 
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
       await wrapper.vm.$nextTick()
-      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 280, 8, expect.any(String))
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 280, 8, expect.any(String), expect.objectContaining({}))
       const state = JSON.parse(localStorageMock.getItem('overload-nudge-state')!)
       expect(state.byExercise['ex-1'].outcome).toBe('accepted')
       expect(state.byExercise['ex-1'].ignoredCount).toBe(0)
@@ -2149,7 +2149,7 @@ describe('WorkoutTracker', () => {
 
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
 
-      expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String))
+      expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String), null)
     })
 
     it('shows date picker in edit mode', async () => {

@@ -107,13 +107,13 @@ describe('dataExport', () => {
     it('includes column header row', () => {
       const csv = buildCsvExport(metadata, exercises, bodyweight)
       const lines = csv.split('\n')
-      expect(lines[1]).toBe('Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags')
+      expect(lines[1]).toBe('Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags,RPE')
     })
 
     it('includes exercise set data rows', () => {
       const csv = buildCsvExport(metadata, exercises, bodyweight)
       const lines = csv.split('\n')
-      expect(lines[2]).toBe('Bench Press,2026-04-05,225,5,253,chest;push')
+      expect(lines[2]).toBe('Bench Press,2026-04-05,225,5,253,chest;push,')
     })
 
     it('includes bodyweight section when entries exist', () => {
