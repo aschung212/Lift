@@ -1,0 +1,3 @@
+title,start_time,end_time,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_kg,reps,distance_km,duration_seconds,rpe
+Morning,2026-04-01T08:00:00Z,2026-04-01T09:00:00Z,Bench Press,,,,normal,84,5,,,,
+Morning,2026-04-01T08:00:00Z,2026-04-01T09:00:00Z,Squat,,,,normal,100,3,,,,

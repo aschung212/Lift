@@ -26,7 +26,14 @@
  * The set of methods on the builder is asserted against the stores' real usage
  * by `fakeSupabase.contract.test.ts`, so a new query method in a store fails the
  * contract check until the fake grows to match it.
+ *
+ * The fake also enforces PostgREST's `max_rows` cap on every select (#1152). A
+ * test double that returns unlimited rows doesn't just fail to catch a missing
+ * `.range()` — it actively certifies the broken read as correct, which is how
+ * the unpaged fetch shipped and hid a month of a real user's training history.
  */
+
+import { SUPABASE_MAX_ROWS } from '../lib/supabasePagination'
 
 /** The method names a store may invoke on a `supabase.from(...)` query chain. */
 export const FAKE_SUPABASE_CHAIN_METHODS = [
@@ -37,6 +44,7 @@ export const FAKE_SUPABASE_CHAIN_METHODS = [
   'eq',
   'is',
   'order',
+  'range',
   'single',
   'then',
 ] as const
@@ -55,6 +63,16 @@ export interface FakeSupabaseOptions {
   error?: FakeSupabaseError
   /** Error thrown in `'reject'` mode (defaults to a network failure). */
   rejectionError?: Error
+  /**
+   * Rows a single response may return, mirroring PostgREST's `max_rows`
+   * (#1152). Defaults to the real cap so a store that reads a collection
+   * without paging truncates here exactly as it does in production.
+   *
+   * This is the whole reason the row-cap bug shipped: the fake used to return
+   * every matching row regardless of any cap, so an unpaged `.select()` looked
+   * complete under test and lost a month of a real user's history in prod.
+   */
+  maxRows?: number
 }
 
 interface Row {
@@ -69,6 +87,8 @@ interface RecordedCall {
   table: string
   filters: Record<string, unknown>
   data?: unknown
+  /** The `.range(from, to)` window, when the query asked for one (#1152). */
+  range?: { from: number; to: number }
 }
 
 /** Sentinel wrapping a `.is(col, val)` filter so it can match NULL-or-missing. */
@@ -87,6 +107,8 @@ const DEFAULT_API_ERROR: FakeSupabaseError = {
 
 export class FakeSupabase {
   readonly mode: FakeSupabaseMode
+  /** PostgREST row cap applied to every `select` response (#1152). */
+  readonly maxRows: number
   private readonly _apiError: FakeSupabaseError
   private readonly _rejectionError: Error
 
@@ -104,6 +126,7 @@ export class FakeSupabase {
 
   constructor(options: FakeSupabaseOptions = {}) {
     this.mode = options.mode ?? 'ok'
+    this.maxRows = options.maxRows ?? SUPABASE_MAX_ROWS
     this._apiError = options.error ?? DEFAULT_API_ERROR
     this._rejectionError = options.rejectionError ?? new Error('Network request failed')
   }
@@ -154,15 +177,24 @@ export class FakeSupabase {
     filters: Record<string, unknown>,
     data: unknown,
     single: boolean,
+    range?: { from: number; to: number },
   ): { data: unknown; error: FakeSupabaseError | null } {
-    this.calls.push({ op, table, filters: { ...filters }, data })
+    this.calls.push({ op, table, filters: { ...filters }, data, range })
 
     if (this.mode === 'apiError') {
       return { data: null, error: this._apiError }
     }
 
     const rows = this._query(op, table, filters, data)
-    return { data: single ? (rows[0] ?? null) : rows, error: null }
+    if (op !== 'select') return { data: single ? (rows[0] ?? null) : rows, error: null }
+
+    // PostgREST applies the `.range()` window FIRST, then truncates the result
+    // to `max_rows` — so `.range(0, 4999)` still yields at most 1000 rows, and
+    // an unranged select yields the first 1000. Emulating that order is what
+    // makes an unpaged read fail here the way it fails in production (#1152).
+    const windowed = range ? rows.slice(range.from, range.to + 1) : rows
+    const capped = windowed.slice(0, this.maxRows)
+    return { data: single ? (capped[0] ?? null) : capped, error: null }
   }
 
   /** @internal — the throwing branch for `'reject'` mode. */
@@ -211,6 +243,7 @@ class FakeBuilder implements PromiseLike<{ data: unknown; error: FakeSupabaseErr
   private _filters: Record<string, unknown> = {}
   private _data: unknown = null
   private _single = false
+  private _range: { from: number; to: number } | undefined
 
   constructor(private _parent: FakeSupabase, private _table: string) {}
 
@@ -221,6 +254,7 @@ class FakeBuilder implements PromiseLike<{ data: unknown; error: FakeSupabaseErr
   eq(col: string, val: unknown) { this._filters[col] = val; return this }
   is(col: string, val: null | boolean) { this._filters[col] = { __is: val }; return this }
   order(_col: string) { return this }
+  range(from: number, to: number) { this._range = { from, to }; return this }
   single() { this._single = true; return this }
 
   then<TResult1 = { data: unknown; error: FakeSupabaseError | null }, TResult2 = never>(
@@ -230,7 +264,9 @@ class FakeBuilder implements PromiseLike<{ data: unknown; error: FakeSupabaseErr
     if (this._parent.mode === 'reject') {
       return Promise.reject(this._parent._rejection).then(onfulfilled, onrejected)
     }
-    const result = this._parent._resolve(this._op, this._table, this._filters, this._data, this._single)
+    const result = this._parent._resolve(
+      this._op, this._table, this._filters, this._data, this._single, this._range,
+    )
     return Promise.resolve(result).then(onfulfilled, onrejected)
   }
 }

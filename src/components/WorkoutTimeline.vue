@@ -37,6 +37,7 @@
           <div class="wtTimelineRowMain">
             <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
             <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
+            <span v-if="entry.set.rpe" class="wtTimelineRPE">RPE {{ entry.set.rpe }}</span>
             <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
             <span v-if="timelinePRMap[entry.set.id] === 'pr'" class="wtTimelineBadge" aria-label="Personal record">🏆</span>
             <span v-else-if="timelinePRMap[entry.set.id] === 'repPR'" class="wtTimelineBadge" aria-label="Rep personal record">🔥</span>
@@ -100,7 +101,7 @@ const timelineLimit = ref(50)
 interface TimelineEntry {
   exerciseId: string
   exerciseName: string
-  set: { id: string; date: string; weight: number; reps: number; estimated1RM: number }
+  set: WorkoutSet
 }
 
 const timelineSets = computed((): TimelineEntry[] => {

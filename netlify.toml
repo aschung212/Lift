@@ -1,3 +1,11 @@
+# Netlify config ships the static SPA only — it declares NO functions.
+# The AI Coach proxy (`/api/coach`, a Vercel serverless function) therefore does
+# NOT exist on any Netlify deploy and would 404 there. AI Coach is deliberately
+# scoped to the Vercel origin (https://spa-rho-sandy.vercel.app); the client
+# calls that absolute origin on native and same-origin on the Vercel web build,
+# so a Netlify deploy simply never reaches the coach endpoint. See LIFT-850 and
+# docs/ai-coach.md ("Known deploy gotcha"). If AI Coach must run on Netlify,
+# port api/coach.ts to a Netlify Function before enabling it.
 [build]
   command   = "npm run build"
   publish   = "dist"

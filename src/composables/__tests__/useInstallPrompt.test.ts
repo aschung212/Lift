@@ -196,7 +196,9 @@ describe('useInstallPrompt', () => {
   })
 
   describe('dismiss', () => {
-    it('hides banner and persists dismissal', () => {
+    it('hides banner and persists a dismissal timestamp (snooze, not forever)', () => {
+      const now = 1_700_000_000_000
+      vi.spyOn(Date, 'now').mockReturnValue(now)
       const state = useInstallPrompt(() => 5)
       const mockEvent = { preventDefault: vi.fn() }
       fireWindowEvent('beforeinstallprompt', mockEvent)
@@ -205,7 +207,80 @@ describe('useInstallPrompt', () => {
 
       state.dismiss()
       expect(state.showBanner.value).toBe(false)
-      expect(localStorage.getItem('install-prompt-dismissed')).toBe('true')
+      // A timestamp is stored so the prompt can re-surface after the snooze window.
+      expect(localStorage.getItem('install-prompt-dismissed')).toBe(String(now))
+    })
+
+    it('keeps the prompt suppressed while the snooze window is active', () => {
+      const now = 1_700_000_000_000
+      vi.spyOn(Date, 'now').mockReturnValue(now)
+      // Dismissed 10 days ago — still inside the 30-day snooze.
+      localStorage.setItem('install-prompt-dismissed', String(now - 10 * 24 * 60 * 60 * 1000))
+
+      const state = useInstallPrompt(() => 10)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      expect(state.showBanner.value).toBe(false)
+    })
+
+    it('re-surfaces the prompt once the snooze window has elapsed', () => {
+      const now = 1_700_000_000_000
+      vi.spyOn(Date, 'now').mockReturnValue(now)
+      // Dismissed 31 days ago — snooze has expired.
+      localStorage.setItem('install-prompt-dismissed', String(now - 31 * 24 * 60 * 60 * 1000))
+
+      const state = useInstallPrompt(() => 10)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      expect(state.showBanner.value).toBe(true)
+    })
+
+    it('treats a legacy "true" dismissal flag as a permanent suppression', () => {
+      localStorage.setItem('install-prompt-dismissed', 'true')
+      const state = useInstallPrompt(() => 10)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      expect(state.showBanner.value).toBe(false)
+    })
+  })
+
+  describe('surfaceAtPeakMoment', () => {
+    it('re-surfaces the banner (bypassing the engagement gate) when a deferred prompt exists', () => {
+      // Below MIN_WORKOUT_DAYS — the normal gate would keep the banner hidden.
+      const state = useInstallPrompt(() => 1)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+      expect(state.showBanner.value).toBe(false)
+
+      state.surfaceAtPeakMoment()
+      expect(state.showBanner.value).toBe(true)
+      expect(state.isIOSPrompt.value).toBe(false)
+    })
+
+    it('does not re-surface while an install has been recorded', () => {
+      localStorage.setItem('install-prompt-installed', '1')
+      const state = useInstallPrompt(() => 5)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+
+      state.surfaceAtPeakMoment()
+      expect(state.showBanner.value).toBe(false)
+    })
+
+    it('does not re-surface while a dismissal snooze is active', () => {
+      const now = 1_700_000_000_000
+      vi.spyOn(Date, 'now').mockReturnValue(now)
+      const state = useInstallPrompt(() => 5)
+      const mockEvent = { preventDefault: vi.fn() }
+      fireWindowEvent('beforeinstallprompt', mockEvent)
+      state.dismiss()
+      expect(state.showBanner.value).toBe(false)
+
+      state.surfaceAtPeakMoment()
+      expect(state.showBanner.value).toBe(false)
     })
   })
 
@@ -223,7 +298,9 @@ describe('useInstallPrompt', () => {
 
       expect(mockEvent.prompt).toHaveBeenCalled()
       expect(state.showBanner.value).toBe(false)
-      expect(localStorage.getItem('install-prompt-dismissed')).toBe('true')
+      // Install acceptance is a permanent suppression, tracked separately from
+      // the dismiss snooze.
+      expect(localStorage.getItem('install-prompt-installed')).toBe('1')
     })
 
     it('hides banner when user declines native install dialog', async () => {
@@ -261,7 +338,7 @@ describe('useInstallPrompt', () => {
 
       fireWindowEvent('appinstalled')
       expect(state.showBanner.value).toBe(false)
-      expect(localStorage.getItem('install-prompt-dismissed')).toBe('true')
+      expect(localStorage.getItem('install-prompt-installed')).toBe('1')
     })
   })
 
@@ -305,6 +382,30 @@ describe('useInstallPrompt', () => {
       const state = mod.useInstallPrompt(() => 5)
 
       expect(state.showBanner.value).toBe(false)
+    })
+
+    it('surfaceAtPeakMoment shows the iOS prompt below the engagement gate', async () => {
+      vi.resetModules()
+      vi.doMock('../../lib/platform', () => ({
+        isNative: false,
+        isIOS: true,
+        platform: 'web',
+      }))
+
+      windowListeners = {}
+      vi.spyOn(window, 'addEventListener').mockImplementation(
+        (event: string, handler: unknown) => addWindowListener(event, handler as (...args: unknown[]) => void)
+      )
+      mockMatchMedia(false)
+
+      const mod = await import('../useInstallPrompt')
+      // Below MIN_WORKOUT_DAYS — normal gate keeps it hidden.
+      const state = mod.useInstallPrompt(() => 0)
+      expect(state.showBanner.value).toBe(false)
+
+      state.surfaceAtPeakMoment()
+      expect(state.showBanner.value).toBe(true)
+      expect(state.isIOSPrompt.value).toBe(true)
     })
   })
 

@@ -10,7 +10,7 @@
   --border:          #2a2a2a;
   --border-strong:   #3c3c3c;
   --text-primary:    #f2f2f2;
-  --text-secondary:  #888;
+  --text-secondary:  #8c8c8c; /* AA 4.5:1 on bg-elevated (#242424) */
   --text-muted:      #777;
   --accent:          #ff6363;
   --accent-hover:    #ff4444;
@@ -74,7 +74,7 @@
   --border:          #243048;
   --border-strong:   #384a68;
   --text-primary:    #e0e8f8;
-  --text-secondary:  #7888b0;
+  --text-secondary:  #8494bc; /* AA 4.5:1 on bg-elevated (#202c40) */
   --text-muted:      #687898;
   --accent:          #2070d8;
   --accent-hover:    #1860c0;
@@ -332,7 +332,7 @@
   --border:          #2c2c42;
   --border-strong:   #42425e;
   --text-primary:    #e4e4f4;
-  --text-secondary:  #8080b0;
+  --text-secondary:  #8c8cbc; /* AA 4.5:1 on bg-elevated (#26263a) */
   --text-muted:      #6868a0;
   --accent:          #7c50e6;
   --accent-hover:    #6c3ad8;
@@ -557,7 +557,7 @@
   --border:          #362048;
   --border-strong:   #503868;
   --text-primary:    #f0e4f4;
-  --text-secondary:  #a080c0;
+  --text-secondary:  #a484c2; /* AA 4.5:1 on bg-elevated (#322040) */
   --text-muted:      #806898;
   --accent:          #f472b6;
   --accent-hover:    #ec4899;
@@ -794,6 +794,17 @@ button, [role="tab"], [role="switch"], a {
 
 /* ─── App shell ─────────────────────────────────────────────────────────── */
 
+/*
+  Viewport-height convention (LIFT-1099): all full-height and max-height
+  surfaces are sized in `svh` (the SMALLEST viewport height). svh resolves to
+  the viewport with the mobile browser chrome EXPANDED, so an svh-sized element
+  always fits regardless of whether the URL bar is showing — it can never
+  overflow or jump as the chrome collapses. The outer shell (#app) is 100svh
+  with `overflow: hidden`, so any nested surface sized in a larger unit (`dvh`,
+  or bare `vh` which equals `lvh`) could exceed the shell and be clipped. Use
+  `dvh`/`lvh` ONLY where an element is intended to grow with the chrome — no
+  surface in Lift currently needs that. cssRegression.test.ts enforces this.
+*/
 #app {
   height: 100svh;
   display: flex;
@@ -822,27 +833,23 @@ button, [role="tab"], [role="switch"], a {
   margin: 0 auto;
 }
 
+/* Follows the app's data-mode-driven tokens (see useTheme applyResolvedMode),
+   NOT the OS color scheme — a user who forces light on a dark-OS phone still
+   gets a light banner. Never reintroduce a prefers-color-scheme override here. */
 .previewBanner {
   width: 100%;
   padding: 8px 16px;
   font-size: var(--font-footnote);
   font-weight: 500;
-  color: #1a6dff;
-  background: #e8f0fe;
-  border-bottom: 1px solid #b4d0fe;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
   text-align: center;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
-}
-@media (prefers-color-scheme: dark) {
-  .previewBanner {
-    color: #8ab4ff;
-    background: #1a2744;
-    border-bottom-color: #2a3f66;
-  }
 }
 .previewToggle {
   font-size: var(--font-caption2);
@@ -873,6 +880,125 @@ button, [role="tab"], [role="switch"], a {
   flex-shrink: 0;
 }
 
+/* Guest "create an account to back up" nudge (LIFT-1083) */
+.guestBackupBanner {
+  width: 100%;
+  padding: 8px 12px;
+  min-height: 44px;
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guestBackupText {
+  flex: 1;
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.guestBackupCta {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 4px 12px;
+  font-size: var(--font-caption1);
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--text-on-accent);
+  background: var(--accent);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.guestBackupDismiss {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.guestBackupDismiss svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Welcome-back re-entry banner (LIFT-1107) */
+.welcomeBackBanner {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.welcomeBackText {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.welcomeBackTitle {
+  font-size: var(--font-subhead);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.welcomeBackDesc {
+  font-size: var(--font-footnote);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.welcomeBackCta {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 4px 12px;
+  font-size: var(--font-caption1);
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--text-on-accent);
+  background: var(--accent);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.welcomeBackDismiss {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.welcomeBackDismiss svg {
+  width: 18px;
+  height: 18px;
+}
+
 /* PWA install banner */
 .installBanner {
   width: 100%;
@@ -894,7 +1020,7 @@ button, [role="tab"], [role="switch"], a {
   min-width: 0;
 }
 .installBannerTitle {
-  font-size: var(--font-subheadline);
+  font-size: var(--font-subhead);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -1291,7 +1417,7 @@ html.modal-open .tabContent {
 /* ─── Mystery theme (Eternal when locked) ────────────────────────── */
 
 .mysteryDot {
-  background: var(--bg-tertiary) !important;
+  background: var(--bg-hover) !important;
   filter: none !important;
   opacity: 1 !important;
   animation: mysteryShimmer 3s ease-in-out infinite;
@@ -1337,7 +1463,7 @@ html.modal-open .tabContent {
   border-top-left-radius: 24px;
   border-top-right-radius: 24px;
   padding: 24px 24px calc(24px + env(safe-area-inset-bottom, 0px));
-  max-height: 70vh;
+  max-height: 70svh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   animation: statsSlideUp 0.3s ease;
@@ -1365,7 +1491,7 @@ html.modal-open .tabContent {
   width: 32px;
   height: 32px;
   border: none;
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
   color: var(--text-secondary);
   border-radius: 50%;
   font-size: 1.25rem;  /* 20px */
@@ -1517,7 +1643,7 @@ html.theme-fading .settingsSheet {
 .badgeProgressBar {
   height: 3px;
   margin: 0 16px 12px;
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -1961,11 +2087,11 @@ html.theme-fading .settingsSheet {
 .exportBtn:active { opacity: 0.6; }
 .exportBtnActive {
   background: var(--accent);
-  color: var(--bg);
+  color: var(--text-on-accent);
 }
 .exportBtnPrimary {
   background: var(--accent);
-  color: var(--bg);
+  color: var(--text-on-accent);
   font-weight: 600;
 }
 
@@ -2007,7 +2133,7 @@ html.theme-fading .settingsSheet {
   font-weight: 500;
   font-family: inherit;
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
@@ -2016,8 +2142,8 @@ html.theme-fading .settingsSheet {
 .devBtn:active { opacity: 0.6; }
 
 .devBtnDanger {
-  color: #ff6b6b;
-  border-color: #ff6b6b33;
+  color: var(--danger);
+  border-color: var(--danger-subtle);
 }
 
 /* ─── Privacy transparency ──────────────────────────────────────────────── */
@@ -2045,6 +2171,14 @@ html.theme-fading .settingsSheet {
   font-size: var(--font-caption1);
   color: var(--text-secondary);
   line-height: 1.3;
+}
+
+.settingsGroupNote {
+  margin: 0;
+  padding: 8px 16px 12px;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  line-height: 1.35;
 }
 
 .settingsSignOut {
@@ -2548,6 +2682,14 @@ html.theme-fading .settingsSheet {
   margin-left: 4px;
   font-size: var(--font-footnote);
   line-height: 1;
+}
+
+.wtTimelineRPE {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
 .wtTimelineE1RM {
@@ -3060,10 +3202,81 @@ html.theme-fading .settingsSheet {
   transition: background 0.15s, color 0.15s;
 }
 
-.wtTagManagerEditBtn:hover { color: var(--accent); background: var(--surface); }
-.wtTagManagerDeleteBtn:hover { color: var(--danger); background: var(--surface); }
+.wtTagManagerEditBtn:hover { color: var(--accent); background: var(--bg-hover); }
+.wtTagManagerDeleteBtn:hover { color: var(--danger); background: var(--bg-hover); }
 .wtTagManagerSaveBtn { color: var(--accent); }
 .wtTagManagerCancelBtn { color: var(--text-secondary); }
+
+/* ─── Exercise manager modal (#1252) ───────────────────────────────────── */
+/*
+  The exercise-first inverse of the gym manager. It reuses that modal's list
+  chrome (.wtTagManagerList / .wtTagManagerItemWrap / .wtTagManagerExpandBtn)
+  and EditExerciseModal's chip chrome (.wtTagPicker / .wtTagPickerChip, already
+  sized to the 44pt floor per #990), so the only new pieces are the two-line
+  row label and the expanded detail block.
+*/
+
+/* Its own tap target, not just the row's: the label sits beside the expand
+   button and both open the same row, so it needs the 44pt floor in its own
+   right — the two text lines plus 4px padding measure 43px unaided. Sized
+   rather than extended with a transparent ::before overlay, per #990: these
+   labels TILE vertically down the list, so an overlay taller than the element
+   would reach into the neighbouring row and a near-miss would expand the wrong
+   exercise instead of doing nothing. min-width: 0 lets the ellipsis rules on
+   its children engage inside the flex row. */
+.wtExManagerLabel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.wtExManagerName {
+  font-weight: 600;
+  font-size: var(--font-subhead);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtExManagerSummary {
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Left padding matches the gym manager's .wtTagExerciseRow indent so an
+   expanded body hangs off its row the same way in both modals. */
+.wtExManagerDetail {
+  padding: 0 0 12px 32px;
+  border-top: 1px solid var(--border);
+}
+
+.wtExManagerSectionLabel {
+  display: block;
+  margin-top: 12px;
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wtExManagerSectionEmpty {
+  display: block;
+  padding: 8px 0 4px;
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
 
 /* ─── Edit exercise modal: tag section ─────────────────────────────────── */
 
@@ -3267,6 +3480,22 @@ html.theme-fading .settingsSheet {
   min-height: 50svh;
 }
 
+/* ─── Exercise note (#619) ─────────────────────────────────────────────── */
+
+.wtDetailNote {
+  margin: 0 16px 12px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: var(--font-footnote);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ─── Set rows ──────────────────────────────────────────────────────────── */
 
 .wtSetList {
@@ -3324,6 +3553,14 @@ html.theme-fading .settingsSheet {
   color: var(--text-primary);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+
+.wtSetRPE {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
 .wtSet1RM {
@@ -3402,6 +3639,27 @@ html.theme-fading .settingsSheet {
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
+}
+
+.wtEditNotesInput {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--font-callout);
+  line-height: 1.4;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.wtEditNotesInput:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .wtEditArchiveBtn {
@@ -3574,7 +3832,7 @@ html.theme-fading .settingsSheet {
 
 .wtEditDeleteConfirmDanger {
   background: var(--danger);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 /* ─── PR History ───────────────────────────────────────────────────────── */
@@ -3832,7 +4090,7 @@ html.theme-fading .settingsSheet {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 96px);
+  max-height: calc(100svh - env(safe-area-inset-top, 0px) - 96px);
   touch-action: auto;
   background: var(--glass-fill, var(--bg-elevated));
   backdrop-filter: blur(32px) saturate(180%);
@@ -3866,8 +4124,8 @@ html.theme-fading .settingsSheet {
   --sheet-pad-x: 20px; /* shared with the sticky action bar's full-bleed margins */
   max-width: 100%;
   width: 100%;
-  height: 88dvh;
-  max-height: 88dvh;
+  height: 88svh;
+  max-height: 88svh;
   padding: 16px var(--sheet-pad-x) calc(24px + env(safe-area-inset-bottom, 0px));
   border-radius: 24px 24px 0 0;
   border-bottom: none;
@@ -4189,6 +4447,51 @@ html.theme-fading .settingsSheet {
   align-items: center;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* ── Exercise database suggestions ───────────────────────────────── */
+.wtExerciseSuggestions {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.wtExerciseSuggestionItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 16px;
+  min-height: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+
+.wtExerciseSuggestionItem + .wtExerciseSuggestionItem {
+  border-top: 1px solid var(--border);
+}
+
+.wtExerciseSuggestionItem:active {
+  background: var(--accent-subtle);
+}
+
+.wtSuggestionName {
+  font-size: var(--font-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.wtSuggestionTags {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wtRepsStepperFull {
@@ -4567,7 +4870,7 @@ html.theme-fading .settingsSheet {
   gap: 4px;
   margin: 0 16px 12px;
   padding: 4px;
-  background: var(--bg-base);
+  background: var(--bg-primary);
   border-radius: 12px;
 }
 
@@ -4673,6 +4976,90 @@ html.theme-fading .settingsSheet {
    loaded). The weight value itself is rendered by the WEIGHT card above
    the plate calc — this card is purely the picker chrome. */
 
+/* RPE selector row (LIFT-617) */
+.wtRPERow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 8px 0;
+  min-height: 36px;
+}
+
+.wtRPEToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-footnote);
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.wtRPEToggle:active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.wtRPELabel {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.wtRPEChips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.wtRPEChips::-webkit-scrollbar { display: none; }
+
+.wtRPEChip {
+  flex-shrink: 0;
+  /* Sized to the 44pt floor rather than overlay-extended: these chips TILE in a
+     row, so an oversized ::before would reach into the neighbour and a near-miss
+     would select the wrong RPE (the #990 tiling rule). */
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: var(--font-footnote);
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.wtRPEChip:active {
+  background: var(--accent-muted, rgba(var(--accent-rgb, 255,215,0), 0.15));
+}
+
+.wtRPEChipActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text, var(--bg-primary));
+  font-weight: 600;
+}
+
 /* Plate calculator first-use hint (LIFT-388) */
 .wtPlateHint {
   display: flex;
@@ -4717,6 +5104,183 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
   margin: -12px -8px -12px 0;
   border-radius: 8px;
+}
+
+/* Explore-path chart-discovery tip (LIFT-1086) — informational banner above
+   the exercise list, nudging new users to open an exercise's progress chart. */
+.wtChartTip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 8px 0 12px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  font-size: 0.8125rem;  /* 13px */
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.wtChartTipIcon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.wtChartTipText {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.wtChartTipDismiss {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.125rem;  /* 18px */
+  cursor: pointer;
+  margin: -12px -8px -12px 0;
+  border-radius: 8px;
+}
+
+/* Guided session plan (#1256) — collapsed "Repeat last session" card above
+   the exercise list; expands into a per-exercise checklist. */
+.wtSessionPlan {
+  margin: 8px 0 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.wtSessionPlanToggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wtSessionPlanIcon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.wtSessionPlanTitleBlock {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wtSessionPlanTitle {
+  font-size: var(--font-callout);
+  font-weight: 600;
+}
+
+.wtSessionPlanMeta {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtSessionPlanChevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--font-title3);
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 160ms ease;
+}
+
+.wtSessionPlanChevron.expanded {
+  transform: rotate(-90deg);
+}
+
+.wtSessionPlanList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+
+.wtSessionPlanItem {
+  border-top: 1px solid var(--border);
+}
+
+.wtSessionPlanRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wtSessionPlanRow:active {
+  background: var(--accent-subtle);
+}
+
+.wtSessionPlanNameBlock {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wtSessionPlanName {
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtSessionPlanRowDone .wtSessionPlanName {
+  color: var(--text-secondary);
+}
+
+.wtSessionPlanRowMeta {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtSessionPlanProgress {
+  flex-shrink: 0;
+  font-family: var(--ff-mono);
+  font-size: var(--font-caption1);
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtSessionPlanCheck {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
 }
 
 .wtPlateCalc {
@@ -4854,7 +5418,7 @@ html.theme-fading .settingsSheet {
 
 .wtPlateCountToggle {
   display: flex;
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -4983,7 +5547,7 @@ html.theme-fading .settingsSheet {
 
 .iosSegmentedControl {
   display: flex;
-  background: var(--bg-base);
+  background: var(--bg-primary);
   border-radius: 8px;
   padding: 2px;
   width: 176px;
@@ -5017,7 +5581,7 @@ html.theme-fading .settingsSheet {
   display: flex;
   align-items: center;
   gap: 0;
-  background: var(--bg-base);
+  background: var(--bg-primary);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -5067,7 +5631,7 @@ html.theme-fading .settingsSheet {
   font-size: var(--font-callout);
   font-weight: 500;
   color: var(--text-primary);
-  background: var(--bg-base);
+  background: var(--bg-primary);
   border: none;
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
@@ -5120,7 +5684,7 @@ html.theme-fading .settingsSheet {
   width: 51px;
   height: 31px;
   border-radius: 16px;
-  background: var(--bg-base);
+  background: var(--bg-primary);
   border: none;
   cursor: pointer;
   transition: background 0.25s;
@@ -5274,7 +5838,7 @@ html.theme-fading .settingsSheet {
 .xpToastProgress {
   height: 3px;
   margin-top: 8px;
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -5316,8 +5880,11 @@ html.theme-fading .settingsSheet {
   margin-bottom: 24px;
 }
 
-.resetConfirmDanger {
-  background: #ff4444 !important;
+/* Scoped to .unlockDismiss so the per-theme --danger token wins on specificity
+   (0,2,0 > 0,1,0) without !important, which the base .unlockDismiss accent
+   background — declared later in the file — would otherwise override. */
+.unlockDismiss.resetConfirmDanger {
+  background: var(--danger);
 }
 
 .resetConfirmCancel {
@@ -5801,7 +6368,7 @@ html.theme-fading .settingsSheet {
 }
 
 .wtTimerEditListScroll {
-  max-height: 35vh;
+  max-height: 35svh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -6655,7 +7222,7 @@ html.theme-fading .settingsSheet {
   min-height: 44px;
   padding: 12px 16px;
   font-size: var(--font-body);
-  color: var(--text);
+  color: var(--text-primary);
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--border);
@@ -6818,6 +7385,27 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
 }
 
+/* Health-export share button in the hero (#1159): icon-only sibling of
+   "+ Log". Self-centered because the hero row baseline-aligns its text. */
+.bwExportBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  align-self: center;
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.bwExportBtn:active { opacity: 0.5; }
+.bwExportBtn:disabled { opacity: 0.4; cursor: default; }
+
 .bwCurrentValue {
   font-size: var(--font-title2);
   font-weight: 700;
@@ -6914,6 +7502,15 @@ html.theme-fading .settingsSheet {
   margin-bottom: 12px;
 }
 
+/* Metric selector inside the exercise progress chart card — reprojects the
+   date series onto e1RM / weight / volume / reps. Mirrors the time-range row
+   and reuses .bwPeriodBtn styling. */
+.exGraphMetricRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .exGraphRangeEmpty {
   font-size: var(--font-caption1);
   color: var(--text-muted);
@@ -6949,7 +7546,7 @@ html.theme-fading .settingsSheet {
 .bwStatValue {
   font-size: var(--font-footnote);
   font-weight: 700;
-  color: var(--text);
+  color: var(--text-primary);
   letter-spacing: -0.3px;
 }
 
@@ -7011,7 +7608,7 @@ html.theme-fading .settingsSheet {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100dvh;
+  min-height: 100svh;
   padding: 32px;
   text-align: center;
   background: var(--bg-primary);
@@ -7046,7 +7643,20 @@ html.theme-fading .settingsSheet {
   word-break: break-word;
 }
 
+.errorBoundaryHint {
+  color: var(--danger);
+  margin-top: -12px;
+}
+
+.errorBoundaryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
 .errorBoundaryBtn {
+  min-height: 44px;
   padding: 12px 32px;
   border-radius: 12px;
   border: none;
@@ -7056,6 +7666,12 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+.errorBoundaryBtnSecondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
 }
 
 /* ─── Undo toast ─────────────────────────────────────────────────────── */
@@ -7270,7 +7886,7 @@ html.theme-fading .settingsSheet {
   padding: 24px 32px;
   width: 100%;
   max-width: 480px;
-  max-height: 80vh;
+  max-height: 80svh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;

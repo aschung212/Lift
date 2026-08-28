@@ -36,6 +36,19 @@ describe('todayISO', () => {
     vi.setSystemTime(new Date(2026, 0, 5, 12, 0, 0))
     expect(todayISO()).toBe('2026-01-05')
   })
+
+  it('returns TODAY (not UTC yesterday) on a UTC+ morning — the SettingsSheet PR-baseline :max cap (LIFT-1222)', () => {
+    // 07:00 Tokyo (UTC+9) on June 10 is still 22:00 UTC on June 9. The old
+    // `:max="new Date().toISOString().slice(0,10)"` capped the "Evaluate PRs
+    // since" date input at the UTC day (June 9), so a Tokyo user could not
+    // select TODAY. todayISO() must return the local day so today stays valid.
+    withTZ('Asia/Tokyo', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-06-09T22:00:00Z'))
+      expect(new Date().toISOString().slice(0, 10)).toBe('2026-06-09') // the buggy cap
+      expect(todayISO()).toBe('2026-06-10') // the local day the input must allow
+    })
+  })
 })
 
 describe('localDateKey', () => {

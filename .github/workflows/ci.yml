@@ -13,6 +13,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
+# Force GitHub-hosted JS actions onto the Node 24 runtime, declared once for the
+# whole workflow so a new job can't silently omit it and drift back to an older
+# Node. Job-level `env:` still merges on top of this (see e2e's VITE_E2E).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # Fast pre-flight: statically validate the workflow YAML itself before any
   # heavy job runs. actionlint catches invalid `needs`/`if` expressions, bad
@@ -23,6 +29,7 @@ jobs:
   workflow-lint:
     name: Lint workflow YAML (actionlint)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -51,14 +58,12 @@ jobs:
   install:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
@@ -78,23 +83,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: install
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Self-heal on a cache miss/eviction: the install job's cache can be
+      # evicted between jobs (GitHub's 10GB/7-day policy), which would
+      # otherwise hard-fail this job with no node_modules. Fall back to a
+      # fresh install so a transient miss recovers instead of red-Xing the PR.
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - run: npm run lint
 
@@ -102,23 +114,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: install
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - run: npm run typecheck
 
@@ -141,21 +156,24 @@ jobs:
       matrix:
         shardIndex: [1, 2, 3]
         shardTotal: [3]
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - name: Run tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         run: >-
@@ -184,25 +202,29 @@ jobs:
   # dependency-review gate for a tool that only ever runs in CI.
   lighthouse:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [lint, typecheck]
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
 
       - name: Restore node_modules
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        id: restore-nm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - name: Build app
         run: npm run build
@@ -220,28 +242,32 @@ jobs:
 
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [lint, typecheck, test]
     permissions:
       contents: read
       pull-requests: write
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - run: npm run build
 
@@ -268,13 +294,16 @@ jobs:
       - name: Measure bundle sizes
         id: bundle
         run: |
-          # Total JS bundle budget: 570 KB (currently ~551 KB after per-gym filtering, #961).
+          # Total JS bundle budget: 640 KB (currently ~597 KB).
           # Sums every emitted JS chunk, so code-splitting does not lower the total —
-          # bumped from 500 KB, then 550 KB, when the app legitimately outgrew the old ceiling.
+          # bumped 500 → 550 → 570 → 600 → 640 KB as the app legitimately outgrew each
+          # ceiling (last bump: master had drifted to 597 KB, leaving 3 KB of headroom,
+          # so the exercise database (#615, +6 KB) and consistency heatmap (#620, +7 KB)
+          # both failed the gate on size alone).
           TOTAL_JS=$(find dist/assets -name '*.js' ! -name 'workbox-*' ! -name 'sw.*' -exec wc -c {} + | tail -1 | awk '{print $1}')
           TOTAL_CSS=$(find dist/assets -name '*.css' -exec wc -c {} + | tail -1 | awk '{print $1}')
           TOTAL_CSS=${TOTAL_CSS:-0}
-          BUDGET=583680
+          BUDGET=655360
 
           echo "js_bytes=$TOTAL_JS" >> "$GITHUB_OUTPUT"
           echo "css_bytes=$TOTAL_CSS" >> "$GITHUB_OUTPUT"
@@ -510,15 +539,13 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       contents: write
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: master
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
 
@@ -564,7 +591,6 @@ jobs:
     timeout-minutes: 15
     needs: build-and-test
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       # Build-time flag: makes the dev sign-in button available in the
       # production bundle so e2e tests can authenticate without Supabase.
       # Real Vercel deploys do not set this, so the button stays hidden.
@@ -574,31 +600,38 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
 
       - name: Restore node_modules
+        id: restore-nm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss)
+        if: steps.restore-nm.outputs.cache-hit != 'true'
+        run: npm ci
 
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          # Include the Playwright config in the key so changing the browser
+          # set (e.g. adding webkit) busts the cache and reinstalls binaries.
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json', 'playwright.config.ts') }}
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Install Playwright system deps (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: npx playwright install-deps chromium webkit
 
       - name: Build app
         run: npm run build

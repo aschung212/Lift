@@ -130,6 +130,58 @@
       {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
+    <!-- Guided session plan (#1256): the last session in the current scope
+         (gym + tags) as a day-level checklist. History is the template — no
+         authoring surface. Rows open the existing log modal, where the
+         routine lens / ghost-arm flow takes over. Hidden while searching. -->
+    <section v-if="sessionPlan && !searchQuery" class="wtSessionPlan" aria-label="Session plan">
+      <button
+        class="wtSessionPlanToggle"
+        :aria-expanded="sessionPlanExpanded"
+        :aria-controls="sessionPlanListId"
+        @click="toggleSessionPlan"
+      >
+        <svg class="wtSessionPlanIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+        <span class="wtSessionPlanTitleBlock">
+          <span class="wtSessionPlanTitle">{{ sessionPlanLabel }}</span>
+          <span class="wtSessionPlanMeta">
+            <template v-if="sessionPlan.doneTotal > 0">{{ sessionPlan.doneTotal }}/{{ sessionPlan.plannedTotal }} sets · {{ sessionPlanDayLabel }}</template>
+            <template v-else>{{ sessionPlan.items.length }} {{ sessionPlan.items.length === 1 ? 'exercise' : 'exercises' }} · {{ sessionPlan.plannedTotal }} {{ sessionPlan.plannedTotal === 1 ? 'set' : 'sets' }} · {{ sessionPlanDayLabel }}</template>
+          </span>
+        </span>
+        <span class="wtSessionPlanChevron" :class="{ expanded: sessionPlanExpanded }" aria-hidden="true">›</span>
+      </button>
+      <ul v-if="sessionPlanExpanded" :id="sessionPlanListId" class="wtSessionPlanList">
+        <li v-for="item in sessionPlan.items" :key="item.exerciseId" class="wtSessionPlanItem">
+          <button
+            :class="['wtSessionPlanRow', { wtSessionPlanRowDone: item.doneSets >= item.plannedSets }]"
+            @click="logFromSessionPlan(item.exerciseId)"
+            :aria-label="`${item.name}, ${Math.min(item.doneSets, item.plannedSets)} of ${item.plannedSets} sets done. Log a set.`"
+          >
+            <span class="wtSessionPlanNameBlock">
+              <span class="wtSessionPlanName">{{ item.name }}</span>
+              <span class="wtSessionPlanRowMeta">
+                {{ item.plannedSets }} {{ item.plannedSets === 1 ? 'set' : 'sets' }}<template v-if="item.topSet"> · top {{ displayWeight(item.topSet.weightLbs) }} {{ weightUnit }} × {{ item.topSet.reps }}</template>
+              </span>
+            </span>
+            <span v-if="item.doneSets >= item.plannedSets" class="wtSessionPlanCheck" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            </span>
+            <span v-else class="wtSessionPlanProgress" aria-hidden="true">{{ item.doneSets }}/{{ item.plannedSets }}</span>
+          </button>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Explore-path one-time tip: point new users at the payoff charts
+         they'd otherwise miss (the sample journey is only demonstrative if
+         they open an exercise). Shown only while sample data is present. (LIFT-1086) -->
+    <div v-if="showChartTip" class="wtChartTip" role="note">
+      <svg class="wtChartTipIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+      <span class="wtChartTipText">Tap any exercise to see its progress chart</span>
+      <button class="wtChartTipDismiss" @click="dismissChartTip" aria-label="Dismiss tip">×</button>
+    </div>
+
     <ul v-if="filteredExercises.length > 0" class="wtExerciseList">
       <li
         v-for="exercise in filteredExercises"
@@ -145,7 +197,7 @@
             <div class="wtExerciseNameBlock">
               <div class="wtExerciseTopLine">
                 <span class="wtExerciseName">{{ exercise.name }}</span>
-                <span v-if="getRowMeta(exercise.id).isNewPRBadge" class="wtExerciseNewPR">
+                <span v-if="rowMetaByExercise[exercise.id]?.isNewPRBadge" class="wtExerciseNewPR">
                   <span class="wtExerciseNewPRIcon" aria-hidden="true">🏆</span>
                   <span>NEW PR</span>
                 </span>
@@ -156,10 +208,10 @@
                   :key="tag"
                   class="wtExerciseTag"
                 >{{ tag }}</span>
-                <span v-if="getRowMeta(exercise.id).lastSet" class="wtExerciseStat">
-                  · {{ displayWeight(getRowMeta(exercise.id).lastSet!.weight) }} {{ weightUnit }}
-                  × {{ getRowMeta(exercise.id).lastSet!.reps }}
-                  · {{ getRowMeta(exercise.id).timeAgo }}
+                <span v-if="rowMetaByExercise[exercise.id]?.lastSet" class="wtExerciseStat">
+                  · {{ displayWeight(rowMetaByExercise[exercise.id]!.lastSet!.weight) }} {{ weightUnit }}
+                  × {{ rowMetaByExercise[exercise.id]!.lastSet!.reps }}
+                  · {{ rowMetaByExercise[exercise.id]!.timeAgo }}
                 </span>
                 <span v-else class="wtExerciseStat wtExerciseStatEmpty">· No sets yet</span>
               </div>
@@ -269,6 +321,11 @@
             </button>
           </div>
 
+          <!-- Screen-reader confirmation of the last saved/edited set (#1148).
+               The modal stays open with cleared fields after a save, so this
+               polite live region is the only save feedback a blind user gets. -->
+          <span class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ setLogAnnouncement }}</span>
+
           <!-- New exercise mode: name + tags input -->
           <template v-if="!isEditMode && selectedExerciseId === '__new__'">
             <label class="repMaxLabel">
@@ -283,6 +340,21 @@
                   autocomplete="off"
                 />
               </div>
+              <ul v-if="exerciseSuggestions.length > 0" class="wtExerciseSuggestions" role="listbox" aria-label="Exercise suggestions">
+                <li
+                  v-for="entry in exerciseSuggestions"
+                  :key="entry.name"
+                  class="wtExerciseSuggestionItem"
+                  role="option"
+                  :aria-selected="false"
+                  tabindex="-1"
+                  @mousedown.prevent="selectExerciseSuggestion(entry)"
+                  @touchstart.prevent="selectExerciseSuggestion(entry)"
+                >
+                  <span class="wtSuggestionName">{{ entry.name }}</span>
+                  <span class="wtSuggestionTags">{{ entry.tags.join(' · ') }}</span>
+                </li>
+              </ul>
             </label>
             <div class="repMaxLabel">
               Tags
@@ -667,6 +739,35 @@
             </div>
           </div>
 
+          <!-- RPE selector (optional, progressive disclosure) -->
+          <div class="wtRPERow">
+            <button
+              v-if="selectedRPE === null"
+              type="button"
+              class="wtRPEToggle"
+              @click="selectedRPE = 7"
+              aria-label="Add RPE rating"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+              <span>RPE</span>
+            </button>
+            <template v-else>
+              <span class="wtRPELabel">RPE</span>
+              <div class="wtRPEChips" role="radiogroup" aria-label="Rate of Perceived Exertion">
+                <button
+                  v-for="v in RPE_VALUES"
+                  :key="v"
+                  type="button"
+                  :class="['wtRPEChip', { wtRPEChipActive: selectedRPE === v }]"
+                  role="radio"
+                  :aria-checked="selectedRPE === v"
+                  :aria-label="`RPE ${v}`"
+                  @click="selectedRPE = selectedRPE === v ? null : v"
+                >{{ Number.isInteger(v) ? v : v.toFixed(1) }}</button>
+              </div>
+            </template>
+          </div>
+
           <!-- One-time hint: plate calculator discoverability (LIFT-388) -->
           <div
             v-if="showPlateHint"
@@ -749,7 +850,7 @@
     @create-tag="store.addCustomTag"
     @rename-tag="onRenameTag"
     @delete-tag="confirmDeleteTag"
-    @toggle-exercise-tag="toggleExerciseTag"
+    @toggle-exercise-tag="store.toggleExerciseTag"
   />
 
   <!-- Gym Manager Modal (#961) — create/rename/delete gyms + bulk membership -->
@@ -796,6 +897,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { buildSessionSummary } from '../lib/sessionSummary'
+import { buildSessionPlan } from '../lib/sessionPlan'
 import { todayISO, localDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
@@ -808,7 +910,7 @@ import { useRestTimer } from '../composables/useRestTimer'
 import { useRestTimerController } from '../composables/useRestTimerController'
 import { useUndoToast } from '../composables/useUndoToast'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
-import { useFocusTrap } from '../composables/useFocusTrap'
+import { useModal } from '../composables/useModal'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { usePRBurst } from '../composables/usePRBurst'
@@ -862,6 +964,8 @@ const timerCtrl = useRestTimerController(
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
 import { usePreferencesStore } from '../stores/preferences'
+import { searchExerciseDatabase } from '../lib/exerciseDatabase'
+import type { ExerciseEntry } from '../lib/exerciseDatabase'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
 
@@ -985,6 +1089,20 @@ watch(allGyms, (gyms) => {
 // ── Search & tag filtering ──────────────────────────────────────
 const searchQuery = ref('')
 const activeTagFilters = ref<string[]>([])
+
+/**
+ * Screen-reader confirmation for the set-save path (#1148, WCAG 2.2 SC 4.1.3
+ * Status Messages). The log-set modal stays open with cleared fields after a
+ * save, so a sighted user sees the freshly-emptied form as feedback, but a
+ * blind user gets nothing — no toast, no focus move, no announcement. This
+ * string feeds a persistent polite live region inside the modal; `announceSet`
+ * sets it (clearing first so an identical re-log still re-fires the region).
+ */
+const setLogAnnouncement = ref('')
+function announceSet(message: string) {
+  setLogAnnouncement.value = ''
+  nextTick(() => { setLogAnnouncement.value = message })
+}
 
 /**
  * Tag chips visible in the filter row. When the user is searching we narrow
@@ -1121,20 +1239,64 @@ const isFilteringActive = computed(() =>
   activeTagFilters.value.length > 0 || searchQuery.value.trim() !== '' || effectiveGymFilter.value !== null
 )
 
+// ── Guided session plan (#1256) ─────────────────────────────────
+/**
+ * Scope for the "repeat last session" plan: gym + tag filtered, WITHOUT the
+ * search query and WITHOUT the recency sort. Search means "find one specific
+ * exercise" (the card hides there), and the today-inclusive recency sort
+ * reshuffles as sets land — a just-logged exercise would jump to the top of
+ * the plan mid-workout. Store order is stable, so rows stay put.
+ */
+const planScopeExercises = computed(() => {
+  const result = gymFilteredExercises.value
+  if (activeTagFilters.value.length === 0) return result
+  return result.filter(e => {
+    const tags = e.tags || []
+    return activeTagFilters.value.some(t => tags.includes(t))
+  })
+})
+
+const sessionPlan = computed(() => buildSessionPlan(planScopeExercises.value, todayISO()))
+
+const sessionPlanExpanded = ref(false)
+const sessionPlanListId = 'wt-session-plan-list'
+
+/** "Repeat last Push session" when exactly one tag filter narrows the scope. */
+const sessionPlanLabel = computed(() =>
+  activeTagFilters.value.length === 1
+    ? `Repeat last ${activeTagFilters.value[0]} session`
+    : 'Repeat last session'
+)
+
+/** Reference day, formatted via local midnight (a bare YYYY-MM-DD in
+ *  `new Date` parses as UTC and renders yesterday for US timezones). */
+const sessionPlanDayLabel = computed(() => {
+  const plan = sessionPlan.value
+  if (!plan) return ''
+  return new Date(plan.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+})
+
+function toggleSessionPlan() {
+  sessionPlanExpanded.value = !sessionPlanExpanded.value
+  if (sessionPlanExpanded.value) {
+    logEvent('session_plan_expanded', { exercises: sessionPlan.value?.items.length ?? 0 })
+  }
+}
+
+function logFromSessionPlan(exerciseId: string) {
+  logEvent('session_plan_item_tapped', {})
+  openLogForExercise(exerciseId)
+}
+
 /** Total exercise count, shown in the "Workouts" header stats. */
 const totalExercises = computed(() => store.activeExercises.length)
 
-/** Sets logged on the local "today" date — drives the Finish workout affordance. */
-const setsLoggedToday = computed(() => {
-  const today = todayISO()
-  let count = 0
-  for (const ex of store.exercises) {
-    for (const s of ex.sets) {
-      if (setDayKey(s.date) === today) count++
-    }
-  }
-  return count
-})
+/**
+ * Sets logged on the local "today" date — drives the Finish workout affordance.
+ * Reads the store's sets-per-day index rather than rescanning every set on each
+ * `triggerRef(exercises)`, i.e. on every logged set (LIFT-1237).
+ */
+const setsLoggedToday = computed(() => store.setsLoggedOn(todayISO()))
 
 /** When non-null, renders the WorkoutCompleteView overlay for that date. */
 const workoutCompleteDate = ref<string | null>(null)
@@ -1236,11 +1398,10 @@ interface ExerciseRowMeta {
   isNewPRBadge: boolean
 }
 
-function getRowMeta(exerciseId: string): ExerciseRowMeta {
-  const ex = store.exercises.find(e => e.id === exerciseId)
-  if (!ex || ex.sets.length === 0) return { lastSet: null, timeAgo: null, isNewPRBadge: false }
+function computeRowMeta(ex: Exercise): ExerciseRowMeta {
+  if (ex.sets.length === 0) return { lastSet: null, timeAgo: null, isNewPRBadge: false }
   const last = ex.sets[ex.sets.length - 1]
-  const prSet = store.getExercisePRSet(exerciseId, prBaselineDate.value)
+  const prSet = store.getExercisePRSet(ex.id, prBaselineDate.value)
   const isFreshPR = !!prSet && (Date.now() - new Date(prSet.date).getTime()) < 7 * 86400000
   return {
     lastSet: { weight: last.weight, reps: last.reps, date: last.date },
@@ -1249,6 +1410,22 @@ function getRowMeta(exerciseId: string): ExerciseRowMeta {
   }
 }
 
+/**
+ * Per-row meta for every visible exercise, computed once per render pass and
+ * keyed by id (#1112). The template reads each row's meta up to 5× (badge, last
+ * set weight/reps, time-ago); computing it here — instead of calling a helper
+ * per template binding — collapses the per-row `getExercisePRSet` + date math
+ * from 5 invocations down to 1. Recomputes only when the visible list, the PR
+ * baseline, or a set changes (all reactive deps below).
+ */
+const rowMetaByExercise = computed<Record<string, ExerciseRowMeta>>(() => {
+  const map: Record<string, ExerciseRowMeta> = {}
+  for (const ex of filteredExercises.value) {
+    map[ex.id] = computeRowMeta(ex)
+  }
+  return map
+})
+
 // Remove stale tags from active filters
 watch(() => store.allTags, (tags) => {
   activeTagFilters.value = activeTagFilters.value.filter(t => tags.includes(t))
@@ -1256,8 +1433,6 @@ watch(() => store.allTags, (tags) => {
 
 // ── Exercise detail modal (extracted to ExerciseDetailModal.vue) ──
 const detailExerciseId = ref<string | null>(null)
-
-const logModalFocus = useFocusTrap()
 
 // ── Swipe-to-dismiss for log-set sheet (step 5f) ────────────────
 // Drag the handle (or the sheet body, when not scrolled) down past
@@ -1271,6 +1446,9 @@ const logSwipe = useSwipeToDismiss({
 })
 
 function openDetailModal(id: string) {
+  // Opening any exercise is exactly the action the explore-path chart tip
+  // encourages, so retire it once the user has done so (LIFT-1086).
+  if (hasSampleData.value && !chartTipDismissed.value) dismissChartTip()
   detailExerciseId.value = id
 }
 
@@ -1468,7 +1646,8 @@ const ladderLabel = computed(() => {
 
 function fillFromRung(rung: UsualLadderRung) {
   if (plateMode.value) {
-    const plates = weightToPlates(rung.weightLbs, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    // Rung weights are canonical lbs; the plate layer works in display units.
+    const plates = weightToPlates(displayWeight(rung.weightLbs), currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
     if (plates) {
       currentPlates.value = plates
       syncPlateWeight()
@@ -1687,7 +1866,8 @@ function acceptOverloadNudge() {
   const n = overloadNudge.value
   if (!n) return
   if (plateMode.value) {
-    const plates = weightToPlates(toLbs(n.displayWeight), currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    // n.displayWeight is already display units — decompose it directly.
+    const plates = weightToPlates(n.displayWeight, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
     if (plates) {
       currentPlates.value = plates
       syncPlateWeight()
@@ -1744,6 +1924,28 @@ function openSettingsFromHint() {
   if (ex) openEditExerciseModal(ex)
 }
 
+// ── Explore-path chart-discovery tip (LIFT-1086) ────────────────
+// The "Explore first" onboarding path seeds a rich sample journey, but the
+// only cue a new user sees frames the data as something to delete. Nudge them
+// to open an exercise and view its progress chart — the demonstrative payoff.
+// Gated on the sample-data flag so it never appears for real users, and shown
+// once (dismissed on the first exercise open or via the × button).
+const CHART_TIP_KEY = 'explore-chart-tip-dismissed'
+const chartTipDismissed = ref(!!localStorage.getItem(CHART_TIP_KEY))
+const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
+
+const showChartTip = computed(() =>
+  hasSampleData.value &&
+  !chartTipDismissed.value &&
+  listView.value === 'exercises' &&
+  filteredExercises.value.length > 0
+)
+
+function dismissChartTip() {
+  chartTipDismissed.value = true
+  localStorage.setItem(CHART_TIP_KEY, 'true')
+}
+
 function adjustReps(delta: number) {
   const current = reps.value ?? 0
   const next = Math.max(0, Math.min(MAX_REPS, current + delta))
@@ -1766,13 +1968,14 @@ const weightHasValue = computed(() => weightStr.value.trim().length > 0)
 
 function loadPRTarget() {
   if (!prTargetWeight.value) return
-  const targetLbs = toLbs(prTargetWeight.value)
+  // prTargetWeight is display units, same space as the denoms and bar (LIFT-1211).
+  const target = prTargetWeight.value
   const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
   const barWt = currentBarWeight.value
   // Smallest weight increment: smallest plate × 2 for per-side, × 1 for total
   const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
   // Round up to nearest achievable weight above bar
-  const plateWeight = targetLbs - barWt
+  const plateWeight = target - barWt
   if (plateWeight <= 0) {
     currentPlates.value = []
     syncPlateWeight()
@@ -1795,8 +1998,8 @@ function loadPRTargetReps() {
 const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   if (ex?.barWeight !== undefined) return ex.barWeight
-  // Default: 45 for per-side (barbell), 0 for total (machine)
-  return isPerSide.value ? 45 : 0
+  // Default: standard bar for per-side (45 lbs / 20 kg), 0 for total (machine)
+  return isPerSide.value ? defaultBarWeight() : 0
 })
 
 const isPerSide = computed(() => {
@@ -1818,7 +2021,15 @@ const plateCounts = computed(() => {
   return counts
 })
 
-const plateWeightLbs = computed(() => {
+// Total shown by the plate card, in the user's DISPLAY unit. The whole plate
+// subsystem — denominations (KG_PLATES/LBS_PLATES), ex.barWeight, and this
+// total — operates in display units: kg users stack kg plates on a kg bar.
+// Canonical-lbs values cross the boundary only via displayWeight() on the way
+// in (ladder rungs) and toLbs() at set-save time. LIFT-1211: this computed was
+// named plateWeightLbs and fed through displayWeight(), which multiplied kg
+// users' already-kg totals by 0.4536 — every plate-mode set they logged was
+// silently corrupted.
+const plateWeightDisplay = computed(() => {
   if (isPerSide.value) {
     return platesToWeight(currentPlates.value, currentBarWeight.value)
   }
@@ -1828,7 +2039,7 @@ const plateWeightLbs = computed(() => {
 
 function syncPlateWeight() {
   _plateSync = true
-  weight.value = displayWeight(plateWeightLbs.value)
+  weight.value = plateWeightDisplay.value
   nextTick(() => { _plateSync = false })
 }
 
@@ -1842,9 +2053,11 @@ function syncPlatesFromWeight() {
     currentPlates.value = []
     return
   }
-  const lbs = toLbs(w)
+  // w is already in display units — the same space as the denominations and
+  // bar weight. Converting it to lbs here (pre-LIFT-1211) decomposed an lbs
+  // total against kg plates for kg users.
   const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-  const plates = weightToPlates(lbs, currentBarWeight.value, denoms)
+  const plates = weightToPlates(w, currentBarWeight.value, denoms)
   currentPlates.value = plates || []
 }
 
@@ -1871,7 +2084,33 @@ const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
 const newExercisePlateMode = ref(false)
 const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
-const newExerciseBarWeight = ref(45)
+/** Default bar in the user's display unit: 20 kg / 45 lbs (LIFT-1211). */
+function defaultBarWeight(): number {
+  return weightUnit.value === 'kg' ? 20 : 45
+}
+const newExerciseBarWeight = ref(defaultBarWeight())
+
+// ── Exercise database suggestions ──────────────────────────────
+const exerciseSuggestions = computed(() =>
+  searchExerciseDatabase(
+    newExerciseName.value,
+    store.exercises.map(e => e.name),
+  ),
+)
+
+function selectExerciseSuggestion(entry: ExerciseEntry) {
+  newExerciseName.value = entry.name
+  newExerciseTags.value = [...entry.tags]
+  if (entry.inputMode === 'plates') {
+    newExercisePlateMode.value = true
+    // Database bar weights are lbs figures, but the stepper edits display
+    // units and rounds to whole numbers (LIFT-1211), so convert and round:
+    // the 45 lb standard bar lands on 20 kg, matching defaultBarWeight().
+    newExerciseBarWeight.value = entry.barWeight === undefined
+      ? defaultBarWeight()
+      : Math.round(displayWeight(entry.barWeight))
+  }
+}
 const newBarWeightEditing = ref(false)
 const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
@@ -1897,6 +2136,8 @@ watch(weightStr, () => {
 })
 
 const date = ref(todayISO())
+const selectedRPE = ref<number | null>(null)
+const RPE_VALUES = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10] as const
 // Remembers the last date the user manually set when logging, so the modal
 // re-opens to that date rather than always resetting to today.
 const lastLogDate = ref(todayISO())
@@ -1962,7 +2203,7 @@ function openNewExerciseModal() {
   newGymAdding.value = false
   newExercisePlateMode.value = false
   newExercisePlateCountMode.value = 'per-side'
-  newExerciseBarWeight.value = 45
+  newExerciseBarWeight.value = defaultBarWeight()
   date.value = lastLogDate.value
   showModal.value = true
 }
@@ -2079,6 +2320,7 @@ function pickNewExerciseFromPicker() {
 function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
+  selectedRPE.value = null
   lastSessionUsed.value = {}
   intensityUsed.value = {}
   intensityPct.value = INTENSITY_DEFAULT_PCT
@@ -2120,6 +2362,7 @@ function openEditModal(exercise: Exercise, set: WorkoutSet) {
   date.value = setDayKey(set.date)
   weight.value = displayWeight(set.weight)
   reps.value = set.reps
+  selectedRPE.value = set.rpe ?? null
   showModal.value = true
 }
 
@@ -2131,6 +2374,7 @@ function closeModal() {
   }
   showModal.value = false
   timerCtrl.editingPresets.value = false
+  setLogAnnouncement.value = ''
   editingSet.value = null
   selectedExerciseId.value = ''
   newExerciseName.value = ''
@@ -2142,6 +2386,7 @@ function closeModal() {
   newGymAdding.value = false
   weight.value = null
   reps.value = null
+  selectedRPE.value = null
   date.value = todayISO()
   plateNumpadOverride.value = false
   suggestionsExpanded.value = false
@@ -2394,8 +2639,9 @@ function saveSet() {
   if (isEditMode.value && editingSet.value && weight.value !== null && reps.value !== null) {
     const editExId = editingSet.value.exerciseId
     const editSetId = editingSet.value.setId
-    store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value)
+    store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value, selectedRPE.value)
     logEvent('set_edit')
+    announceSet(`Set updated: ${displayWeight(toLbs(weight.value))} ${weightUnit.value} × ${reps.value} rep${reps.value === 1 ? '' : 's'}`)
     // Recalc XP for the edited set
     if (progressionStore.progressionEnabled) {
       const ex = store.exercises.find(e => e.id === editExId)
@@ -2446,7 +2692,7 @@ function saveSet() {
       newGymAdding.value = false
       newExercisePlateMode.value = false
       newExercisePlateCountMode.value = 'per-side'
-      newExerciseBarWeight.value = 45
+      newExerciseBarWeight.value = defaultBarWeight()
       logEvent('exercise_add')
     }
     const typedSet = hasSetData.value && weight.value !== null && reps.value !== null
@@ -2475,9 +2721,10 @@ function saveSet() {
         !wasPR &&
         localStorage.getItem(FIRST_SET_FLAG) !== 'true' &&
         store.exercises.every(e => e.sets.length === 0)
-      store.logSet(exerciseId, effWeightLbs, effReps, date.value)
+      store.logSet(exerciseId, effWeightLbs, effReps, date.value, { rpe: selectedRPE.value ?? undefined })
       recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
+      announceSet(`Logged ${selectedExerciseName.value}: ${displayWeight(effWeightLbs)} ${weightUnit.value} × ${effReps} rep${effReps === 1 ? '' : 's'}${wasPR ? ', new personal record' : ''}`)
       // XP: get the just-logged set (last in array) and compute XP
       const exercise = store.exercises.find(e => e.id === exerciseId)
       if (exercise && exercise.sets.length > 0) {
@@ -2538,6 +2785,7 @@ function saveSet() {
       }
       // Clear fields and stay on the modal for the next set
       plateNumpadOverride.value = false
+      selectedRPE.value = null
       if (plateMode.value) {
         // Keep plate config for next set (user adjusts, not reloads)
         previousPlates.value = [...currentPlates.value]
@@ -2644,6 +2892,8 @@ function onEditExerciseSave(payload: EditExerciseSave) {
   store.setExerciseIntensityMaxReps(editTarget.value, payload.intensityMaxReps)
   store.setExerciseEquipment(editTarget.value, payload.equipment)
   store.setExerciseGyms(editTarget.value, payload.gyms)
+  store.setExerciseNotes(editTarget.value, payload.notes)
+  store.setExerciseBodyweightLoaded(editTarget.value, payload.bodyweightLoaded)
   editTarget.value = null
   // When switching to plate mode, reverse-sync the current weight into
   // plates so the user's entered value is preserved (LIFT-388 review fix).
@@ -2667,16 +2917,6 @@ const tagManagerOpen = ref(false)
 
 function openTagManager() {
   tagManagerOpen.value = true
-}
-
-function toggleExerciseTag(exerciseId: string, tag: string) {
-  const exercise = store.exercises.find(e => e.id === exerciseId)
-  if (!exercise) return
-  const has = exercise.tags.includes(tag)
-  const newTags = has
-    ? exercise.tags.filter(t => t !== tag)
-    : [...exercise.tags, tag]
-  store.updateExerciseTags(exerciseId, newTags)
 }
 
 function onRenameTag(oldName: string, newName: string) {
@@ -2723,34 +2963,63 @@ function onRenameGym(oldName: string, newName: string) {
 }
 
 
-// ── Focus traps for v-if modals ─────────────────────────────────
-watch(showModal, async (open) => {
-  if (open) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('.repMaxModal')
-    if (el) logModalFocus.activate(el)
+// ── Modal lifecycle: useModal owns the lock + focus trap ────────
+//
+// Two instances, each contributing at most 1 to useModal's shared
+// reference count:
+//
+//   • logModal       — the log-set sheet: background-scroll lock, focus trap
+//                      (`.repMaxModal`), and the swipe-to-dismiss gesture.
+//   • childModalLock — the four prop-driven child modals (detail / edit /
+//                      tag manager / gym manager). They run their own focus
+//                      traps internally but hold no lock of their own, so
+//                      this instance takes one on their behalf.
+//
+// This replaced a hand-rolled `classList.toggle('modal-open', open)` watch.
+// A boolean toggle is wrong the moment ANY other surface can hold the lock:
+// closing a WorkoutTracker modal while, say, CalendarView's set editor was
+// open stripped `modal-open` out from under it, re-enabling background
+// scroll beneath a `position: fixed` modal. That is not cosmetic — once the
+// iOS keyboard opens, the visual viewport shifts but the still-scrollable
+// layout viewport does not, so paint desyncs from hit-testing and taps land
+// a row low (#830). Only the reference count in useModal knows when the
+// LAST holder has released.
+//
+// The focus trap deliberately does NOT pass `focusContainer` — that matches
+// the behaviour this replaced (`logModalFocus.activate(el)` with no options),
+// where the sheet's first focusable is the header history button, or the
+// name field in new-exercise mode.
+const logModal = useModal({
+  selector: '.repMaxModal',
+  onOpen: () => {
     // Attach swipe-to-dismiss gesture to the log-set sheet (step 5f).
     // The handle gets touch events so the gesture doesn't compete with
     // native scroll inside the sheet body.
     if (logSheetEl.value && logSheetHandleEl.value) {
       logSwipe.attach(logSheetEl.value, logSheetHandleEl.value)
     }
-  } else {
-    logModalFocus.deactivate()
-    logSwipe.detach()
-  }
+  },
+  onClose: () => { logSwipe.detach() },
+})
+watch(showModal, (open) => {
+  if (open) logModal.open()
+  else logModal.close()
 })
 
-// ── Lock background scroll when any modal is open (iOS) ────────
+const childModalLock = useModal()
 watch(
-  () => showModal.value || !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value || gymManagerOpen.value,
-  (open) => { document.documentElement.classList.toggle('modal-open', open) },
+  () => !!detailExerciseId.value || editTarget.value !== null || tagManagerOpen.value || gymManagerOpen.value,
+  (open) => {
+    if (open) childModalLock.open()
+    else childModalLock.close()
+  },
 )
+
 onUnmounted(() => {
   timerCtrl.stopTimer()
   clearTimeout(_xpPreviewTimer)
   if (_plateSyncTimer) clearTimeout(_plateSyncTimer)
-  document.documentElement.classList.remove('modal-open')
+  // The scroll lock is released by useModal's own onUnmounted safety net.
 })
 
 // openNewExerciseModal is exposed so App.vue's top-bar "+" can open the
