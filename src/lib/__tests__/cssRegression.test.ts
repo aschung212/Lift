@@ -36,6 +36,31 @@ function getVueStyleBlock(componentPath: string): string {
 }
 
 describe('CSS regression tests', () => {
+  describe('viewport-height unit convention (LIFT-1099)', () => {
+    // Full-height/max-height surfaces must all use `svh` (smallest viewport
+    // height). svh always fits regardless of browser-chrome state, so a nested
+    // surface can never exceed the 100svh #app shell and get clipped, nor jump
+    // when the URL bar collapses. `dvh`/`lvh`/bare `vh` are larger and are the
+    // exact overflow risk this convention forbids. Any `<number>vh` token in a
+    // property value must be prefixed with `s` (i.e. `svh`).
+    it('uses only svh for every viewport-height value', () => {
+      // Match a numeric length followed by an optional s/d/l prefix and `vh`
+      // (svh, dvh, lvh, or bare vh — all forbidden except svh).
+      const matches = css.match(/\d+(?:\.\d+)?(?:s|d|l)?vh\b/g) ?? []
+      expect(matches.length, 'expected viewport-height units to exist').toBeGreaterThan(0)
+      const offenders = matches.filter(m => !/svh\b/.test(m))
+      expect(
+        offenders,
+        `non-svh viewport-height units found (use svh — see LIFT-1099): ${offenders.join(', ')}`
+      ).toEqual([])
+    })
+
+    it('sizes the #app shell in svh', () => {
+      const lines = getRuleLines('#app')
+      expect(lines.some(l => l.startsWith('height: 100svh'))).toBe(true)
+    })
+  })
+
   describe('.tabContent base rule', () => {
     const lines = getRuleLines('.tabContent')
 
@@ -102,6 +127,30 @@ describe('CSS regression tests', () => {
     // Regression: drag handle hidden behind Dynamic Island in PWA mode (PR #28)
     it('accounts for safe-area-inset-top in max-height', () => {
       expect(lines.some(l => l.includes('safe-area-inset-top'))).toBe(true)
+    })
+  })
+
+  describe('.previewBanner is data-mode aware, not OS-color-scheme aware (LIFT-1097)', () => {
+    const lines = getRuleLines('.previewBanner')
+
+    // The app resolves light/dark explicitly via the data-mode attribute
+    // (useTheme applyResolvedMode), so a user who forces a mode opposite their
+    // OS still gets consistent styling. The banner must follow the same tokens
+    // instead of hardcoding hex and switching on prefers-color-scheme.
+    it('uses theme tokens for color/background/border, not hardcoded hex', () => {
+      expect(lines.some(l => l.startsWith('color:') && l.includes('var(--accent'))).toBe(true)
+      expect(lines.some(l => l.startsWith('background:') && l.includes('var(--accent-subtle'))).toBe(true)
+      expect(lines.some(l => l.startsWith('border-bottom:') && l.includes('var(--border'))).toBe(true)
+    })
+
+    it('does not hardcode hex colors', () => {
+      expect(lines.some(l => /#[0-9a-fA-F]{3,6}/.test(l))).toBe(false)
+    })
+
+    // Regression guard: prefers-color-scheme couples visuals to the OS scheme,
+    // breaking the data-mode invariant. index.css must contain zero such rules.
+    it('index.css has no prefers-color-scheme override', () => {
+      expect(css.includes('@media (prefers-color-scheme')).toBe(false)
     })
   })
 
@@ -200,6 +249,54 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('destructive controls track the per-theme --danger token (LIFT-1098)', () => {
+    // Regression: several destructive controls hardcoded red literals
+    // (#ff6b6b, #ff4444) or a literal #fff on-danger text instead of the
+    // per-theme --danger / --text-on-accent tokens. Because --danger varies
+    // per theme (e.g. #ff5a5a vs #dc2626 vs #f87171), the fixed values drifted
+    // from the palette and could fall out of AA contrast in some themes.
+
+    it('.devBtnDanger uses --danger / --danger-subtle, no hardcoded hex', () => {
+      const lines = getRuleLines('.devBtnDanger')
+      expect(lines.length, '.devBtnDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('color: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('border-color: var(--danger-subtle)'))).toBe(true)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+    })
+
+    it('.wtEditDeleteConfirmDanger uses --danger bg with --text-on-accent text', () => {
+      const lines = getRuleLines('.wtEditDeleteConfirmDanger')
+      expect(lines.length, '.wtEditDeleteConfirmDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('background: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('color: var(--text-on-accent)'))).toBe(true)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+    })
+
+    it('.resetConfirmDanger uses --danger and drops the !important literal', () => {
+      // Scoped to .unlockDismiss so the token wins on specificity, not !important.
+      const lines = getRuleLines('.unlockDismiss.resetConfirmDanger')
+      expect(lines.length, '.unlockDismiss.resetConfirmDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('background: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('!important'))).toBe(false)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+      // The unscoped literal must be gone so the accent base cannot win.
+      expect(css).not.toContain('#ff4444 !important')
+    })
+  })
+
+  describe('.bwExportBtn bodyweight Health-export button (#1159)', () => {
+    const lines = getRuleLines('.bwExportBtn')
+
+    it('meets the 44px iOS HIG touch target in both dimensions', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    it('self-centers against the baseline-aligned hero row', () => {
+      expect(lines.some(l => l.includes('align-self') && l.includes('center'))).toBe(true)
+    })
+  })
+
   describe('.topBarCoachBtn AI Review entry (#972)', () => {
     // The AI Review entry moved from a full-width Workouts card to a compact
     // top-bar icon on the Calendar tab; it must inherit the shared 44px
@@ -240,6 +337,22 @@ describe('CSS regression tests', () => {
     })
   })
 
+  // #617: the RPE chips are a tiling radiogroup, so they must be SIZED to the
+  // 44pt floor — an absolutely-positioned ::before overlay would butt against
+  // the neighbouring chip and a near-miss would pick the wrong RPE (#990).
+  describe('RPE controls touch targets (#617)', () => {
+    it('.wtRPEChip is sized to 44px in both dimensions, not overlay-extended', () => {
+      const lines = getRuleLines('.wtRPEChip')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.wtRPEToggle has min-height: 44px for iOS HIG compliance', () => {
+      const lines = getRuleLines('.wtRPEToggle')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('.wtTimerEditResetBtn touch target', () => {
     const lines = getRuleLines('.wtTimerEditResetBtn')
 
@@ -277,6 +390,38 @@ describe('CSS regression tests', () => {
     const lines = getRuleLines('.wtSuggestionSegment')
 
     it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtExManagerLabel touch target (#1252)', () => {
+    // The exercise manager's row label is a tappable expander sitting beside
+    // the expand chevron. Its two text lines plus padding measure 43px on
+    // their own — one pixel under the floor — so the min-height is load-
+    // bearing, not decorative. Sizing (not a ::before overlay) is mandatory
+    // here: these labels tile vertically, so an oversized overlay would reach
+    // into the next row and expand the wrong exercise.
+    const lines = getRuleLines('.wtExManagerLabel')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('centers its stacked lines so the extra height is not top-aligned dead space', () => {
+      expect(lines.some(l => l.includes('justify-content') && l.includes('center'))).toBe(true)
+    })
+  })
+
+  describe('guided session plan touch targets (#1256)', () => {
+    // The plan card adds two interactive elements — the collapse toggle and
+    // the per-exercise rows; both must meet the 44pt iOS touch-target minimum.
+    it('.wtSessionPlanToggle has min-height: 44px', () => {
+      const lines = getRuleLines('.wtSessionPlanToggle')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.wtSessionPlanRow has min-height: 44px', () => {
+      const lines = getRuleLines('.wtSessionPlanRow')
       expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
     })
   })
@@ -689,7 +834,7 @@ describe('CSS regression tests', () => {
 
   describe('log-set sheet sticky save bar', () => {
     // Regression: the log form (usual ladder + PR card + plate calc) grew
-    // taller than the 88dvh sheet, pushing Save/Done below the fold — users
+    // taller than the 88svh sheet, pushing Save/Done below the fold — users
     // had to scroll to find Save and could close the sheet thinking the set
     // was logged. The action bar must stay pinned/visible at the sheet
     // bottom while the form scrolls behind it.
@@ -829,5 +974,48 @@ describe('type scale is rem-anchored (WCAG 1.4.4 — LIFT-988)', () => {
   it('does not pin the root font-size, so 1rem tracks the user preference', () => {
     // A fixed `html { font-size: 16px }` would defeat rem-based scaling.
     expect(css).not.toMatch(/\bhtml\s*\{[^}]*font-size:\s*\d+px/)
+  })
+})
+
+describe('Custom-property token definitions', () => {
+  // Every design token consumed via var(--x) must be declared somewhere in
+  // index.css (a :root block or a theme block). A reference with no matching
+  // declaration and no fallback silently resolves to the initial value —
+  // `background: var(--bg-tertiary)` rendered transparent in all 20 theme
+  // variants for months because the token was never defined (LIFT-1094).
+  const definedTokens = new Set<string>()
+  for (const m of css.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) {
+    definedTokens.add(m[1])
+  }
+
+  it('parsed a non-trivial set of token definitions', () => {
+    // Guards the test itself: if the regex silently matched nothing, the
+    // undefined-reference check below would pass vacuously.
+    expect(definedTokens.size).toBeGreaterThan(20)
+    expect(definedTokens.has('--bg-hover')).toBe(true)
+  })
+
+  it('every var(--token) reference resolves to a declared token', () => {
+    const undefinedRefs = new Set<string>()
+    // Capture the token name up to a comma (fallback) or the closing paren.
+    for (const m of css.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)\s*[,)]/g)) {
+      const token = m[1]
+      // A reference carrying its own fallback (var(--x, y)) degrades
+      // gracefully, so only flag bare references.
+      const hasFallback = m[0].includes(',')
+      if (!hasFallback && !definedTokens.has(token)) {
+        undefinedRefs.add(token)
+      }
+    }
+    expect(
+      [...undefinedRefs],
+      `undefined CSS custom properties referenced without a fallback: ${[...undefinedRefs].join(', ')}`,
+    ).toEqual([])
+  })
+
+  it('does not reintroduce the undefined --bg-tertiary token', () => {
+    // Pin the specific token that regressed so the fix cannot silently revert.
+    expect(css.includes('var(--bg-tertiary)')).toBe(false)
+    expect(definedTokens.has('--bg-tertiary')).toBe(false)
   })
 })

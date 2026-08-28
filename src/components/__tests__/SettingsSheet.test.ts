@@ -1,6 +1,22 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ref, reactive } from 'vue'
-import { mount, VueWrapper } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { ref, reactive, defineComponent, nextTick } from 'vue'
+import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
+import { useModal } from '../../composables/useModal'
+import { mockIntersectionObservers } from '../../__tests__/setup'
+
+// The Support-group visibility observer (LIFT-906) is the most-recently armed
+// IntersectionObserver; grab it to fire an intersection deliberately.
+function lastIntersectionObserver() {
+  const observer = mockIntersectionObservers.at(-1)
+  if (!observer) throw new Error('no IntersectionObserver was armed')
+  return observer
+}
+
+// Unmount every wrapper after each test. The sheet now holds a background-
+// scroll lock while open, and useModal's reference count is module state
+// shared across this file — a wrapper left mounted keeps `html.modal-open`
+// applied forever and makes the lock assertions below vacuous.
+enableAutoUnmount(afterEach)
 
 // SettingsSheet is one of the two "god components" in the repo (the other,
 // WorkoutTracker, is already covered). It owns theme switching, the weight-unit
@@ -12,8 +28,18 @@ import { mount, VueWrapper } from '@vue/test-utils'
 
 // ── Analytics (stable spy so we can assert logged events) ──────────
 const mockLogEvent = vi.fn()
+const mockSupportFunnel = vi.fn()
 vi.mock('../../composables/useAnalytics', () => ({
-  useAnalytics: () => ({ logEvent: mockLogEvent, tabSwitch: vi.fn(), flushEngagement: vi.fn() }),
+  useAnalytics: () => ({
+    logEvent: mockLogEvent,
+    // The supporter-funnel impression (LIFT-906) fires when the Support group
+    // actually scrolls into view (via IntersectionObserver), not on open — so
+    // tap/impression stays a meaningful conversion rate rather than counting
+    // every Settings open, where the Support group (12th of 14) is unseen.
+    supportFunnel: mockSupportFunnel,
+    tabSwitch: vi.fn(),
+    flushEngagement: vi.fn(),
+  }),
 }))
 
 // ── Theme (drives the Appearance section) ──────────────────────────
@@ -160,15 +186,19 @@ vi.mock('../../stores/preferences', () => ({
 }))
 
 // ── Workout / bodyweight stores (read-only from this component) ─────
+const mockToggleExerciseTag = vi.fn()
+const mockWorkoutStore = reactive({
+  exercises: [] as unknown[],
+  allTags: [] as string[],
+  workoutDates: [],
+  addExercise: vi.fn(),
+  logSet: vi.fn(),
+  toggleExerciseTag: mockToggleExerciseTag,
+  renameGymOnExercises: vi.fn(),
+  removeGymFromExercises: vi.fn(() => []),
+})
 vi.mock('../../stores/workout', () => ({
-  useWorkoutStore: () => ({
-    exercises: [],
-    workoutDates: [],
-    addExercise: vi.fn(),
-    logSet: vi.fn(),
-    renameGymOnExercises: vi.fn(),
-    removeGymFromExercises: vi.fn(() => []),
-  }),
+  useWorkoutStore: () => mockWorkoutStore,
 }))
 vi.mock('../../stores/bodyweight', () => ({
   useBodyweightStore: () => ({
@@ -192,12 +222,13 @@ const mockShareApp = vi.fn().mockResolvedValue({ kind: 'shared' })
 vi.mock('../../composables/useAppShare', () => ({
   useAppShare: () => ({ shareApp: mockShareApp, isSharing: ref(false), lastError: ref(null) }),
 }))
+const mockToggleExerciseGym = vi.fn()
 vi.mock('../../composables/useGymActions', () => ({
   useGymActions: () => ({
     createGym: vi.fn(),
     renameGym: vi.fn(),
     deleteGym: vi.fn(),
-    toggleExerciseGym: vi.fn(),
+    toggleExerciseGym: mockToggleExerciseGym,
   }),
 }))
 
@@ -222,6 +253,7 @@ import SettingsSheet from '../SettingsSheet.vue'
 // slot synchronously, so the confirm/delete dialogs appear on state change.
 const LegalSheetStub = { props: ['view'], template: '<div class="legal-stub" :data-view="view ?? \'\'" />' }
 const GymManagerModalStub = { props: ['open'], template: '<div class="gym-stub" :data-open="String(open)" />' }
+const ExerciseManagerModalStub = { props: ['open', 'exercises', 'gyms', 'allTags'], template: '<div class="exercise-stub" :data-open="String(open)" :data-gyms="gyms.join(\',\')" :data-tags="allTags.join(\',\')" />' }
 
 function mountSheet(open = true): VueWrapper {
   return mount(SettingsSheet, {
@@ -232,6 +264,7 @@ function mountSheet(open = true): VueWrapper {
         LegalSheet: LegalSheetStub,
         ThemeStatsSheet: true,
         GymManagerModal: GymManagerModalStub,
+        ExerciseManagerModal: ExerciseManagerModalStub,
         StarterPickerFlow: true,
       },
     },
@@ -250,6 +283,8 @@ describe('SettingsSheet', () => {
     mockPrefs.enabledCount = 3
     mockPrefs.intensityPresets = [50, 70, 80, 90, 100]
     mockPrefs.gyms = []
+    mockWorkoutStore.exercises = []
+    mockWorkoutStore.allTags = []
     mockPrefs.weightGoal = { direction: 'maintain', maintainMin: null, maintainMax: null, loseTarget: null, gainTarget: null }
     mockProgression.progressionEnabled = false
     vi.clearAllMocks()
@@ -274,7 +309,7 @@ describe('SettingsSheet', () => {
       const headers = wrapper.findAll('.settingsHeader').map(h => h.text())
       expect(headers).toEqual(expect.arrayContaining([
         'Appearance', 'Experience', 'Features', 'Personal Records',
-        'Filters', 'Intensity Presets', 'Gyms', 'Weight Goal', 'Data',
+        'Filters', 'Intensity Presets', 'Exercises', 'Gyms', 'Weight Goal', 'Data',
         'Support', 'Legal',
       ]))
     })
@@ -408,6 +443,36 @@ describe('SettingsSheet', () => {
     })
   })
 
+  describe('exercise manager modal (#1252)', () => {
+    it('opens the exercise manager when Manage Exercises is tapped', async () => {
+      const wrapper = mountSheet()
+      expect(wrapper.find('.exercise-stub').attributes('data-open')).toBe('false')
+      const manageBtn = wrapper.findAll('.settingsRowBtn').find(b => b.text().includes('Manage Exercises'))
+      expect(manageBtn).toBeTruthy()
+      await manageBtn!.trigger('click')
+      expect(wrapper.find('.exercise-stub').attributes('data-open')).toBe('true')
+    })
+
+    it('feeds it the synced gym list and every known tag', () => {
+      mockPrefs.gyms = ['Gym A', 'Gym B']
+      mockWorkoutStore.allTags = ['Chest', 'Triceps']
+      const wrapper = mountSheet()
+      const stub = wrapper.find('.exercise-stub')
+      expect(stub.attributes('data-gyms')).toBe('Gym A,Gym B')
+      expect(stub.attributes('data-tags')).toBe('Chest,Triceps')
+    })
+
+    it('routes tag toggles to the store and gym toggles to useGymActions', async () => {
+      const wrapper = mountSheet()
+      const stub = wrapper.findComponent(ExerciseManagerModalStub)
+      stub.vm.$emit('toggle-exercise-tag', 'e1', 'Chest')
+      stub.vm.$emit('toggle-exercise-gym', 'e1', 'Gym A')
+      await wrapper.vm.$nextTick()
+      expect(mockToggleExerciseTag).toHaveBeenCalledWith('e1', 'Chest')
+      expect(mockToggleExerciseGym).toHaveBeenCalledWith('e1', 'Gym A')
+    })
+  })
+
   describe('legal + danger surfaces', () => {
     it('opens the privacy policy view', async () => {
       const wrapper = mountSheet()
@@ -438,6 +503,228 @@ describe('SettingsSheet', () => {
       await wrapper.find('.settingsDeleteAccount').trigger('click')
       expect(wrapper.find('.deleteConfirmSheet').exists()).toBe(true)
       expect(mockLogEvent).toHaveBeenCalledWith('delete_account_opened')
+    })
+  })
+
+  // ── Close path ───────────────────────────────────────────────────
+  // Regression: closeSettings() used to emit the close from a bare one-shot
+  // `animationend` listener, so `modelValue` only cleared if that event
+  // arrived. Background the PWA mid-close (iOS freezes animations on a hidden
+  // page) and it never did — App's `settingsOpen` stayed true with the sheet
+  // parked off-screen by `animation-fill-mode: forwards`, and the gear button
+  // (`settingsOpen ? closeSettings() : (settingsOpen = true)`) could only ever
+  // re-enter closeSettings(). Re-adding an already-present class does not
+  // restart a CSS animation, so no further event was coming: settings refused
+  // to open until a full reload.
+  //
+  // These were never caught because the only close assertion in this suite went
+  // through the sign-out path, which emits synchronously — and jsdom never
+  // dispatches `animationend` on its own, so an animation-gated state change is
+  // invisible to the suite by construction. Each test below drives that event
+  // explicitly (or withholds it) to pin the contract.
+  describe('closing', () => {
+    /** jsdom's AnimationEvent support is patchy — build the event by hand. */
+    function animationEnd(animationName: string): Event {
+      const e = new Event('animationend', { bubbles: true })
+      Object.defineProperty(e, 'animationName', { value: animationName })
+      return e
+    }
+    const close = (wrapper: VueWrapper) =>
+      (wrapper.vm as unknown as { closeSettings: () => void }).closeSettings()
+    const closeEmits = (wrapper: VueWrapper) =>
+      (wrapper.emitted('update:modelValue') ?? []).filter(e => e[0] === false)
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('still closes when animationend never fires', () => {
+      vi.useFakeTimers()
+      const wrapper = mountSheet()
+      close(wrapper)
+      // The animation is never allowed to complete — the sheet must not be
+      // able to strand the app in a permanently-open state.
+      expect(closeEmits(wrapper)).toHaveLength(0)
+      vi.advanceTimersByTime(250)
+      expect(closeEmits(wrapper)).toHaveLength(1)
+    })
+
+    it('closes as soon as the slide-down animation ends, and only once', () => {
+      vi.useFakeTimers()
+      const wrapper = mountSheet()
+      const sheet = wrapper.find('.settingsSheet').element
+      close(wrapper)
+      expect(sheet.classList.contains('settingsSheetClosing')).toBe(true)
+
+      sheet.dispatchEvent(animationEnd('sheetSlideDown'))
+      expect(closeEmits(wrapper)).toHaveLength(1)
+
+      // The fallback timer must not fire a second close behind the event.
+      vi.advanceTimersByTime(500)
+      expect(closeEmits(wrapper)).toHaveLength(1)
+    })
+
+    it('ignores animationend bubbling up from a descendant', () => {
+      vi.useFakeTimers()
+      const wrapper = mountSheet()
+      const sheet = wrapper.find('.settingsSheet').element
+      close(wrapper)
+
+      // `animationend` bubbles: any animated descendant inside the sheet would
+      // otherwise satisfy the one-shot listener and close it out from under the
+      // user, mid slide-down.
+      const descendant = sheet.querySelector('.settingsScrollBody')!
+      descendant.dispatchEvent(animationEnd('sheetSlideDown'))
+      expect(closeEmits(wrapper)).toHaveLength(0)
+
+      // A different animation on the sheet itself is likewise not our cue.
+      sheet.dispatchEvent(animationEnd('sheetSlideUp'))
+      expect(closeEmits(wrapper)).toHaveLength(0)
+
+      sheet.dispatchEvent(animationEnd('sheetSlideDown'))
+      expect(closeEmits(wrapper)).toHaveLength(1)
+    })
+
+    it('is idempotent while a close is already in flight', () => {
+      vi.useFakeTimers()
+      const wrapper = mountSheet()
+      const sheet = wrapper.find('.settingsSheet').element
+      // Tapping the gear repeatedly during the 150ms animation must not queue
+      // extra closes — `classList.add` of a present class does not restart the
+      // animation, so re-registering listeners would strand them.
+      close(wrapper)
+      close(wrapper)
+      close(wrapper)
+      sheet.dispatchEvent(animationEnd('sheetSlideDown'))
+      vi.advanceTimersByTime(500)
+      expect(closeEmits(wrapper)).toHaveLength(1)
+    })
+
+    it('closes immediately when the sheet element was never captured', () => {
+      const wrapper = mountSheet(false)
+      // modelValue false → no sheet element, so there is nothing to animate.
+      // (Guarded early-return; the close is a no-op rather than a strand.)
+      close(wrapper)
+      expect(closeEmits(wrapper)).toHaveLength(0)
+    })
+  })
+
+  describe('supporter funnel (LIFT-906)', () => {
+    it('does not log an impression until the Support group scrolls into view', async () => {
+      // App.vue mounts the sheet already-open (#955), but the Support group is
+      // 12th of 14 groups — firing on open counted a mostly-unseen CTA. The
+      // impression must wait for the group to actually enter the viewport.
+      mountSheet(true)
+      await nextTick()
+      expect(mockSupportFunnel).not.toHaveBeenCalled()
+
+      // The visibility observer for the Support group is the latest one armed.
+      lastIntersectionObserver().trigger(true)
+      expect(mockSupportFunnel).toHaveBeenCalledWith('impression')
+      expect(mockSupportFunnel).toHaveBeenCalledTimes(1)
+    })
+
+    it('logs the impression only once even if the group re-enters view', async () => {
+      mountSheet(true)
+      await nextTick()
+      const observer = lastIntersectionObserver()
+      observer.trigger(true)
+      observer.trigger(true) // scrolled away and back within the same open
+      expect(mockSupportFunnel).toHaveBeenCalledTimes(1)
+    })
+
+    it('logs no impression when mounted closed', async () => {
+      mountSheet(false)
+      await nextTick()
+      expect(mockIntersectionObservers).toHaveLength(0)
+      expect(mockSupportFunnel).not.toHaveBeenCalled()
+    })
+
+    it('taps still report the CTA regardless of the impression gate', () => {
+      const wrapper = mountSheet(true)
+      wrapper.find('a[href="https://github.com/sponsors/aschung212"]').trigger('click')
+      expect(mockSupportFunnel).toHaveBeenCalledWith('tap', { cta: 'github_sponsors' })
+    })
+  })
+
+  describe('support-funding transparency (LIFT-1203)', () => {
+    it('states what supporter dollars fund alongside the CTAs', () => {
+      const wrapper = mountSheet(true)
+      const note = wrapper.find('.settingsGroupNote')
+      expect(note.exists()).toBe(true)
+      const text = note.text()
+      expect(text).toContain('AI Coach')
+      expect(text).toContain('sync server')
+      // Reinforces the existing "no ads / no data sales" trust promise.
+      expect(text).toMatch(/ad-free/i)
+      expect(text).toMatch(/never sells your data/i)
+    })
+  })
+
+  // ── Background-scroll lock (#830) ────────────────────────────────
+  //
+  // The settings sheet is a full-screen bottom sheet, but it used raw
+  // useFocusTrap and never took the lock at all — the page stayed scrollable
+  // behind it. It now goes through useModal, so it participates in the SAME
+  // reference count as every other modal instead of owning a boolean.
+  describe('background-scroll lock (#830)', () => {
+    const isLocked = () => document.documentElement.classList.contains('modal-open')
+
+    // A stand-in for any other useModal-based surface (WorkoutTracker's log
+    // sheet, CalendarView's set editor, …) holding the shared lock too.
+    const ForeignModalHost = defineComponent({
+      setup: () => ({ modal: useModal() }),
+      template: '<div />',
+    })
+    type ForeignHost = { modal: ReturnType<typeof useModal> }
+    const foreign = (w: VueWrapper) => (w.vm as unknown as ForeignHost).modal
+
+    it('locks background scroll while the sheet is open', async () => {
+      expect(isLocked()).toBe(false)
+      // App.vue mounts this with `v-if="settingsOpen"` (#955), so the sheet
+      // arrives already-open — the lock has to be taken on mount, not on a
+      // false→true prop transition that never happens.
+      const wrapper = mountSheet(true)
+      expect(isLocked()).toBe(true)
+
+      await wrapper.setProps({ modelValue: false })
+      expect(isLocked()).toBe(false)
+    })
+
+    it('does not lock when it is mounted closed', () => {
+      mountSheet(false)
+      expect(isLocked()).toBe(false)
+    })
+
+    it('keeps the lock applied when it closes under another modal', async () => {
+      const other = mount(ForeignModalHost)
+      foreign(other).open()
+
+      const wrapper = mountSheet(true)
+      expect(isLocked()).toBe(true)
+
+      await wrapper.setProps({ modelValue: false })
+      // The regression this guards: a boolean `modal-open` toggle here would
+      // unlock the background under the still-open foreign modal.
+      expect(isLocked()).toBe(true)
+
+      foreign(other).close()
+      expect(isLocked()).toBe(false)
+    })
+
+    it('releases its lock on unmount — App.vue closes it by tearing it down', () => {
+      const other = mount(ForeignModalHost)
+      foreign(other).open()
+
+      const wrapper = mountSheet(true)
+      // `v-if="settingsOpen"` unmounts the sheet on close, so the prop watcher
+      // never sees false — useModal's onUnmounted safety net is the only thing
+      // that releases the lock on the real close path.
+      wrapper.unmount()
+      expect(isLocked()).toBe(true)
+
+      foreign(other).close()
+      expect(isLocked()).toBe(false)
     })
   })
 })

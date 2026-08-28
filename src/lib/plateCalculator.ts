@@ -117,3 +117,53 @@ export function formatDelta(delta: { add: PlateSet; remove: PlateSet }): string 
   if (delta.add.length > 0) parts.push(`Add ${formatPlates(delta.add)}`)
   return parts.join(' · ')
 }
+
+/** Pounds per kilogram — the same factor used by useWeightUnit's display conversion. */
+const KG_PER_LB = 0.453592
+
+/**
+ * Standard barbell weights that real equipment actually comes in, per unit.
+ * Converting toward one of these snaps to it so the common pairs stay stable
+ * across a round trip (45 lb ↔ 20 kg, 35 lb ↔ 15 kg) — see convertBarWeight.
+ */
+const STANDARD_BARS_LBS = [45, 35, 25, 15, 10]
+const STANDARD_BARS_KG = [20, 15, 10, 7, 5]
+
+/**
+ * Convert a stored bar weight from one display unit to another (LIFT-1223).
+ *
+ * `Exercise.barWeight` is stored in the user's display unit (see the note in
+ * `workout.ts`), so toggling the global weight unit reinterprets the raw number
+ * unless it is converted — a 20 saved in kg mode would otherwise feed plate math
+ * as 20 lbs.
+ *
+ * The converted value snaps to the nearest STANDARD bar for the target unit when
+ * it lands within tolerance, otherwise it rounds to a whole unit (bars are
+ * whole-number values in the edit UI). Snapping is what keeps a lbs↔kg↔lbs round
+ * trip stable: a plain factor conversion drifts the 45 lb bar to 44 lb, and
+ * `weightToPlates(135, 44)` then returns null (a 45.5 lb-per-side remainder is
+ * unachievable), silently breaking plate math for the most common setup. A no-op
+ * unit or a non-finite value is returned unchanged.
+ */
+export function convertBarWeight(
+  value: number,
+  from: 'lbs' | 'kg',
+  to: 'lbs' | 'kg'
+): number {
+  if (from === to || !Number.isFinite(value)) return value
+  const lbs = from === 'kg' ? value / KG_PER_LB : value
+  const raw = to === 'kg' ? lbs * KG_PER_LB : lbs
+
+  const standards = to === 'kg' ? STANDARD_BARS_KG : STANDARD_BARS_LBS
+  const tolerance = to === 'kg' ? 1 : 2
+  let nearest = standards[0]
+  let nearestDist = Math.abs(raw - nearest)
+  for (const bar of standards) {
+    const dist = Math.abs(raw - bar)
+    if (dist < nearestDist) {
+      nearestDist = dist
+      nearest = bar
+    }
+  }
+  return nearestDist <= tolerance ? nearest : Math.round(raw)
+}

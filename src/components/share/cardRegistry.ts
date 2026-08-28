@@ -36,6 +36,13 @@ export const SQUARE_CARDS: CardEntry[] = [
   { id: 'receipt', label: 'Receipt', format: 'square', loader: () => import('./cards/ReceiptCard.vue') },
   { id: 'week-chart', label: 'Week', format: 'square', loader: () => import('./cards/WeekChartCard.vue') },
   { id: 'best-set', label: 'Best set', format: 'square', loader: () => import('./cards/BestSetCard.vue') },
+  {
+    id: 'progress',
+    label: 'Progress',
+    format: 'square',
+    loader: () => import('./cards/ProgressCard.vue'),
+    eligible: (s) => s.progress !== null,
+  },
   { id: 'stat-grid', label: 'Stats', format: 'square', loader: () => import('./cards/StatGridCard.vue') },
   { id: 'daily-ring', label: 'Ring', format: 'square', loader: () => import('./cards/DailyRingCard.vue') },
   { id: 'ticket-stub', label: 'Ticket', format: 'square', loader: () => import('./cards/TicketStubCard.vue') },

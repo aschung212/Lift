@@ -5,6 +5,8 @@ import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { readFileSync } from 'fs'
 import themeStripPlugin from './vite-plugin-theme-split'
 import preloadDefaultViewPlugin from './vite-plugin-preload-default-view'
+import sitemapLastmodPlugin from './vite-plugin-sitemap-lastmod'
+import versionStampPlugin from './vite-plugin-version-stamp'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
@@ -36,6 +38,8 @@ export default defineConfig({
     vue(),
     themeStripPlugin(),
     preloadDefaultViewPlugin(),
+    sitemapLastmodPlugin(),
+    versionStampPlugin(),
     VitePWA({
       // Disable the service worker entirely for the native Capacitor build (#532).
       // WKWebView serves the web assets bundled in the .ipa and refreshes them via
@@ -125,6 +129,17 @@ export default defineConfig({
             type: 'image/png',
             form_factor: 'narrow',
             label: 'Calendar view with workout summaries and PRs',
+          },
+          {
+            // Wide (landscape) preview so Chromium's richer install dialog (desktop
+            // Chrome/Edge + some Android surfaces) renders the screenshot-carousel UI
+            // instead of the minimal one-line prompt (#1064). Composited from the three
+            // narrow screenshots by `npm run generate-wide-screenshot`.
+            src: 'screenshot-wide.png',
+            sizes: '1920x1080',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Log sets, track 1RM progress, and review your training calendar',
           },
         ],
       },

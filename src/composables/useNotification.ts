@@ -74,7 +74,7 @@ async function requestPermission(): Promise<boolean> {
  */
 async function notify(
   title: string,
-  options?: NotificationOptions & { wasBackgrounded?: boolean },
+  options?: NotificationOptions & { wasBackgrounded?: boolean; actions?: NotifAction[] },
 ): Promise<boolean> {
   if (!hasPermission()) return false
 
@@ -87,7 +87,8 @@ async function notify(
   // that re-fires a notification with the same tag (so a second rest-timer
   // completion still alerts). It's missing from the standard NotificationOptions
   // TS type, so we extend it locally rather than asserting the whole object.
-  const finalOptions: NotificationOptions & { renotify?: boolean } = {
+  // `actions` (LIFT-751) is likewise SW-only and absent from the lib type.
+  const finalOptions: NotificationOptions & { renotify?: boolean; actions?: NotifAction[] } = {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'lift-rest-timer',
@@ -107,7 +108,12 @@ async function notify(
   }
 
   try {
-    const notification = new Notification(title, finalOptions)
+    // The Notification constructor rejects `actions` (persistent-notification
+    // only — Chrome throws a TypeError), so strip them and show a plain
+    // notification rather than none at all.
+    const constructorOptions = { ...finalOptions }
+    delete constructorOptions.actions
+    const notification = new Notification(title, constructorOptions)
     setTimeout(() => notification.close(), 5000)
     notification.onclick = () => {
       window.focus()
@@ -168,7 +174,7 @@ export interface UseNotificationReturn {
   isBackgrounded: () => boolean
   hasAskedBefore: () => boolean
   requestPermission: () => Promise<boolean>
-  notify: (title: string, options?: NotificationOptions & { wasBackgrounded?: boolean }) => Promise<boolean>
+  notify: (title: string, options?: NotificationOptions & { wasBackgrounded?: boolean; actions?: NotifAction[] }) => Promise<boolean>
 }
 
 export function useNotification(): UseNotificationReturn {

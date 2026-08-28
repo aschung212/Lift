@@ -342,6 +342,72 @@ describe('Sync Pipeline Integration (LIFT-654 / LIFT-1010)', () => {
     })
   })
 
+  // ── plate-count mode sync round-trip (LIFT-783) ─────────────────
+  // Regression: setExercisePlateCountMode only persisted locally and
+  // _buildExerciseUpsert omitted the column, so per-exercise plate-count mode
+  // silently diverged across devices (unlike its siblings input_mode/bar_weight).
+  describe('plate-count mode sync (LIFT-783)', () => {
+    it('enqueues an exercise upsert carrying plate_count_mode', async () => {
+      const store = useWorkoutStore()
+      await store.init(TEST_USER)
+      const exerciseId = store.addExercise('Bench Press', ['Push'])!
+      await tick() // drain the exercise-creation upsert
+      fakeSupabase.reset()
+      vi.clearAllMocks()
+
+      store.setExercisePlateCountMode(exerciseId, 'total')
+      await tick()
+
+      // Local state updated
+      expect(store.exercises.find(e => e.id === exerciseId)!.plateCountMode).toBe('total')
+
+      // Enqueued under the exercise key (not local-only)
+      expect(syncQueue.enqueue).toHaveBeenCalled()
+      const enqueueKey = (syncQueue.enqueue as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(enqueueKey).toBe(`exercise:${exerciseId}`)
+
+      // Payload carries the snake_case column
+      const upserts = fakeSupabase.upsertsFor('exercises')
+      expect(upserts).toHaveLength(1)
+      const payload = upserts[0].data as Record<string, unknown>
+      expect(payload).toMatchObject({ id: exerciseId, plate_count_mode: 'total' })
+    })
+
+    it('always sends plate_count_mode so switching back to the default propagates', async () => {
+      const store = useWorkoutStore()
+      await store.init(TEST_USER)
+      const exerciseId = store.addExercise('Squat', ['Legs'])!
+      await tick()
+      fakeSupabase.reset()
+      vi.clearAllMocks()
+
+      store.setExercisePlateCountMode(exerciseId, 'per-side')
+      await tick()
+
+      const payload = fakeSupabase.upsertsFor('exercises')[0].data as Record<string, unknown>
+      expect(payload).toHaveProperty('plate_count_mode', 'per-side')
+    })
+
+    it('hydrates plateCountMode from a remote row on fetch', async () => {
+      fakeSupabase.seed('exercises', [
+        {
+          id: 'ex-pcm',
+          user_id: TEST_USER,
+          name: 'Overhead Press',
+          tags: ['Push'],
+          plate_count_mode: 'total',
+          updated_at: '2026-07-28T00:00:00.000Z',
+        },
+      ])
+
+      const store = useWorkoutStore()
+      await store.init(TEST_USER)
+
+      const ex = store.exercises.find(e => e.id === 'ex-pcm')
+      expect(ex?.plateCountMode).toBe('total')
+    })
+  })
+
   // ── sync gating: no sync when userId is not set ────────────────
   describe('sync gating', () => {
     it('does not enqueue when store is not initialized with a userId', async () => {

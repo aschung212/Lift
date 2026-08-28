@@ -23,6 +23,32 @@ import { isAuthError } from './sessionHealth'
 export type SyncErrorKind = 'auth' | 'network' | 'unknown'
 
 /**
+ * The four states the sync indicator can display. Mirrors the reactive
+ * `syncStatus` ref in `syncQueue.ts`, which tracks the background WRITE queue.
+ */
+export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline'
+
+/**
+ * Fold a background READ fetch failure into the write-queue-driven sync status
+ * (LIFT-1179).
+ *
+ * Each store exposes a typed `lastSyncError` set when a background read fails,
+ * but until now nothing surfaced it: the indicator reflected only the write
+ * queue, so a silent read failure (an RLS regression, an expired token, an
+ * offline first-load that never enqueued a write) still showed a false
+ * 'synced'. The live write status wins whenever it is anything other than
+ * 'synced' — it is the freshest signal and already models 'syncing' and
+ * 'offline' — so we only defer to the read error when the write queue is
+ * otherwise idle. Any read error kind maps to 'error' (offline is owned by the
+ * write/connectivity path); the actionable `auth` kind is additionally
+ * surfaced by the re-auth banner.
+ */
+export function combineSyncStatus(writeStatus: SyncStatus, readError: SyncErrorKind | null): SyncStatus {
+  if (writeStatus !== 'synced') return writeStatus
+  return readError ? 'error' : 'synced'
+}
+
+/**
  * Classify an error into a typed {@link SyncErrorKind}. Accepts either a thrown
  * rejection or a resolved Supabase `{ error }` object — both shapes flow through
  * `isAuthError`, so an expired token is reported as `auth` regardless of whether

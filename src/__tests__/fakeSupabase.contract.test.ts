@@ -21,21 +21,46 @@ import { createFakeSupabase, FAKE_SUPABASE_CHAIN_METHODS } from './fakeSupabase'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const storesDir = resolve(here, '../stores')
-
-const STORE_FILES = ['workout.ts', 'bodyweight.ts', 'progression.ts', 'preferences.ts']
+const libDir = resolve(here, '../lib')
 
 /**
- * Extract the chain methods invoked after a `supabase...from(...)` in a store
+ * Every file that builds a query against the real client. The stores own their
+ * filters; `supabasePagination.ts` owns the `.range()` windowing every
+ * collection read now goes through (#1152), so it belongs to the same contract
+ * — the fake must speak whatever the helper speaks.
+ */
+const QUERY_SOURCE_FILES = [
+  resolve(storesDir, 'workout.ts'),
+  resolve(storesDir, 'bodyweight.ts'),
+  resolve(storesDir, 'progression.ts'),
+  resolve(storesDir, 'preferences.ts'),
+  resolve(libDir, 'supabasePagination.ts'),
+]
+
+/**
+ * Extract the chain methods invoked after a `supabase...from(...)` in a source
  * file. Matches `.method(` tokens so a new query verb shows up here the moment
- * a store starts using it.
+ * the app starts using it.
  */
 function chainMethodsUsedIn(source: string): Set<string> {
   const used = new Set<string>()
+  // Fluent query chains wrap across lines. Fold continuation lines (those
+  // starting with `.`) onto their predecessor first, so a wrapped chain is
+  // scanned as one unit — otherwise every verb that happens to land on a
+  // continuation line is invisible to the scan, and the contract silently stops
+  // covering it. (#1152 wrapped the workout reads and cost this scan `.is()`
+  // and `.order()`; the vacuous-scan sanity check below is what caught it.)
+  const lines: string[] = []
+  for (const raw of source.split('\n')) {
+    const line = raw.trim()
+    if (line.startsWith('.') && lines.length > 0) lines[lines.length - 1] += line
+    else lines.push(line)
+  }
   // Only consider lines that touch the supabase client chain, to avoid picking
   // up Array.prototype.filter/map/etc. We look for the query verbs by name.
   const verbPattern = /\.(select|upsert|update|delete|insert|eq|is|order|single|maybeSingle|limit|in|neq|gte|lte|match|not|filter|range|contains|overlaps|textSearch)\(/g
-  for (const line of source.split('\n')) {
-    if (!/supabase|\bq\b|\.from\(/.test(line)) continue
+  for (const line of lines) {
+    if (!/supabase|\bclient\b|\bq\b|\.from\(/.test(line)) continue
     let m: RegExpExecArray | null
     while ((m = verbPattern.exec(line)) !== null) {
       // `.filter(` is an Array method too; only count it when the line is clearly
@@ -62,9 +87,8 @@ describe('createFakeSupabase contract (LIFT-1009)', () => {
 
   it('covers every query method the stores invoke on the supabase chain', () => {
     const used = new Set<string>()
-    for (const file of STORE_FILES) {
-      const source = readFileSync(resolve(storesDir, file), 'utf-8')
-      for (const method of chainMethodsUsedIn(source)) used.add(method)
+    for (const file of QUERY_SOURCE_FILES) {
+      for (const method of chainMethodsUsedIn(readFileSync(file, 'utf-8'))) used.add(method)
     }
     // `filter` is the JS array method, never a PostgREST verb we mock — drop it
     // if it leaked through despite the guard above.
@@ -72,8 +96,10 @@ describe('createFakeSupabase contract (LIFT-1009)', () => {
 
     // Sanity: the scan actually found the core verbs (guards against a regex
     // that silently matches nothing and makes this test pass vacuously).
-    for (const core of ['select', 'upsert', 'update', 'eq', 'is', 'order']) {
-      expect(used, `store scan should detect .${core}(`).toContain(core)
+    // `range` is here because a fake that can't window is a fake that certifies
+    // an unpaged read as correct — the #1152 failure mode exactly.
+    for (const core of ['select', 'upsert', 'update', 'eq', 'is', 'order', 'range']) {
+      expect(used, `query-source scan should detect .${core}(`).toContain(core)
     }
 
     const missing = [...used].filter(m => typeof builder[m] !== 'function')

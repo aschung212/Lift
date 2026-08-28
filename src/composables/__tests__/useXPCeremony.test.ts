@@ -8,6 +8,7 @@ const mockTrack = vi.mocked(track)
 // App review and XP instrumentation are side-effecting no-ops here.
 vi.mock('../useAppReview', () => ({
   useAppReview: () => ({ requestReviewAtMoment: vi.fn() }),
+  canRequestReview: vi.fn(() => true),
 }))
 vi.mock('../../lib/xpInstrumentation', () => ({
   logXPEvent: vi.fn(),

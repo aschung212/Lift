@@ -8,7 +8,7 @@
  * Issue #125
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { getLocalStorageMock, makeSet, makeExercise } from './helpers'
 
@@ -390,18 +390,51 @@ describe('Progression Integration', () => {
   // ── Rolling best 1RM window ───────────────────────────────────
 
   describe('rolling 6-month best 1RM', () => {
+    // `calculateBest1RM` measures its window from `Date.now()`, so absolute
+    // dates rot into failures. This block used to pick 2026-03-01 as a date
+    // "safely inside" the window; five months of wall-clock later that set had
+    // aged out, the call returned null, and master went red (#1254). Freeze the
+    // clock and derive every set from it, so these assert the windowing RULE
+    // and not the calendar the day they were written.
+    const NOW = new Date('2026-06-15T12:00:00Z')
+    /** ISO stamp for a set logged `days` before the frozen now. */
+    const daysAgo = (days: number) => new Date(NOW.getTime() - days * 86_400_000).toISOString()
+    // The cutoff xp.ts actually computes: whole 30-day months, read from config
+    // rather than restated, so retuning the window can't leave these stale.
+    const WINDOW_DAYS = XP_CONFIG.best1RMWindowMonths * 30
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(NOW)
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
     it('excludes sets older than 6 months', () => {
       const sets = [
-        makeSet({ weight: 315, reps: 1, date: '2025-01-01T12:00:00Z', estimated1RM: 315 }),
-        makeSet({ weight: 225, reps: 5, date: '2026-03-01T12:00:00Z', estimated1RM: 263 }),
+        makeSet({ weight: 315, reps: 1, date: daysAgo(WINDOW_DAYS + 30), estimated1RM: 315 }),
+        makeSet({ weight: 225, reps: 5, date: daysAgo(30), estimated1RM: 263 }),
       ]
       const best = calculateBest1RM(sets)
-      expect(best).toBe(263) // 315 is outside window
+      expect(best).toBe(263) // the heavier 315 sits outside the window
+    })
+
+    it('includes a set just inside the cutoff and drops one just outside', () => {
+      // Pins the boundary itself. The ±30-day cases can't: a window that
+      // silently halved or doubled would still satisfy them.
+      expect(calculateBest1RM([
+        makeSet({ weight: 315, reps: 1, date: daysAgo(WINDOW_DAYS - 1), estimated1RM: 315 }),
+      ])).toBe(315)
+      expect(calculateBest1RM([
+        makeSet({ weight: 315, reps: 1, date: daysAgo(WINDOW_DAYS + 1), estimated1RM: 315 }),
+      ])).toBeNull()
     })
 
     it('returns null for no sets in window', () => {
       const sets = [
-        makeSet({ weight: 315, reps: 1, date: '2024-01-01T12:00:00Z', estimated1RM: 315 }),
+        makeSet({ weight: 315, reps: 1, date: daysAgo(WINDOW_DAYS * 2), estimated1RM: 315 }),
       ]
       expect(calculateBest1RM(sets)).toBeNull()
     })
