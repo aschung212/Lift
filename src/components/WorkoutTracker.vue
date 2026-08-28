@@ -1152,17 +1152,12 @@ const isFilteringActive = computed(() =>
 /** Total exercise count, shown in the "Workouts" header stats. */
 const totalExercises = computed(() => store.activeExercises.length)
 
-/** Sets logged on the local "today" date — drives the Finish workout affordance. */
-const setsLoggedToday = computed(() => {
-  const today = todayISO()
-  let count = 0
-  for (const ex of store.exercises) {
-    for (const s of ex.sets) {
-      if (setDayKey(s.date) === today) count++
-    }
-  }
-  return count
-})
+/**
+ * Sets logged on the local "today" date — drives the Finish workout affordance.
+ * Reads the store's sets-per-day index rather than rescanning every set on each
+ * `triggerRef(exercises)`, i.e. on every logged set (LIFT-1237).
+ */
+const setsLoggedToday = computed(() => store.setsLoggedOn(todayISO()))
 
 /** When non-null, renders the WorkoutCompleteView overlay for that date. */
 const workoutCompleteDate = ref<string | null>(null)

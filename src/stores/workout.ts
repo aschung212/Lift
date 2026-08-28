@@ -255,6 +255,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   /** Re-read state from localStorage (called by cross-tab sync listener). */
   function _reloadFromStorage() {
     exercises.value = load()
+    _invalidateDayCounts()
     // On corrupt storage, keep the current in-memory value rather than resetting.
     customTags.value = parseStringArray(loadJSON('lift-custom-tags', customTags.value, Array.isArray))
     tagRecoveryDays.value = parseNumberRecord(loadJSON('lift-tag-recovery-days', tagRecoveryDays.value, isPlainObject))
@@ -263,6 +264,78 @@ export const useWorkoutStore = defineStore('workout', () => {
     triggerRef(customTags)
     triggerRef(tagRecoveryDays)
     triggerRef(tagRecoveryExcluded)
+  }
+
+  // ── Sets-per-day index (LIFT-1237) ─────────────────────────────────
+  // `setsLoggedOn` backs the always-visible "Finish workout" affordance and the
+  // app-icon badge. Both re-read it on every `triggerRef(exercises)` — i.e. once
+  // per logged set — and both used to answer it by rescanning every set of every
+  // exercise, so a multi-year account paid an O(total sets) linear scan just to
+  // learn that today's count went from 4 to 5. The index makes that read O(1)
+  // plus the O(exercises) checksum below.
+  //
+  // Deliberately NOT a ref: reads take their reactive dependency on `exercises`
+  // itself (every mutation already triggers it), so the cache can be built or
+  // repaired from inside a computed without the self-invalidating write that
+  // reassigning a tracked ref during evaluation would cause.
+  //
+  // Correctness does not depend on remembering to hook every future set-mutating
+  // action. Reads first compare a checksum — the summed `sets.length` of every
+  // exercise, O(exercises), a few dozen iterations rather than tens of thousands
+  // — against the total the index was built from. Any add/remove path that
+  // bypasses `_adjustDayCount` changes that total and forces exactly one rebuild,
+  // degrading a would-be silent miscount into a one-off rescan. The checksum
+  // cannot see a set whose DATE moved with no change in count, so `updateSet`
+  // (the only action that re-dates a set) maintains the index explicitly, and the
+  // three wholesale replacements of `exercises` invalidate outright.
+  let _dayCounts: Map<string, number> | null = null
+  let _dayCountsTotal = -1
+
+  function _totalSetCount(list: Exercise[]): number {
+    let total = 0
+    for (const e of list) total += e.sets.length
+    return total
+  }
+
+  /** Force a full rebuild on the next read — for wholesale replacements of `exercises`. */
+  function _invalidateDayCounts() {
+    _dayCounts = null
+  }
+
+  /** Apply a single set's arrival (+1) or departure (-1) to the index. */
+  function _adjustDayCount(iso: string, delta: number) {
+    // Null means "never built" or "invalidated"; the next read rebuilds from
+    // scratch, so there is nothing to keep in step here.
+    if (!_dayCounts) return
+    const key = setDayKey(iso)
+    const next = (_dayCounts.get(key) ?? 0) + delta
+    if (next > 0) _dayCounts.set(key, next)
+    else _dayCounts.delete(key)
+    _dayCountsTotal += delta
+  }
+
+  /**
+   * How many sets are logged on a local calendar day (`YYYY-MM-DD`).
+   *
+   * Bucketed with `setDayKey`, so it is correct for both stored date
+   * conventions (#746) — do not reimplement the count against `slice(0, 10)`
+   * or `toLocalDateKey` at a call site.
+   */
+  function setsLoggedOn(dayKey: string): number {
+    const list = exercises.value
+    const total = _totalSetCount(list)
+    if (!_dayCounts || total !== _dayCountsTotal) {
+      const counts = new Map<string, number>()
+      for (const e of list) {
+        for (const s of e.sets) {
+          const key = setDayKey(s.date)
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
+      }
+      _dayCounts = counts
+      _dayCountsTotal = total
+    }
+    return _dayCounts.get(dayKey) ?? 0
   }
 
   // ── Internal helpers ─────────────────────────────────────────────
@@ -575,6 +648,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
 
     exercises.value = deduped.exercises
+    _invalidateDayCounts()
     triggerRef(exercises)
     _persist()
 
@@ -928,6 +1002,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     const newSet: WorkoutSet = { id, date, weight, reps, estimated1RM, createdAt }
     if (bodyweight !== undefined) newSet.bodyweight = bodyweight
     exercise.sets.push(newSet)
+    _adjustDayCount(date, 1)
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
@@ -953,7 +1028,12 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
     set.estimated1RM = epley(effectiveSetWeight(set, exercise), reps)
     if (dateStr) {
+      // Re-dating moves the set between day buckets without changing the total
+      // set count, so the index checksum cannot detect it — maintain explicitly.
+      const previousDate = set.date
       set.date = endOfDayISO(dateStr)
+      _adjustDayCount(previousDate, -1)
+      _adjustDayCount(set.date, 1)
     }
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
@@ -968,7 +1048,9 @@ export const useWorkoutStore = defineStore('workout', () => {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
     addTombstone('sets', setId)
+    const removed = exercise.sets.find((s: WorkoutSet) => s.id === setId)
     exercise.sets = exercise.sets.filter((s: WorkoutSet) => s.id !== setId)
+    if (removed) _adjustDayCount(removed.date, -1)
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
@@ -983,6 +1065,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (!exercise) return
     removeTombstone('sets', set.id)
     exercise.sets.push(set)
+    _adjustDayCount(set.date, 1)
     triggerRef(exercises)
     _persist()
 
@@ -1632,6 +1715,7 @@ export const useWorkoutStore = defineStore('workout', () => {
    */
   function $reset() {
     exercises.value = []
+    _invalidateDayCounts()
     customTags.value = []
     tagRecoveryDays.value = {}
     tagRecoveryExcluded.value = []
@@ -1694,6 +1778,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     activeExercises,
     archivedExercises,
     workoutDates,
+    setsLoggedOn,
     getExercisePR,
     getExercisePRSet,
     getLastSession,
