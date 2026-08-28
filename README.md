@@ -41,7 +41,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Graph updates per tab: full e1RM history on All Sets, PR staircase on PRs
 - Set list capped at 10 most recent, with "Show all" toggle
 - Full CRUD: add, edit, and delete individual sets and exercises
-- Drag-to-reorder exercises by grip handle (disabled when filtering)
+- Exercise list orders itself by recency — the exercise you trained most recently floats to the top, and the sort is applied after search and tag filtering so a filtered subset stays recency-ordered too
 
 ### Exercise Search
 - Instant search bar for filtering exercises by name
