@@ -1,0 +1,172 @@
+/**
+ * Read-path recovery: re-fetch every store when connectivity, foreground, or
+ * the session comes back (LIFT-1226).
+ *
+ * The app is local-first, so a failed READ degrades silently: each store's
+ * `_fetchFromSupabase` records `lastSyncError` and returns, and nothing ever
+ * re-runs it. Writes self-heal (the sync queue retries with backoff and
+ * journals durably), but reads had no equivalent — so an offline cold start, a
+ * transient blip, or a mid-session token expiry left the app on local-only data
+ * until a full relaunch. Cross-device changes stayed invisible, and the
+ * reconciliation pushes that live inside `_fetchFromSupabase` (re-pushing local
+ * rows the server is missing) never resumed either.
+ *
+ * This module is the single re-fetch entry point for all four stores, plus the
+ * listeners that drive it:
+ *   - `online`               — the connection came back
+ *   - foreground resume      — `visibilitychange` + `focus`, the WKWebView
+ *                              resume signals `useAuth` already doubles up on
+ *   - `sessionRecoveryTick`  — a 401 was healed by a token refresh
+ *
+ * Overlapping and repeated triggers are collapsed: one run at a time
+ * (single-flight) and at most one run per `REFETCH_COOLDOWN_MS`, so a burst of
+ * resume events or a reconnect flap can't stack four fetches per store.
+ */
+import { watch } from 'vue'
+import { syncQueue } from '../lib/syncQueue'
+import { sessionRecoveryTick } from '../lib/sessionHealth'
+import { logError } from '../lib/logger'
+import { useWorkoutStore } from '../stores/workout'
+import { useBodyweightStore } from '../stores/bodyweight'
+import { usePreferencesStore } from '../stores/preferences'
+import { useProgressionStore } from '../stores/progression'
+
+/** What woke the recovery up. Reported to Sentry when a re-fetch throws. */
+export type RefetchTrigger = 'online' | 'resume' | 'session-recovered'
+
+/**
+ * Minimum spacing between re-fetches. A resume fires `visibilitychange` AND
+ * `focus`, and a flaky connection can emit `online` repeatedly — without a
+ * floor, tab-flicking would issue a full four-store read every time.
+ */
+export const REFETCH_COOLDOWN_MS = 20_000
+
+/** Delay floor for a deferred re-run, so a trailing retry can't spin. */
+const TRAILING_MIN_MS = 500
+
+let _inFlight: Promise<void> | null = null
+let _lastRunAt = 0
+let _trailingTimer: ReturnType<typeof setTimeout> | null = null
+
+function msUntilAllowed(): number {
+  return Math.max(0, REFETCH_COOLDOWN_MS - (Date.now() - _lastRunAt))
+}
+
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+async function run(trigger: RefetchTrigger): Promise<void> {
+  // Writes before reads. Every store read is remote-wins for the fields it
+  // carries, so re-fetching ahead of a pending offline edit would paint the
+  // stale server value back over it (the queued write still lands, but the UI
+  // would show the old value until some later fetch). Flushing first also means
+  // a reconnect pushes the user's backlog immediately instead of waiting out
+  // the retry backoff. `flush()` reports its own failures and is a no-op on an
+  // empty queue.
+  try {
+    await syncQueue.flush()
+  } catch (err) {
+    logError(err, { source: 'useSyncRecovery', action: 'flush', trigger })
+  }
+
+  // allSettled, mirroring initStores: each store already swallows its own fetch
+  // failure into `lastSyncError`, so a rejection here means the store method
+  // itself broke — log it, but never let one store abort the other three.
+  const results = await Promise.allSettled([
+    useWorkoutStore()._fetchFromSupabase(),
+    useBodyweightStore()._fetchFromSupabase(),
+    usePreferencesStore()._fetchFromSupabase(),
+    useProgressionStore()._fetchFromSupabase(),
+  ])
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      logError(r.reason, { source: 'useSyncRecovery', action: 'refetch', trigger })
+    }
+  }
+}
+
+function scheduleTrailing(trigger: RefetchTrigger): void {
+  if (_trailingTimer) return
+  _trailingTimer = setTimeout(() => {
+    _trailingTimer = null
+    void refetchAllStores(trigger)
+  }, Math.max(msUntilAllowed(), TRAILING_MIN_MS))
+}
+
+/**
+ * Re-fetch every store, subject to the single-flight + cooldown guards.
+ * Resolves true when a run actually happened.
+ *
+ * A `session-recovered` trigger that gets blocked schedules a trailing re-run
+ * rather than being dropped: it means the reads that provoked the token refresh
+ * returned 401s, so whatever is currently in flight (or just ran) is exactly the
+ * data that must be fetched again. `online` / `resume` are dropped when blocked
+ * — an in-flight or just-completed run already carries the fresh data they want.
+ */
+export function refetchAllStores(trigger: RefetchTrigger): Promise<boolean> {
+  // Nothing to recover to while the device is offline; the `online` listener is
+  // the signal that matters, and it will fire.
+  if (isOffline()) return Promise.resolve(false)
+  if (_inFlight || msUntilAllowed() > 0) {
+    if (trigger === 'session-recovered') scheduleTrailing(trigger)
+    return Promise.resolve(false)
+  }
+  _lastRunAt = Date.now()
+  // Clear only OUR OWN registration (promise identity, not a bare null): a
+  // later run must never be un-registered by an earlier one settling late.
+  const p = run(trigger).finally(() => {
+    if (_inFlight === p) _inFlight = null
+  })
+  _inFlight = p
+  return p.then(() => true)
+}
+
+/**
+ * Register the recovery listeners. Returns a teardown for `onUnmounted`.
+ *
+ * `visibilitychange` and `focus` are both listened to for the same reason
+ * `useAuth.setupSessionRefreshLifecycle` does: in WKWebView (the App Store
+ * target) neither is reliable alone on resume from background. The duplicate
+ * triggers are absorbed by the cooldown.
+ */
+export function setupSyncRecovery(): () => void {
+  const cleanups: Array<() => void> = []
+
+  if (typeof window !== 'undefined') {
+    const onOnline = () => { void refetchAllStores('online') }
+    const onFocus = () => { void refetchAllStores('resume') }
+    window.addEventListener('online', onOnline)
+    window.addEventListener('focus', onFocus)
+    cleanups.push(
+      () => window.removeEventListener('online', onOnline),
+      () => window.removeEventListener('focus', onFocus),
+    )
+  }
+
+  if (typeof document !== 'undefined') {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refetchAllStores('resume')
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    cleanups.push(() => document.removeEventListener('visibilitychange', onVisibility))
+  }
+
+  cleanups.push(watch(sessionRecoveryTick, () => { void refetchAllStores('session-recovered') }))
+
+  return () => {
+    for (const cleanup of cleanups) cleanup()
+    if (_trailingTimer) {
+      clearTimeout(_trailingTimer)
+      _trailingTimer = null
+    }
+  }
+}
+
+/** Reset module state (tests only). */
+export function _resetSyncRecovery(): void {
+  _inFlight = null
+  _lastRunAt = 0
+  if (_trailingTimer) clearTimeout(_trailingTimer)
+  _trailingTimer = null
+}

@@ -365,7 +365,21 @@ export const usePreferencesStore = defineStore('preferences', {
       }
 
       // Then try Supabase (overrides local if exists)
-      if (supabase) {
+      await this._fetchFromSupabase()
+    },
+
+    /**
+     * Read this user's synced preferences and apply them over local state.
+     *
+     * Extracted from `init()` (LIFT-1226) so a recovered connection / session
+     * can re-run JUST the remote read without repeating the one-time
+     * localStorage migrations above. Mirrors the other three stores' method of
+     * the same name — swallows its own failures into `lastSyncError` so a
+     * caller's Promise.allSettled can never be aborted by it.
+     */
+    async _fetchFromSupabase() {
+      if (supabase && this._userId) {
+        const userId = this._userId
         this.syncing = true
         try {
           const { data, error } = await supabase
