@@ -361,8 +361,15 @@ export const useProgressionStore = defineStore('progression', {
         xp_per_set: xpPerSetToJson(this.xpPerSet),
         bodyweight_xp_dates: bodyweightDatesToJson(this.bodyweightXPDates),
       }
-      syncQueue.enqueue('progression-sync', () =>
-        supabase!.from('user_progression').upsert(payload)
+      // Journaled to IndexedDB alongside the closure (LIFT-1239): XP, streaks
+      // and theme unlocks are a last-write-wins row with no reconciliation
+      // pass, so an unflushed write lost to a tab close was gone for good. The
+      // replayed key matches this one, so the _syncToSupabase that follows
+      // init()'s union merge supersedes any stale replay.
+      syncQueue.enqueue(
+        'progression-sync',
+        () => supabase!.from('user_progression').upsert(payload),
+        { op: 'upsert', table: 'user_progression', row: payload },
       )
     },
 

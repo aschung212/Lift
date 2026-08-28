@@ -112,12 +112,14 @@ export const JOURNAL_SCHEMA_VERSION = 1
  * tampered (or corrupted) journal entry could issue an upsert/update against an
  * arbitrary table or column, with RLS as the only backstop. This allowlist is a
  * client-side defense-in-depth layer: only the tables the app actually journals
- * (`exercises`, `sets`) and only their real columns are replayable; anything
- * else is dropped before a query is ever built.
+ * and only their real columns are replayable; anything else is dropped before a
+ * query is ever built.
  *
- * Keep this in sync with the descriptors built in `src/stores/workout.ts`
+ * Keep this in sync with the descriptor producers — `src/stores/workout.ts`
  * (`_buildExerciseUpsert`, `_enqueueSetUpsert`, `_enqueueSoftDelete`,
- * `_enqueueRestore`) — those are the only descriptor producers in the app.
+ * `_enqueueRestore`), `src/stores/bodyweight.ts` (`_enqueueEntryUpsert`,
+ * `_enqueueEntrySoftDelete`, `_enqueueEntryRestore`), `preferences._persist`
+ * and `progression._syncToSupabase` (LIFT-1239).
  */
 const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
   exercises: new Set([
@@ -138,6 +140,39 @@ const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
     // exact offline-then-sync case it exists for.
     'created_at',
   ]),
+  // LIFT-1239: the three tables below journal too, so a bodyweight entry / XP
+  // total / settings change made offline survives a close before the flush.
+  bodyweight_entries: new Set([
+    'id', 'user_id', 'date', 'weight', 'deleted_at',
+  ]),
+  user_preferences: new Set(['user_id', 'preferences', 'updated_at']),
+  user_progression: new Set([
+    'user_id', 'total_xp', 'streak_weeks', 'weekly_target',
+    'pending_target_change', 'show_progression', 'progression_enabled',
+    'unlocked_themes', 'starter_theme', 'starter_confirmed', 'epoch',
+    'streak_history', 'xp_per_set', 'bodyweight_xp_dates', 'updated_at',
+  ]),
+}
+
+/**
+ * Upsert conflict targets for tables whose upsert key is NOT the primary key
+ * (LIFT-1239).
+ *
+ * `user_preferences` has a surrogate `id uuid primary key` plus a separate
+ * `unique(user_id)` constraint, and the app upserts a row with no `id`. Without
+ * an explicit conflict target Postgres resolves against the PK, generates a new
+ * `id`, and then violates `unique(user_id)` — so a replayed preferences write
+ * would fail forever. Every other journaled table upserts on its primary key,
+ * where PostgREST's default conflict target is already correct.
+ *
+ * Deliberately a client-side constant rather than a field on the descriptor:
+ * the journal is user-writable IndexedDB, and a conflict target supplied by a
+ * tampered entry would let a replay resolve against an attacker-chosen column.
+ * MUST match the `onConflict` option used at the call site in
+ * `src/stores/preferences.ts` (asserted structurally in syncQueueJournal.test.ts).
+ */
+const UPSERT_CONFLICT_TARGET: Record<string, string> = {
+  user_preferences: 'user_id',
 }
 
 /** True when `obj` is a non-empty plain map whose keys are all in `allowed`. */
@@ -200,7 +235,10 @@ export function executeDescriptor(descriptor: SyncDescriptor): PromiseLike<unkno
     return Promise.resolve()
   }
   if (descriptor.op === 'upsert') {
-    return fromTable(descriptor.table).upsert(descriptor.row)
+    const onConflict = UPSERT_CONFLICT_TARGET[descriptor.table]
+    return onConflict
+      ? fromTable(descriptor.table).upsert(descriptor.row, { onConflict })
+      : fromTable(descriptor.table).upsert(descriptor.row)
   }
   let query = fromTable(descriptor.table).update(descriptor.values)
   for (const [col, val] of Object.entries(descriptor.match)) {

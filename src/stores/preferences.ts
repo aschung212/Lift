@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import type { Json } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
@@ -250,13 +251,34 @@ export const usePreferencesStore = defineStore('preferences', {
       }
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`preferences:${userId}`, () =>
-          supabase!
+        // Journaled to IndexedDB alongside the closure (LIFT-1239) so a settings
+        // change made offline is replayed on the next launch instead of being
+        // dropped when the tab closes before the flush. Preferences are a
+        // last-write-wins blob with NO reconciliation pass, so the queue was the
+        // only thing standing between an unflushed change and permanent loss.
+        //
+        // Replay keeps this exact key, so any write made after the relaunch
+        // supersedes it. It is NOT superseded by init()'s remote adoption,
+        // which writes localStorage directly rather than going through
+        // _persist(): a user who changes a setting offline therefore sees it
+        // revert once (init lets the remote row win) and return on the launch
+        // after, once the replayed write has reached the server. That flap is
+        // the price of the store's remote-wins-on-init rule, and it converges
+        // on the user's most recent intent — which is the outcome the old
+        // in-memory-only behavior discarded outright.
+        const row = {
+          user_id: userId,
+          // The payload is a closed object of app-owned settings; `Json` is the
+          // generated column type and can't express that shape structurally.
+          preferences: { ...payload } as unknown as Json,
+          updated_at: new Date().toISOString(),
+        }
+        syncQueue.enqueue(
+          `preferences:${userId}`,
+          () => supabase!
             .from('user_preferences')
-            .upsert(
-              { user_id: userId, preferences: { ...payload }, updated_at: new Date().toISOString() },
-              { onConflict: 'user_id' }
-            )
+            .upsert(row, { onConflict: 'user_id' }),
+          { op: 'upsert', table: 'user_preferences', row },
         )
       }
     },

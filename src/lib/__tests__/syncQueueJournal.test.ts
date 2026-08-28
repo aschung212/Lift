@@ -13,6 +13,9 @@
  *   - executeDescriptor building correct upsert / update queries
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'fs'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 
 // ── In-memory durable storage (stand-in for IndexedDB) ──────────────
 const { idbStore } = vi.hoisted(() => ({ idbStore: new Map<string, string>() }))
@@ -33,16 +36,17 @@ const { fakeSupabase } = vi.hoisted(() => {
       this.parent = parent
       this.table = table
     }
-    upsert(data: unknown) { this.op = 'upsert'; this.data = data; return this }
+    options: unknown = undefined
+    upsert(data: unknown, options?: unknown) { this.op = 'upsert'; this.data = data; this.options = options; return this }
     update(data: unknown) { this.op = 'update'; this.data = data; return this }
     eq(col: string, val: unknown) { this.filters[col] = val; return this }
     then<T>(onfulfilled: (v: { data: unknown[]; error: null }) => T): PromiseLike<T> {
-      this.parent.calls.push({ op: this.op, table: this.table, data: this.data, filters: { ...this.filters } })
+      this.parent.calls.push({ op: this.op, table: this.table, data: this.data, filters: { ...this.filters }, options: this.options })
       return Promise.resolve({ data: [], error: null }).then(onfulfilled)
     }
   }
   const fake = {
-    calls: [] as Array<{ op: string; table: string; data: unknown; filters: Record<string, unknown> }>,
+    calls: [] as Array<{ op: string; table: string; data: unknown; filters: Record<string, unknown>; options?: unknown }>,
     from(table: string) { return new FakeBuilder(this, table) },
     reset() { this.calls = [] },
   }
@@ -297,7 +301,7 @@ describe('executeDescriptor (LIFT-706)', () => {
   it('builds an upsert query from an upsert descriptor', async () => {
     await executeDescriptor({ op: 'upsert', table: 'exercises', row: { id: 'e1', name: 'Bench' } })
     expect(fakeSupabase.calls).toEqual([
-      { op: 'upsert', table: 'exercises', data: { id: 'e1', name: 'Bench' }, filters: {} },
+      { op: 'upsert', table: 'exercises', data: { id: 'e1', name: 'Bench' }, filters: {}, options: undefined },
     ])
   })
 
@@ -308,8 +312,33 @@ describe('executeDescriptor (LIFT-706)', () => {
       match: { id: 's1', user_id: 'u1' },
     })
     expect(fakeSupabase.calls).toEqual([
-      { op: 'update', table: 'sets', data: { deleted_at: null }, filters: { id: 's1', user_id: 'u1' } },
+      { op: 'update', table: 'sets', data: { deleted_at: null }, filters: { id: 's1', user_id: 'u1' }, options: undefined },
     ])
+  })
+
+  // LIFT-1239: user_preferences has a surrogate `id` primary key plus a separate
+  // unique(user_id) constraint, and the app upserts a row with no id. Replaying
+  // without an explicit conflict target resolves against the PK, generates a new
+  // id, and then violates unique(user_id) — so the replay would fail forever.
+  it('replays a user_preferences upsert with the user_id conflict target', async () => {
+    await executeDescriptor({
+      op: 'upsert', table: 'user_preferences',
+      row: { user_id: 'u1', preferences: { theme: 'fire' }, updated_at: '2026-08-27T00:00:00Z' },
+    })
+    expect(fakeSupabase.calls).toHaveLength(1)
+    expect(fakeSupabase.calls[0].options).toEqual({ onConflict: 'user_id' })
+  })
+
+  it('the preferences store writes the same conflict target it will be replayed with', () => {
+    // The conflict target lives in syncQueue (not on the descriptor — a
+    // user-writable journal must not choose the conflict column). That makes it
+    // a second copy of the value in preferences.ts; if they diverge, the live
+    // write and its replay resolve against different constraints.
+    const store = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../stores/preferences.ts'),
+      'utf-8',
+    )
+    expect(store).toMatch(/onConflict:\s*'user_id'/)
   })
 })
 
@@ -365,10 +394,39 @@ describe('replay allowlist (LIFT-785)', () => {
       })).toBe(true)
     })
 
+    it('accepts the descriptors the bodyweight / preferences / progression stores produce (LIFT-1239)', () => {
+      // These three stores previously enqueued WITHOUT a descriptor, so an
+      // offline write was lost on a close before the flush. Their real payload
+      // shapes must clear the allowlist or rehydrate() would silently drop them.
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'bodyweight_entries',
+        row: { id: 'b1', user_id: 'u1', date: '2026-08-27T23:59:00.000Z', weight: 182.4 },
+      })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'update', table: 'bodyweight_entries',
+        values: { deleted_at: null }, match: { id: 'b1', user_id: 'u1' },
+      })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'user_preferences',
+        row: { user_id: 'u1', preferences: { theme: 'eternal' }, updated_at: '2026-08-27T00:00:00Z' },
+      })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'user_progression',
+        row: {
+          user_id: 'u1', total_xp: 4200, streak_weeks: 3, weekly_target: 4,
+          pending_target_change: null, show_progression: true, progression_enabled: true,
+          unlocked_themes: [], starter_theme: 'pearl', starter_confirmed: true, epoch: 1,
+          streak_history: [], xp_per_set: {}, bodyweight_xp_dates: [],
+        },
+      })).toBe(true)
+    })
+
     it('rejects unknown tables, columns, and ops', () => {
       // Table not in the allowlist (e.g. a tampered entry targeting auth state)
-      expect(isReplayableDescriptor({ op: 'upsert', table: 'user_progression', row: { id: 'x' } })).toBe(false)
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'coach_usage', row: { request_count: 0 } })).toBe(false)
       expect(isReplayableDescriptor({ op: 'upsert', table: 'profiles', row: { is_admin: true } })).toBe(false)
+      // A journaled table still rejects a column it doesn't own
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'user_progression', row: { is_admin: true } })).toBe(false)
       // Column not writable on an allowlisted table
       expect(isReplayableDescriptor({ op: 'upsert', table: 'sets', row: { id: 's1', injected: 1 } })).toBe(false)
       // Op outside the idempotent upsert/update set
