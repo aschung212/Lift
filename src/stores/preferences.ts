@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
-import { backupToIDB } from '../lib/durableStorage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { isPlainObject } from '../lib/storage'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
@@ -217,8 +216,21 @@ export const usePreferencesStore = defineStore('preferences', {
   state: (): PreferencesState => ({ ...initialPreferencesState(), ...loadLocalSettings() }),
 
   actions: {
-    _persist() {
-      const payload = {
+    /**
+     * The one definition of the persisted preferences payload (LIFT-1243).
+     *
+     * localStorage, the IndexedDB mirror and the Supabase `preferences` JSONB
+     * column all carry this exact shape, and `init()` re-persists it after
+     * adopting a remote row — so the literal must exist once. It previously
+     * existed twice (here and inline in `init()`); the copies were byte-identical
+     * by luck, and adding a synced preference meant remembering both. Forgetting
+     * the `init()` copy silently dropped the field from localStorage on any
+     * launch where the remote row was adopted, invisible until the next cold
+     * start read it back as its default. This is the write-side twin of
+     * `_applyPreferences`, the single read-side reconciliation point (LIFT-1178).
+     */
+    _buildPayload() {
+      return {
         features: this.features,
         weightGoal: this.weightGoal,
         experience: this.experience,
@@ -234,8 +246,22 @@ export const usePreferencesStore = defineStore('preferences', {
         coachProfile: this.coachProfile,
         gyms: this.gyms,
       }
-      const data = JSON.stringify(payload)
-      persistStoreData('preferences', STORAGE_KEY, data)
+    },
+
+    /**
+     * Write the current payload to every LOCAL sink — the primary localStorage
+     * key, the IndexedDB mirror, the cross-tab broadcast, and the standalone FOUC
+     * mirror keys — without enqueueing a remote upsert.
+     *
+     * Split out of `_persist` so `init()` can re-persist an adopted remote row
+     * locally without writing the just-fetched value straight back to the server
+     * (a launch-time upsert would also open a window to clobber a change another
+     * device made between our fetch and our flush). Returns the serialized
+     * payload so `_persist` can reuse it for the upsert.
+     */
+    _persistLocal() {
+      const payload = this._buildPayload()
+      persistStoreData('preferences', STORAGE_KEY, JSON.stringify(payload))
       // Write individual keys so initTheme() can read them before Pinia for
       // FOUC prevention on the next page load. These are preferences-specific
       // mirror keys, not part of the shared primary-payload plumbing.
@@ -248,6 +274,11 @@ export const usePreferencesStore = defineStore('preferences', {
       } catch (e) {
         logError(e, { source: 'preferences._persist:fouc' })
       }
+      return payload
+    },
+
+    _persist() {
+      const payload = this._persistLocal()
       if (supabase && this._userId) {
         const userId = this._userId
         syncQueue.enqueue(`preferences:${userId}`, () =>
@@ -386,19 +417,16 @@ export const usePreferencesStore = defineStore('preferences', {
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
             this._applyPreferences(prefs)
-            const synced = JSON.stringify({
-              features: this.features, weightGoal: this.weightGoal,
-              experience: this.experience, filters: this.filters,
-              prBaselineDate: this.prBaselineDate,
-              theme: this.theme, colorMode: this.colorMode,
-              weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
-              restTimerAutoStart: this.restTimerAutoStart, appIcon: this.appIcon,
-              intensityPresets: this.intensityPresets,
-              coachProfile: this.coachProfile,
-              gyms: this.gyms,
-            })
-            localStorage.setItem(STORAGE_KEY, synced)
-            backupToIDB(STORAGE_KEY, synced)
+            // Route the local write through the single persist path (LIFT-1243)
+            // rather than hand-building a second copy of the payload. Besides
+            // removing the drift hazard this restores three side effects the
+            // inline write skipped: the FOUC mirror keys (so a remote theme
+            // adopted here no longer flashes the *previous* theme on every
+            // subsequent cold start, since main.ts's pre-Pinia bootstrap reads
+            // `app-theme`), the cross-tab broadcast, and the guarded
+            // localStorage write — an unguarded quota failure here would have
+            // been caught below and misreported as a preferences FETCH error.
+            this._persistLocal()
           }
         } catch (err) {
           // Thrown (vs returned) error — typically a network failure. Route
