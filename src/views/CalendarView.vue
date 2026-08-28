@@ -555,22 +555,15 @@ const { zones: repRangeZones, totalSets: repRangeTotal, dominant: repRangeDomina
 const allExercisesRef = computed(() => store.exercises)
 const tagRecoveryDaysRef = computed(() => store.tagRecoveryDays)
 const tagRecoveryExcludedRef = computed(() => store.tagRecoveryExcluded)
-const { recovery: tagRecovery, hasData: hasRecoveryData, hiddenCount: recoveryHiddenCount } = useTagRecovery(allExercisesRef, tagRecoveryDaysRef, tagRecoveryExcludedRef)
-
-const recoveryHiddenTags = computed(() => {
-  const tagsWithSets = new Set<string>()
-  for (const exercise of store.exercises) {
-    if (!exercise.tags || exercise.tags.length === 0) continue
-    for (const set of exercise.sets) {
-      if (set.date) {
-        for (const tag of exercise.tags) {
-          tagsWithSets.add(tag)
-        }
-      }
-    }
-  }
-  return store.tagRecoveryExcluded.filter(t => tagsWithSets.has(t)).sort()
-})
+// hiddenTags/hiddenCount are two views of the same answer, so they come from the
+// one composable rather than being re-derived here — the local copy ran a second,
+// identical scan of every set on every store trigger (#1236).
+const {
+  recovery: tagRecovery,
+  hasData: hasRecoveryData,
+  hiddenCount: recoveryHiddenCount,
+  hiddenTags: recoveryHiddenTags,
+} = useTagRecovery(allExercisesRef, tagRecoveryDaysRef, tagRecoveryExcludedRef)
 
 function onRecoveryHide(tag: string) {
   store.setTagRecoveryExcluded(tag, true)

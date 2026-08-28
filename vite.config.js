@@ -5,6 +5,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { readFileSync } from 'fs'
 import themeStripPlugin from './vite-plugin-theme-split'
 import preloadDefaultViewPlugin from './vite-plugin-preload-default-view'
+import sitemapLastmodPlugin from './vite-plugin-sitemap-lastmod'
 import versionStampPlugin from './vite-plugin-version-stamp'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
@@ -37,6 +38,7 @@ export default defineConfig({
     vue(),
     themeStripPlugin(),
     preloadDefaultViewPlugin(),
+    sitemapLastmodPlugin(),
     versionStampPlugin(),
     VitePWA({
       // Disable the service worker entirely for the native Capacitor build (#532).

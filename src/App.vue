@@ -325,8 +325,9 @@ import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
 import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
+import { setupSyncRecovery } from './composables/useSyncRecovery'
 import { useAppBadge } from './composables/useAppBadge'
-import { todayISO, toLocalDateKey } from './lib/dates'
+import { todayISO } from './lib/dates'
 import { useOnboarding } from './composables/useOnboarding'
 import { useTabRouting } from './composables/useTabRouting'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
@@ -376,15 +377,14 @@ const { setBadge: setAppBadge, clearBadge: clearAppBadge } = useAppBadge()
 // Plain function (not a computed) so `todayISO()` is re-evaluated every time the
 // app is backgrounded — a cached computed would badge yesterday's count after a
 // midnight rollover with no new sets to invalidate it.
+//
+// Delegates to the store's sets-per-day index (LIFT-1237) instead of rescanning
+// every set. That also puts the badge on `setDayKey` bucketing: this scan used
+// raw `toLocalDateKey`, which shifts a UI-logged set's `…T23:59Z` stamp forward
+// a day for every user east of UTC (#746), so the badge counted tomorrow's
+// bucket and showed 0 mid-session in those timezones.
 function countSetsLoggedToday(): number {
-  const today = todayISO()
-  let count = 0
-  for (const ex of workoutStore.exercises) {
-    for (const s of ex.sets) {
-      if (toLocalDateKey(s.date) === today) count++
-    }
-  }
-  return count
+  return workoutStore.setsLoggedOn(todayISO())
 }
 function onBadgeVisibilityChange() {
   if (document.visibilityState === 'hidden') {
@@ -434,9 +434,14 @@ function updateOnlineStatus() {
   if (!navigator.onLine) syncStatus.value = 'offline'
   else if (syncStatus.value === 'offline') syncStatus.value = 'synced'
 }
-window.addEventListener('online', updateOnlineStatus)
-window.addEventListener('offline', updateOnlineStatus)
-if (!navigator.onLine) syncStatus.value = 'offline'
+// Registration lives in onMounted/onUnmounted alongside every other listener
+// this component owns (LIFT-1240) — registering in the setup body left a
+// permanent pair of window listeners holding this instance's reactive scope,
+// so an unmounted instance kept mutating the module-level `syncStatus`.
+// The initial read stays here so the first paint reflects connectivity — and,
+// because `syncStatus` is module state, so a remount can't inherit a stale
+// 'offline' from a previous instance.
+updateOnlineStatus()
 
 const settingsOpen = ref(false)
 // SettingsSheet is an async component, so a `typeof`-based InstanceType would
@@ -723,7 +728,14 @@ function onBeforeUnload() {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  window.addEventListener('online', updateOnlineStatus)
+  window.addEventListener('offline', updateOnlineStatus)
   document.addEventListener('visibilitychange', onBadgeVisibilityChange)
+  // Re-fetch every store when the connection, the foreground, or the session
+  // comes back (LIFT-1226). Without this a failed read stayed stale — and the
+  // reconciliation pushes inside each store's fetch stayed parked — until the
+  // user fully relaunched the app.
+  teardownSyncRecovery = setupSyncRecovery()
   // Clear any badge left over from a prior session: visibilitychange does not
   // fire on cold start (the document begins visible), so a badge set before a
   // force-close would otherwise linger on the icon while the user is active.
@@ -840,10 +852,14 @@ onMounted(async () => {
   })
 })
 let unsubCrossTab: (() => void) | null = null
+let teardownSyncRecovery: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  window.removeEventListener('online', updateOnlineStatus)
+  window.removeEventListener('offline', updateOnlineStatus)
   document.removeEventListener('visibilitychange', onBadgeVisibilityChange)
   clearAppBadge()
   unsubCrossTab?.()
+  teardownSyncRecovery?.()
 })
 </script>

@@ -297,7 +297,7 @@
                 type="date"
                 class="settingsInput"
                 :value="prBaselineDate ?? ''"
-                :max="new Date().toISOString().slice(0,10)"
+                :max="todayISO()"
                 @change="onBaselineDateInput(($event.target as HTMLInputElement).value)"
                 aria-label="PR baseline date"
               />
@@ -394,6 +394,25 @@
           <div class="settingsRow">
             <span class="settingsHint">
               Tap these in the log-set Intensity lens to jump straight to a training intensity. The slider stays for one-off values.
+            </span>
+          </div>
+        </div>
+
+        <!-- Exercises (#1252): the exercise-first inverse of Manage Gyms —
+             one list of every exercise, each expanding to its gym + tag chips. -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Exercises</div>
+          <button class="settingsRow settingsRowBtn" @click="exerciseManagerOpen = true">
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M6.5 6.5h11"/><path d="M6.5 17.5h11"/><rect x="2" y="9" width="4" height="6" rx="1"/><rect x="18" y="9" width="4" height="6" rx="1"/></svg>
+              Manage Exercises
+            </span>
+            <span v-if="workoutStore.exercises.length" class="settingsHint">{{ workoutStore.exercises.length }}</span>
+            <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div class="settingsRow">
+            <span class="settingsHint">
+              See every exercise at once and set which gyms it's available at and which muscle groups it trains.
             </span>
           </div>
         </div>
@@ -571,6 +590,9 @@
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
+          <p class="settingsGroupNote">
+            Your support covers AI Coach and sync server costs. Lift stays ad-free and never sells your data.
+          </p>
         </div>
 
         <div class="settingsGroup">
@@ -603,6 +625,17 @@
 
   <!-- Legal modal (extracted to LegalSheet.vue) -->
   <LegalSheet :view="legalView" @close="legalView = null" />
+
+  <!-- Exercise Manager (#1252) — the inverse view: one row per exercise -->
+  <ExerciseManagerModal
+    :open="exerciseManagerOpen"
+    :exercises="liveExercises"
+    :gyms="prefs.gyms"
+    :all-tags="workoutStore.allTags"
+    @close="exerciseManagerOpen = false"
+    @toggle-exercise-gym="gymActions.toggleExerciseGym"
+    @toggle-exercise-tag="workoutStore.toggleExerciseTag"
+  />
 
   <!-- Gym Manager (#961) — same modal the workout tab's gym row opens -->
   <GymManagerModal
@@ -734,6 +767,7 @@ import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
+import { todayISO } from '../lib/dates'
 import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
 import { showXPToast } from '../composables/xpCeremonyUI'
 import { isNative } from '../lib/platform'
@@ -761,6 +795,7 @@ import { useAppShare } from '../composables/useAppShare'
 import LegalSheet from './LegalSheet.vue'
 import ThemeStatsSheet from './ThemeStatsSheet.vue'
 import GymManagerModal from './GymManagerModal.vue'
+import ExerciseManagerModal from './ExerciseManagerModal.vue'
 import { useGymActions } from '../composables/useGymActions'
 
 const props = defineProps<{
@@ -791,6 +826,11 @@ const gymActions = useGymActions()
 // freeze the modal's checkmarks/counts while open (see WorkoutTracker's
 // liveExercises for the full story).
 const liveExercises = computed(() => [...workoutStore.exercises])
+
+// ── Exercise manager (#1252) ────────────────────────────────────
+// Shares gymActions + liveExercises with the gym manager above; tag toggles go
+// straight to the store, which owns that primitive (see toggleExerciseTag).
+const exerciseManagerOpen = ref(false)
 const bodyweightStore = useBodyweightStore()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)

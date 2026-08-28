@@ -337,6 +337,22 @@ describe('CSS regression tests', () => {
     })
   })
 
+  // #617: the RPE chips are a tiling radiogroup, so they must be SIZED to the
+  // 44pt floor — an absolutely-positioned ::before overlay would butt against
+  // the neighbouring chip and a near-miss would pick the wrong RPE (#990).
+  describe('RPE controls touch targets (#617)', () => {
+    it('.wtRPEChip is sized to 44px in both dimensions, not overlay-extended', () => {
+      const lines = getRuleLines('.wtRPEChip')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.wtRPEToggle has min-height: 44px for iOS HIG compliance', () => {
+      const lines = getRuleLines('.wtRPEToggle')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('.wtTimerEditResetBtn touch target', () => {
     const lines = getRuleLines('.wtTimerEditResetBtn')
 
@@ -374,6 +390,38 @@ describe('CSS regression tests', () => {
     const lines = getRuleLines('.wtSuggestionSegment')
 
     it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtExManagerLabel touch target (#1252)', () => {
+    // The exercise manager's row label is a tappable expander sitting beside
+    // the expand chevron. Its two text lines plus padding measure 43px on
+    // their own — one pixel under the floor — so the min-height is load-
+    // bearing, not decorative. Sizing (not a ::before overlay) is mandatory
+    // here: these labels tile vertically, so an oversized overlay would reach
+    // into the next row and expand the wrong exercise.
+    const lines = getRuleLines('.wtExManagerLabel')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('centers its stacked lines so the extra height is not top-aligned dead space', () => {
+      expect(lines.some(l => l.includes('justify-content') && l.includes('center'))).toBe(true)
+    })
+  })
+
+  describe('guided session plan touch targets (#1256)', () => {
+    // The plan card adds two interactive elements — the collapse toggle and
+    // the per-exercise rows; both must meet the 44pt iOS touch-target minimum.
+    it('.wtSessionPlanToggle has min-height: 44px', () => {
+      const lines = getRuleLines('.wtSessionPlanToggle')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.wtSessionPlanRow has min-height: 44px', () => {
+      const lines = getRuleLines('.wtSessionPlanRow')
       expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
     })
   })

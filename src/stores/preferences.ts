@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import type { Json } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
-import { backupToIDB } from '../lib/durableStorage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { isPlainObject } from '../lib/storage'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
@@ -11,6 +11,7 @@ import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { useWorkoutStore } from './workout'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -216,8 +217,21 @@ export const usePreferencesStore = defineStore('preferences', {
   state: (): PreferencesState => ({ ...initialPreferencesState(), ...loadLocalSettings() }),
 
   actions: {
-    _persist() {
-      const payload = {
+    /**
+     * The one definition of the persisted preferences payload (LIFT-1243).
+     *
+     * localStorage, the IndexedDB mirror and the Supabase `preferences` JSONB
+     * column all carry this exact shape, and `init()` re-persists it after
+     * adopting a remote row — so the literal must exist once. It previously
+     * existed twice (here and inline in `init()`); the copies were byte-identical
+     * by luck, and adding a synced preference meant remembering both. Forgetting
+     * the `init()` copy silently dropped the field from localStorage on any
+     * launch where the remote row was adopted, invisible until the next cold
+     * start read it back as its default. This is the write-side twin of
+     * `_applyPreferences`, the single read-side reconciliation point (LIFT-1178).
+     */
+    _buildPayload() {
+      return {
         features: this.features,
         weightGoal: this.weightGoal,
         experience: this.experience,
@@ -233,8 +247,22 @@ export const usePreferencesStore = defineStore('preferences', {
         coachProfile: this.coachProfile,
         gyms: this.gyms,
       }
-      const data = JSON.stringify(payload)
-      persistStoreData('preferences', STORAGE_KEY, data)
+    },
+
+    /**
+     * Write the current payload to every LOCAL sink — the primary localStorage
+     * key, the IndexedDB mirror, the cross-tab broadcast, and the standalone FOUC
+     * mirror keys — without enqueueing a remote upsert.
+     *
+     * Split out of `_persist` so `init()` can re-persist an adopted remote row
+     * locally without writing the just-fetched value straight back to the server
+     * (a launch-time upsert would also open a window to clobber a change another
+     * device made between our fetch and our flush). Returns the serialized
+     * payload so `_persist` can reuse it for the upsert.
+     */
+    _persistLocal() {
+      const payload = this._buildPayload()
+      persistStoreData('preferences', STORAGE_KEY, JSON.stringify(payload))
       // Write individual keys so initTheme() can read them before Pinia for
       // FOUC prevention on the next page load. These are preferences-specific
       // mirror keys, not part of the shared primary-payload plumbing.
@@ -247,15 +275,41 @@ export const usePreferencesStore = defineStore('preferences', {
       } catch (e) {
         logError(e, { source: 'preferences._persist:fouc' })
       }
+      return payload
+    },
+
+    _persist() {
+      const payload = this._persistLocal()
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`preferences:${userId}`, () =>
-          supabase!
+        // Journaled to IndexedDB alongside the closure (LIFT-1239) so a settings
+        // change made offline is replayed on the next launch instead of being
+        // dropped when the tab closes before the flush. Preferences are a
+        // last-write-wins blob with NO reconciliation pass, so the queue was the
+        // only thing standing between an unflushed change and permanent loss.
+        //
+        // Replay keeps this exact key, so any write made after the relaunch
+        // supersedes it. It is NOT superseded by init()'s remote adoption,
+        // which writes localStorage directly rather than going through
+        // _persist(): a user who changes a setting offline therefore sees it
+        // revert once (init lets the remote row win) and return on the launch
+        // after, once the replayed write has reached the server. That flap is
+        // the price of the store's remote-wins-on-init rule, and it converges
+        // on the user's most recent intent — which is the outcome the old
+        // in-memory-only behavior discarded outright.
+        const row = {
+          user_id: userId,
+          // The payload is a closed object of app-owned settings; `Json` is the
+          // generated column type and can't express that shape structurally.
+          preferences: { ...payload } as unknown as Json,
+          updated_at: new Date().toISOString(),
+        }
+        syncQueue.enqueue(
+          `preferences:${userId}`,
+          () => supabase!
             .from('user_preferences')
-            .upsert(
-              { user_id: userId, preferences: { ...payload }, updated_at: new Date().toISOString() },
-              { onConflict: 'user_id' }
-            )
+            .upsert(row, { onConflict: 'user_id' }),
+          { op: 'upsert', table: 'user_preferences', row },
         )
       }
     },
@@ -364,7 +418,21 @@ export const usePreferencesStore = defineStore('preferences', {
       }
 
       // Then try Supabase (overrides local if exists)
-      if (supabase) {
+      await this._fetchFromSupabase()
+    },
+
+    /**
+     * Read this user's synced preferences and apply them over local state.
+     *
+     * Extracted from `init()` (LIFT-1226) so a recovered connection / session
+     * can re-run JUST the remote read without repeating the one-time
+     * localStorage migrations above. Mirrors the other three stores' method of
+     * the same name — swallows its own failures into `lastSyncError` so a
+     * caller's Promise.allSettled can never be aborted by it.
+     */
+    async _fetchFromSupabase() {
+      if (supabase && this._userId) {
+        const userId = this._userId
         this.syncing = true
         try {
           const { data, error } = await supabase
@@ -385,19 +453,16 @@ export const usePreferencesStore = defineStore('preferences', {
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
             this._applyPreferences(prefs)
-            const synced = JSON.stringify({
-              features: this.features, weightGoal: this.weightGoal,
-              experience: this.experience, filters: this.filters,
-              prBaselineDate: this.prBaselineDate,
-              theme: this.theme, colorMode: this.colorMode,
-              weightUnit: this.weightUnit, restTimerEnabled: this.restTimerEnabled,
-              restTimerAutoStart: this.restTimerAutoStart, appIcon: this.appIcon,
-              intensityPresets: this.intensityPresets,
-              coachProfile: this.coachProfile,
-              gyms: this.gyms,
-            })
-            localStorage.setItem(STORAGE_KEY, synced)
-            backupToIDB(STORAGE_KEY, synced)
+            // Route the local write through the single persist path (LIFT-1243)
+            // rather than hand-building a second copy of the payload. Besides
+            // removing the drift hazard this restores three side effects the
+            // inline write skipped: the FOUC mirror keys (so a remote theme
+            // adopted here no longer flashes the *previous* theme on every
+            // subsequent cold start, since main.ts's pre-Pinia bootstrap reads
+            // `app-theme`), the cross-tab broadcast, and the guarded
+            // localStorage write — an unguarded quota failure here would have
+            // been caught below and misreported as a preferences FETCH error.
+            this._persistLocal()
           }
         } catch (err) {
           // Thrown (vs returned) error — typically a network failure. Route
@@ -482,8 +547,19 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     setWeightUnit(unit: string) {
+      const previous = this.weightUnit
       this.weightUnit = unit
       this._persist()
+      // Stored per-exercise bar weights are kept in the display unit (LIFT-1223),
+      // so a real unit toggle must convert them or the raw number is silently
+      // reinterpreted (a 20 kg bar becomes 20 lbs) and corrupts the plate math.
+      if (
+        previous !== unit &&
+        (previous === 'lbs' || previous === 'kg') &&
+        (unit === 'lbs' || unit === 'kg')
+      ) {
+        useWorkoutStore().convertBarWeightsForUnitChange(previous, unit)
+      }
     },
 
     setRestTimer(enabled: boolean) {

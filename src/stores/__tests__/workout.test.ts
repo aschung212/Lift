@@ -116,6 +116,20 @@ describe('workout store', () => {
       store.logSet(id, 225, 5)
       expect(store.exercises[0].sets).toHaveLength(3)
     })
+
+    it('stores RPE when provided', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat')!
+      store.logSet(id, 225, 5, undefined, { rpe: 8.5 })
+      expect(store.exercises[0].sets[0].rpe).toBe(8.5)
+    })
+
+    it('omits rpe field when not provided', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat')!
+      store.logSet(id, 225, 5)
+      expect(store.exercises[0].sets[0]).not.toHaveProperty('rpe')
+    })
   })
 
   // ── updateSet ──────────────────────────────────────────────────
@@ -155,6 +169,34 @@ describe('workout store', () => {
       store.updateSet('fake-ex', 'fake-set', 200, 5)
       // No crash, no changes
       expect(store.exercises[0].sets).toHaveLength(0)
+    })
+
+    it('sets RPE when provided', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 10)
+      const setId = store.exercises[0].sets[0].id
+      store.updateSet(exId, setId, 135, 10, undefined, 9)
+      expect(store.exercises[0].sets[0].rpe).toBe(9)
+    })
+
+    it('removes RPE when set to null', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 10, undefined, { rpe: 8 })
+      const setId = store.exercises[0].sets[0].id
+      expect(store.exercises[0].sets[0].rpe).toBe(8)
+      store.updateSet(exId, setId, 135, 10, undefined, null)
+      expect(store.exercises[0].sets[0]).not.toHaveProperty('rpe')
+    })
+
+    it('leaves RPE unchanged when rpe param is undefined', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 10, undefined, { rpe: 7.5 })
+      const setId = store.exercises[0].sets[0].id
+      store.updateSet(exId, setId, 185, 5)
+      expect(store.exercises[0].sets[0].rpe).toBe(7.5)
     })
   })
 
@@ -231,6 +273,30 @@ describe('workout store', () => {
       const tags = ['Push']
       store.updateExerciseTags(id, tags)
       tags.push('Mutated')
+      expect(store.exercises[0].tags).toEqual(['Push'])
+    })
+  })
+
+  // ── toggleExerciseTag (#1252) ──────────────────────────────────
+  describe('toggleExerciseTag', () => {
+    it('adds a tag the exercise does not have', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench', ['Push'])!
+      store.toggleExerciseTag(id, 'Chest')
+      expect(store.exercises[0].tags).toEqual(['Push', 'Chest'])
+    })
+
+    it('removes a tag the exercise already has', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench', ['Push', 'Chest'])!
+      store.toggleExerciseTag(id, 'Push')
+      expect(store.exercises[0].tags).toEqual(['Chest'])
+    })
+
+    it('is a no-op for an unknown exercise', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', ['Push'])
+      expect(() => store.toggleExerciseTag('nope', 'Chest')).not.toThrow()
       expect(store.exercises[0].tags).toEqual(['Push'])
     })
   })
@@ -1252,6 +1318,54 @@ describe('workout store', () => {
       const store = useWorkoutStore()
       expect('equipment' in store.exercises[0]).toBe(false)
       expect(store.exercises[1].equipment).toBe('machine')
+    })
+  })
+
+  // ── setExercisePlateCountMode (LIFT-1039) ───────────────────────
+  describe('setExercisePlateCountMode', () => {
+    it('stores the mode and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Dumbbell Press', [])
+      store.setExercisePlateCountMode(id, 'total')
+
+      expect(store.exercises[0].plateCountMode).toBe('total')
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].plateCountMode).toBe('total')
+    })
+
+    it('stamps a fresh updated_at so the change wins last-write-wins merges', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Smith Squat', [])
+      // Seed a stale timestamp so the setter's fresh stamp is observably newer,
+      // without depending on sub-millisecond wall-clock resolution.
+      store.exercises[0].updated_at = '2000-01-01T00:00:00.000Z'
+      store.setExercisePlateCountMode(id, 'total')
+      expect(store.exercises[0].updated_at! > '2000-01-01T00:00:00.000Z').toBe(true)
+    })
+
+    it('round-trips through the localStorage boundary', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Leg Press', [])
+      store.setExercisePlateCountMode(id, 'total')
+      setActivePinia(createPinia())
+      const reloaded = useWorkoutStore()
+      expect(reloaded.exercises.find(e => e.id === id)!.plateCountMode).toBe('total')
+    })
+
+    it('drops a corrupt persisted plateCountMode on load', () => {
+      localStorageMock.setItem('workout-exercises', JSON.stringify([
+        { id: 'e1', name: 'Bench', tags: [], sets: [], plateCountMode: 'sideways' },
+        { id: 'e2', name: 'Squat', tags: [], sets: [], plateCountMode: 'total' },
+      ]))
+      setActivePinia(createPinia())
+      const store = useWorkoutStore()
+      expect('plateCountMode' in store.exercises[0]).toBe(false)
+      expect(store.exercises[1].plateCountMode).toBe('total')
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExercisePlateCountMode('nope', 'total')).not.toThrow()
     })
   })
 })

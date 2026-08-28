@@ -279,7 +279,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
-import { todayISO, setDayKey, formatShortDate } from '../lib/dates'
+import { todayISO, localDateKey, setDayKey, formatShortDate } from '../lib/dates'
 import { dailyLatestBodyweight } from '../lib/bodyweightExport'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
@@ -529,7 +529,11 @@ const dailyLatest = computed(() => dailyLatestBodyweight(store.entries))
 const filteredDaily = computed(() => {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - period.value)
-  const cutoffStr = cutoff.toISOString().slice(0, 10)
+  // `localDateKey`, not `toISOString().slice(0, 10)`: the points being filtered
+  // carry LOCAL day keys (dailyLatestBodyweight buckets via setDayKey), so a UTC
+  // cutoff key is a day ahead every Americas evening and silently clipped the
+  // oldest day out of the window.
+  const cutoffStr = localDateKey(cutoff)
   return dailyLatest.value.filter(d => d.date >= cutoffStr)
 })
 
@@ -571,8 +575,10 @@ const periodTimeRange = computed(() => {
   const periodStart = new Date()
   periodStart.setDate(now.getDate() - period.value)
   return {
-    t0: new Date(periodStart.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
-    t1: new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
+    // Local day keys for the same reason as `filteredDaily`'s cutoff — the
+    // x-axis must span the local days the data points are keyed to.
+    t0: new Date(localDateKey(periodStart) + 'T12:00:00').getTime(),
+    t1: new Date(localDateKey(now) + 'T12:00:00').getTime(),
   }
 })
 

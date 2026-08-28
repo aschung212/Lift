@@ -253,6 +253,113 @@ describe('Invariant: syncQueue idempotency (no .insert() in retry path)', () => 
   })
 })
 
+// ── Invariant 2b: every store write is durable (LIFT-1239) ──────────
+// Guard: the IndexedDB write journal (LIFT-706) only engages when a caller
+// passes a SyncDescriptor — a descriptor-less enqueue silently keeps the legacy
+// in-memory-only behavior, so the write is lost if the app closes before the 1s
+// flush and has no durable record to retain when retries are exhausted
+// (LIFT-1229). Only workout.ts passed descriptors for a year; bodyweight,
+// preferences and progression didn't, and none of those three has a
+// reconciliation pass to recover the write later. Nothing failed when a table
+// opted out, which is why it went unnoticed — hence a structural guard.
+
+/**
+ * Argument count of the call starting at `start` (index of the `(`), counting
+ * only commas at the top level of the argument list — commas inside nested
+ * calls, object/array literals, and strings belong to an argument, not to the
+ * list. Returns 0 for `f()`.
+ */
+function countCallArgs(source: string, start: number): number {
+  let depth = 0
+  let args = 1
+  let quote: string | null = null
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i]
+    if (quote) {
+      if (ch === '\\') i++
+      else if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+    if (ch === '(' || ch === '{' || ch === '[') depth++
+    else if (ch === ')' || ch === '}' || ch === ']') {
+      depth--
+      if (depth === 0) return source.slice(start + 1, i).trim() === '' ? 0 : args
+    } else if (ch === ',' && depth === 1) args++
+  }
+  throw new Error('Unbalanced call expression while scanning syncQueue arguments')
+}
+
+describe('Invariant: store writes carry a durable descriptor (LIFT-1239)', () => {
+  /**
+   * An enqueue may opt out of the journal only with this marker plus a written
+   * justification. The one current exemption is bodyweight's `clearAll`: its
+   * match is unbounded ("every live row for this user"), a descriptor can only
+   * express `eq` filters so the `.is('deleted_at', null)` guard would be lost
+   * on replay, and re-applying a wipe on the next launch would destroy entries
+   * logged on another device in the meantime.
+   */
+  const EXEMPT_MARKER = 'durable-journal-exempt'
+
+  /** Every syncQueue.enqueue / enqueueDelete call site under src/stores/. */
+  function enqueueCallSites(): { file: string; line: number; args: number; exempt: boolean }[] {
+    const sites: { file: string; line: number; args: number; exempt: boolean }[] = []
+    for (const { name, content } of getStoreFiles()) {
+      const re = /syncQueue\s*\.\s*(enqueue|enqueueDelete)\s*\(/g
+      let match: RegExpExecArray | null
+      while ((match = re.exec(content)) !== null) {
+        const open = match.index + match[0].length - 1
+        sites.push({
+          file: name,
+          line: content.slice(0, match.index).split('\n').length,
+          args: countCallArgs(content, open),
+          // The marker must be the last comment line before the call, so it
+          // can't be inherited from an unrelated block further up.
+          exempt: content
+            .slice(0, match.index)
+            .trimEnd()
+            .split('\n')
+            .slice(-1)[0]
+            .includes(EXEMPT_MARKER),
+        })
+      }
+    }
+    return sites
+  }
+
+  it('the argument counter handles nested literals, arrows and strings (self-test)', () => {
+    const two = "syncQueue.enqueue(`k:${id}`, () => supabase!.from('x').update(v).eq('id', id))"
+    expect(countCallArgs(two, two.indexOf('('))).toBe(2)
+    const three = "syncQueue.enqueue('k', () => f(a, b), { op: 'update', values: { a: 1 }, match: { b: 2 } })"
+    expect(countCallArgs(three, three.indexOf('('))).toBe(3)
+    // A comma inside a string literal must not be read as an argument separator.
+    const stringy = "syncQueue.enqueue('a,b', op)"
+    expect(countCallArgs(stringy, stringy.indexOf('('))).toBe(2)
+  })
+
+  it('every store enqueue passes a SyncDescriptor (or is explicitly exempt)', () => {
+    const sites = enqueueCallSites()
+
+    // Non-vacuity: all four stores must be reached, or the scan proves nothing.
+    expect(sites.length).toBeGreaterThan(5)
+    for (const file of ['workout.ts', 'bodyweight.ts', 'preferences.ts', 'progression.ts']) {
+      expect(sites.some(s => s.file === file), `${file} has no syncQueue call site`).toBe(true)
+    }
+
+    const violations = sites
+      .filter(s => s.args < 3 && !s.exempt)
+      .map(s =>
+        `${s.file}:${s.line} — syncQueue enqueue with ${s.args} arguments and no ` +
+        `SyncDescriptor. Without one the write is in-memory only: it is lost if ` +
+        `the app closes before the flush, and has no durable record to retain ` +
+        `when retries are exhausted. Pass a descriptor, or add a ` +
+        `'${EXEMPT_MARKER}' comment above the call with a justification.`,
+      )
+
+    expect(violations).toEqual([])
+  })
+})
+
 // ── Invariant 3: READ path is read-only ─────────────────────────────
 // Guard: SEV1 2026-04-12 — _fetchFromSupabase broadcast DELETEs from a
 // client-side dedup heuristic. 40-60% of one user's workout data was
@@ -710,5 +817,266 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
     // re-vet every reload in the file before loosening this.
     const settingsSheet = readFileSync(join(SRC_DIR, 'components', 'SettingsSheet.vue'), 'utf-8')
     expect(settingsSheet).toMatch(/const isDev = /)
+  })
+})
+
+// ── Invariant: component window/document listeners are lifecycle-scoped ──
+//
+// LIFT-1240: App.vue registered its `online`/`offline` listeners in the
+// `<script setup>` body and never removed them, so every instance left a
+// permanent pair of window listeners holding a closure over its reactive
+// scope. Dispatching `offline` then ran handlers from already-unmounted
+// instances, mutating the module-level `syncStatus` — the cross-test
+// state-leak class LIFT-966 is about, and a stale closure surviving HMR in
+// dev. Two structural rules make the omission impossible to repeat.
+
+describe('Invariant: component global listeners are lifecycle-scoped (LIFT-1240)', () => {
+  const LISTENER = /\b(?:window|document)\s*\.\s*(add|remove)EventListener\(\s*['"]([\w:-]+)['"]/g
+  // A call starting at column 0 inside a .vue file is in the `<script setup>`
+  // body — i.e. it runs at setup time and is outside any lifecycle hook.
+  const TOP_LEVEL_ADD = /^(?:window|document)\s*\.\s*addEventListener\(/m
+
+  function vueFiles() {
+    return getSourceFiles().filter(f => f.path.endsWith('.vue'))
+  }
+
+  /** Event names passed to add/removeEventListener, split by direction. */
+  function listenerEvents(source: string): { added: Set<string>; removed: Set<string> } {
+    const added = new Set<string>()
+    const removed = new Set<string>()
+    for (const [, direction, event] of source.matchAll(LISTENER)) {
+      ;(direction === 'add' ? added : removed).add(event)
+    }
+    return { added, removed }
+  }
+
+  it('every window/document listener a component adds is also removed', () => {
+    const files = vueFiles()
+    // Non-vacuity: the walker must reach the two components that actually
+    // register global listeners, or this scan proves nothing.
+    expect(files.map(f => f.path)).toContain('App.vue')
+    expect(files.map(f => f.path)).toContain(join('components', 'InfoPopover.vue'))
+
+    const violations: string[] = []
+    for (const file of files) {
+      const { added, removed } = listenerEvents(stripComments(file.content))
+      for (const event of added) {
+        if (!removed.has(event)) {
+          violations.push(
+            `${file.path} — adds a '${event}' listener with no matching ` +
+            `removeEventListener. A component listener that outlives its ` +
+            `instance keeps mutating shared state after unmount (LIFT-1240); ` +
+            `pair it with a removal in onUnmounted.`,
+          )
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  it('no component registers a global listener in the setup body', () => {
+    const violations = vueFiles()
+      .filter(f => TOP_LEVEL_ADD.test(stripComments(f.content)))
+      .map(f =>
+        `${f.path} — registers a window/document listener at the top level of ` +
+        `<script setup>. Register it in onMounted so the paired onUnmounted ` +
+        `removal actually covers it (LIFT-1240).`,
+      )
+
+    expect(violations).toEqual([])
+  })
+
+  it('the scans flag the LIFT-1240 shape and ignore comments (self-test)', () => {
+    const leaky = "window.addEventListener('online', onOnline)\nonUnmounted(() => {})"
+    expect(TOP_LEVEL_ADD.test(stripComments(leaky))).toBe(true)
+    expect([...listenerEvents(stripComments(leaky)).added]).toEqual(['online'])
+    expect(listenerEvents(stripComments(leaky)).removed.size).toBe(0)
+
+    const balanced =
+      "onMounted(() => {\n  window.addEventListener('online', onOnline)\n})\n" +
+      "onUnmounted(() => {\n  window.removeEventListener('online', onOnline)\n})"
+    expect(TOP_LEVEL_ADD.test(stripComments(balanced))).toBe(false)
+    const events = listenerEvents(stripComments(balanced))
+    expect([...events.added]).toEqual([...events.removed])
+
+    // A comment quoting the banned shape must not trip either scan.
+    const documented = "// window.addEventListener('online', onOnline)"
+    expect(TOP_LEVEL_ADD.test(stripComments(documented))).toBe(false)
+    expect(listenerEvents(stripComments(documented)).added.size).toBe(0)
+  })
+})
+
+
+// ── Invariant: tests of now-relative windows pin the clock (#1254) ──
+
+describe('Invariant: tests of now-relative windows pin the clock (#1254)', () => {
+  /**
+   * `calculateBest1RM` is the one windowing helper that reads the clock itself
+   * (`Date.now() - windowMonths`) instead of taking a `now` parameter the way
+   * `promptArbiter`, `coachHistory` and `useAppReview` do — and `scoreSet`
+   * inherits that through it. A test that feeds either one absolute dates is
+   * therefore asserting against the calendar rather than the behaviour, and
+   * passes only until wall-clock time carries its fixtures past the cutoff.
+   *
+   * Not hypothetical: `progressionIntegration.test.ts` picked 2026-03-01 as a
+   * date "safely inside" a 6-month window, went red five months later, and took
+   * `master` — and therefore every open PR — with it (#1254).
+   * `setScoring.test.ts` was roughly a month behind it with the same shape.
+   *
+   * `xp.test.ts` had already found the fix (freeze the clock, then date the
+   * fixtures against it) and documented why. The lesson simply had no way to
+   * reach the next file that needed it, which is what this scan is for: pinning
+   * the clock is cheap, and it is the difference between a test that measures
+   * the window and one that measures the day it was written.
+   */
+  const WINDOW_CONSUMER = /\b(?:calculateBest1RM|scoreSet)\s*\(/
+  const PINS_CLOCK = /vi\.setSystemTime\s*\(/
+
+  /** Every `.ts` test file under a `__tests__/` directory, except this one. */
+  function getTestFiles(dir = SRC_DIR, out: { path: string; content: string }[] = []) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules') continue
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) getTestFiles(full, out)
+      else if (/\.test\.ts$/.test(entry.name) && full !== __filename) {
+        out.push({ path: relative(SRC_DIR, full), content: readFileSync(full, 'utf-8') })
+      }
+    }
+    return out
+  }
+
+  it('every test exercising the rolling 1RM window freezes the clock', () => {
+    const consumers = getTestFiles().filter(f => WINDOW_CONSUMER.test(stripComments(f.content)))
+
+    // Non-vacuity: the walker must reach the known consumers, or a broken
+    // regex/walk would let this pass while scanning nothing.
+    expect(consumers.map(f => f.path)).toEqual(
+      expect.arrayContaining([
+        join('lib', '__tests__', 'setScoring.test.ts'),
+        join('lib', '__tests__', 'xp.test.ts'),
+        join('__tests__', 'progressionIntegration.test.ts'),
+      ]),
+    )
+
+    const violations = consumers
+      .filter(f => !PINS_CLOCK.test(f.content))
+      .map(f =>
+        `${f.path} — calls calculateBest1RM/scoreSet without vi.setSystemTime. ` +
+        `Their 6-month window is measured from Date.now(), so fixtures with ` +
+        `absolute dates age out of it and the file fails on a day nobody ` +
+        `touched it (#1254). Freeze the clock and date the fixtures from it.`,
+      )
+
+    expect(violations).toEqual([])
+  })
+
+  it('the scan flags an unpinned consumer and ignores comments (self-test)', () => {
+    const unpinned = "expect(calculateBest1RM(sets)).toBe(263)"
+    expect(WINDOW_CONSUMER.test(stripComments(unpinned))).toBe(true)
+    expect(PINS_CLOCK.test(unpinned)).toBe(false)
+
+    const pinned = "vi.setSystemTime(NOW)\nexpect(scoreSet({ priorSets })).toBe(1)"
+    expect(WINDOW_CONSUMER.test(stripComments(pinned))).toBe(true)
+    expect(PINS_CLOCK.test(pinned)).toBe(true)
+
+    // Importing the symbol is not exercising it, and a comment naming it is not
+    // either — neither should drag a file into the scan.
+    expect(WINDOW_CONSUMER.test(stripComments("import { calculateBest1RM } from '../xp'"))).toBe(false)
+    expect(WINDOW_CONSUMER.test(stripComments('// calculateBest1RM(sets) rolls forward'))).toBe(false)
+  })
+})
+
+describe('Invariant: REPLAYABLE_COLUMNS stays in lockstep with its producers (LIFT-1039)', () => {
+  /**
+   * The durable journal re-validates every replayed descriptor against
+   * REPLAYABLE_COLUMNS because the journal lives in user-writable IndexedDB
+   * (LIFT-785). `isAllowedColumnMap` is all-or-nothing — it rejects the WHOLE
+   * descriptor if a single key is missing — so one un-allowlisted column
+   * silently discards EVERY journaled write for that table on rehydrate(),
+   * defeating the durable queue for the exact offline case it exists for.
+   *
+   * That drift is silent by construction and has now happened three times on
+   * `exercises`: `equipment` (#931) and `gyms` (#961), then `plate_count_mode`
+   * (LIFT-783), then `notes` (#619) and `bodyweight_loaded` (LIFT-834). Each
+   * was added to `_buildExerciseUpsert` as an always-send column without a
+   * matching allowlist entry. The behavioural test that shipped with LIFT-1039
+   * pinned a hardcoded row literal, so it could only ever prove the columns
+   * that existed the day it was written — which is precisely why the next two
+   * columns drifted past it. This scan derives the expectation from the
+   * producer instead, so a new column fails here the moment it is added.
+   */
+  const SYNC_QUEUE = readFileSync(join(SRC_DIR, 'lib/syncQueue.ts'), 'utf-8')
+  const WORKOUT_STORE = readFileSync(join(STORES_DIR, 'workout.ts'), 'utf-8')
+
+  /** The first balanced `open`…`close` block following `marker` ('' if absent). */
+  function blockAfter(source: string, marker: string, open = '{', close = '}'): string {
+    const start = source.indexOf(marker)
+    if (start === -1) return ''
+    const from = source.indexOf(open, start + marker.length)
+    if (from === -1) return ''
+    let depth = 0
+    for (let i = from; i < source.length; i++) {
+      if (source[i] === open) depth++
+      else if (source[i] === close && --depth === 0) return source.slice(from, i + 1)
+    }
+    return ''
+  }
+
+  /** Column keys in an upsert row literal, including those inside `...(c ? { k: v } : {})`. */
+  function columnKeys(literal: string): Set<string> {
+    const keys = new Set<string>()
+    const re = /(?:^|[{,])\s*([a-z_][a-z0-9_]*)\s*:/gm
+    let m: RegExpExecArray | null
+    while ((m = re.exec(stripComments(literal))) !== null) keys.add(m[1])
+    return keys
+  }
+
+  /** Members of `REPLAYABLE_COLUMNS.<table>`. */
+  function allowlistFor(table: string): Set<string> {
+    const block = blockAfter(SYNC_QUEUE, `${table}: new Set(`, '[', ']')
+    const out = new Set<string>()
+    for (const q of stripComments(block).match(/'[a-z_][a-z0-9_]*'/g) ?? []) out.add(q.slice(1, -1))
+    return out
+  }
+
+  const PRODUCERS = [
+    { table: 'exercises', marker: 'function _buildExerciseUpsert', source: WORKOUT_STORE },
+    { table: 'sets', marker: 'function _enqueueSetUpsert', source: WORKOUT_STORE },
+  ] as const
+
+  it('the extractors find real columns and a real allowlist (non-vacuity)', () => {
+    const exercise = columnKeys(blockAfter(WORKOUT_STORE, 'function _buildExerciseUpsert'))
+    // Anchors that must exist regardless of how the row is spelled.
+    for (const col of ['id', 'user_id', 'name', 'tags', 'plate_count_mode']) {
+      expect(exercise.has(col)).toBe(true)
+    }
+    // A conditional spread column must be seen too, or the scan misses the
+    // exact shape most likely to drift.
+    expect(exercise.has('input_mode')).toBe(true)
+    expect(exercise.size).toBeGreaterThan(10)
+    expect(allowlistFor('exercises').size).toBeGreaterThan(10)
+    expect(allowlistFor('sets').has('estimated_1rm')).toBe(true)
+  })
+
+  it('the scan flags a column the allowlist is missing (self-test)', () => {
+    const literal = "{ id: x.id, user_id: u, ...(x.m ? { input_mode: x.m } : {}), notes: x.notes ?? null }"
+    const keys = columnKeys(literal)
+    expect(keys).toEqual(new Set(['id', 'user_id', 'input_mode', 'notes']))
+    // A ternary's own `:` and a `??` default must not be read as column keys.
+    expect(keys.has('m')).toBe(false)
+    const allowed = new Set(['id', 'user_id', 'input_mode'])
+    expect([...keys].filter(k => !allowed.has(k))).toEqual(['notes'])
+  })
+
+  it('every column an upsert producer always sends is replayable', () => {
+    const violations: string[] = []
+    for (const { table, marker, source } of PRODUCERS) {
+      const allowed = allowlistFor(table)
+      for (const col of columnKeys(blockAfter(source, marker))) {
+        if (!allowed.has(col)) violations.push(`${table}.${col} (sent by ${marker})`)
+      }
+    }
+    expect(violations).toEqual([])
   })
 })

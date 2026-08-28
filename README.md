@@ -41,7 +41,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Graph updates per tab: full e1RM history on All Sets, PR staircase on PRs
 - Set list capped at 10 most recent, with "Show all" toggle
 - Full CRUD: add, edit, and delete individual sets and exercises
-- Drag-to-reorder exercises by grip handle (disabled when filtering)
+- Exercise list orders itself by recency — the exercise you trained most recently floats to the top, and the sort is applied after search and tag filtering so a filtered subset stays recency-ordered too
 
 ### Exercise Search
 - Instant search bar for filtering exercises by name
@@ -61,6 +61,14 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Composes with tags: gym narrows the list, tags filter within it (quick-log picker follows too)
 - Gym manager for create/rename/delete plus bulk per-gym exercise assignment; gyms can also be created inline while editing an exercise, or from Settings
 - Active gym selection remembered per device (not synced — your phone can be at Gym A while your iPad stays on All)
+- Exercise-first manager (Settings › Exercises) for the inverse sweep: every exercise in one searchable list, each showing which gyms it's at and expanding to edit its gyms and muscle-group tags together
+
+### Guided Session Plan (Repeat Last Session)
+- A "Repeat last session" card above the exercise list turns your history into today's plan — no templates to author
+- Shows the last training day in the current scope (gym + tag filters) with exercise count, set count, and date
+- Expands into a per-exercise checklist: planned sets, top set from last time, and live done-today progress with checkmarks
+- Tapping a row opens the log modal, where the usual ladder's one-tap ghost logging takes over
+- With a single tag active it becomes that day's plan — "Repeat last Push session"
 
 ### Usual Ladder (One-Tap Set Logging)
 - Detects your habitual set progression per exercise across recent sessions (e.g. 45×10 → 95×10 → 135×10 …), tolerant of occasional deviations

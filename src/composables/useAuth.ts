@@ -85,7 +85,41 @@ function setupSessionRefreshLifecycle(): void {
   if (document.visibilityState === 'visible') resume()
 }
 
-async function initStores(userId: string): Promise<void> {
+// LIFT-1212: on a signed-in cold start BOTH the getSession() resolution and
+// the INITIAL_SESSION/SIGNED_IN auth event fire, and each called initStores
+// unguarded (the event path's `wasUnauthenticated` check only helps when
+// getSession wins the race). A double run means a duplicate localStorage→
+// Supabase migration, duplicate store hydration, and duplicate settings
+// watchers — the reachable trigger for the #787 migration race. Coalesce per
+// user: concurrent and repeat calls for the same user share one run. The
+// cache clears on teardown (sign-out) so the same user re-inits on their next
+// sign-in, and on failure so a transient error doesn't poison future inits.
+let _storesInitUserId: string | null = null
+let _storesInitPromise: Promise<void> | null = null
+
+function resetInitStoresGuard(): void {
+  _storesInitUserId = null
+  _storesInitPromise = null
+}
+
+function initStores(userId: string): Promise<void> {
+  if (_storesInitUserId === userId && _storesInitPromise) return _storesInitPromise
+  _storesInitUserId = userId
+  const p: Promise<void> = doInitStores(userId).catch((err) => {
+    // Clear only OUR OWN registration (promise identity, not userId): after a
+    // sign-out + fast re-sign-in of the same user, a NEWER init generation
+    // owns the guard, and a stale rejection from this superseded run must not
+    // wipe it — that would let a later call start a third, duplicate init.
+    // (Same identity discipline as the LIFT-1213 journal guard; flagged by
+    // the 2026-08-26 adversarial review.)
+    if (_storesInitPromise === p) resetInitStoresGuard()
+    throw err
+  })
+  _storesInitPromise = p
+  return p
+}
+
+async function doInitStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
   const preferencesStore = usePreferencesStore()
@@ -177,7 +211,14 @@ function init(): void {
       user.value = session.user
       if (wasUnauthenticated) {
         clearGuestFlag()
-        initStores(session.user.id)
+        // Fire-and-forget re-auth init: `initStores` rethrows on failure, so
+        // catch at the source rather than leaking an unhandled rejection to the
+        // global floor (LIFT-1227). The stores each swallow their own fetch
+        // errors; a rejection here means the guard/migration wrapper itself
+        // failed and is worth logging.
+        initStores(session.user.id).catch((err) => {
+          logError(err, { source: 'useAuth', action: 'onAuthStateChange:initStores' })
+        })
       }
     } else if (event === 'SIGNED_OUT') {
       // A SIGNED_OUT event ends the session — either the user tapped sign-out,
@@ -281,6 +322,8 @@ function teardownSession(): void {
   syncQueue.clear()
   resetStores()
   user.value = null
+  // The next sign-in (same user included) must re-hydrate from scratch.
+  resetInitStoresGuard()
 }
 
 async function signOut(): Promise<void> {
@@ -291,6 +334,21 @@ async function signOut(): Promise<void> {
   } finally {
     teardownSession()
   }
+}
+
+/**
+ * Extract a truthy Supabase error from a *resolved* (fulfilled) settled result.
+ *
+ * supabase-js resolves `{ data, error }` rather than rejecting on server-side
+ * failures (RLS, FK/constraint, 401), so `status === 'rejected'` alone misses
+ * them. Returns the error object when present, else null. Rejected results are
+ * handled separately by their `.reason`.
+ */
+function resolvedDeleteError(result: PromiseSettledResult<unknown>): unknown {
+  if (result.status !== 'fulfilled') return null
+  const val = result.value as { error?: unknown } | null | undefined
+  if (val && typeof val === 'object' && 'error' in val && val.error) return val.error
+  return null
 }
 
 /**
@@ -314,8 +372,16 @@ async function deleteAccount(): Promise<void> {
       supabase.from('exercises').delete().eq('user_id', userId), // cascades to sets
     ])
 
-    // Check for hard failures (network errors, not RLS/empty-table errors)
-    const failed = results.filter(r => r.status === 'rejected')
+    // A genuine server-side delete failure must ABORT before we wipe local data,
+    // or "delete my data" silently leaves server rows behind while the device is
+    // cleared (a data-integrity and right-to-deletion/privacy bug). supabase-js
+    // does NOT reject on RLS violations, FK/constraint errors, or an expired-token
+    // 401 — it RESOLVES `{ data, error }` with a truthy `.error` (the exact
+    // resolved-vs-rejected trap the sync queue already closed in LIFT-784). So a
+    // settled result is a failure when it either rejected (network throw) OR
+    // resolved carrying an error. An empty-table delete is not an error — it
+    // resolves `{ error: null }` (0 rows), so this never false-positives.
+    const failed = results.filter(r => r.status === 'rejected' || !!resolvedDeleteError(r))
     if (failed.length > 0) {
       throw new Error('Failed to delete server data. Please try again.')
     }
@@ -363,6 +429,7 @@ function destroy(): void {
   for (const cleanup of _lifecycleCleanups) cleanup()
   _lifecycleCleanups = []
   _initialized = false
+  resetInitStoresGuard()
 }
 
 export function useAuth(): UseAuthReturn {

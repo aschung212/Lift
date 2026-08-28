@@ -9,7 +9,7 @@
 
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
-import { toLocalDateKey, localDateKey } from './dates'
+import { toLocalDateKey, localDateKey, daysBetweenISO } from './dates'
 import { effectiveSetWeight } from './bodyweightLoad'
 
 export interface SessionHighlight {
@@ -31,6 +31,26 @@ export interface SessionBestSet {
   isPR: boolean
 }
 
+/**
+ * A single "transformation" story (#1019): the biggest strength gain, over a
+ * meaningful span, among the exercises trained today. Turns an exercise's
+ * history into one aspirational "X → Y" narrative for a shareable card.
+ */
+export interface SessionProgress {
+  exerciseId: string
+  name: string
+  /** Best e1RM on the exercise's first recorded day, in display units. */
+  startE1RM: number
+  /** All-time best e1RM for the exercise, in display units. */
+  currentE1RM: number
+  /** currentE1RM − startE1RM, in display units (always > 0). */
+  delta: number
+  /** Whole days from the first recorded day to the peak-e1RM day. */
+  spanDays: number
+  /** Human span label for the delta, e.g. '3 months'. */
+  spanLabel: string
+}
+
 export interface SessionSummary {
   rawDate: string             // YYYY-MM-DD (key used everywhere internally)
   date: string                // 'Tue, Apr 22' formatted for display
@@ -46,8 +66,33 @@ export interface SessionSummary {
   /** Sum of the previous Mon→Sun week, in display units. Used for the % delta on the WeekChart card. */
   priorWeekVolume: number
   streak: number              // weeks
+  /** Biggest strength-progress story among today's exercises, or null. */
+  progress: SessionProgress | null
   /** Display unit label for any weight field — 'lbs' or 'kg'. */
   unitLabel: string
+}
+
+/**
+ * A progress story must clear both bars to be worth sharing: a real strength
+ * gain (not measurement noise) achieved over enough time to read as a journey
+ * rather than a single good day. Thresholds are checked in pounds, before unit
+ * conversion, so they mean the same thing for lbs and kg users.
+ */
+const MIN_PROGRESS_DELTA_LB = 5
+const MIN_PROGRESS_SPAN_DAYS = 14
+
+/** Human-friendly span label for a day count, e.g. '3 weeks' / '5 months' / '1.5 years'. */
+export function formatSpanLabel(days: number): string {
+  if (days < 56) {
+    const w = Math.max(1, Math.round(days / 7))
+    return `${w} week${w === 1 ? '' : 's'}`
+  }
+  if (days < 548) {
+    const m = Math.max(2, Math.round(days / 30.44))
+    return `${m} months`
+  }
+  const y = Math.round((days / 365.25) * 10) / 10
+  return `${y} year${y === 1 ? '' : 's'}`
 }
 
 export interface SessionSummaryInput {
@@ -214,6 +259,58 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
 
   highlights.sort((a, b) => b.volume - a.volume)
 
+  // Progress / transformation story (#1019): among the exercises trained today,
+  // find the one with the biggest e1RM gain from its first recorded day to its
+  // all-time peak, over a meaningful span. Only today's exercises are eligible
+  // so the card celebrates something the user just worked — "you benched today;
+  // here's how far your bench has come".
+  let progress: SessionProgress | null = null
+  let bestProgressDeltaLb = 0
+  for (const { ex } of todaysByExercise.values()) {
+    // Best e1RM per calendar day across the whole history of this exercise.
+    const bestByDay = new Map<string, number>()
+    for (const s of ex.sets) {
+      const k = toLocalDateKey(s.date)
+      const prev = bestByDay.get(k) ?? -1
+      if (s.estimated1RM > prev) bestByDay.set(k, s.estimated1RM)
+    }
+    if (bestByDay.size < 2) continue
+
+    const dayKeys = [...bestByDay.keys()].sort()
+    const startKey = dayKeys[0]
+    const startLb = bestByDay.get(startKey)!
+    // Peak endpoint: the highest e1RM day; earliest such day for a stable span.
+    let peakKey = startKey
+    let peakLb = startLb
+    for (const k of dayKeys) {
+      const v = bestByDay.get(k)!
+      if (v > peakLb) {
+        peakLb = v
+        peakKey = k
+      }
+    }
+
+    const deltaLb = peakLb - startLb
+    if (deltaLb < MIN_PROGRESS_DELTA_LB) continue
+    const spanDays = daysBetweenISO(startKey, peakKey)
+    if (spanDays < MIN_PROGRESS_SPAN_DAYS) continue
+
+    if (deltaLb > bestProgressDeltaLb) {
+      bestProgressDeltaLb = deltaLb
+      const startE1RM = cv(startLb)
+      const currentE1RM = cv(peakLb)
+      progress = {
+        exerciseId: ex.id,
+        name: ex.name,
+        startE1RM,
+        currentE1RM,
+        delta: Math.round((currentE1RM - startE1RM) * 10) / 10,
+        spanDays,
+        spanLabel: formatSpanLabel(spanDays),
+      }
+    }
+  }
+
   // Duration: span between earliest and latest *real-time* timestamps on the date.
   // End-of-day jitter timestamps (bulk-add / legacy) are excluded entirely —
   // including them in the max would inflate duration to ~all day when a user
@@ -269,6 +366,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     weekVolume,
     priorWeekVolume,
     streak: streakWeeks,
+    progress,
     unitLabel,
   }
 }

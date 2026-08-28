@@ -20,6 +20,7 @@ export interface TagRecovery {
 export interface UseTagRecoveryReturn {
   recovery: ComputedRef<TagRecovery[]>
   hasData: ComputedRef<boolean>
+  hiddenTags: ComputedRef<string[]>
   hiddenCount: ComputedRef<number>
   totalCount: ComputedRef<number>
 }
@@ -91,27 +92,31 @@ export function useTagRecovery(
     return results
   })
 
-  // Count how many excluded tags actually have logged sets
-  const hiddenCount = computed((): number => {
+  // Which excluded tags actually have logged sets — the only ones worth offering
+  // back to the user as "show again". Tags belong to the EXERCISE, not the set, so
+  // a single dated set is proof enough: iterating every set only re-adds identical
+  // entries, turning an O(exercises x tags) answer into O(exercises x sets x tags)
+  // work on every store trigger (#1236).
+  const hiddenTags = computed((): string[] => {
     const excluded = new Set(excludedTags.value)
+    if (excluded.size === 0) return []
     const hiddenWithSets = new Set<string>()
     for (const exercise of exercises.value) {
       if (!exercise.tags || exercise.tags.length === 0) continue
-      for (const set of exercise.sets) {
-        if (set.date) {
-          for (const tag of exercise.tags) {
-            if (excluded.has(tag)) hiddenWithSets.add(tag)
-          }
-        }
+      if (!exercise.sets.some(set => set.date)) continue
+      for (const tag of exercise.tags) {
+        if (excluded.has(tag)) hiddenWithSets.add(tag)
       }
     }
-    return hiddenWithSets.size
+    return [...hiddenWithSets].sort()
   })
+
+  const hiddenCount = computed((): number => hiddenTags.value.length)
 
   // Total tags with data (visible + hidden)
   const totalCount = computed(() => recovery.value.length + hiddenCount.value)
 
   const hasData = computed(() => totalCount.value > 0)
 
-  return { recovery, hasData, hiddenCount, totalCount }
+  return { recovery, hasData, hiddenTags, hiddenCount, totalCount }
 }

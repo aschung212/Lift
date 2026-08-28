@@ -112,17 +112,29 @@ export const JOURNAL_SCHEMA_VERSION = 1
  * tampered (or corrupted) journal entry could issue an upsert/update against an
  * arbitrary table or column, with RLS as the only backstop. This allowlist is a
  * client-side defense-in-depth layer: only the tables the app actually journals
- * (`exercises`, `sets`) and only their real columns are replayable; anything
- * else is dropped before a query is ever built.
+ * and only their real columns are replayable; anything else is dropped before a
+ * query is ever built.
  *
- * Keep this in sync with the descriptors built in `src/stores/workout.ts`
+ * Keep this in sync with the descriptor producers — `src/stores/workout.ts`
  * (`_buildExerciseUpsert`, `_enqueueSetUpsert`, `_enqueueSoftDelete`,
- * `_enqueueRestore`) — those are the only descriptor producers in the app.
+ * `_enqueueRestore`), `src/stores/bodyweight.ts` (`_enqueueEntryUpsert`,
+ * `_enqueueEntrySoftDelete`, `_enqueueEntryRestore`), `preferences._persist`
+ * and `progression._syncToSupabase` (LIFT-1239).
  */
 const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
   exercises: new Set([
     'id', 'user_id', 'name', 'tags', 'archived_at',
-    'input_mode', 'bar_weight', 'intensity_max_reps', 'deleted_at',
+    'input_mode', 'bar_weight', 'plate_count_mode', 'intensity_max_reps',
+    // Every column below is ALWAYS present in the `_buildExerciseUpsert` row,
+    // so a journaled exercise upsert carries them all. `isAllowedColumnMap`
+    // rejects the WHOLE descriptor if any single key is missing here, so one
+    // omission silently discards every journaled exercise write on rehydrate()
+    // — defeating the durable queue for the exact offline case it exists for.
+    // `equipment` (#931), `gyms` (#961) and `plate_count_mode` (LIFT-783) were
+    // the original drift (LIFT-1039); `notes` (#619) and `bodyweight_loaded`
+    // (LIFT-834) drifted in the same way while this fix sat unmerged.
+    // This set MUST stay in lockstep with `_buildExerciseUpsert`.
+    'equipment', 'gyms', 'notes', 'bodyweight_loaded', 'deleted_at',
     // Retired in #770 but the DB column still exists (left dormant, never
     // dropped). Tolerated so an offline write journaled by a pre-#770 client
     // still replays after an upgrade instead of being silently dropped.
@@ -138,6 +150,39 @@ const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
     // exact offline-then-sync case it exists for.
     'created_at',
   ]),
+  // LIFT-1239: the three tables below journal too, so a bodyweight entry / XP
+  // total / settings change made offline survives a close before the flush.
+  bodyweight_entries: new Set([
+    'id', 'user_id', 'date', 'weight', 'deleted_at',
+  ]),
+  user_preferences: new Set(['user_id', 'preferences', 'updated_at']),
+  user_progression: new Set([
+    'user_id', 'total_xp', 'streak_weeks', 'weekly_target',
+    'pending_target_change', 'show_progression', 'progression_enabled',
+    'unlocked_themes', 'starter_theme', 'starter_confirmed', 'epoch',
+    'streak_history', 'xp_per_set', 'bodyweight_xp_dates', 'updated_at',
+  ]),
+}
+
+/**
+ * Upsert conflict targets for tables whose upsert key is NOT the primary key
+ * (LIFT-1239).
+ *
+ * `user_preferences` has a surrogate `id uuid primary key` plus a separate
+ * `unique(user_id)` constraint, and the app upserts a row with no `id`. Without
+ * an explicit conflict target Postgres resolves against the PK, generates a new
+ * `id`, and then violates `unique(user_id)` — so a replayed preferences write
+ * would fail forever. Every other journaled table upserts on its primary key,
+ * where PostgREST's default conflict target is already correct.
+ *
+ * Deliberately a client-side constant rather than a field on the descriptor:
+ * the journal is user-writable IndexedDB, and a conflict target supplied by a
+ * tampered entry would let a replay resolve against an attacker-chosen column.
+ * MUST match the `onConflict` option used at the call site in
+ * `src/stores/preferences.ts` (asserted structurally in syncQueueJournal.test.ts).
+ */
+const UPSERT_CONFLICT_TARGET: Record<string, string> = {
+  user_preferences: 'user_id',
 }
 
 /** True when `obj` is a non-empty plain map whose keys are all in `allowed`. */
@@ -200,7 +245,10 @@ export function executeDescriptor(descriptor: SyncDescriptor): PromiseLike<unkno
     return Promise.resolve()
   }
   if (descriptor.op === 'upsert') {
-    return fromTable(descriptor.table).upsert(descriptor.row)
+    const onConflict = UPSERT_CONFLICT_TARGET[descriptor.table]
+    return onConflict
+      ? fromTable(descriptor.table).upsert(descriptor.row, { onConflict })
+      : fromTable(descriptor.table).upsert(descriptor.row)
   }
   let query = fromTable(descriptor.table).update(descriptor.values)
   for (const [col, val] of Object.entries(descriptor.match)) {
@@ -295,6 +343,17 @@ export class SyncQueue {
   }
 
   /**
+   * Delete a key's journal entry only if it is still the exact entry captured
+   * at flush time (LIFT-1213). _journalSet stores a fresh object per write, so
+   * identity inequality means a newer same-key write replaced the entry while
+   * the flush was in flight — that newer durable record must survive.
+   */
+  private _journalDeleteIfCurrent(key: string, snapshot: JournalEntry | undefined): boolean {
+    if (this._journal.get(key) !== snapshot) return false
+    return this._journal.delete(key)
+  }
+
+  /**
    * Extract a failure reason from a settled op result, or null on success.
    *
    * A rejection is always a failure. A *fulfilled* Supabase op resolves
@@ -319,7 +378,9 @@ export class SyncQueue {
    *
    * Pass a `descriptor` to make the write durable across reloads: it is
    * journaled to IndexedDB immediately and removed once the op flushes
-   * successfully (or is dropped after exhausting retries). Omit it for
+   * successfully. If the op instead exhausts its in-session retries the
+   * journal entry is RETAINED (LIFT-1229) so it replays on the next launch
+   * via `rehydrate()` rather than being lost. Omit the descriptor for
    * in-memory-only writes (the legacy behavior).
    */
   enqueue(key: string, op: SyncOperation, descriptor?: SyncDescriptor): void {
@@ -442,6 +503,13 @@ export class SyncQueue {
     syncStatus.value = 'syncing'
     broadcastSyncStatus('syncing')
     const entries = [...this._queue.entries()]
+    // Identity snapshot of each key's journal entry at flush time (LIFT-1213).
+    // A same-key enqueue that lands while the flush below is awaited REPLACES
+    // the journal object (_journalSet always stores a fresh object). Guarding
+    // the completion-time deletes on identity stops the OLD write's completion
+    // from deleting the NEWER write's durable record — which would silently
+    // lose the correction if the app reloaded before the next flush.
+    const journalSnapshots = entries.map(([key]) => this._journal.get(key))
     this._queue.clear()
 
     try {
@@ -457,8 +525,9 @@ export class SyncQueue {
         if (!error) {
           // Clear retry counter on success so future failures get full retries
           this._attemptMap.delete(key)
-          // Write durably landed on the server — drop its journal entry.
-          if (this._journal.delete(key)) journalChanged = true
+          // Write durably landed on the server — drop its journal entry,
+          // unless a newer same-key write superseded it mid-flight (LIFT-1213).
+          if (this._journalDeleteIfCurrent(key, journalSnapshots[i])) journalChanged = true
           return
         }
         hasFailure = true
@@ -471,11 +540,30 @@ export class SyncQueue {
           this._attemptMap.set(key, attempt)
           logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
         } else {
-          logError(error, { source: 'SyncQueue', key, attempts: attempt })
-          // Retries exhausted — the op is dropped, so drop its journal entry
-          // too. (Reconciliation in the store's _fetchFromSupabase is the
-          // last line of defense for recovering such writes.)
-          if (this._journal.delete(key)) journalChanged = true
+          // Retries exhausted for this session. The in-memory op is dropped,
+          // but the DURABLE journal entry is deliberately RETAINED (LIFT-1229)
+          // so the write replays on the next launch via rehydrate() instead of
+          // being lost. Previously the entry was deleted here, leaving
+          // reconciliation in the store's _fetchFromSupabase as the only
+          // recovery — but that path only re-pushes missing *sets*, so an
+          // exhausted exercise-metadata write (rename / tags / gyms / archive /
+          // bar + intensity settings) was stranded silently until the user
+          // happened to touch that exercise again. Keeping the journal entry
+          // recovers every journaled table uniformly. Replay is idempotent
+          // (upsert/update only), so a write the server already holds is a
+          // harmless no-op next launch.
+          //
+          // A distinct `event: 'retry_exhausted'` marker (vs a bare logError)
+          // makes exhaustion frequency measurable pre-GA, separate from generic
+          // sync errors. `journalRetained` is false only for descriptor-less
+          // (in-memory-only) writes, which have no durable record to keep.
+          logError(error, {
+            source: 'SyncQueue',
+            event: 'retry_exhausted',
+            key,
+            attempts: attempt,
+            journalRetained: this._journal.has(key),
+          })
         }
       })
       // An expired/stale token surfaces identically across every queued write.
