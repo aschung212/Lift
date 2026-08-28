@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { BodyweightEntry } from '../../stores/bodyweight'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit } from '../../__tests__/helpers'
@@ -687,6 +687,33 @@ describe('BodyweightTracker', () => {
       await wrapper.vm.$nextTick()
       const dots = wrapper.findAll('.bwEndpointDot')
       expect(dots.length).toBe(2)
+    })
+  })
+
+  describe('period window boundary (#1242)', () => {
+    const PREV_TZ = process.env.TZ
+
+    afterEach(() => {
+      process.env.TZ = PREV_TZ
+      vi.useRealTimers()
+    })
+
+    it('keeps the oldest day of the window when the UTC date has already rolled over', () => {
+      // 7pm on Mar 15 in Los Angeles is already Mar 16 in UTC. The chart's
+      // points are keyed to LOCAL days (dailyLatestBodyweight → setDayKey), so
+      // deriving the cutoff via `toISOString().slice(0, 10)` produced a key one
+      // day ahead and clipped the oldest day out of every evening's 30d view.
+      process.env.TZ = 'America/Los_Angeles'
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-03-16T02:00:00.000Z'))
+
+      entries = [
+        makeEntry('e-old', 175, '2026-02-13'), // exactly 30 local days back
+        makeEntry('e-new', 170, '2026-03-15'),
+      ]
+
+      const wrapper = mountTracker()
+      expect(wrapper.findAll('.bwEndpointDot').length).toBe(2)
     })
   })
 
