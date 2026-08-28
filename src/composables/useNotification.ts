@@ -15,6 +15,24 @@ import { ref, onUnmounted, type Ref } from 'vue'
 
 const PERMISSION_KEY = 'notification-permission-asked'
 
+/** A single notification action button (subset of the DOM NotificationAction type). */
+export interface NotifAction {
+  action: string
+  title: string
+  icon?: string
+}
+
+/**
+ * Action buttons attached to the "Rest Complete" notification (LIFT-751). They only
+ * render when the notification is shown via ServiceWorkerRegistration.showNotification
+ * and are handled by public/sw-notification-handler.js. Two is the platform-supported
+ * maximum on most surfaces, so keep this list to two.
+ */
+export const REST_TIMER_NOTIFICATION_ACTIONS: NotifAction[] = [
+  { action: 'rest-again', title: 'Rest Again' },
+  { action: 'log-set', title: 'Log Set' },
+]
+
 /** Whether the browser supports the Notification API */
 function isSupported(): boolean {
   return 'Notification' in window
@@ -56,7 +74,7 @@ async function requestPermission(): Promise<boolean> {
  */
 async function notify(
   title: string,
-  options?: NotificationOptions & { wasBackgrounded?: boolean },
+  options?: NotificationOptions & { wasBackgrounded?: boolean; actions?: NotifAction[] },
 ): Promise<boolean> {
   if (!hasPermission()) return false
 
@@ -69,7 +87,8 @@ async function notify(
   // that re-fires a notification with the same tag (so a second rest-timer
   // completion still alerts). It's missing from the standard NotificationOptions
   // TS type, so we extend it locally rather than asserting the whole object.
-  const finalOptions: NotificationOptions & { renotify?: boolean } = {
+  // `actions` (LIFT-751) is likewise SW-only and absent from the lib type.
+  const finalOptions: NotificationOptions & { renotify?: boolean; actions?: NotifAction[] } = {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'lift-rest-timer',
@@ -89,7 +108,12 @@ async function notify(
   }
 
   try {
-    const notification = new Notification(title, finalOptions)
+    // The Notification constructor rejects `actions` (persistent-notification
+    // only — Chrome throws a TypeError), so strip them and show a plain
+    // notification rather than none at all.
+    const constructorOptions = { ...finalOptions }
+    delete constructorOptions.actions
+    const notification = new Notification(title, constructorOptions)
     setTimeout(() => notification.close(), 5000)
     notification.onclick = () => {
       window.focus()
@@ -150,7 +174,7 @@ export interface UseNotificationReturn {
   isBackgrounded: () => boolean
   hasAskedBefore: () => boolean
   requestPermission: () => Promise<boolean>
-  notify: (title: string, options?: NotificationOptions & { wasBackgrounded?: boolean }) => Promise<boolean>
+  notify: (title: string, options?: NotificationOptions & { wasBackgrounded?: boolean; actions?: NotifAction[] }) => Promise<boolean>
 }
 
 export function useNotification(): UseNotificationReturn {

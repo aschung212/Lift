@@ -144,6 +144,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Inject the custom notificationclick handler (rest-timer action buttons, LIFT-751)
+        // into the Workbox-generated service worker. generateSW has no notification handling
+        // of its own, so without this the action buttons would render but do nothing.
+        importScripts: ['sw-notification-handler.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         globIgnores: [
           'screenshot-*.png',

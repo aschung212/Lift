@@ -12,7 +12,19 @@ const notifMocks = vi.hoisted(() => ({
   wasBackgrounded: { value: false },
 }))
 
+// The controller registers a service-worker "message" listener and pairs it with
+// an unconditional onUnmounted cleanup (LIFT-751). Stub onUnmounted so the bare
+// (non-component) makeController calls in this suite don't warn — mirrors useModal.test.ts.
+vi.mock('vue', async () => {
+  const actual = await vi.importActual('vue')
+  return { ...(actual as object), onUnmounted: vi.fn() }
+})
+
 vi.mock('../useNotification', () => ({
+  REST_TIMER_NOTIFICATION_ACTIONS: [
+    { action: 'rest-again', title: 'Rest Again' },
+    { action: 'log-set', title: 'Log Set' },
+  ],
   useNotification: () => ({
     notify: notifMocks.notify,
     requestPermission: notifMocks.requestPermission,
@@ -380,6 +392,24 @@ describe('useRestTimerController', () => {
       expect(notifMocks.stopTracking).toHaveBeenCalled()
     })
 
+    it('attaches Rest Again / Log Set action buttons to the completion notification (LIFT-751)', () => {
+      const { ctrl } = makeController()
+      ctrl.setRestDuration(90)
+      const start = Date.now()
+      vi.setSystemTime(start)
+      ctrl.startRestTimer()
+
+      vi.setSystemTime(start + 91_000)
+      vi.advanceTimersByTime(250)
+
+      expect(notifMocks.notify).toHaveBeenCalledWith('Rest Complete', expect.objectContaining({
+        actions: [
+          { action: 'rest-again', title: 'Rest Again' },
+          { action: 'log-set', title: 'Log Set' },
+        ],
+      }))
+    })
+
     it('does not call onComplete while editing presets', () => {
       const { ctrl, onComplete } = makeController()
       ctrl.setRestDuration(90)
@@ -526,6 +556,72 @@ describe('useRestTimerController', () => {
       } finally {
         vi.useRealTimers()
       }
+    })
+  })
+
+  describe('service-worker "rest-again" action (LIFT-751)', () => {
+    let swListeners: Array<(event: MessageEvent) => void>
+    let originalSW: PropertyDescriptor | undefined
+
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: false })
+      swListeners = []
+      originalSW = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker')
+      Object.defineProperty(navigator, 'serviceWorker', {
+        value: {
+          addEventListener: (_type: string, cb: (event: MessageEvent) => void) => swListeners.push(cb),
+          removeEventListener: vi.fn(),
+        },
+        configurable: true,
+      })
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+      if (originalSW) {
+        Object.defineProperty(navigator, 'serviceWorker', originalSW)
+      } else {
+        // @ts-expect-error clean up the stub
+        delete navigator.serviceWorker
+      }
+    })
+
+    it('restarts a fresh rest timer when the service worker posts rest-again', () => {
+      const { ctrl } = makeController()
+      ctrl.restDuration.value = 120
+      expect(ctrl.timerActive.value).toBe(false)
+      expect(swListeners.length).toBeGreaterThan(0)
+
+      swListeners.forEach((cb) =>
+        cb({ data: { type: 'rest-timer-action', action: 'rest-again' } } as MessageEvent),
+      )
+
+      expect(ctrl.timerActive.value).toBe(true)
+      expect(ctrl.timerSeconds.value).toBe(120)
+    })
+
+    it('ignores unrelated service-worker messages', () => {
+      const { ctrl } = makeController()
+
+      swListeners.forEach((cb) => {
+        cb({ data: { type: 'other-thing' } } as MessageEvent)
+        cb({ data: { type: 'rest-timer-action', action: 'something-else' } } as MessageEvent)
+        cb({ data: null } as MessageEvent)
+      })
+
+      expect(ctrl.timerActive.value).toBe(false)
+    })
+
+    it('does not restart when the rest timer has been disabled', () => {
+      const prefs = usePreferencesStore()
+      prefs.setRestTimer(false)
+      const { ctrl } = makeController()
+
+      swListeners.forEach((cb) =>
+        cb({ data: { type: 'rest-timer-action', action: 'rest-again' } } as MessageEvent),
+      )
+
+      expect(ctrl.timerActive.value).toBe(false)
     })
   })
 })

@@ -89,6 +89,7 @@ describe('vercel.json SPA fallback rewrite scoping (#1155)', () => {
     expect(matcher.test('/sw.js')).toBe(false)
     expect(matcher.test('/workbox-4723e66c.js')).toBe(false)
     expect(matcher.test('/sw-offline-handler.js')).toBe(false)
+    expect(matcher.test('/sw-notification-handler.js')).toBe(false)
   })
 
   it('misses the other static build prefixes', () => {
