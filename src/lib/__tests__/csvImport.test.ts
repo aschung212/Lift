@@ -27,6 +27,42 @@ describe('csvImport', () => {
       expect(bench.sets[0].estimated1RM).toBe(216) // 185 * (1 + 5/30)
     })
 
+    // Regression LIFT-1215: Strong kg data imported as raw numbers (a 100 kg
+    // squat became a 100 lb one), and the "Weight (kg)" header variant matched
+    // no column at all — every row silently skipped.
+    it('converts a "Weight (kg)" column to lbs (LIFT-1215)', () => {
+      const csv = `Date,Workout Name,Exercise Name,Set Order,Weight (kg),Reps,Distance,Seconds
+2026-04-01,Morning,Squat,1,100,5,,`
+
+      const result = importCSV(csv)
+      expect(result.format).toBe('strong')
+      expect(result.totalSets).toBe(1)
+      expect(result.skippedRows).toBe(0)
+      // 100 kg → 220.5 lbs (same rounding as the Hevy path)
+      expect(result.exercises[0].sets[0].weight).toBe(220.5)
+    })
+
+    it('converts per-row kg via a "Weight Unit" column (LIFT-1215)', () => {
+      const csv = `Date,Workout Name,Exercise Name,Set Order,Weight,Weight Unit,Reps
+2026-04-01,Morning,Squat,1,100,kg,5
+2026-04-01,Morning,Bench Press,1,185,lbs,5`
+
+      const result = importCSV(csv)
+      expect(result.format).toBe('strong')
+      const squat = result.exercises.find(e => e.name === 'Squat')!
+      const bench = result.exercises.find(e => e.name === 'Bench Press')!
+      expect(squat.sets[0].weight).toBe(220.5)
+      expect(bench.sets[0].weight).toBe(185)
+    })
+
+    it('keeps the legacy lbs assumption for a bare Weight column (LIFT-1215)', () => {
+      const csv = `Date,Workout Name,Exercise Name,Set Order,Weight,Reps
+2026-04-01,Morning,Bench Press,1,185,5`
+
+      const result = importCSV(csv)
+      expect(result.exercises[0].sets[0].weight).toBe(185)
+    })
+
     it('skips rows with no weight and no reps', () => {
       const csv = `Date,Workout Name,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE
 2026-04-01,Morning,Bench Press,1,185,5,,,,,
@@ -75,6 +111,18 @@ Morning,2026-04-01T08:00:00Z,2026-04-01T09:00:00Z,Squat,,,,normal,100,3,,,,`
   })
 
   describe('Lift format', () => {
+    it('round-trips the labeled "Weight (lbs)" header from current exports (LIFT-1215)', () => {
+      const csv = `# Lift Export — 2026-04-05 — v1.0.0 — abc123 — weights in lbs
+Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags
+Bench Press,2026-04-05,225,5,253,chest;push`
+
+      const result = importCSV(csv)
+      expect(result.format).toBe('lift')
+      expect(result.totalSets).toBe(1)
+      expect(result.exercises[0].sets[0].weight).toBe(225)
+      expect(result.exercises[0].tags).toEqual(['chest', 'push'])
+    })
+
     it('parses Lift CSV with tags', () => {
       const csv = `# Lift Export — 2026-04-05 — v1.0.0
 Exercise,Date,Weight,Reps,Estimated 1RM,Tags

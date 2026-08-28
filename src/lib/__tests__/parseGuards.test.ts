@@ -175,6 +175,17 @@ describe('parseExercise', () => {
     expect(matchesGymFilter(ex!.gyms, 'Home', ['Home'])).toBe(true)
   })
 
+  // notes (#619) — same allowlist-drop hazard as gyms above.
+  it('preserves and sanitizes a durable note', () => {
+    const ex = parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], notes: '  brace hard  ' })
+    expect(ex!.notes).toBe('brace hard')
+  })
+
+  it('leaves notes unset when the note is empty or non-string', () => {
+    expect(parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], notes: '   ' })!.notes).toBeUndefined()
+    expect(parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], notes: 42 })!.notes).toBeUndefined()
+  })
+
   it('defaults tags/sets to empty when absent or wrong-typed', () => {
     const ex = parseExercise({ id: 'ex-1', name: 'Row', tags: 'Push', sets: { bad: true } })
     expect(ex!.tags).toEqual([])

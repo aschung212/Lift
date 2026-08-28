@@ -34,6 +34,7 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
     weekVolume: [0, 24850, 0, 0, 0, 0, 0],
     priorWeekVolume: 18200,
     streak: 4,
+    progress: null,
     unitLabel: 'lbs',
     ...overrides,
   }

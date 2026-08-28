@@ -72,8 +72,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, nextTick, ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { computed, watch, nextTick, ref, onMounted, defineAsyncComponent } from 'vue'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useModal } from '../composables/useModal'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useAnalytics } from '../composables/useAnalytics'
 import type { SessionSummary } from '../lib/sessionSummary'
@@ -85,8 +86,19 @@ const { weightUnit, displayWeight } = useWeightUnit()
 const { logEvent } = useAnalytics()
 
 // ── "Share this PR" peak-moment flow (#716) ───────────────────────────────
-const pickerOpen = ref(false)
 const shareSummary = ref<SessionSummary | null>(null)
+
+// The burst is dismissed before the picker opens, so there's no parent modal
+// to own the share sheet's scroll-lock / Escape (SharePickerSheet uses
+// lockScroll:false and delegates Escape to its parent). useModal owns both
+// here — no focus trap (selector omitted) since SharePickerSheet traps its own
+// '.spOverlay'. This replaces the hand-rolled listener boilerplate (LIFT-878).
+const { isOpen: pickerOpen, open: openPicker, close: closePickerModal } = useModal({
+  onEscape: () => closePickerModal(),
+  onClose: () => {
+    shareSummary.value = null
+  },
+})
 
 /**
  * True when a shareable summary exists. The caller (WorkoutTracker) builds the
@@ -106,35 +118,15 @@ function onShareThisPR(): void {
     exercise: p.exerciseName,
     firstPr: p.isFirstPR === true,
   })
-  pickerOpen.value = true
+  openPicker()
   // Hand off from the celebration to the share sheet — dismiss the burst so the
   // two overlays don't stack (the picker sits at a lower z-index by design).
   dismissPRBurst()
 }
 
 function closePicker(): void {
-  pickerOpen.value = false
-  shareSummary.value = null
+  closePickerModal()
 }
-
-// The share sheet's Escape/scroll-lock are normally owned by its parent view.
-// Opened from the burst there is no such parent, so own them here while it's up.
-function onPickerKey(e: KeyboardEvent): void {
-  if (e.key === 'Escape') closePicker()
-}
-watch(pickerOpen, (open) => {
-  if (open) {
-    document.documentElement.classList.add('modal-open')
-    window.addEventListener('keydown', onPickerKey)
-  } else {
-    document.documentElement.classList.remove('modal-open')
-    window.removeEventListener('keydown', onPickerKey)
-  }
-})
-onUnmounted(() => {
-  document.documentElement.classList.remove('modal-open')
-  window.removeEventListener('keydown', onPickerKey)
-})
 
 // DEV-only: expose the trigger on window so we can visually verify the overlay
 // from Playwright/DevTools without needing a live PR. Stripped from prod builds

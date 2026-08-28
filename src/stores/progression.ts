@@ -10,6 +10,7 @@ import { isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
+import { setDayKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import {
   themeUnlocksToJson,
@@ -236,6 +237,24 @@ export const useProgressionStore = defineStore('progression', {
       this.$patch({ ...fresh })
     },
 
+    /**
+     * Sign-out wipe (called by useAuth.resetStores). Pinia's built-in
+     * options-store $reset re-runs the state() factory — whose `...load()`
+     * would re-hydrate the signed-out user's XP/streaks/unlocks straight back
+     * out of localStorage. A fresh account's first fetch then hits PGRST116
+     * (no row) and _syncToSupabase pushes whatever is in memory into the NEW
+     * user's row — so the wipe must land both in memory and in the persisted
+     * payload. Object.assign inside $patch replaces each top-level key
+     * wholesale (a plain object-form $patch would deep-merge maps like
+     * xpPerSet, keeping the old user's keys).
+     */
+    $reset() {
+      this.$patch(($state) => {
+        Object.assign($state, defaultState(), { _userId: null, syncing: false, lastSyncError: null })
+      })
+      this._persist()
+    },
+
     async init(userId: string) {
       this._userId = userId
       await this._fetchFromSupabase()
@@ -342,8 +361,15 @@ export const useProgressionStore = defineStore('progression', {
         xp_per_set: xpPerSetToJson(this.xpPerSet),
         bodyweight_xp_dates: bodyweightDatesToJson(this.bodyweightXPDates),
       }
-      syncQueue.enqueue('progression-sync', () =>
-        supabase!.from('user_progression').upsert(payload)
+      // Journaled to IndexedDB alongside the closure (LIFT-1239): XP, streaks
+      // and theme unlocks are a last-write-wins row with no reconciliation
+      // pass, so an unflushed write lost to a tab close was gone for good. The
+      // replayed key matches this one, so the _syncToSupabase that follows
+      // init()'s union merge supersedes any stale replay.
+      syncQueue.enqueue(
+        'progression-sync',
+        () => supabase!.from('user_progression').upsert(payload),
+        { op: 'upsert', table: 'user_progression', row: payload },
       )
     },
 
@@ -530,7 +556,12 @@ export const useProgressionStore = defineStore('progression', {
           return min === null || d < min ? d : min
         }, null)
         if (!earliest) return
-        evalMonday = getMonday(new Date(earliest))
+        // Normalize to a local day key (bare keys pass through; timestamps go
+        // through setDayKey), then parse at LOCAL midnight — `new Date('YYYY-
+        // MM-DD')` is UTC midnight, which getMonday's local read would shift
+        // back a day in negative-offset timezones (LIFT-1214).
+        const earliestKey = earliest.length === 10 ? earliest : setDayKey(earliest)
+        evalMonday = getMonday(new Date(earliestKey + 'T00:00:00'))
       }
 
       // Evaluate each complete week up to (but not including) the current week
@@ -754,9 +785,22 @@ export function getTrainingDaysInWeek(
   return days.size
 }
 
-/** Get the Monday of the week containing the given date (UTC). */
+/**
+ * Get the Monday of the week containing the given date's LOCAL calendar day.
+ *
+ * LIFT-1214: this used UTC calendar components, so a US user opening the app
+ * on Sunday evening (already Monday in UTC) had the current week treated as
+ * complete BEFORE their Sunday session was counted — evaluateWeek closed the
+ * week as missed and reset the streak. Set-date keys are local days (#746),
+ * so the week boundary must be local too.
+ *
+ * The returned Date is anchored at UTC midnight of that local Monday: only
+ * the first line reads local components; all stepping (setUTCDate) and
+ * formatting (toDateKey) stay in exact UTC space, immune to DST arithmetic.
+ * Keep this in sync with the identical helper in src/lib/xp.ts.
+ */
 function getMonday(date: Date): Date {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
   const day = d.getUTCDay()
   const diff = (day + 6) % 7
   d.setUTCDate(d.getUTCDate() - diff)

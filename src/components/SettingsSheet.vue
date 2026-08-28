@@ -297,7 +297,7 @@
                 type="date"
                 class="settingsInput"
                 :value="prBaselineDate ?? ''"
-                :max="new Date().toISOString().slice(0,10)"
+                :max="todayISO()"
                 @change="onBaselineDateInput(($event.target as HTMLInputElement).value)"
                 aria-label="PR baseline date"
               />
@@ -394,6 +394,25 @@
           <div class="settingsRow">
             <span class="settingsHint">
               Tap these in the log-set Intensity lens to jump straight to a training intensity. The slider stays for one-off values.
+            </span>
+          </div>
+        </div>
+
+        <!-- Exercises (#1252): the exercise-first inverse of Manage Gyms —
+             one list of every exercise, each expanding to its gym + tag chips. -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Exercises</div>
+          <button class="settingsRow settingsRowBtn" @click="exerciseManagerOpen = true">
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M6.5 6.5h11"/><path d="M6.5 17.5h11"/><rect x="2" y="9" width="4" height="6" rx="1"/><rect x="18" y="9" width="4" height="6" rx="1"/></svg>
+              Manage Exercises
+            </span>
+            <span v-if="workoutStore.exercises.length" class="settingsHint">{{ workoutStore.exercises.length }}</span>
+            <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div class="settingsRow">
+            <span class="settingsHint">
+              See every exercise at once and set which gyms it's available at and which muscle groups it trains.
             </span>
           </div>
         </div>
@@ -545,7 +564,7 @@
         </div>
 
 
-        <div class="settingsGroup">
+        <div ref="supportGroupEl" class="settingsGroup">
           <div class="settingsHeader">Support</div>
           <button class="settingsRow settingsRowBtn" :disabled="appShareInFlight" @click="shareLift">
             <span class="settingsLabel">
@@ -557,20 +576,23 @@
           <div v-if="appShareFeedback" class="settingsImportResult" role="status">
             <span class="settingsImportSuccess">{{ appShareFeedback }}</span>
           </div>
-          <a class="settingsRow settingsRowBtn settingsLink" href="https://github.com/sponsors/aschung212" target="_blank" rel="noopener">
+          <a class="settingsRow settingsRowBtn settingsLink" href="https://github.com/sponsors/aschung212" target="_blank" rel="noopener" @click="onSupportTap('github_sponsors')">
             <span class="settingsLabel">
               <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
               Sponsor on GitHub
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
-          <a class="settingsRow settingsRowBtn settingsLink" href="https://buymeacoffee.com/aschung212" target="_blank" rel="noopener">
+          <a class="settingsRow settingsRowBtn settingsLink" href="https://buymeacoffee.com/aschung212" target="_blank" rel="noopener" @click="onSupportTap('buymeacoffee')">
             <span class="settingsLabel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
               Buy Me a Coffee
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
+          <p class="settingsGroupNote">
+            Your support covers AI Coach and sync server costs. Lift stays ad-free and never sells your data.
+          </p>
         </div>
 
         <div class="settingsGroup">
@@ -603,6 +625,17 @@
 
   <!-- Legal modal (extracted to LegalSheet.vue) -->
   <LegalSheet :view="legalView" @close="legalView = null" />
+
+  <!-- Exercise Manager (#1252) — the inverse view: one row per exercise -->
+  <ExerciseManagerModal
+    :open="exerciseManagerOpen"
+    :exercises="liveExercises"
+    :gyms="prefs.gyms"
+    :all-tags="workoutStore.allTags"
+    @close="exerciseManagerOpen = false"
+    @toggle-exercise-gym="gymActions.toggleExerciseGym"
+    @toggle-exercise-tag="workoutStore.toggleExerciseTag"
+  />
 
   <!-- Gym Manager (#961) — same modal the workout tab's gym row opens -->
   <GymManagerModal
@@ -728,12 +761,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, type ComponentPublicInstance } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
+import { todayISO } from '../lib/dates'
 import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
 import { showXPToast } from '../composables/xpCeremonyUI'
 import { isNative } from '../lib/platform'
@@ -745,7 +779,7 @@ import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } fr
 import { clearIDB } from '../lib/durableStorage'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
-import { hashUserId, buildJsonExport, buildCsvExport } from '../lib/dataExport'
+import { hashUserId, buildJsonExport, buildCsvExport, downloadBlob } from '../lib/dataExport'
 import { buildTrainingReport, type ReportPeriod } from '../lib/trainingReport'
 import { renderReport, openReportWindow } from '../lib/reportRenderer'
 import { importCSV } from '../lib/csvImport'
@@ -756,10 +790,12 @@ import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useModal } from '../composables/useModal'
 import { useAppShare } from '../composables/useAppShare'
 import LegalSheet from './LegalSheet.vue'
 import ThemeStatsSheet from './ThemeStatsSheet.vue'
 import GymManagerModal from './GymManagerModal.vue'
+import ExerciseManagerModal from './ExerciseManagerModal.vue'
 import { useGymActions } from '../composables/useGymActions'
 
 const props = defineProps<{
@@ -778,7 +814,7 @@ const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } 
 const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
 const { user } = useAuth()
-const { logEvent } = useAnalytics()
+const { logEvent, supportFunnel } = useAnalytics()
 const prefs = usePreferencesStore()
 const workoutStore = useWorkoutStore()
 
@@ -790,6 +826,11 @@ const gymActions = useGymActions()
 // freeze the modal's checkmarks/counts while open (see WorkoutTracker's
 // liveExercises for the full story).
 const liveExercises = computed(() => [...workoutStore.exercises])
+
+// ── Exercise manager (#1252) ────────────────────────────────────
+// Shares gymActions + liveExercises with the gym manager above; tag toggles go
+// straight to the store, which owns that primitive (see toggleExerciseTag).
+const exerciseManagerOpen = ref(false)
 const bodyweightStore = useBodyweightStore()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
@@ -832,6 +873,51 @@ async function shareLift() {
     if (appShareFeedbackTimer) clearTimeout(appShareFeedbackTimer)
     appShareFeedbackTimer = setTimeout(() => { appShareFeedback.value = null }, 3000)
   }
+}
+
+// ── Supporter conversion funnel (LIFT-906) ─────────────────────
+// Instrument the Support-group CTAs so tip-jar vs. subscription can be a
+// data-driven decision before any IAP is wired. Taps fire on each external
+// CTA; the default navigation is left untouched.
+function onSupportTap(cta: 'github_sponsors' | 'buymeacoffee') {
+  supportFunnel('tap', { cta })
+}
+
+// The impression is the TOP of the funnel, so it must mean "the user actually
+// saw the Support CTAs" — not merely "opened Settings". The Support group is
+// the 12th of 14 groups, near the bottom of a long scroll, so firing on open
+// counted a mostly-unseen CTA and made tap/impression conversion meaningless.
+// Fire it once per settings-open, only when the group scrolls into view.
+const supportGroupEl = ref<HTMLElement | null>(null)
+let supportObserver: IntersectionObserver | null = null
+let impressionLogged = false
+
+function armSupportImpression() {
+  if (impressionLogged) return
+  const el = supportGroupEl.value
+  if (!el) return
+  // Platforms without IntersectionObserver (should not happen on iOS 12.2+ /
+  // modern Chromium) fall back to the old open-time proxy so the funnel top is
+  // never silently empty.
+  if (typeof IntersectionObserver === 'undefined') {
+    impressionLogged = true
+    supportFunnel('impression')
+    return
+  }
+  supportObserver = new IntersectionObserver((entries) => {
+    if (impressionLogged) return
+    if (entries.some((e) => e.isIntersecting)) {
+      impressionLogged = true
+      supportFunnel('impression')
+      disarmSupportImpression()
+    }
+  })
+  supportObserver.observe(el)
+}
+
+function disarmSupportImpression() {
+  supportObserver?.disconnect()
+  supportObserver = null
 }
 
 // ── App icon picker (native iOS only) ──────────────────────────
@@ -889,30 +975,98 @@ const settingsSwipe = useSwipeToDismiss({
   onDismiss: () => { emit('update:modelValue', false) },
 })
 
-// ── Focus traps for modals ─────────────────────────────────────
-const settingsFocus = useFocusTrap()
+// ── Modal lifecycle: useModal owns the lock + focus trap ───────
+//
+// The settings sheet is a full-screen bottom sheet, so the background must
+// not stay scrollable underneath it — but this component never took the
+// lock at all. It is taken here through useModal so it goes through the
+// SAME reference count every other modal uses: a boolean `modal-open`
+// toggle would strip the class out from under whichever other surface
+// still had a modal open, and a scrollable background under a
+// `position: fixed` modal desyncs paint from hit-testing the moment the
+// iOS keyboard opens (taps land a row low, #830).
+//
+// The trap element comes from the `onSettingsSheetMounted` function ref
+// below — the sheet already needs that ref for the swipe gesture and the
+// close animation, so useModal reads it via `trapRef` rather than a
+// selector. Escape stays on the overlay's `@keydown.escape` handler,
+// which routes through closeSettings()'s animation/idempotency guards.
+const settingsModal = useModal()
 const confirmFocus = useFocusTrap()
 
+// `immediate` is REQUIRED, not incidental: App.vue mounts this component with
+// `v-if="settingsOpen"` (#955), so the sheet arrives already-open and the
+// false→true transition never happens here. Without it the lock would never
+// be acquired on the only path that actually opens the sheet.
 watch(() => props.modelValue, (open) => {
-  if (!open) {
+  if (open) {
+    settingsModal.open()
+    // Top of the supporter funnel (LIFT-906): arm a visibility observer so the
+    // impression fires only once the Support group actually scrolls into view,
+    // not merely because Settings opened. nextTick so the ref is populated.
+    nextTick(armSupportImpression)
+  } else {
+    settingsModal.close()
     settingsSwipe.detach()
-    settingsFocus.deactivate()
+    disarmSupportImpression()
+    impressionLogged = false
   }
-})
+}, { immediate: true })
 
 function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
   if (el && el instanceof HTMLElement && el !== settingsEl.value) {
     settingsEl.value = el
+    settingsModal.trapRef.value = el
     nextTick(() => {
       const handle = settingsHandleEl.value
       if (handle) settingsSwipe.attach(el, handle)
     })
-    settingsFocus.activate(el)
   }
 }
 
+/**
+ * Duration of `sheetSlideDown` in index.css. The fallback below waits a little
+ * longer than the animation so the event wins the race under normal conditions.
+ */
+const CLOSE_ANIM_MS = 150
+
+let closing = false
+let closeFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Commit the close exactly once, whatever settled it. */
+function settleClose() {
+  if (closeFallbackTimer) { clearTimeout(closeFallbackTimer); closeFallbackTimer = null }
+  closing = false
+  emit('update:modelValue', false)
+}
+
+/**
+ * Close the sheet. The slide-down animation is decoration — it must never be
+ * the thing that owns `modelValue`.
+ *
+ * This previously emitted the close from a bare one-shot `animationend`
+ * listener, so the app's `settingsOpen` flag only cleared if that event
+ * actually arrived. When it didn't — background the PWA mid-close and iOS
+ * freezes animations on a hidden page, so `sheetSlideDown` never completes —
+ * the emit never fired and `settingsOpen` stayed `true` forever with the sheet
+ * parked off-screen by `animation-fill-mode: forwards`. Nothing could recover
+ * it: the gear button reads `settingsOpen ? closeSettings() : (settingsOpen =
+ * true)`, so it could only ever re-enter this function, and `classList.add` of
+ * an already-present class does NOT restart a CSS animation — no further
+ * `animationend` was ever coming. Settings then refused to open until a full
+ * app reload, which is exactly how the bug was reported.
+ *
+ * Three guarantees now:
+ *  1. `closing` makes the close idempotent — one animation, one settle.
+ *  2. `animationend` bubbles, so the handler matches on this element and this
+ *     animation; a descendant's animation ending can no longer close the sheet
+ *     out from under the user.
+ *  3. A fallback timer settles the close even if the event never lands. CSS
+ *     still drives the motion — the timer only guarantees the state change,
+ *     the same safety net Vue's own <Transition> keeps.
+ */
 function closeSettings() {
-  if (!props.modelValue) return
+  if (!props.modelValue || closing) return
   // Revert any active theme preview
   if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
   if (previewingThemeId.value) {
@@ -920,12 +1074,25 @@ function closeSettings() {
     revertPreview()
   }
   const el = settingsEl.value
-  if (!el) { emit('update:modelValue', false); return }
+  if (!el) { settleClose(); return }
+  closing = true
   el.classList.add('settingsSheetClosing')
-  el.addEventListener('animationend', () => {
-    emit('update:modelValue', false)
-  }, { once: true })
+  const onAnimationEnd = (e: AnimationEvent) => {
+    if (e.target !== el || e.animationName !== 'sheetSlideDown') return
+    el.removeEventListener('animationend', onAnimationEnd)
+    settleClose()
+  }
+  el.addEventListener('animationend', onAnimationEnd)
+  closeFallbackTimer = setTimeout(() => {
+    el.removeEventListener('animationend', onAnimationEnd)
+    settleClose()
+  }, CLOSE_ANIM_MS + 100)
 }
+
+onUnmounted(() => {
+  if (closeFallbackTimer) { clearTimeout(closeFallbackTimer); closeFallbackTimer = null }
+  disarmSupportImpression()
+})
 
 defineExpose({ closeSettings })
 
@@ -1430,15 +1597,7 @@ async function exportData(format: 'csv' | 'json') {
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  downloadBlob(new Blob([content], { type: mimeType }), filename)
 }
 
 // ── Training Report ─────────────────────────────────────────────

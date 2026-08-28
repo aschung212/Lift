@@ -1,0 +1,221 @@
+/**
+ * Durable-journal coverage for the non-workout stores (LIFT-1239).
+ *
+ * The durable write journal (LIFT-706) only engages when a caller passes a
+ * `SyncDescriptor`; descriptor-less callers silently keep the legacy
+ * in-memory-only behavior. For a long time only `workout.ts` passed one, so a
+ * bodyweight entry / XP credit / settings change made offline was lost outright
+ * if the app closed before the 1s flush — and, after LIFT-1229, had no durable
+ * record to retain when its retries were exhausted either. Unlike sets, none of
+ * these three tables has a reconciliation pass to recover the write later.
+ *
+ * These are end-to-end recovery tests against the REAL SyncQueue: session 1
+ * writes while the server is unreachable and burns every retry, then a fresh
+ * queue (a new app launch reading the same journal) replays the write and it
+ * finally reaches Supabase.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
+
+// ── In-memory stand-in for IndexedDB (journal + store mirrors) ───────
+const { idb } = vi.hoisted(() => ({ idb: new Map<string, string>() }))
+vi.mock('../../lib/durableStorage', () => ({
+  backupToIDB: vi.fn((key: string, value: string) => { idb.set(key, value) }),
+  restoreFromIDB: vi.fn(async (key: string) => idb.get(key) ?? null),
+  clearIDB: vi.fn(async () => { idb.clear() }),
+  closeDB: vi.fn(),
+  requestPersistentStorage: vi.fn(async () => true),
+  ensureLocalStorage: vi.fn(async () => true),
+}))
+
+// ── Fake Supabase that can be taken "offline" ───────────────────────
+const { fakeSupabase } = vi.hoisted(() => {
+  type Call = { op: string; table: string; data: unknown; options: unknown; filters: Record<string, unknown> }
+  class FakeBuilder {
+    op = 'select'
+    data: unknown = null
+    options: unknown = undefined
+    filters: Record<string, unknown> = {}
+    constructor(private parent: { calls: Call[]; offline: boolean }, private table: string) {}
+    upsert(data: unknown, options?: unknown) { this.op = 'upsert'; this.data = data; this.options = options; return this }
+    update(data: unknown) { this.op = 'update'; this.data = data; return this }
+    eq(col: string, val: unknown) { this.filters[col] = val; return this }
+    is(col: string, val: unknown) { this.filters[col] = val; return this }
+    then<T>(
+      onfulfilled?: (v: { data: unknown[]; error: null }) => T,
+      onrejected?: (e: unknown) => T,
+    ): PromiseLike<T> {
+      if (this.parent.offline) {
+        return Promise.reject(new Error('offline')).then(onfulfilled, onrejected)
+      }
+      this.parent.calls.push({
+        op: this.op, table: this.table, data: this.data,
+        options: this.options, filters: { ...this.filters },
+      })
+      return Promise.resolve({ data: [], error: null }).then(onfulfilled, onrejected)
+    }
+  }
+  const fake = {
+    calls: [] as Call[],
+    offline: false,
+    from(table: string) { return new FakeBuilder(this, table) },
+    reset() { this.calls = []; this.offline = false },
+  }
+  return { fakeSupabase: fake }
+})
+vi.mock('../../lib/supabase', () => ({
+  supabase: fakeSupabase,
+  isPreviewMode: { value: false },
+}))
+vi.mock('../../lib/crossTabSync', () => ({
+  broadcastSyncStatus: vi.fn(),
+  broadcastStoreUpdate: vi.fn(),
+}))
+vi.mock('../../lib/logger', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn() }))
+
+import { SyncQueue, syncQueue, _resetRateLimit, _resetCircuitBreaker } from '../../lib/syncQueue'
+import { useBodyweightStore } from '../bodyweight'
+import { usePreferencesStore } from '../preferences'
+import { useProgressionStore } from '../progression'
+
+const JOURNAL_KEY = 'lift-sync-journal'
+
+/** Journal entries as they sit on disk between the two sessions. */
+function journaledDescriptors(): { table: string; op: string }[] {
+  const raw = idb.get(JOURNAL_KEY)
+  if (!raw) return []
+  const parsed = JSON.parse(raw)
+  const entries = Array.isArray(parsed) ? parsed : parsed.entries
+  return entries.map((e: { descriptor: { table: string; op: string } }) => ({
+    table: e.descriptor.table,
+    op: e.descriptor.op,
+  }))
+}
+
+/**
+ * Session 1: the queue drains against an unreachable server and burns every
+ * retry. Anything still on disk afterwards is what a relaunch can recover.
+ */
+async function exhaustRetriesOffline(): Promise<void> {
+  fakeSupabase.offline = true
+  await vi.runAllTimersAsync()
+  expect(syncQueue.pending).toBe(0)
+}
+
+/** Session 2: a fresh launch replays the journal against a reachable server. */
+async function relaunchAndReplay(): Promise<void> {
+  fakeSupabase.offline = false
+  const nextLaunch = new SyncQueue(100)
+  await nextLaunch.rehydrate()
+  await vi.advanceTimersByTimeAsync(100)
+}
+
+describe('durable journal coverage for bodyweight / preferences / progression (LIFT-1239)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    setActivePinia(createPinia())
+    localStorage.clear()
+    idb.clear()
+    fakeSupabase.reset()
+    _resetRateLimit()
+    _resetCircuitBreaker()
+    syncQueue.clear()
+  })
+
+  afterEach(() => {
+    syncQueue.clear()
+    vi.useRealTimers()
+  })
+
+  it('recovers a bodyweight entry logged while offline on the next launch', async () => {
+    const store = useBodyweightStore()
+    store._userId = 'u1'
+    store.addEntry(182.4, '2026-08-27')
+
+    // Journaled the instant the user acted — before any flush attempt.
+    expect(journaledDescriptors()).toEqual([{ table: 'bodyweight_entries', op: 'upsert' }])
+
+    await exhaustRetriesOffline()
+    expect(fakeSupabase.calls).toHaveLength(0)
+    // The durable record survives retry exhaustion (LIFT-1229).
+    expect(journaledDescriptors()).toHaveLength(1)
+
+    await relaunchAndReplay()
+
+    const upserts = fakeSupabase.calls.filter(c => c.table === 'bodyweight_entries')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].op).toBe('upsert')
+    expect(upserts[0].data).toMatchObject({ user_id: 'u1', weight: 182.4 })
+  })
+
+  it('recovers a bodyweight delete on the next launch, still routed through the circuit breaker', async () => {
+    const store = useBodyweightStore()
+    store._userId = 'u1'
+    const id = store.addEntry(180, '2026-08-26')
+    // Let the create land so the delete is the only pending write.
+    await vi.runAllTimersAsync()
+    fakeSupabase.reset()
+
+    store.deleteEntry(id)
+    expect(journaledDescriptors()).toEqual([{ table: 'bodyweight_entries', op: 'update' }])
+
+    await exhaustRetriesOffline()
+    await relaunchAndReplay()
+
+    const updates = fakeSupabase.calls.filter(c => c.table === 'bodyweight_entries' && c.op === 'update')
+    expect(updates).toHaveLength(1)
+    expect(updates[0].filters).toMatchObject({ id, user_id: 'u1' })
+    expect(updates[0].data).toMatchObject({ deleted_at: expect.any(String) })
+  })
+
+  it('recovers a settings change made while offline on the next launch', async () => {
+    const store = usePreferencesStore()
+    store._userId = 'u1'
+    store.weightUnit = 'kg'
+    store._persist()
+
+    expect(journaledDescriptors()).toEqual([{ table: 'user_preferences', op: 'upsert' }])
+
+    await exhaustRetriesOffline()
+    await relaunchAndReplay()
+
+    const upserts = fakeSupabase.calls.filter(c => c.table === 'user_preferences')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toMatchObject({ user_id: 'u1' })
+    expect((upserts[0].data as { preferences: { weightUnit: string } }).preferences.weightUnit).toBe('kg')
+    // The replay must carry the same conflict target as the live write, or it
+    // would resolve against the surrogate `id` PK and violate unique(user_id).
+    expect(upserts[0].options).toEqual({ onConflict: 'user_id' })
+  })
+
+  it('recovers an XP credit made while offline on the next launch', async () => {
+    const store = useProgressionStore()
+    store._userId = 'u1'
+    store.creditSetXP('s1', 50)
+
+    expect(journaledDescriptors()).toEqual([{ table: 'user_progression', op: 'upsert' }])
+
+    await exhaustRetriesOffline()
+    await relaunchAndReplay()
+
+    const upserts = fakeSupabase.calls.filter(c => c.table === 'user_progression')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toMatchObject({ user_id: 'u1', total_xp: 50 })
+  })
+
+  it('does not journal the unbounded clear-all wipe', async () => {
+    // Deliberate exemption: the descriptor format can only express `eq`
+    // matches, so the `.is('deleted_at', null)` guard would be lost, and
+    // replaying "delete everything" on the next launch would wipe entries
+    // logged on another device in the meantime.
+    const store = useBodyweightStore()
+    store._userId = 'u1'
+    store.addEntry(180, '2026-08-26')
+    await vi.runAllTimersAsync()
+    idb.delete(JOURNAL_KEY)
+
+    store.clearAll()
+
+    expect(journaledDescriptors()).toEqual([])
+  })
+})
