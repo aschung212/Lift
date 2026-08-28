@@ -13,9 +13,12 @@ import { useProgressionStore } from '../stores/progression'
 import { showXPToast, showUnlockCelebration } from './xpCeremonyUI'
 import { XP_CONFIG } from '../lib/xp'
 import { logXPEvent, logBodyweightXPEvent } from '../lib/xpInstrumentation'
-import { useAppReview } from './useAppReview'
+import { useAppReview, canRequestReview } from './useAppReview'
+import { usePromptArbiter } from './usePromptArbiter'
+import { isNative } from '../lib/platform'
 import { useAnalytics } from './useAnalytics'
 import type { ThemeId } from './useTheme'
+import type { ReviewMoment } from './useAppReview'
 
 export interface SetXPCeremonyInput {
   setId: string
@@ -48,7 +51,29 @@ export interface UseXPCeremonyReturn {
 export function useXPCeremony(): UseXPCeremonyReturn {
   const progressionStore = useProgressionStore()
   const { requestReviewAtMoment } = useAppReview()
+  const { arbitrate } = usePromptArbiter()
   const { logEvent } = useAnalytics()
+
+  /**
+   * Route a peak satisfaction moment through the prompt arbiter so at most one
+   * high-value prompt fires (LIFT-1202). Today only the App Store review
+   * request competes; the contextual share prompt (LIFT-716) and a Supporter
+   * upsell add their own candidates here as they land, and the arbiter keeps
+   * them from stacking on a single set save.
+   */
+  function _promptAtPeakMoment(moment: ReviewMoment): void {
+    const now = Date.now()
+    arbitrate(
+      [
+        {
+          kind: 'review',
+          eligible: isNative && canRequestReview(now),
+          fire: () => { requestReviewAtMoment(moment, now) },
+        },
+      ],
+      now,
+    )
+  }
 
   /**
    * Run the full XP ceremony for a logged workout set.
@@ -128,10 +153,11 @@ export function useXPCeremony(): UseXPCeremonyReturn {
     }
 
     // High-satisfaction moment: hitting a real PR is a peak moment to ask for
-    // an App Store rating. The composable enforces Apple's per-year caps and
-    // no-ops on web; a tie is not celebratory enough to prompt.
+    // an App Store rating. Routed through the arbiter so it never collides with
+    // a share/supporter prompt; the review policy still enforces Apple's
+    // per-year caps and no-ops on web. A tie is not celebratory enough.
     if (isPR && !isTie) {
-      requestReviewAtMoment('pr')
+      _promptAtPeakMoment('pr')
     }
   }
 
@@ -189,8 +215,9 @@ export function useXPCeremony(): UseXPCeremonyReturn {
           showUnlockCelebration(theme.id, theme.label)
           onUnlock?.()
           // Unlocking a new theme is a high-satisfaction moment — ask for a
-          // rating once the celebration is on screen. Rate-limited + web no-op.
-          requestReviewAtMoment('theme_unlock')
+          // rating once the celebration is on screen. Arbitrated so a set that
+          // both PRs and unlocks a theme surfaces only one prompt, not two.
+          _promptAtPeakMoment('theme_unlock')
         }, progressionStore.showProgression ? 1500 : 500)
       }
     }

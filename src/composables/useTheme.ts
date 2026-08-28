@@ -1,5 +1,6 @@
-import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
+import { computed, watch, type Ref, type ComputedRef } from 'vue'
 import { loadThemeCSS, preloadThemeCSS } from '../lib/themeLoader'
+import { usePreferencesStore } from '../stores/preferences'
 import {
   THEMES, THEME_PREVIEWS, THEME_META_COLORS, THEME_MIGRATION,
   type ThemeId, type ColorMode, type ThemeOption,
@@ -59,21 +60,17 @@ function updateMetaColor(): void {
   meta.setAttribute('content', colors[mode] ?? colors.dark)
 }
 
-/** Module-level refs — initialized with defaults, hydrated by initTheme(). */
-const currentTheme: Ref<string> = ref('eternal')
-const colorMode: Ref<ColorMode> = ref('dark')
-const resolvedMode: ComputedRef<'dark' | 'light'> = computed(() =>
-  colorMode.value === 'auto' ? getSystemMode() : colorMode.value
-)
-
 /** Whether initTheme() has been called. Prevents double-init. */
 let _initialized = false
 
 /**
- * Initialize the theme system — reads persisted preferences from localStorage,
- * applies the theme and color mode to the DOM, and sets up watchers + listeners.
+ * Pre-Pinia FOUC bootstrap — reads persisted theme/mode from localStorage and
+ * applies them to the DOM before Vue (and therefore Pinia) mounts, so the first
+ * paint already uses the user's theme.
  *
- * Call once from main.ts before app.mount() to prevent FOUC. Safe to skip in
+ * Call once from main.ts before app.mount(). It does NOT own reactive state:
+ * the preferences store is the single source of truth (LIFT-1177) and drives
+ * all subsequent DOM updates via connectThemeStore(). Safe to skip in
  * non-browser environments (SSR, unit tests without JSDOM).
  */
 export function initTheme(): void {
@@ -102,21 +99,41 @@ export function initTheme(): void {
   // the glass-on state, and drop the legacy `app-glass` key from localStorage.
   document.documentElement.setAttribute('data-glass', 'on')
   try { localStorage.removeItem('app-glass') } catch { /* ignore */ }
+}
 
-  // Hydrate refs (triggers watchers only if value differs from default)
-  currentTheme.value = validId
-  colorMode.value = validMode
+/** Whether connectThemeStore() has wired the store→DOM watchers. */
+let _storeConnected = false
 
-  // Persist future changes
-  watch(currentTheme, applyTheme)
-  watch(colorMode, applyMode)
+/**
+ * Connect the preferences store as the single reactive owner of theme + color
+ * mode, and drive DOM application from it (LIFT-1177). Call once after Pinia is
+ * active (App.vue setup).
+ *
+ * This replaces the old one-shot ref→store bridge (syncSettingsWithComposables),
+ * which pushed the store value into a module ref exactly once and then only
+ * watched ref→store. Any code path that mutated the store directly — cross-tab
+ * `_reloadFromStorage`, the Supabase override during init(), or a future action
+ * — never propagated back to the DOM/UI, so they could silently diverge. Now the
+ * DOM is a pure function of the store: every store change (from any source) is
+ * applied here.
+ */
+export function connectThemeStore(): void {
+  if (_storeConnected || !isBrowser) return
+  _storeConnected = true
+  const prefs = usePreferencesStore()
 
-  // Listen for OS theme changes when in auto mode
-  const mql = window.matchMedia('(prefers-color-scheme: dark)')
-  mql.addEventListener('change', () => {
-    if (colorMode.value === 'auto') {
-      applyResolvedMode(getSystemMode())
-    }
+  // Apply the hydrated store values once (covers a Supabase override that landed
+  // after the pre-Pinia FOUC paint), then keep the DOM in lockstep with the
+  // single source of truth.
+  applyTheme(prefs.theme)
+  applyMode(prefs.colorMode)
+  watch(() => prefs.theme, (id) => { if (!previewing) applyTheme(id) })
+  watch(() => prefs.colorMode, (mode) => applyMode(mode))
+
+  // Re-resolve auto mode on OS scheme change (moved here from initTheme so it can
+  // read the store's colorMode instead of a module ref).
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (prefs.colorMode === 'auto') applyResolvedMode(getSystemMode())
   })
 }
 
@@ -172,6 +189,24 @@ export interface UseThemeReturn {
 }
 
 export function useTheme(): UseThemeReturn {
+  const prefs = usePreferencesStore()
+
+  // The preferences store is the single source of truth (LIFT-1177). These are
+  // writable computeds bound to it — reads reflect the store (so cross-tab and
+  // Supabase updates are visible), writes flow through the store actions (which
+  // persist the blob + legacy FOUC keys + Supabase). No module-scope refs.
+  const currentTheme = computed<string>({
+    get: () => prefs.theme,
+    set: (id) => prefs.setTheme(id),
+  })
+  const colorMode = computed<ColorMode>({
+    get: () => prefs.colorMode as ColorMode,
+    set: (mode) => prefs.setColorMode(mode),
+  })
+  const resolvedMode: ComputedRef<'dark' | 'light'> = computed(() =>
+    colorMode.value === 'auto' ? getSystemMode() : colorMode.value
+  )
+
   /**
    * Select a theme — persists only if unlocked.
    * Returns true if the theme was applied and persisted.

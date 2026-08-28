@@ -21,6 +21,7 @@ import {
   type CardFormat,
 } from '../lib/shareImage'
 import type { SessionSummary } from '../lib/sessionSummary'
+import { downloadBlob } from '../lib/dataExport'
 import { useAnalytics } from './useAnalytics'
 import { useShareFlow, isShareCancellation, type ShareResult } from './useShareFlow'
 import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
@@ -70,22 +71,6 @@ function pickWebSharePayload(file: File): ShareData | null {
     return null
   }
   return null
-}
-
-/** Triggers a download via a temporary anchor element. Matches the dataExport.ts pattern. */
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob)
-  try {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.style.display = 'none'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-  } finally {
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
 }
 
 /**

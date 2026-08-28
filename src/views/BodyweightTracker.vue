@@ -6,6 +6,15 @@
     <div class="bwHero">
       <span class="bwCurrentValue">{{ store.latestWeight ? `${displayWeight(store.latestWeight)} ${weightUnit}` : 'No entries' }}</span>
       <span class="bwGoalProgressHint">{{ goalProgressText }}</span>
+      <button
+        v-if="store.entries.length > 0"
+        class="bwExportBtn"
+        :disabled="isExporting"
+        aria-label="Export weight history"
+        @click="exportWeights"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+      </button>
       <button class="wtLogBtn" @click="openModal()">+ Log</button>
     </div>
 
@@ -270,12 +279,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
-import { todayISO, setDayKey, formatShortDate } from '../lib/dates'
+import { todayISO, localDateKey, setDayKey, formatShortDate } from '../lib/dates'
+import { dailyLatestBodyweight } from '../lib/bodyweightExport'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useUndoToast } from '../composables/useUndoToast'
+import { useBodyweightExport } from '../composables/useBodyweightExport'
 import { useModal } from '../composables/useModal'
 import { usePreferencesStore } from '../stores/preferences'
 import { useXPCeremony } from '../composables/useXPCeremony'
@@ -287,6 +298,13 @@ const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { logBodyweightXPCeremony } = useXPCeremony()
+const { exportCsv, isExporting } = useBodyweightExport()
+
+// Health-export share surface (#1159): outcome feedback is the share sheet /
+// download itself, so no toast — the composable logs the analytics funnel.
+function exportWeights() {
+  void exportCsv()
+}
 
 // ── Modal state ──────────────────────────────────────────────────
 // focusContainer: focus the dialog, not the weight input. Auto-focusing a
@@ -503,23 +521,19 @@ function weightClass(weight: number): string {
 import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
 import { useChartScrubber } from '../composables/useChartScrubber'
 
-// Best (latest) weight per calendar date, sorted chronologically — all time
-const dailyLatest = computed(() => {
-  const byDate: Record<string, BodyweightEntry> = {}
-  for (const e of store.entries) {
-    const day = setDayKey(e.date)
-    if (!byDate[day] || e.id > byDate[day].id) byDate[day] = e
-  }
-  return Object.entries(byDate)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, e]) => ({ date, weight: e.weight }))
-})
+// Best (latest) weight per calendar date, sorted chronologically — all time.
+// Shared with the Health CSV export (#1159) so the file matches the chart.
+const dailyLatest = computed(() => dailyLatestBodyweight(store.entries))
 
 // Filtered to selected period window
 const filteredDaily = computed(() => {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - period.value)
-  const cutoffStr = cutoff.toISOString().slice(0, 10)
+  // `localDateKey`, not `toISOString().slice(0, 10)`: the points being filtered
+  // carry LOCAL day keys (dailyLatestBodyweight buckets via setDayKey), so a UTC
+  // cutoff key is a day ahead every Americas evening and silently clipped the
+  // oldest day out of the window.
+  const cutoffStr = localDateKey(cutoff)
   return dailyLatest.value.filter(d => d.date >= cutoffStr)
 })
 
@@ -561,8 +575,10 @@ const periodTimeRange = computed(() => {
   const periodStart = new Date()
   periodStart.setDate(now.getDate() - period.value)
   return {
-    t0: new Date(periodStart.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
-    t1: new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
+    // Local day keys for the same reason as `filteredDaily`'s cutoff — the
+    // x-axis must span the local days the data points are keyed to.
+    t0: new Date(localDateKey(periodStart) + 'T12:00:00').getTime(),
+    t1: new Date(localDateKey(now) + 'T12:00:00').getTime(),
   }
 })
 

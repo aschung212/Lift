@@ -62,6 +62,27 @@ describe('index.html meta tag regression tests', () => {
       expect(match).not.toBeNull()
       expect(match![1]).toBe('en_US')
     })
+
+    it('og:image:type declares the MIME type so scrapers fetch the card reliably', () => {
+      const match = html.match(/<meta property="og:image:type" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1]).toBe('image/png')
+    })
+
+    it('og:image:type matches the .png extension of the og:image URL', () => {
+      const image = html.match(/<meta property="og:image" content="([^"]+)"/)
+      const type = html.match(/<meta property="og:image:type" content="([^"]+)"/)
+      expect(image).not.toBeNull()
+      expect(type).not.toBeNull()
+      expect(image![1]).toMatch(/\.png$/)
+      expect(type![1]).toBe('image/png')
+    })
+
+    it('application-name labels the app for Android/Windows installs', () => {
+      const match = html.match(/<meta name="application-name" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1]).toBe('Lift')
+    })
   })
 
   describe('robots directive for SERP presentation', () => {
@@ -76,6 +97,22 @@ describe('index.html meta tag regression tests', () => {
       const match = html.match(/<meta name="robots" content="([^"]+)"/)
       expect(match).not.toBeNull()
       expect(match![1]).toContain('max-image-preview:large')
+    })
+  })
+
+  describe('positioning copy (LIFT-1028)', () => {
+    it('the meta description states the unlimited / no-paywall differentiator', () => {
+      const match = html.match(/<meta name="description" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      const desc = match![1].toLowerCase()
+      expect(desc).toContain('unlimited')
+      expect(desc).toContain('no paywall')
+    })
+
+    it('the og:description carries the free / no-paywall positioning', () => {
+      const match = html.match(/<meta property="og:description" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1].toLowerCase()).toContain('no paywall')
     })
   })
 

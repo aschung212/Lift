@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 /**
- * Generates PWA PNG icons from scratch using only Node.js built-ins.
- * Renders a barbell icon on a dark background with supersampled anti-aliasing.
+ * Generates the PWA PNG icons using only Node.js built-ins.
+ *
+ * The icons are DERIVED from `public/icon-source.png` — the designed gold
+ * barbell + arrow art (committed 2026-03-31) — by decoding it and box-filter
+ * downscaling to each target size, then encoding with the hand-rolled PNG
+ * encoder below (#1114: adaptive scanline filtering + max deflate, indexed
+ * when ≤256 colours). The icons are never drawn in code: PR #1120 regenerated
+ * them from a hardcoded placeholder drawing this script still carried from
+ * March 27, silently reverting the shipped design (#1154). Deriving from the
+ * committed source art makes it the single source of truth — re-running the
+ * generator reproduces the design instead of clobbering it.
  *
  * Run with: node scripts/generate-icons.js
  */
@@ -178,64 +187,154 @@ function encodePNG(width, height, pixels) {
   ]);
 }
 
-// ── Icon renderer ────────────────────────────────────────────────────────────
-// Barbell design: two weight discs connected by a horizontal bar.
-// Background: #1a1a1a  |  Barbell: #ff6363
+// ── PNG decoder ──────────────────────────────────────────────────────────────
+// Minimal decoder for the source art and for round-trip verification in tests:
+// 8-bit, non-interlaced PNGs of colour type 2 (RGB), 3 (indexed, optional
+// tRNS), or 6 (RGBA) — the three shapes this pipeline produces or consumes.
+// Returns { width, height, colorType, rgba } with rgba flattened to 4 bytes
+// per pixel.
+function decodePNG(buf) {
+  const SIG = [137, 80, 78, 71, 13, 10, 26, 10];
+  for (let i = 0; i < SIG.length; i++) {
+    if (buf[i] !== SIG[i]) throw new Error('bad PNG signature');
+  }
+  let o = 8;
+  let width, height, bitDepth, colorType, interlace;
+  let palette = null;
+  let trns = null;
+  const idat = [];
+  while (o < buf.length) {
+    const len  = buf.readUInt32BE(o);
+    const type = buf.toString('ascii', o + 4, o + 8);
+    const data = buf.subarray(o + 8, o + 8 + len);
+    if (type === 'IHDR') {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      interlace = data[12];
+    } else if (type === 'PLTE') {
+      palette = [];
+      for (let i = 0; i < data.length; i += 3) palette.push([data[i], data[i + 1], data[i + 2]]);
+    } else if (type === 'tRNS') {
+      trns = Buffer.from(data);
+    } else if (type === 'IDAT') {
+      idat.push(data);
+    } else if (type === 'IEND') {
+      break;
+    }
+    o += 12 + len;
+  }
+  if (bitDepth !== 8 || interlace !== 0 || ![2, 3, 6].includes(colorType)) {
+    throw new Error(`unsupported PNG (depth=${bitDepth} colorType=${colorType} interlace=${interlace})`);
+  }
 
-const BG  = [26,  26,  26];   // dark background
-const BAR = [255, 99,  99];   // accent red
+  const bpp    = colorType === 6 ? 4 : colorType === 2 ? 3 : 1;
+  const stride = width * bpp;
+  const raw    = zlib.inflateSync(Buffer.concat(idat));
+  const rows   = Buffer.alloc(stride * height);
 
-/**
- * Returns 1 if the sub-pixel (fx, fy) falls inside the barbell shape, 0 otherwise.
- */
-function sampleShape(fx, fy, w, h) {
-  const cx = w / 2;
-  const cy = h / 2;
-
-  const discR    = w * 0.19;   // weight disc radius
-  const discOffX = w * 0.295;  // disc centre offset from icon centre
-  const barHalfH = h * 0.065;  // half-height of the connecting bar
-  const barHalfW = w * 0.295;  // half-width of the bar (connects to disc centres)
-
-  const lx = cx - discOffX;
-  const rx = cx + discOffX;
-
-  if (Math.hypot(fx - lx, fy - cy) <= discR) return 1; // left disc
-  if (Math.hypot(fx - rx, fy - cy) <= discR) return 1; // right disc
-  if (fx >= lx && fx <= rx && Math.abs(fy - cy) <= barHalfH) return 1; // bar
-
-  return 0;
-}
-
-/**
- * Render the icon at the given size using 4×4 supersampled anti-aliasing.
- */
-function renderIcon(size) {
-  const pixels = new Uint8Array(size * size * 4);
-  const SS = 4; // samples per axis (16 total per pixel)
-
-  for (let py = 0; py < size; py++) {
-    for (let px = 0; px < size; px++) {
-      let acc = 0;
-      for (let sy = 0; sy < SS; sy++) {
-        for (let sx = 0; sx < SS; sx++) {
-          acc += sampleShape(px + (sx + 0.5) / SS, py + (sy + 0.5) / SS, size, size);
-        }
+  for (let y = 0; y < height; y++) {
+    const ft = raw[y * (stride + 1)];
+    const ri = y * (stride + 1) + 1;
+    for (let i = 0; i < stride; i++) {
+      const x = raw[ri + i];
+      const a = i >= bpp ? rows[y * stride + i - bpp] : 0;
+      const b = y > 0 ? rows[(y - 1) * stride + i] : 0;
+      const c = i >= bpp && y > 0 ? rows[(y - 1) * stride + i - bpp] : 0;
+      let v;
+      switch (ft) {
+        case 0: v = x; break;
+        case 1: v = x + a; break;
+        case 2: v = x + b; break;
+        case 3: v = x + ((a + b) >> 1); break;
+        case 4: v = x + paeth(a, b, c); break;
+        default: throw new Error(`unknown scanline filter ${ft}`);
       }
-
-      const t = acc / (SS * SS); // blend factor (0 = bg, 1 = barbell)
-      const i = (py * size + px) * 4;
-      pixels[i]     = Math.round(BAR[0] * t + BG[0] * (1 - t));
-      pixels[i + 1] = Math.round(BAR[1] * t + BG[1] * (1 - t));
-      pixels[i + 2] = Math.round(BAR[2] * t + BG[2] * (1 - t));
-      pixels[i + 3] = 255;
+      rows[y * stride + i] = v & 255;
     }
   }
 
-  return pixels;
+  const rgba = new Uint8Array(width * height * 4);
+  for (let p = 0; p < width * height; p++) {
+    if (colorType === 6) {
+      rgba[p * 4]     = rows[p * 4];
+      rgba[p * 4 + 1] = rows[p * 4 + 1];
+      rgba[p * 4 + 2] = rows[p * 4 + 2];
+      rgba[p * 4 + 3] = rows[p * 4 + 3];
+    } else if (colorType === 2) {
+      rgba[p * 4]     = rows[p * 3];
+      rgba[p * 4 + 1] = rows[p * 3 + 1];
+      rgba[p * 4 + 2] = rows[p * 3 + 2];
+      rgba[p * 4 + 3] = 255;
+    } else {
+      const [r, g, b] = palette[rows[p]];
+      rgba[p * 4]     = r;
+      rgba[p * 4 + 1] = g;
+      rgba[p * 4 + 2] = b;
+      rgba[p * 4 + 3] = trns && rows[p] < trns.length ? trns[rows[p]] : 255;
+    }
+  }
+  return { width, height, colorType, rgba };
 }
 
-export { encodePNG, renderIcon };
+// ── Resampler ────────────────────────────────────────────────────────────────
+// Area-weighted box downscale: each destination pixel averages the exact
+// (fractional) source window it covers. Pure arithmetic on IEEE-754 doubles, so
+// the output is byte-identical across platforms — the committed-equals-generated
+// drift test in scripts/__tests__/generate-icons.test.mjs depends on that.
+function resampleBox(src, sw, sh, dw, dh) {
+  const out = new Uint8Array(dw * dh * 4);
+  const xr = sw / dw;
+  const yr = sh / dh;
+  for (let dy = 0; dy < dh; dy++) {
+    const y0 = dy * yr, y1 = y0 + yr;
+    for (let dx = 0; dx < dw; dx++) {
+      const x0 = dx * xr, x1 = x0 + xr;
+      let r = 0, g = 0, b = 0, a = 0, area = 0;
+      for (let sy = Math.floor(y0); sy < Math.ceil(y1); sy++) {
+        const wy = Math.min(sy + 1, y1) - Math.max(sy, y0);
+        for (let sx = Math.floor(x0); sx < Math.ceil(x1); sx++) {
+          const wx = Math.min(sx + 1, x1) - Math.max(sx, x0);
+          const w = wx * wy;
+          const s = (sy * sw + sx) * 4;
+          r += src[s] * w;
+          g += src[s + 1] * w;
+          b += src[s + 2] * w;
+          a += src[s + 3] * w;
+          area += w;
+        }
+      }
+      const o = (dy * dw + dx) * 4;
+      out[o]     = Math.round(r / area);
+      out[o + 1] = Math.round(g / area);
+      out[o + 2] = Math.round(b / area);
+      out[o + 3] = Math.round(a / area);
+    }
+  }
+  return out;
+}
+
+// ── Icon renderer ────────────────────────────────────────────────────────────
+// Renders by downscaling the committed source art — see the header comment for
+// why this must never be replaced with in-code drawing (#1154).
+const SOURCE_ART = path.resolve(__dirname, '..', 'public', 'icon-source.png');
+
+let _sourceArt = null;
+function loadSourceArt() {
+  if (!_sourceArt) _sourceArt = decodePNG(fs.readFileSync(SOURCE_ART));
+  return _sourceArt;
+}
+
+/**
+ * Render the icon at the given size by area-average downscaling the source art.
+ */
+function renderIcon(size) {
+  const src = loadSourceArt();
+  return resampleBox(src.rgba, src.width, src.height, size, size);
+}
+
+export { encodePNG, decodePNG, resampleBox, renderIcon };
 
 // ── Output (CLI only) ─────────────────────────────────────────────────────────
 // Guarded so tests can import the pure encoder without writing files on import.

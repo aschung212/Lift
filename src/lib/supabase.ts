@@ -35,6 +35,16 @@ export async function initSupabase(): Promise<void> {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      // PKCE instead of the implicit-flow default (LIFT-808): with implicit,
+      // signInWithOAuth returned the access token in the URL FRAGMENT —
+      // exposed to browser history, and the standing risk for SPAs. Under
+      // PKCE the redirect carries a one-time ?code= which supabase-js
+      // exchanges automatically via detectSessionInUrl (the code_verifier
+      // lives in the same persistSession storage). Existing persisted
+      // sessions are unaffected — flowType only changes NEW OAuth sign-ins —
+      // and PKCE is also the flow Capacitor deep-link OAuth requires for the
+      // App Store target.
+      flowType: 'pkce',
     },
   })
 }

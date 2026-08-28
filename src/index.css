@@ -2173,6 +2173,14 @@ html.theme-fading .settingsSheet {
   line-height: 1.3;
 }
 
+.settingsGroupNote {
+  margin: 0;
+  padding: 8px 16px 12px;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
 .settingsSignOut {
   width: 100%;
   padding: 16px 16px;
@@ -2674,6 +2682,14 @@ html.theme-fading .settingsSheet {
   margin-left: 4px;
   font-size: var(--font-footnote);
   line-height: 1;
+}
+
+.wtTimelineRPE {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
 .wtTimelineE1RM {
@@ -3191,6 +3207,77 @@ html.theme-fading .settingsSheet {
 .wtTagManagerSaveBtn { color: var(--accent); }
 .wtTagManagerCancelBtn { color: var(--text-secondary); }
 
+/* ─── Exercise manager modal (#1252) ───────────────────────────────────── */
+/*
+  The exercise-first inverse of the gym manager. It reuses that modal's list
+  chrome (.wtTagManagerList / .wtTagManagerItemWrap / .wtTagManagerExpandBtn)
+  and EditExerciseModal's chip chrome (.wtTagPicker / .wtTagPickerChip, already
+  sized to the 44pt floor per #990), so the only new pieces are the two-line
+  row label and the expanded detail block.
+*/
+
+/* Its own tap target, not just the row's: the label sits beside the expand
+   button and both open the same row, so it needs the 44pt floor in its own
+   right — the two text lines plus 4px padding measure 43px unaided. Sized
+   rather than extended with a transparent ::before overlay, per #990: these
+   labels TILE vertically down the list, so an overlay taller than the element
+   would reach into the neighbouring row and a near-miss would expand the wrong
+   exercise instead of doing nothing. min-width: 0 lets the ellipsis rules on
+   its children engage inside the flex row. */
+.wtExManagerLabel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.wtExManagerName {
+  font-weight: 600;
+  font-size: var(--font-subhead);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtExManagerSummary {
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Left padding matches the gym manager's .wtTagExerciseRow indent so an
+   expanded body hangs off its row the same way in both modals. */
+.wtExManagerDetail {
+  padding: 0 0 12px 32px;
+  border-top: 1px solid var(--border);
+}
+
+.wtExManagerSectionLabel {
+  display: block;
+  margin-top: 12px;
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wtExManagerSectionEmpty {
+  display: block;
+  padding: 8px 0 4px;
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 /* ─── Edit exercise modal: tag section ─────────────────────────────────── */
 
 .wtTagPicker {
@@ -3466,6 +3553,14 @@ html.theme-fading .settingsSheet {
   color: var(--text-primary);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+
+.wtSetRPE {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
 .wtSet1RM {
@@ -4354,6 +4449,51 @@ html.theme-fading .settingsSheet {
   margin-top: 8px;
 }
 
+/* ── Exercise database suggestions ───────────────────────────────── */
+.wtExerciseSuggestions {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.wtExerciseSuggestionItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 16px;
+  min-height: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+
+.wtExerciseSuggestionItem + .wtExerciseSuggestionItem {
+  border-top: 1px solid var(--border);
+}
+
+.wtExerciseSuggestionItem:active {
+  background: var(--accent-subtle);
+}
+
+.wtSuggestionName {
+  font-size: var(--font-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.wtSuggestionTags {
+  font-size: var(--font-caption1);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .wtRepsStepperFull {
   margin-bottom: 12px;
 }
@@ -4836,6 +4976,90 @@ html.theme-fading .settingsSheet {
    loaded). The weight value itself is rendered by the WEIGHT card above
    the plate calc — this card is purely the picker chrome. */
 
+/* RPE selector row (LIFT-617) */
+.wtRPERow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 8px 0;
+  min-height: 36px;
+}
+
+.wtRPEToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-footnote);
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.wtRPEToggle:active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.wtRPELabel {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.wtRPEChips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.wtRPEChips::-webkit-scrollbar { display: none; }
+
+.wtRPEChip {
+  flex-shrink: 0;
+  /* Sized to the 44pt floor rather than overlay-extended: these chips TILE in a
+     row, so an oversized ::before would reach into the neighbour and a near-miss
+     would select the wrong RPE (the #990 tiling rule). */
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: var(--font-footnote);
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.wtRPEChip:active {
+  background: var(--accent-muted, rgba(var(--accent-rgb, 255,215,0), 0.15));
+}
+
+.wtRPEChipActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text, var(--bg-primary));
+  font-weight: 600;
+}
+
 /* Plate calculator first-use hint (LIFT-388) */
 .wtPlateHint {
   display: flex;
@@ -4924,6 +5148,139 @@ html.theme-fading .settingsSheet {
   cursor: pointer;
   margin: -12px -8px -12px 0;
   border-radius: 8px;
+}
+
+/* Guided session plan (#1256) — collapsed "Repeat last session" card above
+   the exercise list; expands into a per-exercise checklist. */
+.wtSessionPlan {
+  margin: 8px 0 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.wtSessionPlanToggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wtSessionPlanIcon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.wtSessionPlanTitleBlock {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wtSessionPlanTitle {
+  font-size: var(--font-callout);
+  font-weight: 600;
+}
+
+.wtSessionPlanMeta {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtSessionPlanChevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--font-title3);
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 160ms ease;
+}
+
+.wtSessionPlanChevron.expanded {
+  transform: rotate(-90deg);
+}
+
+.wtSessionPlanList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+
+.wtSessionPlanItem {
+  border-top: 1px solid var(--border);
+}
+
+.wtSessionPlanRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wtSessionPlanRow:active {
+  background: var(--accent-subtle);
+}
+
+.wtSessionPlanNameBlock {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wtSessionPlanName {
+  font-size: var(--font-subhead);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtSessionPlanRowDone .wtSessionPlanName {
+  color: var(--text-secondary);
+}
+
+.wtSessionPlanRowMeta {
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtSessionPlanProgress {
+  flex-shrink: 0;
+  font-family: var(--ff-mono);
+  font-size: var(--font-caption1);
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wtSessionPlanCheck {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
 }
 
 .wtPlateCalc {
@@ -7028,6 +7385,27 @@ html.theme-fading .settingsSheet {
   color: var(--text-muted);
 }
 
+/* Health-export share button in the hero (#1159): icon-only sibling of
+   "+ Log". Self-centered because the hero row baseline-aligns its text. */
+.bwExportBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  align-self: center;
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.bwExportBtn:active { opacity: 0.5; }
+.bwExportBtn:disabled { opacity: 0.4; cursor: default; }
+
 .bwCurrentValue {
   font-size: var(--font-title2);
   font-weight: 700;
@@ -7265,7 +7643,20 @@ html.theme-fading .settingsSheet {
   word-break: break-word;
 }
 
+.errorBoundaryHint {
+  color: var(--danger);
+  margin-top: -12px;
+}
+
+.errorBoundaryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
 .errorBoundaryBtn {
+  min-height: 44px;
   padding: 12px 32px;
   border-radius: 12px;
   border: none;
@@ -7275,6 +7666,12 @@ html.theme-fading .settingsSheet {
   font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+.errorBoundaryBtnSecondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
 }
 
 /* ─── Undo toast ─────────────────────────────────────────────────────── */

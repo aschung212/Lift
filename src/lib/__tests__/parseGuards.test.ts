@@ -14,6 +14,7 @@ import {
   parseExercises,
   parseBodyweightEntry,
   parseBodyweightEntries,
+  sanitizePlateCountMode,
 } from '../parseGuards'
 import { matchesGymFilter } from '../gyms'
 
@@ -68,6 +69,30 @@ describe('parseWorkoutSet', () => {
       estimated1RM: 216,
       createdAt: '2026-05-01T12:00:00.000Z',
     })
+  })
+
+  // #617: rpe is an optional local-only field. parseWorkoutSet whitelists the
+  // fields it copies, so an unlisted one is silently dropped — which would have
+  // made every logged RPE vanish on the next localStorage hydration.
+  it('preserves an in-range rpe through hydration', () => {
+    const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, rpe: 8.5 })
+    expect(set?.rpe).toBe(8.5)
+  })
+
+  it('drops an rpe outside the 6-10 half-step window', () => {
+    const outOfRange = [5.5, 10.5, 0, -8]
+    for (const rpe of outOfRange) {
+      const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, rpe })
+      expect(set?.rpe, `rpe ${rpe} should be dropped`).toBeUndefined()
+    }
+    // Off half-step values can't come from the UI's chip row either.
+    const offStep = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, rpe: 8.3 })
+    expect(offStep?.rpe).toBeUndefined()
+  })
+
+  it('drops a non-numeric rpe', () => {
+    const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, rpe: '8' })
+    expect(set?.rpe).toBeUndefined()
   })
 
   it('repairs a missing estimated1RM from weight/reps via Epley', () => {
@@ -149,6 +174,16 @@ describe('parseExercise', () => {
     expect(ex!.equipment).toBeUndefined()
   })
 
+  it('drops an unrecognized plateCountMode value (LIFT-1039)', () => {
+    const ex = parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], plateCountMode: 'sideways' })
+    expect(ex!.plateCountMode).toBeUndefined()
+  })
+
+  it('keeps a valid plateCountMode value', () => {
+    const ex = parseExercise({ id: 'ex-1', name: 'Row', tags: [], sets: [], plateCountMode: 'total' })
+    expect(ex!.plateCountMode).toBe('total')
+  })
+
   // parseExercise builds a fresh object from an allowlist of known fields, so any
   // field it forgets is silently dropped on every hydration. `gyms` (#961) landed
   // on master while this guard was in review and was nearly lost in the merge —
@@ -184,6 +219,19 @@ describe('parseExercise', () => {
   it('rejects an exercise missing id or name', () => {
     expect(parseExercise({ name: 'Row', tags: [], sets: [] })).toBeNull()
     expect(parseExercise({ id: 'ex-1', tags: [], sets: [] })).toBeNull()
+  })
+})
+
+describe('sanitizePlateCountMode', () => {
+  it('accepts the two valid modes', () => {
+    expect(sanitizePlateCountMode('per-side')).toBe('per-side')
+    expect(sanitizePlateCountMode('total')).toBe('total')
+  })
+
+  it('returns undefined for anything else', () => {
+    for (const bad of ['', 'PER-SIDE', 'both', 0, null, undefined, {}, ['total']]) {
+      expect(sanitizePlateCountMode(bad)).toBeUndefined()
+    }
   })
 })
 

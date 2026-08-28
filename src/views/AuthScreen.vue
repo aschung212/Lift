@@ -24,7 +24,7 @@
           placeholder="Password"
           aria-label="Password"
           class="authInput"
-          autocomplete="current-password"
+          :autocomplete="isSignUp ? 'new-password' : 'current-password'"
           :minlength="isSignUp ? 6 : undefined"
           :aria-invalid="isError && !!message ? true : undefined"
           :aria-describedby="isError && !!message ? 'auth-error' : undefined"

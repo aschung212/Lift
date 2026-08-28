@@ -44,7 +44,10 @@
           </div>
           <div class="wcBestSetName">{{ summary.bestSet.name }}</div>
           <div class="wcBestSetWeight">{{ summary.bestSet.weight }} × {{ summary.bestSet.reps }}</div>
-          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM</div>
+          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM<InfoPopover
+            label="e1RM"
+            title="Estimated 1-rep max"
+          >Your predicted max for a single all-out rep, calculated from the weight and reps you lifted.</InfoPopover></div>
         </section>
       </template>
 
@@ -73,6 +76,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, defineAsyncComponent } from 'vue'
 import { useModal } from '../composables/useModal'
+import InfoPopover from './InfoPopover.vue'
 import type { SessionSummary } from '../lib/sessionSummary'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))

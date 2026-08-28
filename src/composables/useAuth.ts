@@ -1,4 +1,4 @@
-import { ref, watch, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { supabase } from '../lib/supabase'
 import { migrateLocalStorageToSupabase } from '../lib/migrate'
 import { useWorkoutStore } from '../stores/workout'
@@ -6,13 +6,11 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 import { resetXPCeremony } from '../composables/xpCeremonyUI'
-import { useTheme } from '../composables/useTheme'
 import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
 import { logError } from '../lib/logger'
 import { clearReauthFlag } from '../lib/sessionHealth'
 import type { User, Provider } from '@supabase/supabase-js'
-import type { ColorMode } from '../lib/themes'
 
 interface AuthError {
   message: string
@@ -87,32 +85,41 @@ function setupSessionRefreshLifecycle(): void {
   if (document.visibilityState === 'visible') resume()
 }
 
-/**
- * Bridge the theme + color-mode composable refs to the preferences store after
- * hydration (LIFT-821).
- *
- * `weightUnit`, `restTimerEnabled`, and `restTimerAutoStart` no longer need a
- * bridge: their composables (`useWeightUnit` / `useRestTimer`) now delegate
- * directly to the store, which is the single source of truth. Theme and color
- * mode still live as module-scope refs in `useTheme` because they are applied to
- * the DOM by the pre-Pinia FOUC bootstrap (`initTheme`); we push the hydrated
- * store value into those refs once and set up a one-directional watcher so future
- * UI changes flow back to the store (and from there to Supabase).
- */
-function syncSettingsWithComposables(): void {
-  const prefs = usePreferencesStore()
-  const { currentTheme, colorMode } = useTheme()
+// LIFT-1212: on a signed-in cold start BOTH the getSession() resolution and
+// the INITIAL_SESSION/SIGNED_IN auth event fire, and each called initStores
+// unguarded (the event path's `wasUnauthenticated` check only helps when
+// getSession wins the race). A double run means a duplicate localStorage→
+// Supabase migration, duplicate store hydration, and duplicate settings
+// watchers — the reachable trigger for the #787 migration race. Coalesce per
+// user: concurrent and repeat calls for the same user share one run. The
+// cache clears on teardown (sign-out) so the same user re-inits on their next
+// sign-in, and on failure so a transient error doesn't poison future inits.
+let _storesInitUserId: string | null = null
+let _storesInitPromise: Promise<void> | null = null
 
-  // Push store → composable refs (Supabase values override local)
-  currentTheme.value = prefs.theme
-  colorMode.value = prefs.colorMode as ColorMode
-
-  // Composable refs → store (user interactions sync to Supabase)
-  watch(currentTheme, (v) => { prefs.setTheme(v) })
-  watch(colorMode, (v) => { prefs.setColorMode(v) })
+function resetInitStoresGuard(): void {
+  _storesInitUserId = null
+  _storesInitPromise = null
 }
 
-async function initStores(userId: string): Promise<void> {
+function initStores(userId: string): Promise<void> {
+  if (_storesInitUserId === userId && _storesInitPromise) return _storesInitPromise
+  _storesInitUserId = userId
+  const p: Promise<void> = doInitStores(userId).catch((err) => {
+    // Clear only OUR OWN registration (promise identity, not userId): after a
+    // sign-out + fast re-sign-in of the same user, a NEWER init generation
+    // owns the guard, and a stale rejection from this superseded run must not
+    // wipe it — that would let a later call start a third, duplicate init.
+    // (Same identity discipline as the LIFT-1213 journal guard; flagged by
+    // the 2026-08-26 adversarial review.)
+    if (_storesInitPromise === p) resetInitStoresGuard()
+    throw err
+  })
+  _storesInitPromise = p
+  return p
+}
+
+async function doInitStores(userId: string): Promise<void> {
   const workoutStore = useWorkoutStore()
   const bodyweightStore = useBodyweightStore()
   const preferencesStore = usePreferencesStore()
@@ -137,7 +144,9 @@ async function initStores(userId: string): Promise<void> {
       logError(r.reason, { source: 'useAuth', action: 'initStores' })
     }
   }
-  syncSettingsWithComposables()
+  // Theme/colorMode are read directly from the preferences store via computeds
+  // now (LIFT-1177); connectThemeStore() (App.vue) keeps the DOM in sync, so no
+  // one-shot bridge is needed here.
 }
 
 /** Clear guest mode (a real session supersedes it). */
@@ -202,13 +211,32 @@ function init(): void {
       user.value = session.user
       if (wasUnauthenticated) {
         clearGuestFlag()
-        initStores(session.user.id)
+        // Fire-and-forget re-auth init: `initStores` rethrows on failure, so
+        // catch at the source rather than leaking an unhandled rejection to the
+        // global floor (LIFT-1227). The stores each swallow their own fetch
+        // errors; a rejection here means the guard/migration wrapper itself
+        // failed and is worth logging.
+        initStores(session.user.id).catch((err) => {
+          logError(err, { source: 'useAuth', action: 'onAuthStateChange:initStores' })
+        })
       }
     } else if (event === 'SIGNED_OUT') {
-      // Only an explicit sign-out clears the user. A null-session
-      // INITIAL_SESSION event must NOT clobber a guest that getSession()
-      // restored, or the guest would be bounced back to the auth gate.
-      user.value = null
+      // A SIGNED_OUT event ends the session — either the user tapped sign-out,
+      // or the refresh token expired / was revoked server-side and supabase-js
+      // dropped the session automatically. Both must run the SAME teardown as
+      // manual signOut (clear the sync journal + reset stores), or the previous
+      // user's hydrated Pinia stores and durable IndexedDB journal would persist
+      // under a now-anonymous session — the exact shared-device leak the
+      // journal-wipe exists to prevent, reached via the automatic path
+      // (LIFT-1133). Guard on a real prior user: a guest keeps its local-only
+      // data (isGuest), and an already-signed-out state has nothing to tear
+      // down. A null-session INITIAL_SESSION event never reaches this branch, so
+      // it still can't clobber a guest that getSession() restored.
+      if (prev && !isGuest.value) {
+        teardownSession()
+      } else {
+        user.value = null
+      }
     }
   })
   _authUnsubscribe = () => subscription.unsubscribe()
@@ -279,18 +307,48 @@ function resetStores(): void {
   resetXPCeremony()
 }
 
+/**
+ * Shared teardown for the end of a real (non-guest) session, invoked by BOTH
+ * the manual `signOut()` and the automatic server-side sign-out branch of
+ * `onAuthStateChange` (LIFT-1133).
+ *
+ * Cancels pending syncs and wipes the durable IndexedDB journal so the next
+ * user on a shared device never replays this user's writes (LIFT-706), resets
+ * every Pinia store, and clears the user. Idempotent — running it twice is
+ * harmless, which matters because a manual `signOut()` also emits a `SIGNED_OUT`
+ * event that lands in the same teardown.
+ */
+function teardownSession(): void {
+  syncQueue.clear()
+  resetStores()
+  user.value = null
+  // The next sign-in (same user included) must re-hydrate from scratch.
+  resetInitStoresGuard()
+}
+
 async function signOut(): Promise<void> {
   try {
     await supabase?.auth.signOut()
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
-    // Cancel pending syncs and wipe the durable journal so the next user on a
-    // shared device never replays this user's writes (LIFT-706).
-    syncQueue.clear()
-    resetStores()
-    user.value = null
+    teardownSession()
   }
+}
+
+/**
+ * Extract a truthy Supabase error from a *resolved* (fulfilled) settled result.
+ *
+ * supabase-js resolves `{ data, error }` rather than rejecting on server-side
+ * failures (RLS, FK/constraint, 401), so `status === 'rejected'` alone misses
+ * them. Returns the error object when present, else null. Rejected results are
+ * handled separately by their `.reason`.
+ */
+function resolvedDeleteError(result: PromiseSettledResult<unknown>): unknown {
+  if (result.status !== 'fulfilled') return null
+  const val = result.value as { error?: unknown } | null | undefined
+  if (val && typeof val === 'object' && 'error' in val && val.error) return val.error
+  return null
 }
 
 /**
@@ -314,24 +372,35 @@ async function deleteAccount(): Promise<void> {
       supabase.from('exercises').delete().eq('user_id', userId), // cascades to sets
     ])
 
-    // Check for hard failures (network errors, not RLS/empty-table errors)
-    const failed = results.filter(r => r.status === 'rejected')
+    // A genuine server-side delete failure must ABORT before we wipe local data,
+    // or "delete my data" silently leaves server rows behind while the device is
+    // cleared (a data-integrity and right-to-deletion/privacy bug). supabase-js
+    // does NOT reject on RLS violations, FK/constraint errors, or an expired-token
+    // 401 — it RESOLVES `{ data, error }` with a truthy `.error` (the exact
+    // resolved-vs-rejected trap the sync queue already closed in LIFT-784). So a
+    // settled result is a failure when it either rejected (network throw) OR
+    // resolved carrying an error. An empty-table delete is not an error — it
+    // resolves `{ error: null }` (0 rows), so this never false-positives.
+    const failed = results.filter(r => r.status === 'rejected' || !!resolvedDeleteError(r))
     if (failed.length > 0) {
       throw new Error('Failed to delete server data. Please try again.')
     }
   }
 
-  // Clear all localStorage keys used by the app
-  const localStorageKeys = [
-    'workout-exercises', 'bodyweight-entries', 'user-progression', 'user-preferences',
-    'lift-custom-tags', 'lift-tag-recovery-days', 'lift-tag-recovery-excluded',
-    'onboarding-complete', 'sample-data', 'active-tab', 'wt-list-view',
-    'rest-duration', 'rest-warning-options', 'rest-warnings', 'rest-presets-disabled', 'rest-presets',
-    'app-theme', 'app-mode', 'app-glass', 'rest-timer', 'rest-timer-autostart', 'weight-unit',
-    'coach-insights-history', GUEST_MODE_KEY, GUEST_BACKUP_PROMPT_DISMISSED_KEY,
-  ]
-  for (const key of localStorageKeys) {
-    localStorage.removeItem(key)
+  // Wipe ALL app localStorage rather than a hand-maintained key list. Account
+  // deletion ("delete my data") must leave nothing behind, and the previous
+  // enumerated list had silently drifted from the keys the app actually writes
+  // (LIFT-1176) — welcome-back, goal-celebration-state, active-gym-filter,
+  // lift-tombstones, acquisition-source, install-prompt, notification-permission,
+  // app-review and others survived deletion, so a shared device leaked one user's
+  // data to the next. localStorage on this origin is exclusively the app's, so a
+  // full clear is the drift-proof reconciliation the two sign-out paths need and
+  // can never fall out of sync with a newly-added key. (signOut() below re-persists
+  // the four stores' CLEARED payloads via $reset, so only defaults are written back.)
+  try {
+    localStorage.clear()
+  } catch (e) {
+    logError(e, { source: 'deleteAccount:clearStorage' })
   }
 
   // Delete IndexedDB backup database. Close the cached connection first —
@@ -360,6 +429,7 @@ function destroy(): void {
   for (const cleanup of _lifecycleCleanups) cleanup()
   _lifecycleCleanups = []
   _initialized = false
+  resetInitStoresGuard()
 }
 
 export function useAuth(): UseAuthReturn {

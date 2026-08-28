@@ -59,6 +59,7 @@
                     @click="toggleSetActions(set.id)"
                   >
                     <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
+                    <span v-if="set.rpe" class="wtSetRPE">RPE {{ set.rpe }}</span>
                     <span class="wtSet1RM">
                       ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
                       <span v-if="set.estimated1RM === detailExercisePR && setDayKey(set.date) === prDate" class="wtSetPR">🏆</span>
@@ -98,7 +99,11 @@
                   <div class="wtPRCardBottom">
                     <span>{{ formatShortDate(setDayKey(pr.date) + 'T12:00:00') }}</span>
                     <span class="wtPRCardSep">·</span>
-                    <span>e1RM ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
+                    <span>e1RM<InfoPopover
+                      v-if="i === 0"
+                      label="e1RM"
+                      title="Estimated 1-rep max"
+                    >Your predicted max for a single all-out rep, calculated from the weight and reps you lifted.</InfoPopover> ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
                   </div>
                 </div>
                 <div v-if="pr.e1rmDelta != null" class="wtPRConnector">
@@ -133,6 +138,7 @@ import { usePreferencesStore } from '../stores/preferences'
 import { setDayKey, formatShortDate } from '../lib/dates'
 import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
 import ExerciseGraph from '../components/ExerciseGraph.vue'
+import InfoPopover from '../components/InfoPopover.vue'
 import type { Exercise, WorkoutSet } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {
