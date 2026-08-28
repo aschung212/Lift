@@ -124,7 +124,17 @@ export const JOURNAL_SCHEMA_VERSION = 1
 const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
   exercises: new Set([
     'id', 'user_id', 'name', 'tags', 'archived_at',
-    'input_mode', 'bar_weight', 'intensity_max_reps', 'deleted_at',
+    'input_mode', 'bar_weight', 'plate_count_mode', 'intensity_max_reps',
+    // Every column below is ALWAYS present in the `_buildExerciseUpsert` row,
+    // so a journaled exercise upsert carries them all. `isAllowedColumnMap`
+    // rejects the WHOLE descriptor if any single key is missing here, so one
+    // omission silently discards every journaled exercise write on rehydrate()
+    // — defeating the durable queue for the exact offline case it exists for.
+    // `equipment` (#931), `gyms` (#961) and `plate_count_mode` (LIFT-783) were
+    // the original drift (LIFT-1039); `notes` (#619) and `bodyweight_loaded`
+    // (LIFT-834) drifted in the same way while this fix sat unmerged.
+    // This set MUST stay in lockstep with `_buildExerciseUpsert`.
+    'equipment', 'gyms', 'notes', 'bodyweight_loaded', 'deleted_at',
     // Retired in #770 but the DB column still exists (left dormant, never
     // dropped). Tolerated so an offline write journaled by a pre-#770 client
     // still replays after an upgrade instead of being silently dropped.

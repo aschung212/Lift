@@ -385,6 +385,29 @@ describe('replay allowlist (LIFT-785)', () => {
       })).toBe(true)
     })
 
+    it('accepts a full-fidelity exercise upsert (every column _buildExerciseUpsert sends)', () => {
+      // Regression for LIFT-1039: the allowlist had drifted behind the producer.
+      // `_buildExerciseUpsert` always sends `equipment` (#931), `gyms` (#961),
+      // `plate_count_mode` (LIFT-783), `notes` (#619) and `bodyweight_loaded`
+      // (LIFT-834) — none of which were allowlisted — so isReplayableDescriptor
+      // rejected EVERY journaled exercise upsert, silently dropping offline
+      // exercise writes on rehydrate(). Assert the exact shape.
+      //
+      // This literal pins the shape as of today; it CANNOT catch the next
+      // column added to the producer. The structural guard that does is
+      // `REPLAYABLE_COLUMNS stays in lockstep with its producers` in
+      // architecturalInvariants.test.ts — keep both.
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'exercises',
+        row: {
+          id: 'e1', user_id: 'u1', name: 'Bench', tags: ['Push'], archived_at: null,
+          input_mode: 'plates', bar_weight: 45, plate_count_mode: 'total',
+          intensity_max_reps: null, equipment: 'free_weight', gyms: ['Home'],
+          notes: 'paused reps', bodyweight_loaded: false,
+        },
+      })).toBe(true)
+    })
+
     it('tolerates retired-but-dormant DB columns so legacy offline writes still replay', () => {
       // warmup_scheme was retired in #770 but the column still exists in the DB.
       // An offline write journaled by a pre-#770 client must not be dropped.

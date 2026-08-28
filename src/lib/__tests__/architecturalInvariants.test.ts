@@ -986,3 +986,97 @@ describe('Invariant: tests of now-relative windows pin the clock (#1254)', () =>
     expect(WINDOW_CONSUMER.test(stripComments('// calculateBest1RM(sets) rolls forward'))).toBe(false)
   })
 })
+
+describe('Invariant: REPLAYABLE_COLUMNS stays in lockstep with its producers (LIFT-1039)', () => {
+  /**
+   * The durable journal re-validates every replayed descriptor against
+   * REPLAYABLE_COLUMNS because the journal lives in user-writable IndexedDB
+   * (LIFT-785). `isAllowedColumnMap` is all-or-nothing — it rejects the WHOLE
+   * descriptor if a single key is missing — so one un-allowlisted column
+   * silently discards EVERY journaled write for that table on rehydrate(),
+   * defeating the durable queue for the exact offline case it exists for.
+   *
+   * That drift is silent by construction and has now happened three times on
+   * `exercises`: `equipment` (#931) and `gyms` (#961), then `plate_count_mode`
+   * (LIFT-783), then `notes` (#619) and `bodyweight_loaded` (LIFT-834). Each
+   * was added to `_buildExerciseUpsert` as an always-send column without a
+   * matching allowlist entry. The behavioural test that shipped with LIFT-1039
+   * pinned a hardcoded row literal, so it could only ever prove the columns
+   * that existed the day it was written — which is precisely why the next two
+   * columns drifted past it. This scan derives the expectation from the
+   * producer instead, so a new column fails here the moment it is added.
+   */
+  const SYNC_QUEUE = readFileSync(join(SRC_DIR, 'lib/syncQueue.ts'), 'utf-8')
+  const WORKOUT_STORE = readFileSync(join(STORES_DIR, 'workout.ts'), 'utf-8')
+
+  /** The first balanced `open`…`close` block following `marker` ('' if absent). */
+  function blockAfter(source: string, marker: string, open = '{', close = '}'): string {
+    const start = source.indexOf(marker)
+    if (start === -1) return ''
+    const from = source.indexOf(open, start + marker.length)
+    if (from === -1) return ''
+    let depth = 0
+    for (let i = from; i < source.length; i++) {
+      if (source[i] === open) depth++
+      else if (source[i] === close && --depth === 0) return source.slice(from, i + 1)
+    }
+    return ''
+  }
+
+  /** Column keys in an upsert row literal, including those inside `...(c ? { k: v } : {})`. */
+  function columnKeys(literal: string): Set<string> {
+    const keys = new Set<string>()
+    const re = /(?:^|[{,])\s*([a-z_][a-z0-9_]*)\s*:/gm
+    let m: RegExpExecArray | null
+    while ((m = re.exec(stripComments(literal))) !== null) keys.add(m[1])
+    return keys
+  }
+
+  /** Members of `REPLAYABLE_COLUMNS.<table>`. */
+  function allowlistFor(table: string): Set<string> {
+    const block = blockAfter(SYNC_QUEUE, `${table}: new Set(`, '[', ']')
+    const out = new Set<string>()
+    for (const q of stripComments(block).match(/'[a-z_][a-z0-9_]*'/g) ?? []) out.add(q.slice(1, -1))
+    return out
+  }
+
+  const PRODUCERS = [
+    { table: 'exercises', marker: 'function _buildExerciseUpsert', source: WORKOUT_STORE },
+    { table: 'sets', marker: 'function _enqueueSetUpsert', source: WORKOUT_STORE },
+  ] as const
+
+  it('the extractors find real columns and a real allowlist (non-vacuity)', () => {
+    const exercise = columnKeys(blockAfter(WORKOUT_STORE, 'function _buildExerciseUpsert'))
+    // Anchors that must exist regardless of how the row is spelled.
+    for (const col of ['id', 'user_id', 'name', 'tags', 'plate_count_mode']) {
+      expect(exercise.has(col)).toBe(true)
+    }
+    // A conditional spread column must be seen too, or the scan misses the
+    // exact shape most likely to drift.
+    expect(exercise.has('input_mode')).toBe(true)
+    expect(exercise.size).toBeGreaterThan(10)
+    expect(allowlistFor('exercises').size).toBeGreaterThan(10)
+    expect(allowlistFor('sets').has('estimated_1rm')).toBe(true)
+  })
+
+  it('the scan flags a column the allowlist is missing (self-test)', () => {
+    const literal = "{ id: x.id, user_id: u, ...(x.m ? { input_mode: x.m } : {}), notes: x.notes ?? null }"
+    const keys = columnKeys(literal)
+    expect(keys).toEqual(new Set(['id', 'user_id', 'input_mode', 'notes']))
+    // A ternary's own `:` and a `??` default must not be read as column keys.
+    expect(keys.has('m')).toBe(false)
+    const allowed = new Set(['id', 'user_id', 'input_mode'])
+    expect([...keys].filter(k => !allowed.has(k))).toEqual(['notes'])
+  })
+
+  it('every column an upsert producer always sends is replayable', () => {
+    const violations: string[] = []
+    for (const { table, marker, source } of PRODUCERS) {
+      const allowed = allowlistFor(table)
+      for (const col of columnKeys(blockAfter(source, marker))) {
+        if (!allowed.has(col)) violations.push(`${table}.${col} (sent by ${marker})`)
+      }
+    }
+    expect(violations).toEqual([])
+  })
+})
