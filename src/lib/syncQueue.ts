@@ -330,7 +330,9 @@ export class SyncQueue {
    *
    * Pass a `descriptor` to make the write durable across reloads: it is
    * journaled to IndexedDB immediately and removed once the op flushes
-   * successfully (or is dropped after exhausting retries). Omit it for
+   * successfully. If the op instead exhausts its in-session retries the
+   * journal entry is RETAINED (LIFT-1229) so it replays on the next launch
+   * via `rehydrate()` rather than being lost. Omit the descriptor for
    * in-memory-only writes (the legacy behavior).
    */
   enqueue(key: string, op: SyncOperation, descriptor?: SyncDescriptor): void {
@@ -490,12 +492,30 @@ export class SyncQueue {
           this._attemptMap.set(key, attempt)
           logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
         } else {
-          logError(error, { source: 'SyncQueue', key, attempts: attempt })
-          // Retries exhausted — the op is dropped, so drop its journal entry
-          // too, unless a newer same-key write superseded it (LIFT-1213).
-          // (Reconciliation in the store's _fetchFromSupabase is the
-          // last line of defense for recovering such writes.)
-          if (this._journalDeleteIfCurrent(key, journalSnapshots[i])) journalChanged = true
+          // Retries exhausted for this session. The in-memory op is dropped,
+          // but the DURABLE journal entry is deliberately RETAINED (LIFT-1229)
+          // so the write replays on the next launch via rehydrate() instead of
+          // being lost. Previously the entry was deleted here, leaving
+          // reconciliation in the store's _fetchFromSupabase as the only
+          // recovery — but that path only re-pushes missing *sets*, so an
+          // exhausted exercise-metadata write (rename / tags / gyms / archive /
+          // bar + intensity settings) was stranded silently until the user
+          // happened to touch that exercise again. Keeping the journal entry
+          // recovers every journaled table uniformly. Replay is idempotent
+          // (upsert/update only), so a write the server already holds is a
+          // harmless no-op next launch.
+          //
+          // A distinct `event: 'retry_exhausted'` marker (vs a bare logError)
+          // makes exhaustion frequency measurable pre-GA, separate from generic
+          // sync errors. `journalRetained` is false only for descriptor-less
+          // (in-memory-only) writes, which have no durable record to keep.
+          logError(error, {
+            source: 'SyncQueue',
+            event: 'retry_exhausted',
+            key,
+            attempts: attempt,
+            journalRetained: this._journal.has(key),
+          })
         }
       })
       // An expired/stale token surfaces identically across every queued write.

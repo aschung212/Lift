@@ -110,7 +110,12 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     expect(JSON.parse(idbStore.get('lift-sync-journal')!).entries).toHaveLength(0)
   })
 
-  it('keeps the entry journaled across retries, then drops it after exhausting them', async () => {
+  // LIFT-1229: retry-exhausted durable writes must NOT be dropped from the
+  // journal. Reconciliation only re-pushes missing *sets*, so an exhausted
+  // exercise-metadata write would otherwise be stranded silently. Retaining the
+  // entry lets rehydrate() replay it on the next launch, covering every
+  // journaled table uniformly.
+  it('keeps the entry journaled across retries AND after exhausting them (LIFT-1229)', async () => {
     const queue = new SyncQueue(100)
     queue.enqueue('set:s1', () => Promise.reject(new Error('offline')), UPSERT)
 
@@ -118,9 +123,45 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     await vi.advanceTimersByTimeAsync(100)
     expect(queue.journalSize).toBe(1)
 
-    // Run all retries to exhaustion — op is dropped, journal cleared
+    // Run all retries to exhaustion — op leaves the in-memory queue but its
+    // durable record is RETAINED (survives to the next launch).
     await vi.runAllTimersAsync()
-    expect(queue.journalSize).toBe(0)
+    expect(queue.journalSize).toBe(1)
+    expect(queue.pending).toBe(0)
+    // The retained entry is still on disk for the next launch to rehydrate.
+    const persisted = JSON.parse(idbStore.get('lift-sync-journal')!)
+    expect(persisted.entries).toHaveLength(1)
+    expect(persisted.entries[0]).toMatchObject({ key: 'set:s1', descriptor: UPSERT })
+  })
+
+  // LIFT-1229: a metadata write that exhausts its retries in one session (e.g. a
+  // rename made while offline/backgrounded) is recovered on the next launch —
+  // the retained journal entry replays through rehydrate() and reaches Supabase.
+  it('replays a retry-exhausted metadata write on the next launch (LIFT-1229)', async () => {
+    const RENAME: SyncDescriptor = {
+      op: 'upsert', table: 'exercises',
+      row: { id: 'e1', user_id: 'u1', name: 'Incline Bench' },
+    }
+
+    // Session 1: the metadata write fails on every attempt and exhausts retries.
+    const session1 = new SyncQueue(100)
+    session1.enqueue('exercise:e1', () => Promise.reject(new Error('offline')), RENAME)
+    await vi.runAllTimersAsync()
+    expect(session1.journalSize).toBe(1)
+    // Nothing reached the server yet.
+    expect(fakeSupabase.calls.filter(c => c.op === 'upsert')).toHaveLength(0)
+
+    // Session 2 (fresh launch, same durable journal on disk): rehydrate replays it.
+    const session2 = new SyncQueue(100)
+    await session2.rehydrate()
+    expect(session2.pending).toBe(1)
+    await vi.advanceTimersByTimeAsync(100)
+
+    const upserts = fakeSupabase.calls.filter(c => c.op === 'upsert' && c.table === 'exercises')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toEqual({ id: 'e1', user_id: 'u1', name: 'Incline Bench' })
+    // Now that it landed, the journal is finally drained.
+    expect(session2.journalSize).toBe(0)
   })
 
   // Regression LIFT-1213: a same-key correction enqueued while the previous
