@@ -763,7 +763,7 @@
     @create-tag="store.addCustomTag"
     @rename-tag="onRenameTag"
     @delete-tag="confirmDeleteTag"
-    @toggle-exercise-tag="toggleExerciseTag"
+    @toggle-exercise-tag="store.toggleExerciseTag"
   />
 
   <!-- Gym Manager Modal (#961) — create/rename/delete gyms + bulk membership -->
@@ -2750,16 +2750,6 @@ const tagManagerOpen = ref(false)
 
 function openTagManager() {
   tagManagerOpen.value = true
-}
-
-function toggleExerciseTag(exerciseId: string, tag: string) {
-  const exercise = store.exercises.find(e => e.id === exerciseId)
-  if (!exercise) return
-  const has = exercise.tags.includes(tag)
-  const newTags = has
-    ? exercise.tags.filter(t => t !== tag)
-    : [...exercise.tags, tag]
-  store.updateExerciseTags(exerciseId, newTags)
 }
 
 function onRenameTag(oldName: string, newName: string) {

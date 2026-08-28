@@ -186,15 +186,19 @@ vi.mock('../../stores/preferences', () => ({
 }))
 
 // ── Workout / bodyweight stores (read-only from this component) ─────
+const mockToggleExerciseTag = vi.fn()
+const mockWorkoutStore = reactive({
+  exercises: [] as unknown[],
+  allTags: [] as string[],
+  workoutDates: [],
+  addExercise: vi.fn(),
+  logSet: vi.fn(),
+  toggleExerciseTag: mockToggleExerciseTag,
+  renameGymOnExercises: vi.fn(),
+  removeGymFromExercises: vi.fn(() => []),
+})
 vi.mock('../../stores/workout', () => ({
-  useWorkoutStore: () => ({
-    exercises: [],
-    workoutDates: [],
-    addExercise: vi.fn(),
-    logSet: vi.fn(),
-    renameGymOnExercises: vi.fn(),
-    removeGymFromExercises: vi.fn(() => []),
-  }),
+  useWorkoutStore: () => mockWorkoutStore,
 }))
 vi.mock('../../stores/bodyweight', () => ({
   useBodyweightStore: () => ({
@@ -218,12 +222,13 @@ const mockShareApp = vi.fn().mockResolvedValue({ kind: 'shared' })
 vi.mock('../../composables/useAppShare', () => ({
   useAppShare: () => ({ shareApp: mockShareApp, isSharing: ref(false), lastError: ref(null) }),
 }))
+const mockToggleExerciseGym = vi.fn()
 vi.mock('../../composables/useGymActions', () => ({
   useGymActions: () => ({
     createGym: vi.fn(),
     renameGym: vi.fn(),
     deleteGym: vi.fn(),
-    toggleExerciseGym: vi.fn(),
+    toggleExerciseGym: mockToggleExerciseGym,
   }),
 }))
 
@@ -248,6 +253,7 @@ import SettingsSheet from '../SettingsSheet.vue'
 // slot synchronously, so the confirm/delete dialogs appear on state change.
 const LegalSheetStub = { props: ['view'], template: '<div class="legal-stub" :data-view="view ?? \'\'" />' }
 const GymManagerModalStub = { props: ['open'], template: '<div class="gym-stub" :data-open="String(open)" />' }
+const ExerciseManagerModalStub = { props: ['open', 'exercises', 'gyms', 'allTags'], template: '<div class="exercise-stub" :data-open="String(open)" :data-gyms="gyms.join(\',\')" :data-tags="allTags.join(\',\')" />' }
 
 function mountSheet(open = true): VueWrapper {
   return mount(SettingsSheet, {
@@ -258,6 +264,7 @@ function mountSheet(open = true): VueWrapper {
         LegalSheet: LegalSheetStub,
         ThemeStatsSheet: true,
         GymManagerModal: GymManagerModalStub,
+        ExerciseManagerModal: ExerciseManagerModalStub,
         StarterPickerFlow: true,
       },
     },
@@ -276,6 +283,8 @@ describe('SettingsSheet', () => {
     mockPrefs.enabledCount = 3
     mockPrefs.intensityPresets = [50, 70, 80, 90, 100]
     mockPrefs.gyms = []
+    mockWorkoutStore.exercises = []
+    mockWorkoutStore.allTags = []
     mockPrefs.weightGoal = { direction: 'maintain', maintainMin: null, maintainMax: null, loseTarget: null, gainTarget: null }
     mockProgression.progressionEnabled = false
     vi.clearAllMocks()
@@ -300,7 +309,7 @@ describe('SettingsSheet', () => {
       const headers = wrapper.findAll('.settingsHeader').map(h => h.text())
       expect(headers).toEqual(expect.arrayContaining([
         'Appearance', 'Experience', 'Features', 'Personal Records',
-        'Filters', 'Intensity Presets', 'Gyms', 'Weight Goal', 'Data',
+        'Filters', 'Intensity Presets', 'Exercises', 'Gyms', 'Weight Goal', 'Data',
         'Support', 'Legal',
       ]))
     })
@@ -431,6 +440,36 @@ describe('SettingsSheet', () => {
       expect(manageBtn).toBeTruthy()
       await manageBtn!.trigger('click')
       expect(wrapper.find('.gym-stub').attributes('data-open')).toBe('true')
+    })
+  })
+
+  describe('exercise manager modal (#1252)', () => {
+    it('opens the exercise manager when Manage Exercises is tapped', async () => {
+      const wrapper = mountSheet()
+      expect(wrapper.find('.exercise-stub').attributes('data-open')).toBe('false')
+      const manageBtn = wrapper.findAll('.settingsRowBtn').find(b => b.text().includes('Manage Exercises'))
+      expect(manageBtn).toBeTruthy()
+      await manageBtn!.trigger('click')
+      expect(wrapper.find('.exercise-stub').attributes('data-open')).toBe('true')
+    })
+
+    it('feeds it the synced gym list and every known tag', () => {
+      mockPrefs.gyms = ['Gym A', 'Gym B']
+      mockWorkoutStore.allTags = ['Chest', 'Triceps']
+      const wrapper = mountSheet()
+      const stub = wrapper.find('.exercise-stub')
+      expect(stub.attributes('data-gyms')).toBe('Gym A,Gym B')
+      expect(stub.attributes('data-tags')).toBe('Chest,Triceps')
+    })
+
+    it('routes tag toggles to the store and gym toggles to useGymActions', async () => {
+      const wrapper = mountSheet()
+      const stub = wrapper.findComponent(ExerciseManagerModalStub)
+      stub.vm.$emit('toggle-exercise-tag', 'e1', 'Chest')
+      stub.vm.$emit('toggle-exercise-gym', 'e1', 'Gym A')
+      await wrapper.vm.$nextTick()
+      expect(mockToggleExerciseTag).toHaveBeenCalledWith('e1', 'Chest')
+      expect(mockToggleExerciseGym).toHaveBeenCalledWith('e1', 'Gym A')
     })
   })
 

@@ -200,6 +200,17 @@ const mockUpdateExerciseTags = vi.fn((exerciseId: string, tags: string[]) => {
   ex.tags = [...tags]
   triggerRef(mockExercises)
 })
+// Delegates to mockUpdateExerciseTags exactly as the real store action does,
+// so the in-place-mutate + triggerRef contract still holds through the toggle.
+const mockToggleExerciseTag = vi.fn((exerciseId: string, tag: string) => {
+  const ex = mockExercises.value.find(e => e.id === exerciseId)
+  if (!ex) return
+  const tags = ex.tags || []
+  mockUpdateExerciseTags(
+    exerciseId,
+    tags.includes(tag) ? tags.filter(t => t !== tag) : [...tags, tag],
+  )
+})
 const mockSetExerciseGyms = vi.fn((exerciseId: string, gyms: string[]) => {
   const ex = mockExercises.value.find(e => e.id === exerciseId)
   if (!ex) return
@@ -243,6 +254,7 @@ vi.mock('../../stores/workout', () => ({
     unarchiveExercise: mockUnarchiveExercise,
     renameExercise: mockRenameExercise,
     updateExerciseTags: mockUpdateExerciseTags,
+    toggleExerciseTag: mockToggleExerciseTag,
     updateExercise: vi.fn(),
     setExerciseGyms: mockSetExerciseGyms,
     renameGymOnExercises: vi.fn(),
