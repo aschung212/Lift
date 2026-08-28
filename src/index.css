@@ -2314,6 +2314,23 @@ html.theme-fading .settingsSheet {
   color: var(--danger);
 }
 
+/* Consecutive-week streak badge (LIFT-1109) — trailing accent pill inside the
+   weekly goal banner. Solid accent so it stays legible across the banner's
+   default / met (accent-subtle) / at-risk (danger) background states. */
+.wtStreakBadge {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 0.75rem;  /* 12px */
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* "Finish workout" button — appears in the page header when sets exist for today.
    Routes to the WorkoutCompleteView for share/celebration. (issue #305) */
 .wtFinishWorkoutBtn {

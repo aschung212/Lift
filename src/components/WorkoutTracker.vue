@@ -17,6 +17,11 @@
           <template v-else-if="weeklyGoalInfo.atRisk">Streak at risk — {{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days</template>
           <template v-else>{{ weeklyGoalInfo.trained }}/{{ weeklyGoalInfo.target }} days this week</template>
         </span>
+        <span
+          v-if="weekStreak >= 1"
+          class="wtStreakBadge"
+          :aria-label="`${weekStreak}-week training streak`"
+        >{{ weekStreak }}-week streak</span>
       </div>
       <button
         v-if="setsLoggedToday > 0"
@@ -1338,6 +1343,18 @@ const prsThisWeek = computed(() => {
 const weeklyGoalInfo = computed(() => {
   if (!progressionStore.progressionEnabled) return null
   return computeWeeklyGoal(store.exercises, progressionStore.weeklyTarget)
+})
+
+/**
+ * Consecutive-week streak count (LIFT-1109). `streakWeeks` reflects completed
+ * Mon–Sun weeks that met the target and is otherwise only surfaced on share
+ * cards; a streak reinforces the habit in proportion to how often it's seen, so
+ * mirror it into the header. 0 → hidden (no streak to lose yet). Gated by the
+ * same `progressionEnabled` flag as the goal banner it lives in.
+ */
+const weekStreak = computed(() => {
+  if (!progressionStore.progressionEnabled) return 0
+  return progressionStore.streakWeeks
 })
 
 /**
