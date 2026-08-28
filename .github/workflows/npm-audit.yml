@@ -1,0 +1,54 @@
+name: npm audit
+
+# Scheduled full-tree vulnerability audit of the installed dependency graph.
+#
+# WHY THIS EXISTS (LIFT-1122): CI's `dependency-review-action` only inspects
+# dependencies *added or changed in a PR diff*. It does NOT re-audit the
+# existing lockfile tree, so a newly-disclosed CVE in an already-pinned
+# transitive dependency has no failing gate between the weekly Dependabot runs.
+# This job audits the WHOLE resolved tree (`package-lock.json`) on a daily
+# cadence — plus on demand and whenever the lockfile itself changes — so a fresh
+# advisory against a pinned dep turns a check red automatically instead of
+# waiting to be noticed by hand (the way the three manual `overrides` in
+# package.json were).
+
+on:
+  schedule:
+    # Daily at 07:00 UTC (midnight PT), offset from the nightly integration
+    # run (06:00 UTC) so newly-published advisories are caught within a day
+    # rather than at the next weekly Dependabot cycle.
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}
+  # Re-audit whenever the resolved tree changes, so a PR that pulls in a
+  # freshly-vulnerable transitive dep is caught even outside the diff that
+  # dependency-review sees.
+  pull_request:
+    paths:
+      - 'package-lock.json'
+      - '.github/workflows/npm-audit.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit dependency tree (high severity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+
+      # No `npm ci` needed: `npm audit` resolves the advisory set straight from
+      # the committed package-lock.json, so we skip the (slow) install entirely.
+      - name: Run npm audit
+        run: npm audit --audit-level=high
