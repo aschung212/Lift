@@ -1,5 +1,5 @@
 import { uuid, endOfDayISO } from './uuid'
-import type { Exercise } from '../stores/workout'
+import type { Exercise, WorkoutSet } from '../stores/workout'
 
 export interface ImportResult {
   exercises: Exercise[]
@@ -111,6 +111,7 @@ function importStrong(rows: string[][], headers: string[]): ImportResult {
   const iWeight = iWeightKg !== -1 ? iWeightKg : col('weight')
   const iUnit = col('weight unit')
   const iReps = col('reps')
+  const iRPE = col('rpe')
 
   const exerciseMap = new Map<string, Exercise>()
   let totalSets = 0
@@ -135,13 +136,18 @@ function importStrong(rows: string[][], headers: string[]): ImportResult {
       exerciseMap.set(name.toLowerCase(), { id: uuid(), name, tags: [], sets: [] })
     }
     const exercise = exerciseMap.get(name.toLowerCase())!
-    exercise.sets.push({
+    const set: WorkoutSet = {
       id: uuid(),
       date,
       weight,
       reps,
       estimated1RM: estimated1RM(weight, reps),
-    })
+    }
+    if (iRPE !== -1) {
+      const rpe = parseFloat(row[iRPE] || '')
+      if (!isNaN(rpe) && rpe >= 6 && rpe <= 10) set.rpe = rpe
+    }
+    exercise.sets.push(set)
     totalSets++
   }
 
@@ -154,6 +160,7 @@ function importHevy(rows: string[][], headers: string[]): ImportResult {
   const iExercise = col('exercise_title')
   const iWeight = col('weight_kg')
   const iReps = col('reps')
+  const iRPE = col('rpe')
 
   const exerciseMap = new Map<string, Exercise>()
   let totalSets = 0
@@ -176,13 +183,18 @@ function importHevy(rows: string[][], headers: string[]): ImportResult {
       exerciseMap.set(name.toLowerCase(), { id: uuid(), name, tags: [], sets: [] })
     }
     const exercise = exerciseMap.get(name.toLowerCase())!
-    exercise.sets.push({
+    const set: WorkoutSet = {
       id: uuid(),
       date,
       weight,
       reps,
       estimated1RM: estimated1RM(weight, reps),
-    })
+    }
+    if (iRPE !== -1) {
+      const rpe = parseFloat(row[iRPE] || '')
+      if (!isNaN(rpe) && rpe >= 6 && rpe <= 10) set.rpe = rpe
+    }
+    exercise.sets.push(set)
     totalSets++
   }
 
@@ -199,6 +211,7 @@ function importLift(rows: string[][], headers: string[]): ImportResult {
   const iWeight = iWeightLabeled !== -1 ? iWeightLabeled : col('weight')
   const iReps = col('reps')
   const iTags = col('tags')
+  const iRPE = col('rpe')
 
   const exerciseMap = new Map<string, Exercise>()
   let totalSets = 0
@@ -226,13 +239,18 @@ function importLift(rows: string[][], headers: string[]): ImportResult {
     for (const tag of tags) {
       if (!exercise.tags.includes(tag)) exercise.tags.push(tag)
     }
-    exercise.sets.push({
+    const set: WorkoutSet = {
       id: uuid(),
       date,
       weight,
       reps,
       estimated1RM: estimated1RM(weight, reps),
-    })
+    }
+    if (iRPE !== -1) {
+      const rpe = parseFloat(row[iRPE] || '')
+      if (!isNaN(rpe) && rpe >= 6 && rpe <= 10) set.rpe = rpe
+    }
+    exercise.sets.push(set)
     totalSets++
   }
 

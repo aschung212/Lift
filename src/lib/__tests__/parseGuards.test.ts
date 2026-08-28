@@ -71,6 +71,30 @@ describe('parseWorkoutSet', () => {
     })
   })
 
+  // #617: rpe is an optional local-only field. parseWorkoutSet whitelists the
+  // fields it copies, so an unlisted one is silently dropped — which would have
+  // made every logged RPE vanish on the next localStorage hydration.
+  it('preserves an in-range rpe through hydration', () => {
+    const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, rpe: 8.5 })
+    expect(set?.rpe).toBe(8.5)
+  })
+
+  it('drops an rpe outside the 6-10 half-step window', () => {
+    const outOfRange = [5.5, 10.5, 0, -8]
+    for (const rpe of outOfRange) {
+      const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, rpe })
+      expect(set?.rpe, `rpe ${rpe} should be dropped`).toBeUndefined()
+    }
+    // Off half-step values can't come from the UI's chip row either.
+    const offStep = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, rpe: 8.3 })
+    expect(offStep?.rpe).toBeUndefined()
+  })
+
+  it('drops a non-numeric rpe', () => {
+    const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, rpe: '8' })
+    expect(set?.rpe).toBeUndefined()
+  })
+
   it('repairs a missing estimated1RM from weight/reps via Epley', () => {
     const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 100, reps: 10 })
     // epley(100, 10) = round(100 * (1 + 10/30)) = 133

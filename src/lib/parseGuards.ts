@@ -85,6 +85,12 @@ export function parseWorkoutSet(value: unknown): WorkoutSet | null {
   // (LIFT-834); a non-positive/non-finite value is dropped so the fold degrades
   // to the added weight rather than skewing e1RM.
   if (isFiniteNumber(o.bodyweight) && o.bodyweight > 0) set.bodyweight = o.bodyweight
+  // Optional RPE (#617). Same 6–10 half-step window the log UI and CSV import
+  // accept — an out-of-range or off-step value is dropped rather than kept, so
+  // hydration can't reintroduce a value the UI could never have produced.
+  if (isFiniteNumber(o.rpe) && o.rpe >= 6 && o.rpe <= 10 && o.rpe * 2 === Math.round(o.rpe * 2)) {
+    set.rpe = o.rpe
+  }
   return set
 }
 
