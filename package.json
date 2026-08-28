@@ -12,6 +12,7 @@
     "generate-launch-screens": "node scripts/generate-launch-screens.js",
     "generate-wide-screenshot": "node scripts/generate-wide-screenshot.js",
     "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.js",
     "test:integration": "vitest run --config vitest.integration.config.js",
     "test:e2e": "playwright test",
     "lint": "eslint src/",
