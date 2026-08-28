@@ -130,6 +130,49 @@
       {{ effectiveGymFilter ? 'No exercises match your filters.' : 'No exercises match your search.' }}
     </p>
 
+    <!-- Guided session plan (#1256): the last session in the current scope
+         (gym + tags) as a day-level checklist. History is the template — no
+         authoring surface. Rows open the existing log modal, where the
+         routine lens / ghost-arm flow takes over. Hidden while searching. -->
+    <section v-if="sessionPlan && !searchQuery" class="wtSessionPlan" aria-label="Session plan">
+      <button
+        class="wtSessionPlanToggle"
+        :aria-expanded="sessionPlanExpanded"
+        :aria-controls="sessionPlanListId"
+        @click="toggleSessionPlan"
+      >
+        <svg class="wtSessionPlanIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+        <span class="wtSessionPlanTitleBlock">
+          <span class="wtSessionPlanTitle">{{ sessionPlanLabel }}</span>
+          <span class="wtSessionPlanMeta">
+            <template v-if="sessionPlan.doneTotal > 0">{{ sessionPlan.doneTotal }}/{{ sessionPlan.plannedTotal }} sets · {{ sessionPlanDayLabel }}</template>
+            <template v-else>{{ sessionPlan.items.length }} {{ sessionPlan.items.length === 1 ? 'exercise' : 'exercises' }} · {{ sessionPlan.plannedTotal }} {{ sessionPlan.plannedTotal === 1 ? 'set' : 'sets' }} · {{ sessionPlanDayLabel }}</template>
+          </span>
+        </span>
+        <span class="wtSessionPlanChevron" :class="{ expanded: sessionPlanExpanded }" aria-hidden="true">›</span>
+      </button>
+      <ul v-if="sessionPlanExpanded" :id="sessionPlanListId" class="wtSessionPlanList">
+        <li v-for="item in sessionPlan.items" :key="item.exerciseId" class="wtSessionPlanItem">
+          <button
+            :class="['wtSessionPlanRow', { wtSessionPlanRowDone: item.doneSets >= item.plannedSets }]"
+            @click="logFromSessionPlan(item.exerciseId)"
+            :aria-label="`${item.name}, ${Math.min(item.doneSets, item.plannedSets)} of ${item.plannedSets} sets done. Log a set.`"
+          >
+            <span class="wtSessionPlanNameBlock">
+              <span class="wtSessionPlanName">{{ item.name }}</span>
+              <span class="wtSessionPlanRowMeta">
+                {{ item.plannedSets }} {{ item.plannedSets === 1 ? 'set' : 'sets' }}<template v-if="item.topSet"> · top {{ displayWeight(item.topSet.weightLbs) }} {{ weightUnit }} × {{ item.topSet.reps }}</template>
+              </span>
+            </span>
+            <span v-if="item.doneSets >= item.plannedSets" class="wtSessionPlanCheck" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            </span>
+            <span v-else class="wtSessionPlanProgress" aria-hidden="true">{{ item.doneSets }}/{{ item.plannedSets }}</span>
+          </button>
+        </li>
+      </ul>
+    </section>
+
     <!-- Explore-path one-time tip: point new users at the payoff charts
          they'd otherwise miss (the sample journey is only demonstrative if
          they open an exercise). Shown only while sample data is present. (LIFT-1086) -->
@@ -810,6 +853,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { buildSessionSummary } from '../lib/sessionSummary'
+import { buildSessionPlan } from '../lib/sessionPlan'
 import { todayISO, localDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
@@ -1148,6 +1192,55 @@ const searchResultAnnouncement = computed(() => {
 const isFilteringActive = computed(() =>
   activeTagFilters.value.length > 0 || searchQuery.value.trim() !== '' || effectiveGymFilter.value !== null
 )
+
+// ── Guided session plan (#1256) ─────────────────────────────────
+/**
+ * Scope for the "repeat last session" plan: gym + tag filtered, WITHOUT the
+ * search query and WITHOUT the recency sort. Search means "find one specific
+ * exercise" (the card hides there), and the today-inclusive recency sort
+ * reshuffles as sets land — a just-logged exercise would jump to the top of
+ * the plan mid-workout. Store order is stable, so rows stay put.
+ */
+const planScopeExercises = computed(() => {
+  const result = gymFilteredExercises.value
+  if (activeTagFilters.value.length === 0) return result
+  return result.filter(e => {
+    const tags = e.tags || []
+    return activeTagFilters.value.some(t => tags.includes(t))
+  })
+})
+
+const sessionPlan = computed(() => buildSessionPlan(planScopeExercises.value, todayISO()))
+
+const sessionPlanExpanded = ref(false)
+const sessionPlanListId = 'wt-session-plan-list'
+
+/** "Repeat last Push session" when exactly one tag filter narrows the scope. */
+const sessionPlanLabel = computed(() =>
+  activeTagFilters.value.length === 1
+    ? `Repeat last ${activeTagFilters.value[0]} session`
+    : 'Repeat last session'
+)
+
+/** Reference day, formatted via local midnight (a bare YYYY-MM-DD in
+ *  `new Date` parses as UTC and renders yesterday for US timezones). */
+const sessionPlanDayLabel = computed(() => {
+  const plan = sessionPlan.value
+  if (!plan) return ''
+  return new Date(plan.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+})
+
+function toggleSessionPlan() {
+  sessionPlanExpanded.value = !sessionPlanExpanded.value
+  if (sessionPlanExpanded.value) {
+    logEvent('session_plan_expanded', { exercises: sessionPlan.value?.items.length ?? 0 })
+  }
+}
+
+function logFromSessionPlan(exerciseId: string) {
+  logEvent('session_plan_item_tapped', {})
+  openLogForExercise(exerciseId)
+}
 
 /** Total exercise count, shown in the "Workouts" header stats. */
 const totalExercises = computed(() => store.activeExercises.length)
