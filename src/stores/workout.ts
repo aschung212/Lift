@@ -1656,6 +1656,9 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Actions
     $reset,
     init,
+    // Exposed so a recovered connection / session can re-run the read without
+    // re-running init's migration work (LIFT-1226).
+    _fetchFromSupabase,
     _reloadFromStorage,
     addExercise,
     setExercisePlateCountMode,

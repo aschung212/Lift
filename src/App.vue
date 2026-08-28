@@ -325,6 +325,7 @@ import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
 import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
+import { setupSyncRecovery } from './composables/useSyncRecovery'
 import { useAppBadge } from './composables/useAppBadge'
 import { todayISO, toLocalDateKey } from './lib/dates'
 import { useOnboarding } from './composables/useOnboarding'
@@ -724,6 +725,11 @@ function onBeforeUnload() {
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
   document.addEventListener('visibilitychange', onBadgeVisibilityChange)
+  // Re-fetch every store when the connection, the foreground, or the session
+  // comes back (LIFT-1226). Without this a failed read stayed stale — and the
+  // reconciliation pushes inside each store's fetch stayed parked — until the
+  // user fully relaunched the app.
+  teardownSyncRecovery = setupSyncRecovery()
   // Clear any badge left over from a prior session: visibilitychange does not
   // fire on cold start (the document begins visible), so a badge set before a
   // force-close would otherwise linger on the icon while the user is active.
@@ -840,10 +846,12 @@ onMounted(async () => {
   })
 })
 let unsubCrossTab: (() => void) | null = null
+let teardownSyncRecovery: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
   document.removeEventListener('visibilitychange', onBadgeVisibilityChange)
   clearAppBadge()
   unsubCrossTab?.()
+  teardownSyncRecovery?.()
 })
 </script>

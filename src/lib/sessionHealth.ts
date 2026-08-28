@@ -26,6 +26,21 @@ import { logWarn } from './logger'
 export const authNeedsReauth = ref(false)
 
 /**
+ * Monotonic counter bumped whenever a *broken* session becomes healthy again
+ * (LIFT-1226) — either `ensureFreshSession()` successfully refreshed a token
+ * that a read/write had just rejected as expired, or a TOKEN_REFRESHED /
+ * SIGNED_IN event cleared a raised `authNeedsReauth`.
+ *
+ * A plain watcher on `authNeedsReauth` cannot observe the first case: the
+ * common recovery is a 401 → refresh → success sequence in which the flag was
+ * never raised, so there is no true→false edge to watch. Recovery consumers
+ * (useSyncRecovery) watch this tick instead, so a token that heals mid-session
+ * immediately re-reconciles rather than leaving the app on stale local data
+ * until the next full relaunch.
+ */
+export const sessionRecoveryTick = ref(0)
+
+/**
  * Heuristically detect an authentication / 401 error from a Supabase response.
  *
  * Supabase REST ops resolve `{ data, error }` rather than rejecting, and a JWT
@@ -73,6 +88,10 @@ export function ensureFreshSession(): Promise<boolean> {
       const ok = !error && !!data?.session
       authNeedsReauth.value = !ok
       if (!ok) logWarn('Session refresh failed — re-sign-in required', { error: String(error) })
+      // Every caller reaches here because a read or write was just rejected as
+      // unauthenticated, so a successful refresh IS a recovery — announce it so
+      // the stale reads that provoked the refresh get re-run (LIFT-1226).
+      else sessionRecoveryTick.value++
       return ok
     } catch (err) {
       authNeedsReauth.value = true
@@ -87,6 +106,10 @@ export function ensureFreshSession(): Promise<boolean> {
 
 /** Clear the re-auth flag (e.g. after TOKEN_REFRESHED / SIGNED_IN). */
 export function clearReauthFlag(): void {
+  // Only a flag that was actually RAISED represents a recovery. TOKEN_REFRESHED
+  // fires routinely on a healthy session, and treating those as recoveries would
+  // schedule a pointless refetch every refresh cycle (LIFT-1226).
+  if (authNeedsReauth.value) sessionRecoveryTick.value++
   authNeedsReauth.value = false
 }
 
@@ -94,4 +117,5 @@ export function clearReauthFlag(): void {
 export function _resetSessionHealth(): void {
   _refreshInFlight = null
   authNeedsReauth.value = false
+  sessionRecoveryTick.value = 0
 }
