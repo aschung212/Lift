@@ -66,7 +66,16 @@
             Unlock more themes by enabling <span class="badgeEnableLink">Progression</span> below.
           </p>
           <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->
-          <div v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null" class="badgeProgressBar">
+          <div
+            v-if="progressionActive && progressionStore.showProgression && progressionStore.nextUnlockThreshold !== null"
+            class="badgeProgressBar"
+            role="progressbar"
+            aria-label="Progress to next theme unlock"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-valuenow="progressionStore.progressPercent"
+            :aria-valuetext="`${progressionStore.xpToNextUnlock.toLocaleString()} XP to next theme`"
+          >
             <div class="badgeProgressFill" :style="{ width: progressionStore.progressPercent + '%' }"></div>
           </div>
           <div class="settingsRow">
@@ -89,6 +98,32 @@
               <button :class="['modeSegBtn', { active: weightUnit === 'kg' }]" @click="weightUnit = 'kg'" aria-label="Use kilograms" :aria-pressed="weightUnit === 'kg'">kg</button>
             </div>
           </div>
+          <!-- App icon picker (native iOS only — alternate icons can't be set on web) -->
+          <template v-if="showAppIconPicker">
+            <div class="appIconHeader">
+              <span class="settingsLabel">App Icon</span>
+              <span class="settingsHint">Unlocks with matching themes</span>
+            </div>
+            <div class="settingsThemeGrid">
+              <button
+                v-for="icon in appIconOptions"
+                :key="icon.id"
+                :class="['themePreview', { active: icon.active, locked: !icon.unlocked }]"
+                @click="icon.unlocked ? selectAppIcon(icon.id) : undefined"
+                :aria-label="icon.unlocked ? 'Use ' + icon.label + ' app icon' : icon.label + ' app icon — locked'"
+                :aria-pressed="icon.active"
+              >
+                <span
+                  class="themePreviewDot"
+                  :style="{ background: 'linear-gradient(135deg, ' + THEME_PREVIEWS[icon.previewTheme]?.[resolvedMode]?.accent + ', ' + THEME_PREVIEWS[icon.previewTheme]?.[resolvedMode]?.bg + ')' }"
+                >
+                  <svg v-if="!icon.unlocked" class="themePreviewLock" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <svg v-else-if="icon.active" class="themePreviewCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <span class="themePreviewLabel">{{ icon.label }}</span>
+              </button>
+            </div>
+          </template>
         </div>
 
         <div class="settingsGroup">
@@ -110,8 +145,8 @@
           </div>
           <div class="settingsRow">
             <div class="settingsLabelGroup">
-              <span class="settingsLabel">PR celebration</span>
-              <span class="settingsHint">Full-screen burst on new PRs</span>
+              <span class="settingsLabel">Celebrations</span>
+              <span class="settingsHint">PR bursts & weekly goal hits</span>
             </div>
             <button
               :class="['glassToggle', { on: prefs.experience.prCelebrations }]"
@@ -262,7 +297,7 @@
                 type="date"
                 class="settingsInput"
                 :value="prBaselineDate ?? ''"
-                :max="new Date().toISOString().slice(0,10)"
+                :max="todayISO()"
                 @change="onBaselineDateInput(($event.target as HTMLInputElement).value)"
                 aria-label="PR baseline date"
               />
@@ -313,6 +348,89 @@
           <div class="settingsRow">
             <span class="settingsHint">
               Use the "Hide warmups" toggle in the timeline or exercise detail to filter classified warmup sets from view.
+            </span>
+          </div>
+        </div>
+
+        <!-- Intensity presets (#776): tappable % chips in the log-set Intensity lens -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Intensity Presets</div>
+          <div
+            v-for="p in prefs.intensityPresets"
+            :key="p"
+            class="settingsRow settingsPresetRow"
+          >
+            <div class="iosStepper">
+              <button
+                class="iosStepperBtn"
+                @click="adjustPreset(p, -1)"
+                :disabled="nextPresetValue(prefs.intensityPresets, p, -1) === null"
+                :aria-label="`Lower ${p}% preset`"
+              >−</button>
+              <span class="iosStepperValue">{{ p }}%</span>
+              <button
+                class="iosStepperBtn"
+                @click="adjustPreset(p, 1)"
+                :disabled="nextPresetValue(prefs.intensityPresets, p, 1) === null"
+                :aria-label="`Raise ${p}% preset`"
+              >+</button>
+            </div>
+            <button
+              class="settingsPresetDelete"
+              @click="deletePreset(p)"
+              :aria-label="`Delete ${p}% preset`"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+          <p v-if="!prefs.intensityPresets.length" class="settingsHint settingsPresetEmpty">
+            No presets — the Intensity lens shows just the slider. Add one below.
+          </p>
+          <button
+            class="settingsPresetAdd"
+            @click="addPreset"
+            :disabled="prefs.intensityPresets.length >= MAX_INTENSITY_PRESETS"
+          >+ Add preset</button>
+          <div class="settingsRow">
+            <span class="settingsHint">
+              Tap these in the log-set Intensity lens to jump straight to a training intensity. The slider stays for one-off values.
+            </span>
+          </div>
+        </div>
+
+        <!-- Exercises (#1252): the exercise-first inverse of Manage Gyms —
+             one list of every exercise, each expanding to its gym + tag chips. -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Exercises</div>
+          <button class="settingsRow settingsRowBtn" @click="exerciseManagerOpen = true">
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M6.5 6.5h11"/><path d="M6.5 17.5h11"/><rect x="2" y="9" width="4" height="6" rx="1"/><rect x="18" y="9" width="4" height="6" rx="1"/></svg>
+              Manage Exercises
+            </span>
+            <span v-if="workoutStore.exercises.length" class="settingsHint">{{ workoutStore.exercises.length }}</span>
+            <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div class="settingsRow">
+            <span class="settingsHint">
+              See every exercise at once and set which gyms it's available at and which muscle groups it trains.
+            </span>
+          </div>
+        </div>
+
+        <!-- Gyms (#961): the zero-state entry point for per-gym exercise filtering -->
+        <div class="settingsGroup">
+          <div class="settingsHeader">Gyms</div>
+          <button class="settingsRow settingsRowBtn" @click="gymManagerOpen = true">
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+              Manage Gyms
+            </span>
+            <span v-if="prefs.gyms.length" class="settingsHint">{{ prefs.gyms.length }}</span>
+            <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div class="settingsRow">
+            <span class="settingsHint">
+              Assign exercises to the gyms you train at, then filter the exercise list by gym. Exercises with no gym show everywhere.
             </span>
           </div>
         </div>
@@ -446,22 +564,35 @@
         </div>
 
 
-        <div class="settingsGroup">
+        <div ref="supportGroupEl" class="settingsGroup">
           <div class="settingsHeader">Support</div>
-          <a class="settingsRow settingsRowBtn settingsLink" href="https://github.com/sponsors/aschung212" target="_blank" rel="noopener">
+          <button class="settingsRow settingsRowBtn" :disabled="appShareInFlight" @click="shareLift">
+            <span class="settingsLabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+              Share Lift
+            </span>
+            <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div v-if="appShareFeedback" class="settingsImportResult" role="status">
+            <span class="settingsImportSuccess">{{ appShareFeedback }}</span>
+          </div>
+          <a class="settingsRow settingsRowBtn settingsLink" href="https://github.com/sponsors/aschung212" target="_blank" rel="noopener" @click="onSupportTap('github_sponsors')">
             <span class="settingsLabel">
               <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
               Sponsor on GitHub
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
-          <a class="settingsRow settingsRowBtn settingsLink" href="https://buymeacoffee.com/aschung212" target="_blank" rel="noopener">
+          <a class="settingsRow settingsRowBtn settingsLink" href="https://buymeacoffee.com/aschung212" target="_blank" rel="noopener" @click="onSupportTap('buymeacoffee')">
             <span class="settingsLabel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
               Buy Me a Coffee
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
+          <p class="settingsGroupNote">
+            Your support covers AI Coach and sync server costs. Lift stays ad-free and never sells your data.
+          </p>
         </div>
 
         <div class="settingsGroup">
@@ -492,56 +623,31 @@
     </div>
   </Teleport>
 
-  <!-- Legal modal (Privacy Policy / Terms of Service) -->
-  <Teleport to="body">
-    <Transition name="undoToast">
-      <div v-if="legalView" class="kbOverlay" @click.self="legalView = null" @keydown.escape="legalView = null">
-        <div class="legalSheet" role="dialog" aria-modal="true" :aria-labelledby="'legal-title'">
-          <div class="legalHeader">
-            <h3 id="legal-title" class="kbTitle">{{ legalView === 'privacy' ? 'Privacy Policy' : 'Terms of Service' }}</h3>
-            <button class="kbClose legalClose" @click="legalView = null">Close</button>
-          </div>
-          <div class="legalBody">
-            <!-- Privacy Policy -->
-            <template v-if="legalView === 'privacy'">
-              <h4 class="legalH4">What We Collect</h4>
-              <p>Lift collects only the data you explicitly enter: exercises, sets, reps, weights, and bodyweight entries. If you create an account, we store your email address for authentication.</p>
-              <h4 class="legalH4">How Data Is Stored</h4>
-              <p>Your workout data is stored locally on your device using browser storage (localStorage). If you sign in, data is synced to Supabase (our cloud database) so you can access it across devices. Data is transmitted over HTTPS.</p>
-              <h4 class="legalH4">Analytics</h4>
-              <p>We use Vercel Analytics to collect anonymous, aggregated usage data (page views, feature usage). No personally identifiable information is included in analytics events.</p>
-              <h4 class="legalH4">Third-Party Services</h4>
-              <ul class="legalList">
-                <li><strong>Supabase</strong> — authentication and cloud data sync</li>
-                <li><strong>Vercel</strong> — hosting and anonymous analytics</li>
-              </ul>
-              <h4 class="legalH4">Data Deletion</h4>
-              <p>You can export or delete your data at any time. Use the Export feature in Settings to download your data as CSV or JSON. To delete your account and all associated data, contact us at the email below.</p>
-              <h4 class="legalH4">Contact</h4>
-              <p>For privacy questions, email <strong>aaronschung@gmail.com</strong>.</p>
-            </template>
-            <!-- Terms of Service -->
-            <template v-else>
-              <h4 class="legalH4">Acceptance</h4>
-              <p>By using Lift, you agree to these terms. If you do not agree, please do not use the app.</p>
-              <h4 class="legalH4">Description</h4>
-              <p>Lift is a free workout tracking application provided as-is. We make no guarantees about uptime, data retention, or feature availability.</p>
-              <h4 class="legalH4">User Responsibilities</h4>
-              <p>You are responsible for maintaining the security of your account credentials. Do not share your login with others. You retain ownership of all data you enter into Lift.</p>
-              <h4 class="legalH4">Acceptable Use</h4>
-              <p>Do not attempt to exploit, reverse-engineer, or interfere with the operation of the app or its infrastructure.</p>
-              <h4 class="legalH4">Limitation of Liability</h4>
-              <p>Lift is provided "as is" without warranty of any kind. We are not liable for any data loss, injury, or damages arising from use of this app. Always consult a medical professional before starting any exercise program.</p>
-              <h4 class="legalH4">Changes</h4>
-              <p>We may update these terms at any time. Continued use of Lift after changes constitutes acceptance of the updated terms.</p>
-              <h4 class="legalH4">Contact</h4>
-              <p>For questions about these terms, email <strong>aaronschung@gmail.com</strong>.</p>
-            </template>
-          </div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+  <!-- Legal modal (extracted to LegalSheet.vue) -->
+  <LegalSheet :view="legalView" @close="legalView = null" />
+
+  <!-- Exercise Manager (#1252) — the inverse view: one row per exercise -->
+  <ExerciseManagerModal
+    :open="exerciseManagerOpen"
+    :exercises="liveExercises"
+    :gyms="prefs.gyms"
+    :all-tags="workoutStore.allTags"
+    @close="exerciseManagerOpen = false"
+    @toggle-exercise-gym="gymActions.toggleExerciseGym"
+    @toggle-exercise-tag="workoutStore.toggleExerciseTag"
+  />
+
+  <!-- Gym Manager (#961) — same modal the workout tab's gym row opens -->
+  <GymManagerModal
+    :open="gymManagerOpen"
+    :gyms="prefs.gyms"
+    :exercises="liveExercises"
+    @close="gymManagerOpen = false"
+    @create-gym="gymActions.createGym"
+    @rename-gym="gymActions.renameGym"
+    @delete-gym="gymActions.deleteGym"
+    @toggle-exercise-gym="gymActions.toggleExerciseGym"
+  />
 
   <!-- Custom confirmation dialog (Capacitor-safe, no window.confirm) -->
   <Teleport to="body">
@@ -645,83 +751,52 @@
     </transition>
   </Teleport>
 
-  <!-- Theme stats bottom sheet -->
-  <Teleport to="body">
-    <transition name="unlockFade">
-      <div v-if="themeStatsVisible" class="unlockOverlay" @click.self="closeThemeStats">
-        <div class="themeStatsSheet">
-          <div class="themeStatsHeader">
-            <span class="themeStatsTitle">{{ themeStatsLabel }}</span>
-            <button class="themeStatsClose" @click="closeThemeStats" aria-label="Close">&times;</button>
-          </div>
-          <template v-if="themeStatsData && themeStatsData.totalSets > 0">
-            <div class="themeStatsGrid">
-              <div class="themeStatItem">
-                <span class="themeStatValue">{{ themeStatsData.totalSets }}</span>
-                <span class="themeStatLabel">Sets</span>
-              </div>
-              <div class="themeStatItem">
-                <span class="themeStatValue">{{ themeStatsData.totalReps.toLocaleString() }}</span>
-                <span class="themeStatLabel">Reps</span>
-              </div>
-              <div class="themeStatItem">
-                <span class="themeStatValue">{{ Math.round(themeStatsData.totalVolume).toLocaleString() }}</span>
-                <span class="themeStatLabel">Volume (lbs)</span>
-              </div>
-              <div class="themeStatItem">
-                <span class="themeStatValue">{{ themeStatsData.totalXP.toLocaleString() }}</span>
-                <span class="themeStatLabel">XP Earned</span>
-              </div>
-              <div class="themeStatItem">
-                <span class="themeStatValue">{{ themeStatsData.prCount }}</span>
-                <span class="themeStatLabel">PRs</span>
-              </div>
-              <div class="themeStatItem">
-                <span class="themeStatValue">{{ themeStatsData.daysUsed }}</span>
-                <span class="themeStatLabel">Days</span>
-              </div>
-            </div>
-            <div v-if="themeStatsData.favoriteExercise" class="themeStatRow">
-              Favorite: <strong>{{ themeStatsData.favoriteExercise.name }}</strong> ({{ themeStatsData.favoriteExercise.sets }} sets)
-            </div>
-            <div class="themeStatRow">
-              Avg XP per set: <strong>{{ themeStatsData.avgXPPerSet }}</strong>
-            </div>
-            <div v-if="themeStatsData.firstSetDate" class="themeStatRow themeStatMuted">
-              {{ themeStatsData.firstSetDate.slice(0, 10) }} — {{ themeStatsData.lastSetDate?.slice(0, 10) }}
-            </div>
-          </template>
-          <div v-else class="themeStatsEmpty">
-            No training data with this theme yet. Log sets to build your stats.
-          </div>
-        </div>
-      </div>
-    </transition>
-  </Teleport>
+  <!-- Theme stats bottom sheet (extracted to ThemeStatsSheet.vue) -->
+  <ThemeStatsSheet
+    :visible="themeStatsVisible"
+    :label="themeStatsLabel"
+    :stats="themeStatsData"
+    @close="themeStatsVisible = false"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, type ComponentPublicInstance } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useTheme } from '../composables/useTheme'
+import { useWeightUnit } from '../composables/useWeightUnit'
+import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
-import { useProgressionStore, UNLOCK_TIERS, showXPToast } from '../stores/progression'
+import { todayISO } from '../lib/dates'
+import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
+import { showXPToast } from '../composables/xpCeremonyUI'
+import { isNative } from '../lib/platform'
+import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
+import { setNativeAppIcon } from '../lib/nativeAppIcon'
 import { computeThemeStats, type ThemeStats } from '../lib/themeStats'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from '../lib/xpMigration'
 import { clearIDB } from '../lib/durableStorage'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
-import { hashUserId, buildJsonExport, buildCsvExport } from '../lib/dataExport'
+import { hashUserId, buildJsonExport, buildCsvExport, downloadBlob } from '../lib/dataExport'
 import { buildTrainingReport, type ReportPeriod } from '../lib/trainingReport'
 import { renderReport, openReportWindow } from '../lib/reportRenderer'
 import { importCSV } from '../lib/csvImport'
 import { usePreferencesStore } from '../stores/preferences'
 import type { WeightGoalDirection } from '../stores/preferences'
+import { MAX_INTENSITY_PRESETS, nextPresetValue, pickNewPresetValue } from '../lib/intensityTable'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
+import { useModal } from '../composables/useModal'
+import { useAppShare } from '../composables/useAppShare'
+import LegalSheet from './LegalSheet.vue'
+import ThemeStatsSheet from './ThemeStatsSheet.vue'
+import GymManagerModal from './GymManagerModal.vue'
+import ExerciseManagerModal from './ExerciseManagerModal.vue'
+import { useGymActions } from '../composables/useGymActions'
 
 const props = defineProps<{
   modelValue: boolean
@@ -732,17 +807,163 @@ const emit = defineEmits<{
   'sign-out': []
 }>()
 
-const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, restTimerEnabled, restTimerAutoStart, weightUnit, displayWeight, toLbs, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
+const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
+const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
 const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
 const { user } = useAuth()
-const { logEvent } = useAnalytics()
+const { logEvent, supportFunnel } = useAnalytics()
 const prefs = usePreferencesStore()
 const workoutStore = useWorkoutStore()
+
+// ── Gym manager (#961) ──────────────────────────────────────────
+const gymManagerOpen = ref(false)
+const gymActions = useGymActions()
+// Fresh-identity exercises for the manager checklist (#963): the workout
+// store mutates in place behind a shallowRef, so binding the raw array would
+// freeze the modal's checkmarks/counts while open (see WorkoutTracker's
+// liveExercises for the full story).
+const liveExercises = computed(() => [...workoutStore.exercises])
+
+// ── Exercise manager (#1252) ────────────────────────────────────
+// Shares gymActions + liveExercises with the gym manager above; tag toggles go
+// straight to the store, which owns that primitive (see toggleExerciseTag).
+const exerciseManagerOpen = ref(false)
 const bodyweightStore = useBodyweightStore()
 
 const progressionActive = computed(() => progressionStore.progressionEnabled)
+
+// ── Intensity presets editor (#776) ────────────────────────────
+// Edits the global preset list shown as tappable chips in the log-set Intensity
+// lens. Pure step/add logic lives in intensityTable.ts (unit-tested); these
+// thin wrappers apply the result through the store (which dedupes/sorts/persists).
+function adjustPreset(value: number, dir: 1 | -1) {
+  const next = nextPresetValue(prefs.intensityPresets, value, dir)
+  if (next === null) return
+  prefs.setIntensityPresets(prefs.intensityPresets.map(p => (p === value ? next : p)))
+}
+
+function deletePreset(value: number) {
+  prefs.setIntensityPresets(prefs.intensityPresets.filter(p => p !== value))
+}
+
+function addPreset() {
+  const candidate = pickNewPresetValue(prefs.intensityPresets)
+  if (candidate === null) return
+  prefs.setIntensityPresets([...prefs.intensityPresets, candidate])
+}
+
+// ── Share the app (word-of-mouth loop, #713) ───────────────────
+const { shareApp, isSharing: appShareInFlight } = useAppShare()
+const appShareFeedback = ref<string | null>(null)
+let appShareFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+async function shareLift() {
+  appShareFeedback.value = null
+  const res = await shareApp()
+  logEvent('app_share', { outcome: res.kind })
+  // The native/Web Share sheet is its own confirmation; only the clipboard
+  // fallback and error paths need an inline status line.
+  if (res.kind === 'copied') appShareFeedback.value = 'Link copied to clipboard'
+  else if (res.kind === 'unavailable') appShareFeedback.value = 'Sharing unavailable on this device'
+  else if (res.kind === 'error') appShareFeedback.value = 'Could not share — try again'
+  if (appShareFeedback.value) {
+    if (appShareFeedbackTimer) clearTimeout(appShareFeedbackTimer)
+    appShareFeedbackTimer = setTimeout(() => { appShareFeedback.value = null }, 3000)
+  }
+}
+
+// ── Supporter conversion funnel (LIFT-906) ─────────────────────
+// Instrument the Support-group CTAs so tip-jar vs. subscription can be a
+// data-driven decision before any IAP is wired. Taps fire on each external
+// CTA; the default navigation is left untouched.
+function onSupportTap(cta: 'github_sponsors' | 'buymeacoffee') {
+  supportFunnel('tap', { cta })
+}
+
+// The impression is the TOP of the funnel, so it must mean "the user actually
+// saw the Support CTAs" — not merely "opened Settings". The Support group is
+// the 12th of 14 groups, near the bottom of a long scroll, so firing on open
+// counted a mostly-unseen CTA and made tap/impression conversion meaningless.
+// Fire it once per settings-open, only when the group scrolls into view.
+const supportGroupEl = ref<HTMLElement | null>(null)
+let supportObserver: IntersectionObserver | null = null
+let impressionLogged = false
+
+function armSupportImpression() {
+  if (impressionLogged) return
+  const el = supportGroupEl.value
+  if (!el) return
+  // Platforms without IntersectionObserver (should not happen on iOS 12.2+ /
+  // modern Chromium) fall back to the old open-time proxy so the funnel top is
+  // never silently empty.
+  if (typeof IntersectionObserver === 'undefined') {
+    impressionLogged = true
+    supportFunnel('impression')
+    return
+  }
+  supportObserver = new IntersectionObserver((entries) => {
+    if (impressionLogged) return
+    if (entries.some((e) => e.isIntersecting)) {
+      impressionLogged = true
+      supportFunnel('impression')
+      disarmSupportImpression()
+    }
+  })
+  supportObserver.observe(el)
+}
+
+function disarmSupportImpression() {
+  supportObserver?.disconnect()
+  supportObserver = null
+}
+
+// ── App icon picker (native iOS only) ──────────────────────────
+const showAppIconPicker = isNative
+// Mirror the theme-grid unlock rules (incl. the trial period) so a starter's
+// matching icon unlocks exactly when its theme does.
+const unlockedThemeIds = computed<ThemeId[]>(() =>
+  THEMES.filter(t => isThemeUnlocked(t.id)).map(t => t.id)
+)
+const appIconOptions = computed(() =>
+  APP_ICONS.map(icon => ({
+    id: icon.id,
+    label: icon.label,
+    previewTheme: icon.previewTheme,
+    unlocked: isAppIconUnlocked(icon, unlockedThemeIds.value),
+    active: prefs.appIcon === icon.id,
+  }))
+)
+
+function selectAppIcon(id: AppIconId) {
+  const icon = getAppIcon(id)
+  if (!isAppIconUnlocked(icon, unlockedThemeIds.value)) return
+  if (prefs.appIcon === id) return
+  // Local-first: persist the choice; the reconcile watcher applies it to the OS.
+  prefs.setAppIcon(id)
+  logEvent('app_icon_change', { icon: id })
+}
+
+// Keep the native OS icon in sync with the stored preference. Runs on mount
+// (immediate) so a preference synced from another device is applied, and on any
+// change — including reverting to the default icon if its theme was re-locked by
+// a progression/prestige reset (resolveAppIconId handles the fallback).
+if (isNative) {
+  watch(
+    () => [prefs.appIcon, unlockedThemeIds.value.join(',')] as const,
+    () => {
+      const resolved = resolveAppIconId(prefs.appIcon, unlockedThemeIds.value)
+      if (resolved !== prefs.appIcon) {
+        prefs.setAppIcon(resolved) // reverts a now-locked icon; re-triggers this watcher
+        return
+      }
+      void setNativeAppIcon(getAppIcon(resolved).nativeName)
+    },
+    { immediate: true }
+  )
+}
 
 // ── Swipe-to-dismiss for settings sheet ────────────────────────
 const settingsEl = ref<HTMLElement | null>(null)
@@ -754,31 +975,98 @@ const settingsSwipe = useSwipeToDismiss({
   onDismiss: () => { emit('update:modelValue', false) },
 })
 
-// ── Focus traps for modals ─────────────────────────────────────
-const settingsFocus = useFocusTrap()
-const legalFocus = useFocusTrap()
+// ── Modal lifecycle: useModal owns the lock + focus trap ───────
+//
+// The settings sheet is a full-screen bottom sheet, so the background must
+// not stay scrollable underneath it — but this component never took the
+// lock at all. It is taken here through useModal so it goes through the
+// SAME reference count every other modal uses: a boolean `modal-open`
+// toggle would strip the class out from under whichever other surface
+// still had a modal open, and a scrollable background under a
+// `position: fixed` modal desyncs paint from hit-testing the moment the
+// iOS keyboard opens (taps land a row low, #830).
+//
+// The trap element comes from the `onSettingsSheetMounted` function ref
+// below — the sheet already needs that ref for the swipe gesture and the
+// close animation, so useModal reads it via `trapRef` rather than a
+// selector. Escape stays on the overlay's `@keydown.escape` handler,
+// which routes through closeSettings()'s animation/idempotency guards.
+const settingsModal = useModal()
 const confirmFocus = useFocusTrap()
 
+// `immediate` is REQUIRED, not incidental: App.vue mounts this component with
+// `v-if="settingsOpen"` (#955), so the sheet arrives already-open and the
+// false→true transition never happens here. Without it the lock would never
+// be acquired on the only path that actually opens the sheet.
 watch(() => props.modelValue, (open) => {
-  if (!open) {
+  if (open) {
+    settingsModal.open()
+    // Top of the supporter funnel (LIFT-906): arm a visibility observer so the
+    // impression fires only once the Support group actually scrolls into view,
+    // not merely because Settings opened. nextTick so the ref is populated.
+    nextTick(armSupportImpression)
+  } else {
+    settingsModal.close()
     settingsSwipe.detach()
-    settingsFocus.deactivate()
+    disarmSupportImpression()
+    impressionLogged = false
   }
-})
+}, { immediate: true })
 
 function onSettingsSheetMounted(el: Element | ComponentPublicInstance | null) {
   if (el && el instanceof HTMLElement && el !== settingsEl.value) {
     settingsEl.value = el
+    settingsModal.trapRef.value = el
     nextTick(() => {
       const handle = settingsHandleEl.value
       if (handle) settingsSwipe.attach(el, handle)
     })
-    settingsFocus.activate(el)
   }
 }
 
+/**
+ * Duration of `sheetSlideDown` in index.css. The fallback below waits a little
+ * longer than the animation so the event wins the race under normal conditions.
+ */
+const CLOSE_ANIM_MS = 150
+
+let closing = false
+let closeFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Commit the close exactly once, whatever settled it. */
+function settleClose() {
+  if (closeFallbackTimer) { clearTimeout(closeFallbackTimer); closeFallbackTimer = null }
+  closing = false
+  emit('update:modelValue', false)
+}
+
+/**
+ * Close the sheet. The slide-down animation is decoration — it must never be
+ * the thing that owns `modelValue`.
+ *
+ * This previously emitted the close from a bare one-shot `animationend`
+ * listener, so the app's `settingsOpen` flag only cleared if that event
+ * actually arrived. When it didn't — background the PWA mid-close and iOS
+ * freezes animations on a hidden page, so `sheetSlideDown` never completes —
+ * the emit never fired and `settingsOpen` stayed `true` forever with the sheet
+ * parked off-screen by `animation-fill-mode: forwards`. Nothing could recover
+ * it: the gear button reads `settingsOpen ? closeSettings() : (settingsOpen =
+ * true)`, so it could only ever re-enter this function, and `classList.add` of
+ * an already-present class does NOT restart a CSS animation — no further
+ * `animationend` was ever coming. Settings then refused to open until a full
+ * app reload, which is exactly how the bug was reported.
+ *
+ * Three guarantees now:
+ *  1. `closing` makes the close idempotent — one animation, one settle.
+ *  2. `animationend` bubbles, so the handler matches on this element and this
+ *     animation; a descendant's animation ending can no longer close the sheet
+ *     out from under the user.
+ *  3. A fallback timer settles the close even if the event never lands. CSS
+ *     still drives the motion — the timer only guarantees the state change,
+ *     the same safety net Vue's own <Transition> keeps.
+ */
 function closeSettings() {
-  if (!props.modelValue) return
+  if (!props.modelValue || closing) return
   // Revert any active theme preview
   if (previewTimer) { clearTimeout(previewTimer); previewTimer = null }
   if (previewingThemeId.value) {
@@ -786,25 +1074,27 @@ function closeSettings() {
     revertPreview()
   }
   const el = settingsEl.value
-  if (!el) { emit('update:modelValue', false); return }
+  if (!el) { settleClose(); return }
+  closing = true
   el.classList.add('settingsSheetClosing')
-  el.addEventListener('animationend', () => {
-    emit('update:modelValue', false)
-  }, { once: true })
+  const onAnimationEnd = (e: AnimationEvent) => {
+    if (e.target !== el || e.animationName !== 'sheetSlideDown') return
+    el.removeEventListener('animationend', onAnimationEnd)
+    settleClose()
+  }
+  el.addEventListener('animationend', onAnimationEnd)
+  closeFallbackTimer = setTimeout(() => {
+    el.removeEventListener('animationend', onAnimationEnd)
+    settleClose()
+  }, CLOSE_ANIM_MS + 100)
 }
 
-defineExpose({ closeSettings })
-
-// ── Focus trap watches for v-if modals ─────────────────────────
-watch(legalView, async (view) => {
-  if (view) {
-    await nextTick()
-    const el = document.querySelector<HTMLElement>('.legalSheet')
-    if (el) legalFocus.activate(el)
-  } else {
-    legalFocus.deactivate()
-  }
+onUnmounted(() => {
+  if (closeFallbackTimer) { clearTimeout(closeFallbackTimer); closeFallbackTimer = null }
+  disarmSupportImpression()
 })
+
+defineExpose({ closeSettings })
 
 // ── Confirm dialog ─────────────────────────────────────────────
 const confirmDialog = ref<{ message: string; onConfirm: () => void } | null>(null)
@@ -995,10 +1285,6 @@ function openThemeStats(id: ThemeId) {
   themeStatsData.value = stats
   themeStatsLabel.value = theme?.label || id
   themeStatsVisible.value = true
-}
-
-function closeThemeStats() {
-  themeStatsVisible.value = false
 }
 
 // ── Progression toggle ─────────────────────────────────────────
@@ -1311,15 +1597,7 @@ async function exportData(format: 'csv' | 'json') {
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  downloadBlob(new Blob([content], { type: mimeType }), filename)
 }
 
 // ── Training Report ─────────────────────────────────────────────

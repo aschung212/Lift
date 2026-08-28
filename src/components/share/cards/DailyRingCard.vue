@@ -35,13 +35,17 @@
       </div>
     </div>
 
-    <div class="drBrand">LIFT</div>
+    <div class="drBrand">
+      <span class="drMark">LIFT</span>
+      <span class="drHandle">{{ SHARE_CARD_HANDLE }}</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 const props = defineProps<{ summary: SessionSummary }>()
 
@@ -163,11 +167,27 @@ const formattedGoal = computed(() => GOAL.value.toLocaleString('en-US'))
 }
 
 .drBrand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.drMark {
   font-family: var(--ff-mono);
   font-weight: 700;
   font-size: 10px;
   line-height: 1;
   letter-spacing: 0.22em;
   color: var(--accent);
+}
+
+.drHandle {
+  font-family: var(--ff-mono);
+  font-weight: 500;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 </style>

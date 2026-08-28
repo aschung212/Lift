@@ -3,7 +3,7 @@
  *   1. Mount a card component offscreen (detached Vue app, no Pinia needed —
  *      cards are pure presentational components that take a typed summary prop).
  *   2. Wait for the next tick so the DOM and CSS are settled, then rasterize
- *      the card to a PNG Blob via `html-to-image`.
+ *      the card to a PNG Blob via `modern-screenshot`.
  *   3. Share via the native iOS share sheet (Capacitor), the Web Share API
  *      (browser, iOS Safari 16.4+ supports image files), or fall back to a
  *      direct download — same Blob → URL.createObjectURL pattern App.vue
@@ -11,15 +11,25 @@
  *   4. Always unmount and revoke the object URL.
  */
 
-import { ref, createApp, h, type Component, type Ref, nextTick } from 'vue'
+import { createApp, h, type Component, type Ref, nextTick } from 'vue'
 import {
   renderNodeToBlob,
+  createWatermarkElement,
   defaultShareFilename,
   PREVIEW_SIZE,
   EXPORT_PIXEL_RATIO,
   type CardFormat,
 } from '../lib/shareImage'
 import type { SessionSummary } from '../lib/sessionSummary'
+import { downloadBlob } from '../lib/dataExport'
+import { useAnalytics } from './useAnalytics'
+import { useShareFlow, isShareCancellation, type ShareResult } from './useShareFlow'
+import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
+
+export type { ShareResult }
+
+/** Title shown in the share sheet for a rasterized workout card. */
+const SHARE_TITLE = 'Lift workout'
 
 export interface ShareCardRequest {
   /** The Vue component that renders the card. */
@@ -31,41 +41,36 @@ export interface ShareCardRequest {
   /** Used to scope the offscreen container's data-theme/data-mode. */
   theme: string
   mode: 'dark' | 'light'
+  /**
+   * Stamp the free-tier "Made with Lift" watermark onto the rendered card.
+   * Set by the caller from the supporter entitlement (#601). Defaults to
+   * off so callers must opt in explicitly.
+   */
+  watermark?: boolean
 }
-
-export type ShareResult =
-  | { kind: 'shared' }                   // native sheet / Web Share resolved
-  | { kind: 'downloaded'; filename: string }
-  | { kind: 'cancelled' }
-  | { kind: 'error'; error: Error }
 
 /**
- * Browsers that support image files in the Web Share API.
+ * Pick the richest Web Share payload a platform will actually accept for a
+ * rendered card. We prefer a payload that carries both the card image AND a
+ * tappable link back to the app (#794) so a recipient can convert in one tap
+ * instead of retyping the printed handle — but some platforms reject a
+ * files+url combo via `canShare`, so we degrade to image-only rather than
+ * drop the share entirely. Returns null when no payload is sharable (caller
+ * falls back to download).
+ *
  * iOS Safari 16.4+ and Android Chrome both report `canShare({ files })` as true.
  */
-function canWebShareFiles(files: File[]): boolean {
-  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return false
+function pickWebSharePayload(file: File): ShareData | null {
+  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return null
+  const withLink: ShareData = { files: [file], title: SHARE_TITLE, text: APP_TAGLINE, url: APP_URL }
+  const imageOnly: ShareData = { files: [file], title: SHARE_TITLE }
   try {
-    return navigator.canShare({ files })
+    if (navigator.canShare(withLink)) return withLink
+    if (navigator.canShare(imageOnly)) return imageOnly
   } catch {
-    return false
+    return null
   }
-}
-
-/** Triggers a download via a temporary anchor element. Matches the dataExport.ts pattern. */
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob)
-  try {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.style.display = 'none'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-  } finally {
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
+  return null
 }
 
 /**
@@ -75,7 +80,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 /**
  * The list of theme custom properties consumed by share cards. Snapshotted
  * from the live document at render time and inlined onto the offscreen
- * host so theme variables resolve inside `html-to-image`'s cloned subtree
+ * host so theme variables resolve inside `modern-screenshot`'s cloned subtree
  * (where the original `[data-theme="X"][data-mode="Y"]` selectors don't
  * reliably match — the clone lives outside the original cascade).
  */
@@ -114,9 +119,9 @@ function snapshotThemeVars(): string {
 async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
   const { width, height } = PREVIEW_SIZE[req.format]
   const host = document.createElement('div')
-  // Offscreen but rendered: html-to-image needs the node in the DOM with real
-  // layout. Inline the resolved theme variables onto the host so they survive
-  // html-to-image's clone-and-rehome step (the `[data-theme=…]` selectors
+  // Offscreen but rendered: modern-screenshot needs the node in the DOM with
+  // real layout. Inline the resolved theme variables onto the host so they
+  // survive modern-screenshot's clone-and-rehome step (the `[data-theme=…]` selectors
   // don't reliably match in the cloned subtree, which leaves the rasterized
   // image blank). Explicit `position: relative` on the inner provides the
   // containing block for cards' absolute children.
@@ -138,6 +143,10 @@ async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
 
   try {
     app.mount(inner)
+    // Stamp the watermark on top of the mounted card. `inner` is the
+    // position:relative containing block, so the absolute watermark anchors
+    // to the card's bottom-right corner.
+    if (req.watermark) inner.appendChild(createWatermarkElement())
     // Two ticks: first to flush mount, second to flush any computed/CSS
     // recalculation triggered by the freshly-applied theme vars.
     await nextTick()
@@ -157,8 +166,23 @@ export interface UseWorkoutShareReturn {
 }
 
 export function useWorkoutShare(): UseWorkoutShareReturn {
-  const isSharing = ref(false)
-  const lastError = ref<Error | null>(null)
+  const { isSharing, lastError, run } = useShareFlow()
+  const { logEvent } = useAnalytics()
+
+  /**
+   * Map a terminal share outcome onto the share funnel (#712). Success and
+   * download both count as completions; a caught render/share failure is a
+   * `share_failed`; a user cancel is deliberately silent.
+   */
+  function logOutcome(result: ShareResult, format: CardFormat, method: 'share' | 'save'): void {
+    if (result.kind === 'shared') {
+      logEvent('share_completed', { format, method, outcome: 'shared' })
+    } else if (result.kind === 'downloaded') {
+      logEvent('share_completed', { format, method, outcome: 'downloaded' })
+    } else if (result.kind === 'error') {
+      logEvent('share_failed', { format, method })
+    }
+  }
 
   /**
    * Render → share. Resolves with the outcome; never throws on user-cancel.
@@ -166,59 +190,52 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
    * { kind: 'error' } so the caller can surface a toast.
    */
   async function shareCard(req: ShareCardRequest): Promise<ShareResult> {
-    if (isSharing.value) return { kind: 'cancelled' }
-    isSharing.value = true
-    lastError.value = null
-    try {
-      const blob = await renderCardOffscreen(req)
-      const filename = defaultShareFilename(req.summary.rawDate, req.format)
-      const file = new File([blob], filename, { type: 'image/png' })
+    const result = await run([
+      async () => {
+        const blob = await renderCardOffscreen(req)
+        const filename = defaultShareFilename(req.summary.rawDate, req.format)
+        const file = new File([blob], filename, { type: 'image/png' })
 
-      // Capacitor native path needs `@capacitor/filesystem` to write the
-      // blob to disk so the iOS share plugin can attach the file URL.
-      // Until that's wired, sharing on a native build falls through to the
-      // Web Share API (works on the iOS Safari PWA which is the current
-      // install target) and then to download. Skipping the native sheet
-      // entirely is intentional — calling `CapacitorShare.share({ text })`
-      // alone would silently drop the rendered image, which is worse than
-      // surfacing the download.
-
-      if (canWebShareFiles([file])) {
-        try {
-          await navigator.share({ files: [file], title: 'Lift workout' })
-          return { kind: 'shared' }
-        } catch (err) {
-          // AbortError = user dismissed sheet. Anything else falls to download.
-          if ((err as DOMException).name === 'AbortError') return { kind: 'cancelled' }
+        // Capacitor native path needs `@capacitor/filesystem` to write the
+        // blob to disk so the iOS share plugin can attach the file URL.
+        // Until that's wired, sharing on a native build falls through to the
+        // Web Share API (works on the iOS Safari PWA which is the current
+        // install target) and then to download. Skipping the native sheet
+        // entirely is intentional — calling `CapacitorShare.share({ text })`
+        // alone would silently drop the rendered image, which is worse than
+        // surfacing the download. `pickWebSharePayload` prefers a payload that
+        // also carries a tappable app link (#794) and degrades to image-only.
+        const sharePayload = pickWebSharePayload(file)
+        if (sharePayload) {
+          try {
+            await navigator.share(sharePayload)
+            return { kind: 'shared' }
+          } catch (err) {
+            // Cancel = user dismissed sheet. Anything else falls to download.
+            if (isShareCancellation(err)) return { kind: 'cancelled' }
+          }
         }
-      }
 
-      downloadBlob(blob, filename)
-      return { kind: 'downloaded', filename }
-    } catch (err) {
-      lastError.value = err as Error
-      return { kind: 'error', error: err as Error }
-    } finally {
-      isSharing.value = false
-    }
+        downloadBlob(blob, filename)
+        return { kind: 'downloaded', filename }
+      },
+    ])
+    logOutcome(result, req.format, 'share')
+    return result
   }
 
   /** Skip the share sheet and download directly. */
   async function downloadCard(req: ShareCardRequest): Promise<ShareResult> {
-    if (isSharing.value) return { kind: 'cancelled' }
-    isSharing.value = true
-    lastError.value = null
-    try {
-      const blob = await renderCardOffscreen(req)
-      const filename = defaultShareFilename(req.summary.rawDate, req.format)
-      downloadBlob(blob, filename)
-      return { kind: 'downloaded', filename }
-    } catch (err) {
-      lastError.value = err as Error
-      return { kind: 'error', error: err as Error }
-    } finally {
-      isSharing.value = false
-    }
+    const result = await run([
+      async () => {
+        const blob = await renderCardOffscreen(req)
+        const filename = defaultShareFilename(req.summary.rawDate, req.format)
+        downloadBlob(blob, filename)
+        return { kind: 'downloaded', filename }
+      },
+    ])
+    logOutcome(result, req.format, 'save')
+    return result
   }
 
   return { shareCard, downloadCard, isSharing, lastError }

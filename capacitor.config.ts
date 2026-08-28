@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'app.lift.tracker',
+  appId: 'com.aschung212.lift',
   appName: 'Lift',
   webDir: 'dist',
   server: {

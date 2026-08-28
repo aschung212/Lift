@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { dirname } from 'node:path'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
@@ -239,6 +235,30 @@ describe('workout store', () => {
     })
   })
 
+  // ── toggleExerciseTag (#1252) ──────────────────────────────────
+  describe('toggleExerciseTag', () => {
+    it('adds a tag the exercise does not have', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench', ['Push'])!
+      store.toggleExerciseTag(id, 'Chest')
+      expect(store.exercises[0].tags).toEqual(['Push', 'Chest'])
+    })
+
+    it('removes a tag the exercise already has', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench', ['Push', 'Chest'])!
+      store.toggleExerciseTag(id, 'Push')
+      expect(store.exercises[0].tags).toEqual(['Chest'])
+    })
+
+    it('is a no-op for an unknown exercise', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', ['Push'])
+      expect(() => store.toggleExerciseTag('nope', 'Chest')).not.toThrow()
+      expect(store.exercises[0].tags).toEqual(['Push'])
+    })
+  })
+
   // ── deleteExercise / restoreExercise ───────────────────────────
   describe('deleteExercise / restoreExercise', () => {
     it('deletes an exercise', () => {
@@ -344,28 +364,6 @@ describe('workout store', () => {
       expect(() => store.archiveExercise('nonexistent')).not.toThrow()
       expect(() => store.unarchiveExercise('nonexistent')).not.toThrow()
       expect(store.exercises[0].archived_at).toBeUndefined()
-    })
-  })
-
-  // ── reorderExercise ─────────────────────────────────────────────
-  describe('reorderExercise', () => {
-    it('reorders exercise from one index to another', () => {
-      const store = useWorkoutStore()
-      store.addExercise('A')
-      store.addExercise('B')
-      store.addExercise('C')
-      store.reorderExercise(2, 0) // Move C to front
-      expect(store.exercises.map(e => e.name)).toEqual(['C', 'A', 'B'])
-    })
-
-    it('does nothing for invalid reorder indices', () => {
-      const store = useWorkoutStore()
-      store.addExercise('A')
-      store.reorderExercise(-1, 0)
-      store.reorderExercise(0, -1)
-      store.reorderExercise(5, 0)
-      store.reorderExercise(0, 0) // same index
-      expect(store.exercises).toHaveLength(1)
     })
   })
 
@@ -536,33 +534,55 @@ describe('workout store', () => {
         expect(allTime).toBeGreaterThan(store.getExercisePR(id, '2026-01-01'))
       })
     })
-  })
 
-  describe('getRecentSets', () => {
-    it('returns sets in reverse order (most recent first)', () => {
-      const store = useWorkoutStore()
-      const id = store.addExercise('Squat')!
-      store.logSet(id, 135, 10)
-      store.logSet(id, 185, 8)
-      store.logSet(id, 225, 5)
-      const recent = store.getRecentSets(id, 2)
-      expect(recent).toHaveLength(2)
-      expect(recent[0].weight).toBe(225)
-      expect(recent[1].weight).toBe(185)
-    })
+    // The PR cache (LIFT-939) is keyed off the reactive `exercises` ref, and
+    // most store mutations edit sets IN PLACE and only call triggerRef — the
+    // array identity never changes. These guard that the memo invalidates on
+    // every mutation path rather than serving a stale value.
+    describe('memoization invalidation', () => {
+      it('reflects a newly logged set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10) // ≈ 180
+        expect(store.getExercisePR(id)).toBe(store.getExercisePR(id)) // warm the cache
+        const before = store.getExercisePR(id)
+        store.logSet(id, 225, 3) // ≈ 248, higher
+        expect(store.getExercisePR(id)).toBeGreaterThan(before)
+        expect(store.getExercisePR(id)).toBe(248)
+      })
 
-    it('returns empty array for non-existent exercise', () => {
-      const store = useWorkoutStore()
-      expect(store.getRecentSets('fake')).toEqual([])
-    })
+      it('reflects an updated set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10)
+        const setId = store.exercises.find(e => e.id === id)!.sets[0].id
+        expect(store.getExercisePR(id)).toBeGreaterThan(0) // warm the cache
+        store.updateSet(id, setId, 315, 5) // much heavier
+        expect(store.getExercisePR(id)).toBe(store.getExercisePRSet(id)!.estimated1RM)
+        expect(store.getExercisePRSet(id)!.weight).toBe(315)
+      })
 
-    it('defaults to 5 items', () => {
-      const store = useWorkoutStore()
-      const id = store.addExercise('Bench')!
-      for (let i = 0; i < 10; i++) {
-        store.logSet(id, 100 + i * 10, 5)
-      }
-      expect(store.getRecentSets(id)).toHaveLength(5)
+      it('reflects a deleted PR set on the next read', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 135, 10) // ≈ 180
+        store.logSet(id, 225, 3) // ≈ 248, the PR
+        const prSet = store.getExercisePRSet(id)! // warm the cache
+        expect(prSet.weight).toBe(225)
+        store.deleteSet(id, prSet.id)
+        expect(store.getExercisePRSet(id)!.weight).toBe(135)
+      })
+
+      it('caches distinct results per sinceDate baseline', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        store.logSet(id, 315, 5, '2020-01-01T10:00:00Z') // high, pre-baseline
+        store.logSet(id, 135, 5, '2026-03-01T10:00:00Z') // low, post-baseline
+        // Interleave the two baselines to exercise the per-sinceDate memo maps.
+        expect(store.getExercisePR(id)).toBeGreaterThan(store.getExercisePR(id, '2026-01-01'))
+        expect(store.getExercisePR(id, '2026-01-01')).toBe(store.getExercisePRSet(id, '2026-01-01')!.estimated1RM)
+        expect(store.getExercisePRSet(id)!.weight).toBe(315)
+      })
     })
   })
 
@@ -622,6 +642,178 @@ describe('workout store', () => {
     })
   })
 
+  describe('getUsualLadder', () => {
+    const TODAY = '2026-05-25'
+    const BENCH_LADDER: Array<[number, number]> = [[45, 10], [95, 10], [135, 10], [185, 10], [225, 10], [275, 10]]
+
+    function logSessions(
+      store: ReturnType<typeof useWorkoutStore>,
+      exId: string,
+      days: string[],
+      ladder: Array<[number, number]>,
+    ) {
+      for (const day of days) {
+        for (const [weight, reps] of ladder) store.logSet(exId, weight, reps, day)
+      }
+    }
+
+    it('detects a repeated warm-up ladder across 4 identical sessions', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22'], BENCH_LADDER)
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.sessionsSampled).toBe(4)
+      expect(ladder!.consensusCount).toBe(6)
+      expect(ladder!.rungs).toHaveLength(6)
+      expect(ladder!.rungs.map(r => [r.weightLbs, r.reps])).toEqual(BENCH_LADDER)
+      expect(ladder!.rungs.every(r => r.source === 'consensus')).toBe(true)
+    })
+
+    it('tolerates 2 deviant sessions in a 6-session window', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22'], BENCH_LADDER)
+      // Two deviant days (a deload and an experiment) interleaved
+      logSessions(store, id, ['2026-05-10'], [[45, 15], [65, 15], [85, 15]])
+      logSessions(store, id, ['2026-05-18'], [[100, 5], [150, 5], [200, 5], [250, 2]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.sessionsSampled).toBe(6)
+      // 4/6 support clears the max(3, ceil(0.6×6)=4) threshold at every position
+      expect(ladder!.rungs.slice(0, 6).map(r => [r.weightLbs, r.reps])).toEqual(BENCH_LADDER)
+    })
+
+    it('requires unanimity at exactly 3 sessions (1 deviant of 3 → null)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-08', '2026-05-15'], BENCH_LADDER)
+      logSessions(store, id, ['2026-05-22'], [[100, 5], [150, 5], [200, 5]])
+      // support threshold is max(3, ceil(0.6×3)=2) = 3 → 2/3 fails everywhere
+      expect(store.getUsualLadder(id, TODAY)).toBeNull()
+    })
+
+    it('returns null with fewer than 3 prior sessions', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-15', '2026-05-22'], BENCH_LADDER)
+      expect(store.getUsualLadder(id, TODAY)).toBeNull()
+    })
+
+    it("excludes today's sets from detection", () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15'], BENCH_LADDER)
+      // Today the user is mid-deviation — must not affect the ladder
+      logSessions(store, id, [TODAY], [[300, 1], [305, 1]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.sessionsSampled).toBe(3)
+      expect(ladder!.rungs.map(r => [r.weightLbs, r.reps])).toEqual(BENCH_LADDER)
+    })
+
+    it('truncates the consensus prefix at the first unsupported position', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      const days = ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22']
+      days.forEach((day, i) => {
+        logSessions(store, id, [day], [[45, 10], [95, 10], [135, 10], [150 + i * 20, 5]])
+      })
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.consensusCount).toBe(3)
+      // Position 4 drifts 20 lbs per session → carried from the newest session as a 'recent' tail
+      expect(ladder!.rungs).toHaveLength(4)
+      expect(ladder!.rungs[3]).toEqual({ weightLbs: 210, reps: 5, source: 'recent' })
+    })
+
+    it('keeps repeated working sets as separate rungs (3×225)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15'], [[135, 10], [225, 5], [225, 5], [225, 5]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.rungs.map(r => [r.weightLbs, r.reps])).toEqual([[135, 10], [225, 5], [225, 5], [225, 5]])
+    })
+
+    it('clusters kg-entered float weights within 1 lb and returns the newest raw value', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('OHP')!
+      // 60 kg re-entered across sessions with conversion drift (all within 1 lb)
+      logSessions(store, id, ['2026-05-01'], [[132.0, 8], [154.0, 5], [176.0, 3]])
+      logSessions(store, id, ['2026-05-08'], [[132.5, 8], [154.5, 5], [176.5, 3]])
+      logSessions(store, id, ['2026-05-15'], [[132.277, 8], [154.324, 5], [176.37, 3]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.consensusCount).toBe(3)
+      // Newest session's raw floats come back, so kg users see their own numbers
+      expect(ladder!.rungs.map(r => r.weightLbs)).toEqual([132.277, 154.324, 176.37])
+    })
+
+    it('survives a deload in the most recent session', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22'], BENCH_LADDER)
+      logSessions(store, id, ['2026-05-24'], [[45, 15], [65, 15], [85, 15]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      // Deload weights lose the cluster vote 4-to-1; rung values stay on the ladder
+      expect(ladder!.rungs.slice(0, 6).map(r => [r.weightLbs, r.reps])).toEqual(BENCH_LADDER)
+    })
+
+    it('drops the recent tail when the newest session deviated from the ladder', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      const ladder: Array<[number, number]> = [[45, 10], [95, 10], [135, 10], [185, 10]]
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22'], ladder)
+      // Newest session is a LONG deload — without the on-ladder guard its
+      // later sets would leak in as contradictory rungs after the top set
+      logSessions(store, id, ['2026-05-24'], [[45, 15], [65, 15], [85, 15], [105, 15], [125, 15], [145, 15]])
+      const usual = store.getUsualLadder(id, TODAY)
+      expect(usual).not.toBeNull()
+      expect(usual!.consensusCount).toBe(4)
+      expect(usual!.rungs).toHaveLength(4)
+      expect(usual!.rungs.map(r => r.weightLbs)).toEqual([45, 95, 135, 185])
+    })
+
+    it('returns null when only 2 positions are established', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Curls')!
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15'], [[30, 12], [40, 10]])
+      expect(store.getUsualLadder(id, TODAY)).toBeNull()
+    })
+
+    it('uses modal reps with ties broken toward the newest session', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Rows')!
+      logSessions(store, id, ['2026-05-01'], [[100, 10], [120, 12], [140, 10]])
+      logSessions(store, id, ['2026-05-08'], [[100, 10], [120, 8], [140, 10]])
+      logSessions(store, id, ['2026-05-15'], [[100, 8], [120, 8], [140, 10]])
+      logSessions(store, id, ['2026-05-22'], [[100, 8], [120, 8], [140, 10]])
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      // Position 1: reps tie 2×10 vs 2×8 → newest session (8) wins
+      expect(ladder!.rungs[0].reps).toBe(8)
+      // Position 2: mode (3×8) beats the newest-adjacent outlier (1×12)
+      expect(ladder!.rungs[1].reps).toBe(8)
+    })
+
+    it('caps the ladder at 10 rungs', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Volume Day')!
+      const twelveSets: Array<[number, number]> = Array.from({ length: 12 }, (_, i) => [100 + i * 10, 5])
+      logSessions(store, id, ['2026-05-01', '2026-05-08', '2026-05-15'], twelveSets)
+      const ladder = store.getUsualLadder(id, TODAY)
+      expect(ladder).not.toBeNull()
+      expect(ladder!.rungs).toHaveLength(10)
+    })
+
+    it('returns null for non-existent exercise', () => {
+      const store = useWorkoutStore()
+      expect(store.getUsualLadder('fake', TODAY)).toBeNull()
+    })
+  })
+
   describe('getOverloadSuggestion', () => {
     function addSetsOnDays(store: ReturnType<typeof useWorkoutStore>, exId: string, entries: Array<{ date: string; weight: number; reps: number }>) {
       for (const e of entries) {
@@ -661,6 +853,7 @@ describe('workout store', () => {
       expect(suggestion).not.toBeNull()
       expect(suggestion!.type).toBe('increase_weight')
       expect(suggestion!.weight).toBe(190)
+      expect(suggestion!.confidence).toBe('high')
     })
 
     it('suggests rep increase after recent weight increase', () => {
@@ -676,6 +869,8 @@ describe('workout store', () => {
       expect(suggestion!.type).toBe('increase_reps')
       expect(suggestion!.weight).toBe(195)
       expect(suggestion!.reps).toBe(4)
+      // Consolidation advice fires after almost any weight bump — never nudge-worthy
+      expect(suggestion!.confidence).toBe('low')
     })
 
     it('suggests weight increase when reps reach 8+', () => {
@@ -690,6 +885,59 @@ describe('workout store', () => {
       expect(suggestion).not.toBeNull()
       expect(suggestion!.type).toBe('increase_weight')
       expect(suggestion!.weight).toBe(140)
+      expect(suggestion!.confidence).toBe('high')
+    })
+
+    it('marks mid-progression rep advice as low confidence', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      // Low-rep build at the same weight (3 → 4 reps stays under the
+      // branch-1 threshold of 5) → "keep building" advice
+      addSetsOnDays(store, id, [
+        { date: '2026-03-01', weight: 135, reps: 3 },
+        { date: '2026-03-03', weight: 135, reps: 3 },
+        { date: '2026-03-05', weight: 135, reps: 4 },
+      ])
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      expect(suggestion!.type).toBe('increase_reps')
+      expect(suggestion!.confidence).toBe('low')
+    })
+
+    it('excludes an in-progress today session when today is passed (#741)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      addSetsOnDays(store, id, [
+        { date: '2026-03-01', weight: 275, reps: 10 },
+        { date: '2026-03-08', weight: 275, reps: 10 },
+        { date: '2026-03-15', weight: 275, reps: 10 },
+        // Mid-workout today: warm-ups logged, top set still ahead
+        { date: '2026-03-22', weight: 45, reps: 10 },
+        { date: '2026-03-22', weight: 135, reps: 10 },
+      ])
+      // Without exclusion, today's 135 reads as the latest top set → wrong branch
+      expect(store.getOverloadSuggestion(id)!.confidence).toBe('low')
+      // With exclusion, the consistent 275×10 sessions yield the real signal
+      const suggestion = store.getOverloadSuggestion(id, '2026-03-22')
+      expect(suggestion).not.toBeNull()
+      expect(suggestion!.type).toBe('increase_weight')
+      expect(suggestion!.weight).toBe(280)
+      expect(suggestion!.confidence).toBe('high')
+    })
+
+    it('marks the default add-a-rep fallback as low confidence', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      // Weights trending down — fallback branch
+      addSetsOnDays(store, id, [
+        { date: '2026-03-01', weight: 200, reps: 5 },
+        { date: '2026-03-03', weight: 185, reps: 5 },
+        { date: '2026-03-05', weight: 175, reps: 5 },
+      ])
+      const suggestion = store.getOverloadSuggestion(id)
+      expect(suggestion).not.toBeNull()
+      expect(suggestion!.type).toBe('increase_reps')
+      expect(suggestion!.confidence).toBe('low')
     })
 
     it('returns null for non-existent exercise', () => {
@@ -817,7 +1065,7 @@ describe('workout store', () => {
 
     it('marks exercises as sample when sync: false (#232)', () => {
       const store = useWorkoutStore()
-      const id = store.addExercise('Sample Exercise', [], { sync: false })!
+      store.addExercise('Sample Exercise', [], { sync: false })
       expect(store.exercises[0].sample).toBe(true)
     })
 
@@ -928,87 +1176,8 @@ describe('workout store', () => {
       expect(removed[0].id).toBe('x2')
     })
 
-    it('SEV1 regression 2026-04-12 — dedup must never push server DELETEs (READ path is read-only)', () => {
-      // Incident: client-side dedup in _fetchFromSupabase broadcast DELETE ops
-      // to Supabase every sync. For users with backdated straight-set programs
-      // (5x5 with T12:00:00 noon-local or T23:59:59 fixed timestamps), identical
-      // (date|weight|reps) tuples collapsed to one survivor and the rest were
-      // permanently deleted server-side. ~11 sets/session lost. No PITR on free
-      // tier = unrecoverable.
-      //
-      // Root cause: client treated its dedup heuristic as authoritative over
-      // server data. Fix: dedup is purely local; server is source of truth.
-      //
-      // This structural test prevents the exact anti-patterns from returning.
-      // Functional behavior is covered by the deduplicateSets / deduplicateByName
-      // unit tests above — those verify the local pruning still works.
-      const __filename = fileURLToPath(import.meta.url)
-      const __dirname = dirname(__filename)
-      const src = readFileSync(resolve(__dirname, '../workout.ts'), 'utf-8')
-
-      // Extract the _fetchFromSupabase function body. Uses brace counting
-      // to handle nested braces correctly.
-      const fnStart = src.indexOf('async function _fetchFromSupabase()')
-      expect(fnStart).toBeGreaterThan(-1)
-      const openBrace = src.indexOf('{', fnStart)
-      let depth = 1
-      let i = openBrace + 1
-      while (i < src.length && depth > 0) {
-        if (src[i] === '{') depth++
-        else if (src[i] === '}') depth--
-        i++
-      }
-      const body = src.slice(openBrace + 1, i - 1)
-
-      // Every .delete(...) call in this function MUST be part of tombstone
-      // processing (syncing pending USER-initiated deletes). Non-tombstone
-      // deletes in the read path are the bug we shipped a SEV1 for.
-      //
-      // Heuristic: for each .delete( match, the prior 10 lines must mention
-      // "tombstone" (either the import or the branch condition isTombstoned).
-      const deletePattern = /\.delete\s*\(/g
-      let match: RegExpExecArray | null
-      while ((match = deletePattern.exec(body)) !== null) {
-        const before = body.slice(Math.max(0, match.index - 400), match.index)
-        expect(before).toMatch(/tombstone/i)
-      }
-
-      // Guard against the specific variable names and comment fragments that
-      // existed before the fix. If these reappear, the bug is back.
-      expect(body).not.toMatch(/dupSetIds/)
-      expect(body).not.toMatch(/Set was content-deduped out/)
-      expect(body).not.toMatch(/Delete the duplicate exercise from Supabase/)
-    })
-
-    it('SEV1 regression 2026-04-12 — bodyweight read path is also read-only', () => {
-      // Bodyweight store had the same anti-pattern as workout: date-level dedup
-      // broadcast deletes to Supabase. Same fix applied.
-      const __filename = fileURLToPath(import.meta.url)
-      const __dirname = dirname(__filename)
-      const src = readFileSync(resolve(__dirname, '../bodyweight.ts'), 'utf-8')
-
-      const fnStart = src.indexOf('async _fetchFromSupabase()')
-      expect(fnStart).toBeGreaterThan(-1)
-      const openBrace = src.indexOf('{', fnStart)
-      let depth = 1
-      let i = openBrace + 1
-      while (i < src.length && depth > 0) {
-        if (src[i] === '{') depth++
-        else if (src[i] === '}') depth--
-        i++
-      }
-      const body = src.slice(openBrace + 1, i - 1)
-
-      const deletePattern = /\.delete\s*\(/g
-      let match: RegExpExecArray | null
-      while ((match = deletePattern.exec(body)) !== null) {
-        const before = body.slice(Math.max(0, match.index - 400), match.index)
-        expect(before).toMatch(/tombstone/i)
-      }
-
-      expect(body).not.toMatch(/dupIds/)
-      expect(body).not.toMatch(/Clean up duplicate entries from Supabase/)
-    })
+    // SEV1 2026-04-12 structural tests (READ path is read-only) consolidated
+    // into architecturalInvariants.test.ts (LIFT-653).
 
     it('sorts merged sets chronologically (regression: out-of-order after dedup)', () => {
       const exercises: Exercise[] = [
@@ -1023,6 +1192,138 @@ describe('workout store', () => {
       const { exercises: result } = deduplicateByName(exercises)
       expect(result).toHaveLength(1)
       expect(result[0].sets.map(s => s.id)).toEqual(['s1', 's2', 's3'])
+    })
+  })
+
+  // ── setExerciseIntensityMaxReps (#770) ──────────────────────────
+  describe('setExerciseIntensityMaxReps', () => {
+    it('stores a custom rep count and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench Press', [])
+      store.setExerciseIntensityMaxReps(id, 15)
+
+      expect(store.exercises[0].intensityMaxReps).toBe(15)
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].intensityMaxReps).toBe(15)
+    })
+
+    it('sanitizes out-of-range values before storing', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat', [])
+      store.setExerciseIntensityMaxReps(id, 500)
+      expect(store.exercises[0].intensityMaxReps).toBe(100)
+      store.setExerciseIntensityMaxReps(id, 0)
+      expect(store.exercises[0].intensityMaxReps).toBe(1)
+      store.setExerciseIntensityMaxReps(id, 8.9)
+      expect(store.exercises[0].intensityMaxReps).toBe(8)
+    })
+
+    it('clears the override when passed null', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Row', [])
+      store.setExerciseIntensityMaxReps(id, 12)
+      store.setExerciseIntensityMaxReps(id, null)
+      expect(store.exercises[0].intensityMaxReps).toBeUndefined()
+      expect('intensityMaxReps' in store.exercises[0]).toBe(false)
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExerciseIntensityMaxReps('nope', 12)).not.toThrow()
+    })
+  })
+
+  // ── setExerciseEquipment (#931 phase C) ─────────────────────────
+  describe('setExerciseEquipment', () => {
+    it('stores an explicit classification and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Hack Squat', [])
+      store.setExerciseEquipment(id, 'free_weight')
+
+      expect(store.exercises[0].equipment).toBe('free_weight')
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].equipment).toBe('free_weight')
+    })
+
+    it('clears the override ("Auto") when passed null', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench Press', [])
+      store.setExerciseEquipment(id, 'machine')
+      store.setExerciseEquipment(id, null)
+      expect('equipment' in store.exercises[0]).toBe(false)
+    })
+
+    it('refuses to store an unknown value (clears instead)', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat', [])
+      store.setExerciseEquipment(id, 'machine')
+      // Corrupt/future value degrades to unset rather than persisting garbage.
+      store.setExerciseEquipment(id, 'cable_stack' as never)
+      expect('equipment' in store.exercises[0]).toBe(false)
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExerciseEquipment('nope', 'machine')).not.toThrow()
+    })
+
+    it('sanitizes a corrupt persisted equipment value on load', () => {
+      localStorageMock.setItem('workout-exercises', JSON.stringify([
+        { id: 'e1', name: 'Bench', tags: [], sets: [], equipment: 'laser_cannon' },
+        { id: 'e2', name: 'Squat', tags: [], sets: [], equipment: 'machine' },
+      ]))
+      setActivePinia(createPinia())
+      const store = useWorkoutStore()
+      expect('equipment' in store.exercises[0]).toBe(false)
+      expect(store.exercises[1].equipment).toBe('machine')
+    })
+  })
+
+  // ── setExercisePlateCountMode (LIFT-1039) ───────────────────────
+  describe('setExercisePlateCountMode', () => {
+    it('stores the mode and persists it to localStorage', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Dumbbell Press', [])
+      store.setExercisePlateCountMode(id, 'total')
+
+      expect(store.exercises[0].plateCountMode).toBe('total')
+      const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!)
+      expect(persisted[0].plateCountMode).toBe('total')
+    })
+
+    it('stamps a fresh updated_at so the change wins last-write-wins merges', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Smith Squat', [])
+      // Seed a stale timestamp so the setter's fresh stamp is observably newer,
+      // without depending on sub-millisecond wall-clock resolution.
+      store.exercises[0].updated_at = '2000-01-01T00:00:00.000Z'
+      store.setExercisePlateCountMode(id, 'total')
+      expect(store.exercises[0].updated_at! > '2000-01-01T00:00:00.000Z').toBe(true)
+    })
+
+    it('round-trips through the localStorage boundary', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Leg Press', [])
+      store.setExercisePlateCountMode(id, 'total')
+      setActivePinia(createPinia())
+      const reloaded = useWorkoutStore()
+      expect(reloaded.exercises.find(e => e.id === id)!.plateCountMode).toBe('total')
+    })
+
+    it('drops a corrupt persisted plateCountMode on load', () => {
+      localStorageMock.setItem('workout-exercises', JSON.stringify([
+        { id: 'e1', name: 'Bench', tags: [], sets: [], plateCountMode: 'sideways' },
+        { id: 'e2', name: 'Squat', tags: [], sets: [], plateCountMode: 'total' },
+      ]))
+      setActivePinia(createPinia())
+      const store = useWorkoutStore()
+      expect('plateCountMode' in store.exercises[0]).toBe(false)
+      expect(store.exercises[1].plateCountMode).toBe('total')
+    })
+
+    it('is a no-op for an unknown exercise id', () => {
+      const store = useWorkoutStore()
+      expect(() => store.setExercisePlateCountMode('nope', 'total')).not.toThrow()
     })
   })
 })

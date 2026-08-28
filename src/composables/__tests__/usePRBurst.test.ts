@@ -90,8 +90,6 @@ describe('usePRBurst', () => {
   })
 
   it('fires heavy haptic for first PR', () => {
-    const impactHeavyMock = vi.fn()
-    // Re-mock to capture impactHeavy
     vi.mocked(notifySuccessMock).mockClear()
 
     // The heavy haptic is called inside presentPRBurst when isFirstPR is true
@@ -164,5 +162,24 @@ describe('usePRBurst', () => {
     expect(visible.value).toBe(true)
     dismissPRBurst()
     expect(visible.value).toBe(false)
+  })
+
+  // LIFT-916: the caller (WorkoutTracker) owns store access and hands a
+  // pre-built session summary to the burst, so the presentational PRBurst
+  // component drives its "Share this PR" flow without reaching into stores.
+  it('carries a caller-supplied shareSummary through the payload', () => {
+    const { presentPRBurst, payload } = usePRBurst()
+    const summary = { rawDate: '2026-07-08', setsCompleted: 3 } as unknown as NonNullable<
+      typeof payload.value
+    >['shareSummary']
+    presentPRBurst({
+      exerciseName: 'Deadlift',
+      oldE1RM: 400,
+      newE1RM: 420,
+      setWeight: 365,
+      setReps: 5,
+      shareSummary: summary,
+    })
+    expect(payload.value?.shareSummary).toEqual(summary)
   })
 })

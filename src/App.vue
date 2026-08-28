@@ -8,7 +8,7 @@
     <AuthScreen v-if="!user" />
 
     <!-- Onboarding -->
-    <OnboardingScreen v-else-if="showOnboarding" @complete="onOnboardingComplete" @started="onboardingInProgress = true" />
+    <OnboardingScreen v-else-if="showOnboarding" @complete="completeOnboarding" @started="onboardingInProgress = true" />
 
     <!-- Authenticated app -->
     <template v-else>
@@ -24,9 +24,32 @@
             <button class="previewToggle" @click="isPreviewMode = true">Go read-only</button>
           </template>
         </div>
+        <div v-if="authNeedsReauth" class="previewBanner" role="status">
+          Session expired — sign in again to resume syncing
+          <button class="previewToggle" @click="handleSignOut">Sign in</button>
+        </div>
         <button v-if="hasSampleData" class="sampleBanner" @click="clearSampleData">
           Viewing sample data — Tap to clear and start fresh
         </button>
+
+        <div v-if="showGuestBackupPrompt" class="guestBackupBanner" role="status">
+          <span class="guestBackupText">Your workouts are saved on this device only.</span>
+          <button class="guestBackupCta" @click="createAccountFromGuest">Create account</button>
+          <button class="guestBackupDismiss" @click="dismissGuestBackupPrompt" aria-label="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div v-if="showWelcomeBack" class="welcomeBackBanner" role="status">
+          <div class="welcomeBackText">
+            <strong class="welcomeBackTitle">Welcome back 👋</strong>
+            <span class="welcomeBackDesc">{{ welcomeBackMessage }}</span>
+          </div>
+          <button class="welcomeBackCta" @click="logFromWelcomeBack">Log today</button>
+          <button class="welcomeBackDismiss" @click="dismissWelcomeBack" aria-label="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
 
         <!-- PWA install banner -->
         <Transition name="installBanner">
@@ -61,9 +84,9 @@
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
-            <span v-if="syncStatus !== 'synced'" class="syncIndicator" :class="'syncIndicator--' + syncStatus" :title="syncStatusLabel" role="status">
-              <svg v-if="syncStatus === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              <svg v-else-if="syncStatus === 'offline'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            <span v-if="displaySyncStatus !== 'synced'" class="syncIndicator" :class="'syncIndicator--' + displaySyncStatus" :title="syncStatusLabel" role="img" :aria-label="syncStatusLabel">
+              <svg v-if="displaySyncStatus === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <svg v-else-if="displaySyncStatus === 'offline'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
               <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
             </span>
           </div>
@@ -71,15 +94,31 @@
             <button
               v-if="activeTab === 'workouts'"
               class="topBarPlusBtn"
-              @click="triggerQuickLog"
-              title="Log a set"
-              aria-label="Log a set"
+              @click="triggerAddExercise"
+              title="Add exercise"
+              aria-label="Add exercise"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
+            <button
+              v-if="activeTab === 'calendar' && showCoachBtn"
+              class="topBarCoachBtn"
+              @click="coachOpen = true"
+              title="AI Review"
+              aria-label="Open AI Review"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+            </button>
           </div>
         </div>
-        <div id="main-content" ref="tabContentEl" class="tabContent" tabindex="-1">
+        <div
+          id="main-content"
+          ref="tabContentEl"
+          class="tabContent"
+          tabindex="-1"
+          role="tabpanel"
+          :aria-labelledby="`tab-${activeTab}`"
+        >
           <KeepAlive>
             <WorkoutTracker v-if="activeTab === 'workouts'" ref="workoutTrackerRef" />
             <CalendarView v-else-if="activeTab === 'calendar'" />
@@ -88,9 +127,19 @@
         </div>
       </main>
 
+      <!-- Polite SPA view-change announcement for screen readers (WCAG 4.1.3).
+           switchTab swaps panel content via v-if with no native focus/route
+           change, so assistive tech would otherwise stay silent. -->
+      <div class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ viewAnnouncement }}</div>
+
+      <!-- Polite sync/connectivity announcement for screen readers (LIFT-1149,
+           WCAG 4.1.3). The visual syncIndicator is icon-only, so assistive tech
+           would otherwise never hear the app drop offline or a sync fail. -->
+      <div class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ syncAnnouncement }}</div>
+
       <!-- Tab bar -->
       <nav class="tabBar" aria-label="Main navigation">
-        <div class="tabBarTabs" role="tablist">
+        <div class="tabBarTabs" role="tablist" aria-label="Main navigation">
           <div
             class="tabIndicator"
             :style="tabIndicatorStyle"
@@ -99,10 +148,14 @@
           <button
             v-for="tab in visibleTabs"
             :key="tab.id"
+            :id="`tab-${tab.id}`"
             role="tab"
             :aria-selected="activeTab === tab.id"
+            aria-controls="main-content"
+            :tabindex="activeTab === tab.id ? 0 : -1"
             :class="['tabBtn', { active: activeTab === tab.id }]"
             @click="switchTab(tab.id)"
+            @keydown="onTablistKeydown"
           >
             <!-- eslint-disable-next-line vue/no-v-html, vue/html-self-closing -- icons are hardcoded SVG paths, not user input -->
             <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="tab.icon"></svg>
@@ -112,7 +165,10 @@
       </nav>
 
       <!-- Settings bottom sheet (extracted to SettingsSheet.vue) -->
-      <SettingsSheet ref="settingsSheetRef" v-model="settingsOpen" @sign-out="handleSignOut" />
+      <SettingsSheet v-if="settingsOpen" ref="settingsSheetRef" v-model="settingsOpen" @sign-out="handleSignOut" />
+
+      <!-- AI Review sheet (entry: Calendar-tab top-bar button) -->
+      <CoachSheet v-if="coachOpen" @close="coachOpen = false" />
     </template>
 
     <!-- Undo toast -->
@@ -155,7 +211,16 @@
       <div v-if="xpToast.visible" class="xpGlobalToast" role="status" aria-live="polite">
         <div class="xpToastEarned">{{ xpToast.text }}</div>
         <div class="xpToastTotal">{{ xpToast.nextThresholdXP ? `${xpToast.totalXP.toLocaleString()} / ${xpToast.nextThresholdXP.toLocaleString()} XP` : `${xpToast.totalXP.toLocaleString()} XP` }}</div>
-        <div v-if="xpToast.nextThresholdXP" class="xpToastProgress">
+        <div
+          v-if="xpToast.nextThresholdXP"
+          class="xpToastProgress"
+          role="progressbar"
+          aria-label="XP progress to next level"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          :aria-valuenow="xpToast.progressPercent"
+          :aria-valuetext="`${xpToast.totalXP.toLocaleString()} of ${xpToast.nextThresholdXP.toLocaleString()} XP`"
+        >
           <div class="xpToastProgressFill" :style="{ width: xpToast.progressPercent + '%' }"></div>
         </div>
       </div>
@@ -188,6 +253,17 @@
   <Teleport to="body">
     <PRBurst />
   </Teleport>
+
+  <!-- First-set activation celebration (#762) — triggered on a new user's first
+       ever logged set via useFirstSetCelebration().presentFirstSetCelebration(). -->
+  <Teleport to="body">
+    <FirstSetCelebration />
+  </Teleport>
+
+  <!-- Weekly-goal celebration — triggered via useGoalCelebration().presentGoalCelebration(). -->
+  <Teleport to="body">
+    <GoalCelebration />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -196,8 +272,9 @@ import { isPreviewDeploy, isPreviewMode, initSupabase } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './views/AuthScreen.vue'
 import OnboardingScreen from './views/OnboardingScreen.vue'
-import SettingsSheet from './components/SettingsSheet.vue'
 import PRBurst from './components/PRBurst.vue'
+import FirstSetCelebration from './components/FirstSetCelebration.vue'
+import GoalCelebration from './components/GoalCelebration.vue'
 
 // Lazy-load tab content — split into separate chunks for faster initial load
 import SkeletonLoader from './components/SkeletonLoader.vue'
@@ -216,40 +293,109 @@ const BodyweightTracker = defineAsyncComponent({
   loadingComponent: SkeletonLoader,
   delay: 100,
 })
-import { useTheme, connectProgressionStore } from './composables/useTheme'
+// Settings is reachable only behind a tap and pulls in training-report/data-export
+// UI many users never open — split it (and its transitive deps) into an on-demand
+// chunk, gated by v-if="settingsOpen" so the chunk isn't fetched until first open.
+const SettingsSheet = defineAsyncComponent(() => import('./components/SettingsSheet.vue'))
+// AI Review sheet — reached only from the Calendar-tab top-bar button, so its
+// chunk (and the export/profile UI it pulls in) loads on first open.
+const CoachSheet = defineAsyncComponent(() => import('./views/CoachSheet.vue'))
+import { coachReviewEligibility } from './lib/coachDigest'
+import { COACH_MODE } from './lib/coachExport'
+import { useTheme, connectProgressionStore, connectThemeStore } from './composables/useTheme'
 import type { ThemeId } from './lib/themes'
-import { useProgressionStore, xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './stores/progression'
+import { useProgressionStore } from './stores/progression'
+import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './composables/xpCeremonyUI'
 import { useXPCeremony } from './composables/useXPCeremony'
 import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigration'
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
+import { guardedReload } from './lib/reloadGuard'
 import { useAuth } from './composables/useAuth'
 import { useAnalytics } from './composables/useAnalytics'
+import { captureAcquisitionSource } from './composables/useAcquisitionSource'
 import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
+import { combineSyncStatus } from './lib/syncStatus'
+import { authNeedsReauth } from './lib/sessionHealth'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
 import { useFocusTrap } from './composables/useFocusTrap'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
-import { registerSW } from 'virtual:pwa-register'
+import { usePRBurst } from './composables/usePRBurst'
+import { useServiceWorker } from './composables/useServiceWorker'
+import { setupSyncRecovery } from './composables/useSyncRecovery'
+import { useAppBadge } from './composables/useAppBadge'
+import { todayISO } from './lib/dates'
+import { useOnboarding } from './composables/useOnboarding'
+import { useTabRouting } from './composables/useTabRouting'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
+import { GUEST_BACKUP_PROMPT_DISMISSED_KEY } from './composables/useAuth'
+import { decideWelcomeBack, readWelcomeBackState, markWelcomedBack, type WelcomeBackDecision } from './lib/welcomeBack'
 
 const { currentTheme, THEME_PREVIEWS, resolvedMode, isThemeUnlocked } = useTheme()
+// The preferences store is the single source of truth for theme/colorMode
+// (LIFT-1177); drive DOM application from it so cross-tab and Supabase updates
+// are always reflected. Idempotent — the connect is guarded against re-runs.
+connectThemeStore()
 
 const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 const { celebrateUnlocks } = useXPCeremony()
 
-const { user, loading, init: initAuth, signOut } = useAuth()
+const { user, loading, isGuest, init: initAuth, signOut, exitGuestMode } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
 
+// Acquire each store once and pass references to the lifecycle composables and
+// handlers below — Pinia returns the same instance per call, so re-calling the
+// hooks in scattered handlers was redundant noise.
+const workoutStore = useWorkoutStore()
+const bodyweightStore = useBodyweightStore()
+
 // ── PWA install prompt ──────────────────────────────────────────
-const workoutStoreForInstall = useWorkoutStore()
-const installWorkoutDays = computed(() => workoutStoreForInstall.workoutDates.length)
-const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall } = useInstallPrompt(installWorkoutDays)
+const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall, surfaceAtPeakMoment: surfaceInstallAtPeak } = useInstallPrompt(installWorkoutDays)
+
+// Re-surface the install prompt at a peak moment: once a PR celebration is
+// dismissed, the user is at a high point of engagement — a far better time to
+// ask than the raw 3-workout-day gate (#1060). Respects install/snooze state.
+const { visible: prBurstVisible } = usePRBurst()
+watch(prBurstVisible, (visible, wasVisible) => {
+  if (wasVisible && !visible) surfaceInstallAtPeak()
+})
+
+// ── Unfinished-workout app-icon badge ───────────────────────────
+// When the user backgrounds the app with sets logged today, badge the
+// Home-Screen icon with that count so they're nudged back to finish — and
+// clear it the moment they return. No-ops where the Badging API is
+// unsupported (see useAppBadge). Mirrors WorkoutTracker's `setsLoggedToday`,
+// which drives the in-app "Finish workout" affordance.
+const { setBadge: setAppBadge, clearBadge: clearAppBadge } = useAppBadge()
+// Plain function (not a computed) so `todayISO()` is re-evaluated every time the
+// app is backgrounded — a cached computed would badge yesterday's count after a
+// midnight rollover with no new sets to invalidate it.
+//
+// Delegates to the store's sets-per-day index (LIFT-1237) instead of rescanning
+// every set. That also puts the badge on `setDayKey` bucketing: this scan used
+// raw `toLocalDateKey`, which shifts a UI-logged set's `…T23:59Z` stamp forward
+// a day for every user east of UTC (#746), so the badge counted tomorrow's
+// bucket and showed 0 mid-session in those timezones.
+function countSetsLoggedToday(): number {
+  return workoutStore.setsLoggedOn(todayISO())
+}
+function onBadgeVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    const count = countSetsLoggedToday()
+    if (count > 0) setAppBadge(count)
+    else clearAppBadge()
+  } else {
+    // Back in the foreground — the nudge has served its purpose.
+    clearAppBadge()
+  }
+}
 
 // Dismiss splash screen once auth resolves
 watch(loading, (isLoading) => {
@@ -262,10 +408,24 @@ watch(loading, (isLoading) => {
   }
 }, { immediate: true })
 
+// A background READ fetch failure is recorded on each store's `lastSyncError`
+// (LIFT-820) but the indicator used to reflect only the write queue, so a silent
+// read failure (RLS regression, expired token, offline first-load) still showed
+// 'synced'. Fold the four stores' read errors into the displayed status
+// (LIFT-1179) — first non-null wins; the value only matters as present/absent.
+const readSyncError = computed(() =>
+  workoutStore.lastSyncError
+  ?? bodyweightStore.lastSyncError
+  ?? progressionStore.lastSyncError
+  ?? prefs.lastSyncError
+  ?? null,
+)
+const displaySyncStatus = computed(() => combineSyncStatus(syncStatus.value, readSyncError.value))
+
 const syncStatusLabel = computed(() => {
-  if (syncStatus.value === 'syncing') return 'Syncing...'
-  if (syncStatus.value === 'error') return 'Sync failed — changes saved locally'
-  if (syncStatus.value === 'offline') return 'Offline — changes saved locally'
+  if (displaySyncStatus.value === 'syncing') return 'Syncing...'
+  if (displaySyncStatus.value === 'error') return 'Sync failed — changes saved locally'
+  if (displaySyncStatus.value === 'offline') return 'Offline — changes saved locally'
   return ''
 })
 
@@ -274,114 +434,163 @@ function updateOnlineStatus() {
   if (!navigator.onLine) syncStatus.value = 'offline'
   else if (syncStatus.value === 'offline') syncStatus.value = 'synced'
 }
-window.addEventListener('online', updateOnlineStatus)
-window.addEventListener('offline', updateOnlineStatus)
-if (!navigator.onLine) syncStatus.value = 'offline'
+// Registration lives in onMounted/onUnmounted alongside every other listener
+// this component owns (LIFT-1240) — registering in the setup body left a
+// permanent pair of window listeners holding this instance's reactive scope,
+// so an unmounted instance kept mutating the module-level `syncStatus`.
+// The initial read stays here so the first paint reflects connectivity — and,
+// because `syncStatus` is module state, so a remount can't inherit a stale
+// 'offline' from a previous instance.
+updateOnlineStatus()
 
 const settingsOpen = ref(false)
-const settingsSheetRef = ref<InstanceType<typeof SettingsSheet> | null>(null)
+// SettingsSheet is an async component, so a `typeof`-based InstanceType would
+// resolve to the loader wrapper, not the SFC. It only exposes closeSettings(),
+// so type the ref by the exposed surface we actually call.
+const settingsSheetRef = ref<{ closeSettings: () => void } | null>(null)
+
+// ── AI Review entry (#972) ──────────────────────────────────────
+// Lives in the top bar on the Calendar tab (mirroring the contextual "+" on
+// Workouts) rather than as a card on the Workouts page: it's an infrequent,
+// retrospective feature, so it gets a compact nav-bar affordance on the
+// retrospective surface. Gate: enough training signal (a couple weeks + the
+// set floor), not a preview deploy, and — server transport only — a signed-in
+// user; the BYO export is 100% local, so it needs no account.
+const coachOpen = ref(false)
+const coachEligible = computed(
+  () => coachReviewEligibility(workoutStore.exercises, new Date()).eligible,
+)
+const showCoachBtn = computed(
+  () =>
+    coachEligible.value &&
+    !isPreviewMode.value &&
+    (COACH_MODE === 'byo' || user.value !== null),
+)
 
 // ── Focus traps for modals ─────────────────────────────────────
 const shortcutsFocus = useFocusTrap()
 
 // ── Service worker auto-update ──────────────────────────────────
-let swRegistration: ServiceWorkerRegistration | undefined
-registerSW({
-  onRegisteredSW(_url, registration) {
-    swRegistration = registration ?? undefined
-    // Poll for updates every 10 minutes
-    setInterval(() => registration?.update(), 10 * 60 * 1000)
-  },
-  onOfflineReady() { /* SW installed, app works offline */ },
-})
-
-// Check for SW update on visibility change (tab switch back, app resume)
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') swRegistration?.update()
-})
-
-// Expose a function components can call after meaningful user actions
-function checkForSWUpdate() { swRegistration?.update() }
-
-// Listen for the controlling SW changing — means auto-update activated.
-// On first visit currentController is null; skip reload to avoid a surprise refresh.
-// On subsequent changes a new SW took over — reload to pick up fresh chunk hashes
-// (without this, lazy-loaded tabs request old hashed filenames that no longer exist).
-let currentController = navigator.serviceWorker?.controller
-navigator.serviceWorker?.addEventListener('controllerchange', () => {
-  if (currentController) {
-    window.location.reload()
-  }
-  currentController = navigator.serviceWorker?.controller ?? null
-})
+// Registration is skipped entirely on the native Capacitor build (#532);
+// see useServiceWorker for the rationale.
+const { checkForSWUpdate } = useServiceWorker()
 
 // ── Onboarding ──────────────────────────────────────────────────
-const onboardingComplete = ref(!!localStorage.getItem('onboarding-complete'))
-const workoutStoreForOnboarding = useWorkoutStore()
-const bodyweightStoreForOnboarding = useBodyweightStore()
-
-// Skip onboarding if user already has any data (exercises or bodyweight entries)
-// Reactive so it catches data that loads asynchronously after auth.
-// onboardingInProgress prevents the watcher from firing when the onboarding
-// screen itself adds exercises (e.g. Popular Exercises option).
-const onboardingInProgress = ref(false)
-watch(
-  () => workoutStoreForOnboarding.exercises.length + bodyweightStoreForOnboarding.entries.length,
-  (total) => {
-    if (!onboardingComplete.value && !onboardingInProgress.value && total > 0) {
-      localStorage.setItem('onboarding-complete', 'true')
-      onboardingComplete.value = true
-    }
-  },
-  { immediate: true },
-)
-const showOnboarding = computed(() => !onboardingComplete.value)
-const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
-
-function onOnboardingComplete() {
-  onboardingInProgress.value = false
-  onboardingComplete.value = true
-  hasSampleData.value = localStorage.getItem('sample-data') === 'true'
-}
-
-function clearSampleData() {
-  const workoutStore = useWorkoutStore()
-  const bwStore = useBodyweightStore()
-  const exerciseIds = [...workoutStore.exercises.map(e => e.id)]
-  for (const id of exerciseIds) {
-    workoutStore.deleteExercise(id)
-  }
-  bwStore.clearAll()
-  localStorage.removeItem('sample-data')
-  localStorage.setItem('fresh-start', 'true')
-  hasSampleData.value = false
-  window.dispatchEvent(new CustomEvent('fresh-start'))
-}
+const {
+  showOnboarding,
+  onboardingInProgress,
+  hasSampleData,
+  completeOnboarding,
+  clearSampleData,
+  resetOnboarding,
+} = useOnboarding({ workoutStore, bodyweightStore })
 
 function closeSettings() {
-  settingsSheetRef.value?.closeSettings()
+  const sheet = settingsSheetRef.value
+  // The sheet runs its own exit animation before emitting the close — but it can
+  // only do that if it actually mounted. SettingsSheet is an async component, so
+  // the ref is still null while its chunk is in flight and stays null forever if
+  // that chunk fails to resolve (offline, or a stale hash after a deploy). The
+  // bare `?.` here meant `settingsOpen` stayed true with nothing rendered, and
+  // since the gear reads `settingsOpen ? closeSettings() : (settingsOpen = true)`
+  // it could never reach the open branch again — settings was dead until reload.
+  if (sheet) sheet.closeSettings()
+  else settingsOpen.value = false
 }
 
 // ── Sign out handler (from SettingsSheet) ────────────────────────
 function handleSignOut() {
-  localStorage.removeItem('onboarding-complete')
-  onboardingComplete.value = false
+  // A guest has no server account — "signing out" just returns them to the
+  // auth screen so they can create one. Preserve local data (no resetStores)
+  // so signing up migrates their existing workouts (LIFT-1083).
+  if (isGuest.value) {
+    exitGuestMode()
+    return
+  }
+  resetOnboarding()
   signOut()
 }
 
-// ── Tab initialization (supports PWA manifest shortcuts via ?tab= param) ──
-const VALID_TABS = ['workouts', 'calendar', 'weight'] as const
-const urlTab = new URLSearchParams(window.location.search).get('tab')
-const initialTab = urlTab && VALID_TABS.includes(urlTab as typeof VALID_TABS[number])
-  ? urlTab
-  : localStorage.getItem('active-tab') || 'workouts'
-const activeTab = ref(initialTab)
-// Clean up the query param so it doesn't persist on reload
-if (urlTab) {
-  const url = new URL(window.location.href)
-  url.searchParams.delete('tab')
-  window.history.replaceState({}, '', url.pathname)
+// ── Guest "create an account to back up" nudge (LIFT-1083) ───────
+// Surfaced only once a guest has real (non-sample) workout data — the point at
+// which they have something worth losing. Dismissal persists so it doesn't nag.
+const guestPromptDismissed = ref(localStorage.getItem(GUEST_BACKUP_PROMPT_DISMISSED_KEY) === 'true')
+const showGuestBackupPrompt = computed(() =>
+  isGuest.value &&
+  !hasSampleData.value &&
+  !guestPromptDismissed.value &&
+  workoutStore.workoutDates.length > 0,
+)
+function createAccountFromGuest() {
+  logEvent('guest_create_account_tap')
+  exitGuestMode()
 }
+function dismissGuestBackupPrompt() {
+  guestPromptDismissed.value = true
+  localStorage.setItem(GUEST_BACKUP_PROMPT_DISMISSED_KEY, 'true')
+  logEvent('guest_backup_prompt_dismissed')
+}
+
+// ── Welcome-back re-entry moment (LIFT-1107) ─────────────────────
+// A lapsed user (≥14 days since their last workout) returns to a warm,
+// data-safe acknowledgement instead of a cold normal state. Evaluated once on
+// mount (workoutDates hydrates synchronously from localStorage); the decision
+// is device-local and keyed on the last-workout date so it shows once per
+// absence and re-arms only after a fresh workout is logged. Suppressed while
+// sample/onboarding data is present so a first-run user is never "welcomed back".
+const welcomeBack = ref<WelcomeBackDecision | null>(null)
+const showWelcomeBack = computed(() => welcomeBack.value !== null && !hasSampleData.value)
+const welcomeBackMessage = computed(() => {
+  const d = welcomeBack.value
+  if (!d) return ''
+  const weeks = Math.floor(d.daysAway / 7)
+  const gap = weeks >= 2 ? `${weeks} weeks` : `${d.daysAway} days`
+  return `It's been ${gap} since your last workout — your progress is all still here. Pick up right where you left off.`
+})
+function evaluateWelcomeBack() {
+  const state = readWelcomeBackState()
+  const decision = decideWelcomeBack(workoutStore.workoutDates, state.acknowledgedWorkoutDate)
+  welcomeBack.value = decision
+  if (decision) logEvent('welcome_back_impression', { days_away: decision.daysAway })
+}
+function acknowledgeWelcomeBack() {
+  if (welcomeBack.value) markWelcomedBack(welcomeBack.value.lastWorkoutDate)
+  welcomeBack.value = null
+}
+function dismissWelcomeBack() {
+  logEvent('welcome_back_dismissed')
+  acknowledgeWelcomeBack()
+}
+function logFromWelcomeBack() {
+  logEvent('welcome_back_log_tap')
+  acknowledgeWelcomeBack()
+  switchTab('workouts')
+}
+
+// ── Acquisition attribution ─────────────────────────────────────
+// Capture the inbound ?ref= / ?utm_*= source once, before the ?tab= cleanup
+// below strips the query string. Logs a single acquisition_source event and
+// remembers it so launch channels (Product Hunt, Reddit, link-in-bio) are
+// measurable without a backend.
+captureAcquisitionSource()
+
+// ── Tab routing (supports PWA manifest shortcuts via ?tab= param) ─────
+// The scrollable tab-content element, used to preserve per-tab scroll offset.
+const tabContentEl = ref<HTMLElement | null>(null)
+const { activeTab, switchTab } = useTabRouting({
+  scrollContainer: tabContentEl,
+  // Runs on every tap (including the active tab) — dismiss the settings sheet.
+  onBeforeSwitch: closeSettings,
+  onSwitch: (from, to) => {
+    // Announce the newly shown view to assistive tech (LIFT-854, WCAG 4.1.3) —
+    // the panel content swaps via v-if with no native focus move, so screen
+    // readers would otherwise hear nothing.
+    const label = TAB_DEFS.find(t => t.id === to)?.label ?? to
+    viewAnnouncement.value = `${label} view`
+    tabSwitch(from, to)
+    checkForSWUpdate()
+  },
+})
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────
 const { helpOpen: shortcutsOpen, toggleHelp: toggleShortcuts, closeHelp: closeShortcuts } = useKeyboardShortcuts(() => [
@@ -445,39 +654,70 @@ watch(() => prefs.features, () => {
   }
 }, { deep: true })
 
-// ── Tab scroll position preservation ─────────────────────────────
-const tabContentEl = ref<HTMLElement | null>(null)
-const tabScrollPositions: Record<string, number> = {}
+// Polite live-region text announcing the active view after a tab switch.
+const viewAnnouncement = ref('')
 
-// ── Analytics ────────────────────────────────────────────────────
-function switchTab(tabId: string) {
-  const from = activeTab.value
-  closeSettings()
-  if (from === tabId) return
-  // Save scroll position of outgoing tab
-  if (tabContentEl.value) {
-    tabScrollPositions[from] = tabContentEl.value.scrollTop
+// Polite live-region text announcing sync/connectivity changes (LIFT-1149).
+// The visual syncIndicator is icon-only and its :title is not reliably surfaced
+// by VoiceOver, so screen-reader users would otherwise get no notice when the
+// app drops offline or a sync fails. Transient 'syncing' is deliberately not
+// announced (it fires on every batch and would be noise); recovery to 'synced'
+// is announced only when coming back from an offline/error state.
+const syncAnnouncement = ref('')
+watch(displaySyncStatus, (status, prev) => {
+  if (status === 'offline' || status === 'error') {
+    syncAnnouncement.value = syncStatusLabel.value
+  } else if (status === 'synced' && (prev === 'offline' || prev === 'error')) {
+    syncAnnouncement.value = 'Back online — changes synced'
+  } else {
+    syncAnnouncement.value = ''
   }
-  activeTab.value = tabId
-  localStorage.setItem('active-tab', tabId)
-  tabSwitch(from, tabId)
-  checkForSWUpdate()
-  // Restore scroll position of incoming tab (default to top)
+})
+
+// Roving-tabindex keyboard navigation for the bottom tablist (ARIA APG Tabs
+// pattern, automatic-activation variant). Arrow/Home/End move focus between
+// tabs and activate the focused one; the active tab is the only one in the
+// tab order (tabindex 0), the rest are -1.
+function onTablistKeydown(e: KeyboardEvent) {
+  const tabs = visibleTabs.value
+  const currentIdx = tabs.findIndex(t => t.id === activeTab.value)
+  if (currentIdx < 0 || tabs.length === 0) return
+  let nextIdx: number
+  switch (e.key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      nextIdx = (currentIdx + 1) % tabs.length
+      break
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      nextIdx = (currentIdx - 1 + tabs.length) % tabs.length
+      break
+    case 'Home':
+      nextIdx = 0
+      break
+    case 'End':
+      nextIdx = tabs.length - 1
+      break
+    default:
+      return
+  }
+  e.preventDefault()
+  const nextTab = tabs[nextIdx]
+  switchTab(nextTab.id)
   nextTick(() => {
-    if (tabContentEl.value) {
-      tabContentEl.value.scrollTop = tabScrollPositions[tabId] ?? 0
-    }
+    document.getElementById(`tab-${nextTab.id}`)?.focus()
   })
 }
 
-// Exposed from WorkoutTracker via defineExpose so the top-bar "+" can trigger
-// the same quick-log exercise-picker flow the in-content "+ Log Set" uses.
+// Exposed from WorkoutTracker via defineExpose so the top-bar "+" can open the
+// new-exercise modal directly. Logging a set is a per-exercise action (the "+"
+// on each exercise row); the top-bar "+" is reserved for adding an exercise.
 const workoutTrackerRef = ref<InstanceType<typeof WorkoutTracker> | null>(null)
 
-function triggerQuickLog() {
+function triggerAddExercise() {
   const wt = workoutTrackerRef.value
-  if (wt && typeof wt.openTimelineLogModal === 'function') {
-    wt.openTimelineLogModal()
+  if (wt && typeof wt.openNewExerciseModal === 'function') {
+    wt.openNewExerciseModal()
   }
 }
 
@@ -488,6 +728,18 @@ function onBeforeUnload() {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  window.addEventListener('online', updateOnlineStatus)
+  window.addEventListener('offline', updateOnlineStatus)
+  document.addEventListener('visibilitychange', onBadgeVisibilityChange)
+  // Re-fetch every store when the connection, the foreground, or the session
+  // comes back (LIFT-1226). Without this a failed read stayed stale — and the
+  // reconciliation pushes inside each store's fetch stayed parked — until the
+  // user fully relaunched the app.
+  teardownSyncRecovery = setupSyncRecovery()
+  // Clear any badge left over from a prior session: visibilitychange does not
+  // fire on cold start (the document begins visible), so a badge set before a
+  // force-close would otherwise linger on the icon while the user is active.
+  clearAppBadge()
   logEvent('session_start')
 
   // Load Supabase SDK off the critical render path, then start auth.
@@ -508,14 +760,22 @@ onMounted(async () => {
     ensureLocalStorage('user-preferences'),
   ])
   if (restored.some(r => r)) {
-    // Data was restored from backup — reload stores
-    location.reload()
-    return
+    // Data was restored from backup — reload stores. Bounded (#1155): if the
+    // restore never sticks and this branch re-triggers every boot, the second
+    // reload in a session is suppressed and reported instead of looping the
+    // app into iOS's "A problem repeatedly occurred" kill screen. On
+    // suppression, fall through and finish init on current (empty) state —
+    // the restored localStorage still hydrates on the next launch.
+    if (guardedReload('idb-restore')) return
   }
+
+  // Welcome-back re-entry moment (LIFT-1107) — evaluated after the restore guard
+  // so the banner never flashes ahead of a reload, and after stores hydrate.
+  evaluateWelcomeBack()
 
   // Startup migration and streak catch-up
   if (progressionStore.progressionEnabled && !isMigrated()) {
-    const result = computeRetroactiveXP(workoutStoreForOnboarding.exercises, bodyweightStoreForOnboarding.entries)
+    const result = computeRetroactiveXP(workoutStore.exercises, bodyweightStore.entries)
     if (result.totalXP > 0) {
       progressionStore.totalXP = result.totalXP
       progressionStore.xpPerSet = result.xpPerSet
@@ -541,23 +801,23 @@ onMounted(async () => {
         progressionStore.weeklyTarget = progressionStore.pendingTargetChange
         progressionStore.pendingTargetChange = null
         const setIdToDate: Record<string, string> = {}
-        for (const exercise of workoutStoreForOnboarding.exercises) {
+        for (const exercise of workoutStore.exercises) {
           for (const set of exercise.sets) {
             setIdToDate[set.id] = set.date.slice(0, 10)
           }
         }
-        progressionStore.reEvaluateStreaks(workoutStoreForOnboarding.workoutDates, new Date(), setIdToDate)
+        progressionStore.reEvaluateStreaks(workoutStore.workoutDates, new Date(), setIdToDate)
       }
     }
     // Evaluate missed weeks
     const setIdToDate: Record<string, string> = {}
-    for (const exercise of workoutStoreForOnboarding.exercises) {
+    for (const exercise of workoutStore.exercises) {
       for (const set of exercise.sets) {
         setIdToDate[set.id] = set.date.slice(0, 10)
       }
     }
     const streakBefore = progressionStore.streakWeeks
-    progressionStore.evaluatePendingWeeks(workoutStoreForOnboarding.workoutDates, new Date(), setIdToDate)
+    progressionStore.evaluatePendingWeeks(workoutStore.workoutDates, new Date(), setIdToDate)
     const streakAfter = progressionStore.streakWeeks
     if (progressionStore.showProgression && streakAfter > streakBefore) {
       const MILESTONES = [12, 8, 4, 2] as const
@@ -578,8 +838,8 @@ onMounted(async () => {
 
   // Cross-tab sync: reload stores when another tab persists data
   const storeMap: Record<StoreKey, { _reloadFromStorage(): void }> = {
-    workout: useWorkoutStore(),
-    bodyweight: useBodyweightStore(),
+    workout: workoutStore,
+    bodyweight: bodyweightStore,
     preferences: usePreferencesStore(),
     progression: progressionStore,
   }
@@ -592,8 +852,14 @@ onMounted(async () => {
   })
 })
 let unsubCrossTab: (() => void) | null = null
+let teardownSyncRecovery: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  window.removeEventListener('online', updateOnlineStatus)
+  window.removeEventListener('offline', updateOnlineStatus)
+  document.removeEventListener('visibilitychange', onBadgeVisibilityChange)
+  clearAppBadge()
   unsubCrossTab?.()
+  teardownSyncRecovery?.()
 })
 </script>

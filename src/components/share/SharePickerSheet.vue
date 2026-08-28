@@ -35,11 +35,12 @@
           :class="['spThumb', { spThumbActive: i === activeIndex }]"
           :aria-pressed="i === activeIndex"
           :aria-label="`Select ${card.label} card`"
-          @click="activeIndex = i"
+          @click="selectCard(i)"
         >
           <div class="spThumbCard" :class="{ spThumbCardStory: format === 'story' }">
             <div class="spThumbInner" :class="{ spThumbInnerStory: format === 'story' }">
-              <component :is="card.component" :summary="summary" />
+              <component :is="cardComponent(card.id)" :summary="summary" />
+              <span v-if="showWatermark" class="spWatermark" aria-hidden="true">{{ WATERMARK_TEXT }}</span>
             </div>
           </div>
           <span class="spThumbLabel">{{ card.label }}</span>
@@ -72,50 +73,87 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SessionSummary } from '../../lib/sessionSummary'
-import type { CardFormat } from '../../lib/shareImage'
-import { eligibleSquareCards, eligibleStoryCards } from './cardRegistry'
+import { WATERMARK_TEXT, type CardFormat } from '../../lib/shareImage'
+import { cardComponent, eligibleSquareCards, eligibleStoryCards, loadCardComponent, resolveInitialCard } from './cardRegistry'
 import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
 import { useModal } from '../../composables/useModal'
+import { useSupporter } from '../../composables/useSupporter'
+import { useAnalytics } from '../../composables/useAnalytics'
 
-const props = defineProps<{ summary: SessionSummary }>()
+const props = defineProps<{
+  summary: SessionSummary
+  /**
+   * Pre-select a specific card by id when opening (e.g. 'pr-focus' from the
+   * "Share this PR" peak-moment entry point, #716). Falls back to the default
+   * first card when the id is unknown or not eligible for this summary.
+   */
+  initialCardId?: string
+}>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay' })
+// lockScroll:false — the parent (WorkoutCompleteView / PRBurst) already owns
+// the background-scroll lock for this surface. See the onMounted note below.
+const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.spOverlay', lockScroll: false })
 const { currentTheme, resolvedMode } = useTheme()
 const { shareCard, downloadCard, isSharing } = useWorkoutShare()
+const { isSupporter } = useSupporter()
+const { logEvent } = useAnalytics()
+
+// Free tier gets the "Made with Lift" watermark; supporters get clean cards.
+const showWatermark = computed(() => !isSupporter.value)
 
 const FORMAT_OPTIONS: { value: CardFormat; label: string }[] = [
   { value: 'square', label: 'Post' },
   { value: 'story', label: 'Story' },
 ]
-const format = ref<CardFormat>('square')
+
+// Resolve the optional pre-selected card up front so both the format toggle
+// and the active thumbnail open on it. `cards` is derived from `format`, so
+// initializing `format` correctly means the cards list is right from the
+// first render and the watch(cards) reset below never fires on mount.
+const initialSelection = props.initialCardId
+  ? resolveInitialCard(props.summary, props.initialCardId)
+  : null
+const format = ref<CardFormat>(initialSelection?.format ?? 'square')
 
 const cards = computed(() =>
   format.value === 'square'
     ? eligibleSquareCards(props.summary)
     : eligibleStoryCards(props.summary)
 )
-const activeIndex = ref(0)
+const activeIndex = ref(initialSelection?.index ?? 0)
 const activeCard = computed(() => cards.value[activeIndex.value] ?? null)
 const lastResult = ref<string | null>(null)
 
 function setFormat(next: CardFormat) {
+  if (next === format.value) return
   format.value = next
+  logEvent('share_card_selected', { format: next, card: cards.value[0]?.id ?? null })
+}
+
+function selectCard(i: number) {
+  if (i === activeIndex.value) return
+  activeIndex.value = i
+  logEvent('share_card_selected', { format: format.value, card: cards.value[i]?.id ?? null })
 }
 
 // Reset selection when the card list changes (e.g. format toggle).
 watch(cards, () => { activeIndex.value = 0 })
 
 async function onShare() {
-  if (!activeCard.value) return
+  const card = activeCard.value
+  if (!card) return
   lastResult.value = null
+  const component = await loadCardComponent(card.id)
+  if (!component) return
   const res = await shareCard({
-    component: activeCard.value.component,
-    format: activeCard.value.format,
+    component,
+    format: card.format,
     summary: props.summary,
     theme: currentTheme.value,
     mode: resolvedMode.value,
+    watermark: showWatermark.value,
   })
   if (res.kind === 'downloaded') lastResult.value = `Saved ${res.filename}`
   else if (res.kind === 'shared') emit('close')
@@ -123,14 +161,18 @@ async function onShare() {
 }
 
 async function onSave() {
-  if (!activeCard.value) return
+  const card = activeCard.value
+  if (!card) return
   lastResult.value = null
+  const component = await loadCardComponent(card.id)
+  if (!component) return
   const res = await downloadCard({
-    component: activeCard.value.component,
-    format: activeCard.value.format,
+    component,
+    format: card.format,
     summary: props.summary,
     theme: currentTheme.value,
     mode: resolvedMode.value,
+    watermark: showWatermark.value,
   })
   if (res.kind === 'downloaded') lastResult.value = `Saved ${res.filename}`
   else if (res.kind === 'error') lastResult.value = 'Save failed — try again'
@@ -142,11 +184,12 @@ async function onSave() {
 // to handle the same key is fragile with stopImmediatePropagation; one
 // owner is simpler and avoids closing the underlying summary by accident.
 //
-// `modal-open` is also owned by the parent. The picker doesn't toggle
-// it — doing so would re-enable background scroll the moment the picker
-// closes even though the parent is still up.
+// `modal-open` is owned by the parent (useModal lockScroll:false above).
+// If the picker locked too, closing it would drop the parent's count/boolean
+// and re-enable background scroll while the parent is still up.
 onMounted(() => {
   activateTrap()
+  logEvent('share_opened', { format: format.value })
 })
 onUnmounted(() => {
   deactivateTrap()
@@ -308,6 +351,23 @@ onUnmounted(() => {
   width: 360px;
   height: 640px;
   transform: scale(0.5);
+}
+
+/* Mirrors createWatermarkElement() in shareImage.ts so the preview matches
+   the exported PNG exactly. Lives inside .spThumbInner (the 360px card
+   surface) so it scales down with the thumbnail. */
+.spWatermark {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 10;
+  pointer-events: none;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 .spThumbLabel {

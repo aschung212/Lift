@@ -5,7 +5,7 @@ import {
   plateDelta,
   formatPlates,
   formatDelta,
-  LBS_PLATES,
+  convertBarWeight,
   KG_PLATES,
 } from '../plateCalculator'
 
@@ -158,6 +158,44 @@ describe('plateCalculator', () => {
 
     it('formats mixed', () => {
       expect(formatDelta({ add: [25, 10], remove: [45] })).toBe('Remove 1×45 · Add 1×25 + 1×10')
+    })
+  })
+
+  describe('convertBarWeight', () => {
+    it('returns the value unchanged when units match', () => {
+      expect(convertBarWeight(45, 'lbs', 'lbs')).toBe(45)
+      expect(convertBarWeight(20, 'kg', 'kg')).toBe(20)
+    })
+
+    it('snaps the standard bars to their real equivalents', () => {
+      expect(convertBarWeight(45, 'lbs', 'kg')).toBe(20)
+      expect(convertBarWeight(20, 'kg', 'lbs')).toBe(45)
+      expect(convertBarWeight(35, 'lbs', 'kg')).toBe(15)
+      expect(convertBarWeight(15, 'kg', 'lbs')).toBe(35)
+    })
+
+    it('is stable across a full round trip for standard bars', () => {
+      // A plain factor conversion drifts 45 → 20 → 44, which makes
+      // weightToPlates(135, 44) return null. Snapping keeps it at 45.
+      for (const bar of [45, 35, 25, 15, 10]) {
+        const kg = convertBarWeight(bar, 'lbs', 'kg')
+        expect(convertBarWeight(kg, 'kg', 'lbs')).toBe(bar)
+      }
+      // The standard 45 lb bar keeps plate math achievable after a round trip.
+      const roundTripped = convertBarWeight(convertBarWeight(45, 'lbs', 'kg'), 'kg', 'lbs')
+      expect(weightToPlates(135, roundTripped)).not.toBeNull()
+    })
+
+    it('rounds off-standard values to a whole unit', () => {
+      // 60 lb is not a standard bar → 27.2 kg → no snap → rounds to 27.
+      expect(convertBarWeight(60, 'lbs', 'kg')).toBe(27)
+    })
+
+    it('passes through non-finite values untouched', () => {
+      expect(convertBarWeight(Number.NaN, 'lbs', 'kg')).toBeNaN()
+      expect(convertBarWeight(Number.POSITIVE_INFINITY, 'lbs', 'kg')).toBe(
+        Number.POSITIVE_INFINITY
+      )
     })
   })
 })

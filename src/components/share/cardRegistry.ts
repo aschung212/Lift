@@ -7,22 +7,17 @@
  * PR Focus card is hidden when no PRs were set).
  */
 
-import type { Component } from 'vue'
+import { defineAsyncComponent, type Component } from 'vue'
 import type { CardFormat } from '../../lib/shareImage'
 import type { SessionSummary } from '../../lib/sessionSummary'
 
-import BoldFloodCard from './cards/BoldFloodCard.vue'
-import ReceiptCard from './cards/ReceiptCard.vue'
-import WeekChartCard from './cards/WeekChartCard.vue'
-import BestSetCard from './cards/BestSetCard.vue'
-import StatGridCard from './cards/StatGridCard.vue'
-import DailyRingCard from './cards/DailyRingCard.vue'
-import TicketStubCard from './cards/TicketStubCard.vue'
-import PrFocusCard from './cards/PrFocusCard.vue'
-
-import BoldFloodStory from './cards/BoldFloodStory.vue'
-import BestSetStory from './cards/BestSetStory.vue'
-import WeekChartStory from './cards/WeekChartStory.vue'
+/**
+ * A card component is loaded lazily via dynamic `import()` so the 11 SVG-heavy
+ * card `.vue` files are code-split out of the boot bundle and out of the
+ * SharePickerSheet chunk (#937). A card's code is only fetched when its
+ * thumbnail renders in the picker or when it's rasterized for a share.
+ */
+type CardLoader = () => Promise<{ default: Component }>
 
 export interface CardEntry {
   id: string
@@ -32,30 +27,38 @@ export interface CardEntry {
   format: CardFormat
   /** Returns false to hide this card given the current summary. */
   eligible?: (summary: SessionSummary) => boolean
-  component: Component
+  /** Dynamically imports the card component (lazy, code-split per card). */
+  loader: CardLoader
 }
 
 export const SQUARE_CARDS: CardEntry[] = [
-  { id: 'bold-flood', label: 'Bold', format: 'square', component: BoldFloodCard },
-  { id: 'receipt', label: 'Receipt', format: 'square', component: ReceiptCard },
-  { id: 'week-chart', label: 'Week', format: 'square', component: WeekChartCard },
-  { id: 'best-set', label: 'Best set', format: 'square', component: BestSetCard },
-  { id: 'stat-grid', label: 'Stats', format: 'square', component: StatGridCard },
-  { id: 'daily-ring', label: 'Ring', format: 'square', component: DailyRingCard },
-  { id: 'ticket-stub', label: 'Ticket', format: 'square', component: TicketStubCard },
+  { id: 'bold-flood', label: 'Bold', format: 'square', loader: () => import('./cards/BoldFloodCard.vue') },
+  { id: 'receipt', label: 'Receipt', format: 'square', loader: () => import('./cards/ReceiptCard.vue') },
+  { id: 'week-chart', label: 'Week', format: 'square', loader: () => import('./cards/WeekChartCard.vue') },
+  { id: 'best-set', label: 'Best set', format: 'square', loader: () => import('./cards/BestSetCard.vue') },
+  {
+    id: 'progress',
+    label: 'Progress',
+    format: 'square',
+    loader: () => import('./cards/ProgressCard.vue'),
+    eligible: (s) => s.progress !== null,
+  },
+  { id: 'stat-grid', label: 'Stats', format: 'square', loader: () => import('./cards/StatGridCard.vue') },
+  { id: 'daily-ring', label: 'Ring', format: 'square', loader: () => import('./cards/DailyRingCard.vue') },
+  { id: 'ticket-stub', label: 'Ticket', format: 'square', loader: () => import('./cards/TicketStubCard.vue') },
   {
     id: 'pr-focus',
     label: 'PR',
     format: 'square',
-    component: PrFocusCard,
+    loader: () => import('./cards/PrFocusCard.vue'),
     eligible: (s) => s.prs > 0 && s.bestSet !== null,
   },
 ]
 
 export const STORY_CARDS: CardEntry[] = [
-  { id: 'bold-flood-story', label: 'Bold', format: 'story', component: BoldFloodStory },
-  { id: 'best-set-story', label: 'Best set', format: 'story', component: BestSetStory },
-  { id: 'week-chart-story', label: 'Week', format: 'story', component: WeekChartStory },
+  { id: 'bold-flood-story', label: 'Bold', format: 'story', loader: () => import('./cards/BoldFloodStory.vue') },
+  { id: 'best-set-story', label: 'Best set', format: 'story', loader: () => import('./cards/BestSetStory.vue') },
+  { id: 'week-chart-story', label: 'Week', format: 'story', loader: () => import('./cards/WeekChartStory.vue') },
 ]
 
 /**
@@ -81,4 +84,54 @@ export function eligibleStoryCards(summary: SessionSummary): CardEntry[] {
 /** Look up a card by id, regardless of format bucket. */
 export function findCard(id: string): CardEntry | null {
   return SQUARE_CARDS.find((c) => c.id === id) || STORY_CARDS.find((c) => c.id === id) || null
+}
+
+/**
+ * Async component wrappers for rendering card thumbnails in the picker.
+ * Memoized per id so Vue sees a stable component identity across re-renders
+ * (a fresh `defineAsyncComponent` each render would remount the thumbnail).
+ */
+const asyncComponentCache = new Map<string, Component>()
+
+/** Returns the lazily-loaded async component for a card id (for the picker). */
+export function cardComponent(id: string): Component | null {
+  const cached = asyncComponentCache.get(id)
+  if (cached) return cached
+  const entry = findCard(id)
+  if (!entry) return null
+  const comp = defineAsyncComponent(entry.loader)
+  asyncComponentCache.set(id, comp)
+  return comp
+}
+
+/**
+ * Resolves a card id to its concrete component (awaiting the dynamic import).
+ * The offscreen rasterizer needs the real component so it renders synchronously
+ * before capture — an unresolved async wrapper would rasterize a blank frame.
+ */
+export async function loadCardComponent(id: string): Promise<Component | null> {
+  const entry = findCard(id)
+  if (!entry) return null
+  const mod = await entry.loader()
+  return mod.default
+}
+
+/**
+ * Resolve a card id to the format bucket and active index the picker should
+ * open on. Used by the contextual share entry points (e.g. the "Share this PR"
+ * button on the PR celebration overlay, #716) to pre-select a specific card.
+ *
+ * Returns null when the id is unknown, or when the card exists but isn't
+ * eligible for this summary (so callers fall back to the default first card).
+ */
+export function resolveInitialCard(
+  summary: SessionSummary,
+  cardId: string,
+): { format: CardFormat; index: number } | null {
+  const card = findCard(cardId)
+  if (!card) return null
+  const list = card.format === 'square' ? eligibleSquareCards(summary) : eligibleStoryCards(summary)
+  const index = list.findIndex((c) => c.id === cardId)
+  if (index < 0) return null
+  return { format: card.format, index }
 }

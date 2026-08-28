@@ -6,7 +6,7 @@
   --border:          #2c2c42;
   --border-strong:   #42425e;
   --text-primary:    #e4e4f4;
-  --text-secondary:  #8080b0;
+  --text-secondary:  #8c8cbc; /* AA 4.5:1 on bg-elevated (#26263a) */
   --text-muted:      #6868a0;
   --accent:          #7c50e6;
   --accent-hover:    #6c3ad8;

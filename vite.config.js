@@ -4,6 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { readFileSync } from 'fs'
 import themeStripPlugin from './vite-plugin-theme-split'
+import preloadDefaultViewPlugin from './vite-plugin-preload-default-view'
+import sitemapLastmodPlugin from './vite-plugin-sitemap-lastmod'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
@@ -34,13 +36,25 @@ export default defineConfig({
   plugins: [
     vue(),
     themeStripPlugin(),
+    preloadDefaultViewPlugin(),
+    sitemapLastmodPlugin(),
     VitePWA({
+      // Disable the service worker entirely for the native Capacitor build (#532).
+      // WKWebView serves the web assets bundled in the .ipa and refreshes them via
+      // `cap sync`, so a Workbox SW is redundant and can cause reload loops / stale
+      // caches. `npm run cap:build` sets CAPACITOR_BUILD=true.
+      disable: process.env.CAPACITOR_BUILD === 'true',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
+        // Explicit manifest id pins the PWA's install identity. Without it, Chromium
+        // derives identity from start_url ('/'), so any future start_url change would
+        // orphan existing installs and spawn a duplicate app. Pinning id to the current
+        // derived value ('/') keeps identity stable regardless of start_url changes.
+        id: '/',
         name: 'Lift — Workout Tracker',
         short_name: 'Lift',
-        description: 'Track your sets, monitor progress, and hit personal records.',
+        description: 'Free, offline-capable PWA workout tracker. Log sets, track estimated 1RM progress, visualize training history, and hit new PRs.',
         theme_color: '#0f0f0f',
         background_color: '#0f0f0f',
         display: 'standalone',
@@ -114,6 +128,17 @@ export default defineConfig({
             form_factor: 'narrow',
             label: 'Calendar view with workout summaries and PRs',
           },
+          {
+            // Wide (landscape) preview so Chromium's richer install dialog (desktop
+            // Chrome/Edge + some Android surfaces) renders the screenshot-carousel UI
+            // instead of the minimal one-line prompt (#1064). Composited from the three
+            // narrow screenshots by `npm run generate-wide-screenshot`.
+            src: 'screenshot-wide.png',
+            sizes: '1920x1080',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Log sets, track 1RM progress, and review your training calendar',
+          },
         ],
       },
       workbox: {
@@ -123,6 +148,9 @@ export default defineConfig({
           'og-image.png',
           'icon-source.png',
           'og-preview.html',
+          // iOS launch screens are loaded by Safari at cold launch via <link>
+          // tags, not fetched by the app — precaching them only bloats the SW.
+          'launch/*.png',
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
