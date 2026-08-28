@@ -12,6 +12,7 @@ import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { parseBodyweightEntries } from '../lib/parseGuards'
 import { mapRemoteBodyweightEntry } from '../lib/remoteRows'
 import { fetchAllRows } from '../lib/supabasePagination'
+import { setDayKey } from '../lib/dates'
 import { logWarn } from '../lib/logger'
 
 const TOMBSTONE_STORE = 'bodyweight'
@@ -200,9 +201,21 @@ export const useBodyweightStore = defineStore('bodyweight', {
       // Supabase for the losers; the client has no authority to mutate server
       // data based on dedup heuristics. Server-side cleanup should be a
       // controlled one-time SQL migration. See incident 2026-04-12 (SEV1).
+      //
+      // Bucketed via `setDayKey` (#746 / #1242), NOT a raw `slice(0, 10)`:
+      // `addEntry(weight, dateStr)` writes an `endOfDayISO` stamp whose prefix
+      // IS the chosen local day, but `addEntry(weight)` (and legacy rows) write
+      // a real-time UTC instant, which slices to TOMORROW for an Americas
+      // evening. Slicing therefore keyed those two conventions under different
+      // days, so a real-time entry never collapsed against the end-of-day entry
+      // for the same day the UI displays it under — the chart drew two points
+      // for one calendar day while the CSV export (which buckets via
+      // `setDayKey`) kept only one. Every other consumer of `entry.date` —
+      // BodyweightTracker rows/edit-prefill, `dailyLatestBodyweight` — already
+      // uses `setDayKey`; this is the last raw slice on this field.
       const byDate = new Map<string, (typeof merged)[0]>()
       for (const entry of merged) {
-        const dateKey = entry.date.slice(0, 10)
+        const dateKey = setDayKey(entry.date)
         const existing = byDate.get(dateKey)
         if (!existing) {
           byDate.set(dateKey, entry)
