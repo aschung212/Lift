@@ -326,7 +326,7 @@ import { useInstallPrompt } from './composables/useInstallPrompt'
 import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
 import { useAppBadge } from './composables/useAppBadge'
-import { todayISO, toLocalDateKey } from './lib/dates'
+import { todayISO } from './lib/dates'
 import { useOnboarding } from './composables/useOnboarding'
 import { useTabRouting } from './composables/useTabRouting'
 import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
@@ -376,15 +376,14 @@ const { setBadge: setAppBadge, clearBadge: clearAppBadge } = useAppBadge()
 // Plain function (not a computed) so `todayISO()` is re-evaluated every time the
 // app is backgrounded — a cached computed would badge yesterday's count after a
 // midnight rollover with no new sets to invalidate it.
+//
+// Delegates to the store's sets-per-day index (LIFT-1237) instead of rescanning
+// every set. That also puts the badge on `setDayKey` bucketing: this scan used
+// raw `toLocalDateKey`, which shifts a UI-logged set's `…T23:59Z` stamp forward
+// a day for every user east of UTC (#746), so the badge counted tomorrow's
+// bucket and showed 0 mid-session in those timezones.
 function countSetsLoggedToday(): number {
-  const today = todayISO()
-  let count = 0
-  for (const ex of workoutStore.exercises) {
-    for (const s of ex.sets) {
-      if (toLocalDateKey(s.date) === today) count++
-    }
-  }
-  return count
+  return workoutStore.setsLoggedOn(todayISO())
 }
 function onBadgeVisibilityChange() {
   if (document.visibilityState === 'hidden') {

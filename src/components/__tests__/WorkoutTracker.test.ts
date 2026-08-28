@@ -11,6 +11,7 @@ import { useModal } from '../../composables/useModal'
 // hand-rolled `classList.toggle('modal-open', …)` survived so long untested.
 enableAutoUnmount(afterEach)
 import type { Exercise, WorkoutSet } from '../../stores/workout'
+import { setDayKey } from '../../lib/dates'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
 import EditExerciseModal from '../EditExerciseModal.vue'
 
@@ -162,6 +163,18 @@ function getExercisePRSet(id: string): WorkoutSet | null {
   return ex.sets.reduce((best, s) => s.estimated1RM > best.estimated1RM ? s : best)
 }
 
+// Mirrors the real store's sets-per-day index (LIFT-1237): same `setDayKey`
+// bucketing, and it reads `mockExercises` so it re-answers after a triggerRef.
+function setsLoggedOn(dayKey: string): number {
+  let count = 0
+  for (const ex of mockState.exercises) {
+    for (const s of ex.sets) {
+      if (setDayKey(s.date) === dayKey) count++
+    }
+  }
+  return count
+}
+
 function getAllTags(): string[] {
   const tags = new Set<string>()
   mockState.exercises.forEach(e => (e.tags || []).forEach(t => tags.add(t)))
@@ -211,6 +224,7 @@ vi.mock('../../stores/workout', () => ({
     get activeExercises() { return mockState.exercises.filter(e => !e.archived_at) },
     get archivedExercises() { return mockState.exercises.filter(e => !!e.archived_at) },
     get allTags() { return getAllTags() },
+    setsLoggedOn,
     getExercisePR,
     getExercisePRSet,
     getOverloadSuggestion: mockGetOverloadSuggestion,
