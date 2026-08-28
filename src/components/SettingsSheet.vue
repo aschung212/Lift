@@ -297,7 +297,7 @@
                 type="date"
                 class="settingsInput"
                 :value="prBaselineDate ?? ''"
-                :max="new Date().toISOString().slice(0,10)"
+                :max="todayISO()"
                 @change="onBaselineDateInput(($event.target as HTMLInputElement).value)"
                 aria-label="PR baseline date"
               />
@@ -734,6 +734,7 @@ import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
+import { todayISO } from '../lib/dates'
 import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
 import { showXPToast } from '../composables/xpCeremonyUI'
 import { isNative } from '../lib/platform'
