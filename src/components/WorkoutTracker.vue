@@ -340,6 +340,21 @@
                   autocomplete="off"
                 />
               </div>
+              <ul v-if="exerciseSuggestions.length > 0" class="wtExerciseSuggestions" role="listbox" aria-label="Exercise suggestions">
+                <li
+                  v-for="entry in exerciseSuggestions"
+                  :key="entry.name"
+                  class="wtExerciseSuggestionItem"
+                  role="option"
+                  :aria-selected="false"
+                  tabindex="-1"
+                  @mousedown.prevent="selectExerciseSuggestion(entry)"
+                  @touchstart.prevent="selectExerciseSuggestion(entry)"
+                >
+                  <span class="wtSuggestionName">{{ entry.name }}</span>
+                  <span class="wtSuggestionTags">{{ entry.tags.join(' · ') }}</span>
+                </li>
+              </ul>
             </label>
             <div class="repMaxLabel">
               Tags
@@ -949,6 +964,8 @@ const timerCtrl = useRestTimerController(
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
 import { usePreferencesStore } from '../stores/preferences'
+import { searchExerciseDatabase } from '../lib/exerciseDatabase'
+import type { ExerciseEntry } from '../lib/exerciseDatabase'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
 
@@ -2072,6 +2089,28 @@ function defaultBarWeight(): number {
   return weightUnit.value === 'kg' ? 20 : 45
 }
 const newExerciseBarWeight = ref(defaultBarWeight())
+
+// ── Exercise database suggestions ──────────────────────────────
+const exerciseSuggestions = computed(() =>
+  searchExerciseDatabase(
+    newExerciseName.value,
+    store.exercises.map(e => e.name),
+  ),
+)
+
+function selectExerciseSuggestion(entry: ExerciseEntry) {
+  newExerciseName.value = entry.name
+  newExerciseTags.value = [...entry.tags]
+  if (entry.inputMode === 'plates') {
+    newExercisePlateMode.value = true
+    // Database bar weights are lbs figures, but the stepper edits display
+    // units and rounds to whole numbers (LIFT-1211), so convert and round:
+    // the 45 lb standard bar lands on 20 kg, matching defaultBarWeight().
+    newExerciseBarWeight.value = entry.barWeight === undefined
+      ? defaultBarWeight()
+      : Math.round(displayWeight(entry.barWeight))
+  }
+}
 const newBarWeightEditing = ref(false)
 const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
 // String-based raw inputs to avoid iOS keyboard dismissal on type="number"
