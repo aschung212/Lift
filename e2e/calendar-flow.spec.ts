@@ -77,7 +77,9 @@ test.describe('Calendar View', () => {
   test('renders the Training Calendar header and view toggle', async ({ page }) => {
     await expect(page.locator('.calTitle')).toHaveText('Training Calendar')
     const toggleBtns = page.locator('.calToggleBtn')
-    await expect(toggleBtns).toHaveCount(2)
+    // Year / Month / Week (#620 added the year heatmap); Month stays the default.
+    await expect(toggleBtns).toHaveCount(3)
+    await expect(toggleBtns.filter({ hasText: 'Year' })).toHaveAttribute('aria-pressed', 'false')
     await expect(toggleBtns.filter({ hasText: 'Month' })).toHaveAttribute('aria-pressed', 'true')
     await expect(toggleBtns.filter({ hasText: 'Week' })).toHaveAttribute('aria-pressed', 'false')
   })

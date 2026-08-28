@@ -4,20 +4,21 @@
     <div class="calCardHeader">
       <h1 class="calTitle">Training Calendar</h1>
       <div class="calViewToggle">
+        <button :class="['calToggleBtn', { active: view === 'year' }]" :aria-pressed="view === 'year'" @click="setView('year')">Year</button>
         <button :class="['calToggleBtn', { active: view === 'month' }]" :aria-pressed="view === 'month'" @click="setView('month')">Month</button>
         <button :class="['calToggleBtn', { active: view === 'week' }]" :aria-pressed="view === 'week'" @click="setView('week')">Week</button>
       </div>
     </div>
 
-    <!-- Navigation -->
-    <div class="calNav">
+    <!-- Navigation (month/week only — year view has inline nav) -->
+    <div v-if="view !== 'year'" class="calNav">
       <button class="calNavBtn" @click="prev" aria-label="Previous">‹</button>
       <button :class="['calNavLabel', { calNavLabelTappable: !isCurrentPeriod }]" :disabled="isCurrentPeriod" @click="goToToday">{{ navLabel }}</button>
       <button class="calNavBtn" @click="next" aria-label="Next">›</button>
     </div>
 
     <!-- Tag filter -->
-    <template v-if="store.allTags.length > 0">
+    <template v-if="store.allTags.length > 0 && view !== 'year'">
       <div class="wtTagFilterBar">
         <button
           v-for="tag in store.allTags"
@@ -34,6 +35,19 @@
           @click="activeTagFilters = []"
         >× Clear</button>
       </div>
+    </template>
+
+    <!-- Year view (consistency heatmap) -->
+    <template v-if="view === 'year'">
+      <ConsistencyHeatmap
+        :year="heatmapYear"
+        :days="heatmapDays"
+        :current-streak="currentWeekStreak"
+        :longest-streak="longestWeekStreak"
+        :is-current-year="heatmapYear === new Date().getFullYear()"
+        @prev-year="heatmapYear--"
+        @next-year="heatmapYear++"
+      />
     </template>
 
     <!-- Monthly view -->
@@ -331,11 +345,13 @@ import { useTagRecovery } from '../composables/useTagRecovery'
 import { useVolumeTrend } from '../composables/useVolumeTrend'
 import { useRepRangeDistribution } from '../composables/useRepRangeDistribution'
 import { useCalendarData } from '../composables/useCalendarData'
+import type { HeatmapDay } from '../components/ConsistencyHeatmap.vue'
 
 const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
 const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/MuscleGroupRecovery.vue'))
 const VolumeTrendChart = defineAsyncComponent(() => import('../components/VolumeTrendChart.vue'))
 const RepRangeChart = defineAsyncComponent(() => import('../components/RepRangeChart.vue'))
+const ConsistencyHeatmap = defineAsyncComponent(() => import('../components/ConsistencyHeatmap.vue'))
 
 const store = useWorkoutStore()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
@@ -430,6 +446,9 @@ const navLabel = computed(() => {
 
 const isCurrentPeriod = computed(() => {
   const now = new Date()
+  if (view.value === 'year') {
+    return heatmapYear.value === now.getFullYear()
+  }
   if (view.value === 'month') {
     return cursor.value.getFullYear() === now.getFullYear() && cursor.value.getMonth() === now.getMonth()
   }
@@ -580,6 +599,107 @@ function onRecoveryDaysChange(tag: string, days: number | null) {
 const volumeCollapsed = ref(false)
 const trendCollapsed = ref(true)
 const repRangeCollapsed = ref(true)
+
+// ── Year view (heatmap) ──────────────────────────────────────────
+const heatmapYear = ref(new Date().getFullYear())
+
+// Map YYYY-MM-DD → total sets (all exercises, ignoring tag filters for year-wide view)
+const allDaySets = computed(() => {
+  const map = new Map<string, number>()
+  for (const exercise of store.exercises) {
+    for (const set of exercise.sets) {
+      const day = set.date.slice(0, 10)
+      map.set(day, (map.get(day) || 0) + 1)
+    }
+  }
+  return map
+})
+
+const heatmapDays = computed((): HeatmapDay[] => {
+  const year = heatmapYear.value
+  const result: HeatmapDay[] = []
+  const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
+  const daysInYear = isLeap ? 366 : 365
+  for (let i = 0; i < daysInYear; i++) {
+    const d = new Date(year, 0, 1 + i)
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    result.push({ date: dateStr, sets: allDaySets.value.get(dateStr) || 0 })
+  }
+  return result
+})
+
+// Streak calculation: consecutive weeks with at least one workout
+// A "week" is Mon–Sun (ISO 8601)
+function getISOWeekStart(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00')
+  const dow = d.getDay()
+  const diff = dow === 0 ? -6 : 1 - dow // Monday
+  d.setDate(d.getDate() + diff)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const workoutWeeks = computed(() => {
+  const weeks = new Set<string>()
+  for (const [dateStr, count] of allDaySets.value) {
+    if (count > 0) {
+      weeks.add(getISOWeekStart(dateStr))
+    }
+  }
+  return Array.from(weeks).sort()
+})
+
+const currentWeekStreak = computed(() => {
+  const weeks = workoutWeeks.value
+  if (weeks.length === 0) return 0
+
+  // Get the current week's Monday
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const currentWeek = getISOWeekStart(todayStr)
+
+  // Also get previous week in case current week hasn't started yet
+  const prevWeekDate = new Date(currentWeek + 'T12:00:00')
+  prevWeekDate.setDate(prevWeekDate.getDate() - 7)
+  const prevWeek = `${prevWeekDate.getFullYear()}-${String(prevWeekDate.getMonth() + 1).padStart(2, '0')}-${String(prevWeekDate.getDate()).padStart(2, '0')}`
+
+  const weekSet = new Set(weeks)
+
+  // Start from current week or previous week if current has no data yet
+  let anchor = weekSet.has(currentWeek) ? currentWeek : (weekSet.has(prevWeek) ? prevWeek : null)
+  if (!anchor) return 0
+
+  let streak = 0
+  let check = anchor
+  while (weekSet.has(check)) {
+    streak++
+    const d = new Date(check + 'T12:00:00')
+    d.setDate(d.getDate() - 7)
+    check = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  return streak
+})
+
+const longestWeekStreak = computed(() => {
+  const weeks = workoutWeeks.value
+  if (weeks.length === 0) return 0
+
+  let longest = 1
+  let current = 1
+
+  for (let i = 1; i < weeks.length; i++) {
+    const prevDate = new Date(weeks[i - 1] + 'T12:00:00')
+    const currDate = new Date(weeks[i] + 'T12:00:00')
+    const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / 86400000)
+
+    if (diffDays === 7) {
+      current++
+      if (current > longest) longest = current
+    } else {
+      current = 1
+    }
+  }
+  return longest
+})
 
 function formatSelectedDay(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString(undefined, {

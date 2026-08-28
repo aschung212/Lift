@@ -103,12 +103,13 @@ describe('CalendarView', () => {
       expect(h1s[0].text()).toBe('Training Calendar')
     })
 
-    it('shows Month and Week view toggle buttons', () => {
+    it('shows Year, Month, and Week view toggle buttons', () => {
       const wrapper = mountCalendar()
       const btns = wrapper.findAll('.calToggleBtn')
-      expect(btns.length).toBe(2)
-      expect(btns[0].text()).toBe('Month')
-      expect(btns[1].text()).toBe('Week')
+      expect(btns.length).toBe(3)
+      expect(btns[0].text()).toBe('Year')
+      expect(btns[1].text()).toBe('Month')
+      expect(btns[2].text()).toBe('Week')
     })
 
     it('defaults to month view', () => {
@@ -358,7 +359,7 @@ describe('CalendarView', () => {
   describe('week view', () => {
     it('switches to week view when Week button is clicked', async () => {
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       expect(wrapper.find('.calWeek').exists()).toBe(true)
       expect(wrapper.find('.calGrid').exists()).toBe(false)
@@ -366,14 +367,14 @@ describe('CalendarView', () => {
 
     it('renders 7 day rows in week view', async () => {
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       expect(wrapper.findAll('.calWeekRow').length).toBe(7)
     })
 
     it('shows day names and numbers', async () => {
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       expect(wrapper.findAll('.calWeekDayName').length).toBe(7)
       expect(wrapper.findAll('.calWeekDayNum').length).toBe(7)
@@ -381,28 +382,28 @@ describe('CalendarView', () => {
 
     it('shows "Rest" for days without workouts', async () => {
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       expect(wrapper.findAll('.calWeekRest').length).toBe(7)
     })
 
     it('marks today in week view', async () => {
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       expect(wrapper.find('.calWeekRowToday').exists()).toBe(true)
     })
 
     it('shows "+ Log" button on each day row', async () => {
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       expect(wrapper.findAll('.calWeekDayLogBtn').length).toBe(7)
     })
 
     it('navigates weeks with arrows', async () => {
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       const initialLabel = wrapper.find('.calNavLabel').text()
       await wrapper.findAll('.calNavBtn')[0].trigger('click')
@@ -412,7 +413,7 @@ describe('CalendarView', () => {
     it('shows first-use empty state when no exercises have sets (week view)', async () => {
       exercises = []
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       const emptyState = wrapper.find('.calEmptyState')
       expect(emptyState.exists()).toBe(true)
@@ -424,7 +425,7 @@ describe('CalendarView', () => {
       const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
       exercises = makeExercises([dateStr])
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       expect(wrapper.find('.calEmptyState').exists()).toBe(false)
     })
@@ -521,8 +522,9 @@ describe('CalendarView', () => {
     it('view toggle buttons have aria-pressed', () => {
       const wrapper = mountCalendar()
       const btns = wrapper.findAll('.calToggleBtn')
-      expect(btns[0].attributes('aria-pressed')).toBe('true')  // Month is default
-      expect(btns[1].attributes('aria-pressed')).toBe('false')
+      expect(btns[0].attributes('aria-pressed')).toBe('false')  // Year
+      expect(btns[1].attributes('aria-pressed')).toBe('true')   // Month is default
+      expect(btns[2].attributes('aria-pressed')).toBe('false')  // Week
     })
 
     it('tag filter buttons have aria-pressed and aria-label', () => {
@@ -579,7 +581,7 @@ describe('CalendarView', () => {
 
     it('week view log buttons have aria-labels', async () => {
       const wrapper = mountCalendar()
-      await wrapper.findAll('.calToggleBtn')[1].trigger('click')
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click')
 
       const logBtns = wrapper.findAll('.calWeekDayLogBtn')
       expect(logBtns.length).toBe(7)
@@ -669,6 +671,35 @@ describe('CalendarView', () => {
       const inMonthCells = wrapper.findAll('.calCell:not(.calCellOtherMonth)')
       await inMonthCells[0].trigger('keydown', { key: ' ' })
       expect(wrapper.find('.calCellSelected').exists()).toBe(true)
+    })
+  })
+
+  describe('year view', () => {
+    it('switches to year view when Year button is clicked', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[0].trigger('click')
+
+      // Year view should not show the month grid
+      expect(wrapper.find('.calGrid').exists()).toBe(false)
+      // Year toggle button should be active
+      expect(wrapper.findAll('.calToggleBtn')[0].classes()).toContain('active')
+    })
+
+    it('hides month/week navigation in year view', async () => {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[0].trigger('click')
+
+      expect(wrapper.find('.calNav').exists()).toBe(false)
+    })
+
+    it('hides tag filter bar in year view', async () => {
+      exercises = makeExercises(['2026-03-31'])
+      const wrapper = mountCalendar()
+      // Verify tag filter shows in month view
+      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(true)
+
+      await wrapper.findAll('.calToggleBtn')[0].trigger('click')
+      expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
     })
   })
 })
