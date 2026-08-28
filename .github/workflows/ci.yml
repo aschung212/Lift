@@ -675,6 +675,71 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
+  # Verify Vercel actually promoted this commit to production BEFORE claiming
+  # a successful deploy (LIFT-1167). Green CI does NOT prove the deploy landed:
+  # Vercel builds independently of this workflow and, on a failed build, keeps
+  # the PREVIOUS deployment live — so a plain reachability curl answers 200 off
+  # the stale deploy and can't tell success from failure. `vite-plugin-version-
+  # stamp` writes `/version.json` carrying the built commit SHA, so we poll it
+  # until the DEPLOYED commit matches the pushed commit. Only then does
+  # notify-deploy (which needs this job) fire; a mismatch/timeout fails this job
+  # and routes to notify-failure instead of a falsely-green "Deployed" message.
+  # Deliberately does NOT depend on ratchet-baseline: that job pushes a
+  # `[skip ci]` coverage-bookkeeping commit to master, and while Vercel skips
+  # deploying it (its `ignoreCommand` ignores commits that touch only
+  # .coverage-baseline.json), gating on it would needlessly couple deploy
+  # verification to coverage bookkeeping and open a SHA-race window. We verify
+  # the deploy of THIS push's commit; migrate-db is the last real deploy
+  # prerequisite (schema must be live before the new code serves).
+  smoke-test-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-and-test, e2e, migrate-db]
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The production domain is read from CLAUDE.md, the single authoritative
+      # source (the SEV1 rule: never hardcode/fabricate a deployment URL — a
+      # hallucinated domain shipped to prod once already, see the SEV1 note).
+      - name: Verify production is serving this commit
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          DOMAIN=$(grep -m1 -E '^\*\*Live:\*\*' CLAUDE.md \
+            | sed -E 's/^\*\*Live:\*\* *([A-Za-z0-9.-]+).*/\1/' || true)
+          if [ -z "$DOMAIN" ]; then
+            echo "::error::Could not read the deployment domain from CLAUDE.md"
+            exit 1
+          fi
+          URL="https://$DOMAIN"
+          echo "Waiting for $URL to report commit $EXPECTED_SHA"
+
+          ATTEMPTS=30
+          SLEEP=10
+          for i in $(seq 1 "$ATTEMPTS"); do
+            # Cache-bust so an edge-cached version.json can't mask a fresh deploy.
+            BODY=$(curl -fsS --max-time 15 "$URL/version.json?ci=$RUN_ID-$i" || true)
+            DEPLOYED_SHA=$(printf '%s' "$BODY" | jq -r '.commit // empty' 2>/dev/null || true)
+            if [ -n "$DEPLOYED_SHA" ] && [ "$DEPLOYED_SHA" = "$EXPECTED_SHA" ]; then
+              HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID" || true)
+              if printf '%s' "$HTML" | grep -q '<div id="app">'; then
+                echo "Production is serving commit $EXPECTED_SHA and the app shell renders (attempt $i)."
+                exit 0
+              fi
+              echo "::warning::version.json matched but the app-shell marker is missing; retrying"
+            else
+              echo "Attempt $i/$ATTEMPTS: deployed=${DEPLOYED_SHA:-<none>} expected=$EXPECTED_SHA — waiting ${SLEEP}s"
+            fi
+            sleep "$SLEEP"
+          done
+          echo "::error::Production never reported commit $EXPECTED_SHA within $((ATTEMPTS * SLEEP))s — the Vercel deploy likely failed or stalled"
+          exit 1
+
   # Notify Slack on post-merge success (push to master only).
   # SECURITY: commit message + URL come in via env var, NOT direct
   # `${{ ... }}` interpolation into the bash body. Inline interpolation
@@ -685,7 +750,7 @@ jobs:
   notify-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline, smoke-test-production]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
@@ -695,16 +760,19 @@ jobs:
           COMMIT_URL: ${{ github.event.head_commit.url }}
         run: |
           COMMIT_MSG=$(printf '%s' "$COMMIT_MSG_RAW" | head -1)
-          MSG="✅ *Deployed to production*\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
+          MSG="✅ *Deployed to production* (verified live)\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
           payload=$(printf '{"text": %s}' "$(printf '%s' "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
           curl -s -X POST "$SLACK_WEBHOOK_URL" -H 'Content-Type: application/json' -d "$payload"
 
   # Notify Slack on post-merge failure (push to master only). Same
-  # script-injection guard as `notify-deploy` above.
+  # script-injection guard as `notify-deploy` above. Includes
+  # smoke-test-production so a failed/stalled Vercel deploy (green CI but the
+  # prod URL never serves this commit) surfaces as a failure notification
+  # instead of silently withholding any message.
   notify-failure:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, ratchet-baseline, smoke-test-production]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
