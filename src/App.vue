@@ -357,7 +357,7 @@ const bodyweightStore = useBodyweightStore()
 
 // ── PWA install prompt ──────────────────────────────────────────
 const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
-const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall, surfaceAtPeakMoment: surfaceInstallAtPeak } = useInstallPrompt(installWorkoutDays)
+const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBanner, install: triggerInstall, surfaceAtPeakMoment: surfaceInstallAtPeak } = useInstallPrompt(installWorkoutDays, logEvent)
 
 // Re-surface the install prompt at a peak moment: once a PR celebration is
 // dismissed, the user is at a high point of engagement — a far better time to
