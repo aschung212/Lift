@@ -116,6 +116,24 @@ describe('useSyncRecovery', () => {
       expect(logError).toHaveBeenCalled()
     })
 
+    it('reports rather than leaks an unhandled rejection when the run itself breaks', async () => {
+      // Callers are fire-and-forget listeners, so a rejected promise here would
+      // land on the global unhandledrejection floor instead of anywhere useful.
+      const unhandled = vi.fn()
+      window.addEventListener('unhandledrejection', unhandled)
+      // Promise.allSettled itself rejecting is the shape of "the machinery
+      // around the fetches broke" (e.g. no active Pinia when a store is
+      // acquired) — simulate it with a non-thenable return.
+      fetchWorkout.mockImplementation(() => { throw new Error('no active pinia') })
+
+      await expect(refetchAllStores('online')).resolves.toBe(false)
+      await settle()
+
+      expect(logError).toHaveBeenCalled()
+      expect(unhandled).not.toHaveBeenCalled()
+      window.removeEventListener('unhandledrejection', unhandled)
+    })
+
     it('is a no-op while the device is offline', async () => {
       setOnline(false)
 

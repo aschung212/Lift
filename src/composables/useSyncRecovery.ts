@@ -119,7 +119,15 @@ export function refetchAllStores(trigger: RefetchTrigger): Promise<boolean> {
     if (_inFlight === p) _inFlight = null
   })
   _inFlight = p
-  return p.then(() => true)
+  // Every caller is a fire-and-forget listener (`void refetchAllStores(...)`),
+  // so a rejection would surface as an unhandled rejection rather than as
+  // anything actionable. `run` already contains its own failures; reaching here
+  // means the machinery around them broke (e.g. no active Pinia). Report it and
+  // resolve false so recovery stays a best-effort background concern.
+  return p.then(() => true, (err: unknown) => {
+    logError(err, { source: 'useSyncRecovery', action: 'run', trigger })
+    return false
+  })
 }
 
 /**
