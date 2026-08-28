@@ -906,3 +906,83 @@ describe('Invariant: component global listeners are lifecycle-scoped (LIFT-1240)
     expect(listenerEvents(stripComments(documented)).added.size).toBe(0)
   })
 })
+
+
+// ── Invariant: tests of now-relative windows pin the clock (#1254) ──
+
+describe('Invariant: tests of now-relative windows pin the clock (#1254)', () => {
+  /**
+   * `calculateBest1RM` is the one windowing helper that reads the clock itself
+   * (`Date.now() - windowMonths`) instead of taking a `now` parameter the way
+   * `promptArbiter`, `coachHistory` and `useAppReview` do — and `scoreSet`
+   * inherits that through it. A test that feeds either one absolute dates is
+   * therefore asserting against the calendar rather than the behaviour, and
+   * passes only until wall-clock time carries its fixtures past the cutoff.
+   *
+   * Not hypothetical: `progressionIntegration.test.ts` picked 2026-03-01 as a
+   * date "safely inside" a 6-month window, went red five months later, and took
+   * `master` — and therefore every open PR — with it (#1254).
+   * `setScoring.test.ts` was roughly a month behind it with the same shape.
+   *
+   * `xp.test.ts` had already found the fix (freeze the clock, then date the
+   * fixtures against it) and documented why. The lesson simply had no way to
+   * reach the next file that needed it, which is what this scan is for: pinning
+   * the clock is cheap, and it is the difference between a test that measures
+   * the window and one that measures the day it was written.
+   */
+  const WINDOW_CONSUMER = /\b(?:calculateBest1RM|scoreSet)\s*\(/
+  const PINS_CLOCK = /vi\.setSystemTime\s*\(/
+
+  /** Every `.ts` test file under a `__tests__/` directory, except this one. */
+  function getTestFiles(dir = SRC_DIR, out: { path: string; content: string }[] = []) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules') continue
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) getTestFiles(full, out)
+      else if (/\.test\.ts$/.test(entry.name) && full !== __filename) {
+        out.push({ path: relative(SRC_DIR, full), content: readFileSync(full, 'utf-8') })
+      }
+    }
+    return out
+  }
+
+  it('every test exercising the rolling 1RM window freezes the clock', () => {
+    const consumers = getTestFiles().filter(f => WINDOW_CONSUMER.test(stripComments(f.content)))
+
+    // Non-vacuity: the walker must reach the known consumers, or a broken
+    // regex/walk would let this pass while scanning nothing.
+    expect(consumers.map(f => f.path)).toEqual(
+      expect.arrayContaining([
+        join('lib', '__tests__', 'setScoring.test.ts'),
+        join('lib', '__tests__', 'xp.test.ts'),
+        join('__tests__', 'progressionIntegration.test.ts'),
+      ]),
+    )
+
+    const violations = consumers
+      .filter(f => !PINS_CLOCK.test(f.content))
+      .map(f =>
+        `${f.path} — calls calculateBest1RM/scoreSet without vi.setSystemTime. ` +
+        `Their 6-month window is measured from Date.now(), so fixtures with ` +
+        `absolute dates age out of it and the file fails on a day nobody ` +
+        `touched it (#1254). Freeze the clock and date the fixtures from it.`,
+      )
+
+    expect(violations).toEqual([])
+  })
+
+  it('the scan flags an unpinned consumer and ignores comments (self-test)', () => {
+    const unpinned = "expect(calculateBest1RM(sets)).toBe(263)"
+    expect(WINDOW_CONSUMER.test(stripComments(unpinned))).toBe(true)
+    expect(PINS_CLOCK.test(unpinned)).toBe(false)
+
+    const pinned = "vi.setSystemTime(NOW)\nexpect(scoreSet({ priorSets })).toBe(1)"
+    expect(WINDOW_CONSUMER.test(stripComments(pinned))).toBe(true)
+    expect(PINS_CLOCK.test(pinned)).toBe(true)
+
+    // Importing the symbol is not exercising it, and a comment naming it is not
+    // either — neither should drag a file into the scan.
+    expect(WINDOW_CONSUMER.test(stripComments("import { calculateBest1RM } from '../xp'"))).toBe(false)
+    expect(WINDOW_CONSUMER.test(stripComments('// calculateBest1RM(sets) rolls forward'))).toBe(false)
+  })
+})

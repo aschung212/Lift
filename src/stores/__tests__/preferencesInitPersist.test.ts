@@ -158,9 +158,33 @@ describe('LIFT-1243 preferences init() persists through the single write path', 
 
     expect(syncQueue.enqueue).not.toHaveBeenCalled()
 
-    // A genuine user change still syncs.
+    // A genuine user change still syncs — and carries the durable descriptor
+    // (LIFT-1239) that lets a settings change made offline replay on the next
+    // launch instead of dying with the tab. Pinned by its real shape rather
+    // than `expect.anything()`: the descriptor IS the durability guarantee, and
+    // a wrong table or a column outside `REPLAYABLE_COLUMNS` is dropped in
+    // silence on rehydrate, leaving the queue exactly as lossy as before.
     store.setTheme('fire')
-    expect(syncQueue.enqueue).toHaveBeenCalledWith('preferences:test-user', expect.any(Function))
+    expect(storedBlob().theme).toBe('fire')
+    expect(syncQueue.enqueue).toHaveBeenCalledWith(
+      'preferences:test-user',
+      expect.any(Function),
+      {
+        op: 'upsert',
+        table: 'user_preferences',
+        // Exactly the three journaled columns, and the journaled blob is the
+        // same payload just written locally — the descriptor is the closure's
+        // twin, not a second hand-built copy that could drift from it.
+        // No `match`: preferences upserts on `unique(user_id)` through the
+        // client-side conflict-target map, never on a filter the journal
+        // carries (a tampered entry must not get to choose that column).
+        row: {
+          user_id: 'test-user',
+          preferences: storedBlob(),
+          updated_at: expect.any(String),
+        },
+      },
+    )
   })
 
   it('leaves local state and storage untouched when there is no remote row', async () => {

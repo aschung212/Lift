@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { scoreSet, filterSetsSinceBaseline } from '../setScoring'
 import { XP_CONFIG } from '../xp'
 import type { WorkoutSet } from '../../stores/workout'
@@ -14,6 +14,24 @@ function makeSet(overrides: Partial<WorkoutSet> & { estimated1RM: number }): Wor
 }
 
 const TODAY = '2026-06-01T10:00:00Z'
+
+// `scoreSet` resolves the prior best through `calculateBest1RM`, whose rolling
+// window is measured from the REAL clock — so `TODAY` was a lie, and the April
+// fixtures below were quietly aging toward the window's edge in wall-clock
+// time. Once past it the prior best resolves to null, every established-lift
+// case degrades to `new_exercise`, and seven tests fail on a day nobody
+// touched this file. That is exactly how the sibling case in
+// progressionIntegration.test.ts took master red (#1254); these were roughly a
+// month behind it. Freezing the clock at TODAY makes the constant true, and
+// the fixtures keep the relationship to "now" they were written with.
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date(TODAY))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('filterSetsSinceBaseline', () => {
   it('returns sets unchanged when no baseline is set', () => {
