@@ -330,6 +330,21 @@ async function signOut(): Promise<void> {
 }
 
 /**
+ * Extract a truthy Supabase error from a *resolved* (fulfilled) settled result.
+ *
+ * supabase-js resolves `{ data, error }` rather than rejecting on server-side
+ * failures (RLS, FK/constraint, 401), so `status === 'rejected'` alone misses
+ * them. Returns the error object when present, else null. Rejected results are
+ * handled separately by their `.reason`.
+ */
+function resolvedDeleteError(result: PromiseSettledResult<unknown>): unknown {
+  if (result.status !== 'fulfilled') return null
+  const val = result.value as { error?: unknown } | null | undefined
+  if (val && typeof val === 'object' && 'error' in val && val.error) return val.error
+  return null
+}
+
+/**
  * Delete all user data from Supabase, clear local storage & IndexedDB, then sign out.
  * Throws if Supabase deletion fails so the caller can show an error.
  */
@@ -350,8 +365,16 @@ async function deleteAccount(): Promise<void> {
       supabase.from('exercises').delete().eq('user_id', userId), // cascades to sets
     ])
 
-    // Check for hard failures (network errors, not RLS/empty-table errors)
-    const failed = results.filter(r => r.status === 'rejected')
+    // A genuine server-side delete failure must ABORT before we wipe local data,
+    // or "delete my data" silently leaves server rows behind while the device is
+    // cleared (a data-integrity and right-to-deletion/privacy bug). supabase-js
+    // does NOT reject on RLS violations, FK/constraint errors, or an expired-token
+    // 401 — it RESOLVES `{ data, error }` with a truthy `.error` (the exact
+    // resolved-vs-rejected trap the sync queue already closed in LIFT-784). So a
+    // settled result is a failure when it either rejected (network throw) OR
+    // resolved carrying an error. An empty-table delete is not an error — it
+    // resolves `{ error: null }` (0 rows), so this never false-positives.
+    const failed = results.filter(r => r.status === 'rejected' || !!resolvedDeleteError(r))
     if (failed.length > 0) {
       throw new Error('Failed to delete server data. Please try again.')
     }

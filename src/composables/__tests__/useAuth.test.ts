@@ -443,6 +443,36 @@ describe('useAuth', () => {
       await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
     })
 
+    // Regression LIFT-1225: supabase-js RESOLVES `{ error }` on RLS/FK/401
+    // failures rather than rejecting. A resolved error must abort deletion and
+    // leave local data intact, or "delete my data" wipes the device while server
+    // rows survive.
+    it('throws when a Supabase delete RESOLVES with an error (not a rejection)', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      // Resolve (not reject) with a truthy error, as supabase-js does on a 401.
+      mockDelete.mockReturnValueOnce({
+        eq: vi.fn().mockResolvedValue({ error: { message: 'JWT expired', code: 'PGRST301' } })
+      })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+    })
+
+    it('preserves local data when a delete resolves with an error', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      localStorage.setItem('workout-exercises', 'test-value')
+
+      mockDelete.mockReturnValueOnce({
+        eq: vi.fn().mockResolvedValue({ error: { message: 'permission denied' } })
+      })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+      // Abort must happen BEFORE localStorage.clear(), so local data survives.
+      expect(localStorage.getItem('workout-exercises')).toBe('test-value')
+    })
+
     it('deletes all IndexedDB databases via indexedDB.databases() when available', async () => {
       const mockDeleteDatabase = vi.fn()
       const mockDatabases = vi.fn().mockResolvedValue([
