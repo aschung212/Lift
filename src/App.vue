@@ -435,9 +435,14 @@ function updateOnlineStatus() {
   if (!navigator.onLine) syncStatus.value = 'offline'
   else if (syncStatus.value === 'offline') syncStatus.value = 'synced'
 }
-window.addEventListener('online', updateOnlineStatus)
-window.addEventListener('offline', updateOnlineStatus)
-if (!navigator.onLine) syncStatus.value = 'offline'
+// Registration lives in onMounted/onUnmounted alongside every other listener
+// this component owns (LIFT-1240) — registering in the setup body left a
+// permanent pair of window listeners holding this instance's reactive scope,
+// so an unmounted instance kept mutating the module-level `syncStatus`.
+// The initial read stays here so the first paint reflects connectivity — and,
+// because `syncStatus` is module state, so a remount can't inherit a stale
+// 'offline' from a previous instance.
+updateOnlineStatus()
 
 const settingsOpen = ref(false)
 // SettingsSheet is an async component, so a `typeof`-based InstanceType would
@@ -724,6 +729,8 @@ function onBeforeUnload() {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+  window.addEventListener('online', updateOnlineStatus)
+  window.addEventListener('offline', updateOnlineStatus)
   document.addEventListener('visibilitychange', onBadgeVisibilityChange)
   // Re-fetch every store when the connection, the foreground, or the session
   // comes back (LIFT-1226). Without this a failed read stayed stale — and the
@@ -849,6 +856,8 @@ let unsubCrossTab: (() => void) | null = null
 let teardownSyncRecovery: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  window.removeEventListener('online', updateOnlineStatus)
+  window.removeEventListener('offline', updateOnlineStatus)
   document.removeEventListener('visibilitychange', onBadgeVisibilityChange)
   clearAppBadge()
   unsubCrossTab?.()

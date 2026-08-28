@@ -819,3 +819,90 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
     expect(settingsSheet).toMatch(/const isDev = /)
   })
 })
+
+// ── Invariant: component window/document listeners are lifecycle-scoped ──
+//
+// LIFT-1240: App.vue registered its `online`/`offline` listeners in the
+// `<script setup>` body and never removed them, so every instance left a
+// permanent pair of window listeners holding a closure over its reactive
+// scope. Dispatching `offline` then ran handlers from already-unmounted
+// instances, mutating the module-level `syncStatus` — the cross-test
+// state-leak class LIFT-966 is about, and a stale closure surviving HMR in
+// dev. Two structural rules make the omission impossible to repeat.
+
+describe('Invariant: component global listeners are lifecycle-scoped (LIFT-1240)', () => {
+  const LISTENER = /\b(?:window|document)\s*\.\s*(add|remove)EventListener\(\s*['"]([\w:-]+)['"]/g
+  // A call starting at column 0 inside a .vue file is in the `<script setup>`
+  // body — i.e. it runs at setup time and is outside any lifecycle hook.
+  const TOP_LEVEL_ADD = /^(?:window|document)\s*\.\s*addEventListener\(/m
+
+  function vueFiles() {
+    return getSourceFiles().filter(f => f.path.endsWith('.vue'))
+  }
+
+  /** Event names passed to add/removeEventListener, split by direction. */
+  function listenerEvents(source: string): { added: Set<string>; removed: Set<string> } {
+    const added = new Set<string>()
+    const removed = new Set<string>()
+    for (const [, direction, event] of source.matchAll(LISTENER)) {
+      ;(direction === 'add' ? added : removed).add(event)
+    }
+    return { added, removed }
+  }
+
+  it('every window/document listener a component adds is also removed', () => {
+    const files = vueFiles()
+    // Non-vacuity: the walker must reach the two components that actually
+    // register global listeners, or this scan proves nothing.
+    expect(files.map(f => f.path)).toContain('App.vue')
+    expect(files.map(f => f.path)).toContain(join('components', 'InfoPopover.vue'))
+
+    const violations: string[] = []
+    for (const file of files) {
+      const { added, removed } = listenerEvents(stripComments(file.content))
+      for (const event of added) {
+        if (!removed.has(event)) {
+          violations.push(
+            `${file.path} — adds a '${event}' listener with no matching ` +
+            `removeEventListener. A component listener that outlives its ` +
+            `instance keeps mutating shared state after unmount (LIFT-1240); ` +
+            `pair it with a removal in onUnmounted.`,
+          )
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  it('no component registers a global listener in the setup body', () => {
+    const violations = vueFiles()
+      .filter(f => TOP_LEVEL_ADD.test(stripComments(f.content)))
+      .map(f =>
+        `${f.path} — registers a window/document listener at the top level of ` +
+        `<script setup>. Register it in onMounted so the paired onUnmounted ` +
+        `removal actually covers it (LIFT-1240).`,
+      )
+
+    expect(violations).toEqual([])
+  })
+
+  it('the scans flag the LIFT-1240 shape and ignore comments (self-test)', () => {
+    const leaky = "window.addEventListener('online', onOnline)\nonUnmounted(() => {})"
+    expect(TOP_LEVEL_ADD.test(stripComments(leaky))).toBe(true)
+    expect([...listenerEvents(stripComments(leaky)).added]).toEqual(['online'])
+    expect(listenerEvents(stripComments(leaky)).removed.size).toBe(0)
+
+    const balanced =
+      "onMounted(() => {\n  window.addEventListener('online', onOnline)\n})\n" +
+      "onUnmounted(() => {\n  window.removeEventListener('online', onOnline)\n})"
+    expect(TOP_LEVEL_ADD.test(stripComments(balanced))).toBe(false)
+    const events = listenerEvents(stripComments(balanced))
+    expect([...events.added]).toEqual([...events.removed])
+
+    // A comment quoting the banned shape must not trip either scan.
+    const documented = "// window.addEventListener('online', onOnline)"
+    expect(TOP_LEVEL_ADD.test(stripComments(documented))).toBe(false)
+    expect(listenerEvents(stripComments(documented)).added.size).toBe(0)
+  })
+})
