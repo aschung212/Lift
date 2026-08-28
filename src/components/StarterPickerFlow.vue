@@ -237,7 +237,7 @@ defineExpose({ reset })
   position: relative;
   width: 100%;
   height: 8px;
-  background: var(--card-bg);
+  background: var(--bg-elevated);
   border-radius: 4px;
   overflow: visible;
 }
@@ -296,7 +296,7 @@ defineExpose({ reset })
 
 .spfPreviewLabel {
   font-size: var(--font-caption1);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -361,7 +361,7 @@ defineExpose({ reset })
 
 .spfWarning {
   font-size: var(--font-caption2);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   text-align: center;
   margin-bottom: 16px;
   line-height: 1.4;

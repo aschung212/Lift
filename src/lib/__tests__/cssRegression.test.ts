@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'fs'
-import { resolve } from 'path'
+import { resolve, relative } from 'path'
 
 const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf-8')
 
@@ -33,6 +33,28 @@ function getVueStyleBlock(componentPath: string): string {
   const content = readFileSync(resolve(__dirname, '../../components', componentPath), 'utf-8')
   const match = content.match(/<style[^>]*>([\s\S]*?)<\/style>/)
   return match ? match[1] : ''
+}
+
+// Helper: every .vue file under src/, recursively. The flat readdirSync walks
+// elsewhere in this file only ever look at src/components, which silently skips
+// src/views, src/components/share/cards and src/App.vue.
+function collectVueFiles(dir: string): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === '__tests__') continue
+    const full = resolve(dir, entry.name)
+    if (entry.isDirectory()) out.push(...collectVueFiles(full))
+    else if (entry.name.endsWith('.vue')) out.push(full)
+  }
+  return out.sort()
+}
+
+// Helper: concatenate every <style> block in an SFC. matchAll, not match — a
+// component may carry several (e.g. a scoped block alongside a global one).
+function allVueStyleBlocks(content: string): string {
+  let style = ''
+  for (const m of content.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) style += m[1] + '\n'
+  return style
 }
 
 describe('CSS regression tests', () => {
@@ -1017,5 +1039,66 @@ describe('Custom-property token definitions', () => {
     // Pin the specific token that regressed so the fix cannot silently revert.
     expect(css.includes('var(--bg-tertiary)')).toBe(false)
     expect(definedTokens.has('--bg-tertiary')).toBe(false)
+  })
+
+  // --- .vue <style> blocks (#1261) ---
+  // The check above reads index.css and nothing else, which is exactly why a
+  // `var(--card-bg)` typo in index.css was caught on sight while the identical
+  // one in StarterPickerFlow.vue survived: component <style> blocks consume the
+  // same global tokens but were never in scope. The guard has to cover every
+  // file that can CONSUME a token, not just the file that declares them.
+  const vueFiles = collectVueFiles(resolve(__dirname, '../..'))
+
+  it('found the .vue files to scan', () => {
+    // Guards the sweep itself: an empty or components-only file list would let
+    // the undefined-reference check below pass vacuously.
+    expect(vueFiles.length).toBeGreaterThan(20)
+    expect(vueFiles.some((f) => f.endsWith('StarterPickerFlow.vue'))).toBe(true)
+    // The walk must recurse — these two live outside src/components/.
+    expect(vueFiles.some((f) => f.includes('/views/'))).toBe(true)
+    expect(vueFiles.some((f) => f.includes('/share/'))).toBe(true)
+  })
+
+  it('every var(--token) reference in a .vue <style> block resolves to a declared token', () => {
+    const offenders: string[] = []
+
+    for (const file of vueFiles) {
+      const style = allVueStyleBlocks(readFileSync(file, 'utf-8'))
+      if (!style.trim()) continue
+
+      // A component may declare its own local tokens; those resolve too.
+      const resolvable = new Set(definedTokens)
+      for (const m of style.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) resolvable.add(m[1])
+
+      const undefinedRefs = new Set<string>()
+      for (const m of style.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)\s*[,)]/g)) {
+        // A reference carrying its own fallback (var(--x, y)) degrades
+        // gracefully, so only flag bare references.
+        const hasFallback = m[0].includes(',')
+        if (!hasFallback && !resolvable.has(m[1])) undefinedRefs.add(m[1])
+      }
+      if (undefinedRefs.size > 0) {
+        offenders.push(`${relative(resolve(__dirname, '../..'), file)}: ${[...undefinedRefs].join(', ')}`)
+      }
+    }
+
+    expect(
+      offenders,
+      `undefined CSS custom properties referenced without a fallback:\n${offenders.join('\n')}`,
+    ).toEqual([])
+  })
+
+  it('does not reintroduce the undefined --card-bg or --text-tertiary tokens', () => {
+    // Pin the two tokens that regressed in StarterPickerFlow.vue. They failed
+    // differently, which is why neither surfaced as an obvious break:
+    // `background` is not inherited, so --card-bg resolved to transparent (no
+    // track behind the progress fill); `color` IS inherited, so --text-tertiary
+    // made captions silently adopt their parent's color instead of de-emphasizing.
+    const allStyles = vueFiles.map((f) => allVueStyleBlocks(readFileSync(f, 'utf-8'))).join('\n')
+    for (const token of ['--card-bg', '--text-tertiary']) {
+      expect(allStyles.includes(`var(${token})`), `${token} referenced but never declared`).toBe(false)
+      expect(css.includes(`var(${token})`), `${token} referenced but never declared`).toBe(false)
+      expect(definedTokens.has(token)).toBe(false)
+    }
   })
 })
