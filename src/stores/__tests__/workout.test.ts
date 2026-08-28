@@ -235,6 +235,30 @@ describe('workout store', () => {
     })
   })
 
+  // ── toggleExerciseTag (#1252) ──────────────────────────────────
+  describe('toggleExerciseTag', () => {
+    it('adds a tag the exercise does not have', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench', ['Push'])!
+      store.toggleExerciseTag(id, 'Chest')
+      expect(store.exercises[0].tags).toEqual(['Push', 'Chest'])
+    })
+
+    it('removes a tag the exercise already has', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench', ['Push', 'Chest'])!
+      store.toggleExerciseTag(id, 'Push')
+      expect(store.exercises[0].tags).toEqual(['Chest'])
+    })
+
+    it('is a no-op for an unknown exercise', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Bench', ['Push'])
+      expect(() => store.toggleExerciseTag('nope', 'Chest')).not.toThrow()
+      expect(store.exercises[0].tags).toEqual(['Push'])
+    })
+  })
+
   // ── deleteExercise / restoreExercise ───────────────────────────
   describe('deleteExercise / restoreExercise', () => {
     it('deletes an exercise', () => {

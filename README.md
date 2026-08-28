@@ -61,6 +61,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Composes with tags: gym narrows the list, tags filter within it (quick-log picker follows too)
 - Gym manager for create/rename/delete plus bulk per-gym exercise assignment; gyms can also be created inline while editing an exercise, or from Settings
 - Active gym selection remembered per device (not synced — your phone can be at Gym A while your iPad stays on All)
+- Exercise-first manager (Settings › Exercises) for the inverse sweep: every exercise in one searchable list, each showing which gyms it's at and expanding to edit its gyms and muscle-group tags together
 
 ### Usual Ladder (One-Tap Set Logging)
 - Detects your habitual set progression per exercise across recent sessions (e.g. 45×10 → 95×10 → 135×10 …), tolerant of occasional deviations
@@ -135,6 +136,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Service worker update prompt — "New version available" banner with one-tap update
 - Keyboard shortcuts for power users — press `?` to view the shortcut help dialog
 - CSV and JSON data export from settings
+- Apple Health-compatible bodyweight CSV export from the Weight tab (share sheet → Files / AirDrop / Health importer apps)
 - Active tab persisted across sessions
 - All touch targets meet iOS 44pt minimum
 - All text meets 11pt minimum font size

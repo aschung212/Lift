@@ -21,11 +21,12 @@ describe('useAnalytics', () => {
     vi.useRealTimers()
   })
 
-  it('returns logEvent, tabSwitch, and flushEngagement', () => {
+  it('returns logEvent, tabSwitch, flushEngagement, and supportFunnel', () => {
     const analytics = useAnalytics()
     expect(typeof analytics.logEvent).toBe('function')
     expect(typeof analytics.tabSwitch).toBe('function')
     expect(typeof analytics.flushEngagement).toBe('function')
+    expect(typeof analytics.supportFunnel).toBe('function')
   })
 
   it('logEvent calls track with name and props', () => {
@@ -98,6 +99,24 @@ describe('useAnalytics', () => {
       ([name]) => name === 'tab_engagement'
     )
     expect(engagementCalls).toHaveLength(0)
+  })
+
+  it('supportFunnel logs support_funnel with the stage', () => {
+    const { supportFunnel } = useAnalytics()
+    supportFunnel('impression')
+    expect(mockTrack).toHaveBeenCalledWith('support_funnel', { stage: 'impression' })
+  })
+
+  it('supportFunnel merges extra props alongside the stage', () => {
+    const { supportFunnel } = useAnalytics()
+    supportFunnel('tap', { cta: 'github_sponsors' })
+    expect(mockTrack).toHaveBeenCalledWith('support_funnel', { stage: 'tap', cta: 'github_sponsors' })
+  })
+
+  it('supportFunnel does not throw when track fails', () => {
+    mockTrack.mockImplementation(() => { throw new Error('offline') })
+    const { supportFunnel } = useAnalytics()
+    expect(() => supportFunnel('tap', { cta: 'buymeacoffee' })).not.toThrow()
   })
 
   it('supports multiple consecutive tab switches', () => {

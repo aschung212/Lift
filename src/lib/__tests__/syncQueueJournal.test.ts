@@ -13,6 +13,9 @@
  *   - executeDescriptor building correct upsert / update queries
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'fs'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 
 // ── In-memory durable storage (stand-in for IndexedDB) ──────────────
 const { idbStore } = vi.hoisted(() => ({ idbStore: new Map<string, string>() }))
@@ -33,16 +36,17 @@ const { fakeSupabase } = vi.hoisted(() => {
       this.parent = parent
       this.table = table
     }
-    upsert(data: unknown) { this.op = 'upsert'; this.data = data; return this }
+    options: unknown = undefined
+    upsert(data: unknown, options?: unknown) { this.op = 'upsert'; this.data = data; this.options = options; return this }
     update(data: unknown) { this.op = 'update'; this.data = data; return this }
     eq(col: string, val: unknown) { this.filters[col] = val; return this }
     then<T>(onfulfilled: (v: { data: unknown[]; error: null }) => T): PromiseLike<T> {
-      this.parent.calls.push({ op: this.op, table: this.table, data: this.data, filters: { ...this.filters } })
+      this.parent.calls.push({ op: this.op, table: this.table, data: this.data, filters: { ...this.filters }, options: this.options })
       return Promise.resolve({ data: [], error: null }).then(onfulfilled)
     }
   }
   const fake = {
-    calls: [] as Array<{ op: string; table: string; data: unknown; filters: Record<string, unknown> }>,
+    calls: [] as Array<{ op: string; table: string; data: unknown; filters: Record<string, unknown>; options?: unknown }>,
     from(table: string) { return new FakeBuilder(this, table) },
     reset() { this.calls = [] },
   }
@@ -60,6 +64,7 @@ import {
   _resetRateLimit,
   _resetCircuitBreaker,
   _getCircuitBreakerState,
+  JOURNAL_SCHEMA_VERSION,
   type SyncDescriptor,
 } from '../syncQueue'
 
@@ -85,8 +90,9 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
 
     expect(queue.journalSize).toBe(1)
     const persisted = JSON.parse(idbStore.get('lift-sync-journal')!)
-    expect(persisted).toHaveLength(1)
-    expect(persisted[0]).toMatchObject({ key: 'set:s1', isDelete: false, descriptor: UPSERT })
+    expect(persisted.version).toBe(JOURNAL_SCHEMA_VERSION)
+    expect(persisted.entries).toHaveLength(1)
+    expect(persisted.entries[0]).toMatchObject({ key: 'set:s1', isDelete: false, descriptor: UPSERT })
   })
 
   it('does NOT journal descriptor-less (legacy) operations', () => {
@@ -105,10 +111,15 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     await vi.advanceTimersByTimeAsync(100)
 
     expect(queue.journalSize).toBe(0)
-    expect(JSON.parse(idbStore.get('lift-sync-journal')!)).toHaveLength(0)
+    expect(JSON.parse(idbStore.get('lift-sync-journal')!).entries).toHaveLength(0)
   })
 
-  it('keeps the entry journaled across retries, then drops it after exhausting them', async () => {
+  // LIFT-1229: retry-exhausted durable writes must NOT be dropped from the
+  // journal. Reconciliation only re-pushes missing *sets*, so an exhausted
+  // exercise-metadata write would otherwise be stranded silently. Retaining the
+  // entry lets rehydrate() replay it on the next launch, covering every
+  // journaled table uniformly.
+  it('keeps the entry journaled across retries AND after exhausting them (LIFT-1229)', async () => {
     const queue = new SyncQueue(100)
     queue.enqueue('set:s1', () => Promise.reject(new Error('offline')), UPSERT)
 
@@ -116,8 +127,76 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     await vi.advanceTimersByTimeAsync(100)
     expect(queue.journalSize).toBe(1)
 
-    // Run all retries to exhaustion — op is dropped, journal cleared
+    // Run all retries to exhaustion — op leaves the in-memory queue but its
+    // durable record is RETAINED (survives to the next launch).
     await vi.runAllTimersAsync()
+    expect(queue.journalSize).toBe(1)
+    expect(queue.pending).toBe(0)
+    // The retained entry is still on disk for the next launch to rehydrate.
+    const persisted = JSON.parse(idbStore.get('lift-sync-journal')!)
+    expect(persisted.entries).toHaveLength(1)
+    expect(persisted.entries[0]).toMatchObject({ key: 'set:s1', descriptor: UPSERT })
+  })
+
+  // LIFT-1229: a metadata write that exhausts its retries in one session (e.g. a
+  // rename made while offline/backgrounded) is recovered on the next launch —
+  // the retained journal entry replays through rehydrate() and reaches Supabase.
+  it('replays a retry-exhausted metadata write on the next launch (LIFT-1229)', async () => {
+    const RENAME: SyncDescriptor = {
+      op: 'upsert', table: 'exercises',
+      row: { id: 'e1', user_id: 'u1', name: 'Incline Bench' },
+    }
+
+    // Session 1: the metadata write fails on every attempt and exhausts retries.
+    const session1 = new SyncQueue(100)
+    session1.enqueue('exercise:e1', () => Promise.reject(new Error('offline')), RENAME)
+    await vi.runAllTimersAsync()
+    expect(session1.journalSize).toBe(1)
+    // Nothing reached the server yet.
+    expect(fakeSupabase.calls.filter(c => c.op === 'upsert')).toHaveLength(0)
+
+    // Session 2 (fresh launch, same durable journal on disk): rehydrate replays it.
+    const session2 = new SyncQueue(100)
+    await session2.rehydrate()
+    expect(session2.pending).toBe(1)
+    await vi.advanceTimersByTimeAsync(100)
+
+    const upserts = fakeSupabase.calls.filter(c => c.op === 'upsert' && c.table === 'exercises')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toEqual({ id: 'e1', user_id: 'u1', name: 'Incline Bench' })
+    // Now that it landed, the journal is finally drained.
+    expect(session2.journalSize).toBe(0)
+  })
+
+  // Regression LIFT-1213: a same-key correction enqueued while the previous
+  // write's flush was still in flight had its journal entry deleted by the
+  // OLD write's completion — the correction survived in memory but its
+  // durable record was gone, so a reload before the next flush lost it.
+  it('does not drop a newer same-key journal entry when an older in-flight op completes (LIFT-1213)', async () => {
+    const UPSERT_V2: SyncDescriptor = { op: 'upsert', table: 'sets', row: { id: 's1', weight: 105 } }
+    const queue = new SyncQueue(100)
+
+    let resolveOld!: (v: unknown) => void
+    queue.enqueue('set:s1', () => new Promise((r) => { resolveOld = r }), UPSERT)
+
+    // Flush starts; the old write is now in flight (queue snapshotted+cleared).
+    await vi.advanceTimersByTimeAsync(100)
+
+    // Mid-flight correction to the same record replaces the journal entry.
+    queue.enqueue('set:s1', () => Promise.resolve({ data: [], error: null }), UPSERT_V2)
+    expect(queue.journalSize).toBe(1)
+
+    // The OLD write completes — it must NOT delete the correction's record.
+    resolveOld({ data: [], error: null })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(queue.journalSize).toBe(1)
+    const persisted = JSON.parse(idbStore.get('lift-sync-journal')!)
+    expect(persisted.entries).toHaveLength(1)
+    expect(persisted.entries[0].descriptor.row).toEqual({ id: 's1', weight: 105 })
+
+    // The correction's own flush still drains the journal normally.
+    await vi.advanceTimersByTimeAsync(100)
     expect(queue.journalSize).toBe(0)
   })
 
@@ -129,7 +208,7 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     queue.clear()
 
     expect(queue.journalSize).toBe(0)
-    expect(JSON.parse(idbStore.get('lift-sync-journal')!)).toHaveLength(0)
+    expect(JSON.parse(idbStore.get('lift-sync-journal')!).entries).toHaveLength(0)
   })
 
   // ── Rehydration ──────────────────────────────────────────────────
@@ -222,7 +301,7 @@ describe('executeDescriptor (LIFT-706)', () => {
   it('builds an upsert query from an upsert descriptor', async () => {
     await executeDescriptor({ op: 'upsert', table: 'exercises', row: { id: 'e1', name: 'Bench' } })
     expect(fakeSupabase.calls).toEqual([
-      { op: 'upsert', table: 'exercises', data: { id: 'e1', name: 'Bench' }, filters: {} },
+      { op: 'upsert', table: 'exercises', data: { id: 'e1', name: 'Bench' }, filters: {}, options: undefined },
     ])
   })
 
@@ -233,8 +312,33 @@ describe('executeDescriptor (LIFT-706)', () => {
       match: { id: 's1', user_id: 'u1' },
     })
     expect(fakeSupabase.calls).toEqual([
-      { op: 'update', table: 'sets', data: { deleted_at: null }, filters: { id: 's1', user_id: 'u1' } },
+      { op: 'update', table: 'sets', data: { deleted_at: null }, filters: { id: 's1', user_id: 'u1' }, options: undefined },
     ])
+  })
+
+  // LIFT-1239: user_preferences has a surrogate `id` primary key plus a separate
+  // unique(user_id) constraint, and the app upserts a row with no id. Replaying
+  // without an explicit conflict target resolves against the PK, generates a new
+  // id, and then violates unique(user_id) — so the replay would fail forever.
+  it('replays a user_preferences upsert with the user_id conflict target', async () => {
+    await executeDescriptor({
+      op: 'upsert', table: 'user_preferences',
+      row: { user_id: 'u1', preferences: { theme: 'fire' }, updated_at: '2026-08-27T00:00:00Z' },
+    })
+    expect(fakeSupabase.calls).toHaveLength(1)
+    expect(fakeSupabase.calls[0].options).toEqual({ onConflict: 'user_id' })
+  })
+
+  it('the preferences store writes the same conflict target it will be replayed with', () => {
+    // The conflict target lives in syncQueue (not on the descriptor — a
+    // user-writable journal must not choose the conflict column). That makes it
+    // a second copy of the value in preferences.ts; if they diverge, the live
+    // write and its replay resolve against different constraints.
+    const store = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../stores/preferences.ts'),
+      'utf-8',
+    )
+    expect(store).toMatch(/onConflict:\s*'user_id'/)
   })
 })
 
@@ -290,10 +394,39 @@ describe('replay allowlist (LIFT-785)', () => {
       })).toBe(true)
     })
 
+    it('accepts the descriptors the bodyweight / preferences / progression stores produce (LIFT-1239)', () => {
+      // These three stores previously enqueued WITHOUT a descriptor, so an
+      // offline write was lost on a close before the flush. Their real payload
+      // shapes must clear the allowlist or rehydrate() would silently drop them.
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'bodyweight_entries',
+        row: { id: 'b1', user_id: 'u1', date: '2026-08-27T23:59:00.000Z', weight: 182.4 },
+      })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'update', table: 'bodyweight_entries',
+        values: { deleted_at: null }, match: { id: 'b1', user_id: 'u1' },
+      })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'user_preferences',
+        row: { user_id: 'u1', preferences: { theme: 'eternal' }, updated_at: '2026-08-27T00:00:00Z' },
+      })).toBe(true)
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'user_progression',
+        row: {
+          user_id: 'u1', total_xp: 4200, streak_weeks: 3, weekly_target: 4,
+          pending_target_change: null, show_progression: true, progression_enabled: true,
+          unlocked_themes: [], starter_theme: 'pearl', starter_confirmed: true, epoch: 1,
+          streak_history: [], xp_per_set: {}, bodyweight_xp_dates: [],
+        },
+      })).toBe(true)
+    })
+
     it('rejects unknown tables, columns, and ops', () => {
       // Table not in the allowlist (e.g. a tampered entry targeting auth state)
-      expect(isReplayableDescriptor({ op: 'upsert', table: 'user_progression', row: { id: 'x' } })).toBe(false)
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'coach_usage', row: { request_count: 0 } })).toBe(false)
       expect(isReplayableDescriptor({ op: 'upsert', table: 'profiles', row: { is_admin: true } })).toBe(false)
+      // A journaled table still rejects a column it doesn't own
+      expect(isReplayableDescriptor({ op: 'upsert', table: 'user_progression', row: { is_admin: true } })).toBe(false)
       // Column not writable on an allowlisted table
       expect(isReplayableDescriptor({ op: 'upsert', table: 'sets', row: { id: 's1', injected: 1 } })).toBe(false)
       // Op outside the idempotent upsert/update set
@@ -350,5 +483,98 @@ describe('replay allowlist (LIFT-785)', () => {
     // Exactly one write reached Supabase — the valid set upsert
     expect(fakeSupabase.calls).toHaveLength(1)
     expect(fakeSupabase.calls[0]).toMatchObject({ op: 'upsert', table: 'sets', data: { id: 's1', weight: 100 } })
+  })
+})
+
+// Schema-version envelope: a journal written under an older schema generation
+// may reference columns a migration has since renamed/removed, so it is dropped
+// wholesale on rehydrate rather than replayed into silent PostgREST failures
+// (LIFT-1132).
+describe('journal schema versioning (LIFT-1132)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    syncStatus.value = 'synced'
+    idbStore.clear()
+    fakeSupabase.reset()
+    _resetRateLimit()
+    _resetCircuitBreaker()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('persists journals inside a versioned envelope stamped with the current generation', () => {
+    const queue = new SyncQueue(500)
+    queue.enqueue('set:s1', () => Promise.resolve(), UPSERT)
+
+    const persisted = JSON.parse(idbStore.get('lift-sync-journal')!)
+    expect(persisted.version).toBe(JOURNAL_SCHEMA_VERSION)
+    expect(persisted.entries).toHaveLength(1)
+  })
+
+  it('rehydrate() replays a journal stamped with the current schema version', async () => {
+    idbStore.set('lift-sync-journal', JSON.stringify({
+      version: JOURNAL_SCHEMA_VERSION,
+      entries: [{ key: 'set:s1', isDelete: false, descriptor: UPSERT }],
+    }))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+    expect(queue.pending).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fakeSupabase.calls.filter(c => c.op === 'upsert')).toHaveLength(1)
+  })
+
+  it('rehydrate() discards a journal written under an older schema version', async () => {
+    idbStore.set('lift-sync-journal', JSON.stringify({
+      version: JOURNAL_SCHEMA_VERSION - 1,
+      entries: [{ key: 'set:s1', isDelete: false, descriptor: UPSERT }],
+    }))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+
+    // Nothing was enqueued or journaled from the stale generation…
+    expect(queue.pending).toBe(0)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fakeSupabase.calls).toHaveLength(0)
+    // …and the stale record on disk was wiped so it isn't re-read next launch.
+    expect(JSON.parse(idbStore.get('lift-sync-journal')!)).toEqual({
+      version: JOURNAL_SCHEMA_VERSION,
+      entries: [],
+    })
+  })
+
+  it('rehydrate() discards a journal from a newer (unknown) schema version', async () => {
+    idbStore.set('lift-sync-journal', JSON.stringify({
+      version: JOURNAL_SCHEMA_VERSION + 1,
+      entries: [{ key: 'set:s1', isDelete: false, descriptor: UPSERT }],
+    }))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+
+    expect(queue.pending).toBe(0)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fakeSupabase.calls).toHaveLength(0)
+  })
+
+  it('rehydrate() treats a legacy bare-array journal as the current generation and replays it', async () => {
+    // Pre-LIFT-1132 journals were a bare PersistedEntry[] with no version. They
+    // must still replay — dropping valid pending writes merely because they
+    // predate the envelope would defeat the durable queue on the very upgrade
+    // that introduces versioning.
+    idbStore.set('lift-sync-journal', JSON.stringify([
+      { key: 'set:s1', isDelete: false, descriptor: UPSERT },
+    ]))
+
+    const queue = new SyncQueue(100)
+    await queue.rehydrate()
+    expect(queue.pending).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fakeSupabase.calls.filter(c => c.op === 'upsert')).toHaveLength(1)
   })
 })

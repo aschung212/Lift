@@ -135,6 +135,22 @@ describe('PWA manifest regression tests', () => {
     it('calendar screenshot file exists in public/', () => {
       expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
     })
+
+    // Chromium only renders the richer install dialog (screenshot carousel) when a
+    // wide/landscape screenshot is present; without one it falls back to the minimal
+    // one-line prompt (#1064).
+    it('has a wide (landscape) screenshot entry for the richer install dialog', () => {
+      expect(viteConfig).toContain("form_factor: 'wide'")
+    })
+
+    it('references the wide screenshot asset with landscape dimensions', () => {
+      expect(viteConfig).toContain("src: 'screenshot-wide.png'")
+      expect(viteConfig).toContain("sizes: '1920x1080'")
+    })
+
+    it('wide screenshot file exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'screenshot-wide.png'))).toBe(true)
+    })
   })
 
   describe('workbox globIgnores excludes non-essential large assets from precache', () => {

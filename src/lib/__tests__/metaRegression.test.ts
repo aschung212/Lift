@@ -79,6 +79,22 @@ describe('index.html meta tag regression tests', () => {
     })
   })
 
+  describe('positioning copy (LIFT-1028)', () => {
+    it('the meta description states the unlimited / no-paywall differentiator', () => {
+      const match = html.match(/<meta name="description" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      const desc = match![1].toLowerCase()
+      expect(desc).toContain('unlimited')
+      expect(desc).toContain('no paywall')
+    })
+
+    it('the og:description carries the free / no-paywall positioning', () => {
+      const match = html.match(/<meta property="og:description" content="([^"]+)"/)
+      expect(match).not.toBeNull()
+      expect(match![1].toLowerCase()).toContain('no paywall')
+    })
+  })
+
   describe('no references to domains we do not own', () => {
     it('does not reference liftracker.app (competitor domain)', () => {
       expect(html).not.toContain('liftracker.app')

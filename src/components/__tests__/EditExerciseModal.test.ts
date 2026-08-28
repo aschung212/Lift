@@ -195,3 +195,35 @@ describe('EditExerciseModal — gym membership (#961)', () => {
     expect(lastSavePayload(wrapper).gyms).toEqual([])
   })
 })
+
+describe('EditExerciseModal — durable notes (#619)', () => {
+  const notesInput = (w: VueWrapper) => w.find('.wtEditNotesInput')
+  const lastNotes = (w: VueWrapper) => {
+    const calls = w.emitted('save')!
+    return (calls[calls.length - 1][0] as { notes: string }).notes
+  }
+
+  it('seeds the note textarea from the exercise', async () => {
+    const wrapper = await openWith(makeExercise({ notes: 'brace before unrack' }))
+    expect((notesInput(wrapper).element as HTMLTextAreaElement).value).toBe('brace before unrack')
+  })
+
+  it('leaves the textarea empty when the exercise has no note', async () => {
+    const wrapper = await openWith(makeExercise())
+    expect((notesInput(wrapper).element as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('emits the edited note on save', async () => {
+    const wrapper = await openWith(makeExercise())
+    await notesInput(wrapper).setValue('drive knees out')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastNotes(wrapper)).toBe('drive knees out')
+  })
+
+  it('emits an empty string when the note is cleared', async () => {
+    const wrapper = await openWith(makeExercise({ notes: 'old cue' }))
+    await notesInput(wrapper).setValue('')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastNotes(wrapper)).toBe('')
+  })
+})

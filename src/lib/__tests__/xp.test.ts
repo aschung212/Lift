@@ -448,6 +448,25 @@ describe('applyStreakMultiplier', () => {
     ]
     expect(applyStreakMultiplier(baseXP, history, '2026-03-30')).toBe(132)
   })
+
+  // Regression LIFT-1214: a real-time set stamp from a US Sunday evening
+  // (already Monday in UTC) resolved to the NEXT week's Monday and missed the
+  // active streak entry — the multiplier silently dropped to 1x. Day keys are
+  // local (#746); the week lookup must be local too.
+  it('maps a US Sunday-evening real-time stamp to the current week (LIFT-1214)', () => {
+    const prev = process.env.TZ
+    process.env.TZ = 'America/Los_Angeles'
+    try {
+      const history: StreakHistoryEntry[] = [
+        { weekStart: '2026-03-23', streakCount: 2, weeklyTarget: 1 },
+      ]
+      // Sunday Mar 29, 6 PM PDT — toISOString() says Monday Mar 30 01:00 UTC.
+      const sundayEveningInstant = new Date(2026, 2, 29, 18, 0, 0).toISOString()
+      expect(applyStreakMultiplier(baseXP, history, sundayEveningInstant)).toBe(110)
+    } finally {
+      process.env.TZ = prev
+    }
+  })
 })
 
 // --- checkRepPR ---

@@ -307,6 +307,47 @@ describe('buildSessionSummary', () => {
     expect(summary.bestSet?.weight).toBeCloseTo(102.1, 1)
     expect(summary.totalVolume).toBeCloseTo(510.3, 1)
   })
+
+  // ── Bodyweight-loaded volume folding (LIFT-834) ──────────────────
+  describe('bodyweight-loaded volume', () => {
+    function bwExercise(sets: { id: string; weight: number; reps: number; date: string; bodyweight?: number }[]): Exercise {
+      return {
+        id: 'bw',
+        name: 'Weighted Pull-up',
+        tags: [],
+        bodyweightLoaded: true,
+        sets: sets.map((s) => ({ ...s, estimated1RM: 0 })),
+      }
+    }
+
+    it('folds captured bodyweight into total + week volume', () => {
+      const exercises = [
+        bwExercise([{ id: 's1', weight: 25, reps: 8, date: '2026-04-21T15:00:00Z', bodyweight: 160 }]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.totalVolume).toBe(185 * 8) // (160 + 25) × 8, not 25 × 8
+      expect(summary.weekVolume[1]).toBe(185 * 8) // Tuesday Apr 21
+    })
+
+    it('gives pure-bodyweight reps (added = 0) volume credit', () => {
+      const exercises = [
+        bwExercise([{ id: 's1', weight: 0, reps: 10, date: '2026-04-21T15:00:00Z', bodyweight: 170 }]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.totalVolume).toBe(170 * 10) // was 0 before the fold
+    })
+
+    it('does not fold when the flag is off, even if a bodyweight is present', () => {
+      const exercises: Exercise[] = [
+        {
+          id: 'bw', name: 'Pull-up', tags: [], bodyweightLoaded: false,
+          sets: [{ id: 's1', weight: 25, reps: 8, date: '2026-04-21T15:00:00Z', bodyweight: 160, estimated1RM: 0 }],
+        },
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.totalVolume).toBe(25 * 8)
+    })
+  })
 })
 
 describe('formatSpanLabel', () => {

@@ -12,6 +12,10 @@
         </div>
 
         <div class="wtDetailBody">
+          <!-- Durable per-exercise note (#619): a form cue the user set in the
+               edit sheet, surfaced here at the top of the detail screen. -->
+          <p v-if="exercise.notes" class="wtDetailNote">{{ exercise.notes }}</p>
+
           <!-- Progress graph -->
           <ExerciseGraph :exercise="exercise" :mode="detailTab" />
 
@@ -94,7 +98,11 @@
                   <div class="wtPRCardBottom">
                     <span>{{ formatShortDate(setDayKey(pr.date) + 'T12:00:00') }}</span>
                     <span class="wtPRCardSep">·</span>
-                    <span>e1RM ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
+                    <span>e1RM<InfoPopover
+                      v-if="i === 0"
+                      label="e1RM"
+                      title="Estimated 1-rep max"
+                    >Your predicted max for a single all-out rep, calculated from the weight and reps you lifted.</InfoPopover> ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
                   </div>
                 </div>
                 <div v-if="pr.e1rmDelta != null" class="wtPRConnector">
@@ -129,6 +137,7 @@ import { usePreferencesStore } from '../stores/preferences'
 import { setDayKey, formatShortDate } from '../lib/dates'
 import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
 import ExerciseGraph from '../components/ExerciseGraph.vue'
+import InfoPopover from '../components/InfoPopover.vue'
 import type { Exercise, WorkoutSet } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {
