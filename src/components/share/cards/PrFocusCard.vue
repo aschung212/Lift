@@ -15,12 +15,16 @@
       </div>
     </div>
 
-    <div class="prBrand">LIFT</div>
+    <div class="prBrand">
+      <span class="prMark">LIFT</span>
+      <span class="prHandle">{{ SHARE_CARD_HANDLE }}</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 defineProps<{ summary: SessionSummary }>()
 </script>
@@ -136,11 +140,27 @@ defineProps<{ summary: SessionSummary }>()
 }
 
 .prBrand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.prMark {
   font-family: var(--ff-mono);
   font-weight: 700;
   font-size: 11px;
   line-height: 1;
   letter-spacing: 0.26em;
+  color: var(--text-muted);
+}
+
+.prHandle {
+  font-family: var(--ff-mono);
+  font-weight: 500;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
 }
 </style>

@@ -52,11 +52,11 @@
       </template>
     </div>
     <div v-if="ctrl.editTab.value === 'rest'" class="wtTimerEditRow" style="margin-top: var(--space-2)">
-      <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="ctrl.newPresetValue.value" placeholder="Add seconds" min="5" max="600" @keyup.enter="ctrl.addPreset()" :ref="(el: any) => { ctrl.presetInputEl.value = el }" aria-label="Timer preset seconds" />
+      <input class="wtTimerEditInput" type="number" inputmode="numeric" enterkeyhint="done" autocomplete="off" v-model.number="ctrl.newPresetValue.value" placeholder="Add seconds" min="5" max="600" @keyup.enter="ctrl.addPreset()" :ref="(el: any) => { ctrl.presetInputEl.value = el }" aria-label="Timer preset seconds" />
       <button class="wtTimerEditAddBtn" :disabled="!ctrl.newPresetValue.value" @click="ctrl.addPreset()">Add</button>
     </div>
     <div v-else class="wtTimerEditRow" style="margin-top: var(--space-2)">
-      <input class="wtTimerEditInput" type="number" inputmode="numeric" autocomplete="off" v-model.number="ctrl.newWarningValue.value" placeholder="Add seconds" min="1" max="120" @keyup.enter="ctrl.addWarningOption()" aria-label="Warning alert seconds" />
+      <input class="wtTimerEditInput" type="number" inputmode="numeric" enterkeyhint="done" autocomplete="off" v-model.number="ctrl.newWarningValue.value" placeholder="Add seconds" min="1" max="120" @keyup.enter="ctrl.addWarningOption()" aria-label="Warning alert seconds" />
       <button class="wtTimerEditAddBtn" :disabled="!ctrl.newWarningValue.value" @click="ctrl.addWarningOption()">Add</button>
     </div>
     <button class="wtTimerEditResetBtn" @click="ctrl.resetAllDefaults()">Reset to defaults</button>

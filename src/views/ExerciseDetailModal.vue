@@ -12,6 +12,10 @@
         </div>
 
         <div class="wtDetailBody">
+          <!-- Durable per-exercise note (#619): a form cue the user set in the
+               edit sheet, surfaced here at the top of the detail screen. -->
+          <p v-if="exercise.notes" class="wtDetailNote">{{ exercise.notes }}</p>
+
           <!-- Progress graph -->
           <ExerciseGraph :exercise="exercise" :mode="detailTab" />
 
@@ -42,14 +46,14 @@
             <div class="wtSetList">
               <p v-if="exercise.sets.length === 0" class="wtSetEmpty">No sets logged yet.</p>
               <template v-for="group in groupedSets" :key="group.key">
-                <p class="wtSetDateHeader">{{ formatDate(group.date) }}</p>
+                <p class="wtSetDateHeader">{{ formatShortDate(group.key + 'T12:00:00') }}</p>
                 <div class="wtSetCard">
                   <div
                     v-for="set in group.sets"
                     :key="set.id"
                     class="wtSetRow"
                     :class="{
-                      wtSetRowPR: set.estimated1RM === detailExercisePR && set.date.slice(0,10) === prDate,
+                      wtSetRowPR: set.estimated1RM === detailExercisePR && setDayKey(set.date) === prDate,
                       'wtSetRowActive': activeSetId === set.id,
                     }"
                     @click="toggleSetActions(set.id)"
@@ -58,7 +62,7 @@
                     <span v-if="set.rpe" class="wtSetRPE">RPE {{ set.rpe }}</span>
                     <span class="wtSet1RM">
                       ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
-                      <span v-if="set.estimated1RM === detailExercisePR && set.date.slice(0,10) === prDate" class="wtSetPR">🏆</span>
+                      <span v-if="set.estimated1RM === detailExercisePR && setDayKey(set.date) === prDate" class="wtSetPR">🏆</span>
                     </span>
                     <div v-if="activeSetId === set.id" class="wtSetActions">
                       <button
@@ -93,9 +97,13 @@
                     <span v-if="i === 0" class="wtPRCardBadge">Current</span>
                   </div>
                   <div class="wtPRCardBottom">
-                    <span>{{ formatDate(pr.date) }}</span>
+                    <span>{{ formatShortDate(setDayKey(pr.date) + 'T12:00:00') }}</span>
                     <span class="wtPRCardSep">·</span>
-                    <span>e1RM ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
+                    <span>e1RM<InfoPopover
+                      v-if="i === 0"
+                      label="e1RM"
+                      title="Estimated 1-rep max"
+                    >Your predicted max for a single all-out rep, calculated from the weight and reps you lifted.</InfoPopover> ~{{ displayWeight(pr.estimated1RM) }} {{ weightUnit }}</span>
                   </div>
                 </div>
                 <div v-if="pr.e1rmDelta != null" class="wtPRConnector">
@@ -127,9 +135,10 @@ import { usePRBaseline } from '../composables/usePRBaseline'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { usePreferencesStore } from '../stores/preferences'
-import { toLocalDateKey } from '../lib/sessionSummary'
+import { setDayKey, formatShortDate } from '../lib/dates'
 import { buildWarmupSetIds } from '../lib/classifyWarmupSets'
 import ExerciseGraph from '../components/ExerciseGraph.vue'
+import InfoPopover from '../components/InfoPopover.vue'
 import type { Exercise, WorkoutSet } from '../stores/workout'
 
 interface PREntry extends WorkoutSet {
@@ -212,7 +221,7 @@ const warmupSetIds = computed(() => {
 function filterSetsSinceBaseline<T extends { date: string }>(sets: T[]): T[] {
   const baseline = prBaselineDate.value
   if (!baseline) return sets
-  return sets.filter(s => s.date.slice(0, 10) >= baseline)
+  return sets.filter(s => setDayKey(s.date) >= baseline)
 }
 
 // Cached PR value — called once per exercise instead of twice per set row.
@@ -231,7 +240,7 @@ const prDate = computed(() => {
   let earliest = ''
   for (const set of filterSetsSinceBaseline(ex.sets)) {
     if (set.estimated1RM === pr) {
-      const day = set.date.slice(0, 10)
+      const day = setDayKey(set.date)
       if (!earliest || day < earliest) earliest = day
     }
   }
@@ -251,7 +260,7 @@ function toggleSetActions(setId: string) {
 }
 
 function visibleSets(ex: Exercise): WorkoutSet[] {
-  const sorted = [...ex.sets].sort((a, b) => b.date.slice(0, 10).localeCompare(a.date.slice(0, 10)))
+  const sorted = [...ex.sets].sort((a, b) => setDayKey(b.date).localeCompare(setDayKey(a.date)))
   return showAll.value ? sorted : sorted.slice(0, SET_LIMIT)
 }
 
@@ -262,14 +271,14 @@ const groupedSets = computed(() => {
     const ids = warmupSetIds.value
     sets = sets.filter(s => !ids.has(s.id))
   }
-  const groups: { date: string; key: string; sets: WorkoutSet[] }[] = []
+  const groups: { key: string; sets: WorkoutSet[] }[] = []
   for (const set of sets) {
-    const k = toLocalDateKey(set.date)
+    const k = setDayKey(set.date)
     const last = groups[groups.length - 1]
     if (last && last.key === k) {
       last.sets.push(set)
     } else {
-      groups.push({ date: set.date, key: k, sets: [set] })
+      groups.push({ key: k, sets: [set] })
     }
   }
   return groups
@@ -289,7 +298,7 @@ const prHistory = computed((): PREntry[] => {
   }
   const byDay: Record<string, WorkoutSet> = {}
   for (const pr of raw) {
-    const day = pr.date.slice(0, 10)
+    const day = setDayKey(pr.date)
     if (!byDay[day] || pr.estimated1RM > byDay[day].estimated1RM) {
       byDay[day] = pr
     }
@@ -307,8 +316,4 @@ const prHistory = computed((): PREntry[] => {
   return prs.reverse()
 })
 
-// ── Helpers ──────────────────────────────────────────────────────
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
 </script>

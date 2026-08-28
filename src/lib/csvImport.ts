@@ -100,7 +100,16 @@ function importStrong(rows: string[][], headers: string[]): ImportResult {
   const col = (name: string) => headers.findIndex(h => h.toLowerCase().trim() === name.toLowerCase())
   const iDate = col('date')
   const iExercise = col('exercise name')
-  const iWeight = col('weight')
+  // Strong exports weights in the user's app unit (LIFT-1215). Two in-file
+  // signals identify kg data: a "Weight (kg)" column header (regional
+  // variant), or a per-row "Weight Unit" column. A bare "weight" column with
+  // neither signal keeps the legacy lbs assumption. Previously kg was never
+  // converted (a 100 kg squat imported as a 100 lb one) and the
+  // "Weight (kg)" header variant matched nothing, silently skipping every
+  // row of the file.
+  const iWeightKg = col('weight (kg)')
+  const iWeight = iWeightKg !== -1 ? iWeightKg : col('weight')
+  const iUnit = col('weight unit')
   const iReps = col('reps')
   const iRPE = col('rpe')
 
@@ -111,7 +120,10 @@ function importStrong(rows: string[][], headers: string[]): ImportResult {
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r]
     const name = row[iExercise]?.trim()
-    const weight = parseFloat(row[iWeight] || '0') || 0
+    const rawWeight = parseFloat(row[iWeight] || '0') || 0
+    const rowIsKg = iWeightKg !== -1 ||
+      (iUnit !== -1 && (row[iUnit] || '').toLowerCase().includes('kg'))
+    const weight = rowIsKg ? kgToLbs(rawWeight) : rawWeight
     const reps = parseInt(row[iReps] || '0') || 0
     const date = parseDate(row[iDate] || '')
 
@@ -193,7 +205,10 @@ function importLift(rows: string[][], headers: string[]): ImportResult {
   const col = (name: string) => headers.findIndex(h => h.toLowerCase().trim() === name.toLowerCase())
   const iExercise = col('exercise')
   const iDate = col('date')
-  const iWeight = col('weight')
+  // Exports label the column "Weight (lbs)" since LIFT-1215; older exports
+  // used bare "Weight". Accept both so every Lift export round-trips.
+  const iWeightLabeled = col('weight (lbs)')
+  const iWeight = iWeightLabeled !== -1 ? iWeightLabeled : col('weight')
   const iReps = col('reps')
   const iTags = col('tags')
   const iRPE = col('rpe')

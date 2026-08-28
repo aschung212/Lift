@@ -1,7 +1,10 @@
 <template>
   <div class="sgRoot">
     <div class="sgHead">
-      <div class="sgEyebrow">Lift · {{ weekdayLabel }}</div>
+      <div class="sgBrand">
+        <span class="sgEyebrow">Lift · {{ weekdayLabel }}</span>
+        <span class="sgHandle">{{ SHARE_CARD_HANDLE }}</span>
+      </div>
       <div class="sgDate">{{ summary.date }}</div>
     </div>
     <div
@@ -20,6 +23,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 const props = defineProps<{ summary: SessionSummary }>()
 
@@ -89,6 +93,12 @@ const cells = computed<Cell[]>(() => {
   border-bottom: 1px solid var(--border-strong);
 }
 
+.sgBrand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .sgEyebrow {
   font-family: var(--ff-mono);
   font-weight: 700;
@@ -97,6 +107,15 @@ const cells = computed<Cell[]>(() => {
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--accent);
+}
+
+.sgHandle {
+  font-family: var(--ff-mono);
+  font-weight: 500;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 .sgDate {

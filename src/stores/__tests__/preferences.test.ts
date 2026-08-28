@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { usePreferencesStore, _migrateWeightGoal } from '../preferences'
+import { useWorkoutStore } from '../workout'
+import { platesToWeight } from '../../lib/plateCalculator'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
 vi.mock('../../lib/durableStorage', () => ({
@@ -27,6 +29,47 @@ describe('usePreferencesStore', () => {
 
     it('reports correct enabledCount', () => {
       expect(store.enabledCount).toBe(3)
+    })
+  })
+
+  // LIFT-1177: appearance/behavior settings are hydrated in the STATE FACTORY
+  // (like bodyweight/workout) so the store holds the user's real values the
+  // instant it is first touched — before init() resolves and even for a
+  // local-only guest who never calls init(). This is what lets useTheme /
+  // useWeightUnit / useRestTimer read the store as the single source of truth.
+  describe('instantiation-time hydration (LIFT-1177)', () => {
+    it('hydrates synced settings from the blob without calling init()', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        theme: 'water', colorMode: 'light', weightUnit: 'kg',
+        restTimerEnabled: false, restTimerAutoStart: false,
+      }))
+      setActivePinia(createPinia())
+      const guestStore = usePreferencesStore()
+      // No init() — the guest path never runs it.
+      expect(guestStore.theme).toBe('water')
+      expect(guestStore.colorMode).toBe('light')
+      expect(guestStore.weightUnit).toBe('kg')
+      expect(guestStore.restTimerEnabled).toBe(false)
+      expect(guestStore.restTimerAutoStart).toBe(false)
+    })
+
+    it('falls back to legacy standalone keys when the blob lacks them', () => {
+      localStorageMock.setItem('app-theme', 'fire')
+      localStorageMock.setItem('weight-unit', 'kg')
+      localStorageMock.setItem('rest-timer', 'off')
+      setActivePinia(createPinia())
+      const guestStore = usePreferencesStore()
+      expect(guestStore.theme).toBe('fire')
+      expect(guestStore.weightUnit).toBe('kg')
+      expect(guestStore.restTimerEnabled).toBe(false)
+    })
+
+    it('degrades to defaults on a corrupt blob without throwing', () => {
+      localStorageMock.setItem('user-preferences', 'not-valid-json')
+      setActivePinia(createPinia())
+      const guestStore = usePreferencesStore()
+      expect(guestStore.theme).toBe('eternal')
+      expect(guestStore.weightUnit).toBe('lbs')
     })
   })
 
@@ -655,6 +698,38 @@ describe('usePreferencesStore', () => {
       expect(store.restTimerAutoStart).toBe(false)
     })
 
+    it('_reloadFromStorage propagates prBaselineDate across tabs (LIFT-1178 drift fix)', () => {
+      // Before the three read paths were unified behind _applyPreferences, the
+      // cross-tab reload path silently omitted prBaselineDate, so starting a new
+      // training block in one tab never reached the others.
+      store.setPRBaselineDate('2026-01-15')
+      expect(store.prBaselineDate).toBe('2026-01-15')
+
+      // Another tab clears the baseline and writes the payload; this tab reloads.
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        prBaselineDate: '2026-06-20',
+      }))
+      store._reloadFromStorage()
+      expect(store.prBaselineDate).toBe('2026-06-20')
+
+      // An explicit null in the payload (baseline cleared elsewhere) propagates too.
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        prBaselineDate: null,
+      }))
+      store._reloadFromStorage()
+      expect(store.prBaselineDate).toBeNull()
+    })
+
+    it('_reloadFromStorage ignores a corrupt (non-object) payload without throwing', () => {
+      store.setTheme('fire')
+      localStorageMock.setItem('user-preferences', 'not-json{')
+      expect(() => store._reloadFromStorage()).not.toThrow()
+      // State is left untouched by the guarded read rather than reset.
+      expect(store.theme).toBe('fire')
+    })
+
     it('synced settings are included in persist payload alongside existing fields', () => {
       store.setTheme('earth')
       const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
@@ -663,6 +738,203 @@ describe('usePreferencesStore', () => {
       expect(stored.weightGoal).toBeDefined()
       expect(stored.experience).toBeDefined()
       expect(stored.filters).toBeDefined()
+    })
+
+    it('appIcon defaults to "default"', () => {
+      expect(store.appIcon).toBe('default')
+    })
+
+    it('setAppIcon updates and persists', () => {
+      store.setAppIcon('fire')
+      expect(store.appIcon).toBe('fire')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.appIcon).toBe('fire')
+    })
+
+    it('init loads appIcon from JSON blob', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        appIcon: 'midnight',
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.appIcon).toBe('midnight')
+    })
+
+    it('_reloadFromStorage picks up appIcon', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        appIcon: 'love',
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.appIcon).toBe('love')
+    })
+  })
+
+  describe('intensity presets (#776)', () => {
+    it('defaults to the seeded preset list', () => {
+      expect(store.intensityPresets).toEqual([50, 70, 80, 90, 100])
+    })
+
+    it('setIntensityPresets sanitizes (dedupe + sort + clamp) and persists', () => {
+      store.setIntensityPresets([90, 60, 60, 80, 150, 0])
+      expect(store.intensityPresets).toEqual([60, 80, 90])
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.intensityPresets).toEqual([60, 80, 90])
+    })
+
+    it('setIntensityPresets accepts an empty list (slider-only)', () => {
+      store.setIntensityPresets([])
+      expect(store.intensityPresets).toEqual([])
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.intensityPresets).toEqual([])
+    })
+
+    it('init loads + sanitizes presets from the JSON blob', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        intensityPresets: [85, 65, 65, 100],
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.intensityPresets).toEqual([65, 85, 100])
+    })
+
+    it('init keeps the defaults when the blob has no presets (existing users)', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.intensityPresets).toEqual([50, 70, 80, 90, 100])
+    })
+
+    it('init preserves an explicitly emptied preset list', async () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        intensityPresets: [],
+      }))
+
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      const freshStore = usePreferencesStore()
+      await freshStore.init('test-user')
+
+      expect(freshStore.intensityPresets).toEqual([])
+    })
+
+    it('_reloadFromStorage picks up presets', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        intensityPresets: [40, 60, 80],
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.intensityPresets).toEqual([40, 60, 80])
+    })
+  })
+
+  describe('coachProfile (#931)', () => {
+    it('defaults to an empty deep_audit profile', () => {
+      expect(store.coachProfile.reviewMode).toBe('deep_audit')
+      expect(store.coachProfile.sex).toBe('')
+      expect(store.coachProfile.age).toBeNull()
+    })
+
+    it('setCoachProfile merges, sanitizes, and persists to the synced blob', () => {
+      store.setCoachProfile({ sex: 'male', age: 31, primaryGoal: 'hypertrophy' })
+      expect(store.coachProfile).toMatchObject({ sex: 'male', age: 31, primaryGoal: 'hypertrophy' })
+      // A later partial update preserves prior fields.
+      store.setCoachProfile({ daysPerWeek: 4 })
+      expect(store.coachProfile).toMatchObject({ sex: 'male', daysPerWeek: 4 })
+
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.coachProfile).toMatchObject({ sex: 'male', age: 31, daysPerWeek: 4 })
+    })
+
+    it('rejects an out-of-range value at the setter boundary', () => {
+      store.setCoachProfile({ age: 5, daysPerWeek: 99 })
+      expect(store.coachProfile.age).toBeNull()
+      expect(store.coachProfile.daysPerWeek).toBeNull()
+    })
+
+    it('_reloadFromStorage sanitizes a persisted profile', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        features: { workouts: true, calendar: true, weight: true },
+        coachProfile: { sex: 'female', experience: 'advanced', reviewMode: 'quick_checkin', age: 'bad' },
+      }))
+
+      store._reloadFromStorage()
+
+      expect(store.coachProfile).toMatchObject({ sex: 'female', experience: 'advanced', reviewMode: 'quick_checkin' })
+      expect(store.coachProfile.age).toBeNull()
+    })
+  })
+
+  // LIFT-1223: Exercise.barWeight is stored in the user's DISPLAY unit, so a real
+  // unit toggle must convert the stored numbers or the plate math silently
+  // reinterprets them (a 20 kg bar becomes 20 lbs).
+  describe('bar-weight conversion on unit toggle (LIFT-1223)', () => {
+    it('converts stored bar weights when toggling kg → lbs', () => {
+      store.setWeightUnit('kg')
+      const workout = useWorkoutStore()
+      const id = workout.addExercise('Squat')!
+      workout.setExerciseBarWeight(id, 20) // 20 kg bar
+
+      store.setWeightUnit('lbs')
+
+      const bar = workout.exercises.find((e) => e.id === id)!.barWeight
+      expect(bar).toBe(45) // 20 kg snaps to the standard 45 lb bar, not a raw 20
+      // Plate math now loads against the converted lbs bar.
+      expect(platesToWeight([45], bar!)).toBe(135)
+    })
+
+    it('converts stored bar weights when toggling lbs → kg', () => {
+      store.setWeightUnit('lbs')
+      const workout = useWorkoutStore()
+      const id = workout.addExercise('Bench')!
+      workout.setExerciseBarWeight(id, 45) // standard 45 lb bar
+
+      store.setWeightUnit('kg')
+
+      expect(workout.exercises.find((e) => e.id === id)!.barWeight).toBe(20)
+    })
+
+    it('leaves bar weights untouched when the unit does not actually change', () => {
+      store.setWeightUnit('lbs')
+      const workout = useWorkoutStore()
+      const id = workout.addExercise('Deadlift')!
+      workout.setExerciseBarWeight(id, 45)
+
+      store.setWeightUnit('lbs')
+
+      expect(workout.exercises.find((e) => e.id === id)!.barWeight).toBe(45)
+    })
+
+    it('does not touch exercises that have no explicit bar weight', () => {
+      store.setWeightUnit('lbs')
+      const workout = useWorkoutStore()
+      const id = workout.addExercise('Curl')!
+
+      store.setWeightUnit('kg')
+
+      // Undefined stays undefined — it falls back to the unit-aware default.
+      expect(workout.exercises.find((e) => e.id === id)!.barWeight).toBeUndefined()
     })
   })
 })

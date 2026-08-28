@@ -44,7 +44,10 @@
           </div>
           <div class="wcBestSetName">{{ summary.bestSet.name }}</div>
           <div class="wcBestSetWeight">{{ summary.bestSet.weight }} × {{ summary.bestSet.reps }}</div>
-          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM</div>
+          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM<InfoPopover
+            label="e1RM"
+            title="Estimated 1-rep max"
+          >Your predicted max for a single all-out rep, calculated from the weight and reps you lifted.</InfoPopover></div>
         </section>
       </template>
 
@@ -73,6 +76,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, defineAsyncComponent } from 'vue'
 import { useModal } from '../composables/useModal'
+import InfoPopover from './InfoPopover.vue'
 import type { SessionSummary } from '../lib/sessionSummary'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
@@ -85,30 +89,30 @@ function openPicker() {
   pickerOpen.value = true
 }
 
-const { open: activateTrap, close: deactivateTrap } = useModal({ selector: '.wcOverlay' })
+// Background-scroll lock, focus trap, and the single Escape listener are all
+// owned by useModal now. onEscape closes the topmost open layer: the nested
+// share sheet if it's up (SharePickerSheet delegates its Escape to this
+// parent), otherwise the summary view itself.
+const { open: activateTrap, close: deactivateTrap } = useModal({
+  selector: '.wcOverlay',
+  onEscape: () => {
+    if (pickerOpen.value) {
+      pickerOpen.value = false
+      return
+    }
+    emit('close')
+  },
+})
 
 const summary = computed(() => props.summary)
 
 const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))
 
-function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  // Single Escape owner for both layers — close the topmost open thing.
-  if (pickerOpen.value) {
-    pickerOpen.value = false
-    return
-  }
-  emit('close')
-}
-onMounted(async () => {
-  document.documentElement.classList.add('modal-open')
-  window.addEventListener('keydown', onKey)
+onMounted(() => {
   activateTrap()
 })
 onUnmounted(() => {
-  document.documentElement.classList.remove('modal-open')
-  window.removeEventListener('keydown', onKey)
   deactivateTrap()
 })
 </script>

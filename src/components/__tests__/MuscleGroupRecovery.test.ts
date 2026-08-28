@@ -224,5 +224,14 @@ describe('MuscleGroupRecovery', () => {
       const wrapper = mountRecovery()
       expect(wrapper.find('.mgTitle').text()).toBe('Recovery')
     })
+
+    // LIFT-856: the section title must be a level-2 heading so it appears in the
+    // heading outline under the Calendar view's <h1> (WCAG 1.3.1 / 2.4.10).
+    it('exposes Recovery as an h2 section heading', () => {
+      const wrapper = mountRecovery()
+      const h2s = wrapper.findAll('h2')
+      expect(h2s).toHaveLength(1)
+      expect(h2s[0].text()).toBe('Recovery')
+    })
   })
 })

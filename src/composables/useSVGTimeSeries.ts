@@ -1,4 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
+import { formatShortDate } from '../lib/dates'
 
 /** Input data point: a date string (YYYY-MM-DD) and a numeric value. */
 export interface TimeSeriesEntry {
@@ -45,6 +46,7 @@ export interface UseSVGTimeSeriesReturn {
   chartH: number
   minVal: ComputedRef<number>
   maxVal: ComputedRef<number>
+  midVal: ComputedRef<number>
   points: ComputedRef<GraphPoint[]>
   linePoints: ComputedRef<string>
   areaPoints: ComputedRef<string>
@@ -53,6 +55,23 @@ export interface UseSVGTimeSeriesReturn {
   shouldShowLabel: (i: number) => boolean
   valueToY: (value: number) => number
   formatDate: (iso: string) => string
+  readoutBox: (point: { x: number; y: number }, label: string) => ReadoutBox
+}
+
+/** Geometry for a floating value-readout bubble anchored to a chart point. */
+export interface ReadoutBox {
+  /** Top-left x of the bubble rect. */
+  x: number
+  /** Top-left y of the bubble rect. */
+  y: number
+  /** Bubble width. */
+  w: number
+  /** Bubble height. */
+  h: number
+  /** Centre x for the label text. */
+  tx: number
+  /** Baseline y for the label text. */
+  ty: number
 }
 
 export function useSVGTimeSeries(
@@ -93,6 +112,9 @@ export function useSVGTimeSeries(
     }
     return max
   })
+
+  /** Midpoint value, aligned with the middle horizontal gridline. */
+  const midVal = computed(() => (minVal.value + maxVal.value) / 2)
 
   /** Map data entries to SVG coordinates. Returns [] if fewer than 2 points. */
   const points = computed((): GraphPoint[] => {
@@ -169,12 +191,28 @@ export function useSVGTimeSeries(
     return PAD_T + chartH - ((value - minVal.value) / range) * chartH
   }
 
-  /** Format an ISO date string for x-axis labels (e.g. "Jan 5"). */
+  /** Format a YYYY-MM-DD key for x-axis labels (e.g. "Jan 5"). Noon-anchored
+   *  so the rendered day can't roll over at the timezone boundary. */
   function formatDate(iso: string): string {
-    return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    })
+    return formatShortDate(iso + 'T12:00:00')
+  }
+
+  /**
+   * Compute geometry for a floating value-readout bubble anchored above a point
+   * (used by the touch scrubber). The bubble is centred on the point, clamped
+   * horizontally to the chart bounds, and flips below the point when it would
+   * otherwise clip the top of the chart.
+   */
+  function readoutBox(point: { x: number; y: number }, label: string): ReadoutBox {
+    const charW = 5.6
+    const padX = 7
+    const h = 17
+    const w = Math.min(label.length * charW + padX * 2, chartW)
+    let x = point.x - w / 2
+    x = Math.max(PAD_L, Math.min(x, W - PAD_R - w))
+    let y = point.y - h - 9
+    if (y < PAD_T) y = point.y + 9
+    return { x, y, w, h, tx: x + w / 2, ty: y + h / 2 + 3.4 }
   }
 
   return {
@@ -190,6 +228,7 @@ export function useSVGTimeSeries(
     // Computed values
     minVal,
     maxVal,
+    midVal,
     points,
     linePoints,
     areaPoints,
@@ -199,5 +238,6 @@ export function useSVGTimeSeries(
     shouldShowLabel,
     valueToY,
     formatDate,
+    readoutBox,
   }
 }

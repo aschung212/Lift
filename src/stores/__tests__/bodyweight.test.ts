@@ -3,9 +3,11 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useBodyweightStore } from '../bodyweight'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
+const uuidCounter = vi.hoisted(() => ({ n: 0 }))
+
 vi.mock('../../lib/uuid', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
-  return { ...actual, uuid: () => 'bw-uuid-' + Math.random().toString(36).slice(2, 8) }
+  return { ...actual, uuid: () => `bw-uuid-${uuidCounter.n++}` }
 })
 
 const localStorageMock = getLocalStorageMock()
@@ -14,6 +16,7 @@ describe('useBodyweightStore', () => {
   let store: ReturnType<typeof useBodyweightStore>
 
   beforeEach(() => {
+    uuidCounter.n = 0
     localStorageMock.clear()
     setActivePinia(createPinia())
     store = useBodyweightStore()
@@ -252,6 +255,19 @@ describe('useBodyweightStore', () => {
       setActivePinia(createPinia())
       const freshStore = useBodyweightStore()
       expect(freshStore.entries).toEqual([])
+    })
+
+    it('drops individually malformed entries on load (LIFT-946)', () => {
+      localStorageMock.setItem('bodyweight-entries', JSON.stringify([
+        { id: 'good-1', date: '2024-01-01T12:00:00.000Z', weight: 180 },
+        { id: 'bad-1', date: '2024-01-02T12:00:00.000Z', weight: 'heavy' }, // non-numeric weight
+        { id: 'bad-2', weight: 178 }, // missing date
+        { id: 'good-2', date: '2024-01-03T12:00:00.000Z', weight: 179 },
+      ]))
+
+      setActivePinia(createPinia())
+      const freshStore = useBodyweightStore()
+      expect(freshStore.entries.map(e => e.id)).toEqual(['good-1', 'good-2'])
     })
   })
 

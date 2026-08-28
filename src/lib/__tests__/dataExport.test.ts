@@ -59,6 +59,11 @@ describe('dataExport', () => {
       expect(data.userIdHash).toBe('abc123')
     })
 
+    it('labels the weight unit so re-imports never guess (LIFT-1215)', () => {
+      const data = buildJsonExport(metadata, exercises, bodyweight, progression)
+      expect(data.units).toBe('lbs')
+    })
+
     it('includes exportDate in output', () => {
       const data = buildJsonExport(metadata, exercises, bodyweight, progression)
       expect(data.exportDate).toBe('2026-04-05T12:00:00.000Z')
@@ -96,13 +101,13 @@ describe('dataExport', () => {
     it('includes metadata comment header with version and user hash', () => {
       const csv = buildCsvExport(metadata, exercises, bodyweight)
       const lines = csv.split('\n')
-      expect(lines[0]).toBe('# Lift Export — 2026-04-05 — v1.0.0 — abc123')
+      expect(lines[0]).toBe('# Lift Export — 2026-04-05 — v1.0.0 — abc123 — weights in lbs')
     })
 
     it('includes column header row', () => {
       const csv = buildCsvExport(metadata, exercises, bodyweight)
       const lines = csv.split('\n')
-      expect(lines[1]).toBe('Exercise,Date,Weight,Reps,Estimated 1RM,Tags,RPE')
+      expect(lines[1]).toBe('Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags,RPE')
     })
 
     it('includes exercise set data rows', () => {
@@ -113,7 +118,7 @@ describe('dataExport', () => {
 
     it('includes bodyweight section when entries exist', () => {
       const csv = buildCsvExport(metadata, exercises, bodyweight)
-      expect(csv).toContain('Date,Body Weight')
+      expect(csv).toContain('Date,Body Weight (lbs)')
       expect(csv).toContain('2026-04-05,185')
     })
 

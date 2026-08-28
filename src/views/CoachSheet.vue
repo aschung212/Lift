@@ -1,0 +1,781 @@
+<template>
+  <Teleport to="body">
+    <div
+      class="repMaxOverlay coachOverlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="coachSheetTitle"
+      @click.self="close"
+      @keydown.escape="close"
+    >
+      <div class="repMaxModal coachSheet">
+        <header class="coachHeader">
+          <div class="coachHeaderText">
+            <h2 id="coachSheetTitle" class="coachTitle">AI Review</h2>
+            <p class="coachSub">{{ mode === 'byo' ? 'Bring your own AI' : quotaLabel }}</p>
+          </div>
+          <button class="coachClose" @click="close" aria-label="Close AI review">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </header>
+
+        <!-- Bring-your-own-AI export (open loop): build a paste-ready prompt +
+             training data; the coaching lives in the user's own chat (#931). -->
+        <div v-if="mode === 'byo'" class="coachBody">
+          <p class="coachIntro">
+            Build a summary of your recent training, then paste it into your own AI
+            chat — Claude, ChatGPT, or any other — for a written review.
+          </p>
+
+          <div class="coachModeRow" role="group" aria-label="Review depth">
+            <button
+              v-for="opt in REVIEW_MODES"
+              :key="opt.value"
+              type="button"
+              :class="['coachModeSeg', { on: reviewMode === opt.value }]"
+              :aria-pressed="reviewMode === opt.value"
+              @click="setReviewMode(opt.value)"
+            >
+              <span class="coachModeSegTitle">{{ opt.label }}</span>
+              <span class="coachModeSegHint">{{ opt.hint }}</span>
+            </button>
+          </div>
+
+          <button class="coachProfileRow" @click="profileOpen = true">
+            <span class="coachProfileRowText">
+              <span class="coachProfileRowTitle">Your profile</span>
+              <span class="coachProfileRowMeta">{{ profileMetaLabel }}</span>
+            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+
+          <div class="coachToggleRow">
+            <div class="coachToggleLabel">
+              <span class="coachToggleTitle">Include bodyweight</span>
+              <span class="coachToggleHint">Your logged bodyweight is the most personal field.</span>
+            </div>
+            <button
+              :class="['glassToggle', { on: includeBodyweight }]"
+              role="switch"
+              :aria-checked="includeBodyweight"
+              :aria-label="includeBodyweight ? 'Exclude bodyweight from the export' : 'Include bodyweight in the export'"
+              @click="includeBodyweight = !includeBodyweight"
+            >
+              <span class="glassToggleThumb"></span>
+            </button>
+          </div>
+
+          <p class="coachPrivacyNote">
+            Nothing leaves Lift until you paste it — this only copies your training
+            data and profile to your clipboard or saves it to a file.
+          </p>
+
+          <div class="coachExportActions">
+            <button class="coachPrimaryBtn" :disabled="!canGenerate" @click="copyExport">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              {{ copyLabel }}
+            </button>
+            <button class="coachSecondaryBtn" :disabled="!canGenerate" @click="downloadExport">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+              Download file
+            </button>
+          </div>
+          <p v-if="!canGenerate" class="coachHint">{{ disabledReason }}</p>
+
+          <details class="coachPromptPreview">
+            <summary class="coachPromptSummary">Preview what gets shared</summary>
+            <pre class="coachPromptText">{{ exportText }}</pre>
+          </details>
+        </div>
+
+        <!-- pick / idle -->
+        <div v-else-if="coach.state.value === 'idle'" class="coachBody">
+          <p class="coachIntro">
+            A quick, AI-written read of your recent training — what's progressing, where your
+            volume sits, how consistent you've been, and the single thing to focus on next.
+          </p>
+          <button
+            class="coachPrimaryBtn"
+            :disabled="!canGenerate"
+            @click="generate"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+            Generate review
+          </button>
+          <p v-if="!canGenerate" class="coachHint">{{ disabledReason }}</p>
+        </div>
+
+        <!-- loading -->
+        <div v-else-if="coach.state.value === 'loading'" class="coachBody">
+          <p class="coachStatus" role="status" aria-live="polite">
+            <span class="coachStatusDot" aria-hidden="true"></span>
+            Reading your training and writing your review…
+          </p>
+          <SkeletonLoader :rows="3" />
+        </div>
+
+        <!-- result -->
+        <div v-else-if="coach.state.value === 'result' && coach.review.value" class="coachBody">
+          <p class="coachHeadline">{{ coach.review.value.headline }}</p>
+          <div
+            v-for="(section, i) in coach.review.value.sections"
+            :key="i"
+            class="coachSection wtPrTargets"
+          >
+            <div class="coachSectionHead">
+              <span class="coachSectionTag">{{ sectionLabel(section.type) }}</span>
+              <span v-if="section.metric" class="coachSectionMetric">
+                {{ section.metric.label }} <strong>{{ section.metric.value }}</strong>
+              </span>
+            </div>
+            <p class="coachSectionTitle">{{ section.title }}</p>
+            <p class="coachSectionBody">{{ section.body }}</p>
+          </div>
+          <div v-if="coach.review.value.focusNext" class="coachFocus">
+            <span class="coachFocusTag">Focus next</span>
+            <p class="coachFocusBody">{{ coach.review.value.focusNext }}</p>
+          </div>
+          <button class="coachSecondaryBtn" @click="close">Done</button>
+        </div>
+
+        <!-- error / quota -->
+        <div v-else class="coachBody">
+          <div class="coachError">
+            <svg class="coachErrorIcon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p class="coachErrorMsg">{{ errorMessage }}</p>
+          </div>
+          <button
+            v-if="coach.errorKind.value === 'quota_exceeded'"
+            class="coachSecondaryBtn"
+            @click="close"
+          >Got it</button>
+          <button
+            v-else-if="coach.errorRetryable.value"
+            class="coachPrimaryBtn"
+            @click="generate"
+          >Try again</button>
+          <button v-else class="coachSecondaryBtn" @click="close">Close</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <CoachProfileSheet v-if="profileOpen" @close="profileOpen = false" />
+</template>
+
+<script setup lang="ts">
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
+import SkeletonLoader from '../components/SkeletonLoader.vue'
+import { useModal } from '../composables/useModal'
+import { useCoach } from '../composables/useCoach'
+import { useAnalytics } from '../composables/useAnalytics'
+import { useWorkoutStore } from '../stores/workout'
+import { useBodyweightStore } from '../stores/bodyweight'
+import { useProgressionStore } from '../stores/progression'
+import { usePreferencesStore } from '../stores/preferences'
+import { useWeightUnit } from '../composables/useWeightUnit'
+import { buildCoachPayload, type ExerciseOverload } from '../lib/coachDigest'
+import type { CoachSectionType } from '../lib/aiCoach'
+import { COACH_MODE, buildCoachExportText, coachExportFilename } from '../lib/coachExport'
+import { buildAthleteBlock, profileCompleteness, type ReviewMode } from '../lib/coachProfile'
+import { todayISO } from '../lib/dates'
+import { isPreviewMode } from '../lib/supabase'
+
+const CoachProfileSheet = defineAsyncComponent(() => import('./CoachProfileSheet.vue'))
+
+const props = withDefaults(
+  defineProps<{ mode?: 'byo' | 'server' }>(),
+  { mode: COACH_MODE },
+)
+const mode = computed(() => props.mode)
+
+const emit = defineEmits<{ (e: 'close'): void }>()
+
+// Own the scroll lock + focus trap (#830). focusContainer so the dialog itself
+// takes focus on open rather than the primary button (no text inputs here, but
+// keeps the open consistent with the other top-anchored modals).
+const { open: activateModal, close: deactivateModal } = useModal({
+  selector: '.coachSheet',
+  focusContainer: true,
+})
+
+const coach = useCoach()
+const { logEvent } = useAnalytics()
+const store = useWorkoutStore()
+const bodyweightStore = useBodyweightStore()
+const progressionStore = useProgressionStore()
+const prefs = usePreferencesStore()
+const { weightUnit, displayWeight } = useWeightUnit()
+
+const canGenerate = computed(() => !isPreviewMode.value)
+const disabledReason = computed(() =>
+  isPreviewMode.value ? 'Coach is unavailable on preview builds.' : '',
+)
+
+const quotaLabel = computed(() => {
+  const n = coach.remaining.value
+  if (n === null) return 'AI-written, once a week'
+  if (n <= 0) {
+    const days = coach.resetDays.value
+    return days && days > 0 ? `Resets in ${days} ${days === 1 ? 'day' : 'days'}` : 'No reviews left'
+  }
+  return `${n} ${n === 1 ? 'review' : 'reviews'} left this week`
+})
+
+const SECTION_LABELS: Record<CoachSectionType, string> = {
+  progress: 'Progress',
+  volume: 'Volume',
+  consistency: 'Consistency',
+  focus: 'Focus',
+}
+function sectionLabel(type: CoachSectionType): string {
+  return SECTION_LABELS[type] ?? 'Note'
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+  unauthorized: 'Sign in to get your AI review.',
+  email_unverified: 'Verify your email to use Coach.',
+  consent_required: "You'll need to accept the Coach privacy terms before your training is reviewed.",
+  paused: 'Coach is resting for today — try again tomorrow.',
+  disabled: "Coach isn't available right now.",
+  too_large: 'Your training history is too large to review right now.',
+  insufficient: 'Log a bit more training first — Coach needs a couple of sessions to work from.',
+  bad_output: 'Something went wrong writing your review. Try again.',
+  unavailable: 'Coach couldn’t produce a review this time. Try again.',
+  timeout: 'That took too long. Try again.',
+  network: 'You appear to be offline. Try again when you’re connected.',
+  unknown: 'Something went wrong. Try again.',
+}
+const errorMessage = computed(() => {
+  const kind = coach.errorKind.value
+  if (kind === 'quota_exceeded') {
+    const days = coach.resetDays.value
+    return days && days > 0
+      ? `You're out of reviews this week. Resets in ${days} ${days === 1 ? 'day' : 'days'}.`
+      : "You're out of reviews this week."
+  }
+  return (kind && ERROR_MESSAGES[kind]) || ERROR_MESSAGES.unknown
+})
+
+function buildPayload(includeBodyweightEntries = true) {
+  const overloads: ExerciseOverload[] = store.exercises.map((ex) => ({
+    exerciseName: ex.name,
+    suggestion: store.getOverloadSuggestion(ex.id, todayISO()),
+  }))
+  return buildCoachPayload({
+    exercises: store.exercises,
+    bodyweightEntries: includeBodyweightEntries ? bodyweightStore.entries : [],
+    overloads,
+    weightUnit: weightUnit.value,
+    weeklyTarget: progressionStore.weeklyTarget,
+    streakWeeks: progressionStore.streakWeeks,
+    toDisplayUnits: (lb) => displayWeight(lb),
+  })
+}
+
+// ── Bring-your-own-AI export (#931) ──────────────────────────────
+const includeBodyweight = ref(true)
+
+// Athlete profile (individualization) + review depth, both from the synced store.
+const profileMeter = computed(() => profileCompleteness(prefs.coachProfile))
+const reviewMode = computed<ReviewMode>(() => prefs.coachProfile.reviewMode)
+const profileOpen = ref(false)
+function setReviewMode(m: ReviewMode) {
+  if (prefs.coachProfile.reviewMode !== m) prefs.setCoachProfile({ reviewMode: m })
+}
+const REVIEW_MODES: { value: ReviewMode; label: string; hint: string }[] = [
+  { value: 'deep_audit', label: 'Deep audit', hint: 'Full programming analysis' },
+  { value: 'quick_checkin', label: 'Quick check-in', hint: 'Short & skimmable' },
+]
+const profileMetaLabel = computed(() =>
+  profileMeter.value.filled
+    ? `${profileMeter.value.filled}/${profileMeter.value.total} added · personalizes every review`
+    : 'Add your profile to personalize the review',
+)
+
+const exportText = computed(() =>
+  buildCoachExportText(
+    buildPayload(includeBodyweight.value),
+    buildAthleteBlock(prefs.coachProfile),
+  ),
+)
+
+const copyState = ref<'idle' | 'copied' | 'error'>('idle')
+const copyLabel = computed(() =>
+  copyState.value === 'copied'
+    ? 'Copied to clipboard'
+    : copyState.value === 'error'
+      ? 'Copy failed — try again'
+      : 'Copy to clipboard',
+)
+let copyResetTimer: ReturnType<typeof setTimeout> | undefined
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    /* clipboard blocked or unavailable — fall through */
+  }
+  return false
+}
+
+async function copyExport() {
+  if (!canGenerate.value) return
+  const ok = await copyToClipboard(exportText.value)
+  copyState.value = ok ? 'copied' : 'error'
+  // Analytics carry only booleans/counts — never the training data itself.
+  logEvent('coach_export_copied', {
+    ok,
+    bodyweight: includeBodyweight.value,
+    mode: reviewMode.value,
+    profile: profileMeter.value.filled,
+  })
+  clearTimeout(copyResetTimer)
+  copyResetTimer = setTimeout(() => { copyState.value = 'idle' }, 2500)
+}
+
+function downloadExport() {
+  if (!canGenerate.value) return
+  const blob = new Blob([exportText.value], { type: 'text/markdown' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = coachExportFilename(todayISO())
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  logEvent('coach_export_downloaded', {
+    bodyweight: includeBodyweight.value,
+    mode: reviewMode.value,
+    profile: profileMeter.value.filled,
+  })
+}
+
+async function generate() {
+  if (!canGenerate.value) return
+  // Analytics carry only types/counts — never insight text or exercise names.
+  logEvent('coach_review_requested', { sets: store.exercises.reduce((n, e) => n + e.sets.length, 0) })
+  const payload = buildPayload()
+  await coach.generate(payload)
+  if (coach.state.value === 'result') {
+    logEvent('coach_review_succeeded', { sections: coach.review.value?.sections.length ?? 0 })
+  } else if (coach.state.value === 'error') {
+    logEvent('coach_review_failed', { kind: coach.errorKind.value ?? 'unknown' })
+  }
+}
+
+function close() {
+  emit('close')
+}
+
+onMounted(() => {
+  coach.reset()
+  activateModal()
+  logEvent('coach_opened', {})
+})
+onUnmounted(() => {
+  clearTimeout(copyResetTimer)
+  deactivateModal()
+})
+</script>
+
+<style scoped>
+.coachSheet {
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.coachHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.coachTitle {
+  margin: 0;
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: var(--font-title2);
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.coachSub {
+  margin: 4px 0 0;
+  font-family: var(--ff);
+  font-weight: 500;
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+}
+
+.coachClose {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.coachClose:active {
+  background: var(--bg-elevated);
+}
+
+.coachBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.coachIntro {
+  margin: 0;
+  font-family: var(--ff);
+  font-size: var(--font-callout);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.coachPrimaryBtn,
+.coachSecondaryBtn {
+  min-height: 48px;
+  border-radius: 14px;
+  font-family: var(--ff);
+  font-weight: 700;
+  font-size: var(--font-callout);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.coachPrimaryBtn {
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  border: 0;
+}
+
+.coachPrimaryBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.coachSecondaryBtn {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+}
+
+.coachHint {
+  margin: -4px 0 0;
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Bring-your-own-AI export (#931) ── */
+.coachModeRow {
+  display: flex;
+  gap: 8px;
+}
+
+.coachModeSeg {
+  flex: 1 1 0;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.coachModeSeg.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+}
+
+.coachModeSegTitle {
+  font-family: var(--ff);
+  font-weight: 700;
+  font-size: var(--font-footnote);
+}
+
+.coachModeSegHint {
+  font-family: var(--ff);
+  font-size: var(--font-caption2, 11px);
+  opacity: 0.85;
+}
+
+.coachProfileRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.coachProfileRow:active {
+  background: var(--bg-secondary, var(--bg-elevated));
+}
+
+.coachProfileRowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.coachProfileRowTitle {
+  font-family: var(--ff);
+  font-weight: 600;
+  font-size: var(--font-callout);
+  color: var(--text-primary);
+}
+
+.coachProfileRowMeta {
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+}
+
+.coachToggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.coachToggleLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.coachToggleTitle {
+  font-family: var(--ff);
+  font-weight: 600;
+  font-size: var(--font-callout);
+  color: var(--text-primary);
+}
+
+.coachToggleHint {
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  color: var(--text-muted);
+}
+
+.coachPrivacyNote {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.coachExportActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.coachPromptPreview {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.coachPromptSummary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-family: var(--ff);
+  font-weight: 600;
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.coachPromptSummary::-webkit-details-marker {
+  display: none;
+}
+
+.coachPromptText {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-family: var(--ff-mono, ui-monospace, monospace);
+  font-size: var(--font-caption2, 11px);
+  line-height: 1.4;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.coachStatus {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--ff);
+  font-size: var(--font-callout);
+  color: var(--text-secondary);
+}
+
+.coachStatusDot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: coachPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes coachPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.coachHeadline {
+  margin: 0;
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: var(--font-title3);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.coachSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.coachSectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.coachSectionTag {
+  font-family: var(--ff-mono);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.coachSectionMetric {
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+}
+
+.coachSectionTitle {
+  margin: 0;
+  font-family: var(--ff);
+  font-weight: 600;
+  font-size: var(--font-callout);
+  color: var(--text-primary);
+}
+
+.coachSectionBody {
+  margin: 0;
+  font-family: var(--ff);
+  font-size: var(--font-footnote);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.coachFocus {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--accent-subtle, var(--bg-elevated));
+  border: 1px solid var(--accent);
+}
+
+.coachFocusTag {
+  font-family: var(--ff-mono);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.coachFocusBody {
+  margin: 0;
+  font-family: var(--ff);
+  font-weight: 500;
+  font-size: var(--font-callout);
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.coachError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 12px 8px;
+  color: var(--text-secondary);
+}
+
+.coachErrorIcon {
+  color: var(--text-muted);
+}
+
+.coachErrorMsg {
+  margin: 0;
+  font-family: var(--ff);
+  font-size: var(--font-callout);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+</style>

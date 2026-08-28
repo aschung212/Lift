@@ -36,6 +36,31 @@ function getVueStyleBlock(componentPath: string): string {
 }
 
 describe('CSS regression tests', () => {
+  describe('viewport-height unit convention (LIFT-1099)', () => {
+    // Full-height/max-height surfaces must all use `svh` (smallest viewport
+    // height). svh always fits regardless of browser-chrome state, so a nested
+    // surface can never exceed the 100svh #app shell and get clipped, nor jump
+    // when the URL bar collapses. `dvh`/`lvh`/bare `vh` are larger and are the
+    // exact overflow risk this convention forbids. Any `<number>vh` token in a
+    // property value must be prefixed with `s` (i.e. `svh`).
+    it('uses only svh for every viewport-height value', () => {
+      // Match a numeric length followed by an optional s/d/l prefix and `vh`
+      // (svh, dvh, lvh, or bare vh — all forbidden except svh).
+      const matches = css.match(/\d+(?:\.\d+)?(?:s|d|l)?vh\b/g) ?? []
+      expect(matches.length, 'expected viewport-height units to exist').toBeGreaterThan(0)
+      const offenders = matches.filter(m => !/svh\b/.test(m))
+      expect(
+        offenders,
+        `non-svh viewport-height units found (use svh — see LIFT-1099): ${offenders.join(', ')}`
+      ).toEqual([])
+    })
+
+    it('sizes the #app shell in svh', () => {
+      const lines = getRuleLines('#app')
+      expect(lines.some(l => l.startsWith('height: 100svh'))).toBe(true)
+    })
+  })
+
   describe('.tabContent base rule', () => {
     const lines = getRuleLines('.tabContent')
 
@@ -51,6 +76,17 @@ describe('CSS regression tests', () => {
 
     it('has overflow-y: auto for scrolling', () => {
       expect(lines.some(l => l.includes('overflow-y') && l.includes('auto'))).toBe(true)
+    })
+
+    // Regression: keyboard/screen-reader focus must clear the fixed tab bar
+    // (WCAG 2.2 SC 2.4.11 Focus Not Obscured). Without scroll-padding-bottom the
+    // browser scrolls focused rows flush to the viewport edge, tucking them
+    // under the floating glass bar (LIFT-681).
+    it('has scroll-padding-bottom so focus clears the fixed tab bar', () => {
+      const rule = lines.find(l => l.startsWith('scroll-padding-bottom'))
+      expect(rule).toBeTruthy()
+      // Must account for the safe-area inset on notched devices
+      expect(rule).toContain('safe-area-inset-bottom')
     })
   })
 
@@ -91,6 +127,30 @@ describe('CSS regression tests', () => {
     // Regression: drag handle hidden behind Dynamic Island in PWA mode (PR #28)
     it('accounts for safe-area-inset-top in max-height', () => {
       expect(lines.some(l => l.includes('safe-area-inset-top'))).toBe(true)
+    })
+  })
+
+  describe('.previewBanner is data-mode aware, not OS-color-scheme aware (LIFT-1097)', () => {
+    const lines = getRuleLines('.previewBanner')
+
+    // The app resolves light/dark explicitly via the data-mode attribute
+    // (useTheme applyResolvedMode), so a user who forces a mode opposite their
+    // OS still gets consistent styling. The banner must follow the same tokens
+    // instead of hardcoding hex and switching on prefers-color-scheme.
+    it('uses theme tokens for color/background/border, not hardcoded hex', () => {
+      expect(lines.some(l => l.startsWith('color:') && l.includes('var(--accent'))).toBe(true)
+      expect(lines.some(l => l.startsWith('background:') && l.includes('var(--accent-subtle'))).toBe(true)
+      expect(lines.some(l => l.startsWith('border-bottom:') && l.includes('var(--border'))).toBe(true)
+    })
+
+    it('does not hardcode hex colors', () => {
+      expect(lines.some(l => /#[0-9a-fA-F]{3,6}/.test(l))).toBe(false)
+    })
+
+    // Regression guard: prefers-color-scheme couples visuals to the OS scheme,
+    // breaking the data-mode invariant. index.css must contain zero such rules.
+    it('index.css has no prefers-color-scheme override', () => {
+      expect(css.includes('@media (prefers-color-scheme')).toBe(false)
     })
   })
 
@@ -174,6 +234,85 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.wtPrevSessionChip quick-fill / ladder chips (#741)', () => {
+    const lines = getRuleLines('.wtPrevSessionChip')
+
+    it('has min-height: 44px for iOS HIG touch target', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('keeps ladder state classes on theme tokens (no hardcoded colors)', () => {
+      const next = getRuleLines('.wtPrevSessionChipNext')
+      expect(next.some(l => l.includes('var(--accent-subtle)'))).toBe(true)
+      expect(next.some(l => l.includes('var(--accent)'))).toBe(true)
+      expect(next.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+    })
+  })
+
+  describe('destructive controls track the per-theme --danger token (LIFT-1098)', () => {
+    // Regression: several destructive controls hardcoded red literals
+    // (#ff6b6b, #ff4444) or a literal #fff on-danger text instead of the
+    // per-theme --danger / --text-on-accent tokens. Because --danger varies
+    // per theme (e.g. #ff5a5a vs #dc2626 vs #f87171), the fixed values drifted
+    // from the palette and could fall out of AA contrast in some themes.
+
+    it('.devBtnDanger uses --danger / --danger-subtle, no hardcoded hex', () => {
+      const lines = getRuleLines('.devBtnDanger')
+      expect(lines.length, '.devBtnDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('color: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('border-color: var(--danger-subtle)'))).toBe(true)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+    })
+
+    it('.wtEditDeleteConfirmDanger uses --danger bg with --text-on-accent text', () => {
+      const lines = getRuleLines('.wtEditDeleteConfirmDanger')
+      expect(lines.length, '.wtEditDeleteConfirmDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('background: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('color: var(--text-on-accent)'))).toBe(true)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+    })
+
+    it('.resetConfirmDanger uses --danger and drops the !important literal', () => {
+      // Scoped to .unlockDismiss so the token wins on specificity, not !important.
+      const lines = getRuleLines('.unlockDismiss.resetConfirmDanger')
+      expect(lines.length, '.unlockDismiss.resetConfirmDanger rule not found').toBeGreaterThan(0)
+      expect(lines.some(l => l.includes('background: var(--danger)'))).toBe(true)
+      expect(lines.some(l => l.includes('!important'))).toBe(false)
+      expect(lines.some(l => /#[0-9a-fA-F]{3,8}/.test(l))).toBe(false)
+      // The unscoped literal must be gone so the accent base cannot win.
+      expect(css).not.toContain('#ff4444 !important')
+    })
+  })
+
+  describe('.bwExportBtn bodyweight Health-export button (#1159)', () => {
+    const lines = getRuleLines('.bwExportBtn')
+
+    it('meets the 44px iOS HIG touch target in both dimensions', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    it('self-centers against the baseline-aligned hero row', () => {
+      expect(lines.some(l => l.includes('align-self') && l.includes('center'))).toBe(true)
+    })
+  })
+
+  describe('.topBarCoachBtn AI Review entry (#972)', () => {
+    // The AI Review entry moved from a full-width Workouts card to a compact
+    // top-bar icon on the Calendar tab; it must inherit the shared 44px
+    // top-bar button sizing (.settingsGearBtn, .topBarPlusBtn, .topBarCoachBtn).
+    const lines = getRuleLines('.topBarCoachBtn')
+
+    it('meets the 44px iOS HIG touch target via the shared top-bar rule', () => {
+      expect(lines.some(l => l.startsWith('width') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('the removed Workouts entry card does not linger in the stylesheet', () => {
+      expect(css.includes('.wtCoachCard')).toBe(false)
+    })
+  })
+
   describe('Vue component touch target compliance', () => {
     // jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
     // cannot verify sizing in component tests. These CSS regression tests
@@ -195,6 +334,22 @@ describe('CSS regression tests', () => {
       it('has min-height: 44px for iOS HIG touch target', () => {
         expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
       })
+    })
+  })
+
+  // #617: the RPE chips are a tiling radiogroup, so they must be SIZED to the
+  // 44pt floor — an absolutely-positioned ::before overlay would butt against
+  // the neighbouring chip and a near-miss would pick the wrong RPE (#990).
+  describe('RPE controls touch targets (#617)', () => {
+    it('.wtRPEChip is sized to 44px in both dimensions, not overlay-extended', () => {
+      const lines = getRuleLines('.wtRPEChip')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.wtRPEToggle has min-height: 44px for iOS HIG compliance', () => {
+      const lines = getRuleLines('.wtRPEToggle')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
     })
   })
 
@@ -225,6 +380,115 @@ describe('CSS regression tests', () => {
     const lines = getRuleLines('.wtTimerEditCountdown')
 
     it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtSuggestionSegment touch target (#759)', () => {
+    // The Suggestions-drawer segmented control is a new interactive element;
+    // each segment must meet the project's 44pt iOS touch-target minimum.
+    const lines = getRuleLines('.wtSuggestionSegment')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtExManagerLabel touch target (#1252)', () => {
+    // The exercise manager's row label is a tappable expander sitting beside
+    // the expand chevron. Its two text lines plus padding measure 43px on
+    // their own — one pixel under the floor — so the min-height is load-
+    // bearing, not decorative. Sizing (not a ::before overlay) is mandatory
+    // here: these labels tile vertically, so an oversized overlay would reach
+    // into the next row and expand the wrong exercise.
+    const lines = getRuleLines('.wtExManagerLabel')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('centers its stacked lines so the extra height is not top-aligned dead space', () => {
+      expect(lines.some(l => l.includes('justify-content') && l.includes('center'))).toBe(true)
+    })
+  })
+
+  describe('guided session plan touch targets (#1256)', () => {
+    // The plan card adds two interactive elements — the collapse toggle and
+    // the per-exercise rows; both must meet the 44pt iOS touch-target minimum.
+    it('.wtSessionPlanToggle has min-height: 44px', () => {
+      const lines = getRuleLines('.wtSessionPlanToggle')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.wtSessionPlanRow has min-height: 44px', () => {
+      const lines = getRuleLines('.wtSessionPlanRow')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtIntensitySlider touch target (#770)', () => {
+    // The Intensity-lens slider is a draggable control; its hit area must meet
+    // the project's 44pt iOS touch-target minimum.
+    const lines = getRuleLines('.wtIntensitySlider')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('intensity preset editor touch targets (#776)', () => {
+    // The Settings preset editor adds two new interactive controls; both must
+    // meet the project's 44pt iOS touch-target minimum.
+    it('.settingsPresetDelete is a 44x44 hit area', () => {
+      const lines = getRuleLines('.settingsPresetDelete')
+      expect(lines.some(l => l.includes('width') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.settingsPresetAdd has min-height: 44px', () => {
+      const lines = getRuleLines('.settingsPresetAdd')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
+  describe('.wtTagPickerChip touch target (#990)', () => {
+    // Regression: the picker chips carried only `padding: 8px 16px` around
+    // 13px text, so they measured 33px tall (38px in rows containing the
+    // larger --font-body "+" add chip, which stretches its row) — well under
+    // the project's 44pt iOS floor. The class is shared by five pickers:
+    // WorkoutTracker's new-exercise Tags and Gym rows, and EditExerciseModal's
+    // Tags, Equipment and Gym rows, so the height must live on the shared rule
+    // rather than being patched per surface.
+    //
+    // Sized rather than padded out with a transparent ::before hit-area (the
+    // .logSetFieldClear approach): that trick suits an isolated control ringed
+    // by inert whitespace, but these chips tile in a wrapping 8px-gap row, so
+    // 44px overlays over 33px pills would tile edge-to-edge and a near-miss in
+    // the gutter would toggle the neighbouring chip instead of doing nothing.
+    it('.wtTagPickerChip has min-height: 44px for iOS HIG compliance', () => {
+      const lines = getRuleLines('.wtTagPickerChip')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    // The chip must carry the height itself: .wtTagPicker is a plain flex row,
+    // so a chip alone in its row has nothing to stretch against.
+    it('does not depend on a fixed height that would clip wrapped labels', () => {
+      const lines = getRuleLines('.wtTagPickerChip')
+      expect(lines.some(l => /^height:/.test(l))).toBe(false)
+    })
+
+    // The "+" chip is the narrowest in every picker; its 44pt width comes from
+    // min-width, not from a text label.
+    it('.wtTagAddChip keeps min-width: 44px so the "+" is a full target', () => {
+      const lines = getRuleLines('.wtTagAddChip')
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    // The inline add input replaces the "+" chip in the same row. With no tags
+    // or gyms configured it is the only item in that row, so flex stretch alone
+    // would leave it at its natural 33px.
+    it('.wtTagInlineInput matches the 44pt floor it swaps in for', () => {
+      const lines = getRuleLines('.wtTagInlineInput')
       expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
     })
   })
@@ -475,5 +739,283 @@ describe('CSS regression tests', () => {
         expect(lines.some(l => l.includes('box-shadow') && l.includes(shadow))).toBe(true)
       })
     }
+  })
+
+  describe('forced-colors / High Contrast Mode glass borders (LIFT-682)', () => {
+    // Regression: in forced-colors mode the UA drops backdrop-filter and
+    // translucent backgrounds, so glass surfaces that rely on blur for
+    // separation blend into adjacent content (WCAG 2.2 SC 1.4.11). A
+    // @media (forced-colors: active) block must pin explicit system-color
+    // borders on every glass surface so boundaries stay visible.
+
+    function getAtRuleBody(query: string): string {
+      const needle = '@media (' + query + ') {'
+      const idx = css.indexOf(needle)
+      if (idx === -1) return ''
+      const start = css.indexOf('{', idx) + 1
+      let depth = 1
+      let end = start
+      while (depth > 0 && end < css.length) {
+        if (css[end] === '{') depth++
+        if (css[end] === '}') depth--
+        end++
+      }
+      return css.slice(start, end - 1)
+    }
+
+    const forcedBody = getAtRuleBody('forced-colors: active')
+
+    it('has a @media (forced-colors: active) block', () => {
+      expect(forcedBody.length).toBeGreaterThan(0)
+    })
+
+    const glassSurfaces = [
+      '.tabBar',
+      '.repMaxModal',
+      '.kbSheet',
+      '.legalSheet',
+      '.confirmSheet',
+      '.settingsSheet',
+      '.wtCard',
+      '.calCard',
+      '.wtSetCard',
+      '.wtGraphWrap',
+    ]
+
+    for (const selector of glassSurfaces) {
+      it(`forced-colors block targets ${selector}`, () => {
+        expect(forcedBody).toContain(selector)
+      })
+    }
+
+    it('uses a system color keyword (CanvasText) for the border', () => {
+      expect(forcedBody).toMatch(/border:\s*1px solid CanvasText/)
+    })
+
+    it('outlines the active-tab indicator with the Highlight system color', () => {
+      expect(forcedBody).toContain('.tabIndicator')
+      expect(forcedBody).toMatch(/border:\s*1px solid Highlight/)
+    })
+
+    it('has a @media (prefers-contrast: more) block strengthening glass edges', () => {
+      const contrastBody = getAtRuleBody('prefers-contrast: more')
+      expect(contrastBody.length).toBeGreaterThan(0)
+      expect(contrastBody).toContain('.tabBar')
+      expect(contrastBody).toContain('--border-strong')
+    })
+  })
+
+  describe('.logSetFieldClear 44pt touch target (LIFT-685)', () => {
+    // Regression: the inline "clear weight" × chip was a bare 24x24px button
+    // with padding:0 — exactly the WCAG 2.2 SC 2.5.8 floor but well below the
+    // project's own 44pt iOS standard, making it easy to mis-tap during fast
+    // set entry. Fix: keep the compact 24px visible chip but extend the tap
+    // target to 44x44pt via an absolutely-positioned ::before overlay so the
+    // layout (and the 44px weight value next to it) never shifts.
+    const lines = getRuleLines('.logSetSheet .logSetFieldClear')
+    const beforeLines = getRuleLines('.logSetSheet .logSetFieldClear::before')
+
+    it('keeps the visible chip at a compact 24px (no layout growth)', () => {
+      expect(lines.some(l => l.startsWith('width: 24px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height: 24px'))).toBe(true)
+    })
+
+    it('is position: relative to anchor the hit-area overlay', () => {
+      expect(lines.some(l => l.startsWith('position: relative'))).toBe(true)
+    })
+
+    it('has a ::before overlay sized to the 44pt iOS minimum', () => {
+      expect(beforeLines.length, '::before rule not found').toBeGreaterThan(0)
+      expect(beforeLines.some(l => l.startsWith('position: absolute'))).toBe(true)
+      expect(beforeLines.some(l => l.startsWith('width: 44px'))).toBe(true)
+      expect(beforeLines.some(l => l.startsWith('height: 44px'))).toBe(true)
+    })
+  })
+
+  describe('log-set sheet sticky save bar', () => {
+    // Regression: the log form (usual ladder + PR card + plate calc) grew
+    // taller than the 88svh sheet, pushing Save/Done below the fold — users
+    // had to scroll to find Save and could close the sheet thinking the set
+    // was logged. The action bar must stay pinned/visible at the sheet
+    // bottom while the form scrolls behind it.
+    const sheetLines = getRuleLines('.repMaxModal.logSetSheetForm')
+    const barLines = getRuleLines('.logSetSheetForm .repMaxActions')
+
+    it('form view is a flex column so the bar can pin to the sheet bottom', () => {
+      expect(sheetLines.some(l => l.startsWith('display: flex'))).toBe(true)
+      expect(sheetLines.some(l => l.startsWith('flex-direction: column'))).toBe(true)
+    })
+
+    it('moves the sheet bottom padding into the bar (bar sits flush)', () => {
+      expect(sheetLines.some(l => l.startsWith('padding-bottom: 0'))).toBe(true)
+      const pad = barLines.find(l => l.startsWith('padding:'))
+      expect(pad, 'bar must own the safe-area bottom padding').toContain('safe-area-inset-bottom')
+    })
+
+    it('form children keep natural height (overflow scrolls, not compresses)', () => {
+      const childLines = getRuleLines('.logSetSheetForm > *')
+      expect(childLines.some(l => l.startsWith('flex-shrink: 0'))).toBe(true)
+    })
+
+    it('action bar is sticky at bottom: 0 with an opaque-enough backdrop', () => {
+      expect(barLines.some(l => l.startsWith('position: sticky'))).toBe(true)
+      expect(barLines.some(l => l.startsWith('bottom: 0'))).toBe(true)
+      expect(barLines.some(l => l.startsWith('background:'))).toBe(true)
+    })
+
+    it('pins to the sheet bottom when content is short (margin-top: auto)', () => {
+      expect(barLines.some(l => l.startsWith('margin: auto'))).toBe(true)
+    })
+
+    it('has a glass-off fallback without backdrop-filter', () => {
+      const offLines = getRuleLines('[data-glass="off"] .logSetSheetForm .repMaxActions')
+      expect(offLines.some(l => l.startsWith('background: var(--bg-elevated)'))).toBe(true)
+      expect(offLines.some(l => l.startsWith('backdrop-filter: none'))).toBe(true)
+    })
+  })
+
+  describe('prefers-reduced-transparency fallback (LIFT-680)', () => {
+    // Regression: glass morphism is always on, but users who enable Reduce
+    // Transparency (iOS/macOS/Windows) expect blur/translucency swapped for
+    // solid surfaces. Without this media query, text over the always-on glass
+    // stays hard to read on busy mesh backgrounds.
+
+    // Extract the @media (prefers-reduced-transparency: reduce) block body.
+    function getMediaBlock(query: string, source = css): string {
+      const needle = '@media (' + query + ')'
+      const idx = source.indexOf(needle)
+      if (idx === -1) return ''
+      const start = source.indexOf('{', idx) + 1
+      let depth = 1
+      let end = start
+      while (depth > 0 && end < source.length) {
+        if (source[end] === '{') depth++
+        if (source[end] === '}') depth--
+        end++
+      }
+      return source.slice(start, end - 1)
+    }
+
+    const block = getMediaBlock('prefers-reduced-transparency: reduce')
+
+    it('declares a prefers-reduced-transparency: reduce media query', () => {
+      expect(block.length, 'media block not found in index.css').toBeGreaterThan(0)
+    })
+
+    it('disables backdrop-filter on the glass surfaces', () => {
+      // Every backdrop-filter declaration inside the block must be `none`.
+      const filters = block.match(/(?<!-webkit-)backdrop-filter:[^;]+;/g) || []
+      expect(filters.length).toBeGreaterThan(0)
+      for (const f of filters) {
+        expect(f).toContain('none')
+      }
+    })
+
+    it('gives the tab bar and content cards a solid background', () => {
+      expect(block).toMatch(/\.tabBar,[\s\S]*?\.calCard\s*\{[\s\S]*?background:\s*var\(--bg-secondary\)/)
+    })
+
+    it('gives modals and sheets a solid elevated background', () => {
+      expect(block).toMatch(/\.confirmSheet\s*\{[\s\S]*?background:\s*var\(--bg-elevated\)/)
+    })
+
+    it('removes blur from scrim overlays', () => {
+      for (const sel of ['.settingsOverlay', '.repMaxOverlay', '.kbOverlay', '.confirmOverlay']) {
+        expect(block, `${sel} missing from reduced-transparency block`).toContain(sel)
+      }
+    })
+
+    it('comes after the mobile backdrop-filter reduction block so it wins', () => {
+      const mobileIdx = css.indexOf('@media (max-width: 768px)')
+      const reduceIdx = css.indexOf('@media (prefers-reduced-transparency: reduce)')
+      expect(mobileIdx).toBeGreaterThan(-1)
+      expect(reduceIdx).toBeGreaterThan(mobileIdx)
+    })
+
+    it('PRBurst celebration backdrop has a reduced-transparency fallback', () => {
+      const vue = getVueStyleBlock('PRBurst.vue')
+      const prBlock = getMediaBlock('prefers-reduced-transparency: reduce', vue)
+      expect(prBlock.length, 'PRBurst reduced-transparency block not found').toBeGreaterThan(0)
+      expect(prBlock).toContain('backdrop-filter: none')
+    })
+  })
+})
+
+/**
+ * Regression: the type scale must stay anchored to rem, not fixed px, so text
+ * honors the user's preferred browser/OS text size and iOS Dynamic Type
+ * (WCAG 1.4.4 Resize Text, AA — LIFT-988). A fixed-px scale ignores text-only
+ * zoom, forcing low-vision users into full-page pinch-zoom + horizontal scroll.
+ */
+describe('type scale is rem-anchored (WCAG 1.4.4 — LIFT-988)', () => {
+  const fontTokens = [
+    '--font-caption2', '--font-caption1', '--font-footnote', '--font-subhead',
+    '--font-callout', '--font-body', '--font-headline', '--font-title3',
+    '--font-title2', '--font-title1', '--font-lg-title',
+    '--font-display-sm', '--font-display', '--font-display-lg',
+  ]
+
+  for (const token of fontTokens) {
+    it(`${token} is defined in rem, not px`, () => {
+      const decl = css.match(new RegExp(`${token}:\\s*([^;]+);`))
+      expect(decl, `${token} definition not found`).not.toBeNull()
+      const value = decl![1].trim()
+      expect(value, `${token} should be rem-based`).toMatch(/rem$/)
+      expect(value, `${token} must not use a fixed px size`).not.toMatch(/px/)
+    })
+  }
+
+  it('no font-size declaration in index.css uses a fixed px value', () => {
+    // Relative units (rem/em) scale with the user's text-size preference; px does not.
+    const pxFontSizes = css.match(/font-size:\s*[0-9.]+px/g)
+    expect(pxFontSizes, `found fixed-px font-size(s): ${pxFontSizes?.join(', ')}`).toBeNull()
+  })
+
+  it('does not pin the root font-size, so 1rem tracks the user preference', () => {
+    // A fixed `html { font-size: 16px }` would defeat rem-based scaling.
+    expect(css).not.toMatch(/\bhtml\s*\{[^}]*font-size:\s*\d+px/)
+  })
+})
+
+describe('Custom-property token definitions', () => {
+  // Every design token consumed via var(--x) must be declared somewhere in
+  // index.css (a :root block or a theme block). A reference with no matching
+  // declaration and no fallback silently resolves to the initial value —
+  // `background: var(--bg-tertiary)` rendered transparent in all 20 theme
+  // variants for months because the token was never defined (LIFT-1094).
+  const definedTokens = new Set<string>()
+  for (const m of css.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) {
+    definedTokens.add(m[1])
+  }
+
+  it('parsed a non-trivial set of token definitions', () => {
+    // Guards the test itself: if the regex silently matched nothing, the
+    // undefined-reference check below would pass vacuously.
+    expect(definedTokens.size).toBeGreaterThan(20)
+    expect(definedTokens.has('--bg-hover')).toBe(true)
+  })
+
+  it('every var(--token) reference resolves to a declared token', () => {
+    const undefinedRefs = new Set<string>()
+    // Capture the token name up to a comma (fallback) or the closing paren.
+    for (const m of css.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)\s*[,)]/g)) {
+      const token = m[1]
+      // A reference carrying its own fallback (var(--x, y)) degrades
+      // gracefully, so only flag bare references.
+      const hasFallback = m[0].includes(',')
+      if (!hasFallback && !definedTokens.has(token)) {
+        undefinedRefs.add(token)
+      }
+    }
+    expect(
+      [...undefinedRefs],
+      `undefined CSS custom properties referenced without a fallback: ${[...undefinedRefs].join(', ')}`,
+    ).toEqual([])
+  })
+
+  it('does not reintroduce the undefined --bg-tertiary token', () => {
+    // Pin the specific token that regressed so the fix cannot silently revert.
+    expect(css.includes('var(--bg-tertiary)')).toBe(false)
+    expect(definedTokens.has('--bg-tertiary')).toBe(false)
   })
 })
