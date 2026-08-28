@@ -1394,11 +1394,21 @@ export const useWorkoutStore = defineStore('workout', () => {
     exercises.value.filter((e: Exercise) => !!e.archived_at)
   )
 
-  /** Sorted unique workout dates (YYYY-MM-DD), derived from all sets. */
+  /**
+   * Sorted unique workout dates (local YYYY-MM-DD), derived from all sets.
+   *
+   * Bucketed via `setDayKey` (#746), not a raw `slice(0, 10)`: the dominant
+   * endOfDayISO stamp carries the chosen local day in its prefix, but the
+   * `logSet` no-date fallback and legacy/imported rows are real UTC instants,
+   * where an Americas-evening set's prefix already reads as tomorrow. This
+   * getter is the app's canonical "days you trained" list (streaks, the
+   * welcome-back gap, the install prompt), so a mis-bucketed day is visible
+   * everywhere at once.
+   */
   const workoutDates = computed((): string[] => {
     const dates = new Set<string>()
     exercises.value.forEach((e: Exercise) =>
-      e.sets.forEach((s: WorkoutSet) => dates.add(s.date.slice(0, 10)))
+      e.sets.forEach((s: WorkoutSet) => dates.add(setDayKey(s.date)))
     )
     return [...dates].sort()
   })
@@ -1427,7 +1437,13 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (!exercise || exercise.sets.length === 0) return { pr: 0, prSet: null }
     let best: WorkoutSet | null = null
     for (const s of exercise.sets) {
-      if (sinceDate && s.date.slice(0, 10) < sinceDate) continue
+      // `sinceDate` is a local day key, so the set must be bucketed with
+      // setDayKey (#746) to compare against it — a raw prefix would let a
+      // real-time-stamped set from the evening BEFORE the baseline read as
+      // the baseline day and still count as the PR. `filterSetsSinceBaseline`
+      // in setScoring.ts already buckets this same cutoff that way; the two
+      // must not disagree on the same question.
+      if (sinceDate && setDayKey(s.date) < sinceDate) continue
       // Strict `>` keeps the first set that reaches the max, matching the
       // prior reduce()/Math.max() tie-breaking behavior.
       if (!best || s.estimated1RM > best.estimated1RM) best = s
