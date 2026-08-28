@@ -2173,6 +2173,14 @@ html.theme-fading .settingsSheet {
   line-height: 1.3;
 }
 
+.settingsGroupNote {
+  margin: 0;
+  padding: 8px 16px 12px;
+  font-size: var(--font-caption1);
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
 .settingsSignOut {
   width: 100%;
   padding: 16px 16px;
