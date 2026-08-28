@@ -1,6 +1,17 @@
 <template>
   <div v-if="hasGraph" class="wtGraphWrap">
-    <p class="wtGraphTitle">{{ graphTitle }}</p>
+    <p class="wtGraphTitle">
+      {{ graphTitle }}
+      <span
+        v-if="plateau.isPlateau"
+        class="wtGraphPlateauBadge"
+        :aria-label="plateauLabel"
+        :title="plateauLabel"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+        Plateau
+      </span>
+    </p>
 
     <!-- Metric selector -->
     <div class="exGraphMetricRow" role="group" aria-label="Chart metric">
@@ -148,6 +159,7 @@ import { useWeightUnit } from '../composables/useWeightUnit'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
 import { useChartScrubber } from '../composables/useChartScrubber'
+import { detectPlateau } from '../lib/plateau'
 import type { Exercise } from '../stores/workout'
 import { effectiveSetWeight } from '../lib/bodyweightLoad'
 
@@ -253,6 +265,30 @@ const dailyBest = computed((): [string, number][] => {
   }
   return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
 })
+
+// Plateau/stall detection (LIFT-1025). Pinned to the daily-best e1RM series
+// (baseline-scoped, but independent of the selected metric, the graph's mode,
+// and the time window) so the badge reflects genuine strength stagnation in
+// the current training block — `dailyBest` can't be used here because it
+// reprojects onto whatever metric the selector shows (volume, reps, …).
+const dailyBestE1RM = computed((): { date: string; value: number }[] => {
+  const byDate: Record<string, number> = {}
+  const baseline = prBaselineDate.value
+  for (const s of props.exercise.sets) {
+    const day = s.date.slice(0, 10) // YYYY-MM-DD
+    if (baseline && day < baseline) continue
+    if (byDate[day] === undefined || s.estimated1RM > byDate[day]) byDate[day] = s.estimated1RM
+  }
+  return Object.entries(byDate)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, value]) => ({ date, value }))
+})
+
+const plateau = computed(() => detectPlateau(dailyBestE1RM.value))
+
+const plateauLabel = computed(
+  () => `No new estimated 1RM best in the last ${plateau.value.sessionsStalled} sessions`
+)
 
 const prOnly = computed((): [string, number][] => {
   const entries = dailyBest.value

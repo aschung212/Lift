@@ -282,6 +282,46 @@ describe('ExerciseGraph', () => {
     })
   })
 
+  describe('plateau badge (LIFT-1025)', () => {
+    it('does not render the badge while e1RM is progressing', () => {
+      const exercise = makeExercise([
+        makeSet(135, 5, '2026-01-01'),
+        makeSet(145, 5, '2026-01-08'),
+        makeSet(155, 5, '2026-01-15'),
+        makeSet(165, 5, '2026-01-22'),
+      ])
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      expect(wrapper.find('.wtGraphPlateauBadge').exists()).toBe(false)
+    })
+
+    it('renders the badge when best e1RM has stalled across recent sessions', () => {
+      const exercise = makeExercise([
+        makeSet(135, 5, '2026-01-01'),
+        makeSet(155, 5, '2026-01-08'), // peak
+        makeSet(150, 5, '2026-01-15'),
+        makeSet(150, 5, '2026-01-22'),
+        makeSet(152, 5, '2026-01-29'),
+      ])
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      const badge = wrapper.find('.wtGraphPlateauBadge')
+      expect(badge.exists()).toBe(true)
+      expect(badge.text()).toContain('Plateau')
+      expect(badge.attributes('aria-label')).toContain('3 sessions')
+    })
+
+    it('clears the badge once a new best is set on the latest session', () => {
+      const exercise = makeExercise([
+        makeSet(135, 5, '2026-01-01'),
+        makeSet(155, 5, '2026-01-08'),
+        makeSet(150, 5, '2026-01-15'),
+        makeSet(150, 5, '2026-01-22'),
+        makeSet(175, 5, '2026-01-29'), // breakthrough
+      ])
+      const wrapper = mount(ExerciseGraph, { props: { exercise } })
+      expect(wrapper.find('.wtGraphPlateauBadge').exists()).toBe(false)
+    })
+  })
+
   describe('metric selector', () => {
     // 135x8 (vol 1080, e1RM ~171), 155x6 (vol 930, e1RM ~186), 175x4 (vol 700, e1RM ~198)
     const exercise = makeExercise([
