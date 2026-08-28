@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { usePreferencesStore, _migrateWeightGoal } from '../preferences'
+import { useWorkoutStore } from '../workout'
+import { platesToWeight } from '../../lib/plateCalculator'
 import { getLocalStorageMock } from '../../__tests__/helpers'
 
 vi.mock('../../lib/durableStorage', () => ({
@@ -881,6 +883,58 @@ describe('usePreferencesStore', () => {
 
       expect(store.coachProfile).toMatchObject({ sex: 'female', experience: 'advanced', reviewMode: 'quick_checkin' })
       expect(store.coachProfile.age).toBeNull()
+    })
+  })
+
+  // LIFT-1223: Exercise.barWeight is stored in the user's DISPLAY unit, so a real
+  // unit toggle must convert the stored numbers or the plate math silently
+  // reinterprets them (a 20 kg bar becomes 20 lbs).
+  describe('bar-weight conversion on unit toggle (LIFT-1223)', () => {
+    it('converts stored bar weights when toggling kg → lbs', () => {
+      store.setWeightUnit('kg')
+      const workout = useWorkoutStore()
+      const id = workout.addExercise('Squat')!
+      workout.setExerciseBarWeight(id, 20) // 20 kg bar
+
+      store.setWeightUnit('lbs')
+
+      const bar = workout.exercises.find((e) => e.id === id)!.barWeight
+      expect(bar).toBe(45) // 20 kg snaps to the standard 45 lb bar, not a raw 20
+      // Plate math now loads against the converted lbs bar.
+      expect(platesToWeight([45], bar!)).toBe(135)
+    })
+
+    it('converts stored bar weights when toggling lbs → kg', () => {
+      store.setWeightUnit('lbs')
+      const workout = useWorkoutStore()
+      const id = workout.addExercise('Bench')!
+      workout.setExerciseBarWeight(id, 45) // standard 45 lb bar
+
+      store.setWeightUnit('kg')
+
+      expect(workout.exercises.find((e) => e.id === id)!.barWeight).toBe(20)
+    })
+
+    it('leaves bar weights untouched when the unit does not actually change', () => {
+      store.setWeightUnit('lbs')
+      const workout = useWorkoutStore()
+      const id = workout.addExercise('Deadlift')!
+      workout.setExerciseBarWeight(id, 45)
+
+      store.setWeightUnit('lbs')
+
+      expect(workout.exercises.find((e) => e.id === id)!.barWeight).toBe(45)
+    })
+
+    it('does not touch exercises that have no explicit bar weight', () => {
+      store.setWeightUnit('lbs')
+      const workout = useWorkoutStore()
+      const id = workout.addExercise('Curl')!
+
+      store.setWeightUnit('kg')
+
+      // Undefined stays undefined — it falls back to the unit-aware default.
+      expect(workout.exercises.find((e) => e.id === id)!.barWeight).toBeUndefined()
     })
   })
 })

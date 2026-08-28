@@ -11,6 +11,7 @@ import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { useWorkoutStore } from './workout'
 
 const STORAGE_KEY = 'user-preferences'
 
@@ -482,8 +483,19 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     setWeightUnit(unit: string) {
+      const previous = this.weightUnit
       this.weightUnit = unit
       this._persist()
+      // Stored per-exercise bar weights are kept in the display unit (LIFT-1223),
+      // so a real unit toggle must convert them or the raw number is silently
+      // reinterpreted (a 20 kg bar becomes 20 lbs) and corrupts the plate math.
+      if (
+        previous !== unit &&
+        (previous === 'lbs' || previous === 'kg') &&
+        (unit === 'lbs' || unit === 'kg')
+      ) {
+        useWorkoutStore().convertBarWeightsForUnitChange(previous, unit)
+      }
     },
 
     setRestTimer(enabled: boolean) {
