@@ -93,9 +93,7 @@ describe('ConsistencyHeatmap', () => {
   describe('heatmap grid', () => {
     it('renders cells for each day', () => {
       const wrapper = mountHeatmap({ isCurrentYear: false, year: 2025 })
-      const cells = wrapper.findAll('.heatmapCell')
-      // Should have cells in the grid (365 days + legend cells)
-      // Grid cells are inside .heatmapGrid
+      // Scope to .heatmapGrid so the legend's swatch cells aren't counted.
       const gridCells = wrapper.find('.heatmapGrid').findAll('.heatmapCell')
       expect(gridCells.length).toBe(365)
     })

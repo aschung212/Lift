@@ -42,6 +42,21 @@ export function backupToIDB(key: string, value: string): void {
   })
 }
 
+/**
+ * Close the cached IndexedDB connection.
+ *
+ * `indexedDB.deleteDatabase()` is blocked indefinitely while any connection to
+ * the database is still open. Account deletion must call this first so the
+ * backup (including the sync journal) is actually wiped from disk rather than
+ * deferred until the next tab close.
+ */
+export function closeDB(): void {
+  if (db) {
+    db.close()
+    db = null
+  }
+}
+
 /** Clear all data from IndexedDB backup. */
 export async function clearIDB(): Promise<void> {
   try {

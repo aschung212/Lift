@@ -11,28 +11,18 @@ import { getLocalStorageMock } from '../../__tests__/helpers'
 
 const localStorageMock = getLocalStorageMock()
 
-// ── Supabase mock: rejects all queries ──────────────────────────────
-vi.mock('../../lib/supabase', () => {
-  function rejectingChain(): Record<string, unknown> {
-    const chain: Record<string, unknown> = {
-      select: () => chain,
-      eq: () => chain,
-      is: () => chain,
-      order: () => chain,
-      single: () => chain,
-      then: (_resolve: unknown, reject: (err: Error) => void) => {
-        const err = new Error('Network request failed')
-        return Promise.reject(err).catch(reject || ((e: unknown) => { throw e }))
-      },
-    }
-    return chain
-  }
-
-  return {
-    supabase: { from: () => rejectingChain() },
-    isPreviewMode: { value: false },
-  }
+// ── Shared Supabase test double (LIFT-1009), reject mode ─────────────
+// Every query rejects (offline / auth expired / DNS failure). Stores must
+// preserve locally-cached data rather than replacing it with empty state.
+const { fakeSupabase } = await vi.hoisted(async () => {
+  const { createFakeSupabase } = await import('../../__tests__/fakeSupabase')
+  return { fakeSupabase: createFakeSupabase({ mode: 'reject' }) }
 })
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: fakeSupabase,
+  isPreviewMode: { value: false },
+}))
 
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn(), clear: vi.fn() },
@@ -46,6 +36,7 @@ vi.mock('../../lib/logger', () => ({
 
 import { useWorkoutStore } from '../workout'
 import { useBodyweightStore } from '../bodyweight'
+import { useProgressionStore } from '../progression'
 import { logWarn } from '../../lib/logger'
 
 describe('Supabase fetch resilience (#503)', () => {
@@ -119,6 +110,60 @@ describe('Supabase fetch resilience (#503)', () => {
       expect.stringContaining('Supabase fetch failed in bodyweight store'),
       expect.objectContaining({ error: expect.any(String) }),
     )
+  })
+
+  it('progression store does not reject and preserves local XP when Supabase fetch throws (LIFT-820)', async () => {
+    // Seed localStorage with cached progression data
+    const cachedProgression = {
+      totalXP: 12_345,
+      streakWeeks: 3,
+      weeklyTarget: 4,
+      progressionEnabled: true,
+      starterTheme: 'fire',
+      unlockedThemes: [{ id: 'pearl', unlockedAt: '2026-01-01T00:00:00.000Z' }],
+    }
+    localStorageMock.setItem('user-progression', JSON.stringify(cachedProgression))
+
+    setActivePinia(createPinia())
+    const store = useProgressionStore()
+    expect(store.totalXP).toBe(12_345)
+
+    // _fetchFromSupabase awaits .single(), which rejects here — previously this
+    // had no try/catch and would reject init(), aborting Promise.allSettled.
+    await expect(store.init('user-123')).resolves.toBeUndefined()
+
+    // Local data survives and the failure is observable, not silent
+    expect(store.totalXP).toBe(12_345)
+    expect(store.streakWeeks).toBe(3)
+    expect(store.lastSyncError).toBe('network')
+    expect(store.syncing).toBe(false)
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.stringContaining('Supabase fetch failed in progression store'),
+      expect.objectContaining({ error: expect.any(String) }),
+    )
+  })
+
+  it('a rejecting fetch in one store does not abort hydration of the others (LIFT-820)', async () => {
+    localStorageMock.setItem('workout-exercises', JSON.stringify([
+      { id: 'ex-1', name: 'Squat', tags: [], sets: [], updated_at: '2026-05-01T00:00:00.000Z' },
+    ]))
+    localStorageMock.setItem('user-progression', JSON.stringify({ totalXP: 999 }))
+    setActivePinia(createPinia())
+
+    const workout = useWorkoutStore()
+    const bodyweight = useBodyweightStore()
+    const progression = useProgressionStore()
+
+    // Mirror initStores: even though every store rejects its fetch, allSettled
+    // must let each finish hydrating from local state.
+    const results = await Promise.allSettled([
+      workout.init('user-123'),
+      bodyweight.init('user-123'),
+      progression.init('user-123'),
+    ])
+    expect(results.every(r => r.status === 'fulfilled')).toBe(true)
+    expect(workout.exercises).toHaveLength(1)
+    expect(progression.totalXP).toBe(999)
   })
 
   it('workout init() does not reject (caller does not need try/catch)', async () => {

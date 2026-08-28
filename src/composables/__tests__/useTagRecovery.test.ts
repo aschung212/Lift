@@ -224,4 +224,71 @@ describe('useTagRecovery', () => {
     const { recovery } = useTagRecovery(exercises, ref({}), noExcluded, now)
     expect(recovery.value[0].daysSince).toBe(0)
   })
+
+  // #1236: hiddenTags/hiddenCount used to be derived twice — once here and once
+  // inline in CalendarView — each with a per-set loop that re-added an exercise's
+  // (set-independent) tags once per set. These pin the collapsed derivation.
+  describe('hidden (excluded) tags', () => {
+    it('lists only excluded tags that have logged sets, sorted', () => {
+      const exercises = ref([
+        makeExercise('Squat', ['Legs', 'Quads'], [{ date: '2026-04-10T23:59:00.000Z' }]),
+        makeExercise('Bench', ['Chest'], [{ date: '2026-04-10T23:59:00.000Z' }]),
+      ])
+
+      // 'Cardio' is excluded but nothing is tagged with it, so it has no data
+      // to offer back and must not appear.
+      const excluded = ref(['Quads', 'Cardio', 'Legs'])
+      const { hiddenTags, hiddenCount } = useTagRecovery(exercises, ref({}), excluded, now)
+
+      expect(hiddenTags.value).toEqual(['Legs', 'Quads'])
+      expect(hiddenCount.value).toBe(2)
+    })
+
+    it('omits excluded tags whose only exercise has no dated sets', () => {
+      const exercises = ref([
+        makeExercise('Planned Squat', ['Legs'], []),
+        makeExercise('Imported Row', ['Back'], [{ date: '' }]),
+      ])
+
+      const excluded = ref(['Legs', 'Back'])
+      const { hiddenTags, hiddenCount } = useTagRecovery(exercises, ref({}), excluded, now)
+
+      expect(hiddenTags.value).toEqual([])
+      expect(hiddenCount.value).toBe(0)
+    })
+
+    it('reports a tag once no matter how many sets back it', () => {
+      const exercises = ref([
+        makeExercise('Bench', ['Chest', 'Push'], [
+          { date: '2026-04-08T23:59:00.000Z' },
+          { date: '2026-04-09T23:59:00.000Z' },
+          { date: '2026-04-10T23:59:00.000Z' },
+        ]),
+        makeExercise('Dip', ['Chest'], [{ date: '2026-04-10T23:59:00.000Z' }]),
+      ])
+
+      const excluded = ref(['Chest'])
+      const { hiddenTags, hiddenCount } = useTagRecovery(exercises, ref({}), excluded, now)
+
+      expect(hiddenTags.value).toEqual(['Chest'])
+      expect(hiddenCount.value).toBe(1)
+    })
+
+    it('reacts to excluded list changes and keeps count in step with the list', () => {
+      const exercises = ref([
+        makeExercise('Squat', ['Legs', 'Quads'], [{ date: '2026-04-10T23:59:00.000Z' }]),
+      ])
+
+      const excluded = ref<string[]>([])
+      const { hiddenTags, hiddenCount, totalCount } = useTagRecovery(exercises, ref({}), excluded, now)
+      expect(hiddenTags.value).toEqual([])
+      expect(totalCount.value).toBe(2)
+
+      excluded.value = ['Legs']
+      expect(hiddenTags.value).toEqual(['Legs'])
+      expect(hiddenCount.value).toBe(hiddenTags.value.length)
+      // Hiding a tag moves it between the two buckets — the total is unchanged.
+      expect(totalCount.value).toBe(2)
+    })
+  })
 })

@@ -1,9 +1,20 @@
 <template>
   <div class="wtCard bwCard">
+    <!-- Page-level heading for assistive tech (the hero shows the value, not a title) -->
+    <h1 class="srOnly">Weight</h1>
     <!-- Hero header: current weight + goal hint + log button -->
     <div class="bwHero">
       <span class="bwCurrentValue">{{ store.latestWeight ? `${displayWeight(store.latestWeight)} ${weightUnit}` : 'No entries' }}</span>
       <span class="bwGoalProgressHint">{{ goalProgressText }}</span>
+      <button
+        v-if="store.entries.length > 0"
+        class="bwExportBtn"
+        :disabled="isExporting"
+        aria-label="Export weight history"
+        @click="exportWeights"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+      </button>
       <button class="wtLogBtn" @click="openModal()">+ Log</button>
     </div>
 
@@ -50,15 +61,24 @@
     <!-- Graph -->
     <div v-if="points.length >= 2" class="wtGraphWrap">
       <div class="bwGraphHeader">
-        <p class="wtGraphTitle">Weight Over Time</p>
+        <!-- Section heading under the "Weight" h1. Exposed via role/aria-level
+             rather than a native <h2> so it keeps its exact rendering inside the
+             baseline-aligned flex header (a real <h2>'s UA margins would shift the row). -->
+        <p class="wtGraphTitle" role="heading" aria-level="2">Weight Over Time</p>
         <span v-if="goalLine" class="bwGoalTag">{{ goalLine.direction === 'above' ? '↑' : goalLine.direction === 'below' ? '↓' : '→' }} Goal: {{ goalLine.label }} {{ weightUnit }}</span>
         <span v-else-if="rangeBand" class="bwGoalTag">Range: {{ prefs.weightGoal.maintainMin != null ? displayWeight(prefs.weightGoal.maintainMin) : '–' }}–{{ prefs.weightGoal.maintainMax != null ? displayWeight(prefs.weightGoal.maintainMax) : '–' }} {{ weightUnit }}</span>
       </div>
       <svg
+        ref="svgEl"
         :viewBox="`0 0 ${W} ${H}`"
         class="wtGraphSvg"
         role="img"
         :aria-label="`Body weight progress chart showing ${points.length} entries from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit}`"
+        @pointerdown="onScrubStart"
+        @pointermove="onScrubMove"
+        @pointerup="onScrubEnd"
+        @pointercancel="onScrubEnd"
+        @pointerleave="onScrubEnd"
       >
         <desc>{{ `Body weight trend from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit} across ${points.length} data points.` }}</desc>
         <!-- Horizontal grid lines -->
@@ -125,8 +145,9 @@
           />
         </template>
 
-        <!-- Y-axis labels -->
+        <!-- Y-axis labels: max at top, midpoint, min at bottom -->
         <text :x="PAD_L - 5" :y="PAD_T + 4" class="wtGYLabel" text-anchor="end">{{ displayWeight(maxVal) }} {{ weightUnit }}</text>
+        <text v-if="displayWeight(midVal) !== displayWeight(maxVal) && displayWeight(midVal) !== displayWeight(minVal)" :x="PAD_L - 5" :y="PAD_T + chartH / 2 + 4" class="wtGYLabel wtGYLabelMid" text-anchor="end">{{ displayWeight(midVal) }} {{ weightUnit }}</text>
         <text :x="PAD_L - 5" :y="PAD_T + chartH + 4" class="wtGYLabel" text-anchor="end">{{ displayWeight(minVal) }} {{ weightUnit }}</text>
 
         <!-- X-axis date labels -->
@@ -139,6 +160,27 @@
           class="wtGDateLabel"
           text-anchor="middle"
         >{{ formatDate(p.date) }}</text>
+
+        <!-- Touch-scrub readout: crosshair + value bubble at the inspected point -->
+        <g v-if="readout" class="wtGScrub" aria-hidden="true">
+          <line
+            :x1="readout.point.x"
+            :y1="PAD_T"
+            :x2="readout.point.x"
+            :y2="PAD_T + chartH"
+            class="wtGScrubLine"
+          />
+          <circle :cx="readout.point.x" :cy="readout.point.y" r="4.5" class="wtGScrubDot" />
+          <rect
+            :x="readout.box.x"
+            :y="readout.box.y"
+            :width="readout.box.w"
+            :height="readout.box.h"
+            rx="5"
+            class="wtGReadoutBox"
+          />
+          <text :x="readout.box.tx" :y="readout.box.ty" class="wtGReadoutText" text-anchor="middle">{{ readout.label }}</text>
+        </g>
       </svg>
     </div>
 
@@ -161,12 +203,12 @@
         role="button"
         tabindex="0"
         :aria-expanded="activeEntryId === entry.id"
-        :aria-label="`${formatDateShort(entry.date)}: ${displayWeight(entry.weight)} ${weightUnit}`"
+        :aria-label="`${formatShortDate(setDayKey(entry.date) + 'T12:00:00')}: ${displayWeight(entry.weight)} ${weightUnit}`"
         @click="toggleEntryActions(entry.id)"
         @keydown.enter="toggleEntryActions(entry.id)"
         @keydown.space.prevent="toggleEntryActions(entry.id)"
       >
-        <span class="wtSetDate">{{ formatDateShort(entry.date) }}</span>
+        <span class="wtSetDate">{{ formatShortDate(setDayKey(entry.date) + 'T12:00:00') }}</span>
         <span :class="['wtSetDetail', weightClass(entry.weight)]">
           {{ displayWeight(entry.weight) }} {{ weightUnit }}
           <span v-if="entry.weight === store.minWeight" :class="['bwEntryBadge', isLowGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time low">↓ Low</span>
@@ -211,7 +253,6 @@
           Weight ({{ weightUnit }})
           <div class="repMaxInputRow">
             <input
-              ref="weightInputEl"
               v-model.number="weight"
               type="number"
               inputmode="decimal"
@@ -238,11 +279,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useBodyweightStore } from '../stores/bodyweight'
+import { todayISO, localDateKey, setDayKey, formatShortDate } from '../lib/dates'
+import { dailyLatestBodyweight } from '../lib/bodyweightExport'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { useAnalytics } from '../composables/useAnalytics'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useUndoToast } from '../composables/useUndoToast'
+import { useBodyweightExport } from '../composables/useBodyweightExport'
 import { useModal } from '../composables/useModal'
 import { usePreferencesStore } from '../stores/preferences'
 import { useXPCeremony } from '../composables/useXPCeremony'
@@ -254,12 +298,22 @@ const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { logBodyweightXPCeremony } = useXPCeremony()
+const { exportCsv, isExporting } = useBodyweightExport()
+
+// Health-export share surface (#1159): outcome feedback is the share sheet /
+// download itself, so no toast — the composable logs the analytics funnel.
+function exportWeights() {
+  void exportCsv()
+}
 
 // ── Modal state ──────────────────────────────────────────────────
-const weightInputEl = ref<HTMLInputElement | null>(null)
+// focusContainer: focus the dialog, not the weight input. Auto-focusing a
+// text input on open shows the caret but withholds the iOS keyboard, and a
+// later tap on the already-focused field won't summon it either. Letting the
+// user tap the field gives a fresh, gesture-driven focus that raises it (#830).
 const { isOpen: showModal, open: openModalTrap, close: closeModalTrap } = useModal({
   selector: '[aria-labelledby="bw-modal-title"]',
-  onOpen: () => weightInputEl.value?.focus(),
+  focusContainer: true,
 })
 const editing = ref<string | null>(null) // entry id when editing
 const weight = ref<number | null>(null)
@@ -279,23 +333,11 @@ function tryShowDatePicker(e: MouseEvent) {
   try { el.showPicker() } catch { /* unsupported or gesture-less; native tap handles it */ }
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function isoToLocalDate(iso: string): string {
-  const d = new Date(iso)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 function openModal(entry: BodyweightEntry | null = null) {
   if (entry) {
     editing.value = entry.id
     weight.value = displayWeight(entry.weight)
-    date.value = isoToLocalDate(entry.date)
+    date.value = setDayKey(entry.date)
   } else {
     editing.value = null
     weight.value = null
@@ -477,24 +519,21 @@ function weightClass(weight: number): string {
 
 // ── Graph ────────────────────────────────────────────────────────
 import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTimeSeries'
+import { useChartScrubber } from '../composables/useChartScrubber'
 
-// Best (latest) weight per calendar date, sorted chronologically — all time
-const dailyLatest = computed(() => {
-  const byDate: Record<string, BodyweightEntry> = {}
-  for (const e of store.entries) {
-    const day = e.date.slice(0, 10)
-    if (!byDate[day] || e.id > byDate[day].id) byDate[day] = e
-  }
-  return Object.entries(byDate)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, e]) => ({ date, weight: e.weight }))
-})
+// Best (latest) weight per calendar date, sorted chronologically — all time.
+// Shared with the Health CSV export (#1159) so the file matches the chart.
+const dailyLatest = computed(() => dailyLatestBodyweight(store.entries))
 
 // Filtered to selected period window
 const filteredDaily = computed(() => {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - period.value)
-  const cutoffStr = cutoff.toISOString().slice(0, 10)
+  // `localDateKey`, not `toISOString().slice(0, 10)`: the points being filtered
+  // carry LOCAL day keys (dailyLatestBodyweight buckets via setDayKey), so a UTC
+  // cutoff key is a day ahead every Americas evening and silently clipped the
+  // oldest day out of the window.
+  const cutoffStr = localDateKey(cutoff)
   return dailyLatest.value.filter(d => d.date >= cutoffStr)
 })
 
@@ -536,17 +575,19 @@ const periodTimeRange = computed(() => {
   const periodStart = new Date()
   periodStart.setDate(now.getDate() - period.value)
   return {
-    t0: new Date(periodStart.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
-    t1: new Date(now.toISOString().slice(0, 10) + 'T12:00:00').getTime(),
+    // Local day keys for the same reason as `filteredDaily`'s cutoff — the
+    // x-axis must span the local days the data points are keyed to.
+    t0: new Date(localDateKey(periodStart) + 'T12:00:00').getTime(),
+    t1: new Date(localDateKey(now) + 'T12:00:00').getTime(),
   }
 })
 
 const {
   W, H, PAD_L, PAD_R, PAD_T, chartH,
-  minVal, maxVal,
+  minVal, maxVal, midVal,
   points: basePoints,
   linePoints, gridYs,
-  shouldShowLabel, valueToY, formatDate,
+  shouldShowLabel, valueToY, formatDate, readoutBox,
 } = useSVGTimeSeries(graphEntries, {
   timeRange: periodTimeRange,
   extraYValues: goalValues,
@@ -556,6 +597,19 @@ const {
 const points = computed(() =>
   basePoints.value.map(p => ({ ...p, weight: p.value }))
 )
+
+// Touch-scrub to inspect the exact weight/date at any data point.
+const svgEl = ref<SVGSVGElement | null>(null)
+const { activeIndex, onScrubStart, onScrubMove, onScrubEnd } = useChartScrubber(points, svgEl, W)
+
+const readout = computed(() => {
+  const i = activeIndex.value
+  if (i == null) return null
+  const p = points.value[i]
+  if (!p) return null
+  const label = `${displayWeight(p.value)} ${weightUnit.value} · ${formatDate(p.date)}`
+  return { point: p, label, box: readoutBox(p, label) }
+})
 
 // Goal line for lose/gain modes — clamped to chart bounds
 const goalLine = computed((): { y: number; label: string; direction: 'above' | 'below' | 'in' } | null => {
@@ -587,7 +641,4 @@ const rangeBand = computed((): { y1: number; y2: number; topVisible: boolean; bo
   }
 })
 
-function formatDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
 </script>

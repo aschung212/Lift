@@ -1,7 +1,10 @@
 <template>
   <div class="bsRoot">
     <div class="bsHead">
-      <div class="bsBrand">Lift</div>
+      <div class="bsBrand">
+        <span class="bsMark">Lift</span>
+        <span class="bsHandle">{{ SHARE_CARD_HANDLE }}</span>
+      </div>
       <div class="bsDate">{{ summary.date }}</div>
     </div>
 
@@ -25,6 +28,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 const props = defineProps<{ summary: SessionSummary }>()
 
@@ -57,12 +61,27 @@ const stats = computed(() => [
 }
 
 .bsBrand {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bsMark {
   font-family: var(--ff-mono);
   font-weight: 700;
   font-size: 11px;
   line-height: 1;
   letter-spacing: 0.24em;
   text-transform: uppercase;
+}
+
+.bsHandle {
+  font-family: var(--ff-mono);
+  font-weight: 600;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
 }
 
 .bsDate {

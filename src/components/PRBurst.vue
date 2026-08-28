@@ -47,20 +47,86 @@
         <div class="prBurstChip">
           {{ payload.exerciseName }} · {{ setDisplay }}
         </div>
+
+        <!-- Peak-moment share affordance (#716): one tap opens the share sheet
+             pre-selected to the PR card. Stop propagation so the surrounding
+             tap-to-dismiss doesn't fire. -->
+        <button v-if="canShare" type="button" class="prBurstShare" @click.stop="onShareThisPR">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+          Share this PR
+        </button>
       </div>
 
       <div class="prBurstHint" aria-hidden="true">Tap to dismiss</div>
     </div>
   </Transition>
+
+  <Teleport to="body">
+    <SharePickerSheet
+      v-if="pickerOpen && shareSummary"
+      :summary="shareSummary"
+      initial-card-id="pr-focus"
+      @close="closePicker"
+    />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, watch, nextTick, ref, onMounted } from 'vue'
+import { computed, watch, nextTick, ref, onMounted, defineAsyncComponent } from 'vue'
 import { usePRBurst } from '../composables/usePRBurst'
+import { useModal } from '../composables/useModal'
 import { useWeightUnit } from '../composables/useWeightUnit'
+import { useAnalytics } from '../composables/useAnalytics'
+import type { SessionSummary } from '../lib/sessionSummary'
+
+const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
 const { visible, payload, presentPRBurst, dismissPRBurst } = usePRBurst()
 const { weightUnit, displayWeight } = useWeightUnit()
+const { logEvent } = useAnalytics()
+
+// ── "Share this PR" peak-moment flow (#716) ───────────────────────────────
+const shareSummary = ref<SessionSummary | null>(null)
+
+// The burst is dismissed before the picker opens, so there's no parent modal
+// to own the share sheet's scroll-lock / Escape (SharePickerSheet uses
+// lockScroll:false and delegates Escape to its parent). useModal owns both
+// here — no focus trap (selector omitted) since SharePickerSheet traps its own
+// '.spOverlay'. This replaces the hand-rolled listener boilerplate (LIFT-878).
+const { isOpen: pickerOpen, open: openPicker, close: closePickerModal } = useModal({
+  onEscape: () => closePickerModal(),
+  onClose: () => {
+    shareSummary.value = null
+  },
+})
+
+/**
+ * True when a shareable summary exists. The caller (WorkoutTracker) builds the
+ * SessionSummary and hands it in via the payload (LIFT-916) — this presentational
+ * component holds no store access, so the button is inert without one.
+ */
+const canShare = computed(() => payload.value?.shareSummary != null)
+
+function onShareThisPR(): void {
+  const p = payload.value
+  if (!p || !p.shareSummary) return
+  // The caller already built the session summary for the PR's day (it owns
+  // store access), so the share sheet renders the right numbers with no
+  // store reach-in here.
+  shareSummary.value = p.shareSummary
+  logEvent('pr_share_opened', {
+    exercise: p.exerciseName,
+    firstPr: p.isFirstPR === true,
+  })
+  openPicker()
+  // Hand off from the celebration to the share sheet — dismiss the burst so the
+  // two overlays don't stack (the picker sits at a lower z-index by design).
+  dismissPRBurst()
+}
+
+function closePicker(): void {
+  closePickerModal()
+}
 
 // DEV-only: expose the trigger on window so we can visually verify the overlay
 // from Playwright/DevTools without needing a live PR. Stripped from prod builds
@@ -138,6 +204,18 @@ watch(visible, async (v) => {
   backdrop-filter: blur(8px) saturate(0.7) brightness(0.35);
   -webkit-backdrop-filter: blur(8px) saturate(0.7) brightness(0.35);
   pointer-events: none;
+}
+
+/* Reduce Transparency (LIFT-680): swap the blur for a near-opaque dim so the
+   celebration still reads but the busy app behind it isn't shown through glass. */
+@media (prefers-reduced-transparency: reduce) {
+  .prBurstBackdrop {
+    background:
+      radial-gradient(ellipse 90% 70% at 50% 48%, var(--accent-subtle, rgba(212, 175, 55, 0.12)) 0%, transparent 70%),
+      rgba(0, 0, 0, 0.92);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .prBurstRings {
@@ -225,6 +303,33 @@ watch(visible, async (v) => {
   font-variant-numeric: tabular-nums;
 }
 
+.prBurstShare {
+  margin-top: 24px;
+  min-height: 48px;
+  padding: 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent);
+  color: var(--text-on-accent, var(--bg-primary));
+  border: 0;
+  border-radius: 99px;
+  font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 0 32px var(--accent-subtle, rgba(212, 175, 55, 0.30));
+  animation: prShareIn 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: 220ms;
+}
+
+@keyframes prShareIn {
+  from { transform: scale(0.8); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
 .prBurstHint {
   position: absolute;
   left: 0;
@@ -277,7 +382,8 @@ watch(visible, async (v) => {
 @media (prefers-reduced-motion: reduce) {
   .prRing,
   .prBurstDelta,
-  .prBurstFirstBadge {
+  .prBurstFirstBadge,
+  .prBurstShare {
     animation: none !important;
   }
   .prBurst-enter-active,

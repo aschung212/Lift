@@ -6,10 +6,22 @@ type AllowedPropertyValues = string | number | boolean | null | undefined
 let _currentTab = 'workouts'
 let _tabStart = Date.now()
 
+/**
+ * Supporter conversion funnel (LIFT-906). One event name (`support_funnel`)
+ * with a `stage` discriminator so impression → tap → purchase → restore can be
+ * grouped as a single funnel in the analytics dashboard, mirroring the existing
+ * share funnel. `impression` means the Support CTAs actually scrolled into view
+ * (not merely that Settings opened), so tap/impression is a meaningful
+ * conversion rate. `purchase`/`restore` are reserved for the native IAP wiring
+ * (LIFT-598 / LIFT-910); only `impression` and `tap` fire today.
+ */
+export type SupportFunnelStage = 'impression' | 'tap' | 'purchase' | 'restore'
+
 export interface UseAnalyticsReturn {
   logEvent: (name: string, props?: Record<string, AllowedPropertyValues>) => void
   tabSwitch: (fromTab: string, toTab: string) => void
   flushEngagement: () => void
+  supportFunnel: (stage: SupportFunnelStage, props?: Record<string, AllowedPropertyValues>) => void
 }
 
 export function useAnalytics(): UseAnalyticsReturn {
@@ -34,5 +46,9 @@ export function useAnalytics(): UseAnalyticsReturn {
     }
   }
 
-  return { logEvent, tabSwitch, flushEngagement }
+  function supportFunnel(stage: SupportFunnelStage, props: Record<string, AllowedPropertyValues> = {}): void {
+    logEvent('support_funnel', { stage, ...props })
+  }
+
+  return { logEvent, tabSwitch, flushEngagement, supportFunnel }
 }

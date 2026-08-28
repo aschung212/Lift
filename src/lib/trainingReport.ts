@@ -7,7 +7,7 @@
 
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
-import { toLocalDateKey } from './sessionSummary'
+import { toLocalDateKey, localDateKey } from './dates'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -128,10 +128,7 @@ function mondayOfWeek(dateStr: string): string {
   const dow = date.getDay()
   const daysSinceMonday = dow === 0 ? 6 : dow - 1
   date.setDate(date.getDate() - daysSinceMonday)
-  const yy = date.getFullYear()
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  return `${yy}-${mm}-${dd}`
+  return localDateKey(date)
 }
 
 // ── Main ─────────────────────────────────────────────────────────
@@ -279,7 +276,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
     const [cy, cm, cd] = cursor.split('-').map(Number)
     const d = new Date(cy, cm - 1, cd)
     d.setDate(d.getDate() + 7)
-    cursor = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    cursor = localDateKey(d)
   }
 
   const weeklyConsistency: WeeklyConsistency[] = allWeeks.map(wk => {

@@ -4,6 +4,7 @@
       <div class="tsLeft">
         <div>
           <div class="tsEyebrow">Lift · Session</div>
+          <div class="tsHandle">{{ SHARE_CARD_HANDLE }}</div>
           <div class="tsTitle">Workout</div>
           <div class="tsMeta">{{ summary.date.toUpperCase() }} · {{ summary.duration }}</div>
         </div>
@@ -33,6 +34,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
 const props = defineProps<{ summary: SessionSummary }>()
 
@@ -79,6 +81,16 @@ const formattedVolume = computed(() => Math.round(props.summary.totalVolume).toL
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--accent);
+}
+
+.tsHandle {
+  margin-top: 6px;
+  font-family: var(--ff-mono);
+  font-weight: 500;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 .tsTitle {

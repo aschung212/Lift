@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { BodyweightEntry } from '../../stores/bodyweight'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit } from '../../__tests__/helpers'
@@ -58,6 +58,21 @@ vi.mock('../../stores/bodyweight', () => ({
   })
 }))
 
+// Health-export share surface (#1159): mocked so component tests assert the
+// wiring without exercising Web Share / object URLs (unavailable in jsdom).
+const exportCsvMock = vi.fn().mockResolvedValue({ kind: 'downloaded', filename: 'x.csv' })
+
+vi.mock('../../composables/useBodyweightExport', async () => {
+  const { ref } = await import('vue')
+  return {
+    useBodyweightExport: () => ({
+      exportCsv: exportCsvMock,
+      isExporting: ref(false),
+      lastError: ref(null),
+    }),
+  }
+})
+
 import BodyweightTracker from '../../views/BodyweightTracker.vue'
 
 function mountTracker(): VueWrapper {
@@ -111,6 +126,31 @@ describe('BodyweightTracker', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('.bwPeriodRow').exists()).toBe(false)
     })
+
+    it('does not show the export button with nothing to export', () => {
+      const wrapper = mountTracker()
+      expect(wrapper.find('.bwExportBtn').exists()).toBe(false)
+    })
+  })
+
+  describe('Health CSV export (#1159)', () => {
+    beforeEach(() => {
+      entries = [makeEntry('e-1', 170, daysAgo(2))]
+      exportCsvMock.mockClear()
+    })
+
+    it('shows a labelled export button once entries exist', () => {
+      const wrapper = mountTracker()
+      const btn = wrapper.find('.bwExportBtn')
+      expect(btn.exists()).toBe(true)
+      expect(btn.attributes('aria-label')).toBe('Export weight history')
+    })
+
+    it('runs the export share flow on tap', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.bwExportBtn').trigger('click')
+      expect(exportCsvMock).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('single entry', () => {
@@ -137,7 +177,7 @@ describe('BodyweightTracker', () => {
 
     it('does not render SVG chart with only 1 day', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('svg').exists()).toBe(false)
+      expect(wrapper.find('svg.wtGraphSvg').exists()).toBe(false)
     })
 
     it('renders the entry in the list', () => {
@@ -183,7 +223,7 @@ describe('BodyweightTracker', () => {
 
     it('renders SVG chart with data points', () => {
       const wrapper = mountTracker()
-      expect(wrapper.find('svg').exists()).toBe(true)
+      expect(wrapper.find('svg.wtGraphSvg').exists()).toBe(true)
       const dots = wrapper.findAll('circle')
       expect(dots.length).toBeGreaterThanOrEqual(2)
     })
@@ -242,7 +282,7 @@ describe('BodyweightTracker', () => {
 
     it('chart has accessible role="img" and aria-label', () => {
       const wrapper = mountTracker()
-      const svg = wrapper.find('svg')
+      const svg = wrapper.find('svg.wtGraphSvg')
       expect(svg.attributes('role')).toBe('img')
       expect(svg.attributes('aria-label')).toContain('Body weight')
     })
@@ -650,6 +690,33 @@ describe('BodyweightTracker', () => {
     })
   })
 
+  describe('period window boundary (#1242)', () => {
+    const PREV_TZ = process.env.TZ
+
+    afterEach(() => {
+      process.env.TZ = PREV_TZ
+      vi.useRealTimers()
+    })
+
+    it('keeps the oldest day of the window when the UTC date has already rolled over', () => {
+      // 7pm on Mar 15 in Los Angeles is already Mar 16 in UTC. The chart's
+      // points are keyed to LOCAL days (dailyLatestBodyweight → setDayKey), so
+      // deriving the cutoff via `toISOString().slice(0, 10)` produced a key one
+      // day ahead and clipped the oldest day out of every evening's 30d view.
+      process.env.TZ = 'America/Los_Angeles'
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-03-16T02:00:00.000Z'))
+
+      entries = [
+        makeEntry('e-old', 175, '2026-02-13'), // exactly 30 local days back
+        makeEntry('e-new', 170, '2026-03-15'),
+      ]
+
+      const wrapper = mountTracker()
+      expect(wrapper.findAll('.bwEndpointDot').length).toBe(2)
+    })
+  })
+
   describe('goal progress hint', () => {
     beforeEach(() => {
       entries = [
@@ -742,6 +809,33 @@ describe('BodyweightTracker', () => {
       const wrapper = mountTracker()
       const hero = wrapper.find('.bwHero')
       expect(hero.find('.wtLogBtn').exists()).toBe(true)
+    })
+
+    // LIFT-856: the hero shows the current weight value, not a title — so the view
+    // had no page-level <h1>, breaking heading navigation across tab switches. A
+    // single visually-hidden h1 gives assistive tech a consistent landmark.
+    it('provides a single visually-hidden h1 page heading for assistive tech', () => {
+      const wrapper = mountTracker()
+      const h1s = wrapper.findAll('h1')
+      expect(h1s.length).toBe(1)
+      expect(h1s[0].text()).toBe('Weight')
+      expect(h1s[0].classes()).toContain('srOnly')
+    })
+
+    // LIFT-856: the "Weight Over Time" chart title is the one section heading
+    // under the page <h1>. It's exposed via role/aria-level (not a native <h2>)
+    // to avoid a UA-margin shift inside the baseline-aligned flex header.
+    it('exposes the chart title as a level-2 section heading', () => {
+      entries = [
+        makeEntry('e-1', 175, daysAgo(20)),
+        makeEntry('e-2', 170, daysAgo(2)),
+      ]
+      const wrapper = mountTracker()
+      const title = wrapper.find('.wtGraphTitle')
+      expect(title.exists()).toBe(true)
+      expect(title.text()).toBe('Weight Over Time')
+      expect(title.attributes('role')).toBe('heading')
+      expect(title.attributes('aria-level')).toBe('2')
     })
   })
 

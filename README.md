@@ -41,7 +41,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Graph updates per tab: full e1RM history on All Sets, PR staircase on PRs
 - Set list capped at 10 most recent, with "Show all" toggle
 - Full CRUD: add, edit, and delete individual sets and exercises
-- Drag-to-reorder exercises by grip handle (disabled when filtering)
+- Exercise list orders itself by recency — the exercise you trained most recently floats to the top, and the sort is applied after search and tag filtering so a filtered subset stays recency-ordered too
 
 ### Exercise Search
 - Instant search bar for filtering exercises by name
@@ -54,10 +54,33 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Multi-tag filtering on both Workouts and Calendar tabs (ANY match)
 - Inline "× Clear" chip at end of tag row when filters are active — no layout shift
 
+### Gym Filtering
+- Assign exercises to the gyms you train at (multi-gym membership; leave empty to show an exercise everywhere)
+- Exclusive gym filter row above the tag chips — pick where you're training today and other gyms' equipment disappears
+- Always-visible row defaulting to "All Gyms"; the zero state shows an "Add Gym" chip so your first gym is one tap away
+- Composes with tags: gym narrows the list, tags filter within it (quick-log picker follows too)
+- Gym manager for create/rename/delete plus bulk per-gym exercise assignment; gyms can also be created inline while editing an exercise, or from Settings
+- Active gym selection remembered per device (not synced — your phone can be at Gym A while your iPad stays on All)
+- Exercise-first manager (Settings › Exercises) for the inverse sweep: every exercise in one searchable list, each showing which gyms it's at and expanding to edit its gyms and muscle-group tags together
+
+### Guided Session Plan (Repeat Last Session)
+- A "Repeat last session" card above the exercise list turns your history into today's plan — no templates to author
+- Shows the last training day in the current scope (gym + tag filters) with exercise count, set count, and date
+- Expands into a per-exercise checklist: planned sets, top set from last time, and live done-today progress with checkmarks
+- Tapping a row opens the log modal, where the usual ladder's one-tap ghost logging takes over
+- With a single tag active it becomes that day's plan — "Repeat last Push session"
+
+### Usual Ladder (One-Tap Set Logging)
+- Detects your habitual set progression per exercise across recent sessions (e.g. 45×10 → 95×10 → 135×10 …), tolerant of occasional deviations
+- The log modal shows the ladder as chips: done rungs strike through, skipped rungs dim, the next rung highlights
+- Ghost prefill: with empty fields, the next rung appears as placeholders and the Save button reads "Save 135 × 10" — one tap logs each habitual set
+- Falls back to last-session chips when no routine is detected
+
 ### Progressive Overload Suggestions
 - Analyzes recent training history per exercise
 - Suggests weight or rep increases when performance plateaus
-- Based on linear periodization — tracks rolling averages across recent sessions
+- Surfaces as a tappable suggestion card right before your habitual top set — only on high-confidence signals
+- Rate-limited so it never nags: at most one nudge per day across all exercises, 7-day per-exercise cooldown, and ignoring it backs off further (14/28 days, then muted until your top weight changes)
 
 ### Workout Templates
 - Save current exercise list as a named template
@@ -83,6 +106,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Set count badge on each exercise tag
 - Log sets directly from the calendar
 - Tag filtering shared with workouts tab
+- Weekly view surfaces a muscle-group volume snapshot (tap any tag to drill into its week-over-week volume trend) plus an overall training-volume trend line (hand-rolled SVG)
 
 ### Body Weight Tracking
 - Log daily weigh-ins with date
@@ -119,6 +143,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Service worker update prompt — "New version available" banner with one-tap update
 - Keyboard shortcuts for power users — press `?` to view the shortcut help dialog
 - CSV and JSON data export from settings
+- Apple Health-compatible bodyweight CSV export from the Weight tab (share sheet → Files / AirDrop / Health importer apps)
 - Active tab persisted across sessions
 - All touch targets meet iOS 44pt minimum
 - All text meets 11pt minimum font size
@@ -181,7 +206,7 @@ All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 
 | **Stores** | Exercise/set CRUD, Epley 1RM, PR detection, bodyweight stats, preference toggles, progression XP and theme unlocks, sync fuzzing |
 | **Composables** | Theme switching, color modes, auth flows (OAuth, email, sign-up with duplicate detection), keyboard shortcuts, undo toast, swipe-to-dismiss, focus trap, haptics, PR burst, tag recovery/volume |
 | **Library** | Sync queue debouncing/coalescing, conflict resolver (last-write-wins, merge strategies), CSS/meta/manifest/SEO/theme-contrast/vercel-headers regression suites, CSV import, data export, plate calculator, XP migration |
-| **Components** | WorkoutTracker, BodyweightTracker, AuthScreen, ExerciseGraph, OnboardingScreen, CalendarView, ErrorBoundary, StarterPickerFlow, SkeletonLoader, MuscleGroupChart/Recovery, PR target, accessibility attributes |
+| **Components** | WorkoutTracker, BodyweightTracker, AuthScreen, ExerciseGraph, OnboardingScreen, CalendarView, ErrorBoundary, StarterPickerFlow, SkeletonLoader, MuscleGroupChart/Recovery, VolumeTrendChart, PR target, accessibility attributes |
 
 ```bash
 npm test           # run all tests
@@ -196,6 +221,7 @@ GitHub Actions runs on every push and PR to `master`:
 2. `npm run lint` — ESLint with Vue plugin (0 errors)
 3. `npm run build` — Vite production build
 4. `npm test` — full test suite
+5. **Lighthouse CI** (PRs only) — runs `@lhci/cli autorun` against `npm run preview` and asserts category budgets (accessibility ≥ 0.87 as a hard gate — the observed baseline, to be ratcheted toward 0.9 as the failing audits are fixed; performance/best-practices/SEO as advisory warnings). Config in `lighthouserc.json`; full HTML reports upload as the `lighthouse-report` artifact. Complements the static 512 KB JS bundle budget with real rendered-page Core Web Vitals.
 
 ### Code Quality
 
@@ -248,6 +274,29 @@ npm run preview  # preview production build locally
 
 Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard. Enable Google as an OAuth provider in Supabase and add your Vercel domain to the allowed redirect URLs.
 
+### Native iOS build (Capacitor)
+
+The PWA is wrapped with [Capacitor 8](https://capacitorjs.com) for the App Store. The
+shared config lives in `capacitor.config.ts` (`appId: com.aschung212.lift`). The native
+`ios/` project is generated per-machine and is **not** committed — it depends on a local
+Xcode + CocoaPods toolchain. Generate and run it on the Simulator with:
+
+```bash
+# One-time: generate the native Xcode project (requires Xcode + CocoaPods)
+npx cap add ios
+
+# Build the web bundle and sync it into the native project
+npm run cap:build        # = npm run build && npx cap sync
+
+# Open the project in Xcode, then build & run on a Simulator (e.g. iPhone 15 Pro)
+npm run cap:open:ios
+```
+
+In Xcode, set the **iOS Deployment Target to 16.0** (App target → General → Minimum
+Deployments) for broad device coverage with modern APIs. The app should launch to the
+auth screen with no white screen. Re-run `npm run cap:build` after any web change to
+re-sync the `dist/` bundle into the native shell.
+
 ---
 
 ## Project Structure
@@ -257,9 +306,11 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 │   ├── icon.svg
 │   ├── icon-192.png
 │   ├── icon-512.png
-│   └── apple-touch-icon.png
+│   ├── apple-touch-icon.png
+│   └── launch/                 # iOS PWA launch screens (apple-touch-startup-image), per device
 ├── scripts/
-│   └── generate-icons.js
+│   ├── generate-icons.js
+│   └── generate-launch-screens.js  # Renders themed iOS launch PNGs (pure Node, no deps)
 ├── src/
 │   ├── components/
 │   │   ├── WorkoutTracker.vue   # Exercise list, detail modal, log/edit modal, rest timer, tags

@@ -1,4 +1,4 @@
-import { toLocalDateKey } from './sessionSummary'
+import { toLocalDateKey } from './dates'
 import type { Exercise } from '../stores/workout'
 
 export interface WeeklyGoalInfo {

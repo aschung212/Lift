@@ -1,14 +1,17 @@
-import { reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
+import type { Tables, Json } from '../lib/database.types'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
-import { backupToIDB } from '../lib/durableStorage'
 import type { ThemeId } from '../lib/themes'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
-import { logError, logWarn } from '../lib/logger'
-import { broadcastStoreUpdate } from '../lib/crossTabSync'
+import { isPlainObject } from '../lib/storage'
+import { persistStoreData, loadStoreData } from '../lib/storePersistence'
+import { reportFetchError } from '../lib/fetchErrorClassifier'
+import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
+import { setDayKey } from '../lib/dates'
+import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import {
   themeUnlocksToJson,
   streakHistoryToJson,
@@ -26,43 +29,6 @@ const STORAGE_KEY = 'user-progression'
 
 export interface StreakWeekEntry extends StreakHistoryEntry {
   combinedMultiplier: number
-}
-
-// Transient toast state (not persisted, reactive for template binding)
-export const xpToast = reactive({
-  visible: false,
-  text: '',
-  progressPercent: 0,
-  totalXP: 0,
-  nextThresholdXP: null as number | null,
-  _timer: null as ReturnType<typeof setTimeout> | null,
-})
-
-export function showXPToast(text: string, progressPercent: number, totalXP: number, nextThresholdXP: number | null): void {
-  xpToast.text = text
-  xpToast.progressPercent = progressPercent
-  xpToast.totalXP = totalXP
-  xpToast.nextThresholdXP = nextThresholdXP
-  xpToast.visible = true
-  if (xpToast._timer) clearTimeout(xpToast._timer)
-  xpToast._timer = setTimeout(() => { xpToast.visible = false }, 4000)
-}
-
-// Unlock celebration state (not persisted, reactive)
-export const unlockCelebration = reactive({
-  visible: false,
-  themeId: null as ThemeId | null,
-  themeName: '',
-})
-
-export function showUnlockCelebration(themeId: ThemeId, themeName: string): void {
-  unlockCelebration.themeId = themeId
-  unlockCelebration.themeName = themeName
-  unlockCelebration.visible = true
-}
-
-export function dismissUnlockCelebration(): void {
-  unlockCelebration.visible = false
 }
 
 export interface ThemeUnlock {
@@ -204,58 +170,64 @@ function recalcTotalXP(xpPerSet: Record<string, SetXPEntry | number>, bodyweight
   return total
 }
 
-/** Migration: convert old ThemeId[] format to ThemeUnlock[] */
+/**
+ * Migration: convert old ThemeId[] format to ThemeUnlock[] (LIFT-946).
+ *
+ * Delegates element-level validation to `parseUnlockedThemes` (the same guard
+ * the Supabase-JSON path uses) so the localStorage boundary doesn't invent a
+ * weaker second check — it validates every entry's id/unlockedAt, not just the
+ * first, and still handles the legacy string[] format. Falls back to the default
+ * starter (pearl) when the value is absent, empty, or fully malformed.
+ */
 function migrateUnlockedThemes(themes: unknown): ThemeUnlock[] {
-  if (!Array.isArray(themes)) return [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
-  if (themes.length === 0) return [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
-  // Check if already new format
-  if (typeof themes[0] === 'object' && themes[0] !== null && 'id' in themes[0]) {
-    return themes as ThemeUnlock[]
-  }
-  // Old format: string array → convert
-  return (themes as string[]).map(id => ({ id: id as ThemeId, unlockedAt: new Date().toISOString() }))
+  return parseUnlockedThemes(themes as Json) ?? [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
 }
 
 function load(): ProgressionState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return defaultState()
-    const parsed = { ...defaultState(), ...JSON.parse(raw) }
-    parsed.unlockedThemes = migrateUnlockedThemes(parsed.unlockedThemes)
-    if (!parsed.epoch) parsed.epoch = 1
-    // Defensive: if starter was picked and XP earned, the trial is over.
-    // Only infer starterConfirmed — do NOT force progressionEnabled, as the
-    // user may have intentionally disabled progression while keeping their data.
-    if (parsed.starterTheme && parsed.totalXP > 0) {
-      parsed.starterConfirmed = true
-    }
-    return parsed
-  } catch (e) {
-    logWarn('Corrupt progression data in localStorage, using defaults', { error: String(e) })
-    return defaultState()
+  // The shared helper owns the read/parse/corrupt-fallback plumbing; the
+  // merge-with-defaults and migration logic below is store-specific.
+  const stored = loadStoreData<Record<string, unknown>>(
+    'progression',
+    STORAGE_KEY,
+    () => ({}),
+    isPlainObject,
+  )
+  const parsed = { ...defaultState(), ...stored } as ProgressionState
+  parsed.unlockedThemes = migrateUnlockedThemes(parsed.unlockedThemes)
+  // Validate the JSON-blob fields through the same guards the Supabase-JSON path
+  // uses (LIFT-946) so a corrupt localStorage entry — a non-numeric xp, a string
+  // date — is dropped at the boundary rather than casting straight into XP math.
+  parsed.xpPerSet = parseXpPerSet(stored.xpPerSet as Json, {})
+  parsed.streakHistory = parseStreakHistory(stored.streakHistory as Json, defaultState().streakHistory)
+  parsed.bodyweightXPDates = parseBodyweightDates(stored.bodyweightXPDates as Json, [])
+  if (!parsed.epoch) parsed.epoch = 1
+  // Defensive: if starter was picked and XP earned, the trial is over.
+  // Only infer starterConfirmed — do NOT force progressionEnabled, as the
+  // user may have intentionally disabled progression while keeping their data.
+  if (parsed.starterTheme && parsed.totalXP > 0) {
+    parsed.starterConfirmed = true
   }
+  return parsed
 }
 
 // --- Store ---
 
 export const useProgressionStore = defineStore('progression', {
-  state: (): ProgressionState & { _userId: string | null } => ({
+  state: (): ProgressionState & { _userId: string | null; syncing: boolean; lastSyncError: SyncErrorKind | null } => ({
     ...load(),
     _userId: null,
+    // Uniform sync-status contract (LIFT-820): observable by the UI.
+    syncing: false,
+    lastSyncError: null,
   }),
 
   actions: {
     _persist() {
+      // Strip tab-local / transient fields — `_userId` is per-tab and the
+      // sync-status fields (LIFT-820) must never be persisted or synced.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { _userId: _omit, ...state } = this.$state
-      const data = JSON.stringify(state)
-      try {
-        localStorage.setItem(STORAGE_KEY, data)
-      } catch (e) {
-        logError(e, { source: 'progression._persist', size: data.length })
-      }
-      backupToIDB(STORAGE_KEY, data)
-      broadcastStoreUpdate('progression')
+      const { _userId: _omit, syncing: _s, lastSyncError: _e, ...state } = this.$state
+      persistStoreData('progression', STORAGE_KEY, JSON.stringify(state))
     },
 
     /** Re-read state from localStorage (called by cross-tab sync listener). */
@@ -263,6 +235,24 @@ export const useProgressionStore = defineStore('progression', {
       const fresh = load()
       // Preserve _userId — it's tab-local, not persisted
       this.$patch({ ...fresh })
+    },
+
+    /**
+     * Sign-out wipe (called by useAuth.resetStores). Pinia's built-in
+     * options-store $reset re-runs the state() factory — whose `...load()`
+     * would re-hydrate the signed-out user's XP/streaks/unlocks straight back
+     * out of localStorage. A fresh account's first fetch then hits PGRST116
+     * (no row) and _syncToSupabase pushes whatever is in memory into the NEW
+     * user's row — so the wipe must land both in memory and in the persisted
+     * payload. Object.assign inside $patch replaces each top-level key
+     * wholesale (a plain object-form $patch would deep-merge maps like
+     * xpPerSet, keeping the old user's keys).
+     */
+    $reset() {
+      this.$patch(($state) => {
+        Object.assign($state, defaultState(), { _userId: null, syncing: false, lastSyncError: null })
+      })
+      this._persist()
     },
 
     async init(userId: string) {
@@ -273,22 +263,49 @@ export const useProgressionStore = defineStore('progression', {
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
 
-      const { data, error } = await supabase
-        .from('user_progression')
-        .select('*')
-        .eq('user_id', this._userId)
-        .single()
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // Row genuinely doesn't exist — push local state to create it
-          this._syncToSupabase()
+      this.syncing = true
+      let data: Tables<'user_progression'> | null
+      try {
+        // A network-layer failure rejects rather than resolving `{ error }`, so
+        // the awaited call must be guarded — an unguarded throw here would
+        // propagate through init() and reject the whole Promise.allSettled in
+        // initStores, leaving the app half-hydrated (LIFT-820).
+        const result = await supabase
+          .from('user_progression')
+          .select('*')
+          .eq('user_id', this._userId)
+          .single()
+        const error = result.error
+        if (error) {
+          if (error.code === 'PGRST116') {
+            // Row genuinely doesn't exist — push local state to create it.
+            // This is not a sync failure; clear any prior error.
+            this.lastSyncError = null
+            this._syncToSupabase()
+          } else {
+            // Network/auth/RLS error — route through reportFetchError so an
+            // RLS/auth regression is observable instead of silently swallowed
+            // (LIFT-786), and record the per-store sync indicator (LIFT-820).
+            reportFetchError('progression', error)
+            this.lastSyncError = classifySyncError(error)
+            // A 401 means an expired token, not offline — refresh once so the
+            // next fetch recovers rather than staying local-only (LIFT-784).
+            if (isAuthError(error)) void ensureFreshSession()
+          }
+          return
         }
-        // For any other error (network, auth, etc.), don't overwrite — just bail
+        data = result.data
+      } catch (err) {
+        reportFetchError('progression', err)
+        this.lastSyncError = classifySyncError(err)
+        if (isAuthError(err)) void ensureFreshSession()
         return
+      } finally {
+        this.syncing = false
       }
 
       if (!data) return
+      this.lastSyncError = null
 
       // Merge remote state — remote wins for simple scalar fields
       this.streakWeeks = data.streak_weeks ?? this.streakWeeks
@@ -344,8 +361,15 @@ export const useProgressionStore = defineStore('progression', {
         xp_per_set: xpPerSetToJson(this.xpPerSet),
         bodyweight_xp_dates: bodyweightDatesToJson(this.bodyweightXPDates),
       }
-      syncQueue.enqueue('progression-sync', () =>
-        supabase!.from('user_progression').upsert(payload)
+      // Journaled to IndexedDB alongside the closure (LIFT-1239): XP, streaks
+      // and theme unlocks are a last-write-wins row with no reconciliation
+      // pass, so an unflushed write lost to a tab close was gone for good. The
+      // replayed key matches this one, so the _syncToSupabase that follows
+      // init()'s union merge supersedes any stale replay.
+      syncQueue.enqueue(
+        'progression-sync',
+        () => supabase!.from('user_progression').upsert(payload),
+        { op: 'upsert', table: 'user_progression', row: payload },
       )
     },
 
@@ -532,7 +556,12 @@ export const useProgressionStore = defineStore('progression', {
           return min === null || d < min ? d : min
         }, null)
         if (!earliest) return
-        evalMonday = getMonday(new Date(earliest))
+        // Normalize to a local day key (bare keys pass through; timestamps go
+        // through setDayKey), then parse at LOCAL midnight — `new Date('YYYY-
+        // MM-DD')` is UTC midnight, which getMonday's local read would shift
+        // back a day in negative-offset timezones (LIFT-1214).
+        const earliestKey = earliest.length === 10 ? earliest : setDayKey(earliest)
+        evalMonday = getMonday(new Date(earliestKey + 'T00:00:00'))
       }
 
       // Evaluate each complete week up to (but not including) the current week
@@ -756,9 +785,22 @@ export function getTrainingDaysInWeek(
   return days.size
 }
 
-/** Get the Monday of the week containing the given date (UTC). */
+/**
+ * Get the Monday of the week containing the given date's LOCAL calendar day.
+ *
+ * LIFT-1214: this used UTC calendar components, so a US user opening the app
+ * on Sunday evening (already Monday in UTC) had the current week treated as
+ * complete BEFORE their Sunday session was counted — evaluateWeek closed the
+ * week as missed and reset the streak. Set-date keys are local days (#746),
+ * so the week boundary must be local too.
+ *
+ * The returned Date is anchored at UTC midnight of that local Monday: only
+ * the first line reads local components; all stepping (setUTCDate) and
+ * formatting (toDateKey) stay in exact UTC space, immune to DST arithmetic.
+ * Keep this in sync with the identical helper in src/lib/xp.ts.
+ */
 function getMonday(date: Date): Date {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
   const day = d.getUTCDay()
   const diff = (day + 6) % 7
   d.setUTCDate(d.getUTCDate() - diff)

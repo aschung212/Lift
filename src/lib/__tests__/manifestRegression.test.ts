@@ -15,9 +15,52 @@ const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.js'), '
 const publicDir = resolve(__dirname, '../../../public')
 
 describe('PWA manifest regression tests', () => {
+  describe('manifest includes explicit id for stable install identity', () => {
+    it("has id set to '/' so start_url changes never orphan existing installs", () => {
+      expect(viteConfig).toContain("id: '/'")
+    })
+  })
+
   describe('manifest includes categories for app store classification', () => {
     it('has categories array with health/fitness/sports', () => {
       expect(viteConfig).toContain("categories: ['health', 'fitness', 'sports']")
+    })
+  })
+
+  describe('manifest description aligns with meta description and leads with differentiators', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../../../index.html'), 'utf-8')
+
+    it('uses the unified discoverability-focused description', () => {
+      expect(viteConfig).toContain(
+        "description: 'Free, offline-capable PWA workout tracker. Log sets, track estimated 1RM progress, visualize training history, and hit new PRs.'"
+      )
+    })
+
+    it('no longer uses the generic keyword-poor description', () => {
+      expect(viteConfig).not.toContain(
+        'Track your sets, monitor progress, and hit personal records.'
+      )
+    })
+
+    it('includes the high-value discoverability keywords surfaced in install UI', () => {
+      const manifestDescMatch = viteConfig.match(/description: '([^']+)'/)
+      expect(manifestDescMatch).not.toBeNull()
+      const manifestDesc = (manifestDescMatch as RegExpMatchArray)[1]
+      expect(manifestDesc).toContain('Free')
+      expect(manifestDesc).toContain('offline')
+      expect(manifestDesc).toContain('1RM')
+      expect(manifestDesc).toContain('PWA')
+    })
+
+    it('shares the same value props as the index.html meta description', () => {
+      // Both descriptions must lead with the free/offline/PWA/1RM differentiators
+      // so the install prompt and search snippet tell a consistent story.
+      const metaMatch = indexHtml.match(/<meta name="description" content="([^"]+)"/)
+      expect(metaMatch).not.toBeNull()
+      const metaDesc = (metaMatch as RegExpMatchArray)[1]
+      for (const keyword of ['free', 'PWA', '1RM', 'offline']) {
+        expect(metaDesc.toLowerCase()).toContain(keyword.toLowerCase())
+      }
     })
   })
 
@@ -91,6 +134,22 @@ describe('PWA manifest regression tests', () => {
 
     it('calendar screenshot file exists in public/', () => {
       expect(existsSync(resolve(publicDir, 'screenshot-calendar.png'))).toBe(true)
+    })
+
+    // Chromium only renders the richer install dialog (screenshot carousel) when a
+    // wide/landscape screenshot is present; without one it falls back to the minimal
+    // one-line prompt (#1064).
+    it('has a wide (landscape) screenshot entry for the richer install dialog', () => {
+      expect(viteConfig).toContain("form_factor: 'wide'")
+    })
+
+    it('references the wide screenshot asset with landscape dimensions', () => {
+      expect(viteConfig).toContain("src: 'screenshot-wide.png'")
+      expect(viteConfig).toContain("sizes: '1920x1080'")
+    })
+
+    it('wide screenshot file exists in public/', () => {
+      expect(existsSync(resolve(publicDir, 'screenshot-wide.png'))).toBe(true)
     })
   })
 
