@@ -35,6 +35,8 @@ export interface WorkoutSet {
   weight: number
   reps: number
   estimated1RM: number
+  /** Rate of Perceived Exertion (6–10, half-step). Optional, local-only. */
+  rpe?: number
   /**
    * Real timestamp the set was logged (ISO 8601), distinct from `date` (which is
    * stamped end-of-day and carries no time). Optional and currently unpopulated —
@@ -976,7 +978,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true }: { sync?: boolean } = {}) {
+  function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true, rpe }: { sync?: boolean; rpe?: number } = {}) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
     // Real user action on a sample exercise adopts it (makes it syncable).
@@ -1001,6 +1003,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     const createdAt = new Date().toISOString()
     const newSet: WorkoutSet = { id, date, weight, reps, estimated1RM, createdAt }
     if (bodyweight !== undefined) newSet.bodyweight = bodyweight
+    if (rpe != null) newSet.rpe = rpe
     exercise.sets.push(newSet)
     _adjustDayCount(date, 1)
     exercise.updated_at = new Date().toISOString()
@@ -1012,7 +1015,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function updateSet(exerciseId: string, setId: string, weight: number, reps: number, dateStr?: string) {
+  function updateSet(exerciseId: string, setId: string, weight: number, reps: number, dateStr?: string, rpe?: number | null) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
     const set = exercise.sets.find((s: WorkoutSet) => s.id === setId)
@@ -1034,6 +1037,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       set.date = endOfDayISO(dateStr)
       _adjustDayCount(previousDate, -1)
       _adjustDayCount(set.date, 1)
+    }
+    if (rpe !== undefined) {
+      if (rpe === null) delete set.rpe
+      else set.rpe = rpe
     }
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)

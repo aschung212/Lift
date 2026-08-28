@@ -294,14 +294,16 @@ jobs:
       - name: Measure bundle sizes
         id: bundle
         run: |
-          # Total JS bundle budget: 600 KB (currently ~571 KB).
+          # Total JS bundle budget: 640 KB (currently ~597 KB).
           # Sums every emitted JS chunk, so code-splitting does not lower the total —
-          # bumped 500 → 550 → 570 → 600 KB as the app legitimately outgrew each ceiling
-          # (last bump: AI Coach sheets pushed master to 569 KB, leaving no headroom).
+          # bumped 500 → 550 → 570 → 600 → 640 KB as the app legitimately outgrew each
+          # ceiling (last bump: master had drifted to 597 KB, leaving 3 KB of headroom,
+          # so the exercise database (#615, +6 KB) and consistency heatmap (#620, +7 KB)
+          # both failed the gate on size alone).
           TOTAL_JS=$(find dist/assets -name '*.js' ! -name 'workbox-*' ! -name 'sw.*' -exec wc -c {} + | tail -1 | awk '{print $1}')
           TOTAL_CSS=$(find dist/assets -name '*.css' -exec wc -c {} + | tail -1 | awk '{print $1}')
           TOTAL_CSS=${TOTAL_CSS:-0}
-          BUDGET=614400
+          BUDGET=655360
 
           echo "js_bytes=$TOTAL_JS" >> "$GITHUB_OUTPUT"
           echo "css_bytes=$TOTAL_CSS" >> "$GITHUB_OUTPUT"

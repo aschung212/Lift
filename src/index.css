@@ -2684,6 +2684,14 @@ html.theme-fading .settingsSheet {
   line-height: 1;
 }
 
+.wtTimelineRPE {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
 .wtTimelineE1RM {
   font-size: var(--font-caption1);
   color: var(--text-muted);
@@ -3545,6 +3553,14 @@ html.theme-fading .settingsSheet {
   color: var(--text-primary);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+
+.wtSetRPE {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
 .wtSet1RM {
@@ -4959,6 +4975,90 @@ html.theme-fading .settingsSheet {
    pill at the bottom (more faded when that denomination isn't currently
    loaded). The weight value itself is rendered by the WEIGHT card above
    the plate calc — this card is purely the picker chrome. */
+
+/* RPE selector row (LIFT-617) */
+.wtRPERow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 8px 0;
+  min-height: 36px;
+}
+
+.wtRPEToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-footnote);
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.wtRPEToggle:active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.wtRPELabel {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.wtRPEChips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.wtRPEChips::-webkit-scrollbar { display: none; }
+
+.wtRPEChip {
+  flex-shrink: 0;
+  /* Sized to the 44pt floor rather than overlay-extended: these chips TILE in a
+     row, so an oversized ::before would reach into the neighbour and a near-miss
+     would select the wrong RPE (the #990 tiling rule). */
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: var(--font-footnote);
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.wtRPEChip:active {
+  background: var(--accent-muted, rgba(var(--accent-rgb, 255,215,0), 0.15));
+}
+
+.wtRPEChipActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text, var(--bg-primary));
+  font-weight: 600;
+}
 
 /* Plate calculator first-use hint (LIFT-388) */
 .wtPlateHint {

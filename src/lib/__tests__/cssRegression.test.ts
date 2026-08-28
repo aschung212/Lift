@@ -337,6 +337,22 @@ describe('CSS regression tests', () => {
     })
   })
 
+  // #617: the RPE chips are a tiling radiogroup, so they must be SIZED to the
+  // 44pt floor — an absolutely-positioned ::before overlay would butt against
+  // the neighbouring chip and a near-miss would pick the wrong RPE (#990).
+  describe('RPE controls touch targets (#617)', () => {
+    it('.wtRPEChip is sized to 44px in both dimensions, not overlay-extended', () => {
+      const lines = getRuleLines('.wtRPEChip')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.includes('min-width') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.wtRPEToggle has min-height: 44px for iOS HIG compliance', () => {
+      const lines = getRuleLines('.wtRPEToggle')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('.wtTimerEditResetBtn touch target', () => {
     const lines = getRuleLines('.wtTimerEditResetBtn')
 
