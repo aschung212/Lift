@@ -396,6 +396,20 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('guided session plan touch targets (#1256)', () => {
+    // The plan card adds two interactive elements — the collapse toggle and
+    // the per-exercise rows; both must meet the 44pt iOS touch-target minimum.
+    it('.wtSessionPlanToggle has min-height: 44px', () => {
+      const lines = getRuleLines('.wtSessionPlanToggle')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('.wtSessionPlanRow has min-height: 44px', () => {
+      const lines = getRuleLines('.wtSessionPlanRow')
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('.wtIntensitySlider touch target (#770)', () => {
     // The Intensity-lens slider is a draggable control; its hit area must meet
     // the project's 44pt iOS touch-target minimum.

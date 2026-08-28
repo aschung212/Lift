@@ -3293,4 +3293,120 @@ describe('WorkoutTracker', () => {
       expect((input.element as HTMLInputElement).value).toBe('135')
     })
   })
+
+  describe('guided session plan (#1256)', () => {
+    /** Local calendar date, matching the component's todayISO(). */
+    function localDay(daysAgo = 0): string {
+      const d = new Date()
+      d.setDate(d.getDate() - daysAgo)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+
+    /** Bench + OHP trained 2 days ago (the reference session), Squat 5 days ago. */
+    function planExercises(): Exercise[] {
+      return [
+        {
+          id: 'ex-1', name: 'Bench Press', tags: ['Push'], sets: [
+            { id: 'b1', date: `${localDay(2)}T12:00:00`, weight: 135, reps: 10, estimated1RM: 180 },
+            { id: 'b2', date: `${localDay(2)}T12:00:00`, weight: 185, reps: 5, estimated1RM: 216 },
+          ],
+        },
+        {
+          id: 'ex-2', name: 'Overhead Press', tags: ['Push'], sets: [
+            { id: 'o1', date: `${localDay(2)}T12:00:00`, weight: 95, reps: 8, estimated1RM: 120 },
+          ],
+        },
+        {
+          id: 'ex-3', name: 'Squat', tags: ['Legs'], sets: [
+            { id: 'q1', date: `${localDay(5)}T12:00:00`, weight: 225, reps: 5, estimated1RM: 263 },
+          ],
+        },
+      ]
+    }
+
+    beforeEach(() => {
+      mockState.exercises = planExercises()
+    })
+
+    it('renders the collapsed card with counts from the last session, list hidden', () => {
+      const wrapper = mountTracker()
+      const toggle = wrapper.find('.wtSessionPlanToggle')
+      expect(toggle.exists()).toBe(true)
+      expect(toggle.text()).toContain('Repeat last session')
+      expect(toggle.text()).toContain('2 exercises · 3 sets')
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('.wtSessionPlanList').exists()).toBe(false)
+    })
+
+    it('expands into rows for the reference day only, and a row opens the log modal for its exercise', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtSessionPlanToggle').trigger('click')
+
+      const rows = wrapper.findAll('.wtSessionPlanRow')
+      expect(rows.map(r => r.find('.wtSessionPlanName').text())).toEqual(['Bench Press', 'Overhead Press'])
+      expect(rows[0].find('.wtSessionPlanRowMeta').text()).toContain('2 sets · top 185 lbs × 5')
+
+      await rows[1].trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.repMaxModal').exists()).toBe(true)
+      expect(wrapper.find('#log-modal-title').text()).toContain('Overhead Press')
+      expect(mockGetUsualLadder).toHaveBeenCalledWith('ex-2', localDay())
+    })
+
+    it('tracks live progress as sets land today and marks completed rows', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtSessionPlanToggle').trigger('click')
+
+      // Log OHP's single planned set today (end-of-day storage convention),
+      // mutating in place + triggerRef per the store's reactivity contract.
+      mockState.exercises[1].sets.push({
+        id: 'o-today', date: `${localDay()}T23:59:00.000Z`, weight: 95, reps: 8, estimated1RM: 120,
+      })
+      triggerRef(mockExercises)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtSessionPlanMeta').text()).toContain('1/3 sets')
+      const rows = wrapper.findAll('.wtSessionPlanRow')
+      expect(rows[0].classes()).not.toContain('wtSessionPlanRowDone')
+      expect(rows[0].find('.wtSessionPlanProgress').text()).toBe('0/2')
+      expect(rows[1].classes()).toContain('wtSessionPlanRowDone')
+      expect(rows[1].find('.wtSessionPlanCheck').exists()).toBe(true)
+    })
+
+    it('scopes the plan to the active tag filter', async () => {
+      const wrapper = mountTracker()
+      const legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().includes('Legs'))!
+      await legsChip.trigger('click')
+
+      const toggle = wrapper.find('.wtSessionPlanToggle')
+      expect(toggle.text()).toContain('Repeat last Legs session')
+      expect(toggle.text()).toContain('1 exercise · 1 set')
+      await toggle.trigger('click')
+      expect(wrapper.findAll('.wtSessionPlanRow')).toHaveLength(1)
+      expect(wrapper.find('.wtSessionPlanName').text()).toBe('Squat')
+    })
+
+    it('does not render when there is nothing to repeat (only today logged)', () => {
+      mockState.exercises = [{
+        id: 'ex-1', name: 'Bench Press', tags: [], sets: [
+          { id: 't1', date: `${localDay()}T23:59:00.000Z`, weight: 135, reps: 10, estimated1RM: 180 },
+        ],
+      }]
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtSessionPlan').exists()).toBe(false)
+    })
+
+    it('hides while a search query is active', async () => {
+      // Search bar only renders with 5+ exercises.
+      mockState.exercises = [
+        ...planExercises(),
+        { id: 'ex-4', name: 'Curl', tags: [], sets: [] },
+        { id: 'ex-5', name: 'Row', tags: [], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtSessionPlan').exists()).toBe(true)
+      await wrapper.find('.wtSearchInput').setValue('bench')
+      expect(wrapper.find('.wtSessionPlan').exists()).toBe(false)
+    })
+  })
 })
