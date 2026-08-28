@@ -6,12 +6,16 @@ import AuthScreen from '../../views/AuthScreen.vue'
 const mockSignInWithProvider = vi.fn().mockResolvedValue({ error: null })
 const mockSignInWithEmail = vi.fn().mockResolvedValue({ error: null })
 const mockSignUp = vi.fn().mockResolvedValue({ error: null, needsConfirmation: false })
+const mockContinueAsGuest = vi.fn()
+const mockDevSignIn = vi.fn()
 
 vi.mock('../../composables/useAuth', () => ({
   useAuth: () => ({
     signInWithProvider: mockSignInWithProvider,
     signInWithEmail: mockSignInWithEmail,
     signUp: mockSignUp,
+    continueAsGuest: mockContinueAsGuest,
+    devSignIn: mockDevSignIn,
   })
 }))
 
@@ -44,10 +48,31 @@ describe('AuthScreen', () => {
       expect(wrapper.find('.authGoogle').text()).toContain('Continue with Google')
     })
 
+    it('shows a trust/value reassurance line to reduce sign-up friction', () => {
+      const trust = wrapper.find('.authTrust')
+      expect(trust.exists()).toBe(true)
+      expect(trust.text()).toContain('Free forever')
+      expect(trust.text()).toContain('no paywall')
+      expect(trust.text()).toContain('syncs privately')
+    })
+
     it('has autocomplete attributes for accessibility', () => {
       const inputs = wrapper.findAll('.authInput')
       expect(inputs[0].attributes('autocomplete')).toBe('email')
       expect(inputs[1].attributes('autocomplete')).toBe('current-password')
+    })
+
+    it('uses autocomplete="new-password" in sign-up mode so managers offer to generate a strong credential (WCAG 2.2 SC 3.3.8)', async () => {
+      // Sign-in mode (default) → current-password
+      expect(wrapper.findAll('.authInput')[1].attributes('autocomplete')).toBe('current-password')
+
+      // Switch to sign-up mode → new-password
+      await wrapper.find('.authModeSwitch').trigger('click')
+      expect(wrapper.findAll('.authInput')[1].attributes('autocomplete')).toBe('new-password')
+
+      // Switch back → current-password again
+      await wrapper.find('.authModeSwitch').trigger('click')
+      expect(wrapper.findAll('.authInput')[1].attributes('autocomplete')).toBe('current-password')
     })
   })
 
@@ -233,6 +258,25 @@ describe('AuthScreen', () => {
       await wrapper.find('form').trigger('submit')
       await flushPromises()
       expect(wrapper.findAll('.authInput')[0].attributes('aria-invalid')).toBeUndefined()
+    })
+  })
+
+  describe('continue without an account (LIFT-1083)', () => {
+    it('renders a guest entry that defers sign-up', () => {
+      const btn = wrapper.find('.authGuestBtn')
+      expect(btn.exists()).toBe(true)
+      expect(btn.text()).toBe('Continue without an account')
+    })
+
+    it('explains that local-only data can be backed up later', () => {
+      const hint = wrapper.find('.authGuestHint')
+      expect(hint.exists()).toBe(true)
+      expect(hint.text()).toContain('this device')
+    })
+
+    it('enters guest mode when clicked', async () => {
+      await wrapper.find('.authGuestBtn').trigger('click')
+      expect(mockContinueAsGuest).toHaveBeenCalledOnce()
     })
   })
 

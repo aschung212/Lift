@@ -1,7 +1,7 @@
 <template>
   <div v-if="hasGraph" class="wtGraphWrap">
     <p class="wtGraphTitle">
-      {{ mode === 'prs' ? 'PR Progression' : 'Estimated 1RM Progress' }}
+      {{ graphTitle }}
       <span
         v-if="plateau.isPlateau"
         class="wtGraphPlateauBadge"
@@ -12,6 +12,19 @@
         Plateau
       </span>
     </p>
+
+    <!-- Metric selector -->
+    <div class="exGraphMetricRow" role="group" aria-label="Chart metric">
+      <button
+        v-for="m in METRICS"
+        :key="m.key"
+        type="button"
+        :class="['bwPeriodBtn', { active: metric === m.key }]"
+        :aria-label="`Show ${m.label}`"
+        :aria-pressed="metric === m.key ? 'true' : 'false'"
+        @click="metric = m.key"
+      >{{ m.label }}</button>
+    </div>
 
     <!-- Time-range selector -->
     <div class="exGraphPeriodRow" role="group" aria-label="Chart time range">
@@ -32,14 +45,14 @@
       :viewBox="`0 0 ${W} ${H}`"
       class="wtGraphSvg"
       role="img"
-      :aria-label="`${exercise.name} ${mode === 'prs' ? 'PR progression' : 'estimated 1RM progress'} chart with ${points.length} data points, from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit}`"
+      :aria-label="`${exercise.name} ${metricNoun} chart with ${points.length} data points, from ${metricLabel(minVal)} to ${metricLabel(maxVal)}`"
       @pointerdown="onScrubStart"
       @pointermove="onScrubMove"
       @pointerup="onScrubEnd"
       @pointercancel="onScrubEnd"
       @pointerleave="onScrubEnd"
     >
-      <desc>{{ `${exercise.name} ${mode === 'prs' ? 'PR progression' : 'estimated 1RM progress'} from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${displayWeight(minVal)} to ${displayWeight(maxVal)} ${weightUnit} across ${points.length} sessions.` }}</desc>
+      <desc>{{ `${exercise.name} ${metricNoun} from ${formatDate(points[0]?.date)} to ${formatDate(points[points.length - 1]?.date)}, ranging from ${metricLabel(minVal)} to ${metricLabel(maxVal)} across ${points.length} sessions.` }}</desc>
       <!-- Horizontal grid lines -->
       <line
         v-for="gy in gridYs"
@@ -84,20 +97,20 @@
         :y="PAD_T + 4"
         class="wtGYLabel"
         text-anchor="end"
-      >{{ displayWeight(maxVal) }} {{ weightUnit }}</text>
+      >{{ metricLabel(maxVal) }}</text>
       <text
-        v-if="displayWeight(midVal) !== displayWeight(maxVal) && displayWeight(midVal) !== displayWeight(minVal)"
+        v-if="metricLabel(midVal) !== metricLabel(maxVal) && metricLabel(midVal) !== metricLabel(minVal)"
         :x="PAD_L - 5"
         :y="PAD_T + chartH / 2 + 4"
         class="wtGYLabel wtGYLabelMid"
         text-anchor="end"
-      >{{ displayWeight(midVal) }} {{ weightUnit }}</text>
+      >{{ metricLabel(midVal) }}</text>
       <text
         :x="PAD_L - 5"
         :y="PAD_T + chartH + 4"
         class="wtGYLabel"
         text-anchor="end"
-      >{{ displayWeight(minVal) }} {{ weightUnit }}</text>
+      >{{ metricLabel(minVal) }}</text>
 
       <!-- X-axis date labels -->
       <text
@@ -148,6 +161,7 @@ import { useSVGTimeSeries, type TimeSeriesEntry } from '../composables/useSVGTim
 import { useChartScrubber } from '../composables/useChartScrubber'
 import { detectPlateau } from '../lib/plateau'
 import type { Exercise } from '../stores/workout'
+import { effectiveSetWeight } from '../lib/bodyweightLoad'
 
 const { weightUnit, displayWeight } = useWeightUnit()
 const { prBaselineDate } = usePRBaseline()
@@ -158,6 +172,50 @@ const props = defineProps<{
 }>()
 
 const mode = computed(() => props.mode ?? 'sets')
+
+// ── Metric selector ──────────────────────────────────────────────
+// The chart plots one metric on the Y axis at a time. e1RM is the default
+// (preserving the original view); users can reproject the same date series
+// onto max weight, total session volume, or total reps — the same affordance
+// Hevy/Jefit expose. `weight`/`volume` stay in weight units (kg/lb aware);
+// `reps` is a raw count.
+type Metric = 'e1rm' | 'weight' | 'volume' | 'reps'
+interface MetricOption { key: Metric; label: string }
+const METRICS: MetricOption[] = [
+  { key: 'e1rm', label: 'e1RM' },
+  { key: 'weight', label: 'Weight' },
+  { key: 'volume', label: 'Volume' },
+  { key: 'reps', label: 'Reps' },
+]
+const metric = ref<Metric>('e1rm')
+const isCountMetric = computed(() => metric.value === 'reps')
+
+/** Human-readable noun for the active metric, used in aria/desc text. */
+const metricNoun = computed((): string => {
+  switch (metric.value) {
+    case 'weight': return 'max weight'
+    case 'volume': return 'total volume'
+    case 'reps': return 'total reps'
+    default: return mode.value === 'prs' ? 'PR progression' : 'estimated 1RM progress'
+  }
+})
+
+/** Card heading for the active metric (mode-aware for e1RM only). */
+const graphTitle = computed((): string => {
+  switch (metric.value) {
+    case 'weight': return 'Max Weight'
+    case 'volume': return 'Total Volume'
+    case 'reps': return 'Total Reps'
+    default: return mode.value === 'prs' ? 'PR Progression' : 'Estimated 1RM Progress'
+  }
+})
+
+/** Format a metric value for axis/readout labels — unit-aware for weight
+ *  metrics (kg/lb conversion), a raw rounded count for reps. */
+function metricLabel(value: number): string {
+  if (isCountMetric.value) return `${Math.round(value)} reps`
+  return `${displayWeight(value)} ${weightUnit.value}`
+}
 
 // ── Time-range selector ──────────────────────────────────────────
 // Long-trained lifts compress the whole-history curve and hide recent
@@ -180,29 +238,53 @@ function rangeAriaLabel(p: RangeOption): string {
   return `Show last ${p.days} days`
 }
 
-// Best estimated1RM per calendar date, sorted chronologically.
+// The active metric aggregated per calendar date, sorted chronologically.
+// e1RM/weight take the best (max) of the day; volume/reps sum the day's sets.
 // Filters to sets on/after the PR baseline when set — keeps the graph aligned
 // with the user's current training block view.
+// Weight/volume use the bodyweight-inclusive effective load (LIFT-834) so a
+// bodyweight-loaded lift (weighted pull-ups) charts consistently with its e1RM
+// metric — which already stores the folded load — instead of only the added
+// plate weight. effectiveSetWeight is exactly `s.weight` for normal exercises.
 const dailyBest = computed((): [string, number][] => {
   const byDate: Record<string, number> = {}
   const baseline = prBaselineDate.value
-  for (const s of props.exercise.sets) {
+  const m = metric.value
+  const ex = props.exercise
+  for (const s of ex.sets) {
     const day = s.date.slice(0, 10) // YYYY-MM-DD
     if (baseline && day < baseline) continue
-    if (!byDate[day] || s.estimated1RM > byDate[day]) {
-      byDate[day] = s.estimated1RM
+    if (m === 'volume') {
+      byDate[day] = (byDate[day] ?? 0) + effectiveSetWeight(s, ex) * s.reps
+    } else if (m === 'reps') {
+      byDate[day] = (byDate[day] ?? 0) + s.reps
+    } else {
+      const v = m === 'weight' ? effectiveSetWeight(s, ex) : s.estimated1RM
+      if (byDate[day] === undefined || v > byDate[day]) byDate[day] = v
     }
   }
   return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
 })
 
-// Plateau/stall detection (LIFT-1025). Computed over the full daily-best e1RM
-// history (baseline-scoped, but independent of the graph's mode and the
-// selected time window) so the badge reflects genuine stagnation in the
-// current training block rather than an artifact of the chosen range.
-const plateau = computed(() =>
-  detectPlateau(dailyBest.value.map(([date, value]) => ({ date, value })))
-)
+// Plateau/stall detection (LIFT-1025). Pinned to the daily-best e1RM series
+// (baseline-scoped, but independent of the selected metric, the graph's mode,
+// and the time window) so the badge reflects genuine strength stagnation in
+// the current training block — `dailyBest` can't be used here because it
+// reprojects onto whatever metric the selector shows (volume, reps, …).
+const dailyBestE1RM = computed((): { date: string; value: number }[] => {
+  const byDate: Record<string, number> = {}
+  const baseline = prBaselineDate.value
+  for (const s of props.exercise.sets) {
+    const day = s.date.slice(0, 10) // YYYY-MM-DD
+    if (baseline && day < baseline) continue
+    if (byDate[day] === undefined || s.estimated1RM > byDate[day]) byDate[day] = s.estimated1RM
+  }
+  return Object.entries(byDate)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, value]) => ({ date, value }))
+})
+
+const plateau = computed(() => detectPlateau(dailyBestE1RM.value))
 
 const plateauLabel = computed(
   () => `No new estimated 1RM best in the last ${plateau.value.sessionsStalled} sessions`
@@ -302,7 +384,7 @@ const readout = computed(() => {
   if (i == null) return null
   const p = points.value[i]
   if (!p) return null
-  const label = `${displayWeight(p.value)} ${weightUnit.value} · ${formatDate(p.date)}`
+  const label = `${metricLabel(p.value)} · ${formatDate(p.date)}`
   return { point: p, label, box: readoutBox(p, label) }
 })
 </script>

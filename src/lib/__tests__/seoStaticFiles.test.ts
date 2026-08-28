@@ -48,6 +48,16 @@ describe('sitemap.xml', () => {
     expect(content).toContain(`<loc>https://${DEPLOYMENT_DOMAIN}/</loc>`)
   })
 
+  it('declares a lastmod in valid W3C date-only format (Google uses it for recrawl scheduling)', () => {
+    const content = readFileSync(sitemapPath, 'utf-8')
+    const match = content.match(/<lastmod>(.*?)<\/lastmod>/)
+    expect(match).not.toBeNull()
+    const lastmod = match![1]
+    expect(lastmod).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    // Must be a real calendar date, not just digit-shaped.
+    expect(Number.isNaN(Date.parse(lastmod))).toBe(false)
+  })
+
   it('does not reference liftracker.app', () => {
     const content = readFileSync(sitemapPath, 'utf-8')
     expect(content).not.toContain('liftracker.app')

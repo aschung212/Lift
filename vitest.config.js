@@ -17,7 +17,10 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['src/__tests__/setup.ts'],
-    exclude: ['e2e/**', 'node_modules/**', 'dist/**', '.claude/**', '**/node_modules/**', '**/supabaseIntegration.test.ts'],
+    // `**/*.browser.test.ts` runs only under vitest.browser.config.js (real
+    // Chromium via Playwright) — exclude it here so it never executes under
+    // happy-dom, which stubs the layout geometry those tests exist to verify.
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**', '.claude/**', '**/node_modules/**', '**/supabaseIntegration.test.ts', '**/*.browser.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'json'],

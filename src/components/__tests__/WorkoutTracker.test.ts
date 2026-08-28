@@ -1,7 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { shallowRef, triggerRef, reactive } from 'vue'
-import { mount, VueWrapper } from '@vue/test-utils'
+import { shallowRef, triggerRef, reactive, defineComponent } from 'vue'
+import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
+import { useModal } from '../../composables/useModal'
+
+// Unmount every wrapper after each test. Without this, a tracker that was
+// mounted with a modal open stays mounted for the rest of the file and never
+// releases its background-scroll lock — useModal's reference count is module
+// state shared across this file, so a leak makes `html.modal-open` sticky and
+// the lock assertions below vacuous. This is a large part of why the
+// hand-rolled `classList.toggle('modal-open', …)` survived so long untested.
+enableAutoUnmount(afterEach)
 import type { Exercise, WorkoutSet } from '../../stores/workout'
+import { setDayKey } from '../../lib/dates'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
 import EditExerciseModal from '../EditExerciseModal.vue'
 
@@ -9,7 +19,26 @@ const localStorageMock = getLocalStorageMock()
 
 vi.mock('../../composables/useAnalytics', () => mockAnalytics())
 vi.mock('../../composables/useTheme', () => mockTheme())
-vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
+// Switchable unit mock (LIFT-1211): defaults to lbs with the same rounding the
+// plain mockWeightUnit() provided, so every pre-existing test is unaffected.
+// The unit lives in a factory-scoped ref (module consts hit the vi.mock TDZ,
+// and a factory-created computed over plain state would cache forever); the
+// kg plate-mode suite flips it through the mocked module's __setMockUnit.
+vi.mock('../../composables/useWeightUnit', async () => {
+  const { shallowRef } = await import('vue')
+  const unit = shallowRef<'lbs' | 'kg'>('lbs')
+  return {
+    __setMockUnit: (u: 'lbs' | 'kg') => { unit.value = u },
+    ...mockWeightUnit({
+      weightUnit: unit,
+      displayWeight: (lbs: number) => unit.value === 'kg' ? +(lbs * 0.453592).toFixed(1) : Math.round(lbs),
+      toLbs: (w: number) => unit.value === 'kg' ? +(w / 0.453592).toFixed(1) : w,
+    }),
+  }
+})
+import * as weightUnitMockModule from '../../composables/useWeightUnit'
+const setMockUnit = (u: 'lbs' | 'kg') =>
+  (weightUnitMockModule as unknown as { __setMockUnit: (u: 'lbs' | 'kg') => void }).__setMockUnit(u)
 vi.mock('../../composables/useRestTimer', () => mockRestTimer())
 // Mutable container so gym-filter tests (#961) can drive the synced gym list.
 // `reactive` keeps the mock faithful to the real Pinia store: adding a gym has
@@ -31,9 +60,15 @@ vi.mock('../../stores/preferences', () => ({
     addGym: mockAddGym,
   }),
 }))
+// Reactive so streak-badge tests (LIFT-1109) can flip progression on and set a
+// streak count without a remount — same mock-fidelity contract as
+// `mockPrefsState`: a plain object would cache the header computeds forever.
+const mockProgressionState = reactive({ progressionEnabled: false, streakWeeks: 0, weeklyTarget: 4 })
 vi.mock('../../stores/progression', () => ({
   useProgressionStore: () => ({
-    progressionEnabled: false,
+    get progressionEnabled() { return mockProgressionState.progressionEnabled },
+    get streakWeeks() { return mockProgressionState.streakWeeks },
+    get weeklyTarget() { return mockProgressionState.weeklyTarget },
     showProgression: false,
     streakHistory: [],
     currentMultiplier: 1,
@@ -134,6 +169,18 @@ function getExercisePRSet(id: string): WorkoutSet | null {
   return ex.sets.reduce((best, s) => s.estimated1RM > best.estimated1RM ? s : best)
 }
 
+// Mirrors the real store's sets-per-day index (LIFT-1237): same `setDayKey`
+// bucketing, and it reads `mockExercises` so it re-answers after a triggerRef.
+function setsLoggedOn(dayKey: string): number {
+  let count = 0
+  for (const ex of mockState.exercises) {
+    for (const s of ex.sets) {
+      if (setDayKey(s.date) === dayKey) count++
+    }
+  }
+  return count
+}
+
 function getAllTags(): string[] {
   const tags = new Set<string>()
   mockState.exercises.forEach(e => (e.tags || []).forEach(t => tags.add(t)))
@@ -159,6 +206,17 @@ const mockUpdateExerciseTags = vi.fn((exerciseId: string, tags: string[]) => {
   ex.tags = [...tags]
   triggerRef(mockExercises)
 })
+// Delegates to mockUpdateExerciseTags exactly as the real store action does,
+// so the in-place-mutate + triggerRef contract still holds through the toggle.
+const mockToggleExerciseTag = vi.fn((exerciseId: string, tag: string) => {
+  const ex = mockExercises.value.find(e => e.id === exerciseId)
+  if (!ex) return
+  const tags = ex.tags || []
+  mockUpdateExerciseTags(
+    exerciseId,
+    tags.includes(tag) ? tags.filter(t => t !== tag) : [...tags, tag],
+  )
+})
 const mockSetExerciseGyms = vi.fn((exerciseId: string, gyms: string[]) => {
   const ex = mockExercises.value.find(e => e.id === exerciseId)
   if (!ex) return
@@ -183,6 +241,7 @@ vi.mock('../../stores/workout', () => ({
     get activeExercises() { return mockState.exercises.filter(e => !e.archived_at) },
     get archivedExercises() { return mockState.exercises.filter(e => !!e.archived_at) },
     get allTags() { return getAllTags() },
+    setsLoggedOn,
     getExercisePR,
     getExercisePRSet,
     getOverloadSuggestion: mockGetOverloadSuggestion,
@@ -201,6 +260,7 @@ vi.mock('../../stores/workout', () => ({
     unarchiveExercise: mockUnarchiveExercise,
     renameExercise: mockRenameExercise,
     updateExerciseTags: mockUpdateExerciseTags,
+    toggleExerciseTag: mockToggleExerciseTag,
     updateExercise: vi.fn(),
     setExerciseGyms: mockSetExerciseGyms,
     renameGymOnExercises: vi.fn(),
@@ -260,6 +320,9 @@ describe('WorkoutTracker', () => {
   beforeEach(() => {
     mockState.exercises = []
     mockPrefsState.gyms = []
+    mockProgressionState.progressionEnabled = false
+    mockProgressionState.streakWeeks = 0
+    mockProgressionState.weeklyTarget = 4
     localStorageMock.clear()
     vi.clearAllMocks()
     // clearAllMocks keeps implementations — reset return values explicitly
@@ -304,6 +367,50 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       expect(wrapper.find('.wtFreshStart').exists()).toBe(false)
       expect(wrapper.find('.wtEmpty').text()).toContain('No exercises yet')
+    })
+  })
+
+  describe('consecutive-week streak badge (LIFT-1109)', () => {
+    it('is hidden when progression is disabled', () => {
+      mockProgressionState.progressionEnabled = false
+      mockProgressionState.streakWeeks = 12
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtStreakBadge').exists()).toBe(false)
+    })
+
+    it('is hidden when the streak is zero even with progression enabled', () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.streakWeeks = 0
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtWeeklyGoal').exists()).toBe(true)
+      expect(wrapper.find('.wtStreakBadge').exists()).toBe(false)
+    })
+
+    it('surfaces the multi-week streak count in the goal banner', () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.streakWeeks = 12
+      const wrapper = mountTracker()
+      const badge = wrapper.find('.wtStreakBadge')
+      expect(badge.exists()).toBe(true)
+      expect(badge.text()).toBe('12-week streak')
+      expect(badge.attributes('aria-label')).toBe('12-week training streak')
+    })
+
+    it('renders a one-week streak from the first completed week', () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.streakWeeks = 1
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtStreakBadge').text()).toBe('1-week streak')
+    })
+
+    it('reacts to a streak change without a remount', async () => {
+      mockProgressionState.progressionEnabled = true
+      mockProgressionState.streakWeeks = 0
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtStreakBadge').exists()).toBe(false)
+      mockProgressionState.streakWeeks = 3
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtStreakBadge').text()).toBe('3-week streak')
     })
   })
 
@@ -935,7 +1042,40 @@ describe('WorkoutTracker', () => {
       const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
       await saveBtn.trigger('click')
 
-      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String))
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 185, 5, expect.any(String), expect.objectContaining({}))
+    })
+
+    // LIFT-1148: the log-set modal stays open with cleared fields after a save,
+    // so a sighted user sees the emptied form as confirmation but a screen-reader
+    // user gets no feedback. A polite live region inside the modal announces the
+    // saved set (WCAG 2.2 SC 4.1.3 Status Messages).
+    it('announces the logged set via a polite live region (#1148)', async () => {
+      const wrapper = mountTracker()
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // The region is present and silent before any save.
+      const live = wrapper.find('.repMaxModal .srOnly[aria-live="polite"]')
+      expect(live.exists()).toBe(true)
+      expect(live.attributes('role')).toBe('status')
+      expect(live.attributes('aria-atomic')).toBe('true')
+      expect(live.text()).toBe('')
+
+      const inputs = wrapper.findAll('.repMaxModal input')
+      const weightInput = inputs.find(i => i.attributes('inputmode') === 'decimal')!
+      const repsInput = inputs.find(i => i.attributes('inputmode') === 'numeric')!
+      await weightInput.setValue('185')
+      await repsInput.setValue('5')
+
+      await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+      // announceSet clears then re-sets on nextTick so identical re-logs re-fire.
+      await wrapper.vm.$nextTick()
+      await wrapper.vm.$nextTick()
+
+      // Re-find: Vue replaces the text node on update, so the held wrapper is stale.
+      const liveAfter = wrapper.find('.repMaxModal .srOnly[aria-live="polite"]')
+      expect(liveAfter.text()).toBe('Logged Bench Press: 185 lbs × 5 reps')
     })
 
     // LIFT-683: the set-logging inputs declare enterkeyhint so iOS labels the
@@ -1070,6 +1210,50 @@ describe('WorkoutTracker', () => {
 
       expect(localStorageMock.getItem('plate-calc-hint-dismissed')).toBe('true')
       expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+    })
+
+    // ── Explore-path chart-discovery tip (LIFT-1086) ────────────────
+    it('shows the chart tip when sample data is present (LIFT-1086)', () => {
+      localStorageMock.setItem('sample-data', 'true')
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(true)
+      expect(wrapper.find('.wtChartTipText').text()).toContain('progress chart')
+    })
+
+    it('does not show the chart tip for real users (no sample-data flag) (LIFT-1086)', () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
+    })
+
+    it('does not show the chart tip once dismissed via localStorage (LIFT-1086)', () => {
+      localStorageMock.setItem('sample-data', 'true')
+      localStorageMock.setItem('explore-chart-tip-dismissed', 'true')
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
+    })
+
+    it('chart tip dismiss button persists to localStorage (LIFT-1086)', async () => {
+      localStorageMock.setItem('sample-data', 'true')
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      await wrapper.find('.wtChartTipDismiss').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(localStorageMock.getItem('explore-chart-tip-dismissed')).toBe('true')
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
+    })
+
+    it('retires the chart tip after opening an exercise detail (LIFT-1086)', async () => {
+      localStorageMock.setItem('sample-data', 'true')
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(true)
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(localStorageMock.getItem('explore-chart-tip-dismissed')).toBe('true')
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
     })
 
     it('debounces plate sync when typing weight (LIFT-634)', async () => {
@@ -1222,7 +1406,7 @@ describe('WorkoutTracker', () => {
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
       await wrapper.vm.$nextTick()
 
-      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 45, 10, expect.any(String))
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 45, 10, expect.any(String), expect.objectContaining({}))
       // Modal stays open, fields remain genuinely empty
       expect(wrapper.find('.repMaxModal').exists()).toBe(true)
       expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('')
@@ -1588,7 +1772,7 @@ describe('WorkoutTracker', () => {
 
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
       await wrapper.vm.$nextTick()
-      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 280, 8, expect.any(String))
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 280, 8, expect.any(String), expect.objectContaining({}))
       const state = JSON.parse(localStorageMock.getItem('overload-nudge-state')!)
       expect(state.byExercise['ex-1'].outcome).toBe('accepted')
       expect(state.byExercise['ex-1'].ignoredCount).toBe(0)
@@ -2018,7 +2202,7 @@ describe('WorkoutTracker', () => {
 
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
 
-      expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String))
+      expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String), null)
     })
 
     it('shows date picker in edit mode', async () => {
@@ -2975,6 +3159,307 @@ describe('WorkoutTracker', () => {
       await wrapper.vm.$nextTick()
 
       expect(wrapper.text()).toContain('205')
+    })
+  })
+
+  // ── Background-scroll lock (#830) ────────────────────────────────
+  //
+  // WorkoutTracker used to hand-roll the lock:
+  //   watch(anyModalOpen, open => html.classList.toggle('modal-open', open))
+  // A boolean toggle only knows about ITS OWN modals. The moment another
+  // surface holds the lock — CalendarView's set editor, BodyweightTracker's
+  // log-weight sheet, both built on useModal — closing a WorkoutTracker modal
+  // stripped `modal-open` out from under it and re-enabled background scroll
+  // beneath a still-open `position: fixed` modal. On iOS that desyncs paint
+  // from hit-testing as soon as the keyboard opens, so taps land a row low.
+  // Only useModal's shared reference count knows when the LAST holder let go.
+  describe('background-scroll lock (#830)', () => {
+    const isLocked = () => document.documentElement.classList.contains('modal-open')
+
+    // A stand-in for any other useModal-based surface (CalendarView,
+    // BodyweightTracker, …) holding the shared lock at the same time.
+    const ForeignModalHost = defineComponent({
+      setup: () => ({ modal: useModal() }),
+      template: '<div />',
+    })
+    type ForeignHost = { modal: ReturnType<typeof useModal> }
+
+    it('locks background scroll while the log-set sheet is open', async () => {
+      const wrapper = mountTracker()
+      expect(isLocked()).toBe(false)
+
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(true)
+
+      await wrapper.find('.logSetOverlay').trigger('click')
+      expect(isLocked()).toBe(false)
+    })
+
+    it('locks background scroll while a child modal (exercise detail) is open', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+      expect(isLocked()).toBe(false)
+
+      await wrapper.find('.wtExerciseRow').trigger('click')
+      expect(isLocked()).toBe(true)
+    })
+
+    it('keeps the lock applied when its modal closes under another modal', async () => {
+      const other = mount(ForeignModalHost)
+      ;(other.vm as unknown as ForeignHost).modal.open()
+      expect(isLocked()).toBe(true)
+
+      const wrapper = mountTracker()
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(true)
+
+      await wrapper.find('.logSetOverlay').trigger('click')
+      // The regression: the old boolean toggle cleared `modal-open` here,
+      // unlocking the background under the still-open foreign modal.
+      expect(isLocked()).toBe(true)
+
+      ;(other.vm as unknown as ForeignHost).modal.close()
+      expect(isLocked()).toBe(false)
+    })
+
+    it('keeps the lock applied when it unmounts under another modal', async () => {
+      const other = mount(ForeignModalHost)
+      ;(other.vm as unknown as ForeignHost).modal.open()
+
+      const wrapper = mountTracker()
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+      // The old onUnmounted did an unconditional classList.remove('modal-open').
+      wrapper.unmount()
+      expect(isLocked()).toBe(true)
+
+      ;(other.vm as unknown as ForeignHost).modal.close()
+      expect(isLocked()).toBe(false)
+    })
+
+    it('releases its lock on unmount with a modal still open', async () => {
+      const wrapper = mountTracker()
+      exposed(wrapper).openNewExerciseModal()
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(true)
+
+      wrapper.unmount()
+      expect(isLocked()).toBe(false)
+    })
+
+    it('stays locked across the log-sheet → detail-modal swap', async () => {
+      mockState.exercises = createExercises()
+      const wrapper = mountTracker()
+
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(true)
+
+      // openHistoryFromLog swaps the log sheet for the detail modal (they share
+      // a z-index, so it is a swap and not a stack). Two separate useModal
+      // instances hand the lock over here — it must not blink off in between.
+      await wrapper.find('.wtLogHistoryBtn').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.wtDetailModal').exists()).toBe(true)
+      expect(isLocked()).toBe(true)
+
+      await wrapper.find('.wtDetailBack').trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(isLocked()).toBe(false)
+    })
+  })
+
+  /**
+   * Regression: LIFT-1211 — the plate calculator double-converted for kg
+   * users. The plate subsystem operates entirely in display units (kg plates
+   * on a kg bar), but the computed total was piped through displayWeight(),
+   * multiplying an already-kg total by 0.4536 — every plate-mode set a kg
+   * user logged was silently corrupted (20 kg bar + 2×20 kg plates filled
+   * the weight field with 27.2 instead of 60). The reverse path had the
+   * mirror bug: typed kg weights were converted to lbs before being
+   * decomposed against kg denominations.
+   */
+  describe('kg plate mode (LIFT-1211)', () => {
+    afterEach(() => { setMockUnit('lbs') })
+
+    // ex-3 (Overhead Press) has no sets, so the log modal opens with an empty
+    // weight field — no ladder auto-fill to interfere with plate math.
+    function mountPlateTracker(unit: 'lbs' | 'kg', barWeight: number) {
+      setMockUnit(unit)
+      mockState.exercises = createExercises()
+      mockState.exercises[2].inputMode = 'plates'
+      mockState.exercises[2].plateCountMode = 'per-side'
+      mockState.exercises[2].barWeight = barWeight
+      return mountTracker()
+    }
+
+    async function openLogModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[2].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    it('fills the weight field with the true kg total, not a double-converted one', async () => {
+      const wrapper = mountPlateTracker('kg', 20)
+      await openLogModal(wrapper)
+
+      // kg users see kg denominations
+      const addBtns = wrapper.findAll('.wtPlateBtnAdd')
+      expect(addBtns.map(b => b.text())).toContain('+20')
+
+      // 20 kg bar + one 20 kg plate per side = 60 kg. Pre-fix, the total was
+      // piped through displayWeight() and the field showed 27.2.
+      await addBtns.find(b => b.text() === '+20')!.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const input = wrapper.find('input[aria-label="Weight"]')
+      expect((input.element as HTMLInputElement).value).toBe('60')
+    })
+
+    it('decomposes a typed kg weight against kg plates (reverse sync)', async () => {
+      const wrapper = mountPlateTracker('kg', 20)
+      await openLogModal(wrapper)
+
+      // Type 60 kg — after the 250ms debounce the calculator should show one
+      // 20 kg plate per side. Pre-fix this decomposed toLbs(60)=132.3 against
+      // kg denominations and produced a nonsense stack.
+      await wrapper.find('input[aria-label="Weight"]').setValue('60')
+      await new Promise(r => setTimeout(r, 350))
+      await wrapper.vm.$nextTick()
+
+      const col20 = wrapper.findAll('.wtPlateCol')
+        .find(c => c.find('.wtPlateBtnAdd').text() === '+20')
+      expect(col20).toBeDefined()
+      expect(col20!.find('.wtPlateCountNum').text()).toBe('1')
+    })
+
+    it('keeps lbs plate math unchanged (45 bar + 2×45 = 135)', async () => {
+      const wrapper = mountPlateTracker('lbs', 45)
+      await openLogModal(wrapper)
+
+      const addBtns = wrapper.findAll('.wtPlateBtnAdd')
+      await addBtns.find(b => b.text() === '+45')!.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const input = wrapper.find('input[aria-label="Weight"]')
+      expect((input.element as HTMLInputElement).value).toBe('135')
+    })
+  })
+
+  describe('guided session plan (#1256)', () => {
+    /** Local calendar date, matching the component's todayISO(). */
+    function localDay(daysAgo = 0): string {
+      const d = new Date()
+      d.setDate(d.getDate() - daysAgo)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+
+    /** Bench + OHP trained 2 days ago (the reference session), Squat 5 days ago. */
+    function planExercises(): Exercise[] {
+      return [
+        {
+          id: 'ex-1', name: 'Bench Press', tags: ['Push'], sets: [
+            { id: 'b1', date: `${localDay(2)}T12:00:00`, weight: 135, reps: 10, estimated1RM: 180 },
+            { id: 'b2', date: `${localDay(2)}T12:00:00`, weight: 185, reps: 5, estimated1RM: 216 },
+          ],
+        },
+        {
+          id: 'ex-2', name: 'Overhead Press', tags: ['Push'], sets: [
+            { id: 'o1', date: `${localDay(2)}T12:00:00`, weight: 95, reps: 8, estimated1RM: 120 },
+          ],
+        },
+        {
+          id: 'ex-3', name: 'Squat', tags: ['Legs'], sets: [
+            { id: 'q1', date: `${localDay(5)}T12:00:00`, weight: 225, reps: 5, estimated1RM: 263 },
+          ],
+        },
+      ]
+    }
+
+    beforeEach(() => {
+      mockState.exercises = planExercises()
+    })
+
+    it('renders the collapsed card with counts from the last session, list hidden', () => {
+      const wrapper = mountTracker()
+      const toggle = wrapper.find('.wtSessionPlanToggle')
+      expect(toggle.exists()).toBe(true)
+      expect(toggle.text()).toContain('Repeat last session')
+      expect(toggle.text()).toContain('2 exercises · 3 sets')
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('.wtSessionPlanList').exists()).toBe(false)
+    })
+
+    it('expands into rows for the reference day only, and a row opens the log modal for its exercise', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtSessionPlanToggle').trigger('click')
+
+      const rows = wrapper.findAll('.wtSessionPlanRow')
+      expect(rows.map(r => r.find('.wtSessionPlanName').text())).toEqual(['Bench Press', 'Overhead Press'])
+      expect(rows[0].find('.wtSessionPlanRowMeta').text()).toContain('2 sets · top 185 lbs × 5')
+
+      await rows[1].trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.repMaxModal').exists()).toBe(true)
+      expect(wrapper.find('#log-modal-title').text()).toContain('Overhead Press')
+      expect(mockGetUsualLadder).toHaveBeenCalledWith('ex-2', localDay())
+    })
+
+    it('tracks live progress as sets land today and marks completed rows', async () => {
+      const wrapper = mountTracker()
+      await wrapper.find('.wtSessionPlanToggle').trigger('click')
+
+      // Log OHP's single planned set today (end-of-day storage convention),
+      // mutating in place + triggerRef per the store's reactivity contract.
+      mockState.exercises[1].sets.push({
+        id: 'o-today', date: `${localDay()}T23:59:00.000Z`, weight: 95, reps: 8, estimated1RM: 120,
+      })
+      triggerRef(mockExercises)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtSessionPlanMeta').text()).toContain('1/3 sets')
+      const rows = wrapper.findAll('.wtSessionPlanRow')
+      expect(rows[0].classes()).not.toContain('wtSessionPlanRowDone')
+      expect(rows[0].find('.wtSessionPlanProgress').text()).toBe('0/2')
+      expect(rows[1].classes()).toContain('wtSessionPlanRowDone')
+      expect(rows[1].find('.wtSessionPlanCheck').exists()).toBe(true)
+    })
+
+    it('scopes the plan to the active tag filter', async () => {
+      const wrapper = mountTracker()
+      const legsChip = wrapper.findAll('.wtTagChip').find(c => c.text().includes('Legs'))!
+      await legsChip.trigger('click')
+
+      const toggle = wrapper.find('.wtSessionPlanToggle')
+      expect(toggle.text()).toContain('Repeat last Legs session')
+      expect(toggle.text()).toContain('1 exercise · 1 set')
+      await toggle.trigger('click')
+      expect(wrapper.findAll('.wtSessionPlanRow')).toHaveLength(1)
+      expect(wrapper.find('.wtSessionPlanName').text()).toBe('Squat')
+    })
+
+    it('does not render when there is nothing to repeat (only today logged)', () => {
+      mockState.exercises = [{
+        id: 'ex-1', name: 'Bench Press', tags: [], sets: [
+          { id: 't1', date: `${localDay()}T23:59:00.000Z`, weight: 135, reps: 10, estimated1RM: 180 },
+        ],
+      }]
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtSessionPlan').exists()).toBe(false)
+    })
+
+    it('hides while a search query is active', async () => {
+      // Search bar only renders with 5+ exercises.
+      mockState.exercises = [
+        ...planExercises(),
+        { id: 'ex-4', name: 'Curl', tags: [], sets: [] },
+        { id: 'ex-5', name: 'Row', tags: [], sets: [] },
+      ]
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtSessionPlan').exists()).toBe(true)
+      await wrapper.find('.wtSearchInput').setValue('bench')
+      expect(wrapper.find('.wtSessionPlan').exists()).toBe(false)
     })
   })
 })

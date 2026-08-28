@@ -16,6 +16,7 @@ import {
   ensureFreshSession,
   authNeedsReauth,
   clearReauthFlag,
+  sessionRecoveryTick,
   _resetSessionHealth,
 } from '../sessionHealth'
 
@@ -122,5 +123,55 @@ describe('clearReauthFlag', () => {
     authNeedsReauth.value = true
     clearReauthFlag()
     expect(authNeedsReauth.value).toBe(false)
+  })
+})
+
+/**
+ * The recovery signal read-path recovery listens to (LIFT-1226). Watching
+ * `authNeedsReauth` alone is not enough: the common recovery is 401 -> refresh
+ * -> success, in which the flag is never raised and so has no true->false edge.
+ */
+describe('sessionRecoveryTick', () => {
+  it('bumps when a refresh heals the session', async () => {
+    mockAuth.refreshSession.mockResolvedValue({ data: { session: { access_token: 'fresh' } }, error: null })
+
+    // The flag was never raised — the only recovery evidence is this tick.
+    expect(authNeedsReauth.value).toBe(false)
+    await ensureFreshSession()
+
+    expect(sessionRecoveryTick.value).toBe(1)
+  })
+
+  it('does not bump when the refresh fails', async () => {
+    mockAuth.refreshSession.mockResolvedValue({ data: { session: null }, error: { message: 'invalid refresh token' } })
+
+    await ensureFreshSession()
+
+    expect(sessionRecoveryTick.value).toBe(0)
+  })
+
+  it('does not bump when the refresh throws', async () => {
+    mockAuth.refreshSession.mockRejectedValue(new Error('network down'))
+
+    await ensureFreshSession()
+
+    expect(sessionRecoveryTick.value).toBe(0)
+  })
+
+  it('bumps when a RAISED reauth flag is cleared by a re-sign-in', () => {
+    authNeedsReauth.value = true
+
+    clearReauthFlag()
+
+    expect(sessionRecoveryTick.value).toBe(1)
+  })
+
+  it('stays flat when a healthy session merely refreshes its token', () => {
+    // TOKEN_REFRESHED fires routinely on a healthy session; treating each one as
+    // a recovery would schedule a pointless four-store re-fetch every cycle.
+    clearReauthFlag()
+    clearReauthFlag()
+
+    expect(sessionRecoveryTick.value).toBe(0)
   })
 })
