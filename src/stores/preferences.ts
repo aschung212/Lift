@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
+import type { Json } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
@@ -250,13 +251,26 @@ export const usePreferencesStore = defineStore('preferences', {
       }
       if (supabase && this._userId) {
         const userId = this._userId
-        syncQueue.enqueue(`preferences:${userId}`, () =>
-          supabase!
+        // Journaled to IndexedDB alongside the closure (LIFT-1239) so a settings
+        // change made offline is replayed on the next launch instead of being
+        // dropped when the tab closes before the flush. Preferences are a
+        // last-write-wins blob with NO reconciliation pass, so the queue was the
+        // only thing standing between an unflushed change and permanent loss.
+        // The replayed key matches this one, so a fresher write (including the
+        // _persist that follows init()'s remote merge) supersedes it.
+        const row = {
+          user_id: userId,
+          // The payload is a closed object of app-owned settings; `Json` is the
+          // generated column type and can't express that shape structurally.
+          preferences: { ...payload } as unknown as Json,
+          updated_at: new Date().toISOString(),
+        }
+        syncQueue.enqueue(
+          `preferences:${userId}`,
+          () => supabase!
             .from('user_preferences')
-            .upsert(
-              { user_id: userId, preferences: { ...payload }, updated_at: new Date().toISOString() },
-              { onConflict: 'user_id' }
-            )
+            .upsert(row, { onConflict: 'user_id' }),
+          { op: 'upsert', table: 'user_preferences', row },
         )
       }
     },

@@ -52,6 +52,57 @@ export const useBodyweightStore = defineStore('bodyweight', {
     },
 
     /**
+     * Durable upsert of a single entry (LIFT-1239).
+     *
+     * Every bodyweight write goes through here so it is journaled to IndexedDB
+     * alongside its closure — previously these enqueued without a descriptor,
+     * so an entry logged offline was lost outright if the app was closed (or
+     * killed while backgrounded) before the queue flushed, and a write that
+     * exhausted its retries had no durable record to retain (LIFT-1229). The
+     * key matches `_fetchFromSupabase`'s reconciliation pushes, so a replayed
+     * write is superseded by a fresher same-key one rather than racing it.
+     */
+    _enqueueEntryUpsert(entry: BodyweightEntry, userId: string) {
+      const row = {
+        id: entry.id,
+        user_id: userId,
+        date: entry.date,
+        weight: entry.weight,
+      }
+      syncQueue.enqueue(
+        `bodyweight:${entry.id}`,
+        () => supabase!.from('bodyweight_entries').upsert(row),
+        { op: 'upsert', table: 'bodyweight_entries', row },
+      )
+    },
+
+    /** Durable soft-delete of one entry (UPDATE { deleted_at }) (LIFT-1239). */
+    _enqueueEntrySoftDelete(id: string, userId: string) {
+      const values = { deleted_at: new Date().toISOString() }
+      const match = { id, user_id: userId }
+      syncQueue.enqueueDelete(
+        `bodyweight:${id}`,
+        () => supabase!.from('bodyweight_entries')
+          .update(values)
+          .eq('id', id).eq('user_id', userId),
+        { op: 'update', table: 'bodyweight_entries', values, match },
+      )
+    },
+
+    /** Durable soft-delete restore (UPDATE { deleted_at: null }) (LIFT-1239). */
+    _enqueueEntryRestore(id: string, userId: string) {
+      const values = { deleted_at: null }
+      const match = { id, user_id: userId }
+      syncQueue.enqueue(
+        `bodyweight:${id}`,
+        () => supabase!.from('bodyweight_entries')
+          .update(values)
+          .eq('id', id).eq('user_id', userId),
+        { op: 'update', table: 'bodyweight_entries', values, match },
+      )
+    },
+
+    /**
      * Sign-out wipe (called by useAuth.resetStores). Pinia's built-in
      * options-store $reset re-runs the state() factory — whose `load()` would
      * re-hydrate the signed-out user's entries straight back out of
@@ -179,14 +230,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (filteredLocalOnly.length > 0) {
         const userId = this._userId
         for (const entry of filteredLocalOnly) {
-          syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
-            supabase!.from('bodyweight_entries').upsert({
-              id: entry.id,
-              user_id: userId,
-              date: entry.date,
-              weight: entry.weight,
-            }),
-          )
+          this._enqueueEntryUpsert(entry, userId)
         }
       }
 
@@ -196,14 +240,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (filteredLocalWins.length > 0) {
         const userId = this._userId
         for (const entry of filteredLocalWins) {
-          syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
-            supabase!.from('bodyweight_entries').upsert({
-              id: entry.id,
-              user_id: userId,
-              date: entry.date,
-              weight: entry.weight,
-            }),
-          )
+          this._enqueueEntryUpsert(entry, userId)
         }
       }
 
@@ -213,14 +250,8 @@ export const useBodyweightStore = defineStore('bodyweight', {
       )
       if (tombstoneEntries.length > 0) {
         const userId = this._userId
-        const deletedAt = new Date().toISOString()
         for (const e of tombstoneEntries) {
-          const entryId = e.id
-          syncQueue.enqueueDelete(`bodyweight:${entryId}`, () =>
-            supabase!.from('bodyweight_entries')
-              .update({ deleted_at: deletedAt })
-              .eq('id', entryId).eq('user_id', userId),
-          )
+          this._enqueueEntrySoftDelete(e.id, userId)
         }
       }
     },
@@ -230,16 +261,12 @@ export const useBodyweightStore = defineStore('bodyweight', {
         ? endOfDayISO(dateStr)
         : new Date().toISOString()
       const id = uuid()
-      this.entries.push({ id, date, weight, updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) })
+      const entry: BodyweightEntry = { id, date, weight, updated_at: new Date().toISOString(), ...(!sync ? { sample: true } : {}) }
+      this.entries.push(entry)
       this._persist()
 
       if (sync && supabase && !isPreviewMode.value && this._userId) {
-        const userId = this._userId
-        syncQueue.enqueue(`bodyweight:${id}`, () =>
-          supabase!.from('bodyweight_entries').upsert({
-            id, user_id: userId, date, weight
-          })
-        )
+        this._enqueueEntryUpsert(entry, this._userId)
       }
       return id
     },
@@ -256,12 +283,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this._persist()
 
       if (supabase && this._userId) {
-        const userId = this._userId
-        syncQueue.enqueue(`bodyweight:${id}`, () =>
-          supabase!.from('bodyweight_entries').upsert({
-            id, user_id: userId, date: entry.date, weight: entry.weight
-          })
-        )
+        this._enqueueEntryUpsert(entry, this._userId)
       }
     },
 
@@ -271,13 +293,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this._persist()
 
       if (sync && supabase && this._userId) {
-        const userId = this._userId
-        const deletedAt = new Date().toISOString()
-        syncQueue.enqueueDelete(`bodyweight:${id}`, () =>
-          supabase!.from('bodyweight_entries')
-            .update({ deleted_at: deletedAt })
-            .eq('id', id).eq('user_id', userId)
-        )
+        this._enqueueEntrySoftDelete(id, this._userId)
       }
     },
 
@@ -290,24 +306,13 @@ export const useBodyweightStore = defineStore('bodyweight', {
       // deleteEntry so an in-flight delete is canceled by this enqueue's last-
       // write-wins. If the delete already flushed, this un-soft-deletes the row.
       if (supabase && !isPreviewMode.value && this._userId) {
-        const userId = this._userId
-        syncQueue.enqueue(`bodyweight:${entry.id}`, () =>
-          supabase!.from('bodyweight_entries')
-            .update({ deleted_at: null })
-            .eq('id', entry.id).eq('user_id', userId)
-        )
+        this._enqueueEntryRestore(entry.id, this._userId)
       }
     },
 
     syncDeleteEntry(id: string) {
       if (supabase && this._userId) {
-        const userId = this._userId
-        const deletedAt = new Date().toISOString()
-        syncQueue.enqueueDelete(`bodyweight:${id}`, () =>
-          supabase!.from('bodyweight_entries')
-            .update({ deleted_at: deletedAt })
-            .eq('id', id).eq('user_id', userId)
-        )
+        this._enqueueEntrySoftDelete(id, this._userId)
       }
     },
 
@@ -318,6 +323,14 @@ export const useBodyweightStore = defineStore('bodyweight', {
       if (supabase && this._userId) {
         const userId = this._userId
         const deletedAt = new Date().toISOString()
+        // Every other write in this store is scoped to one entry id, so
+        // replaying it is idempotent. This one is unbounded — "soft-delete
+        // every live row for this user" — and a descriptor can only express
+        // `eq` matches, so the `.is('deleted_at', null)` guard would be lost on
+        // replay. Worse, replaying it on the next launch would wipe entries
+        // logged on ANOTHER device in the meantime. A wipe the user just
+        // performed is better lost than re-applied to data they since created.
+        // durable-journal-exempt (LIFT-1239)
         syncQueue.enqueueDelete('bodyweight:clear-all', () =>
           supabase!.from('bodyweight_entries')
             .update({ deleted_at: deletedAt })

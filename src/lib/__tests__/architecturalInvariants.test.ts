@@ -253,6 +253,113 @@ describe('Invariant: syncQueue idempotency (no .insert() in retry path)', () => 
   })
 })
 
+// ── Invariant 2b: every store write is durable (LIFT-1239) ──────────
+// Guard: the IndexedDB write journal (LIFT-706) only engages when a caller
+// passes a SyncDescriptor — a descriptor-less enqueue silently keeps the legacy
+// in-memory-only behavior, so the write is lost if the app closes before the 1s
+// flush and has no durable record to retain when retries are exhausted
+// (LIFT-1229). Only workout.ts passed descriptors for a year; bodyweight,
+// preferences and progression didn't, and none of those three has a
+// reconciliation pass to recover the write later. Nothing failed when a table
+// opted out, which is why it went unnoticed — hence a structural guard.
+
+/**
+ * Argument count of the call starting at `start` (index of the `(`), counting
+ * only commas at the top level of the argument list — commas inside nested
+ * calls, object/array literals, and strings belong to an argument, not to the
+ * list. Returns 0 for `f()`.
+ */
+function countCallArgs(source: string, start: number): number {
+  let depth = 0
+  let args = 1
+  let quote: string | null = null
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i]
+    if (quote) {
+      if (ch === '\\') i++
+      else if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+    if (ch === '(' || ch === '{' || ch === '[') depth++
+    else if (ch === ')' || ch === '}' || ch === ']') {
+      depth--
+      if (depth === 0) return source.slice(start + 1, i).trim() === '' ? 0 : args
+    } else if (ch === ',' && depth === 1) args++
+  }
+  throw new Error('Unbalanced call expression while scanning syncQueue arguments')
+}
+
+describe('Invariant: store writes carry a durable descriptor (LIFT-1239)', () => {
+  /**
+   * An enqueue may opt out of the journal only with this marker plus a written
+   * justification. The one current exemption is bodyweight's `clearAll`: its
+   * match is unbounded ("every live row for this user"), a descriptor can only
+   * express `eq` filters so the `.is('deleted_at', null)` guard would be lost
+   * on replay, and re-applying a wipe on the next launch would destroy entries
+   * logged on another device in the meantime.
+   */
+  const EXEMPT_MARKER = 'durable-journal-exempt'
+
+  /** Every syncQueue.enqueue / enqueueDelete call site under src/stores/. */
+  function enqueueCallSites(): { file: string; line: number; args: number; exempt: boolean }[] {
+    const sites: { file: string; line: number; args: number; exempt: boolean }[] = []
+    for (const { name, content } of getStoreFiles()) {
+      const re = /syncQueue\s*\.\s*(enqueue|enqueueDelete)\s*\(/g
+      let match: RegExpExecArray | null
+      while ((match = re.exec(content)) !== null) {
+        const open = match.index + match[0].length - 1
+        sites.push({
+          file: name,
+          line: content.slice(0, match.index).split('\n').length,
+          args: countCallArgs(content, open),
+          // The marker must be the last comment line before the call, so it
+          // can't be inherited from an unrelated block further up.
+          exempt: content
+            .slice(0, match.index)
+            .trimEnd()
+            .split('\n')
+            .slice(-1)[0]
+            .includes(EXEMPT_MARKER),
+        })
+      }
+    }
+    return sites
+  }
+
+  it('the argument counter handles nested literals, arrows and strings (self-test)', () => {
+    const two = "syncQueue.enqueue(`k:${id}`, () => supabase!.from('x').update(v).eq('id', id))"
+    expect(countCallArgs(two, two.indexOf('('))).toBe(2)
+    const three = "syncQueue.enqueue('k', () => f(a, b), { op: 'update', values: { a: 1 }, match: { b: 2 } })"
+    expect(countCallArgs(three, three.indexOf('('))).toBe(3)
+    // A comma inside a string literal must not be read as an argument separator.
+    const stringy = "syncQueue.enqueue('a,b', op)"
+    expect(countCallArgs(stringy, stringy.indexOf('('))).toBe(2)
+  })
+
+  it('every store enqueue passes a SyncDescriptor (or is explicitly exempt)', () => {
+    const sites = enqueueCallSites()
+
+    // Non-vacuity: all four stores must be reached, or the scan proves nothing.
+    expect(sites.length).toBeGreaterThan(5)
+    for (const file of ['workout.ts', 'bodyweight.ts', 'preferences.ts', 'progression.ts']) {
+      expect(sites.some(s => s.file === file), `${file} has no syncQueue call site`).toBe(true)
+    }
+
+    const violations = sites
+      .filter(s => s.args < 3 && !s.exempt)
+      .map(s =>
+        `${s.file}:${s.line} — syncQueue enqueue with ${s.args} arguments and no ` +
+        `SyncDescriptor. Without one the write is in-memory only: it is lost if ` +
+        `the app closes before the flush, and has no durable record to retain ` +
+        `when retries are exhausted. Pass a descriptor, or add a ` +
+        `'${EXEMPT_MARKER}' comment above the call with a justification.`,
+      )
+
+    expect(violations).toEqual([])
+  })
+})
+
 // ── Invariant 3: READ path is read-only ─────────────────────────────
 // Guard: SEV1 2026-04-12 — _fetchFromSupabase broadcast DELETEs from a
 // client-side dedup heuristic. 40-60% of one user's workout data was
