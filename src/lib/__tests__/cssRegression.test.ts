@@ -378,6 +378,24 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.wtExManagerLabel touch target (#1252)', () => {
+    // The exercise manager's row label is a tappable expander sitting beside
+    // the expand chevron. Its two text lines plus padding measure 43px on
+    // their own — one pixel under the floor — so the min-height is load-
+    // bearing, not decorative. Sizing (not a ::before overlay) is mandatory
+    // here: these labels tile vertically, so an oversized overlay would reach
+    // into the next row and expand the wrong exercise.
+    const lines = getRuleLines('.wtExManagerLabel')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('centers its stacked lines so the extra height is not top-aligned dead space', () => {
+      expect(lines.some(l => l.includes('justify-content') && l.includes('center'))).toBe(true)
+    })
+  })
+
   describe('.wtIntensitySlider touch target (#770)', () => {
     // The Intensity-lens slider is a draggable control; its hit area must meet
     // the project's 44pt iOS touch-target minimum.

@@ -3199,6 +3199,77 @@ html.theme-fading .settingsSheet {
 .wtTagManagerSaveBtn { color: var(--accent); }
 .wtTagManagerCancelBtn { color: var(--text-secondary); }
 
+/* ─── Exercise manager modal (#1252) ───────────────────────────────────── */
+/*
+  The exercise-first inverse of the gym manager. It reuses that modal's list
+  chrome (.wtTagManagerList / .wtTagManagerItemWrap / .wtTagManagerExpandBtn)
+  and EditExerciseModal's chip chrome (.wtTagPicker / .wtTagPickerChip, already
+  sized to the 44pt floor per #990), so the only new pieces are the two-line
+  row label and the expanded detail block.
+*/
+
+/* Its own tap target, not just the row's: the label sits beside the expand
+   button and both open the same row, so it needs the 44pt floor in its own
+   right — the two text lines plus 4px padding measure 43px unaided. Sized
+   rather than extended with a transparent ::before overlay, per #990: these
+   labels TILE vertically down the list, so an overlay taller than the element
+   would reach into the neighbouring row and a near-miss would expand the wrong
+   exercise instead of doing nothing. min-width: 0 lets the ellipsis rules on
+   its children engage inside the flex row. */
+.wtExManagerLabel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.wtExManagerName {
+  font-weight: 600;
+  font-size: var(--font-subhead);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wtExManagerSummary {
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Left padding matches the gym manager's .wtTagExerciseRow indent so an
+   expanded body hangs off its row the same way in both modals. */
+.wtExManagerDetail {
+  padding: 0 0 12px 32px;
+  border-top: 1px solid var(--border);
+}
+
+.wtExManagerSectionLabel {
+  display: block;
+  margin-top: 12px;
+  font-size: var(--font-caption2);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wtExManagerSectionEmpty {
+  display: block;
+  padding: 8px 0 4px;
+  font-size: var(--font-caption2);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 /* ─── Edit exercise modal: tag section ─────────────────────────────────── */
 
 .wtTagPicker {

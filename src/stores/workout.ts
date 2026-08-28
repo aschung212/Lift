@@ -1107,6 +1107,27 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Toggle ONE tag on an exercise — the shared primitive behind every tag
+   * membership control (TagManagerModal's per-tag exercise checklist and
+   * ExerciseManagerModal's per-exercise Tags picker, #1252).
+   *
+   * It lives on the store rather than in a `useTagActions` composable
+   * mirroring `useGymActions`: that composable exists because gym CRUD has to
+   * keep the preferences gym LIST in step with workout-store membership and
+   * drive an undo toast. A tag toggle coordinates nothing — it is one
+   * `updateExerciseTags` call — so a composable would only add indirection.
+   */
+  function toggleExerciseTag(exerciseId: string, tag: string) {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    if (!exercise) return
+    const tags = exercise.tags || []
+    updateExerciseTags(
+      exerciseId,
+      tags.includes(tag) ? tags.filter((t: string) => t !== tag) : [...tags, tag],
+    )
+  }
+
   function deleteExercise(exerciseId: string, { sync = true }: { sync?: boolean } = {}) {
     const idx = exercises.value.findIndex((e: Exercise) => e.id === exerciseId)
     if (idx === -1) return
@@ -1776,6 +1797,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     restoreSet,
     renameExercise,
     updateExerciseTags,
+    toggleExerciseTag,
     deleteExercise,
     restoreExercise,
     archiveExercise,
