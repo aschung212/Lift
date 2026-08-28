@@ -6,6 +6,7 @@ import { initNativePlugins } from './lib/native'
 import { initTheme } from './composables/useTheme'
 import { setSentryCaptureException, logError } from './lib/logger'
 import { createCspReporter, violationSummary } from './lib/cspReporting'
+import { createGlobalErrorHandler } from './lib/globalErrorHandlers'
 import { isNative } from './lib/platform'
 import App from './App.vue'
 import './index.css'
@@ -89,5 +90,16 @@ if (!isNative) {
 app.config.errorHandler = (err, _instance, info) => {
   logError(err, { vueInfo: info })
 }
+
+// ── Global async/uncaught error capture floor (LIFT-1227) ─────
+// Vue's errorHandler and ErrorBoundary only see synchronous component errors.
+// This catches the app's many fire-and-forget promise rejections and any
+// uncaught runtime errors, routing them through logError so they surface in
+// dev AND in a DSN-less prod build — not only when Sentry is configured.
+// Registered unconditionally (independent of platform/Sentry); it never
+// preventDefaults, so Sentry's own handlers (deduped) still run.
+createGlobalErrorHandler((error, source) => {
+  logError(error, { source })
+}).start()
 
 app.mount('#app')
