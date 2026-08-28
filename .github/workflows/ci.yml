@@ -271,6 +271,13 @@ jobs:
 
       - run: npm run build
 
+      # Fail the production build if the dev sign-in bypass ("Continue as Dev")
+      # tree-shakes back in — e.g. VITE_E2E leaked into a prod build or the
+      # AuthScreen flag gate was removed (LIFT-1123). This job builds WITHOUT
+      # VITE_E2E, so the dev-signin chunk must be absent from dist/.
+      - name: Guard against dev sign-in in production bundle
+        run: npm run guard:dev-signin
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

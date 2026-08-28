@@ -60,7 +60,7 @@
       <button class="authGuestBtn" @click="handleGuest">Continue without an account</button>
       <p class="authGuestHint">Your workouts stay on this device. Create an account any time to back up &amp; sync.</p>
 
-      <button v-if="isDev" class="authDevBtn" @click="devSignIn">Continue as Dev</button>
+      <component :is="DevSignInButton" v-if="DevSignInButton" />
 
       <p class="authTrust">Free forever — no paywall. Your data syncs privately across your devices.</p>
 
@@ -70,18 +70,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { defineAsyncComponent, ref } from 'vue'
 import type { Provider } from '@supabase/supabase-js'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
 
-const { signInWithProvider, signInWithEmail, signUp, devSignIn, continueAsGuest } = useAuth()
+const { signInWithProvider, signInWithEmail, signUp, continueAsGuest } = useAuth()
 const { logEvent } = useAnalytics()
-// Show the dev sign-in button in local dev mode OR in CI e2e builds where
-// no Supabase backend is configured. import.meta.env values are inlined at
-// build time, so VITE_E2E is only true for the bundle produced by the
-// e2e CI job — real Vercel deploys do not set it.
-const isDev = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true'
+// The dev sign-in bypass is loaded ONLY in local dev mode OR CI e2e builds.
+// import.meta.env values are inlined + folded at build time, so this ternary
+// resolves to `null` in a normal production build — the dev-signin component
+// (and its chunk) is then fully tree-shaken out, never shipping to real users.
+// A misconfigured Vercel env var that set VITE_E2E is the only way it could
+// reach production, which prodBundleGuard.test.ts pins against (LIFT-1123).
+const DevSignInButton =
+  import.meta.env.DEV || import.meta.env.VITE_E2E === 'true'
+    ? defineAsyncComponent(() => import('./DevSignInButton.vue'))
+    : null
 
 const email = ref('')
 const password = ref('')
@@ -345,26 +350,6 @@ async function handleOAuth(provider: Provider) {
   font-size: var(--font-caption1);
   color: var(--text-muted);
   line-height: 1.4;
-}
-
-.authDevBtn {
-  width: 100%;
-  padding: 12px 16px;
-  min-height: 44px;
-  margin-top: 12px;
-  font-size: var(--font-subhead);
-  font-weight: 600;
-  font-family: inherit;
-  color: var(--accent);
-  background: transparent;
-  border: 1px dashed var(--accent);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.authDevBtn:active {
-  opacity: 0.7;
 }
 
 .authTrust {
