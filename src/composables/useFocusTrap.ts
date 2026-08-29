@@ -44,6 +44,17 @@ export function useFocusTrap(): UseFocusTrapReturn {
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== 'Tab' || !trapEl) return
 
+    // NOTE (LIFT-1266): the `!trapEl.contains(document.activeElement)` branches
+    // below reclaim focus whenever it sits outside the trap. That is right for
+    // focus escaping to the page, but a layer Teleported to <body> from INSIDE
+    // this modal (e.g. InfoPopover's bubble) is also "outside" by containment
+    // while being visually on top — reclaiming there would pull focus under the
+    // layer's own backdrop and orphan it. This handler is document-level and
+    // bubble-phase, so such a layer gets first refusal from a capture-phase
+    // window listener; InfoPopover uses that window to close itself and restore
+    // focus into the trap before this runs. Any new teleported layer must do the
+    // same (close or stop the event) rather than relying on the trap to notice.
+
     const focusable = Array.from(trapEl.querySelectorAll<HTMLElement>(FOCUSABLE))
     if (focusable.length === 0) {
       e.preventDefault()

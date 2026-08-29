@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mount, enableAutoUnmount, VueWrapper } from '@vue/test-utils'
+import { defineComponent, h, onMounted, ref } from 'vue'
 import InfoPopover from '../InfoPopover.vue'
+import { useFocusTrap } from '../../composables/useFocusTrap'
 
 enableAutoUnmount(afterEach)
 
@@ -65,6 +67,61 @@ describe('InfoPopover (LIFT-1143)', () => {
     expect(document.querySelector('.infoPopoverBubble')).not.toBeNull()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await wrapper.vm.$nextTick()
+    expect(document.querySelector('.infoPopoverBubble')).toBeNull()
+  })
+
+  it('closes on Tab and returns focus to its trigger', async () => {
+    const wrapper = mountPopover()
+    const trigger = wrapper.get('button.infoPopover').element as HTMLElement
+    await wrapper.get('button.infoPopover').trigger('click')
+    expect(document.activeElement).toBe(document.querySelector('.infoPopoverBubble'))
+
+    // Dispatch on the focused element, as a real browser does, so the event
+    // walks the full path (window capture -> ... -> document bubble) and the
+    // host trap's document-level handler actually gets a turn.
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    expect(document.querySelector('.infoPopoverBubble')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  // LIFT-1266: the bubble is Teleported to <body>, so a host modal's focus trap
+  // sees `!trapEl.contains(activeElement)` and yanks focus into the modal —
+  // which sits *behind* the popover's own inert backdrop — while the dialog
+  // stays open. Exercises the real useFocusTrap against the real component.
+  it('does not strand focus inside a host modal when Tab is pressed', async () => {
+    const Host = defineComponent({
+      setup() {
+        const trap = useFocusTrap()
+        const modalEl = ref<HTMLElement | null>(null)
+        onMounted(() => {
+          if (modalEl.value) trap.activate(modalEl.value, { focusContainer: true })
+        })
+        return () =>
+          h('div', { ref: modalEl, class: 'hostModal' }, [
+            h('button', { class: 'hostFirst' }, 'First'),
+            h(InfoPopover, { label: 'e1RM', title: 'Estimated 1-rep max' }, () => 'Explanation.'),
+            h('button', { class: 'hostLast' }, 'Last'),
+          ])
+      },
+    })
+
+    const wrapper = mount(Host, { attachTo: document.body })
+    const trigger = wrapper.get('button.infoPopover').element as HTMLElement
+    await wrapper.get('button.infoPopover').trigger('click')
+    expect(document.querySelector('.infoPopoverBubble')).not.toBeNull()
+
+    // Dispatch on the focused element, as a real browser does, so the event
+    // walks the full path (window capture -> ... -> document bubble) and the
+    // host trap's document-level handler actually gets a turn.
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    // Focus must not have been dumped on a control hidden behind the backdrop.
+    expect(document.activeElement).not.toBe(wrapper.get('button.hostFirst').element)
+    expect(document.activeElement).toBe(trigger)
+    // ...and the dialog must not be left open and orphaned from focus.
     expect(document.querySelector('.infoPopoverBubble')).toBeNull()
   })
 
