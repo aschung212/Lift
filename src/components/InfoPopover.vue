@@ -78,6 +78,24 @@ function onKeydown(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.stopPropagation()
     close()
+    return
+  }
+  // Tab dismisses the popover (LIFT-1266). The bubble is Teleported to <body>,
+  // so when a host modal runs useFocusTrap the bubble is NOT a descendant of
+  // trapEl — the trap's `!trapEl.contains(document.activeElement)` branch would
+  // otherwise yank focus into the modal while leaving this dialog open on top
+  // of it, behind an inert backdrop. Closing on Tab matches the transient
+  // dismiss-on-scroll/resize model the component already uses, and there is no
+  // focusable content in the bubble to trap.
+  //
+  // Deliberately NOT stopPropagation/preventDefault here (unlike Escape): this
+  // listener is capture-phase on window, so it runs before the trap's
+  // document-level bubble-phase handler. close() synchronously returns focus to
+  // the trigger, which IS inside trapEl, so by the time the trap sees the same
+  // event it makes its normal wrap decision from a valid activeElement. Any
+  // future teleported layer opened from inside a focus trap needs this seam.
+  if (e.key === 'Tab') {
+    close()
   }
 }
 
