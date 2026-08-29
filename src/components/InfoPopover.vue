@@ -70,17 +70,35 @@ const SCROLL_OPTS = { passive: true, capture: true } as const
 const RESIZE_OPTS = { passive: true, capture: false } as const
 
 /** Anchor the fixed-position bubble under the trigger, clamped to the viewport
- *  so it can never overflow off-screen on a narrow phone. */
+ *  on BOTH axes so it can never overflow off-screen on a narrow or short phone.
+ *  Vertically it prefers flipping above the trigger (iOS-native popover
+ *  behaviour) when the below-placement would run past the fold, and falls back
+ *  to a clamp when neither side has room. There is no scroll container that
+ *  could rescue an off-screen bubble — the backdrop is `inset: 0` and scrolling
+ *  dismisses — so an unclamped bubble is unreachable, not merely awkward. */
 function positionBubble(): void {
   const el = triggerEl.value
   if (!el) return
   const r = el.getBoundingClientRect()
   const vw = window.innerWidth
+  const vh = window.innerHeight
   const centerX = r.left + r.width / 2
   const left = Math.max(MARGIN, Math.min(centerX - BUBBLE_WIDTH / 2, vw - MARGIN - BUBBLE_WIDTH))
+
+  // Measured after nextTick, so the bubble is mounted with its slot content.
+  // happy-dom (and any layout-less environment) reports 0 — treat that as
+  // "unmeasurable" and keep the plain below-placement rather than clamping to
+  // a bogus height.
+  const height = bubbleEl.value?.getBoundingClientRect().height ?? 0
+  let top = r.bottom + GAP
+  if (height > 0 && top + height > vh - MARGIN) {
+    const above = r.top - GAP - height
+    top = above >= MARGIN ? above : Math.max(MARGIN, vh - MARGIN - height)
+  }
+
   bubbleStyle.value = {
     left: `${Math.round(left)}px`,
-    top: `${Math.round(r.bottom + GAP)}px`,
+    top: `${Math.round(top)}px`,
     width: `${BUBBLE_WIDTH}px`,
   }
 }
