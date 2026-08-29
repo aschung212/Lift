@@ -58,18 +58,47 @@ const BUBBLE_WIDTH = 244
 const MARGIN = 12
 const GAP = 8
 
+/* Dismiss listeners are declared passive (LIFT-1238): `close` never calls
+   preventDefault, and a non-passive capture-phase scroll listener forces the
+   compositor to wait on the main thread for every scroll frame while a popover
+   is open — measurable jank on the iOS-first target. Options are shared
+   constants so the add/remove pairs can never drift out of sync. Removal
+   matches on the capture flag alone, so it is spelled explicitly on both:
+   `true` for scroll (the anchor may live inside a scrolling container, whose
+   scroll events do not bubble to window) and `false` for resize. */
+const SCROLL_OPTS = { passive: true, capture: true } as const
+const RESIZE_OPTS = { passive: true, capture: false } as const
+
 /** Anchor the fixed-position bubble under the trigger, clamped to the viewport
- *  so it can never overflow off-screen on a narrow phone. */
+ *  on BOTH axes so it can never overflow off-screen on a narrow or short phone.
+ *  Vertically it prefers flipping above the trigger (iOS-native popover
+ *  behaviour) when the below-placement would run past the fold, and falls back
+ *  to a clamp when neither side has room. There is no scroll container that
+ *  could rescue an off-screen bubble — the backdrop is `inset: 0` and scrolling
+ *  dismisses — so an unclamped bubble is unreachable, not merely awkward. */
 function positionBubble(): void {
   const el = triggerEl.value
   if (!el) return
   const r = el.getBoundingClientRect()
   const vw = window.innerWidth
+  const vh = window.innerHeight
   const centerX = r.left + r.width / 2
   const left = Math.max(MARGIN, Math.min(centerX - BUBBLE_WIDTH / 2, vw - MARGIN - BUBBLE_WIDTH))
+
+  // Measured after nextTick, so the bubble is mounted with its slot content.
+  // happy-dom (and any layout-less environment) reports 0 — treat that as
+  // "unmeasurable" and keep the plain below-placement rather than clamping to
+  // a bogus height.
+  const height = bubbleEl.value?.getBoundingClientRect().height ?? 0
+  let top = r.bottom + GAP
+  if (height > 0 && top + height > vh - MARGIN) {
+    const above = r.top - GAP - height
+    top = above >= MARGIN ? above : Math.max(MARGIN, vh - MARGIN - height)
+  }
+
   bubbleStyle.value = {
     left: `${Math.round(left)}px`,
-    top: `${Math.round(r.bottom + GAP)}px`,
+    top: `${Math.round(top)}px`,
     width: `${BUBBLE_WIDTH}px`,
   }
 }
@@ -107,8 +136,8 @@ async function toggle(): Promise<void> {
   open.value = true
   window.addEventListener('keydown', onKeydown, true)
   // iOS-native popovers dismiss on scroll rather than drifting with the anchor.
-  window.addEventListener('scroll', close, true)
-  window.addEventListener('resize', close)
+  window.addEventListener('scroll', close, SCROLL_OPTS)
+  window.addEventListener('resize', close, RESIZE_OPTS)
   await nextTick()
   positionBubble()
   bubbleEl.value?.focus()
@@ -118,16 +147,16 @@ function close(): void {
   if (!open.value) return
   open.value = false
   window.removeEventListener('keydown', onKeydown, true)
-  window.removeEventListener('scroll', close, true)
-  window.removeEventListener('resize', close)
+  window.removeEventListener('scroll', close, SCROLL_OPTS)
+  window.removeEventListener('resize', close, RESIZE_OPTS)
   // Return focus to the trigger so keyboard users aren't stranded.
   triggerEl.value?.focus()
 }
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
-  window.removeEventListener('scroll', close, true)
-  window.removeEventListener('resize', close)
+  window.removeEventListener('scroll', close, SCROLL_OPTS)
+  window.removeEventListener('resize', close, RESIZE_OPTS)
 })
 </script>
 
