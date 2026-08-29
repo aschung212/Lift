@@ -58,6 +58,17 @@ const BUBBLE_WIDTH = 244
 const MARGIN = 12
 const GAP = 8
 
+/* Dismiss listeners are declared passive (LIFT-1238): `close` never calls
+   preventDefault, and a non-passive capture-phase scroll listener forces the
+   compositor to wait on the main thread for every scroll frame while a popover
+   is open — measurable jank on the iOS-first target. Options are shared
+   constants so the add/remove pairs can never drift out of sync. Removal
+   matches on the capture flag alone, so it is spelled explicitly on both:
+   `true` for scroll (the anchor may live inside a scrolling container, whose
+   scroll events do not bubble to window) and `false` for resize. */
+const SCROLL_OPTS = { passive: true, capture: true } as const
+const RESIZE_OPTS = { passive: true, capture: false } as const
+
 /** Anchor the fixed-position bubble under the trigger, clamped to the viewport
  *  so it can never overflow off-screen on a narrow phone. */
 function positionBubble(): void {
@@ -89,8 +100,8 @@ async function toggle(): Promise<void> {
   open.value = true
   window.addEventListener('keydown', onKeydown, true)
   // iOS-native popovers dismiss on scroll rather than drifting with the anchor.
-  window.addEventListener('scroll', close, true)
-  window.addEventListener('resize', close)
+  window.addEventListener('scroll', close, SCROLL_OPTS)
+  window.addEventListener('resize', close, RESIZE_OPTS)
   await nextTick()
   positionBubble()
   bubbleEl.value?.focus()
@@ -100,16 +111,16 @@ function close(): void {
   if (!open.value) return
   open.value = false
   window.removeEventListener('keydown', onKeydown, true)
-  window.removeEventListener('scroll', close, true)
-  window.removeEventListener('resize', close)
+  window.removeEventListener('scroll', close, SCROLL_OPTS)
+  window.removeEventListener('resize', close, RESIZE_OPTS)
   // Return focus to the trigger so keyboard users aren't stranded.
   triggerEl.value?.focus()
 }
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
-  window.removeEventListener('scroll', close, true)
-  window.removeEventListener('resize', close)
+  window.removeEventListener('scroll', close, SCROLL_OPTS)
+  window.removeEventListener('resize', close, RESIZE_OPTS)
 })
 </script>
 
