@@ -160,6 +160,49 @@ export function mergeBodyweightDates(local: string[], remote: string[]): string[
   return [...new Set([...local, ...remote])].sort()
 }
 
+/**
+ * The most recently evaluated entry in a streak history.
+ *
+ * `evaluatePendingWeeks` appends in ascending week order, but the history also
+ * round-trips through a user-writable JSONB blob, so the latest week is found by
+ * scanning rather than assuming `at(-1)`. Week starts are `YYYY-MM-DD`, so a
+ * lexicographic compare IS a chronological one.
+ */
+export function latestStreakEntry(history: StreakWeekEntry[]): StreakWeekEntry | null {
+  let latest: StreakWeekEntry | null = null
+  for (const entry of history) {
+    if (!latest || entry.weekStart > latest.weekStart) latest = entry
+  }
+  return latest
+}
+
+/**
+ * Merge two streak histories: the one evaluated furthest into the calendar wins
+ * (#1269).
+ *
+ * `streakHistory` is append-only and strictly ordered by week, so unlike the
+ * other synced collections it has a well-defined "further along" — the copy
+ * whose latest week is later strictly dominates. It must NOT be taken
+ * remote-wins like a plain scalar: App.vue's startup catch-up advances the
+ * LOCAL history before `_fetchFromSupabase` resolves, so adopting the remote
+ * copy unconditionally threw that evaluation away, and the `_syncToSupabase`
+ * at the end of the fetch then pushed the reverted value back to the server —
+ * replacing the catch-up's own queued payload, since both share the
+ * `progression-sync` queue key — which re-armed the identical revert on every
+ * launch.
+ *
+ * Ties break toward the longer history, then toward remote so a genuine
+ * multi-device disagreement about the same week keeps the store's remote-wins
+ * default.
+ */
+export function mergeStreakHistory(local: StreakWeekEntry[], remote: StreakWeekEntry[]): StreakWeekEntry[] {
+  const localWeek = latestStreakEntry(local)?.weekStart ?? ''
+  const remoteWeek = latestStreakEntry(remote)?.weekStart ?? ''
+  if (localWeek > remoteWeek) return local
+  if (remoteWeek > localWeek) return remote
+  return local.length > remote.length ? local : remote
+}
+
 /** Recalculate totalXP from xpPerSet + bodyweight dates. */
 function recalcTotalXP(xpPerSet: Record<string, SetXPEntry | number>, bodyweightDates: string[], bodyweightXPPerDay: number): number {
   let total = 0
@@ -308,7 +351,6 @@ export const useProgressionStore = defineStore('progression', {
       this.lastSyncError = null
 
       // Merge remote state — remote wins for simple scalar fields
-      this.streakWeeks = data.streak_weeks ?? this.streakWeeks
       this.weeklyTarget = data.weekly_target ?? this.weeklyTarget
       this.pendingTargetChange = data.pending_target_change ?? this.pendingTargetChange
       this.showProgression = data.show_progression ?? this.showProgression
@@ -316,7 +358,18 @@ export const useProgressionStore = defineStore('progression', {
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
       this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
       this.epoch = (data.epoch as number) ?? this.epoch
-      this.streakHistory = parseStreakHistory(data.streak_history, this.streakHistory)
+
+      // Streak state is DERIVED from the append-only history, not a remote-wins
+      // scalar (#1269). `evaluateWeek` stamps the post-update count onto every
+      // entry, so the latest entry IS the current streak — taking
+      // `data.streak_weeks` on its own could contradict the history we just
+      // merged. Only fall back to the remote scalar when neither side has any
+      // history to derive from (a legacy row, or a device that has never run a
+      // catch-up).
+      this.streakHistory = mergeStreakHistory(this.streakHistory, parseStreakHistory(data.streak_history, []))
+      this.streakWeeks = latestStreakEntry(this.streakHistory)?.streakCount
+        ?? data.streak_weeks
+        ?? this.streakWeeks
 
       // Merge collection fields — union strategy, no data loss
       const remoteThemes = parseUnlockedThemes(data.unlocked_themes) ?? migrateUnlockedThemes([])
