@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mount, enableAutoUnmount, VueWrapper } from '@vue/test-utils'
 import InfoPopover from '../InfoPopover.vue'
 
@@ -72,5 +72,39 @@ describe('InfoPopover (LIFT-1143)', () => {
     // A stray scroll after unmount must not throw or resurrect the bubble.
     window.dispatchEvent(new Event('scroll'))
     expect(document.querySelector('.infoPopoverBubble')).toBeNull()
+  })
+
+  it('registers its scroll/resize dismiss listeners as passive (LIFT-1238)', async () => {
+    const addSpy = vi.spyOn(window, 'addEventListener')
+    const wrapper = mountPopover()
+    await wrapper.get('button.infoPopover').trigger('click')
+
+    // `close` never calls preventDefault, so a non-passive listener would make
+    // the compositor block on the main thread for every scroll frame.
+    const scroll = addSpy.mock.calls.find(([type]) => type === 'scroll')
+    expect(scroll?.[2]).toMatchObject({ passive: true, capture: true })
+
+    const resize = addSpy.mock.calls.find(([type]) => type === 'resize')
+    expect(resize?.[2]).toMatchObject({ passive: true })
+    addSpy.mockRestore()
+  })
+
+  it('still detaches the passive scroll listener on close', async () => {
+    const wrapper = mountPopover()
+    const trigger = wrapper.get('button.infoPopover')
+    await trigger.trigger('click')
+    expect(document.querySelector('.infoPopoverBubble')).not.toBeNull()
+
+    // Closes via the scroll dismiss path...
+    window.dispatchEvent(new Event('scroll'))
+    await wrapper.vm.$nextTick()
+    expect(document.querySelector('.infoPopoverBubble')).toBeNull()
+
+    // ...and the removal must have matched on the capture flag, so re-opening
+    // registers exactly one listener rather than stacking a leaked duplicate.
+    const addSpy = vi.spyOn(window, 'addEventListener')
+    await trigger.trigger('click')
+    expect(addSpy.mock.calls.filter(([type]) => type === 'scroll')).toHaveLength(1)
+    addSpy.mockRestore()
   })
 })
