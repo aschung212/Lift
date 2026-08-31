@@ -287,22 +287,62 @@
 
         <div class="settingsGroup">
           <div class="settingsHeader">Personal Records</div>
+          <!-- Strength baseline mode (#1272): what "your best" means. A lifetime
+               peak is the right target on a bulk and an unreachable one deep in a
+               cut, where it silences PR detection and collapses XP. Recent mode
+               measures against a rolling window instead. Both resolve to the same
+               baseline day key, so badges, suggestions and XP move together. -->
+          <div class="settingsRow">
+            <div class="settingsLabelGroup">
+              <span class="settingsLabel">Measure against</span>
+              <span class="settingsHint">{{ strengthBaselineHint }}</span>
+            </div>
+          </div>
+          <div class="settingsRow">
+            <div class="settingsSegment">
+              <button
+                v-for="mode in STRENGTH_BASELINE_MODES"
+                :key="mode"
+                :class="['settingsSegmentBtn', { active: strengthBaselineMode === mode }]"
+                @click="onStrengthBaselineMode(mode)"
+                :aria-pressed="strengthBaselineMode === mode"
+              >{{ mode === 'recent' ? 'Recent' : 'Lifetime' }}</button>
+            </div>
+          </div>
+          <div v-if="strengthBaselineMode === 'recent'" class="settingsRow">
+            <span class="settingsLabel settingsLabelSecondary">Recent window</span>
+            <div class="iosStepper">
+              <button
+                class="iosStepperBtn"
+                @click="adjustRecentBaselineWeeks(-RECENT_BASELINE_WEEKS_STEP)"
+                :disabled="recentBaselineWeeks <= MIN_RECENT_BASELINE_WEEKS"
+                aria-label="Shorten recent window"
+              >−</button>
+              <span class="iosStepperValue">{{ recentBaselineWeeks }} weeks</span>
+              <button
+                class="iosStepperBtn"
+                @click="adjustRecentBaselineWeeks(RECENT_BASELINE_WEEKS_STEP)"
+                :disabled="recentBaselineWeeks >= MAX_RECENT_BASELINE_WEEKS"
+                aria-label="Lengthen recent window"
+              >+</button>
+            </div>
+          </div>
           <div class="settingsRow">
             <div class="settingsLabelGroup">
               <span class="settingsLabel">Evaluate PRs since</span>
-              <span class="settingsHint">{{ formatBaselineLabel(prBaselineDate) }}</span>
+              <span class="settingsHint">{{ formatBaselineLabel(prBaselineAnchor) }}</span>
             </div>
             <div class="settingsInputWrap">
               <input
                 type="date"
                 class="settingsInput"
-                :value="prBaselineDate ?? ''"
+                :value="prBaselineAnchor ?? ''"
                 :max="todayISO()"
                 @change="onBaselineDateInput(($event.target as HTMLInputElement).value)"
                 aria-label="PR baseline date"
               />
               <button
-                v-if="prBaselineDate"
+                v-if="prBaselineAnchor"
                 class="settingsInputClear"
                 @click="clearPRBaseline()"
                 aria-label="Clear PR baseline (use all time)"
@@ -786,6 +826,13 @@ import { importCSV } from '../lib/csvImport'
 import { usePreferencesStore } from '../stores/preferences'
 import type { WeightGoalDirection } from '../stores/preferences'
 import { MAX_INTENSITY_PRESETS, nextPresetValue, pickNewPresetValue } from '../lib/intensityTable'
+import {
+  STRENGTH_BASELINE_MODES,
+  MIN_RECENT_BASELINE_WEEKS,
+  MAX_RECENT_BASELINE_WEEKS,
+  RECENT_BASELINE_WEEKS_STEP,
+  type StrengthBaselineMode,
+} from '../lib/strengthBaseline'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
 import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
@@ -810,7 +857,17 @@ const emit = defineEmits<{
 const { currentTheme, THEMES, THEME_PREVIEWS, colorMode, resolvedMode, selectTheme: themeSelectFn, previewTheme, revertPreview, isThemeUnlocked } = useTheme()
 const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
-const { prBaselineDate, setPRBaseline, startNewTrainingBlock, clearPRBaseline } = usePRBaseline()
+const {
+  prBaselineDate,
+  prBaselineAnchor,
+  strengthBaselineMode,
+  recentBaselineWeeks,
+  setPRBaseline,
+  startNewTrainingBlock,
+  clearPRBaseline,
+  setStrengthBaselineMode,
+  setRecentBaselineWeeks,
+} = usePRBaseline()
 const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
 const { user } = useAuth()
@@ -1484,6 +1541,32 @@ function formatBaselineLabel(iso: string | null): string {
 function onBaselineDateInput(value: string) {
   if (!value) clearPRBaseline()
   else setPRBaseline(value)
+}
+
+/**
+ * One-line read-out of the baseline actually in force (#1272). The two controls
+ * interact — in recent mode the anchor still shadows the window whenever it is
+ * the later of the two — so state the resolved answer rather than leaving the
+ * user to intersect them mentally.
+ */
+const strengthBaselineHint = computed(() => {
+  if (strengthBaselineMode.value === 'recent') {
+    const since = prBaselineDate.value
+    const window = `Your best in the last ${recentBaselineWeeks.value} weeks`
+    return since ? `${window} — since ${formatBaselineLabel(since)}` : window
+  }
+  return prBaselineAnchor.value
+    ? `Your best since ${formatBaselineLabel(prBaselineAnchor.value)}`
+    : 'Your best ever'
+})
+
+function adjustRecentBaselineWeeks(delta: number) {
+  setRecentBaselineWeeks(recentBaselineWeeks.value + delta)
+}
+
+function onStrengthBaselineMode(mode: StrengthBaselineMode) {
+  setStrengthBaselineMode(mode)
+  logEvent('strength_baseline_mode', { mode })
 }
 
 function confirmStartNewTrainingBlock() {

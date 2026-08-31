@@ -109,6 +109,11 @@ describe('LIFT-1243 preferences init() persists through the single write path', 
       experience: expect.any(Object),
       filters: expect.any(Object),
       coachProfile: expect.any(Object),
+      // #1272 — a remote row written before the strength-baseline mode existed
+      // must adopt the defaults, not drop the keys: a blob missing them would
+      // read back as `undefined` on the next cold start.
+      strengthBaselineMode: 'lifetime',
+      recentBaselineWeeks: 8,
     })
   })
 

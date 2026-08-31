@@ -7,6 +7,13 @@ import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { isPlainObject } from '../lib/storage'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
+import {
+  sanitizeStrengthBaselineMode,
+  sanitizeRecentBaselineWeeks,
+  DEFAULT_STRENGTH_BASELINE_MODE,
+  DEFAULT_RECENT_BASELINE_WEEKS,
+  type StrengthBaselineMode,
+} from '../lib/strengthBaseline'
 import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
 import { localDateKey } from '../lib/dates'
@@ -136,6 +143,14 @@ function initialPreferencesState() {
     experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
     filters: { ...DEFAULT_FILTERS } as FilterSettings,
     prBaselineDate: null as string | null,
+    /**
+     * What "your best" is measured against (#1272): the lifetime peak (plus any
+     * manual `prBaselineDate` anchor) or a rolling recent window. Resolved into
+     * a single day key by `resolveStrengthBaseline`.
+     */
+    strengthBaselineMode: DEFAULT_STRENGTH_BASELINE_MODE as StrengthBaselineMode,
+    /** Length of the recent-mode trailing window, in weeks. */
+    recentBaselineWeeks: DEFAULT_RECENT_BASELINE_WEEKS,
     /** Synced appearance/behavior settings (previously standalone localStorage keys). */
     theme: 'eternal' as string,
     colorMode: 'dark' as string,
@@ -181,6 +196,8 @@ function loadLocalSettings(): Partial<PreferencesState> {
       if (parsed.experience) out.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
       if (parsed.filters) out.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
       if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) out.prBaselineDate = parsed.prBaselineDate
+      if (parsed.strengthBaselineMode !== undefined) out.strengthBaselineMode = sanitizeStrengthBaselineMode(parsed.strengthBaselineMode)
+      if (parsed.recentBaselineWeeks !== undefined) out.recentBaselineWeeks = sanitizeRecentBaselineWeeks(parsed.recentBaselineWeeks)
       if (typeof parsed.theme === 'string') out.theme = parsed.theme
       if (typeof parsed.colorMode === 'string') out.colorMode = parsed.colorMode
       if (typeof parsed.weightUnit === 'string') out.weightUnit = parsed.weightUnit
@@ -237,6 +254,8 @@ export const usePreferencesStore = defineStore('preferences', {
         experience: this.experience,
         filters: this.filters,
         prBaselineDate: this.prBaselineDate,
+        strengthBaselineMode: this.strengthBaselineMode,
+        recentBaselineWeeks: this.recentBaselineWeeks,
         theme: this.theme,
         colorMode: this.colorMode,
         weightUnit: this.weightUnit,
@@ -335,6 +354,8 @@ export const usePreferencesStore = defineStore('preferences', {
       } else if ('prBaselineDate' in parsed && parsed.prBaselineDate === null) {
         this.prBaselineDate = null
       }
+      if (parsed.strengthBaselineMode !== undefined) this.strengthBaselineMode = sanitizeStrengthBaselineMode(parsed.strengthBaselineMode)
+      if (parsed.recentBaselineWeeks !== undefined) this.recentBaselineWeeks = sanitizeRecentBaselineWeeks(parsed.recentBaselineWeeks)
       if (typeof parsed.theme === 'string') this.theme = parsed.theme
       if (typeof parsed.colorMode === 'string') this.colorMode = parsed.colorMode
       if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
@@ -533,6 +554,21 @@ export const usePreferencesStore = defineStore('preferences', {
 
     clearPRBaseline() {
       this.prBaselineDate = null
+      this._persist()
+    },
+
+    /**
+     * Switch what "your best" is measured against (#1272). Only future set
+     * evaluations and on-the-fly badges change — awarded XP is never recomputed.
+     */
+    setStrengthBaselineMode(mode: StrengthBaselineMode) {
+      this.strengthBaselineMode = sanitizeStrengthBaselineMode(mode)
+      this._persist()
+    },
+
+    /** Set the recent-mode trailing window length, in weeks (clamped). */
+    setRecentBaselineWeeks(weeks: number) {
+      this.recentBaselineWeeks = sanitizeRecentBaselineWeeks(weeks)
       this._persist()
     },
 

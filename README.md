@@ -179,7 +179,9 @@ Every action updates Pinia state and `localStorage` immediately, then fires a Su
 Tab content components are lazy-loaded via `defineAsyncComponent()` with dynamic `import()`. This keeps the initial bundle small — only the auth screen and shell load upfront; heavy components like WorkoutTracker (34 KB) load on demand after sign-in.
 
 ### PR detection
-`getExercisePR(exerciseId)` returns the all-time max `estimated1RM` across all sets for that exercise. Any set where `set.estimated1RM === PR` gets the gold treatment — in both the workout list and the calendar.
+`getExercisePR(exerciseId, sinceDate)` returns the max `estimated1RM` across an exercise's sets on or after `sinceDate` (all-time when it is null). Any set where `set.estimated1RM === PR` gets the gold treatment — in both the workout list and the calendar.
+
+`sinceDate` comes from one place, `usePRBaseline().prBaselineDate`, which resolves the **strength baseline mode** (#1272): *Lifetime* uses the manual "evaluate PRs since" anchor as-is, while *Recent* uses a rolling window (8 weeks by default) so a cut is measured against recent work instead of an out-of-reach peak-bulk PR. Both modes collapse to that single day key, so badges, log-set suggestions, and XP scoring stay in agreement without any of them knowing the mode exists.
 
 ### Calendar PR map
 A `prMap` computed property (`YYYY-MM-DD → Set<exerciseName>`) is derived from the store at render time. The calendar reads this to show trophy badges on cells and exercise tags without any extra queries.
