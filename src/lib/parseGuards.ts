@@ -91,6 +91,11 @@ export function parseWorkoutSet(value: unknown): WorkoutSet | null {
   if (isFiniteNumber(o.rpe) && o.rpe >= 6 && o.rpe <= 10 && o.rpe * 2 === Math.round(o.rpe * 2)) {
     set.rpe = o.rpe
   }
+  // "Went for one more rep and missed it" (#1271). Only a literal `true` is
+  // kept: absent already means re-racked, so a stray `false`/`'true'`/`1` is
+  // dropped rather than normalized, keeping the persisted shape to the one
+  // form `logSet` writes.
+  if (o.attemptedNextRep === true) set.attemptedNextRep = true
   return set
 }
 

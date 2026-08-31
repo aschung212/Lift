@@ -37,6 +37,11 @@
           <div class="wtTimelineRowMain">
             <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
             <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
+            <span
+              v-if="entry.set.attemptedNextRep"
+              class="wtEffortBadge"
+              :aria-label="`Went for rep ${entry.set.reps + 1}`"
+            >+1</span>
             <span v-if="entry.set.rpe" class="wtTimelineRPE">RPE {{ entry.set.rpe }}</span>
             <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
             <span v-if="timelinePRMap[entry.set.id] === 'pr'" class="wtTimelineBadge" aria-label="Personal record">🏆</span>

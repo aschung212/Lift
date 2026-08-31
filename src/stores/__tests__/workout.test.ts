@@ -198,6 +198,57 @@ describe('workout store', () => {
       store.updateSet(exId, setId, 185, 5)
       expect(store.exercises[0].sets[0].rpe).toBe(7.5)
     })
+
+    // ── "went for one more rep" annotation (#1271) ──────────────
+    it('records attemptedNextRep when logged with it', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 8, undefined, { attemptedNextRep: true })
+      expect(store.exercises[0].sets[0].attemptedNextRep).toBe(true)
+    })
+
+    it('omits the key entirely for a re-racked set', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 8)
+      store.logSet(exId, 135, 8, undefined, { attemptedNextRep: false })
+      // Absent already means re-racked, so storing `false` would bloat every
+      // set in history for no extra information.
+      expect(store.exercises[0].sets[0]).not.toHaveProperty('attemptedNextRep')
+      expect(store.exercises[0].sets[1]).not.toHaveProperty('attemptedNextRep')
+    })
+
+    it('does not change estimated1RM — the attempt is a tiebreak, not extra load', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 8)
+      store.logSet(exId, 135, 8, undefined, { attemptedNextRep: true })
+      const [racked, attempted] = store.exercises[0].sets
+      // Inflating e1RM off a self-reported flag would mint phantom PRs.
+      expect(attempted.estimated1RM).toBe(racked.estimated1RM)
+    })
+
+    it('sets and clears attemptedNextRep through updateSet', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 8)
+      const setId = store.exercises[0].sets[0].id
+
+      store.updateSet(exId, setId, 135, 8, undefined, undefined, true)
+      expect(store.exercises[0].sets[0].attemptedNextRep).toBe(true)
+
+      store.updateSet(exId, setId, 135, 8, undefined, undefined, false)
+      expect(store.exercises[0].sets[0]).not.toHaveProperty('attemptedNextRep')
+    })
+
+    it('leaves attemptedNextRep unchanged when the param is undefined', () => {
+      const store = useWorkoutStore()
+      const exId = store.addExercise('Bench')!
+      store.logSet(exId, 135, 8, undefined, { attemptedNextRep: true })
+      const setId = store.exercises[0].sets[0].id
+      store.updateSet(exId, setId, 145, 8)
+      expect(store.exercises[0].sets[0].attemptedNextRep).toBe(true)
+    })
   })
 
   // ── deleteSet / restoreSet ─────────────────────────────────────
@@ -985,6 +1036,74 @@ describe('workout store', () => {
     it('returns null for non-existent exercise', () => {
       const store = useWorkoutStore()
       expect(store.getOverloadSuggestion('fake')).toBeNull()
+    })
+
+    // ── "went for one more rep" steering (#1271) ─────────────────
+    describe('attempted-next-rep signal', () => {
+      it('says land the rep instead of go heavier when the last top set failed the next rep', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        // Identical history to the "suggests weight increase after consistent
+        // sessions" case above — the ONLY difference is that the latest top set
+        // ended in a failed attempt at a 6th rep.
+        addSetsOnDays(store, id, [
+          { date: '2026-03-01', weight: 185, reps: 5 },
+          { date: '2026-03-03', weight: 185, reps: 5 },
+        ])
+        store.logSet(id, 185, 5, '2026-03-05', { attemptedNextRep: true })
+
+        const suggestion = store.getOverloadSuggestion(id)
+        expect(suggestion).not.toBeNull()
+        // At true failure for this weight: no reps in reserve to convert into
+        // load, so adding 5 lbs would just cost reps.
+        expect(suggestion!.type).toBe('increase_reps')
+        expect(suggestion!.weight).toBe(185)
+        expect(suggestion!.reps).toBe(6)
+        // High confidence — it fires only on a deliberate annotation, unlike
+        // the generic add-a-rep fallbacks.
+        expect(suggestion!.confidence).toBe('high')
+        expect(suggestion!.reason).toContain('rep 6')
+      })
+
+      it('still suggests going heavier when the same history was re-racked', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        addSetsOnDays(store, id, [
+          { date: '2026-03-01', weight: 185, reps: 5 },
+          { date: '2026-03-03', weight: 185, reps: 5 },
+          { date: '2026-03-05', weight: 185, reps: 5 },
+        ])
+        const suggestion = store.getOverloadSuggestion(id)
+        expect(suggestion!.type).toBe('increase_weight')
+        expect(suggestion!.weight).toBe(190)
+      })
+
+      it('ignores an attempt on a set that was not the session top set', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        addSetsOnDays(store, id, [
+          { date: '2026-03-01', weight: 185, reps: 5 },
+          { date: '2026-03-03', weight: 185, reps: 5 },
+          { date: '2026-03-05', weight: 185, reps: 5 },
+        ])
+        // A back-off set taken to failure says nothing about the top set.
+        store.logSet(id, 135, 10, '2026-03-05', { attemptedNextRep: true })
+        expect(store.getOverloadSuggestion(id)!.type).toBe('increase_weight')
+      })
+
+      it('picks the attempted set as the session top when weight and reps tie', () => {
+        const store = useWorkoutStore()
+        const id = store.addExercise('Bench')!
+        addSetsOnDays(store, id, [
+          { date: '2026-03-01', weight: 185, reps: 5 },
+          { date: '2026-03-03', weight: 185, reps: 5 },
+          // Two identical top sets on the latest day; only the second went for
+          // a 6th. Ranking must surface it, not the first-logged clean set.
+          { date: '2026-03-05', weight: 185, reps: 5 },
+        ])
+        store.logSet(id, 185, 5, '2026-03-05', { attemptedNextRep: true })
+        expect(store.getOverloadSuggestion(id)!.type).toBe('increase_reps')
+      })
     })
   })
 

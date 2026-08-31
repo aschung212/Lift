@@ -173,6 +173,7 @@ export type Database = {
       }
       sets: {
         Row: {
+          attempted_next_rep: boolean
           created_at: string
           date: string
           deleted_at: string | null
@@ -187,6 +188,7 @@ export type Database = {
           weight: number
         }
         Insert: {
+          attempted_next_rep?: boolean
           created_at?: string
           date: string
           deleted_at?: string | null
@@ -201,6 +203,7 @@ export type Database = {
           weight: number
         }
         Update: {
+          attempted_next_rep?: boolean
           created_at?: string
           date?: string
           deleted_at?: string | null
