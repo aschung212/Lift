@@ -576,7 +576,7 @@
                    Ceiling rounding means the 100% end reaches PR-beating loads,
                    so this one lens spans warmups → PR (#770). -->
               <template v-else-if="currentLens === 'intensity'">
-                <span class="wtPrevSessionLabel">{{ intensityPct }}% of {{ displayWeight(intensityOneRM!) }} {{ weightUnit }} max</span>
+                <span class="wtPrevSessionLabel">{{ intensityPct }}% of {{ displayWeight(intensityOneRM!) }} {{ weightUnit }} {{ baselineMaxLabel }}</span>
                 <!-- Tappable presets (configured in Settings, #776) — the fast path;
                      the slider below stays for one-off intensities. -->
                 <div v-if="intensityPresets.length" class="wtPrevSessionChips wtIntensityPresetChips" role="group" aria-label="Intensity presets">
@@ -629,25 +629,25 @@
           </div>
           <!-- Live 1RM estimate / PR target -->
           <div v-if="liveEstimate" class="repMaxResult">
-            <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (Best: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
+            <span class="repMaxResultLabel">Estimated 1RM{{ liveXPPreview?.best1RM ? ` (${baselineBestLabel}: ${liveXPPreview.best1RM} ${weightUnit})` : '' }}</span>
             <span class="repMaxResultValue">{{ liveEstimate }} {{ weightUnit }}</span>
-            <span v-if="isNewPR" class="wtPrBadge">New PR! 🏆</span>
+            <span v-if="isNewPR" class="wtPrBadge">{{ prBadgeLabel }}</span>
             <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
           </div>
           <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget" :class="{ repMaxResultTappable: plateMode }" @click="plateMode && loadPRTarget()">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
             <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
             <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
             <span v-if="plateMode" class="repMaxPersonalBest">Tap to load plates</span>
           </div>
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="repsStr = '1'">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
-            <span class="repMaxPersonalBest">Any rep at this weight is a new PR</span>
+            <span class="repMaxPersonalBest">Any rep at this weight is a {{ isRecentBaseline ? 'new recent best' : 'new PR' }}</span>
             <span class="repMaxPersonalBest">Tap to set reps</span>
           </div>
           <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="loadPRTargetReps">
-            <span class="repMaxResultLabel">To Beat Your Est. 1RM</span>
+            <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
             <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
@@ -973,8 +973,21 @@ const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
 const { impactLight, notifySuccess } = useHaptics()
 const { logSetXPCeremony } = useXPCeremony()
-const { prBaselineDate } = usePRBaseline()
+const { prBaselineDate, strengthBaselineMode } = usePRBaseline()
 const { presentPRBurst } = usePRBurst()
+
+// Labels that name the baseline in force (#1272). Every "best" the log sheet
+// shows — the intensity anchor, the live estimate, the to-beat card — is
+// `getExercisePR(id, prBaselineDate)`, which in recent mode is a rolling window
+// rather than the all-time peak. Calling a recent best a "PR" would misreport
+// it, so the copy follows the mode.
+const isRecentBaseline = computed(() => strengthBaselineMode.value === 'recent')
+const baselineMaxLabel = computed(() => (isRecentBaseline.value ? 'recent max' : 'max'))
+const baselineBestLabel = computed(() => (isRecentBaseline.value ? 'Recent best' : 'Best'))
+const prTargetLabel = computed(() =>
+  isRecentBaseline.value ? 'To Beat Your Recent Best' : 'To Beat Your Est. 1RM',
+)
+const prBadgeLabel = computed(() => (isRecentBaseline.value ? 'New recent best! 🏆' : 'New PR! 🏆'))
 const { presentFirstSetCelebration } = useFirstSetCelebration()
 const { presentGoalCelebration } = useGoalCelebration()
 

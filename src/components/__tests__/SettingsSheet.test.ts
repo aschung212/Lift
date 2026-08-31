@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ref, reactive, defineComponent, nextTick } from 'vue'
+import { ref, reactive, computed, defineComponent, nextTick } from 'vue'
 import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
 import { useModal } from '../../composables/useModal'
+import { resolveStrengthBaseline } from '../../lib/strengthBaseline'
 import { mockIntersectionObservers } from '../../__tests__/setup'
 
 // The Support-group visibility observer (LIFT-906) is the most-recently armed
@@ -94,16 +95,43 @@ vi.mock('../../composables/useRestTimer', () => ({
   }),
 }))
 
-// ── PR baseline ────────────────────────────────────────────────────
-const mockSetPRBaseline = vi.fn()
+// ── PR baseline + strength baseline mode (#1272) ───────────────────
+// The mock has to stay faithful to the real composable's split: `prBaselineDate`
+// is the mode-RESOLVED baseline and `prBaselineAnchor` is the raw stored date
+// the Settings input binds to. Writing the setters through to the refs (rather
+// than leaving bare spies) is what lets the mode-dependent rows below actually
+// render — a spy-only mock would leave the sheet permanently in lifetime mode
+// and the recent-window assertions would pass vacuously.
+const mockPrBaselineAnchor = ref<string | null>(null)
+const mockStrengthBaselineMode = ref<'lifetime' | 'recent'>('lifetime')
+const mockRecentBaselineWeeks = ref(8)
+// A fixed "today" rather than the real clock: the sheet's hint copy branches on
+// whether the anchor or the window won, so the mock has to resolve them the way
+// production does. Hardcoding a resolved date instead would make the
+// anchor-wins branch unreachable and its assertion vacuous.
+const MOCK_TODAY = '2026-08-30'
+const mockPrBaselineDate = computed(() => resolveStrengthBaseline({
+  mode: mockStrengthBaselineMode.value,
+  anchor: mockPrBaselineAnchor.value,
+  weeks: mockRecentBaselineWeeks.value,
+  todayKey: MOCK_TODAY,
+}))
+const mockSetPRBaseline = vi.fn((date: string | null) => { mockPrBaselineAnchor.value = date })
 const mockStartNewTrainingBlock = vi.fn()
-const mockClearPRBaseline = vi.fn()
+const mockClearPRBaseline = vi.fn(() => { mockPrBaselineAnchor.value = null })
+const mockSetStrengthBaselineMode = vi.fn((mode: 'lifetime' | 'recent') => { mockStrengthBaselineMode.value = mode })
+const mockSetRecentBaselineWeeks = vi.fn((weeks: number) => { mockRecentBaselineWeeks.value = weeks })
 vi.mock('../../composables/usePRBaseline', () => ({
   usePRBaseline: () => ({
-    prBaselineDate: ref(null),
+    prBaselineDate: mockPrBaselineDate,
+    prBaselineAnchor: mockPrBaselineAnchor,
+    strengthBaselineMode: mockStrengthBaselineMode,
+    recentBaselineWeeks: mockRecentBaselineWeeks,
     setPRBaseline: mockSetPRBaseline,
     startNewTrainingBlock: mockStartNewTrainingBlock,
     clearPRBaseline: mockClearPRBaseline,
+    setStrengthBaselineMode: mockSetStrengthBaselineMode,
+    setRecentBaselineWeeks: mockSetRecentBaselineWeeks,
   }),
 }))
 
@@ -287,6 +315,9 @@ describe('SettingsSheet', () => {
     mockWorkoutStore.allTags = []
     mockPrefs.weightGoal = { direction: 'maintain', maintainMin: null, maintainMax: null, loseTarget: null, gainTarget: null }
     mockProgression.progressionEnabled = false
+    mockPrBaselineAnchor.value = null
+    mockStrengthBaselineMode.value = 'lifetime'
+    mockRecentBaselineWeeks.value = 8
     vi.clearAllMocks()
   })
 
@@ -403,6 +434,106 @@ describe('SettingsSheet', () => {
       const wrapper = mountSheet()
       await wrapper.find('.settingsPresetDelete').trigger('click')
       expect(mockSetIntensityPresets).toHaveBeenCalled()
+    })
+  })
+
+  // #1272 — a lifter deep in a cut can't beat a peak-bulk PR, so this group
+  // chooses what "your best" is measured against. The two controls interact
+  // (the manual anchor still shadows the window when it is the later of the
+  // two), so the hint has to state the resolved answer, not just echo the mode.
+  describe('strength baseline mode (#1272)', () => {
+    function segment(wrapper: VueWrapper, label: string) {
+      return wrapper.findAll('.settingsSegmentBtn').find(b => b.text() === label)
+    }
+
+    it('defaults to Lifetime and hides the recent-window stepper', () => {
+      const wrapper = mountSheet()
+      expect(segment(wrapper, 'Lifetime')!.attributes('aria-pressed')).toBe('true')
+      expect(segment(wrapper, 'Recent')!.attributes('aria-pressed')).toBe('false')
+      expect(wrapper.find('button[aria-label="Lengthen recent window"]').exists()).toBe(false)
+    })
+
+    it('switches the mode through the composable and logs the change', async () => {
+      const wrapper = mountSheet()
+      await segment(wrapper, 'Recent')!.trigger('click')
+      expect(mockSetStrengthBaselineMode).toHaveBeenCalledWith('recent')
+      expect(mockLogEvent).toHaveBeenCalledWith('strength_baseline_mode', { mode: 'recent' })
+    })
+
+    it('reveals the window stepper only in recent mode', async () => {
+      const wrapper = mountSheet()
+      await segment(wrapper, 'Recent')!.trigger('click')
+      expect(wrapper.find('button[aria-label="Lengthen recent window"]').exists()).toBe(true)
+      expect(wrapper.text()).toContain('8 weeks')
+    })
+
+    it('steps the window by whole increments through the composable', async () => {
+      mockStrengthBaselineMode.value = 'recent'
+      const wrapper = mountSheet()
+      await wrapper.find('button[aria-label="Lengthen recent window"]').trigger('click')
+      expect(mockSetRecentBaselineWeeks).toHaveBeenCalledWith(10)
+      await wrapper.find('button[aria-label="Shorten recent window"]').trigger('click')
+      expect(mockSetRecentBaselineWeeks).toHaveBeenLastCalledWith(8)
+    })
+
+    it('disables the stepper at each end of the range', async () => {
+      mockStrengthBaselineMode.value = 'recent'
+      mockRecentBaselineWeeks.value = 2
+      const wrapper = mountSheet()
+      expect(wrapper.find('button[aria-label="Shorten recent window"]').attributes('disabled')).toBeDefined()
+      mockRecentBaselineWeeks.value = 26
+      await nextTick()
+      expect(wrapper.find('button[aria-label="Lengthen recent window"]').attributes('disabled')).toBeDefined()
+    })
+
+    it('states the baseline actually in force, not just the mode', async () => {
+      const wrapper = mountSheet()
+      expect(wrapper.text()).toContain('Your best ever')
+
+      mockPrBaselineAnchor.value = '2025-01-01'
+      await nextTick()
+      expect(wrapper.text()).toContain('Your best since')
+
+      mockStrengthBaselineMode.value = 'recent'
+      await nextTick()
+      // The 2025 anchor is far outside the 8-week window, so the window wins.
+      expect(wrapper.text()).toContain('Your best in the last 8 weeks')
+    })
+
+    it('reports the anchor, not the window, when a fresh block is the tighter floor', async () => {
+      mockStrengthBaselineMode.value = 'recent'
+      // 10 days before MOCK_TODAY — newer than the 8-week window start, so the
+      // effective window is shorter than the stepper says and the copy must not
+      // claim "the last 8 weeks".
+      mockPrBaselineAnchor.value = '2026-08-20'
+      const wrapper = mountSheet()
+      expect(wrapper.text()).toContain('newer than the 8-week window')
+      expect(wrapper.text()).not.toContain('Your best in the last 8 weeks')
+    })
+
+    it('does not label an unset anchor "All time" while a recent window is in force', async () => {
+      const wrapper = mountSheet()
+      expect(wrapper.text()).toContain('All time')
+
+      mockStrengthBaselineMode.value = 'recent'
+      await nextTick()
+      expect(wrapper.text()).not.toContain('All time')
+      expect(wrapper.text()).toContain('Not set')
+    })
+
+    it('binds the date input to the raw anchor, not the resolved baseline', async () => {
+      mockStrengthBaselineMode.value = 'recent'
+      const wrapper = mountSheet()
+      // Recent mode resolves to a rolling window; the input must keep showing
+      // the user's own anchor (empty here) so editing it doesn't silently
+      // overwrite it with a derived date.
+      const input = wrapper.find('input[aria-label="PR baseline date"]')
+      expect(input.attributes('value')).toBe('')
+      expect(wrapper.find('button[aria-label="Clear PR baseline (use all time)"]').exists()).toBe(false)
+
+      mockPrBaselineAnchor.value = '2026-01-01'
+      await nextTick()
+      expect(wrapper.find('input[aria-label="PR baseline date"]').attributes('value')).toBe('2026-01-01')
     })
   })
 

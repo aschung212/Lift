@@ -575,6 +575,68 @@ describe('Invariant: useModal is the only owner of html.modal-open (#830)', () =
   })
 })
 
+// ── Invariant: one resolution point for the PR baseline (#1272) ──────
+
+/**
+ * `preferences.prBaselineDate` is the RAW manual anchor. The baseline PR and XP
+ * consumers must use is the mode-resolved one from `usePRBaseline()`, which
+ * folds in `strengthBaselineMode` / `recentBaselineWeeks` — the whole reason
+ * lifetime and recent collapse to a single `sinceDate` day key instead of two
+ * parallel lookups.
+ *
+ * A consumer that reaches past the composable and reads the store field gets
+ * the anchor and silently ignores recent mode. That failure has no visible
+ * symptom for a lifetime-mode user (the two values are identical there), so it
+ * would ship green and only misbehave for the cutting lifter the feature
+ * exists for — the same shape as the WorkoutTracker `modal-open` copy above,
+ * which survived for years because no test exercised the divergent case.
+ */
+describe('Invariant: usePRBaseline is the only reader of the raw PR-baseline anchor (#1272)', () => {
+  const OWNERS = [join('composables', 'usePRBaseline.ts'), join('stores', 'preferences.ts')]
+
+  it('no other file reads prBaselineDate off the preferences store', () => {
+    const files = getSourceFiles()
+    // Non-vacuity: the walker must reach the owners and the PR consumers.
+    for (const owner of OWNERS) expect(files.map(f => f.path)).toContain(owner)
+    expect(files.map(f => f.path)).toContain(join('components', 'WorkoutTracker.vue'))
+
+    // Matches a member access like `prefs.prBaselineDate` or
+    // `usePreferencesStore().prBaselineDate`, capturing the receiver so the two
+    // legitimate shapes can be allowed through:
+    //   - `props.prBaselineDate` — a child bound to the RESOLVED value by its
+    //     host (WorkoutTimeline), which is the intended way to pass it down.
+    //   - a bare destructure, `const { prBaselineDate } = usePRBaseline()`,
+    //     which has no receiver at all and so never matches.
+    const MEMBER_ACCESS = /(\)|[\w$]+)\s*\.\s*prBaselineDate\b/g
+    const violations = files
+      .filter(f => !OWNERS.includes(f.path))
+      .filter(f => {
+        const receivers = [...stripComments(f.content).matchAll(MEMBER_ACCESS)].map(m => m[1])
+        return receivers.some(r => r !== 'props')
+      })
+      .map(f =>
+        `${f.path} — reads the raw PR-baseline anchor. Use ` +
+        `usePRBaseline().prBaselineDate so the strength baseline mode is applied.`,
+      )
+
+    expect(violations).toEqual([])
+
+    // Non-vacuity for the matcher itself: it must actually fire on the shape
+    // being banned, or the scan above passes for the wrong reason.
+    expect([...'const b = prefs.prBaselineDate'.matchAll(MEMBER_ACCESS)].map(m => m[1]))
+      .toEqual(['prefs'])
+    expect([...'usePreferencesStore().prBaselineDate'.matchAll(MEMBER_ACCESS)].map(m => m[1]))
+      .toEqual([')'])
+  })
+
+  it('the composable resolves through the shared pure helper', () => {
+    const owner = readFileSync(join(SRC_DIR, OWNERS[0]), 'utf-8')
+    expect(owner).toMatch(/resolveStrengthBaseline\(/)
+    // The raw anchor stays reachable, but only under a name that says so.
+    expect(owner).toMatch(/prBaselineAnchor/)
+  })
+})
+
 // ── Invariant: Row-Level Security on every table (LIFT-1130) ─────────
 // Guard: tenant isolation depends ENTIRELY on RLS. The anon key ships in
 // the client bundle, so anyone can hit PostgREST directly; the client-side
