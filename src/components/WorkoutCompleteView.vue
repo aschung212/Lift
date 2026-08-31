@@ -15,46 +15,68 @@
         <span class="wcLinkSpacer" aria-hidden="true"></span>
       </header>
 
-      <template v-if="hasSets">
-        <section class="wcHero">
-          <div class="wcMicrolabel">Total volume</div>
-          <div class="wcHeroNumber">{{ formattedVolume }}</div>
-          <div class="wcHeroUnit">{{ summary.unitLabel }} moved</div>
-        </section>
+      <div class="wcBody">
+        <div class="wcBodyInner">
+          <template v-if="hasSets">
+            <section class="wcHero">
+              <div class="wcMicrolabel">Total volume</div>
+              <div class="wcHeroNumber">{{ formattedVolume }}</div>
+              <div class="wcHeroUnit">{{ summary.unitLabel }} moved</div>
+            </section>
 
-        <section class="wcStatRow">
-          <div class="wcStat">
-            <div class="wcStatKey">TIME</div>
-            <div class="wcStatVal">{{ summary.duration }}</div>
-          </div>
-          <div class="wcStat">
-            <div class="wcStatKey">SETS</div>
-            <div class="wcStatVal">{{ summary.setsCompleted }}</div>
-          </div>
-          <div class="wcStat wcStatAccent">
-            <div class="wcStatKey">PRs</div>
-            <div class="wcStatVal">{{ summary.prs + summary.repPRs }}</div>
-          </div>
-        </section>
+            <section class="wcStatRow">
+              <div v-if="hasDuration" class="wcStat">
+                <div class="wcStatKey">TIME</div>
+                <div class="wcStatVal">{{ summary.duration }}</div>
+              </div>
+              <div class="wcStat">
+                <div class="wcStatKey">SETS</div>
+                <div class="wcStatVal">{{ summary.setsCompleted }}</div>
+              </div>
+              <div class="wcStat wcStatAccent">
+                <div class="wcStatKey">PRs</div>
+                <div class="wcStatVal">{{ summary.prs + summary.repPRs }}</div>
+              </div>
+            </section>
 
-        <section v-if="summary.bestSet" class="wcBestSet">
-          <div class="wcBestSetHead">
-            <span class="wcBestSetEyebrow"><span aria-hidden="true">🏆</span> Best set</span>
-            <span v-if="summary.bestSet.isPR" class="wcBestSetBadge">NEW PR</span>
-          </div>
-          <div class="wcBestSetName">{{ summary.bestSet.name }}</div>
-          <div class="wcBestSetWeight">{{ summary.bestSet.weight }} × {{ summary.bestSet.reps }}</div>
-          <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM<InfoPopover
-            label="e1RM"
-            title="Estimated 1-rep max"
-          >Your predicted max for a single all-out rep, calculated from the weight and reps you lifted.</InfoPopover></div>
-        </section>
-      </template>
+            <section v-if="summary.bestSet" class="wcBestSet">
+              <div class="wcBestSetHead">
+                <span class="wcBestSetEyebrow"><span aria-hidden="true">🏆</span> Best set</span>
+                <span v-if="summary.bestSet.isPR" class="wcBestSetBadge">NEW PR</span>
+              </div>
+              <div class="wcBestSetName">{{ summary.bestSet.name }}</div>
+              <div class="wcBestSetWeight">{{ summary.bestSet.weight }} × {{ summary.bestSet.reps }}</div>
+              <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM<InfoPopover
+                label="e1RM"
+                title="Estimated 1-rep max"
+              >Your predicted max for a single all-out rep, calculated from the weight and reps you lifted.</InfoPopover></div>
+            </section>
 
-      <section v-else class="wcEmpty">
-        <div class="wcEmptyTitle">No sets logged yet</div>
-        <div class="wcEmptyBody">Log a set first, then come back here to see your summary.</div>
-      </section>
+            <section v-if="showBreakdown" class="wcBreakdown">
+              <h2 class="wcBreakdownLabel">
+                {{ summary.highlights.length }} {{ summary.highlights.length === 1 ? 'exercise' : 'exercises' }}
+              </h2>
+              <ul class="wcBreakdownList">
+                <li v-for="h in summary.highlights" :key="h.exerciseId" class="wcBreakdownRow">
+                  <div class="wcBreakdownMain">
+                    <span class="wcBreakdownName">{{ h.name }}</span>
+                    <span v-if="h.badge" class="wcBreakdownBadge">{{ h.badge.toUpperCase() }}</span>
+                  </div>
+                  <div class="wcBreakdownMeta">
+                    <span class="wcBreakdownTop">{{ h.weight }} × {{ h.reps }}</span>
+                    <span class="wcBreakdownVolume">{{ formatVolume(h.volume) }} {{ summary.unitLabel }}</span>
+                  </div>
+                </li>
+              </ul>
+            </section>
+          </template>
+
+          <section v-else class="wcEmpty">
+            <div class="wcEmptyTitle">No sets logged yet</div>
+            <div class="wcEmptyBody">Log a set first, then come back here to see your summary.</div>
+          </section>
+        </div>
+      </div>
 
       <footer class="wcFooter">
         <button v-if="hasSets" class="wcShare" @click="openPicker">
@@ -109,6 +131,26 @@ const summary = computed(() => props.summary)
 const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))
 
+/**
+ * `sessionSummary` reports an em dash when the session span is unknowable —
+ * which is every set logged through the UI, since those carry an end-of-day
+ * `date` stamp with no real time on it. Rendering a permanently empty TIME
+ * tile reads as a broken stat, so the tile is dropped instead and the row
+ * redistributes; it returns on its own once sets carry real timestamps.
+ */
+const hasDuration = computed(() => summary.value.duration !== '\u2014')
+
+function formatVolume(v: number): string {
+  return Math.round(v).toLocaleString('en-US')
+}
+
+/**
+ * The per-exercise ledger only earns its place once there is more than one
+ * exercise. On a single-exercise day the best-set card already IS the whole
+ * session, and a one-row list under it just restates the same numbers.
+ */
+const showBreakdown = computed(() => summary.value.highlights.length > 1)
+
 onMounted(() => {
   activateTrap()
 })
@@ -132,10 +174,42 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   max-width: 520px;
+  min-width: 0;
   padding: max(env(safe-area-inset-top), 16px) 20px max(env(safe-area-inset-bottom), 24px);
   display: flex;
   flex-direction: column;
   isolation: isolate;
+}
+
+/*
+ * The summary is short on a light day and long on a heavy one, so the body
+ * scrolls between a pinned header and a pinned footer. `margin-block: auto` on
+ * the inner stack optically centres a short session instead of stranding it at
+ * the top with a screen of dead space underneath, and collapses to no-op the
+ * moment the content is taller than the viewport (so nothing is ever clipped
+ * out of reach the way `justify-content: center` would clip it).
+ */
+.wcBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  /* Fades whatever sits against the bottom edge, so a session too long for the
+     screen reads as "there's more" instead of a row sliced off by the footer.
+     Invisible when the content fits, because centring leaves slack there. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent 100%);
+}
+
+.wcBodyInner {
+  margin-block: auto;
+  width: 100%;
+  /* Matches the fade length below, so at the end of the scroll the last row
+     sits above the fade rather than under it. */
+  padding-bottom: 24px;
 }
 
 .wcMesh {
@@ -182,7 +256,7 @@ onUnmounted(() => {
 
 .wcHero {
   text-align: center;
-  padding: 32px 0 8px;
+  padding: 24px 0 0;
 }
 
 .wcMicrolabel {
@@ -193,15 +267,17 @@ onUnmounted(() => {
 }
 
 .wcHeroNumber {
-  margin-top: 16px;
-  font: 800 88px / 1 var(--ff-display);
+  margin-top: 12px;
+  /* Scales with the viewport so a six-figure volume can't run to the bezels
+     on a 375pt screen the way a fixed 88px did. */
+  font: 800 clamp(52px, 17vw, 72px) / 1 var(--ff-display);
   letter-spacing: -0.045em;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
 }
 
 .wcHeroUnit {
-  margin-top: 4px;
+  margin-top: 8px;
   font: 600 var(--font-subhead) / 1 var(--ff);
   letter-spacing: 0.04em;
   color: var(--text-secondary);
@@ -209,9 +285,12 @@ onUnmounted(() => {
 
 .wcStatRow {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  /* Auto columns rather than a fixed 3-up: the TIME tile is dropped when the
+     session span is unknowable, and the remaining tiles fill the row. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 8px;
-  margin-top: 32px;
+  margin-top: 24px;
 }
 
 .wcStat {
@@ -245,7 +324,7 @@ onUnmounted(() => {
 }
 
 .wcBestSet {
-  margin-top: 24px;
+  margin-top: 16px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 16px;
@@ -299,8 +378,93 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
+/*
+ * The per-exercise record. `summary.highlights` is already computed (and
+ * already rendered on the receipt share card) — the screen just wasn't showing
+ * it, which is what left a screen-height of blank between the best set and the
+ * buttons. Volume-descending order comes straight from sessionSummary.
+ */
+.wcBreakdown {
+  margin-top: 24px;
+}
+
+.wcBreakdownLabel {
+  margin: 0 0 8px;
+  padding: 0 4px;
+  font: 500 var(--font-caption2) / 1 var(--ff-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wcBreakdownList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.wcBreakdownRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.wcBreakdownRow + .wcBreakdownRow {
+  border-top: 1px solid var(--border);
+}
+
+.wcBreakdownMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wcBreakdownName {
+  font: 600 var(--font-subhead) / 1.2 var(--ff);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wcBreakdownBadge {
+  flex: none;
+  font: 700 9px / 1 var(--ff-mono);
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.wcBreakdownMeta {
+  flex: none;
+  text-align: right;
+}
+
+.wcBreakdownTop {
+  display: block;
+  font: 600 var(--font-subhead) / 1.2 var(--ff-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.wcBreakdownVolume {
+  display: block;
+  margin-top: 2px;
+  font: 500 var(--font-caption2) / 1 var(--ff);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
 .wcEmpty {
-  margin: auto 0;
   text-align: center;
   padding: 0 24px;
 }
@@ -318,8 +482,8 @@ onUnmounted(() => {
 }
 
 .wcFooter {
-  margin-top: auto;
-  padding-top: 24px;
+  flex: none;
+  padding-top: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
