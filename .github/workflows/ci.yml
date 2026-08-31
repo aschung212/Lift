@@ -676,8 +676,26 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
+      # --include-all, not a bare push (LIFT-1280). `supabase db push` refuses to
+      # apply a migration whose timestamp predates the last one already on the
+      # remote, and it aborts WITHOUT APPLYING ANYTHING rather than skipping just
+      # that file. 20260529000000_add_notes.sql (LIFT-619, #829) landed with such
+      # a timestamp, so from 2026-08-29 every master push failed here and no
+      # schema change reached production — including
+      # 20260830000000_add_attempted_next_rep_to_sets.sql, whose column the
+      # shipping client already writes on every set save.
+      #
+      # The failure was invisible pre-merge because this job is gated on
+      # `push` + `refs/heads/master`, so PRs skip it and show fully green. It
+      # also silently disabled smoke-test-production and notify-deploy, which
+      # need this job — the entire deploy-verification chain from LIFT-1167.
+      #
+      # Every migration in this repo is additive (`add column if not exists`),
+      # so applying an out-of-order one is safe here. If that ever stops being
+      # true, renumber the offending file past the remote's last applied
+      # migration instead of widening this flag.
       - name: Push migrations
-        run: supabase db push --linked
+        run: supabase db push --linked --include-all
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
