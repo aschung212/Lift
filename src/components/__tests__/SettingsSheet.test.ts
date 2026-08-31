@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ref, reactive, computed, defineComponent, nextTick } from 'vue'
 import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
 import { useModal } from '../../composables/useModal'
+import { resolveStrengthBaseline } from '../../lib/strengthBaseline'
 import { mockIntersectionObservers } from '../../__tests__/setup'
 
 // The Support-group visibility observer (LIFT-906) is the most-recently armed
@@ -104,10 +105,17 @@ vi.mock('../../composables/useRestTimer', () => ({
 const mockPrBaselineAnchor = ref<string | null>(null)
 const mockStrengthBaselineMode = ref<'lifetime' | 'recent'>('lifetime')
 const mockRecentBaselineWeeks = ref(8)
-const RESOLVED_RECENT_BASELINE = '2026-07-05'
-const mockPrBaselineDate = computed(() =>
-  mockStrengthBaselineMode.value === 'recent' ? RESOLVED_RECENT_BASELINE : mockPrBaselineAnchor.value,
-)
+// A fixed "today" rather than the real clock: the sheet's hint copy branches on
+// whether the anchor or the window won, so the mock has to resolve them the way
+// production does. Hardcoding a resolved date instead would make the
+// anchor-wins branch unreachable and its assertion vacuous.
+const MOCK_TODAY = '2026-08-30'
+const mockPrBaselineDate = computed(() => resolveStrengthBaseline({
+  mode: mockStrengthBaselineMode.value,
+  anchor: mockPrBaselineAnchor.value,
+  weeks: mockRecentBaselineWeeks.value,
+  todayKey: MOCK_TODAY,
+}))
 const mockSetPRBaseline = vi.fn((date: string | null) => { mockPrBaselineAnchor.value = date })
 const mockStartNewTrainingBlock = vi.fn()
 const mockClearPRBaseline = vi.fn(() => { mockPrBaselineAnchor.value = null })
@@ -482,13 +490,35 @@ describe('SettingsSheet', () => {
       const wrapper = mountSheet()
       expect(wrapper.text()).toContain('Your best ever')
 
-      mockPrBaselineAnchor.value = '2026-08-20'
+      mockPrBaselineAnchor.value = '2025-01-01'
       await nextTick()
       expect(wrapper.text()).toContain('Your best since')
 
       mockStrengthBaselineMode.value = 'recent'
       await nextTick()
+      // The 2025 anchor is far outside the 8-week window, so the window wins.
       expect(wrapper.text()).toContain('Your best in the last 8 weeks')
+    })
+
+    it('reports the anchor, not the window, when a fresh block is the tighter floor', async () => {
+      mockStrengthBaselineMode.value = 'recent'
+      // 10 days before MOCK_TODAY — newer than the 8-week window start, so the
+      // effective window is shorter than the stepper says and the copy must not
+      // claim "the last 8 weeks".
+      mockPrBaselineAnchor.value = '2026-08-20'
+      const wrapper = mountSheet()
+      expect(wrapper.text()).toContain('newer than the 8-week window')
+      expect(wrapper.text()).not.toContain('Your best in the last 8 weeks')
+    })
+
+    it('does not label an unset anchor "All time" while a recent window is in force', async () => {
+      const wrapper = mountSheet()
+      expect(wrapper.text()).toContain('All time')
+
+      mockStrengthBaselineMode.value = 'recent'
+      await nextTick()
+      expect(wrapper.text()).not.toContain('All time')
+      expect(wrapper.text()).toContain('Not set')
     })
 
     it('binds the date input to the raw anchor, not the resolved baseline', async () => {

@@ -330,7 +330,7 @@
           <div class="settingsRow">
             <div class="settingsLabelGroup">
               <span class="settingsLabel">Evaluate PRs since</span>
-              <span class="settingsHint">{{ formatBaselineLabel(prBaselineAnchor) }}</span>
+              <span class="settingsHint">{{ baselineAnchorLabel }}</span>
             </div>
             <div class="settingsInputWrap">
               <input
@@ -1544,21 +1544,41 @@ function onBaselineDateInput(value: string) {
 }
 
 /**
- * One-line read-out of the baseline actually in force (#1272). The two controls
- * interact — in recent mode the anchor still shadows the window whenever it is
- * the later of the two — so state the resolved answer rather than leaving the
- * user to intersect them mentally.
+ * One-line read-out of the baseline actually in force (#1272).
+ *
+ * The two controls interact: in recent mode the manual anchor still shadows the
+ * rolling window whenever it is the LATER of the two, which shortens the
+ * effective window below the number on the stepper. Saying "your best in the
+ * last 8 weeks" there would be wrong, so the hint reports whichever floor
+ * actually won rather than leaving the user to intersect them mentally.
  */
 const strengthBaselineHint = computed(() => {
+  const weeks = recentBaselineWeeks.value
   if (strengthBaselineMode.value === 'recent') {
-    const since = prBaselineDate.value
-    const window = `Your best in the last ${recentBaselineWeeks.value} weeks`
-    return since ? `${window} — since ${formatBaselineLabel(since)}` : window
+    const anchor = prBaselineAnchor.value
+    // The resolver returned the anchor, so the training block is the tighter
+    // floor and the stepper's window is not what's in force.
+    if (anchor && prBaselineDate.value === anchor) {
+      return `Your best since ${formatBaselineLabel(anchor)} — newer than the ${weeks}-week window`
+    }
+    return `Your best in the last ${weeks} weeks`
   }
   return prBaselineAnchor.value
     ? `Your best since ${formatBaselineLabel(prBaselineAnchor.value)}`
     : 'Your best ever'
 })
+
+/**
+ * Label for the manual anchor row. "All time" is the right word for an unset
+ * anchor in lifetime mode, but reads as a flat contradiction next to a recent
+ * window, so it degrades to "Not set" there — the row describes the anchor, and
+ * the hint above already states the resolved baseline.
+ */
+const baselineAnchorLabel = computed(() =>
+  !prBaselineAnchor.value && strengthBaselineMode.value === 'recent'
+    ? 'Not set'
+    : formatBaselineLabel(prBaselineAnchor.value),
+)
 
 function adjustRecentBaselineWeeks(delta: number) {
   setRecentBaselineWeeks(recentBaselineWeeks.value + delta)
