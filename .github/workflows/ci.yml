@@ -736,11 +736,57 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # HEAD^ is needed to evaluate vercel.json's ignoreCommand below.
+          fetch-depth: 2
+
+      # Vercel does not deploy every commit. vercel.json's `ignoreCommand`
+      # skips any commit that touches none of the deployable paths, so a
+      # CI-only, docs-only, or scripts-only push to master never produces a new
+      # deployment — and this job, which waits for production to report the
+      # pushed SHA, would then spin for 300s and fail on a commit that was
+      # never supposed to deploy.
+      #
+      # That is not hypothetical: it is how master went red on 2026-08-31.
+      # #1281 changed only .github/ and scripts/, Vercel correctly skipped it,
+      # and this job failed waiting for a deploy that would never come. It went
+      # unnoticed for months only because migrate-db was failing upstream, so
+      # this job had been `skipped` since roughly May and never got to expose
+      # the flaw.
+      #
+      # The ignoreCommand is EXECUTED from vercel.json rather than restated
+      # here. Restating it would create a second derivation of one fact, and
+      # the two would drift the first time the deployable path list changes —
+      # the failure mode called out for cleanup.sh/pr-close-reconcile.sh.
+      - name: Skip verification when Vercel skips the deploy
+        id: deploy_gate
+        run: |
+          set -euo pipefail
+          IGNORE_CMD=$(jq -r '.ignoreCommand // empty' vercel.json)
+          if [ -z "$IGNORE_CMD" ]; then
+            echo "no ignoreCommand in vercel.json — every commit deploys; verifying."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Only ever run the known-safe form. vercel.json is committed and
+          # reviewed, but this job should not become an arbitrary-command sink.
+          case "$IGNORE_CMD" in
+            "git diff --quiet"*) ;;
+            *) echo "::error::Unrecognised ignoreCommand in vercel.json; refusing to eval it: $IGNORE_CMD"; exit 1 ;;
+          esac
+          # Vercel's contract: exit 0 from ignoreCommand => SKIP the build.
+          if bash -c "$IGNORE_CMD"; then
+            echo "This commit touches no deployable path, so Vercel skipped it."
+            echo "Nothing new will be served; skipping production verification."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # The production domain is read from CLAUDE.md, the single authoritative
       # source (the SEV1 rule: never hardcode/fabricate a deployment URL — a
       # hallucinated domain shipped to prod once already, see the SEV1 note).
       - name: Verify production is serving this commit
+        if: steps.deploy_gate.outputs.skip != 'true'
         env:
           EXPECTED_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
