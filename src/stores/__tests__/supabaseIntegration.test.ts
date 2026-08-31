@@ -31,11 +31,17 @@
  *
  * ## Design decisions
  *
- * - Uses the **service_role** key (bypasses RLS) so tests can insert rows
- *   with any user_id without needing auth.users entries. This tests query
- *   shapes, not auth policies — RLS is a separate concern.
- * - Each test uses a unique `user_id` (UUID v4) and cleans up via hard DELETE
- *   in afterEach, so tests are hermetic and parallelizable.
+ * - Uses the **service_role** key so the suite bypasses RLS and can read and
+ *   write any user's rows. This tests query shapes, not auth policies — RLS
+ *   is a separate concern.
+ * - service_role bypasses RLS but NOT foreign keys. Every synced table
+ *   declares `user_id uuid not null references auth.users(id) on delete
+ *   cascade`, so each test mints a REAL auth user via the Admin API
+ *   (`createTestUser`) instead of inventing a UUID. Inventing one fails every
+ *   insert with SQLSTATE 23503 — see the header note on that below.
+ * - Each test gets its own auth user, and afterEach hard-deletes it; the FK's
+ *   `on delete cascade` takes every domain row with it, so tests are hermetic
+ *   and parallelizable.
  * - Tests are gated behind env vars and excluded from the default vitest run
  *   via the `exclude` pattern in vitest.config.js.
  */
@@ -69,16 +75,48 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
   let supabase: SupabaseClient<Database>
 
   beforeAll(() => {
-    supabase = createClient<Database>(SUPABASE_URL!, SUPABASE_KEY!)
+    supabase = createClient<Database>(SUPABASE_URL!, SUPABASE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
   })
 
+  /**
+   * Mint a real `auth.users` row and return its id.
+   *
+   * The service_role key bypasses RLS, but foreign keys are enforced by the
+   * table definition regardless of role — and every synced table declares
+   * `user_id uuid not null references auth.users(id) on delete cascade`. A
+   * synthetic UUID therefore fails EVERY insert with SQLSTATE 23503
+   * ("Key (user_id)=(…) is not present in table \"users\""), which is how this
+   * suite failed every scheduled run from its first in May 2026 until #1283.
+   *
+   * The Admin API is reachable here for the same reason RLS is bypassed: we
+   * hold the service_role key.
+   */
+  async function createTestUser(): Promise<string> {
+    // No password: the suite never signs in as this user, it only needs the
+    // `auth.users` row to exist so the FK resolves. Passing one would also have
+    // to satisfy config.toml's `password_requirements`, which a bare UUID does
+    // not (no uppercase).
+    const { data, error } = await supabase.auth.admin.createUser({
+      email: `integration-${uuid()}@lift.test`,
+      email_confirm: true,
+    })
+    if (error || !data.user) {
+      throw new Error(
+        `could not create test auth user: ${error?.message ?? 'no user returned'}`
+      )
+    }
+    testUserIds.push(data.user.id)
+    return data.user.id
+  }
+
   afterEach(async () => {
-    // Hard-delete all test data (service_role bypasses RLS)
+    // Hard-deleting the auth user cascades through every `user_id` FK, so this
+    // clears sets, exercises and bodyweight entries in the right order without
+    // naming them — a new synced table needs no change here.
     for (const userId of testUserIds) {
-      // Delete in FK order: sets → exercises, bodyweight_entries
-      await supabase.from('sets').delete().eq('user_id', userId)
-      await supabase.from('exercises').delete().eq('user_id', userId)
-      await supabase.from('bodyweight_entries').delete().eq('user_id', userId)
+      await supabase.auth.admin.deleteUser(userId)
     }
     testUserIds.length = 0
   })
@@ -87,8 +125,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
 
   describe('exercise and set upsert', () => {
     it('upserts an exercise with all fields the store sends', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const ts = now()
 
@@ -130,8 +167,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('upserts a set with all fields the store sends', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const setId = uuid()
       const ts = now()
@@ -178,8 +214,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('upsert updates existing exercise on conflict (last-write-wins)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const ts = now()
 
@@ -220,8 +255,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
 
   describe('soft-delete via UPDATE { deleted_at }', () => {
     it('soft-deletes a set by setting deleted_at (exact store query shape)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const setId = uuid()
       const ts = now()
@@ -256,8 +290,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('soft-deletes all sets for an exercise (cascade pattern)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const ts = now()
 
@@ -304,8 +337,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('restores a soft-deleted set by nulling deleted_at', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const setId = uuid()
       const ts = now()
@@ -343,8 +375,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
 
   describe('fetch with .is(deleted_at, null) filtering', () => {
     it('returns only active exercises (exact _fetchFromSupabase query)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const ts = now()
 
       const activeId = uuid()
@@ -374,8 +405,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('returns only active sets (exact _fetchFromSupabase query)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const ts = now()
 
@@ -415,8 +445,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
 
   describe('archived_at lifecycle', () => {
     it('upserts archived_at on exercises (archive flow)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const ts = now()
 
@@ -444,8 +473,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('unarchives by upserting archived_at: null', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const ts = now()
 
@@ -472,8 +500,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('archived exercises are still visible in active-row fetch (not soft-deleted)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const ts = now()
 
@@ -501,8 +528,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
 
   describe('bodyweight entry operations', () => {
     it('upserts a bodyweight entry (exact store query shape)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const entryId = uuid()
       const ts = now()
 
@@ -530,8 +556,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('soft-deletes a bodyweight entry (exact store query shape)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const entryId = uuid()
       const ts = now()
 
@@ -557,8 +582,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('fetch filters out soft-deleted bodyweight entries', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const ts = now()
 
       const activeId = uuid()
@@ -590,8 +614,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
 
   describe('conflict resolution and edge cases', () => {
     it('upsert with session_id column (sets table)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const setId = uuid()
       const ts = now()
@@ -615,8 +638,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('concurrent upserts to the same exercise resolve without error', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const ts = now()
 
@@ -652,8 +674,7 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
     })
 
     it('float precision is preserved through round-trip (weight, estimated_1rm)', async () => {
-      const userId = uuid()
-      testUserIds.push(userId)
+      const userId = await createTestUser()
       const exerciseId = uuid()
       const setId = uuid()
       const ts = now()

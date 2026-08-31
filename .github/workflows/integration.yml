@@ -50,11 +50,23 @@ jobs:
       - name: Start local Supabase
         run: supabase start
 
+      # The suite gates itself on these two env vars and `describe.skip`s when
+      # either is empty (so a local run without Supabase is a no-op, not a wall
+      # of errors). In CI that same gate is a false-green risk: an empty key
+      # would report this job green having run zero tests. Fail loudly instead
+      # — `// empty` so a missing JSON field yields "" rather than the literal
+      # string "null", and `pipefail` so a `supabase status` crash isn't
+      # swallowed by the pipe into jq.
       - name: Extract Supabase credentials
         id: supabase
         run: |
+          set -euo pipefail
           echo "url=http://127.0.0.1:54321" >> "$GITHUB_OUTPUT"
-          SERVICE_ROLE_KEY=$(supabase status --output json | jq -r '.SERVICE_ROLE_KEY // .service_role_key')
+          SERVICE_ROLE_KEY=$(supabase status --output json | jq -r '.SERVICE_ROLE_KEY // .service_role_key // empty')
+          if [ -z "$SERVICE_ROLE_KEY" ]; then
+            echo "::error::supabase status returned no service-role key -- the integration suite would skip itself and report green."
+            exit 1
+          fi
           echo "service_role_key=$SERVICE_ROLE_KEY" >> "$GITHUB_OUTPUT"
 
       - name: Run integration tests
