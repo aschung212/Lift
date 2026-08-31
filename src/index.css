@@ -4993,6 +4993,62 @@ html.theme-fading .settingsSheet {
    loaded). The weight value itself is rendered by the WEIGHT card above
    the plate calc — this card is purely the picker chrome. */
 
+/* "Went for one more rep" toggle row (#1271).
+   Records that the lifter attempted the rep after the logged count and missed
+   it — a strictly higher-output set than the same reps re-racked. Sits directly
+   under the weight/reps cards because it annotates the rep count. Sized to the
+   44pt floor rather than overlay-extended: it sits in a stack of tappable rows,
+   so an oversized ::before would reach into its neighbours (the #990 rule). */
+.wtEffortRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.wtEffortToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-footnote);
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.wtEffortToggle:active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.wtEffortToggleActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text, var(--bg-primary));
+  font-weight: 600;
+}
+
+/* History marker for a set that went for one more rep (#1271). Shared by the
+   workout timeline and the exercise detail list so the annotation reads the
+   same wherever history is shown. Non-interactive text, so no 44pt floor. */
+.wtEffortBadge {
+  font-size: var(--font-caption2);
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 4px;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
 /* RPE selector row (LIFT-617) */
 .wtRPERow {
   display: flex;

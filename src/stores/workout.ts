@@ -21,6 +21,7 @@ import { sanitizeExerciseGyms } from '../lib/gyms'
 import { mapRemoteExercise, mapRemoteSet } from '../lib/remoteRows'
 import { fetchAllRows } from '../lib/supabasePagination'
 import { effectiveSetWeight } from '../lib/bodyweightLoad'
+import { attemptedNextRep, pickTopSet } from '../lib/setEffort'
 import { useBodyweightStore } from './bodyweight'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
@@ -53,6 +54,15 @@ export interface WorkoutSet {
    * not round-trip through Supabase (see `effectiveSetWeight`).
    */
   bodyweight?: number
+  /**
+   * The lifter went for one more rep past `reps` and missed it (#1271) — an
+   * "8 + failed 9th" rather than a clean 8 re-racked with reps in reserve.
+   * Absent === re-racked; legacy sets are never backfilled. Ranks above an
+   * otherwise-identical set (`src/lib/setEffort.ts`) and steers the overload
+   * suggestion toward landing the rep instead of adding weight. Deliberately
+   * NOT folded into `estimated1RM` — see the module header for why.
+   */
+  attemptedNextRep?: boolean
 }
 
 export type ExerciseInputMode = 'numpad' | 'plates'
@@ -421,7 +431,10 @@ export const useWorkoutStore = defineStore('workout', () => {
 
   /** Durable set upsert with a journaled descriptor (LIFT-706). */
   function _enqueueSetUpsert(
-    set: { id: string; date: string; weight: number; reps: number; estimated1RM: number; createdAt?: string },
+    set: {
+      id: string; date: string; weight: number; reps: number; estimated1RM: number
+      createdAt?: string; attemptedNextRep?: boolean
+    },
     exerciseId: string,
     userId: string,
   ) {
@@ -429,6 +442,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       id: set.id, user_id: userId, exercise_id: exerciseId,
       date: set.date, weight: set.weight, reps: set.reps,
       estimated_1rm: set.estimated1RM,
+      // ALWAYS sent (like `bodyweight_loaded` on exercises) so un-toggling the
+      // flag propagates instead of leaving a stale `true` on the server (#1271).
+      attempted_next_rep: set.attemptedNextRep ?? false,
       // Persist the real log-time timestamp so an offline set logged at 6pm but
       // synced hours later keeps its training time instead of the DB insert-time
       // default (#846). Omitted when absent so editing a legacy set (no local
@@ -978,7 +994,13 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function logSet(exerciseId: string, weight: number, reps: number, dateStr?: string, { sync = true, rpe }: { sync?: boolean; rpe?: number } = {}) {
+  function logSet(
+    exerciseId: string,
+    weight: number,
+    reps: number,
+    dateStr?: string,
+    { sync = true, rpe, attemptedNextRep }: { sync?: boolean; rpe?: number; attemptedNextRep?: boolean } = {},
+  ) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
     // Real user action on a sample exercise adopts it (makes it syncable).
@@ -1004,6 +1026,9 @@ export const useWorkoutStore = defineStore('workout', () => {
     const newSet: WorkoutSet = { id, date, weight, reps, estimated1RM, createdAt }
     if (bodyweight !== undefined) newSet.bodyweight = bodyweight
     if (rpe != null) newSet.rpe = rpe
+    // Only the true case is stored — absent already means "re-racked" (#1271),
+    // so writing `false` would bloat every set for no extra information.
+    if (attemptedNextRep) newSet.attemptedNextRep = true
     exercise.sets.push(newSet)
     _adjustDayCount(date, 1)
     exercise.updated_at = new Date().toISOString()
@@ -1015,7 +1040,20 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
-  function updateSet(exerciseId: string, setId: string, weight: number, reps: number, dateStr?: string, rpe?: number | null) {
+  /**
+   * Edit an existing set. `rpe` and `attemptedNextRep` follow the same
+   * three-state convention: `undefined` leaves the stored value untouched,
+   * while an explicit value writes it (`null`/`false` clears the field).
+   */
+  function updateSet(
+    exerciseId: string,
+    setId: string,
+    weight: number,
+    reps: number,
+    dateStr?: string,
+    rpe?: number | null,
+    attemptedNextRep?: boolean,
+  ) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
     const set = exercise.sets.find((s: WorkoutSet) => s.id === setId)
@@ -1041,6 +1079,10 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (rpe !== undefined) {
       if (rpe === null) delete set.rpe
       else set.rpe = rpe
+    }
+    if (attemptedNextRep !== undefined) {
+      if (attemptedNextRep) set.attemptedNextRep = true
+      else delete set.attemptedNextRep
     }
     exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
@@ -1685,11 +1727,9 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     const recentSessions = sortedDays.slice(0, 3)
 
-    // Get top set (heaviest weight) from each session
-    const topSets = recentSessions.map(day => {
-      const sets = sessions.get(day)!
-      return sets.reduce((best, s) => s.weight > best.weight || (s.weight === best.weight && s.reps > best.reps) ? s : best)
-    })
+    // Top set per session — heaviest, then most reps, then (at a dead tie) the
+    // set that went for one more rep, which is the higher-output effort (#1271).
+    const topSets = recentSessions.map(day => pickTopSet(sessions.get(day)!)!)
 
     const latest = topSets[0]
     const previous = topSets[1]
@@ -1697,6 +1737,26 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Check if user has been consistent at same weight across recent sessions
     const sameWeight = topSets.filter(s => s.weight === latest.weight)
     const WEIGHT_INCREMENT = 5 // lbs
+
+    // A top set that ended in a failed attempt at the next rep is already at
+    // true failure for that weight: there are no reps in reserve to convert
+    // into extra load, so "go heavier" would just cost reps. The productive
+    // next step is to land the rep that was already attempted — and because
+    // the lifter got part of the way there, that IS forward progress even
+    // though the rep count did not move (#1271). Checked before the
+    // go-heavier branch below so it wins on the same data, and marked 'high'
+    // (unlike the generic add-a-rep fallbacks) because it fires only on an
+    // explicit, deliberate annotation rather than on almost any history.
+    if (attemptedNextRep(latest)) {
+      const target = latest.reps + 1
+      return {
+        type: 'increase_reps',
+        weight: latest.weight,
+        reps: target,
+        reason: `You went for rep ${target} at ${latest.weight} lbs last session — land it this time`,
+        confidence: 'high'
+      }
+    }
 
     if (sameWeight.length >= 2 && latest.reps >= 5) {
       // Consistent at same weight with solid reps → increase weight

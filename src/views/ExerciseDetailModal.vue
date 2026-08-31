@@ -59,6 +59,11 @@
                     @click="toggleSetActions(set.id)"
                   >
                     <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
+                    <span
+                      v-if="set.attemptedNextRep"
+                      class="wtEffortBadge"
+                      :aria-label="`Went for rep ${set.reps + 1}`"
+                    >+1</span>
                     <span v-if="set.rpe" class="wtSetRPE">RPE {{ set.rpe }}</span>
                     <span class="wtSet1RM">
                       ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}

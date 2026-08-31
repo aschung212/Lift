@@ -2202,7 +2202,7 @@ describe('WorkoutTracker', () => {
 
       await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
 
-      expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String), null)
+      expect(mockUpdateSet).toHaveBeenCalledWith('ex-1', expect.any(String), 200, 6, expect.any(String), null, false)
     })
 
     it('shows date picker in edit mode', async () => {

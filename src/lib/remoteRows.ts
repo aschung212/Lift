@@ -43,6 +43,11 @@ export function mapRemoteSet(row: Tables<'sets'>): WorkoutSet | null {
     reps: row.reps,
     estimated1RM: row.estimated_1rm,
     createdAt: row.created_at,
+    // Synced (#1271) — unlike `bodyweight`, nothing else on the row carries it,
+    // so a fresh device would otherwise lose the annotation entirely. The guard
+    // keeps only a literal `true`, so the column's NULL default degrades to
+    // "re-racked" exactly like a legacy local set.
+    attemptedNextRep: row.attempted_next_rep,
   })
 }
 

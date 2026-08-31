@@ -27,7 +27,15 @@ export interface JsonExportData extends ExportMetadata {
   exercises: {
     name: string
     tags: string[]
-    sets: { date: string; weight: number; reps: number; estimated1RM: number; rpe?: number }[]
+    sets: {
+      date: string
+      weight: number
+      reps: number
+      estimated1RM: number
+      rpe?: number
+      /** Went for one more rep past `reps` and missed it (#1271); omitted when re-racked. */
+      attemptedNextRep?: boolean
+    }[]
   }[]
   bodyweight: { date: string; weight: number }[]
   progression: ProgressionSnapshot
@@ -59,6 +67,7 @@ export function buildJsonExport(
         reps: s.reps,
         estimated1RM: s.estimated1RM,
         ...(s.rpe != null ? { rpe: s.rpe } : {}),
+        ...(s.attemptedNextRep ? { attemptedNextRep: true } : {}),
       })),
     })),
     bodyweight: bodyweight.map(e => ({
@@ -107,14 +116,18 @@ export function buildCsvExport(
     // header so re-imports never guess (LIFT-1215). importLift accepts both
     // the labeled header and the legacy bare "Weight" for old exports.
     `# Lift Export — ${timestamp} — v${metadata.appVersion} — ${metadata.userIdHash} — weights in lbs`,
-    'Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags,RPE',
+    // "Went For Next Rep" is appended LAST so every column an older importer
+    // looks up by header keeps its meaning; importLift resolves by name, and
+    // third-party tools that read by position ignore the trailing field.
+    'Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags,RPE,Went For Next Rep',
   ]
   for (const ex of exercises) {
     for (const s of ex.sets) {
       const date = s.date.slice(0, 10)
       const tags = ex.tags.join(';')
       const rpe = s.rpe != null ? String(s.rpe) : ''
-      lines.push(`${csvEscape(ex.name)},${date},${s.weight},${s.reps},${s.estimated1RM},${csvEscape(tags)},${rpe}`)
+      const attempted = s.attemptedNextRep ? 'yes' : ''
+      lines.push(`${csvEscape(ex.name)},${date},${s.weight},${s.reps},${s.estimated1RM},${csvEscape(tags)},${rpe},${attempted}`)
     }
   }
   if (bodyweight.length > 0) {

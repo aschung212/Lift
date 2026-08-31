@@ -744,6 +744,27 @@
             </div>
           </div>
 
+          <!--
+            "Went for one more" toggle (#1271). Records that the lifter
+            attempted the rep AFTER the logged count and missed it, which is a
+            strictly higher-output set than the same reps re-racked. One
+            optional tap, off by default — this fires on every set, so a
+            blocking prompt would cost more than the ambiguity it removes.
+            aria-pressed rather than a checkbox: it is a two-state toggle
+            button, and the label already carries the target rep.
+          -->
+          <div class="wtEffortRow">
+            <button
+              type="button"
+              :class="['wtEffortToggle', { wtEffortToggleActive: attemptedNextRep }]"
+              :aria-pressed="attemptedNextRep"
+              @click="attemptedNextRep = !attemptedNextRep"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+              <span>{{ nextRepToggleLabel }}</span>
+            </button>
+          </div>
+
           <!-- RPE selector (optional, progressive disclosure) -->
           <div class="wtRPERow">
             <button
@@ -2155,6 +2176,27 @@ watch(weightStr, () => {
 const date = ref(todayISO())
 const selectedRPE = ref<number | null>(null)
 const RPE_VALUES = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10] as const
+// "Went for one more rep and missed it" for the set being logged/edited (#1271).
+// Off by default and cleared after every save — the annotation describes ONE
+// set, so carrying it to the next one would silently over-report effort.
+const attemptedNextRep = ref(false)
+
+/**
+ * The rep count this save will actually commit: what's typed, or the armed
+ * ghost rung when both fields are empty. Drives the toggle's label so it names
+ * the rep that was attempted ("Went for rep 9") rather than an abstract "+1".
+ */
+const effortLoggedReps = computed<number | null>(() => {
+  if (reps.value !== null && reps.value > 0) return reps.value
+  if (ghostArmed.value && nextRung.value) return nextRung.value.reps
+  return null
+})
+
+const nextRepToggleLabel = computed(() =>
+  effortLoggedReps.value !== null
+    ? `Went for rep ${effortLoggedReps.value + 1}`
+    : 'Went for one more',
+)
 // Remembers the last date the user manually set when logging, so the modal
 // re-opens to that date rather than always resetting to today.
 const lastLogDate = ref(todayISO())
@@ -2338,6 +2380,7 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   selectedRPE.value = null
+  attemptedNextRep.value = false
   lastSessionUsed.value = {}
   intensityUsed.value = {}
   intensityPct.value = INTENSITY_DEFAULT_PCT
@@ -2380,6 +2423,7 @@ function openEditModal(exercise: Exercise, set: WorkoutSet) {
   weight.value = displayWeight(set.weight)
   reps.value = set.reps
   selectedRPE.value = set.rpe ?? null
+  attemptedNextRep.value = set.attemptedNextRep === true
   showModal.value = true
 }
 
@@ -2404,6 +2448,7 @@ function closeModal() {
   weight.value = null
   reps.value = null
   selectedRPE.value = null
+  attemptedNextRep.value = false
   date.value = todayISO()
   plateNumpadOverride.value = false
   suggestionsExpanded.value = false
@@ -2656,7 +2701,7 @@ function saveSet() {
   if (isEditMode.value && editingSet.value && weight.value !== null && reps.value !== null) {
     const editExId = editingSet.value.exerciseId
     const editSetId = editingSet.value.setId
-    store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value, selectedRPE.value)
+    store.updateSet(editExId, editSetId, toLbs(weight.value), reps.value, date.value, selectedRPE.value, attemptedNextRep.value)
     logEvent('set_edit')
     announceSet(`Set updated: ${displayWeight(toLbs(weight.value))} ${weightUnit.value} × ${reps.value} rep${reps.value === 1 ? '' : 's'}`)
     // Recalc XP for the edited set
@@ -2738,7 +2783,10 @@ function saveSet() {
         !wasPR &&
         localStorage.getItem(FIRST_SET_FLAG) !== 'true' &&
         store.exercises.every(e => e.sets.length === 0)
-      store.logSet(exerciseId, effWeightLbs, effReps, date.value, { rpe: selectedRPE.value ?? undefined })
+      store.logSet(exerciseId, effWeightLbs, effReps, date.value, {
+        rpe: selectedRPE.value ?? undefined,
+        attemptedNextRep: attemptedNextRep.value,
+      })
       recordNudgeAcceptIfAny(exerciseId, effWeightLbs)
       logEvent('set_log', { exercise: selectedExerciseName.value, isPR: wasPR })
       announceSet(`Logged ${selectedExerciseName.value}: ${displayWeight(effWeightLbs)} ${weightUnit.value} × ${effReps} rep${effReps === 1 ? '' : 's'}${wasPR ? ', new personal record' : ''}`)
@@ -2803,6 +2851,7 @@ function saveSet() {
       // Clear fields and stay on the modal for the next set
       plateNumpadOverride.value = false
       selectedRPE.value = null
+      attemptedNextRep.value = false
       if (plateMode.value) {
         // Keep plate config for next set (user adjusts, not reloads)
         previousPlates.value = [...currentPlates.value]

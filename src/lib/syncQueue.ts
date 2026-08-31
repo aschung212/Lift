@@ -149,6 +149,10 @@ const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
     // descriptor is dropped on rehydrate() — defeating the durable queue for the
     // exact offline-then-sync case it exists for.
     'created_at',
+    // "Went for one more rep and missed it" (#1271) — ALWAYS sent by
+    // _enqueueSetUpsert, so it must be allowlisted or every journaled set
+    // upsert is discarded wholesale on rehydrate().
+    'attempted_next_rep',
   ]),
   // LIFT-1239: the three tables below journal too, so a bodyweight entry / XP
   // total / settings change made offline survives a close before the flush.

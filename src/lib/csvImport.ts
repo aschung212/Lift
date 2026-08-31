@@ -212,6 +212,9 @@ function importLift(rows: string[][], headers: string[]): ImportResult {
   const iReps = col('reps')
   const iTags = col('tags')
   const iRPE = col('rpe')
+  // Appended in #1271; absent from every export written before it, hence the
+  // -1 guard below rather than a bare read.
+  const iAttempted = col('went for next rep')
 
   const exerciseMap = new Map<string, Exercise>()
   let totalSets = 0
@@ -249,6 +252,9 @@ function importLift(rows: string[][], headers: string[]): ImportResult {
     if (iRPE !== -1) {
       const rpe = parseFloat(row[iRPE] || '')
       if (!isNaN(rpe) && rpe >= 6 && rpe <= 10) set.rpe = rpe
+    }
+    if (iAttempted !== -1 && row[iAttempted]?.trim().toLowerCase() === 'yes') {
+      set.attemptedNextRep = true
     }
     exercise.sets.push(set)
     totalSets++
