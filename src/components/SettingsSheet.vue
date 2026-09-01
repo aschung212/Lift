@@ -710,7 +710,7 @@
       <div v-if="deleteAccountOpen" class="confirmOverlay" @click.self="deleteAccountOpen = false" @keydown.escape="deleteAccountOpen = false">
         <div class="confirmSheet deleteConfirmSheet" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-desc">
           <p id="delete-title" class="confirmMessage deleteConfirmTitle">Delete Account</p>
-          <p id="delete-desc" class="deleteConfirmDesc">This will permanently erase all your workout data, progression, and settings. This action cannot be undone.</p>
+          <p id="delete-desc" class="deleteConfirmDesc">This will permanently delete your account and erase all your workout data, progression, and settings. You will not be able to sign back in. This action cannot be undone.</p>
           <label class="deleteConfirmLabel" for="delete-confirm-input">Type <strong>DELETE</strong> to confirm</label>
           <input
             id="delete-confirm-input"

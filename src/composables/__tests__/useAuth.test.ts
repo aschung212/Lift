@@ -40,6 +40,7 @@ const mockGetSession = vi.fn().mockResolvedValue({ data: { session: null } })
 const mockOnAuthStateChange = vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } })
 const mockDelete = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
 const mockFrom = vi.fn().mockReturnValue({ delete: () => mockDelete() })
+const mockRpc = vi.fn().mockResolvedValue({ data: null, error: null })
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -54,6 +55,7 @@ vi.mock('../../lib/supabase', () => ({
       stopAutoRefresh: vi.fn(),
     },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   }
 }))
 
@@ -75,6 +77,13 @@ beforeEach(async () => {
   vi.resetModules()
   // Re-setup mocks that resetModules clears
   mockGetSession.mockResolvedValue({ data: { session: null } })
+  mockRpc.mockClear()
+  mockRpc.mockResolvedValue({ data: null, error: null })
+  // Restore the base delete behaviour too: the ordering test below replaces it
+  // with mockReturnValue (not ...Once), which would otherwise leak into every
+  // later test in the file.
+  mockDelete.mockReset()
+  mockDelete.mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
   const mod = await import('../useAuth')
   useAuth = mod.useAuth
 })
@@ -471,6 +480,105 @@ describe('useAuth', () => {
       await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
       // Abort must happen BEFORE localStorage.clear(), so local data survives.
       expect(localStorage.getItem('workout-exercises')).toBe('test-value')
+    })
+
+    // ── Regression #1299: "Delete Account" must delete the ACCOUNT ──────
+    // Every assertion in this block above is about *data*, which is exactly why
+    // nothing ever noticed that the `auth.users` row — the user's email, their
+    // OAuth identity linkage, created_at, last_sign_in_at — survived deletion
+    // indefinitely, with no remaining in-app way to remove it (the user is
+    // signed out, and signing back in lands them in an empty account). The
+    // browser holds the anon key and cannot reach `auth.admin`, so the
+    // SECURITY DEFINER RPC is the only path.
+    it('deletes the auth.users row itself via the delete_user_account RPC', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      await deleteAccount()
+
+      expect(mockRpc).toHaveBeenCalledWith('delete_user_account')
+    })
+
+    // Ordering is load-bearing, not incidental. Deleting the auth user cascades
+    // through every `user_id` FK, so it is unrecoverable: it must run only once
+    // the per-table deletes are confirmed clean. Fire it first (or in the same
+    // batch) and a later failure aborts having already destroyed the account.
+    it('deletes the account only AFTER every table delete has resolved', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      const order: string[] = []
+      mockDelete.mockReturnValue({
+        eq: vi.fn().mockImplementation(async () => {
+          // Yield a macrotask so a concurrently-fired RPC would land first.
+          await new Promise(r => setTimeout(r, 0))
+          order.push('table-delete')
+          return { error: null }
+        })
+      })
+      mockRpc.mockImplementation(async () => {
+        order.push('delete_user_account')
+        return { data: null, error: null }
+      })
+
+      await deleteAccount()
+
+      expect(order[order.length - 1]).toBe('delete_user_account')
+      expect(order.filter(o => o === 'delete_user_account')).toHaveLength(1)
+      expect(order.length).toBeGreaterThan(1)
+    })
+
+    it('never destroys the account when a table delete failed', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockDelete.mockReturnValueOnce({
+        eq: vi.fn().mockResolvedValue({ error: { message: 'permission denied' } })
+      })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+      expect(mockRpc).not.toHaveBeenCalledWith('delete_user_account')
+    })
+
+    // supabase-js RESOLVES `{ error }` on a server-side RPC failure (a raised
+    // `not_authenticated`, a missing function after a schema/deploy race)
+    // rather than rejecting — the LIFT-1225 trap, which applies to `.rpc()`
+    // exactly as it does to `.delete()`.
+    it('throws when the account-delete RPC RESOLVES with an error', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'not_authenticated' } })
+
+      await expect(deleteAccount()).rejects.toThrow(
+        'Your data was deleted, but your sign-in could not be removed. Please try again.'
+      )
+    })
+
+    it('throws when the account-delete RPC rejects', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockRpc.mockRejectedValueOnce(new Error('Network failure'))
+
+      await expect(deleteAccount()).rejects.toThrow(
+        'Your data was deleted, but your sign-in could not be removed. Please try again.'
+      )
+    })
+
+    // The retry path has to stay open: aborting here must not wipe the device
+    // or sign the user out, or a failed account delete would look like a
+    // success and leave them with no way back to the button.
+    it('keeps local data and the session when the account delete fails', async () => {
+      const { deleteAccount, devSignIn, user } = useAuth()
+      await devSignIn()
+      localStorage.setItem('workout-exercises', 'test-value')
+
+      mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'permission denied' } })
+
+      await expect(deleteAccount()).rejects.toThrow(/sign-in could not be removed/)
+      expect(localStorage.getItem('workout-exercises')).toBe('test-value')
+      expect(user.value).not.toBeNull()
     })
 
     it('deletes all IndexedDB databases via indexedDB.databases() when available', async () => {
