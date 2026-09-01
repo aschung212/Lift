@@ -373,6 +373,59 @@ describe('CSS regression tests', () => {
       const lines = getRuleLines('.wtRPEToggle')
       expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
     })
+
+    // The chips flex to share the row now that the scale is five points plus a
+    // half modifier. `flex: 1 1 0` alone would happily shrink them under the
+    // floor on a narrow sheet, so the min-width above has to stay paired with a
+    // wrapping container — the ½ chip drops to a second line instead.
+    it('.wtRPEScale wraps rather than shrinking chips below the 44pt floor', () => {
+      const lines = getRuleLines('.wtRPEScale')
+      expect(lines.some(l => l.includes('flex-wrap') && l.includes('wrap'))).toBe(true)
+      const points = getRuleLines('.wtRPEPoints')
+      expect(points.some(l => l.includes('flex-wrap') && l.includes('wrap'))).toBe(true)
+    })
+
+    it('.wtRPEChip flexes to share the row', () => {
+      const lines = getRuleLines('.wtRPEChip')
+      expect(lines.some(l => l.includes('flex:') && l.includes('1 1 0'))).toBe(true)
+    })
+
+    // The ½ chip reads quieter than the five value chips, but only while it is
+    // OFF. `.wtRPEHalfChip` and `.wtRPEChipActive` are both single-class, so an
+    // unscoped muted colour sitting later in the file wins on source order and
+    // paints --text-muted onto the accent fill — measured at 3.31:1, under the
+    // 4.5:1 AA floor, on a chip that looks selected.
+    it('.wtRPEHalfChip only dims itself while inactive', () => {
+      expect(getRuleLines('.wtRPEHalfChip')).toEqual([])
+      const scoped = getRuleLines('.wtRPEHalfChip:not(.wtRPEChipActive)')
+      expect(scoped.some(l => l.includes('color') && l.includes('--text-muted'))).toBe(true)
+    })
+  })
+
+  // The effort toggle and the RPE pill share ONE row (#1271 / LIFT-617).
+  // Stacking them cost 112px of sheet height unconditionally — both rows were
+  // already at the 44pt floor, so the sheet paid the same whether or not
+  // either annotation was used.
+  describe('set-annotation row shares one line', () => {
+    it('.wtEffortRow is a flex row so both annotations sit side by side', () => {
+      const lines = getRuleLines('.wtEffortRow')
+      expect(lines.some(l => l.includes('display') && l.includes('flex'))).toBe(true)
+      expect(lines.some(l => l.includes('gap') && l.includes('8px'))).toBe(true)
+    })
+
+    // Only the effort label grows ("Went for rep 12"), so it must take the
+    // truncation rather than push the RPE pill off the row.
+    it('.wtEffortToggleLabel truncates instead of overflowing the row', () => {
+      const lines = getRuleLines('.wtEffortToggleLabel')
+      expect(lines.some(l => l.includes('text-overflow') && l.includes('ellipsis'))).toBe(true)
+      expect(lines.some(l => l.includes('min-width') && l.includes('0'))).toBe(true)
+      expect(getRuleLines('.wtEffortToggle').some(l => l.includes('min-width') && l.includes('0'))).toBe(true)
+    })
+
+    // The pill is fixed-width so a long rep label never squeezes the value out.
+    it('.wtRPEToggle does not shrink', () => {
+      expect(getRuleLines('.wtRPEToggle').some(l => l.includes('flex') && l.includes('none'))).toBe(true)
+    })
   })
 
   describe('.wtTimerEditResetBtn touch target', () => {
