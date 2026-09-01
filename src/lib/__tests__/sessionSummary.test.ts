@@ -9,7 +9,11 @@ import {
 import type { Exercise } from '../../stores/workout'
 import type { SetXPEntry } from '../../stores/progression'
 
-function makeExercise(name: string, id: string, sets: { id: string; weight: number; reps: number; date: string }[]): Exercise {
+function makeExercise(
+  name: string,
+  id: string,
+  sets: { id: string; weight: number; reps: number; date: string; createdAt?: string }[],
+): Exercise {
   return {
     id,
     name,
@@ -18,6 +22,28 @@ function makeExercise(name: string, id: string, sets: { id: string; weight: numb
       ...s,
       estimated1RM: s.reps === 1 ? Math.round(s.weight) : Math.round(s.weight * (1 + s.reps / 30)),
     })),
+  }
+}
+
+/**
+ * A set the way `logSet` actually writes one: `date` is the chosen calendar day
+ * stamped end-of-day (`endOfDayISO`), and `createdAt` is the real instant it was
+ * entered. `hhmm` is UTC and deliberately kept mid-afternoon so the instant lands
+ * on `day` in every timezone the suite might run under (CI is UTC, Aaron's
+ * machine is UTC-7/8) — vitest.config.js pins no TZ.
+ */
+function loggedSet(
+  id: string,
+  day: string,
+  hhmm: string,
+  extra: { weight?: number; reps?: number; createdAtDay?: string } = {},
+) {
+  return {
+    id,
+    weight: extra.weight ?? 225,
+    reps: extra.reps ?? 5,
+    date: `${day}T23:59:12.345Z`,
+    createdAt: `${extra.createdAtDay ?? day}T${hhmm}:00.000Z`,
   }
 }
 
@@ -245,6 +271,77 @@ describe('buildSessionSummary', () => {
     ]
     const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
     expect(summary.duration).toBe('—')
+  })
+
+  // #1288 — duration read from `createdAt`.
+  //
+  // Every set logged through the UI is written with `endOfDayISO(day)`, so the
+  // pre-#1288 derivation (which only ever looked at `date`) skipped all of them
+  // as jitter and reported '—' for literally every session. The real log instant
+  // was sitting on `createdAt` the whole time, unread since #846 populated it.
+  describe('duration from createdAt (#1288)', () => {
+    it('spans a UI-logged session, whose date stamps are all end-of-day', () => {
+      const exercises = [
+        makeExercise('Bench', 'ex1', [
+          loggedSet('s1', '2026-04-21', '14:00'),
+          loggedSet('s2', '2026-04-21', '14:20'),
+        ]),
+        makeExercise('Row', 'ex2', [loggedSet('s3', '2026-04-21', '14:45')]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.duration).toBe('45m')
+    })
+
+    it('excludes a set back-dated onto the day from another day', () => {
+      // The user trained Tuesday for 30m, then on Friday remembered a fourth set
+      // and added it with the date picker set back to Tuesday. Its `createdAt` is
+      // Friday. Folding that into the max reports the Tuesday session as '3d 6h'.
+      const exercises = [
+        makeExercise('Bench', 'ex1', [
+          loggedSet('s1', '2026-04-21', '14:00'),
+          loggedSet('s2', '2026-04-21', '14:30'),
+          loggedSet('s3', '2026-04-21', '15:00', { createdAtDay: '2026-04-24' }),
+        ]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.duration).toBe('30m')
+    })
+
+    it('reports — when every set on the day was back-dated from elsewhere', () => {
+      const exercises = [
+        makeExercise('Bench', 'ex1', [
+          loggedSet('s1', '2026-04-21', '14:00', { createdAtDay: '2026-04-24' }),
+          loggedSet('s2', '2026-04-21', '15:00', { createdAtDay: '2026-04-24' }),
+        ]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.duration).toBe('—')
+    })
+
+    it('mixes a legacy set with no createdAt into the same span', () => {
+      // Pre-#846 sets kept a real-time `date` on the no-date path. They still
+      // count, so a history that straddles #846 does not lose its early span.
+      const exercises = [
+        makeExercise('Bench', 'ex1', [
+          { id: 's1', weight: 225, reps: 5, date: '2026-04-21T14:00:00.000Z' },
+          loggedSet('s2', '2026-04-21', '14:50'),
+        ]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.duration).toBe('50m')
+    })
+
+    it('ignores an unparseable createdAt rather than reporting NaN', () => {
+      const exercises = [
+        makeExercise('Bench', 'ex1', [
+          { id: 's1', weight: 225, reps: 5, date: '2026-04-21T23:59:12.345Z', createdAt: 'not-a-date' },
+          loggedSet('s2', '2026-04-21', '14:00'),
+        ]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      // One usable instant → '<1m', never 'NaN' or 'Infinityh'.
+      expect(summary.duration).toBe('<1m')
+    })
   })
 
   it('returns 7-entry weekVolume aggregating across all exercises', () => {
