@@ -1,4 +1,4 @@
-import { toLocalDateKey } from './dates'
+import { setDayKey } from './dates'
 import type { Exercise } from '../stores/workout'
 
 export interface WeeklyGoalInfo {
@@ -34,7 +34,11 @@ export function computeWeeklyGoal(
   const daysTrainedSet = new Set<string>()
   for (const ex of exercises) {
     for (const s of ex.sets) {
-      const d = toLocalDateKey(s.date)
+      // `setDayKey`, not a raw derivation: an endOfDayISO stamp (`…T23:59Z`,
+      // every UI-logged set) keys to TOMORROW under `toLocalDateKey` east of
+      // UTC, so the day being trained fell past `endOfToday` and never counted
+      // — and on a Sunday it left the Mon–Sun window entirely (#1293 / #746).
+      const d = setDayKey(s.date)
       const setDate = new Date(d + 'T00:00:00')
       if (setDate >= monday && setDate <= endOfToday) {
         daysTrainedSet.add(d)
