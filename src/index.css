@@ -4993,12 +4993,16 @@ html.theme-fading .settingsSheet {
    loaded). The weight value itself is rendered by the WEIGHT card above
    the plate calc — this card is purely the picker chrome. */
 
-/* "Went for one more rep" toggle row (#1271).
-   Records that the lifter attempted the rep after the logged count and missed
-   it — a strictly higher-output set than the same reps re-racked. Sits directly
-   under the weight/reps cards because it annotates the rep count. Sized to the
-   44pt floor rather than overlay-extended: it sits in a stack of tappable rows,
-   so an oversized ::before would reach into its neighbours (the #990 rule). */
+/* Set-annotation row (#1271 / LIFT-617).
+   Holds BOTH optional per-set annotations side by side — the "went for one
+   more" toggle and the RPE disclosure. They used to occupy a row each, which
+   spent 112px of sheet height UNCONDITIONALLY: both rows already sat at the
+   44pt floor, so the cost was identical whether or not either annotation was
+   used, and each pill takes well under half the row. Sits directly under the
+   weight/reps cards because the effort toggle annotates the rep count. Sized
+   to the 44pt floor rather than overlay-extended: this sits in a stack of
+   tappable rows, so an oversized ::before would reach into its neighbours
+   (the #990 rule). */
 .wtEffortRow {
   display: flex;
   align-items: center;
@@ -5011,6 +5015,7 @@ html.theme-fading .settingsSheet {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
   padding: 8px 12px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -5026,6 +5031,15 @@ html.theme-fading .settingsSheet {
 .wtEffortToggle:active {
   border-color: var(--accent);
   color: var(--text-primary);
+}
+
+/* The rep label is the only part of the row that grows ("Went for rep 12"),
+   so it takes any truncation rather than pushing the RPE pill out of view. */
+.wtEffortToggleLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wtEffortToggleActive {
@@ -5049,20 +5063,17 @@ html.theme-fading .settingsSheet {
   white-space: nowrap;
 }
 
-/* RPE selector row (LIFT-617) */
-.wtRPERow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin: 8px 0;
-  min-height: 36px;
-}
-
+/* RPE disclosure pill (LIFT-617).
+   Stays in the annotation row whether or not a rating is set — holding the
+   value and flipping its chevron — so the control that opens the scale is the
+   control that closes it. It previously REPLACED itself with the scale, which
+   left no visible way back: the only route was re-tapping the chip that was
+   already selected, and nothing on screen suggested that. */
 .wtRPEToggle {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex: none;
   padding: 8px 12px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -5080,31 +5091,52 @@ html.theme-fading .settingsSheet {
   color: var(--text-primary);
 }
 
-.wtRPELabel {
-  font-size: var(--font-caption2);
+/* A set rating reads as set even while the scale is collapsed — the pill is
+   the only place the value is shown once the chips are away. */
+.wtRPEToggleSet {
+  border-color: var(--accent);
+  color: var(--text-primary);
   font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+}
+
+.wtRPEChevron {
   flex-shrink: 0;
+  transition: transform 0.15s;
 }
 
-.wtRPEChips {
+.wtRPEChevronOpen {
+  transform: rotate(180deg);
+}
+
+/* RPE scale: five whole points plus a half-step modifier.
+   Every half-point as its own chip needed 9 × 44pt = 428px of row, and the
+   log sheet gives 350 — so 9 / 9.5 / 10 sat off-screen behind an overflow
+   scroller with no visible edge, leaving three of the nine ratings reachable
+   only by a scroll gesture nothing hinted at. Six chips fit the width
+   outright. `flex-wrap` is the floor for very narrow viewports: the ½ chip
+   drops to a second line rather than let any chip shrink under 44pt. */
+.wtRPEScale {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  width: 100%;
+  margin: 0 0 8px;
 }
 
-.wtRPEChips::-webkit-scrollbar { display: none; }
+.wtRPEPoints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 5 1 0;
+  min-width: 0;
+}
 
 .wtRPEChip {
-  flex-shrink: 0;
-  /* Sized to the 44pt floor rather than overlay-extended: these chips TILE in a
-     row, so an oversized ::before would reach into the neighbour and a near-miss
-     would select the wrong RPE (the #990 tiling rule). */
+  /* Sized to the 44pt floor rather than overlay-extended: these chips TILE in
+     a row, so an oversized ::before would reach into the neighbour and a
+     near-miss would select the wrong RPE (the #990 tiling rule). They flex to
+     share the row, and the floor keeps that share above 44pt. */
+  flex: 1 1 0;
   min-width: 44px;
   min-height: 44px;
   display: flex;
@@ -5118,8 +5150,9 @@ html.theme-fading .settingsSheet {
   font-size: var(--font-footnote);
   font-family: inherit;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
 }
 
 .wtRPEChip:active {
@@ -5131,6 +5164,21 @@ html.theme-fading .settingsSheet {
   border-color: var(--accent);
   color: var(--accent-text, var(--bg-primary));
   font-weight: 600;
+}
+
+/* The ½ chip modifies the selected point rather than being a sixth value, so
+   it reads a shade quieter and goes inert with nothing to modify (no point
+   picked, or 10 picked — 10.5 is not an RPE). */
+/* Scoped to the inactive state: both selectors are single-class, so a bare
+   `.wtRPEHalfChip { color }` sitting after `.wtRPEChipActive` wins on source
+   order and paints muted text onto the accent fill once the half is on. */
+.wtRPEHalfChip:not(.wtRPEChipActive) {
+  color: var(--text-muted);
+}
+
+.wtRPEHalfChip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Plate calculator first-use hint (LIFT-388) */

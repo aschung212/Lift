@@ -1298,6 +1298,184 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  // The RPE selector is five whole points plus a half-step modifier, disclosed
+  // by a pill that stays on screen (#1271 / LIFT-617). Two shipped bugs drove
+  // this: the scale had no visible way back (collapsing meant re-tapping the
+  // already-selected chip), and opening it seeded a 7 that a user who only
+  // peeked would silently save.
+  describe('RPE selector', () => {
+    beforeEach(() => {
+      mockState.exercises = createExercises()
+    })
+
+    async function openLog(wrapper: VueWrapper) {
+      const logBtns = wrapper.findAll('.wtExerciseLogBtn')
+      await logBtns[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    const points = (w: VueWrapper) => w.findAll('.wtRPEPoints .wtRPEChip')
+
+    it('keeps the scale hidden until the pill is tapped', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+
+      expect(wrapper.find('.wtRPEScale').exists()).toBe(false)
+      const pill = wrapper.find('.wtRPEToggle')
+      expect(pill.attributes('aria-expanded')).toBe('false')
+      expect(pill.text()).toBe('RPE')
+
+      await pill.trigger('click')
+      expect(wrapper.find('.wtRPEScale').exists()).toBe(true)
+      expect(wrapper.find('.wtRPEToggle').attributes('aria-expanded')).toBe('true')
+    })
+
+    // The reported bug: once expanded there was no way back. The pill is the
+    // one control that opens AND closes the scale.
+    it('collapses again when the pill is tapped a second time', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+
+      await wrapper.find('.wtRPEToggle').trigger('click')
+      expect(wrapper.find('.wtRPEScale').exists()).toBe(true)
+
+      await wrapper.find('.wtRPEToggle').trigger('click')
+      expect(wrapper.find('.wtRPEScale').exists()).toBe(false)
+      expect(wrapper.find('.wtRPEToggle').attributes('aria-expanded')).toBe('false')
+    })
+
+    it('keeps a chosen rating visible on the pill while collapsed', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+
+      await wrapper.find('.wtRPEToggle').trigger('click')
+      await points(wrapper)[2].trigger('click') // RPE 8
+      await wrapper.find('.wtRPEToggle').trigger('click')
+
+      expect(wrapper.find('.wtRPEScale').exists()).toBe(false)
+      expect(wrapper.find('.wtRPEToggle').text()).toBe('RPE 8')
+    })
+
+    // Opening a picker is not choosing a value. The old selector set 7 on tap,
+    // so peeking at the scale and dismissing it recorded an RPE of 7.
+    it('does not seed a rating just for opening the scale', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+      await wrapper.find('.wtRPEToggle').trigger('click')
+
+      expect(points(wrapper).every(c => c.attributes('aria-checked') === 'false')).toBe(true)
+      expect(wrapper.find('.wtRPEToggle').text()).toBe('RPE')
+
+      const inputs = wrapper.findAll('.repMaxModal input')
+      await inputs.find(i => i.attributes('inputmode') === 'decimal')!.setValue('185')
+      await inputs.find(i => i.attributes('inputmode') === 'numeric')!.setValue('5')
+      await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+
+      // `logSet` only stores an rpe when it is non-null, so an unset rating
+      // must arrive as undefined rather than a seeded number.
+      expect(mockLogSet.mock.calls[0][4].rpe).toBeUndefined()
+    })
+
+    // Nine 44pt chips needed 428px in a 350px row, so 9 / 9.5 / 10 sat off
+    // screen behind a scroller with no visible edge. Six chips fit outright.
+    it('shows the whole scale — five points and the half modifier', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+      await wrapper.find('.wtRPEToggle').trigger('click')
+
+      expect(points(wrapper).map(c => c.text())).toEqual(['6', '7', '8', '9', '10'])
+      expect(wrapper.find('.wtRPEHalfChip').exists()).toBe(true)
+    })
+
+    it('composes a half-point rating from a point plus the modifier', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+      await wrapper.find('.wtRPEToggle').trigger('click')
+
+      await points(wrapper)[2].trigger('click') // 8
+      await wrapper.find('.wtRPEHalfChip').trigger('click')
+
+      expect(wrapper.find('.wtRPEToggle').text()).toBe('RPE 8.5')
+      expect(points(wrapper)[2].attributes('aria-checked')).toBe('true')
+      expect(wrapper.find('.wtRPEHalfChip').attributes('aria-pressed')).toBe('true')
+
+      const inputs = wrapper.findAll('.repMaxModal input')
+      await inputs.find(i => i.attributes('inputmode') === 'decimal')!.setValue('185')
+      await inputs.find(i => i.attributes('inputmode') === 'numeric')!.setValue('5')
+      await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+
+      expect(mockLogSet.mock.calls[0][4]).toMatchObject({ rpe: 8.5 })
+    })
+
+    // The half is a modifier on the current rating, not a tenth value, so it
+    // rides along as the point moves.
+    it('carries the half across a change of point', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+      await wrapper.find('.wtRPEToggle').trigger('click')
+
+      await points(wrapper)[2].trigger('click') // 8
+      await wrapper.find('.wtRPEHalfChip').trigger('click') // 8.5
+      await points(wrapper)[3].trigger('click') // 9 -> 9.5
+
+      expect(wrapper.find('.wtRPEToggle').text()).toBe('RPE 9.5')
+    })
+
+    // 10.5 is not an RPE, so the modifier goes inert at the top of the scale —
+    // and has nothing to modify before a point is picked.
+    it('disables the half modifier with no point picked and at RPE 10', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+      await wrapper.find('.wtRPEToggle').trigger('click')
+
+      expect(wrapper.find('.wtRPEHalfChip').attributes('disabled')).toBeDefined()
+
+      await points(wrapper)[4].trigger('click') // 10
+      expect(wrapper.find('.wtRPEHalfChip').attributes('disabled')).toBeDefined()
+      expect(wrapper.find('.wtRPEToggle').text()).toBe('RPE 10')
+    })
+
+    it('drops the half when a half rating moves up to 10', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+      await wrapper.find('.wtRPEToggle').trigger('click')
+
+      await points(wrapper)[3].trigger('click') // 9
+      await wrapper.find('.wtRPEHalfChip').trigger('click') // 9.5
+      await points(wrapper)[4].trigger('click') // 10, not 10.5
+
+      expect(wrapper.find('.wtRPEToggle').text()).toBe('RPE 10')
+      expect(wrapper.find('.wtRPEHalfChip').attributes('aria-pressed')).toBe('false')
+    })
+
+    // Clearing is the chips' job; collapsing is the pill's. Re-tapping the
+    // selected point clears the rating and leaves the scale open.
+    it('clears the rating when the selected point is tapped again', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+      await wrapper.find('.wtRPEToggle').trigger('click')
+
+      await points(wrapper)[1].trigger('click') // 7
+      expect(wrapper.find('.wtRPEToggle').text()).toBe('RPE 7')
+
+      await points(wrapper)[1].trigger('click')
+      expect(wrapper.find('.wtRPEToggle').text()).toBe('RPE')
+      expect(wrapper.find('.wtRPEScale').exists()).toBe(true)
+    })
+
+    // Both annotations are optional and neither fills half the row, so they
+    // share one line rather than costing the sheet 112px unconditionally.
+    it('puts the effort toggle and the RPE pill in the same row', async () => {
+      const wrapper = mountTracker()
+      await openLog(wrapper)
+
+      const row = wrapper.find('.wtEffortRow')
+      expect(row.find('.wtEffortToggle').exists()).toBe(true)
+      expect(row.find('.wtRPEToggle').exists()).toBe(true)
+      expect(wrapper.findAll('.wtEffortRow')).toHaveLength(1)
+    })
+  })
+
   describe('usual ladder & ghost logging (#741)', () => {
     /** Local calendar date, matching the component's todayISO(). */
     function localDay(daysAgo = 0): string {

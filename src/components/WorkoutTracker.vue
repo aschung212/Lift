@@ -745,13 +745,20 @@
           </div>
 
           <!--
-            "Went for one more" toggle (#1271). Records that the lifter
-            attempted the rep AFTER the logged count and missed it, which is a
-            strictly higher-output set than the same reps re-racked. One
-            optional tap, off by default — this fires on every set, so a
-            blocking prompt would cost more than the ambiguity it removes.
-            aria-pressed rather than a checkbox: it is a two-state toggle
-            button, and the label already carries the target rep.
+            Set annotations (#1271 / LIFT-617). "Went for one more" and the
+            RPE rating are both optional, per-set annotations, so they share
+            ONE 44pt row rather than stacking two. Stacking cost 112px of
+            sheet height UNCONDITIONALLY — both rows already sat at the 44pt
+            floor, so the sheet paid the same whether or not either annotation
+            was used, and each pill occupies well under half the row.
+
+            The effort toggle records that the lifter attempted the rep AFTER
+            the logged count and missed it, which is a strictly higher-output
+            set than the same reps re-racked. One optional tap, off by default
+            — this fires on every set, so a blocking prompt would cost more
+            than the ambiguity it removes. aria-pressed rather than a
+            checkbox: it is a two-state toggle button, and the label already
+            carries the target rep.
           -->
           <div class="wtEffortRow">
             <button
@@ -761,37 +768,63 @@
               @click="attemptedNextRep = !attemptedNextRep"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
-              <span>{{ nextRepToggleLabel }}</span>
+              <span class="wtEffortToggleLabel">{{ nextRepToggleLabel }}</span>
+            </button>
+            <!--
+              The RPE pill is a DISCLOSURE that stays on screen holding the
+              value and flipping its chevron, so the control that opens the
+              scale is the control that closes it. It used to REPLACE itself
+              with the scale, which left no visible way back — collapsing
+              meant re-tapping the chip that was already selected, and nothing
+              on screen suggested that. Tapping it no longer seeds a rating
+              either: opening a picker is not choosing a value, and the old
+              `selectedRPE = 7` recorded a 7 on any set where the row was
+              opened and dismissed.
+            -->
+            <button
+              type="button"
+              :class="['wtRPEToggle', { wtRPEToggleSet: selectedRPE !== null }]"
+              :aria-expanded="rpeExpanded"
+              aria-controls="wtRPEScale"
+              :aria-label="selectedRPE === null ? 'Add RPE rating' : `RPE ${formatRPE(selectedRPE)}`"
+              @click="rpeExpanded = !rpeExpanded"
+            >
+              <svg v-if="selectedRPE === null" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+              <span>{{ selectedRPE === null ? 'RPE' : `RPE ${formatRPE(selectedRPE)}` }}</span>
+              <svg :class="['wtRPEChevron', { wtRPEChevronOpen: rpeExpanded }]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
             </button>
           </div>
 
-          <!-- RPE selector (optional, progressive disclosure) -->
-          <div class="wtRPERow">
+          <!--
+            Five whole points plus a half-step modifier. Every half-point as
+            its own chip needed 9 × 44pt = 428px of row in the 350px the sheet
+            gives, so 9 / 9.5 / 10 sat off-screen behind an overflow scroller
+            with no visible edge — three of the nine ratings were unreachable
+            without a scroll gesture nothing hinted at. Six chips fit the width
+            outright: every rating on the 6–10 scale is reachable in at most
+            two taps and none of them hide.
+          -->
+          <div v-if="rpeExpanded" id="wtRPEScale" class="wtRPEScale">
+            <div class="wtRPEPoints" role="radiogroup" aria-label="Rate of Perceived Exertion">
+              <button
+                v-for="v in RPE_POINTS"
+                :key="v"
+                type="button"
+                :class="['wtRPEChip', { wtRPEChipActive: rpeBase === v }]"
+                role="radio"
+                :aria-checked="rpeBase === v"
+                :aria-label="`RPE ${v}`"
+                @click="setRPEPoint(v)"
+              >{{ v }}</button>
+            </div>
             <button
-              v-if="selectedRPE === null"
               type="button"
-              class="wtRPEToggle"
-              @click="selectedRPE = 7"
-              aria-label="Add RPE rating"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
-              <span>RPE</span>
-            </button>
-            <template v-else>
-              <span class="wtRPELabel">RPE</span>
-              <div class="wtRPEChips" role="radiogroup" aria-label="Rate of Perceived Exertion">
-                <button
-                  v-for="v in RPE_VALUES"
-                  :key="v"
-                  type="button"
-                  :class="['wtRPEChip', { wtRPEChipActive: selectedRPE === v }]"
-                  role="radio"
-                  :aria-checked="selectedRPE === v"
-                  :aria-label="`RPE ${v}`"
-                  @click="selectedRPE = selectedRPE === v ? null : v"
-                >{{ Number.isInteger(v) ? v : v.toFixed(1) }}</button>
-              </div>
-            </template>
+              :class="['wtRPEChip', 'wtRPEHalfChip', { wtRPEChipActive: rpeHalf }]"
+              :disabled="!canHalfRPE"
+              :aria-pressed="rpeHalf"
+              aria-label="Half point"
+              @click="toggleRPEHalf"
+            >½</button>
           </div>
 
           <!-- One-time hint: plate calculator discoverability (LIFT-388) -->
@@ -2188,7 +2221,50 @@ watch(weightStr, () => {
 
 const date = ref(todayISO())
 const selectedRPE = ref<number | null>(null)
-const RPE_VALUES = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10] as const
+/**
+ * The RPE scale is 6–10 in half steps, rendered as five WHOLE points plus a
+ * half-step modifier rather than nine value chips. Nine chips at the 44pt
+ * floor need 428px and the log sheet gives 350, so the old single row put
+ * 9 / 9.5 / 10 off-screen behind an overflow scroller with no visible edge.
+ * Six chips fit outright; a half-point costs one extra tap and nothing hides.
+ * The value set is unchanged, and still what `parseGuards` accepts (6–10,
+ * whole or half).
+ */
+const RPE_POINTS = [6, 7, 8, 9, 10] as const
+const RPE_MAX = 10
+/** Whether the scale is disclosed. The PILL, not the scale, owns this. */
+const rpeExpanded = ref(false)
+
+/**
+ * Base point and half flag are DERIVED from the single `selectedRPE` value
+ * rather than held alongside it — two sources for one rating is how the
+ * chips and the saved set drift apart.
+ */
+const rpeBase = computed(() => (selectedRPE.value === null ? null : Math.floor(selectedRPE.value)))
+const rpeHalf = computed(() => selectedRPE.value !== null && selectedRPE.value % 1 !== 0)
+const canHalfRPE = computed(() => rpeBase.value !== null && rpeBase.value < RPE_MAX)
+
+function formatRPE(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(1)
+}
+
+function setRPEPoint(v: number) {
+  // Tapping the selected point clears the rating outright — the tap-to-clear
+  // idiom the chips have always had, and now the only thing the chips clear
+  // (collapsing is the pill's job).
+  if (rpeBase.value === v) {
+    selectedRPE.value = null
+    return
+  }
+  // The half rides along as the base moves — it is a modifier on the current
+  // rating, not a tenth value. Except at the top: 10.5 is not an RPE.
+  selectedRPE.value = rpeHalf.value && v < RPE_MAX ? v + 0.5 : v
+}
+
+function toggleRPEHalf() {
+  if (rpeBase.value === null || rpeBase.value >= RPE_MAX) return
+  selectedRPE.value = rpeHalf.value ? rpeBase.value : rpeBase.value + 0.5
+}
 // "Went for one more rep and missed it" for the set being logged/edited (#1271).
 // Off by default and cleared after every save — the annotation describes ONE
 // set, so carrying it to the next one would silently over-report effort.
@@ -2393,6 +2469,7 @@ function openLogForExercise(exerciseId: string) {
   editingSet.value = null
   selectedExerciseId.value = exerciseId
   selectedRPE.value = null
+  rpeExpanded.value = false
   attemptedNextRep.value = false
   lastSessionUsed.value = {}
   intensityUsed.value = {}
@@ -2436,6 +2513,7 @@ function openEditModal(exercise: Exercise, set: WorkoutSet) {
   weight.value = displayWeight(set.weight)
   reps.value = set.reps
   selectedRPE.value = set.rpe ?? null
+  rpeExpanded.value = false
   attemptedNextRep.value = set.attemptedNextRep === true
   showModal.value = true
 }
@@ -2461,6 +2539,7 @@ function closeModal() {
   weight.value = null
   reps.value = null
   selectedRPE.value = null
+  rpeExpanded.value = false
   attemptedNextRep.value = false
   date.value = todayISO()
   plateNumpadOverride.value = false
