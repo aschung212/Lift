@@ -847,9 +847,18 @@ function userScopedTables(sql: string): string[] {
  * through a SECURITY DEFINER RPC. Reading the RPC's own body means a coach
  * table added to the schema but forgotten inside `delete_coach_data` is still
  * reported as uncovered.
+ *
+ * Reads the LAST definition, not the first. Migrations are concatenated in
+ * apply order, and extending this RPC means shipping a second
+ * `create or replace function` — so the first match is the stale body. Reading
+ * it would let a later definition that DROPPED a `delete from` still read as
+ * covered, which is the failure this invariant exists to catch.
  */
 function tablesDeletedByFunction(sql: string, fn: string): string[] {
-  const start = sql.search(new RegExp(`create\\s+(?:or\\s+replace\\s+)?function\\s+${SCHEMA}${fn}\\b`, 'i'))
+  const decl = new RegExp(`create\\s+(?:or\\s+replace\\s+)?function\\s+${SCHEMA}${fn}\\b`, 'gi')
+  let start = -1
+  let m: RegExpExecArray | null
+  while ((m = decl.exec(sql)) !== null) start = m.index
   if (start === -1) return []
   // Body runs to the closing `$$` of the dollar-quoted block.
   const bodyStart = sql.indexOf('$$', start)
@@ -858,7 +867,6 @@ function tablesDeletedByFunction(sql: string, fn: string): string[] {
   const body = sql.slice(bodyStart, bodyEnd)
   const re = new RegExp(`delete\\s+from\\s+["']?${SCHEMA}(\\w+)["']?`, 'gi')
   const out = new Set<string>()
-  let m: RegExpExecArray | null
   while ((m = re.exec(body)) !== null) out.add(m[1].toLowerCase())
   return [...out]
 }
@@ -945,6 +953,17 @@ describe('Invariant: account deletion covers every user-scoped table (LIFT-1225)
     expect(cascadeCoveredTables(schema, new Set(['parent']))).toEqual(['child'])
     // `orphan` is deleted by nothing — the shape this invariant exists to catch.
     expect(cascadeCoveredTables(schema, new Set(['parent']))).not.toContain('orphan')
+
+    // A later `create or replace` REPLACES the function. Reading the first
+    // definition would report a table the live function no longer deletes.
+    const redefined = schema + stripSqlComments(`
+      create or replace function purge() returns void language plpgsql as $$
+      begin
+        delete from public.orphan where user_id = v_uid;
+      end;
+      $$;
+    `)
+    expect(tablesDeletedByFunction(redefined, 'purge')).toEqual(['orphan'])
   })
 
   it('every user-scoped table is deleted by deleteAccount()', () => {
