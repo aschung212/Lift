@@ -9,7 +9,7 @@
 
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
-import { toLocalDateKey, localDateKey, daysBetweenISO } from './dates'
+import { setDayKey, localDateKey, daysBetweenISO } from './dates'
 import { effectiveSetWeight } from './bodyweightLoad'
 
 export interface SessionHighlight {
@@ -174,10 +174,15 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     return Number.isInteger(v) ? v : Math.round(v * 10) / 10
   }
 
+  // `rawDate` arrives as a LOCAL day key (`todayISO()` / the log sheet's date),
+  // so every `set.date` compared against it must go through `setDayKey` — the
+  // single reconciliation point for the two stored date conventions (#746).
+  // A raw `toLocalDateKey` shifts every UI-logged `…T23:59Z` stamp a day forward
+  // east of UTC, which matched nothing and emptied the whole summary (#1291).
   const dayKey = rawDate
   const todaysByExercise = new Map<string, { ex: Exercise; sets: WorkoutSet[] }>()
   for (const ex of exercises) {
-    const todays = ex.sets.filter((s) => toLocalDateKey(s.date) === dayKey)
+    const todays = ex.sets.filter((s) => setDayKey(s.date) === dayKey)
     if (todays.length > 0) todaysByExercise.set(ex.id, { ex, sets: todays })
   }
 
@@ -197,7 +202,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
 
     // Prior sets (everything strictly before today). Used both for derived
     // PR detection AND for rep-PR-at-weight comparison.
-    const priorSets = ex.sets.filter((s) => toLocalDateKey(s.date) < dayKey)
+    const priorSets = ex.sets.filter((s) => setDayKey(s.date) < dayKey)
     const priorMaxE1RM = priorSets.length === 0 ? null : Math.max(...priorSets.map((s) => s.estimated1RM))
     const priorRepsByWeight = new Map<number, number>()
     for (const s of priorSets) {
@@ -270,7 +275,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     // Best e1RM per calendar day across the whole history of this exercise.
     const bestByDay = new Map<string, number>()
     for (const s of ex.sets) {
-      const k = toLocalDateKey(s.date)
+      const k = setDayKey(s.date)
       const prev = bestByDay.get(k) ?? -1
       if (s.estimated1RM > prev) bestByDay.set(k, s.estimated1RM)
     }
@@ -340,7 +345,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
   let priorWeekTotal = 0
   for (const ex of exercises) {
     for (const s of ex.sets) {
-      const k = toLocalDateKey(s.date)
+      const k = setDayKey(s.date)
       const vol = effectiveSetWeight(s, ex) * s.reps
       if (weekVolumeMap.has(k)) {
         weekVolumeMap.set(k, weekVolumeMap.get(k)! + vol)
