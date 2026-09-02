@@ -364,11 +364,16 @@ function describeSupabaseError(err: unknown): string {
 }
 
 /**
- * Delete all user data from Supabase, clear local storage & IndexedDB, then sign out.
- * Throws if Supabase deletion fails so the caller can show an error.
+ * Delete all user data from Supabase, delete the `auth.users` row itself
+ * (#1299), clear local storage & IndexedDB, then sign out.
  *
- * For a local-only guest session the server stage is skipped entirely — there is
- * nothing on the server to delete — and the local wipe is the whole operation.
+ * Throws if any stage fails so the caller can show an error — and throws
+ * BEFORE the local wipe, so a partial server-side deletion never leaves the
+ * device cleared while rows survive.
+ *
+ * For a local-only guest session both server stages are skipped entirely
+ * (LIFT-1301) — there is no account and no rows to delete — and the local wipe
+ * is the whole operation.
  */
 async function deleteAccount(): Promise<void> {
   // Cancel any pending sync operations to avoid racing with deletion
@@ -384,7 +389,9 @@ async function deleteAccount(): Promise<void> {
   // ("invalid input syntax for type uuid"). Since LIFT-1225 that RESOLVED error
   // is correctly counted as a failure, so the batch threw before the local wipe
   // — making "Delete Account" a deterministic dead-end for the one user who
-  // needs no network to honour it. Gate on the flag rather than the sentinel
+  // needs no network to honour it. (The #1299 stage below is equally unusable
+  // for a guest: `delete_user_account` derives its target from `auth.uid()`,
+  // which a guest does not have.) Gate on the flag rather than the sentinel
   // value: `isGuest` is what every other guest branch keys off (App.vue's
   // `handleSignOut`, the SIGNED_OUT teardown), and it is the thing that means
   // "this session has no server side", of which the id is only a symptom.
@@ -434,6 +441,40 @@ async function deleteAccount(): Promise<void> {
         failedCount: failed.length,
       })
       throw new Error('Failed to delete server data. Please try again.')
+    }
+
+    // Now the account ITSELF (#1299). Everything above deletes the user's
+    // application rows; the `auth.users` row — their email address, OAuth
+    // identity linkage, created_at and last_sign_in_at — used to survive all of
+    // it, indefinitely and with no remaining in-app way to remove it, while the
+    // screen that triggered this said "Delete Account" / "Delete Everything".
+    // The client holds the anon key and so cannot reach `auth.admin`; the
+    // SECURITY DEFINER RPC (deriving the user from auth.uid() internally) is
+    // its only path, the same shape delete_coach_data() already establishes.
+    //
+    // Ordering is load-bearing, which is why this is a second await rather than
+    // another entry in the batch above: deleting the auth user CASCADES through
+    // every `user_id` FK, so it is unrecoverable. Run last and a failure
+    // anywhere earlier aborts while the account still exists and the user can
+    // retry; run it first (or concurrently) and a later failure aborts having
+    // already destroyed the account.
+    const [accountResult] = await Promise.allSettled([supabase.rpc('delete_user_account')])
+    const accountError = accountResult.status === 'rejected'
+      ? accountResult.reason
+      : resolvedDeleteError(accountResult)
+    if (accountError) {
+      // Report before throwing: the user only sees the message below, so
+      // without this a half-completed deletion leaves no trace anywhere.
+      logError(
+        accountError instanceof Error ? accountError : new Error(describeSupabaseError(accountError)),
+        { source: 'deleteAccount:deleteUserAccount' },
+      )
+      // Deliberately distinct from the message above, and deliberately honest
+      // about the split outcome: the rows really are gone by this point, so
+      // "failed to delete" would read as "nothing happened, cancel is safe".
+      // Aborting here (before the local wipe and sign-out) keeps the retry
+      // path open — the table deletes re-run harmlessly against 0 rows.
+      throw new Error('Your data was deleted, but your sign-in could not be removed. Please try again.')
     }
   }
 

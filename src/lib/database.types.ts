@@ -370,6 +370,16 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      // SECURITY DEFINER deletion of the caller's own `auth.users` row (#1299).
+      // The anon key the browser ships cannot reach `auth.admin`, and
+      // `authenticated` has no write access to the auth schema, so this RPC is
+      // the client's only path to deleting the account itself (as opposed to
+      // its data). It derives the user from auth.uid() internally and takes no
+      // arguments. See 20260901000000_add_delete_user_account.sql.
+      delete_user_account: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
