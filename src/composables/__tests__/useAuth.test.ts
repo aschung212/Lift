@@ -79,6 +79,11 @@ beforeEach(async () => {
   mockGetSession.mockResolvedValue({ data: { session: null } })
   mockRpc.mockClear()
   mockRpc.mockResolvedValue({ data: null, error: null })
+  // Restore the base delete behaviour too: the ordering test below replaces it
+  // with mockReturnValue (not ...Once), which would otherwise leak into every
+  // later test in the file.
+  mockDelete.mockReset()
+  mockDelete.mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
   const mod = await import('../useAuth')
   useAuth = mod.useAuth
 })
@@ -477,6 +482,19 @@ describe('useAuth', () => {
       expect(localStorage.getItem('workout-exercises')).toBe('test-value')
     })
 
+    // deleteAccount issues TWO rpc calls once LIFT-1225 and #1299 are both in:
+    // `delete_coach_data` inside the table batch, then `delete_user_account`
+    // after it resolves clean. A bare `mockResolvedValueOnce` therefore lands on
+    // whichever fires FIRST rather than the one under test, so a test that needs
+    // exactly one of them to fail dispatches on the function name instead.
+    const failRpc = (target: string, failure: { error: unknown } | Error) => {
+      mockRpc.mockImplementation(async (name: string) => {
+        if (name !== target) return { data: null, error: null }
+        if (failure instanceof Error) throw failure
+        return { data: null, ...failure }
+      })
+    }
+
     // Regression LIFT-1225 (second half): the AI-Coach tables added in
     // 20260627000000 — coach_usage, coach_usage_log, coach_consent — hold the
     // record that the user consented to sending health data off-device plus a
@@ -514,7 +532,7 @@ describe('useAuth', () => {
       await devSignIn()
       localStorage.setItem('workout-exercises', 'test-value')
 
-      mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'not_authenticated' } })
+      failRpc('delete_coach_data', { error: { message: 'not_authenticated' } })
 
       await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
       expect(localStorage.getItem('workout-exercises')).toBe('test-value')
@@ -524,9 +542,110 @@ describe('useAuth', () => {
       const { deleteAccount, devSignIn } = useAuth()
       await devSignIn()
 
-      mockRpc.mockRejectedValueOnce(new Error('Network failure'))
+      failRpc('delete_coach_data', new Error('Network failure'))
 
       await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+    })
+
+    // ── Regression #1299: "Delete Account" must delete the ACCOUNT ──────
+    // Every assertion in this block above is about *data*, which is exactly why
+    // nothing ever noticed that the `auth.users` row — the user's email, their
+    // OAuth identity linkage, created_at, last_sign_in_at — survived deletion
+    // indefinitely, with no remaining in-app way to remove it (the user is
+    // signed out, and signing back in lands them in an empty account). The
+    // browser holds the anon key and cannot reach `auth.admin`, so the
+    // SECURITY DEFINER RPC is the only path.
+    it('deletes the auth.users row itself via the delete_user_account RPC', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      await deleteAccount()
+
+      expect(mockRpc).toHaveBeenCalledWith('delete_user_account')
+    })
+
+    // Ordering is load-bearing, not incidental. Deleting the auth user cascades
+    // through every `user_id` FK, so it is unrecoverable: it must run only once
+    // the per-table deletes are confirmed clean. Fire it first (or in the same
+    // batch) and a later failure aborts having already destroyed the account.
+    it('deletes the account only AFTER every table delete has resolved', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      const order: string[] = []
+      mockDelete.mockReturnValue({
+        eq: vi.fn().mockImplementation(async () => {
+          // Yield a macrotask so a concurrently-fired RPC would land first.
+          await new Promise(r => setTimeout(r, 0))
+          order.push('table-delete')
+          return { error: null }
+        })
+      })
+      // Record the rpc NAME: delete_coach_data rides along inside the batch, so
+      // only delete_user_account is expected to land after the table deletes.
+      mockRpc.mockImplementation(async (name: string) => {
+        order.push(name)
+        return { data: null, error: null }
+      })
+
+      await deleteAccount()
+
+      expect(order[order.length - 1]).toBe('delete_user_account')
+      expect(order.filter(o => o === 'delete_user_account')).toHaveLength(1)
+      expect(order.length).toBeGreaterThan(1)
+    })
+
+    it('never destroys the account when a table delete failed', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockDelete.mockReturnValueOnce({
+        eq: vi.fn().mockResolvedValue({ error: { message: 'permission denied' } })
+      })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+      expect(mockRpc).not.toHaveBeenCalledWith('delete_user_account')
+    })
+
+    // supabase-js RESOLVES `{ error }` on a server-side RPC failure (a raised
+    // `not_authenticated`, a missing function after a schema/deploy race)
+    // rather than rejecting — the LIFT-1225 trap, which applies to `.rpc()`
+    // exactly as it does to `.delete()`.
+    it('throws when the account-delete RPC RESOLVES with an error', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      failRpc('delete_user_account', { error: { message: 'not_authenticated' } })
+
+      await expect(deleteAccount()).rejects.toThrow(
+        'Your data was deleted, but your sign-in could not be removed. Please try again.'
+      )
+    })
+
+    it('throws when the account-delete RPC rejects', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      failRpc('delete_user_account', new Error('Network failure'))
+
+      await expect(deleteAccount()).rejects.toThrow(
+        'Your data was deleted, but your sign-in could not be removed. Please try again.'
+      )
+    })
+
+    // The retry path has to stay open: aborting here must not wipe the device
+    // or sign the user out, or a failed account delete would look like a
+    // success and leave them with no way back to the button.
+    it('keeps local data and the session when the account delete fails', async () => {
+      const { deleteAccount, devSignIn, user } = useAuth()
+      await devSignIn()
+      localStorage.setItem('workout-exercises', 'test-value')
+
+      failRpc('delete_user_account', { error: { message: 'permission denied' } })
+
+      await expect(deleteAccount()).rejects.toThrow(/sign-in could not be removed/)
+      expect(localStorage.getItem('workout-exercises')).toBe('test-value')
+      expect(user.value).not.toBeNull()
     })
 
     it('deletes all IndexedDB databases via indexedDB.databases() when available', async () => {

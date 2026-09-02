@@ -698,4 +698,95 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
       expect(data![0].estimated_1rm).toBe(166.25)
     })
   })
+
+  // ── Account deletion (#1299) ───────────────────────────────────
+
+  // The one thing no fake-Supabase test in this repo can check: whether the
+  // SECURITY DEFINER function actually has the PRIVILEGE to delete from
+  // `auth.users`. That table lives in the auth schema and is owned by
+  // supabase_auth_admin, not by the role migrations run as — so a wrong owner
+  // or a missing grant fails at CALL time in production, long after a clean
+  // migration and a green unit suite. This is the only place that can catch it.
+  describe('delete_user_account RPC', () => {
+    /**
+     * Mint an auth user WITH a password and return a client signed in AS them.
+     *
+     * The RPC derives its target from `auth.uid()`, so it must be invoked by a
+     * real session — a service_role call would only ever hit the
+     * `not_authenticated` guard. The password is fixed (emails are unique) and
+     * satisfies config.toml's `lower_upper_letters_digits` requirement.
+     */
+    async function createSignedInUser(): Promise<{
+      userId: string
+      client: SupabaseClient<Database>
+    }> {
+      const email = `delete-${uuid()}@lift.test`
+      const password = 'LiftIntegration1'
+      const { data, error } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+      })
+      if (error || !data.user) {
+        throw new Error(
+          `could not create test auth user: ${error?.message ?? 'no user returned'}`
+        )
+      }
+      testUserIds.push(data.user.id)
+
+      // A SEPARATE client on purpose: signing in on the shared service_role
+      // client would swap its Authorization header to the user's JWT and
+      // downgrade every later test in this file from service_role to
+      // `authenticated`, silently subjecting them to RLS.
+      const client = createClient<Database>(SUPABASE_URL!, SUPABASE_KEY!, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      })
+      const signIn = await client.auth.signInWithPassword({ email, password })
+      if (signIn.error) {
+        throw new Error(`could not sign in test user: ${signIn.error.message}`)
+      }
+      return { userId: data.user.id, client }
+    }
+
+    it("deletes the caller's own auth.users row and cascades their data", async () => {
+      const { userId, client } = await createSignedInUser()
+      const exerciseId = uuid()
+      const ts = now()
+
+      // Seed a row so the FK cascade is observable, not just the user row.
+      const seed = await supabase.from('exercises').upsert({
+        id: exerciseId,
+        user_id: userId,
+        name: 'Cascade Check',
+        tags: [],
+        created_at: ts,
+        updated_at: ts,
+      })
+      expect(seed.error).toBeNull()
+
+      // A wrong function owner / missing grant surfaces HERE, as
+      // "permission denied for table users".
+      const { error } = await client.rpc('delete_user_account')
+      expect(error).toBeNull()
+
+      const lookup = await supabase.auth.admin.getUserById(userId)
+      expect(lookup.data?.user ?? null).toBeNull()
+
+      const { data: rows } = await supabase
+        .from('exercises')
+        .select('id')
+        .eq('id', exerciseId)
+      expect(rows).toEqual([])
+    })
+
+    it('refuses a caller with no authenticated session', async () => {
+      // EXECUTE is revoked from public/anon and granted to `authenticated`
+      // only, and the body additionally raises when auth.uid() is null. The
+      // service_role key is not a member of `authenticated`, so this is denied
+      // by the grant; even if it were, the guard would reject it. Either way
+      // the call must fail rather than delete an arbitrary row.
+      const { error } = await supabase.rpc('delete_user_account')
+      expect(error).not.toBeNull()
+    })
+  })
 })

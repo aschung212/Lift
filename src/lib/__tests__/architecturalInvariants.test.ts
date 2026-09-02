@@ -1300,3 +1300,75 @@ describe('Invariant: REPLAYABLE_COLUMNS stays in lockstep with its producers (LI
     expect(violations).toEqual([])
   })
 })
+
+// ── Invariant: every RPC the client calls exists in a migration (#1299) ──
+// Guard: an `.rpc('name')` argument is a plain string, so a rename on either
+// side — or a caller added ahead of its migration — typechecks, lints, and
+// passes every fake-Supabase test, then fails only against the real database.
+// PostgREST answers a missing function with a RESOLVED `{ error: PGRST202 }`,
+// never a rejection: the same resolved-vs-rejected trap LIFT-1225 closed for
+// deletes.
+//
+// It bites hardest on the account-deletion path (#1299). `delete_user_account`
+// runs LAST, after the per-table deletes have already succeeded, so a
+// name/schema mismatch there fails having already destroyed the user's rows.
+// LIFT-1169 (migrate-db racing Vercel's git auto-deploy) makes the
+// code-ahead-of-schema window real rather than theoretical, so the caller and
+// its migration have to ship in the same commit.
+describe('Invariant: client RPC names exist in the migrations (#1299)', () => {
+  const migrationSql = stripSqlComments(
+    readdirSync(MIGRATIONS_DIR)
+      .filter(f => f.endsWith('.sql'))
+      .sort()
+      .map(f => readFileSync(join(MIGRATIONS_DIR, f), 'utf-8'))
+      .join('\n'),
+  )
+
+  /** Every function name introduced by a `create [or replace] function <name>(`. */
+  function definedFunctions(sql: string): Set<string> {
+    const re = /create\s+(?:or\s+replace\s+)?function\s+["']?(?:\w+\.)?(\w+)["']?\s*\(/gi
+    const names = new Set<string>()
+    let m: RegExpExecArray | null
+    while ((m = re.exec(sql)) !== null) names.add(m[1].toLowerCase())
+    return names
+  }
+
+  /** Every literal name passed to `supabase.rpc('…')` in app source. */
+  function calledRpcs(): { name: string; file: string }[] {
+    const calls: { name: string; file: string }[] = []
+    for (const { path, content } of getSourceFiles()) {
+      const re = /\.rpc\(\s*['"]([\w.]+)['"]/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(content)) !== null) calls.push({ name: m[1], file: path })
+    }
+    return calls
+  }
+
+  it('the scan finds the migrations and the delete_user_account caller (non-vacuity)', () => {
+    // Without this the invariant below would pass for the wrong reason the
+    // moment either regex stopped matching (or a path broke).
+    expect(definedFunctions(migrationSql).has('delete_user_account')).toBe(true)
+    expect(calledRpcs().map(c => c.name)).toContain('delete_user_account')
+  })
+
+  it('the scan flags an RPC name with no matching definition (self-test)', () => {
+    const defined = definedFunctions('create or replace function real_one() returns void as $$ $$;')
+    expect(defined.has('real_one')).toBe(true)
+    expect(defined.has('typo_one')).toBe(false)
+  })
+
+  it('every RPC the client calls is defined by a migration', () => {
+    const defined = definedFunctions(migrationSql)
+    const violations = calledRpcs()
+      .filter(c => !defined.has(c.name.toLowerCase()))
+      .map(
+        c =>
+          `${c.file} calls supabase.rpc('${c.name}') but no migration defines ` +
+          'that function. PostgREST resolves a missing function as ' +
+          '{ error: PGRST202 } rather than rejecting, so this fails silently ' +
+          'against the real database. Ship the migration in the same commit.',
+      )
+
+    expect(violations).toEqual([])
+  })
+})
