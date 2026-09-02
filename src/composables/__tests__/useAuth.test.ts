@@ -40,6 +40,7 @@ const mockGetSession = vi.fn().mockResolvedValue({ data: { session: null } })
 const mockOnAuthStateChange = vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } })
 const mockDelete = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
 const mockFrom = vi.fn().mockReturnValue({ delete: () => mockDelete() })
+const mockRpc = vi.fn().mockResolvedValue({ data: null, error: null })
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -54,6 +55,7 @@ vi.mock('../../lib/supabase', () => ({
       stopAutoRefresh: vi.fn(),
     },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   }
 }))
 
@@ -75,6 +77,8 @@ beforeEach(async () => {
   vi.resetModules()
   // Re-setup mocks that resetModules clears
   mockGetSession.mockResolvedValue({ data: { session: null } })
+  mockRpc.mockClear()
+  mockRpc.mockResolvedValue({ data: null, error: null })
   const mod = await import('../useAuth')
   useAuth = mod.useAuth
 })
@@ -471,6 +475,58 @@ describe('useAuth', () => {
       await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
       // Abort must happen BEFORE localStorage.clear(), so local data survives.
       expect(localStorage.getItem('workout-exercises')).toBe('test-value')
+    })
+
+    // Regression LIFT-1225 (second half): the AI-Coach tables added in
+    // 20260627000000 — coach_usage, coach_usage_log, coach_consent — hold the
+    // record that the user consented to sending health data off-device plus a
+    // per-request audit trail, and deleteAccount's table list (written before
+    // them) never grew to cover them. They survived "delete my data" outright.
+    it('deletes the server-only coach tables through the delete_coach_data RPC', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      await deleteAccount()
+
+      expect(mockRpc).toHaveBeenCalledWith('delete_coach_data')
+    })
+
+    // The coach tables have RLS on with SELECT-only policies and NO delete
+    // policy, by design. A client `.from('coach_usage').delete()` is therefore
+    // not an error — Postgres silently deletes ZERO rows and PostgREST answers
+    // `{ error: null }`. That would sail past the resolved-error check above and
+    // report success while the rows survive, so the SECURITY DEFINER RPC is the
+    // only correct path and a direct table delete is a wrong answer, not a
+    // redundant one.
+    it('never attempts a client-side table delete on the coach tables', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      mockFrom.mockClear()
+
+      await deleteAccount()
+
+      const tables = mockFrom.mock.calls.map(c => String(c[0]))
+      expect(tables.filter(t => t.startsWith('coach_'))).toEqual([])
+    })
+
+    it('throws when the coach-data RPC RESOLVES with an error', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      localStorage.setItem('workout-exercises', 'test-value')
+
+      mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'not_authenticated' } })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+      expect(localStorage.getItem('workout-exercises')).toBe('test-value')
+    })
+
+    it('throws when the coach-data RPC rejects', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      mockRpc.mockRejectedValueOnce(new Error('Network failure'))
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
     })
 
     it('deletes all IndexedDB databases via indexedDB.databases() when available', async () => {
