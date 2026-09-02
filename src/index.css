@@ -4467,6 +4467,21 @@ html.theme-fading .settingsSheet {
 }
 
 /* ── Exercise database suggestions ───────────────────────────────── */
+/*
+  The suggestion listbox is a SIBLING of its field label, not a child of it
+  (LIFT-1304): an implicit <label> contributes its whole subtree to the input's
+  accessible name, so a nested list made the combobox announce as "Exercise
+  name Bench Press Chest · Push …". The wrapper takes over the label's bottom
+  margin so the rendered layout is byte-for-byte what it was before.
+*/
+.wtNewExerciseNameField {
+  margin-bottom: 16px;
+}
+
+.wtNewExerciseNameField .repMaxLabel {
+  margin-bottom: 0;
+}
+
 .wtExerciseSuggestions {
   list-style: none;
   margin: 4px 0 0;
@@ -4494,6 +4509,23 @@ html.theme-fading .settingsSheet {
 
 .wtExerciseSuggestionItem:active {
   background: var(--accent-subtle);
+}
+
+/*
+  Keyboard-active option (aria-activedescendant, LIFT-1304). DOM focus stays in
+  the text field while arrowing, so the row never receives :focus-visible —
+  this is the ONLY visible indication of which suggestion Enter would pick.
+  Accent fill + accent label matches the app's active idiom
+  (.wtTagPickerChipActive, .wtPrevSessionChipNext); the inset rail adds a
+  non-color-only cue on top of the very low-alpha --accent-subtle fill.
+*/
+.wtExerciseSuggestionItemActive {
+  background: var(--accent-subtle);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.wtExerciseSuggestionItemActive .wtSuggestionName {
+  color: var(--accent);
 }
 
 .wtSuggestionName {

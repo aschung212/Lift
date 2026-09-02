@@ -6,6 +6,7 @@ import {
   formatPlates,
   formatDelta,
   convertBarWeight,
+  defaultBarWeight,
   KG_PLATES,
   LBS_PLATES,
 } from '../plateCalculator'
@@ -257,6 +258,29 @@ describe('plateCalculator', () => {
       expect(convertBarWeight(Number.POSITIVE_INFINITY, 'lbs', 'kg')).toBe(
         Number.POSITIVE_INFINITY
       )
+    })
+  })
+
+  describe('defaultBarWeight', () => {
+    it('answers in the display unit asked for', () => {
+      expect(defaultBarWeight('lbs')).toBe(45)
+      expect(defaultBarWeight('kg')).toBe(20)
+    })
+
+    it('agrees with what convertBarWeight would produce for the same bar', () => {
+      // The default and the converted value are two ways to reach "the standard
+      // bar in this unit"; if they disagree, toggling units moves an exercise
+      // that had no explicit bar onto a different one than its neighbours.
+      expect(defaultBarWeight('kg')).toBe(convertBarWeight(defaultBarWeight('lbs'), 'lbs', 'kg'))
+      expect(defaultBarWeight('lbs')).toBe(convertBarWeight(defaultBarWeight('kg'), 'kg', 'lbs'))
+    })
+
+    it('gives plate math a bar the denominations can actually load', () => {
+      // Why the unit matters: 40 kg is one 10 kg plate a side on the real
+      // 20 kg bar, but a 45 read as kg is heavier than the whole lift, so the
+      // calculator returns null and the plate card goes blank.
+      expect(weightToPlates(40, defaultBarWeight('kg'), KG_PLATES)).toEqual([10])
+      expect(weightToPlates(40, 45, KG_PLATES)).toBeNull()
     })
   })
 })

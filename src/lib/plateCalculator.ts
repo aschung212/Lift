@@ -188,3 +188,21 @@ export function convertBarWeight(
   }
   return nearestDist <= tolerance ? nearest : Math.round(raw)
 }
+
+/**
+ * The standard bar in a given DISPLAY unit — 45 lbs / 20 kg (LIFT-1211).
+ *
+ * `Exercise.barWeight` is optional, and every fallback for an exercise that has
+ * none must be unit-aware for the same reason a stored one must be converted on
+ * a unit toggle (LIFT-1223): the whole plate subsystem operates in display
+ * units, so a hardcoded `45` is read by a kg user as a 45 **kg** bar. The edit
+ * sheet made that worse than a display bug — it seeded its bar field from the
+ * same constant and saves that field on every edit, so one unrelated rename
+ * wrote a 99 lb bar into storage permanently.
+ *
+ * These are the values `convertBarWeight` snaps to, so a converted bar and a
+ * defaulted one agree instead of drifting apart.
+ */
+export function defaultBarWeight(unit: 'lbs' | 'kg'): number {
+  return unit === 'kg' ? STANDARD_BARS_KG[0] : STANDARD_BARS_LBS[0]
+}

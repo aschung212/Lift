@@ -1,10 +1,24 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise } from '../../stores/workout'
 import { MAX_GYMS } from '../../lib/gyms'
 import { mockWeightUnit } from '../../__tests__/helpers'
 
-vi.mock('../../composables/useWeightUnit', () => mockWeightUnit())
+// Switchable unit mock, mirroring WorkoutTracker.test.ts (LIFT-1211): defaults
+// to lbs so every pre-existing test is unaffected, and the bar-weight suite
+// flips it to kg through the mocked module's __setMockUnit. The unit lives in a
+// factory-scoped ref because a module const hits the vi.mock TDZ.
+vi.mock('../../composables/useWeightUnit', async () => {
+  const { shallowRef } = await import('vue')
+  const unit = shallowRef<'lbs' | 'kg'>('lbs')
+  return {
+    __setMockUnit: (u: 'lbs' | 'kg') => { unit.value = u },
+    ...mockWeightUnit({ weightUnit: unit }),
+  }
+})
+import * as weightUnitMockModule from '../../composables/useWeightUnit'
+const setMockUnit = (u: 'lbs' | 'kg') =>
+  (weightUnitMockModule as unknown as { __setMockUnit: (u: 'lbs' | 'kg') => void }).__setMockUnit(u)
 
 import EditExerciseModal from '../EditExerciseModal.vue'
 
@@ -27,8 +41,21 @@ async function openWith(exercise: Exercise, allGyms: string[] = []): Promise<Vue
 const stepperValue = (w: VueWrapper) => w.find('.iosStepperValue').text()
 const lastSavePayload = (w: VueWrapper) => {
   const calls = w.emitted('save')!
-  return calls[calls.length - 1][0] as { intensityMaxReps: number | null; equipment: string | null; gyms: string[] }
+  return calls[calls.length - 1][0] as {
+    intensityMaxReps: number | null
+    equipment: string | null
+    gyms: string[]
+    barWeight: number
+  }
 }
+
+/** The bar-weight stepper, addressed by its row label — the intensity stepper
+ *  shares the `.iosStepperValue` class and renders later in the same sheet. */
+const barStepper = (w: VueWrapper) =>
+  w.findAll('.iosSettingsRow').find(
+    (row) => row.find('.iosSettingsRowLabel').exists()
+      && row.find('.iosSettingsRowLabel').text() === 'Starting weight'
+  )!
 
 /** The equipment radio chips (inside the radiogroup, unlike the tag chips). */
 const equipmentChips = (w: VueWrapper) => w.findAll('[role="radiogroup"] .wtTagPickerChip')
@@ -225,5 +252,58 @@ describe('EditExerciseModal — durable notes (#619)', () => {
     await notesInput(wrapper).setValue('')
     await wrapper.find('.repMaxBtnCalc').trigger('click')
     expect(lastNotes(wrapper)).toBe('')
+  })
+})
+
+/**
+ * Regression: LIFT-1223 — `Exercise.barWeight` is stored in the user's DISPLAY
+ * unit, so the fallback for an exercise that has none has to be in that unit
+ * too. This field seeded from a hardcoded `45`, which a kg user read as "45 kg";
+ * because the parent saves `payload.barWeight` on every edit while plate mode is
+ * on, renaming an exercise persisted a 45 kg (99 lb) bar and corrupted its plate
+ * math from then on — the same class the unit-toggle conversion (#1232) exists
+ * to prevent, reached by a write instead of a toggle.
+ *
+ * The existing plate-mode coverage never caught it because every fixture that
+ * turns plate mode on also supplies an explicit `barWeight`, so the `??` branch
+ * had never run.
+ */
+describe('EditExerciseModal — default bar weight follows the display unit (LIFT-1223)', () => {
+  afterEach(() => { setMockUnit('lbs') })
+
+  const plateExercise = (overrides: Partial<Exercise> = {}) =>
+    makeExercise({ inputMode: 'plates', ...overrides })
+
+  it('seeds the standard lbs bar for an lbs user', async () => {
+    const wrapper = await openWith(plateExercise())
+    expect(barStepper(wrapper).find('.iosStepperValue').text()).toBe('45 lbs')
+  })
+
+  it('seeds the standard kg bar for a kg user, not the lbs number', async () => {
+    setMockUnit('kg')
+    const wrapper = await openWith(plateExercise())
+    // Pre-fix this read "45 kg" — a 99 lb bar presented as the default.
+    expect(barStepper(wrapper).find('.iosStepperValue').text()).toBe('20 kg')
+  })
+
+  it('does not persist a lbs bar into a kg user\'s exercise on an unrelated save', async () => {
+    setMockUnit('kg')
+    const wrapper = await openWith(plateExercise())
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).barWeight).toBe(20)
+  })
+
+  it('leaves an explicitly stored bar untouched', async () => {
+    setMockUnit('kg')
+    const wrapper = await openWith(plateExercise({ barWeight: 15 }))
+    expect(barStepper(wrapper).find('.iosStepperValue').text()).toBe('15 kg')
+    await wrapper.find('.repMaxBtnCalc').trigger('click')
+    expect(lastSavePayload(wrapper).barWeight).toBe(15)
+  })
+
+  it('still defaults a total-count machine to no bar in either unit', async () => {
+    setMockUnit('kg')
+    const wrapper = await openWith(plateExercise({ plateCountMode: 'total' }))
+    expect(barStepper(wrapper).find('.iosStepperValue').text()).toBe('0 kg')
   })
 })
