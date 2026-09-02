@@ -12,6 +12,7 @@
  *     and omits it for legacy sets with no local createdAt (leaving the
  *     server's insert-time value untouched on conflict)
  *   - the fetch mapping surfaces sets.created_at → WorkoutSet.createdAt
+ *   - (#1288) those stamps reach `buildSessionSummary` as a real session span
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -63,6 +64,8 @@ vi.mock('../../lib/logger', () => ({
 
 import { useWorkoutStore } from '../workout'
 import { syncQueue } from '../../lib/syncQueue'
+import { buildSessionSummary } from '../../lib/sessionSummary'
+import { toLocalDateKey } from '../../lib/dates'
 
 const NOW = '2026-06-28T14:30:00.000Z'
 
@@ -224,5 +227,63 @@ describe('#846 per-set createdAt timestamp', () => {
     const ex = store.exercises.find(e => e.id === 'ex-1')
     expect(ex).toBeDefined()
     expect(ex!.sets[0].createdAt).toBe('2026-06-20T18:45:00.000Z')
+  })
+
+  /**
+   * #1288 — the store half and the summary half were each tested in isolation
+   * and both passed, while the seam between them was broken for every user:
+   * `logSet` stamped `createdAt` (above), `buildSessionSummary` derived duration
+   * only from `date`, and every UI-logged `date` is an end-of-day stamp the
+   * summary deliberately discards. So session duration was '—' universally.
+   * These drive the real store into the real summary so the seam is held.
+   */
+  describe('#1288 real sets produce a real session duration', () => {
+    /**
+     * The day `buildSessionSummary` files these sets under. Derived rather than
+     * hardcoded to `todayISO()` so the test pins only the duration derivation and
+     * stays honest in any timezone (vitest.config.js pins no TZ).
+     */
+    const filedDay = (store: ReturnType<typeof useWorkoutStore>) =>
+      toLocalDateKey(store.exercises[0].sets[0].date)
+
+    it('spans a session logged through the UI date path', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Squat')!
+      const day = new Date(NOW).toISOString().slice(0, 10)
+
+      store.logSet(id, 225, 5, day)
+      vi.setSystemTime(new Date(Date.parse(NOW) + 20 * 60_000))
+      store.logSet(id, 225, 5, day)
+      vi.setSystemTime(new Date(Date.parse(NOW) + 42 * 60_000))
+      store.logSet(id, 235, 5, day)
+
+      // Every stored date is an end-of-day stamp — the exact shape the old
+      // derivation threw away.
+      expect(store.exercises[0].sets.every(s => s.date.slice(11, 16) === '23:59')).toBe(true)
+
+      const summary = buildSessionSummary({
+        rawDate: filedDay(store),
+        exercises: store.exercises,
+      })
+      expect(summary.duration).toBe('42m')
+    })
+
+    it('keeps a back-dated set out of the span it was filed into', () => {
+      const store = useWorkoutStore()
+      const id = store.addExercise('Bench')!
+      const day = '2026-06-20' // eight days before NOW
+
+      store.logSet(id, 185, 5, day)
+      vi.setSystemTime(new Date(Date.parse(NOW) + 15 * 60_000))
+      store.logSet(id, 185, 5, day)
+
+      // Both were entered today for a session eight days ago, so the day has no
+      // knowable span — not "8 days".
+      const summary = buildSessionSummary({
+        rawDate: filedDay(store),
+        exercises: store.exercises,
+      })
+      expect(summary.duration).toBe('—')
+    })
   })
 })

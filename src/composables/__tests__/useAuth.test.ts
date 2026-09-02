@@ -482,6 +482,71 @@ describe('useAuth', () => {
       expect(localStorage.getItem('workout-exercises')).toBe('test-value')
     })
 
+    // deleteAccount issues TWO rpc calls once LIFT-1225 and #1299 are both in:
+    // `delete_coach_data` inside the table batch, then `delete_user_account`
+    // after it resolves clean. A bare `mockResolvedValueOnce` therefore lands on
+    // whichever fires FIRST rather than the one under test, so a test that needs
+    // exactly one of them to fail dispatches on the function name instead.
+    const failRpc = (target: string, failure: { error: unknown } | Error) => {
+      mockRpc.mockImplementation(async (name: string) => {
+        if (name !== target) return { data: null, error: null }
+        if (failure instanceof Error) throw failure
+        return { data: null, ...failure }
+      })
+    }
+
+    // Regression LIFT-1225 (second half): the AI-Coach tables added in
+    // 20260627000000 — coach_usage, coach_usage_log, coach_consent — hold the
+    // record that the user consented to sending health data off-device plus a
+    // per-request audit trail, and deleteAccount's table list (written before
+    // them) never grew to cover them. They survived "delete my data" outright.
+    it('deletes the server-only coach tables through the delete_coach_data RPC', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      await deleteAccount()
+
+      expect(mockRpc).toHaveBeenCalledWith('delete_coach_data')
+    })
+
+    // The coach tables have RLS on with SELECT-only policies and NO delete
+    // policy, by design. A client `.from('coach_usage').delete()` is therefore
+    // not an error — Postgres silently deletes ZERO rows and PostgREST answers
+    // `{ error: null }`. That would sail past the resolved-error check above and
+    // report success while the rows survive, so the SECURITY DEFINER RPC is the
+    // only correct path and a direct table delete is a wrong answer, not a
+    // redundant one.
+    it('never attempts a client-side table delete on the coach tables', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      mockFrom.mockClear()
+
+      await deleteAccount()
+
+      const tables = mockFrom.mock.calls.map(c => String(c[0]))
+      expect(tables.filter(t => t.startsWith('coach_'))).toEqual([])
+    })
+
+    it('throws when the coach-data RPC RESOLVES with an error', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+      localStorage.setItem('workout-exercises', 'test-value')
+
+      failRpc('delete_coach_data', { error: { message: 'not_authenticated' } })
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+      expect(localStorage.getItem('workout-exercises')).toBe('test-value')
+    })
+
+    it('throws when the coach-data RPC rejects', async () => {
+      const { deleteAccount, devSignIn } = useAuth()
+      await devSignIn()
+
+      failRpc('delete_coach_data', new Error('Network failure'))
+
+      await expect(deleteAccount()).rejects.toThrow('Failed to delete server data. Please try again.')
+    })
+
     // ── Regression #1299: "Delete Account" must delete the ACCOUNT ──────
     // Every assertion in this block above is about *data*, which is exactly why
     // nothing ever noticed that the `auth.users` row — the user's email, their
@@ -516,8 +581,10 @@ describe('useAuth', () => {
           return { error: null }
         })
       })
-      mockRpc.mockImplementation(async () => {
-        order.push('delete_user_account')
+      // Record the rpc NAME: delete_coach_data rides along inside the batch, so
+      // only delete_user_account is expected to land after the table deletes.
+      mockRpc.mockImplementation(async (name: string) => {
+        order.push(name)
         return { data: null, error: null }
       })
 
@@ -548,7 +615,7 @@ describe('useAuth', () => {
       const { deleteAccount, devSignIn } = useAuth()
       await devSignIn()
 
-      mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'not_authenticated' } })
+      failRpc('delete_user_account', { error: { message: 'not_authenticated' } })
 
       await expect(deleteAccount()).rejects.toThrow(
         'Your data was deleted, but your sign-in could not be removed. Please try again.'
@@ -559,7 +626,7 @@ describe('useAuth', () => {
       const { deleteAccount, devSignIn } = useAuth()
       await devSignIn()
 
-      mockRpc.mockRejectedValueOnce(new Error('Network failure'))
+      failRpc('delete_user_account', new Error('Network failure'))
 
       await expect(deleteAccount()).rejects.toThrow(
         'Your data was deleted, but your sign-in could not be removed. Please try again.'
@@ -574,7 +641,7 @@ describe('useAuth', () => {
       await devSignIn()
       localStorage.setItem('workout-exercises', 'test-value')
 
-      mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'permission denied' } })
+      failRpc('delete_user_account', { error: { message: 'permission denied' } })
 
       await expect(deleteAccount()).rejects.toThrow(/sign-in could not be removed/)
       expect(localStorage.getItem('workout-exercises')).toBe('test-value')

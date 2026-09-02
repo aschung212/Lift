@@ -132,11 +132,11 @@ const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))
 
 /**
- * `sessionSummary` reports an em dash when the session span is unknowable —
- * which is every set logged through the UI, since those carry an end-of-day
- * `date` stamp with no real time on it. Rendering a permanently empty TIME
- * tile reads as a broken stat, so the tile is dropped instead and the row
- * redistributes; it returns on its own once sets carry real timestamps.
+ * `sessionSummary` reports an em dash when the session span is unknowable. Since
+ * #1288 that is the genuine edge case it was always meant to be — a session made
+ * entirely of pre-#846 sets, or one back-dated in a single sitting — rather than
+ * every session for every user. Rendering an empty TIME tile reads as a broken
+ * stat, so the tile is dropped in that case and the row redistributes.
  */
 const hasDuration = computed(() => summary.value.duration !== '\u2014')
 

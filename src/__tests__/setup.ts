@@ -61,8 +61,19 @@ vi.mock('../lib/supabase', () => ({ supabase: null }))
 // unaffected. `clear?.()` tolerates the occasional file that swaps in its own
 // localStorage stub without a clear() method (e.g. migrate.test.ts); those
 // files reset their own store in beforeEach, so nothing leaks.
+//
+// The GLOBAL is optional-chained for the same reason its `clear` method is.
+// `composableSSRSafety.test.ts` stubs `localStorage` to `undefined` to prove the
+// settings composables import cleanly under SSR, restoring it in a `finally`; if
+// that test is interrupted before the `finally` runs (a slow dynamic `import()`
+// hitting the test timeout on a loaded CI box) the global stays missing, and
+// this teardown — which fires after EVERY test in the suite — threw
+// `TypeError: Cannot read properties of undefined (reading 'clear')`, reporting
+// the failure at setup.ts rather than at whatever removed the global. Any future
+// test that legitimately removes the global reaches the same hole, so teardown
+// no-ops when there is no localStorage. Pinned by `setupTeardown.test.ts`.
 afterEach(() => {
-  localStorage.clear?.()
+  globalThis.localStorage?.clear?.()
   mockIntersectionObservers.length = 0
   vi.clearAllMocks()
 })
