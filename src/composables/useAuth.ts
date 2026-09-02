@@ -370,13 +370,32 @@ function describeSupabaseError(err: unknown): string {
  * Throws if any stage fails so the caller can show an error — and throws
  * BEFORE the local wipe, so a partial server-side deletion never leaves the
  * device cleared while rows survive.
+ *
+ * For a local-only guest session both server stages are skipped entirely
+ * (LIFT-1301) — there is no account and no rows to delete — and the local wipe
+ * is the whole operation.
  */
 async function deleteAccount(): Promise<void> {
   // Cancel any pending sync operations to avoid racing with deletion
   syncQueue.clear()
 
   const userId = user.value?.id
-  if (supabase && userId) {
+  // A guest has no server rows to delete, and must not TRY (LIFT-1301). Guest
+  // mode is local-only by construction — `continueAsGuest` deliberately skips
+  // `initStores`, so `_userId` stays null and nothing is ever enqueued — but its
+  // identity is the sentinel string `guest-local`, which is truthy and so passed
+  // the `supabase && userId` gate. Every filter below then compares a `uuid`
+  // column against a non-UUID, which PostgREST answers 400 / SQLSTATE 22P02
+  // ("invalid input syntax for type uuid"). Since LIFT-1225 that RESOLVED error
+  // is correctly counted as a failure, so the batch threw before the local wipe
+  // — making "Delete Account" a deterministic dead-end for the one user who
+  // needs no network to honour it. (The #1299 stage below is equally unusable
+  // for a guest: `delete_user_account` derives its target from `auth.uid()`,
+  // which a guest does not have.) Gate on the flag rather than the sentinel
+  // value: `isGuest` is what every other guest branch keys off (App.vue's
+  // `handleSignOut`, the SIGNED_OUT teardown), and it is the thing that means
+  // "this session has no server side", of which the id is only a symptom.
+  if (supabase && userId && !isGuest.value) {
     // Delete from Supabase tables. exercises CASCADE deletes sets.
     // Order: leaf tables first, then tables with foreign keys.
     const results = await Promise.allSettled([
@@ -474,6 +493,17 @@ async function deleteAccount(): Promise<void> {
   } catch (e) {
     logError(e, { source: 'deleteAccount:clearStorage' })
   }
+
+  // End guest mode explicitly (LIFT-1301). `localStorage.clear()` above already
+  // removes GUEST_MODE_KEY, but the in-memory `isGuest` ref would survive it —
+  // leaving the reactive flag and the storage it is persisted from disagreeing,
+  // and making the end state a side effect of a call that never names the key.
+  // Deleting everything ends the guest session: `signOut()` below nulls `user`,
+  // so the user lands back on the auth gate with nothing carried over, exactly
+  // as a signed-in user does. (Idempotent for a real session — the flag is
+  // already false and the key already absent. It also re-runs the `removeItem`
+  // on the path where `clear()` threw above.)
+  clearGuestFlag()
 
   // Delete IndexedDB backup database. Close the cached connection first —
   // deleteDatabase() blocks indefinitely while a connection is still open,
