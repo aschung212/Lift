@@ -289,15 +289,25 @@ disclosure work must ship in the **same PR as the UI** (CLAUDE.md Documentation 
   `src/lib/coachAnalytics.ts` + contract/validator support in `aiCoach.ts`) landed as the
   follow-up. See the section above.
 
+- **Account deletion (LIFT-1225)** — `deleteAccount()` in `src/composables/useAuth.ts` calls
+  `delete_coach_data` alongside its six table deletes, so `coach_usage`, `coach_usage_log` and
+  `coach_consent` go with the account. The RPC is **not** an optional extra path: those tables
+  have RLS on with SELECT-only policies, and an RLS-blocked `DELETE` is not an error in
+  Postgres — it removes zero rows and PostgREST answers `{ error: null }` — so a client-side
+  `.from('coach_usage').delete()` would report success while the rows survive. The RPC joins
+  the same `Promise.allSettled` batch and is held to the same resolved-`{ error }` assertion
+  landed in #1231 (supabase-js *resolves* rather than rejects on RLS/FK/401, the LIFT-784
+  trap), so any failure aborts BEFORE the local wipe. Coverage is enforced structurally rather
+  than by enumeration: `architecturalInvariants.test.ts` derives every `user_id`-scoped table
+  from the migrations and every table `deleteAccount` reaches — directly, through an RPC's own
+  `delete from` statements, or by `on delete cascade` — and fails when one is left behind.
+  **A new user-scoped table is covered by that invariant the moment its migration lands.**
+
 **Remaining Phase 1:**
 - Versioned consent modal + `LegalSheet` update + hosted `/privacy` + nutrition-label answers
   (#849). Until it lands the server 403s `consent_required`; `CoachSheet` surfaces that as a
   non-retryable "accept the Coach privacy terms" message (the consent capture itself is #849).
 - Past-insights history (#851) — `useCoach` deliberately holds only transient state today.
-- **Wire `deleteAccount()` to call `delete_coach_data`** and fix the verified resolved-error
-  bug at `src/composables/useAuth.ts:225` (`Promise.allSettled` then `filter(status === 'rejected')`
-  — supabase-js *resolves* `{ error }` on a failed delete, so a failed delete passes silently
-  and leaves health data on the server). Add a regression test.
 - Provision env (`COACH_ENABLED`, `COACH_MODEL`, `ANTHROPIC_API_KEY`, `SUPABASE_URL`,
   `SUPABASE_ANON_KEY`, `COACH_DAILY_CEILING_CENTS`) in Vercel Production scope, plus the
   provider-side monthly budget cap and a Slack spend alert from the function.

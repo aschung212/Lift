@@ -361,7 +361,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      // SECURITY DEFINER purge of the AI-Coach tables (coach_usage,
+      // coach_usage_log, coach_consent). Those have RLS on with SELECT-only
+      // policies, so the client cannot delete them directly — deleteAccount()
+      // calls this instead. It derives the user from auth.uid() internally and
+      // takes no arguments. See 20260627000000_add_ai_coach_tables.sql.
+      delete_coach_data: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
