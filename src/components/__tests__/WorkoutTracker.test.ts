@@ -3525,6 +3525,118 @@ describe('WorkoutTracker', () => {
     })
   })
 
+  /**
+   * Regression: LIFT-1312 — the reverse sync (typed weight → plates) was the
+   * only path in the plate subsystem that didn't branch on the loading mode,
+   * so a `plateCountMode: 'total'` machine exercise decomposed a typed weight
+   * as though half of it were needed. The card then read 2× low against the
+   * weight field, and the disagreement resolved the WRONG way: the next plate
+   * tap wrote the card's total back over the user's typed number.
+   *
+   * LIFT-783 added the mode as a synced field and covered the sync half well;
+   * the plate MATH for total mode had no coverage at all — the kg suite above
+   * sets `plateCountMode = 'per-side'` on every fixture, and nothing typed a
+   * weight into a total-mode exercise.
+   */
+  describe('total plate count mode (LIFT-1312)', () => {
+    /**
+     * ex-3 (Overhead Press) has no sets, so the modal opens with an empty
+     * weight field — no seed to interfere. `barWeight` is deliberately left
+     * unset: a plate-loaded machine has no bar, which is what `currentBarWeight`
+     * defaults to in total mode, and it is how the numpad-created and sample
+     * exercises actually start.
+     */
+    function mountTotalTracker() {
+      mockState.exercises = createExercises()
+      mockState.exercises[2].inputMode = 'plates'
+      mockState.exercises[2].plateCountMode = 'total'
+      return mountTracker()
+    }
+
+    async function openLogModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[2].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    const plateCount = (wrapper: VueWrapper, denom: number) =>
+      wrapper.findAll('.wtPlateCol')
+        .find(c => c.find('.wtPlateBtnAdd').text() === `+${denom}`)
+        ?.find('.wtPlateCountNum').text()
+
+    const weightField = (wrapper: VueWrapper) =>
+      (wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value
+
+    async function typeWeight(wrapper: VueWrapper, value: string) {
+      await wrapper.find('input[aria-label="Weight"]').setValue(value)
+      // The reverse sync is debounced 250ms (LIFT-634).
+      await new Promise(r => setTimeout(r, 350))
+      await wrapper.vm.$nextTick()
+    }
+
+    it('labels the card as total loading', async () => {
+      const wrapper = mountTotalTracker()
+      await openLogModal(wrapper)
+      expect(wrapper.find('.wtPlateCardHeaderLabel').text()).toBe('TOTAL · 0 lbs BAR')
+    })
+
+    it('decomposes a typed weight against the WHOLE load, not half of it', async () => {
+      const wrapper = mountTotalTracker()
+      await openLogModal(wrapper)
+
+      // 100 on a machine is 45 + 45 + 10. Pre-fix this halved to 50 and showed
+      // [45, 5] — a stack the card totals at 50, under a field reading 100.
+      await typeWeight(wrapper, '100')
+
+      expect(plateCount(wrapper, 45)).toBe('2')
+      expect(plateCount(wrapper, 10)).toBe('1')
+      expect(plateCount(wrapper, 5)).toBe('0')
+      expect(weightField(wrapper)).toBe('100')
+    })
+
+    it('does not overwrite the typed weight when the next plate is tapped', async () => {
+      const wrapper = mountTotalTracker()
+      await openLogModal(wrapper)
+      await typeWeight(wrapper, '100')
+
+      // Tapping any plate re-derives the field from the card. Pre-fix the card
+      // held [45, 5], so this jumped the field from 100 down to 55 — the user's
+      // typed number silently lost.
+      await wrapper.findAll('.wtPlateBtnAdd').find(b => b.text() === '+5')!.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(weightField(wrapper)).toBe('105')
+    })
+
+    it('loads a total that per-side decomposition would misread', async () => {
+      const wrapper = mountTotalTracker()
+      await openLogModal(wrapper)
+
+      // 95 = 45 + 45 + 5 in total mode. Per-side answers [45, 2.5] (47.5 a
+      // side), which is loadable — so this failed silently rather than blanking.
+      await typeWeight(wrapper, '95')
+
+      expect(plateCount(wrapper, 45)).toBe('2')
+      expect(plateCount(wrapper, 5)).toBe('1')
+      expect(plateCount(wrapper, 2.5)).toBe('0')
+    })
+
+    it('keeps the card and the field in step when plates are tapped', async () => {
+      const wrapper = mountTotalTracker()
+      await openLogModal(wrapper)
+
+      const add = (denom: number) =>
+        wrapper.findAll('.wtPlateBtnAdd').find(b => b.text() === `+${denom}`)!.trigger('click')
+      await add(45)
+      await add(45)
+      await add(10)
+      await wrapper.vm.$nextTick()
+
+      // Forward direction: the stack IS the load, so 45 + 45 + 10 = 100 — not
+      // the 200 a per-side reading would give.
+      expect(weightField(wrapper)).toBe('100')
+    })
+  })
+
   describe('guided session plan (#1256)', () => {
     /** Local calendar date, matching the component's todayISO(). */
     function localDay(daysAgo = 0): string {
