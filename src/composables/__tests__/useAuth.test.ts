@@ -567,6 +567,94 @@ describe('useAuth', () => {
 
       vi.stubGlobal('indexedDB', undefined)
     })
+
+    // ── Regression LIFT-1301: guest deletion must not go to the server ──────
+    //
+    // Every test above signs in via devSignIn(), so the guest path had never
+    // been executed once — and the default `mockDelete` in this file resolves
+    // `{ error: null }` for ANY filter value, so even if one had, it would have
+    // passed while production failed. The real database is stricter: `user_id`
+    // is a `uuid` column, and a guest's identity is the sentinel STRING
+    // 'guest-local', which PostgREST rejects with 400 / SQLSTATE 22P02 —
+    // RESOLVED, not thrown (LIFT-1225), so it counted as a failure and aborted
+    // deletion before the local wipe. Deterministic: retrying failed the same
+    // way every time, leaving a guest no in-app way to erase their own device.
+    describe('guest sessions (LIFT-1301)', () => {
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+      /**
+       * Model the real column type: a non-UUID filter value resolves the 22P02
+       * error PostgREST actually returns. Without this the assertions below
+       * would pass against a permissive fake and prove nothing.
+       */
+      beforeEach(() => {
+        mockDelete.mockReturnValue({
+          eq: vi.fn().mockImplementation(async (_column: string, value: unknown) =>
+            typeof value === 'string' && UUID_RE.test(value)
+              ? { error: null }
+              : { error: { code: '22P02', message: `invalid input syntax for type uuid: "${String(value)}"` } },
+          ),
+        })
+        mockFrom.mockClear()
+      })
+
+      // mockDelete is module-scoped and set with mockReturnValue (not ...Once),
+      // so the strict fake would otherwise leak into every later test in the file.
+      afterEach(() => {
+        mockDelete.mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
+      })
+
+      it('erases a guest without touching Supabase', async () => {
+        const { continueAsGuest, deleteAccount } = useAuth()
+        continueAsGuest()
+        localStorage.setItem('workout-exercises', 'test-value')
+        mockRpc.mockClear()
+
+        await expect(deleteAccount()).resolves.toBeUndefined()
+
+        // The whole server stage is skipped — a guest has no rows by
+        // construction (continueAsGuest never calls initStores, so `_userId`
+        // stays null and nothing is ever enqueued).
+        expect(mockFrom).not.toHaveBeenCalled()
+        expect(mockRpc).not.toHaveBeenCalled()
+        expect(localStorage.getItem('workout-exercises')).toBeNull()
+      })
+
+      it('resets the stores and returns the guest to the auth gate', async () => {
+        const { continueAsGuest, deleteAccount, user, isGuest } = useAuth()
+        continueAsGuest()
+        mockWorkoutReset.mockClear()
+        mockBodyweightReset.mockClear()
+        mockPreferencesReset.mockClear()
+        mockProgressionReset.mockClear()
+
+        await deleteAccount()
+
+        expect(mockWorkoutReset).toHaveBeenCalledOnce()
+        expect(mockBodyweightReset).toHaveBeenCalledOnce()
+        expect(mockPreferencesReset).toHaveBeenCalledOnce()
+        expect(mockProgressionReset).toHaveBeenCalledOnce()
+        // Deleting everything ends the guest session: `isGuest` must follow the
+        // storage key it is persisted from, not survive the wipe in memory.
+        expect(isGuest.value).toBe(false)
+        expect(localStorageMock.getItem('guest-mode')).toBeNull()
+        expect(user.value).toBeNull()
+      })
+    })
+
+    // Non-vacuity guard for the block above: the skip keys on the guest FLAG,
+    // so a session that is not a guest must still delete server-side. Without
+    // this, dropping the server stage outright would satisfy those tests.
+    it('still deletes server data when the session is not a guest', async () => {
+      const { deleteAccount, devSignIn, isGuest } = useAuth()
+      await devSignIn()
+      expect(isGuest.value).toBe(false)
+      mockFrom.mockClear()
+
+      await deleteAccount()
+
+      expect(mockFrom).toHaveBeenCalledWith('exercises')
+    })
   })
 
   // Regression LIFT-1212: on a signed-in cold start BOTH the getSession()
