@@ -89,6 +89,29 @@ function prRichExercise(over: Partial<Exercise> = {}): Exercise {
   }
 }
 
+// A typical session shape for the warmup toggle: three ramp-up sets then
+// three working sets. buildWarmupSetIds only classifies sets BEFORE the
+// session's top set (e1RM 200) that fall under 0.75 × 200 = 150, so exactly
+// the first three are warmups and the last three survive the filter.
+const SESSION_E1RMS = [50, 60, 70, 190, 200, 195]
+const FOUR_DAYS = ['2026-03-01', '2026-03-02', '2026-03-03', '2026-03-04']
+
+function warmupHeavyExercise(days: string[]): Exercise {
+  return prRichExercise({
+    sets: days.flatMap((day) =>
+      SESSION_E1RMS.map((e1rm, i) =>
+        makeSet({
+          id: `${day}-${i}`,
+          date: `${day}T12:00:00`,
+          weight: e1rm - 10,
+          reps: 5,
+          estimated1RM: e1rm,
+        }),
+      ),
+    ),
+  })
+}
+
 function mountModal(exerciseId: string | null = 'ex-1'): VueWrapper {
   return mount(ExerciseDetailModal, {
     props: { exerciseId },
@@ -224,6 +247,53 @@ describe('ExerciseDetailModal', () => {
       setExercises([prRichExercise()])
       const wrapper = mountModal()
       expect(wrapper.find('.wtShowAllBtn').exists()).toBe(false)
+    })
+  })
+
+  // #1274 — the display limit must be applied to the sets the list can
+  // actually render. Slicing first and filtering warmups after dropped
+  // working sets that belong inside the limit, and left the "Show all"
+  // control advertising a total the list would never reach.
+  describe('show-all gate with warmups hidden', () => {
+    it('fills the limit with working sets instead of spending it on hidden warmups', async () => {
+      setExercises([warmupHeavyExercise(FOUR_DAYS)])
+      const wrapper = mountModal()
+      // Baseline: unfiltered, the limit is spent on all 24 sets.
+      expect(wrapper.findAll('.wtSetRow')).toHaveLength(10)
+
+      await wrapper.find('.wtWarmupToggle').trigger('click')
+      // 12 working sets exist, so the limit is still reachable in full.
+      expect(wrapper.findAll('.wtSetRow')).toHaveLength(10)
+    })
+
+    it('counts only working sets in the "Show all N sets" label', async () => {
+      setExercises([warmupHeavyExercise(FOUR_DAYS)])
+      const wrapper = mountModal()
+      expect(wrapper.find('.wtShowAllBtn').text()).toBe('Show all 24 sets')
+
+      await wrapper.find('.wtWarmupToggle').trigger('click')
+      expect(wrapper.find('.wtShowAllBtn').text()).toBe('Show all 12 sets')
+    })
+
+    it('expands to every working set — and no more — when show-all is tapped', async () => {
+      setExercises([warmupHeavyExercise(FOUR_DAYS)])
+      const wrapper = mountModal()
+      await wrapper.find('.wtWarmupToggle').trigger('click')
+      await wrapper.find('.wtShowAllBtn').trigger('click')
+
+      expect(wrapper.findAll('.wtSetRow')).toHaveLength(12)
+      expect(wrapper.find('.wtShowAllBtn').text()).toBe('Show less')
+    })
+
+    it('hides the show-all control when the working sets all fit, despite a larger total', async () => {
+      // 12 sets total (past SET_LIMIT) but only 6 working ones.
+      setExercises([warmupHeavyExercise(['2026-03-01', '2026-03-02'])])
+      const wrapper = mountModal()
+      expect(wrapper.find('.wtShowAllBtn').exists()).toBe(true)
+
+      await wrapper.find('.wtWarmupToggle').trigger('click')
+      expect(wrapper.find('.wtShowAllBtn').exists()).toBe(false)
+      expect(wrapper.findAll('.wtSetRow')).toHaveLength(6)
     })
   })
 
