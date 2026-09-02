@@ -333,25 +333,42 @@
 
           <!-- New exercise mode: name + tags input -->
           <template v-if="!isEditMode && selectedExerciseId === '__new__'">
-            <label class="repMaxLabel">
-              Exercise name
-              <div class="repMaxInputRow">
-                <input
-                  v-model.trim="newExerciseName"
-                  type="text"
-                  placeholder="e.g. Bench Press"
-                  class="repMaxInput"
-                  maxlength="50"
-                  autocomplete="off"
-                />
-              </div>
-              <ul v-if="exerciseSuggestions.length > 0" class="wtExerciseSuggestions" role="listbox" aria-label="Exercise suggestions">
+            <!--
+              Exercise-name autocomplete as an ARIA combobox + listbox (LIFT-1304).
+              The listbox is a SIBLING of the <label>, not a child: an implicit
+              label contributes its ENTIRE subtree to the accessible name, so a
+              nested list made the field announce as "Exercise name Bench Press
+              Chest · Push Incline Bench Press …". The wrapper carries the
+              label's bottom margin so the layout is unchanged.
+            -->
+            <div class="wtNewExerciseNameField">
+              <label class="repMaxLabel">
+                Exercise name
+                <div class="repMaxInputRow">
+                  <input
+                    v-model.trim="newExerciseName"
+                    type="text"
+                    placeholder="e.g. Bench Press"
+                    class="repMaxInput"
+                    maxlength="50"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    :aria-expanded="suggestionsOpen"
+                    :aria-controls="suggestionsOpen ? EXERCISE_SUGGESTIONS_ID : undefined"
+                    :aria-activedescendant="activeSuggestionId"
+                    @keydown="onExerciseNameKeydown"
+                  />
+                </div>
+              </label>
+              <ul v-if="suggestionsOpen" :id="EXERCISE_SUGGESTIONS_ID" class="wtExerciseSuggestions" role="listbox" aria-label="Exercise suggestions">
                 <li
-                  v-for="entry in exerciseSuggestions"
+                  v-for="(entry, i) in exerciseSuggestions"
+                  :id="suggestionOptionId(i)"
                   :key="entry.name"
-                  class="wtExerciseSuggestionItem"
+                  :class="['wtExerciseSuggestionItem', { wtExerciseSuggestionItemActive: i === activeSuggestionIndex }]"
                   role="option"
-                  :aria-selected="false"
+                  :aria-selected="i === activeSuggestionIndex"
                   tabindex="-1"
                   @mousedown.prevent="selectExerciseSuggestion(entry)"
                   @touchstart.prevent="selectExerciseSuggestion(entry)"
@@ -360,7 +377,7 @@
                   <span class="wtSuggestionTags">{{ entry.tags.join(' · ') }}</span>
                 </li>
               </ul>
-            </label>
+            </div>
             <div class="repMaxLabel">
               Tags
               <div class="wtTagPicker">
@@ -2175,12 +2192,92 @@ function defaultBarWeight(): number {
 const newExerciseBarWeight = ref(defaultBarWeight())
 
 // ── Exercise database suggestions ──────────────────────────────
+//
+// ARIA APG combobox-with-listbox (LIFT-1304). The popup used to be
+// mouse/touch-only — every option was tabindex="-1" and reachable only through
+// @mousedown/@touchstart — so a keyboard user watched suggestions appear and
+// then had to retype the whole name (WCAG 2.1.1, Level A). Activation runs
+// through `aria-activedescendant`, which keeps DOM focus (and the caret, and
+// the iOS keyboard) in the text field while arrowing through options.
+const EXERCISE_SUGGESTIONS_ID = 'wt-exercise-suggestions'
+const suggestionOptionId = (i: number) => `${EXERCISE_SUGGESTIONS_ID}-opt-${i}`
+
 const exerciseSuggestions = computed(() =>
   searchExerciseDatabase(
     newExerciseName.value,
     store.exercises.map(e => e.name),
   ),
 )
+
+// Escape — and picking an option — closes the popup without clearing the
+// field. Stored as the query it was dismissed AT rather than a boolean so the
+// next keystroke re-opens it for free: a boolean reset by a watcher would race
+// `selectExerciseSuggestion`, which changes the name and dismisses in one tick.
+const suggestionsDismissedFor = ref<string | null>(null)
+const suggestionsOpen = computed(() =>
+  exerciseSuggestions.value.length > 0 &&
+  suggestionsDismissedFor.value !== newExerciseName.value,
+)
+
+/** Index of the active option; -1 = none, i.e. the typed value stands (APG). */
+const activeSuggestionIndex = ref(-1)
+const activeSuggestionId = computed(() =>
+  suggestionsOpen.value && activeSuggestionIndex.value >= 0
+    ? suggestionOptionId(activeSuggestionIndex.value)
+    : undefined,
+)
+// A changed query means a changed list, so a held index would point at a
+// different exercise — or past the end of a shorter one.
+watch(exerciseSuggestions, () => { activeSuggestionIndex.value = -1 })
+
+/**
+ * Clears popup state that is keyed to a specific query. Without this a stale
+ * `suggestionsDismissedFor` would silently suppress the list the next time the
+ * user typed that exact name.
+ */
+function resetExerciseSuggestions() {
+  suggestionsDismissedFor.value = null
+  activeSuggestionIndex.value = -1
+}
+
+function onExerciseNameKeydown(e: KeyboardEvent) {
+  const items = exerciseSuggestions.value
+  if (e.key === 'Escape') {
+    if (!suggestionsOpen.value) return
+    // Swallow it: the log overlay carries `@keydown.escape="closeModal"`, so an
+    // un-stopped keydown would close the whole sheet, not just the popup —
+    // discarding the half-typed exercise the user was only trying to un-filter.
+    e.preventDefault()
+    e.stopPropagation()
+    suggestionsDismissedFor.value = newExerciseName.value
+    activeSuggestionIndex.value = -1
+    return
+  }
+  if (items.length === 0) return
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    if (!suggestionsOpen.value) {
+      // Re-open a popup that Escape dismissed, landing on the nearest end.
+      suggestionsDismissedFor.value = null
+      activeSuggestionIndex.value = e.key === 'ArrowDown' ? 0 : items.length - 1
+      return
+    }
+    if (activeSuggestionIndex.value < 0) {
+      activeSuggestionIndex.value = e.key === 'ArrowDown' ? 0 : items.length - 1
+    } else {
+      const delta = e.key === 'ArrowDown' ? 1 : -1
+      activeSuggestionIndex.value =
+        (activeSuggestionIndex.value + delta + items.length) % items.length
+    }
+    return
+  }
+  // Home/End are deliberately NOT hijacked — in a combobox with an editable
+  // text field they belong to the caret, not to the option list.
+  if (e.key === 'Enter' && suggestionsOpen.value && activeSuggestionIndex.value >= 0) {
+    e.preventDefault()
+    selectExerciseSuggestion(items[activeSuggestionIndex.value])
+  }
+}
 
 function selectExerciseSuggestion(entry: ExerciseEntry) {
   newExerciseName.value = entry.name
@@ -2194,6 +2291,10 @@ function selectExerciseSuggestion(entry: ExerciseEntry) {
       ? defaultBarWeight()
       : Math.round(displayWeight(entry.barWeight))
   }
+  // Choosing an option closes the popup (APG). Dismissing AT the chosen name
+  // means any further keystroke re-opens it.
+  suggestionsDismissedFor.value = entry.name
+  activeSuggestionIndex.value = -1
 }
 const newBarWeightEditing = ref(false)
 const newBarWeightInputEl = ref<HTMLInputElement | null>(null)
@@ -2530,6 +2631,7 @@ function closeModal() {
   editingSet.value = null
   selectedExerciseId.value = ''
   newExerciseName.value = ''
+  resetExerciseSuggestions()
   newExerciseTags.value = []
   newExerciseSessionTags.value = []
   newExerciseTagInput.value = ''
@@ -2838,6 +2940,7 @@ function saveSet() {
         if (ex) ex.barWeight = newExerciseBarWeight.value
       }
       newExerciseName.value = ''
+      resetExerciseSuggestions()
       newExerciseTags.value = []
       newExerciseSessionTags.value = []
       newExerciseTagInput.value = ''

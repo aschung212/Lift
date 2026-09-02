@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { shallowRef, triggerRef, reactive, defineComponent } from 'vue'
+import { shallowRef, triggerRef, reactive, defineComponent, nextTick } from 'vue'
 import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
 import { useModal } from '../../composables/useModal'
 
@@ -12,6 +12,8 @@ import { useModal } from '../../composables/useModal'
 enableAutoUnmount(afterEach)
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 import { setDayKey } from '../../lib/dates'
+import { searchExerciseDatabase } from '../../lib/exerciseDatabase'
+import { runComponentAxe } from '../../__tests__/axeHelper'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
 import EditExerciseModal from '../EditExerciseModal.vue'
 
@@ -3638,6 +3640,227 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtSessionPlan').exists()).toBe(true)
       await wrapper.find('.wtSearchInput').setValue('bench')
       expect(wrapper.find('.wtSessionPlan').exists()).toBe(false)
+    })
+  })
+
+  /**
+   * Exercise-name autocomplete: ARIA combobox + keyboard operability (LIFT-1304).
+   *
+   * The popup shipped mouse/touch-only — options were `tabindex="-1"` and bound
+   * only to @mousedown/@touchstart, with no keydown handler on the input — so a
+   * keyboard user watched suggestions appear and then had to retype the whole
+   * name (WCAG 2.1.1, Level A). Nothing caught it because no test had ever
+   * opened this list: the component suite never typed into the new-exercise
+   * field, and the axe suite (accessibility.axe.test.ts) covers only
+   * AuthScreen/OnboardingScreen/BodyweightTracker. Both gaps are closed here —
+   * the axe scan lives in this file rather than the axe suite because
+   * WorkoutTracker needs this file's ~250 lines of store/composable mocks.
+   *
+   * Expected suggestions are derived from searchExerciseDatabase rather than
+   * hardcoded, so growing the exercise DB can't turn these red.
+   */
+  describe('exercise-name autocomplete (LIFT-1304)', () => {
+    /**
+     * Always re-query the combobox. Vue swaps this input's DOM node when the
+     * popup opens, so a wrapper captured before `setValue` reads attributes off
+     * a detached element and every ARIA assertion passes (or fails) vacuously.
+     */
+    const nameInput = (w: VueWrapper) => w.find('.wtNewExerciseNameField .repMaxInput')
+    const nameValue = (w: VueWrapper) => (nameInput(w).element as HTMLInputElement).value
+    const options = (w: VueWrapper) => w.findAll('[role="option"]')
+    const key = (w: VueWrapper, k: string) => nameInput(w).trigger('keydown', { key: k })
+
+    /** Opens the New Exercise sheet. */
+    async function openNewExercise(wrapper: VueWrapper) {
+      exposed(wrapper).openNewExerciseModal()
+      await nextTick()
+    }
+
+    const suggestionsFor = (q: string) => searchExerciseDatabase(q, [])
+
+    it('exposes the popup state on the input as a combobox', async () => {
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+
+      // Collapsed: aria-expanded is still present (required by role=combobox),
+      // and aria-controls is absent rather than dangling at a missing id.
+      expect(nameInput(wrapper).attributes('role')).toBe('combobox')
+      expect(nameInput(wrapper).attributes('aria-autocomplete')).toBe('list')
+      expect(nameInput(wrapper).attributes('aria-expanded')).toBe('false')
+      expect(nameInput(wrapper).attributes('aria-controls')).toBeUndefined()
+
+      await nameInput(wrapper).setValue('bench')
+      const listId = wrapper.find('[role="listbox"]').attributes('id')
+      expect(listId).toBeTruthy()
+      expect(nameInput(wrapper).attributes('aria-expanded')).toBe('true')
+      expect(nameInput(wrapper).attributes('aria-controls')).toBe(listId)
+      expect(options(wrapper)).toHaveLength(suggestionsFor('bench').length)
+    })
+
+    it('ArrowDown walks the options and Enter picks the active one', async () => {
+      const expected = suggestionsFor('bench')
+      expect(expected.length).toBeGreaterThan(1)
+
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+
+      // Nothing is active until the user arrows — the typed value stands.
+      expect(nameInput(wrapper).attributes('aria-activedescendant')).toBeUndefined()
+      expect(wrapper.findAll('[aria-selected="true"]')).toHaveLength(0)
+
+      await key(wrapper, 'ArrowDown')
+      expect(nameInput(wrapper).attributes('aria-activedescendant'))
+        .toBe(options(wrapper)[0].attributes('id'))
+      expect(options(wrapper)[0].attributes('aria-selected')).toBe('true')
+      // The active row must be visible: DOM focus never leaves the input, so
+      // the row never gets :focus-visible and the class is the only cue.
+      expect(options(wrapper)[0].classes()).toContain('wtExerciseSuggestionItemActive')
+
+      await key(wrapper, 'ArrowDown')
+      expect(nameInput(wrapper).attributes('aria-activedescendant'))
+        .toBe(options(wrapper)[1].attributes('id'))
+      expect(options(wrapper)[0].attributes('aria-selected')).toBe('false')
+
+      await key(wrapper, 'Enter')
+      expect(nameValue(wrapper)).toBe(expected[1].name)
+      // Choosing an option closes the popup (APG) and drops the active id.
+      expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+      expect(nameInput(wrapper).attributes('aria-expanded')).toBe('false')
+      expect(nameInput(wrapper).attributes('aria-activedescendant')).toBeUndefined()
+    })
+
+    it('Enter selection applies the database entry tags, same as a tap', async () => {
+      const expected = suggestionsFor('bench')
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      await key(wrapper, 'ArrowDown')
+      await key(wrapper, 'Enter')
+
+      const active = wrapper.findAll('.wtTagPickerChipActive').map(c => c.text())
+      expect(active).toEqual(expect.arrayContaining(expected[0].tags))
+    })
+
+    it('ArrowUp from no selection activates the last option, and both ends wrap', async () => {
+      const expected = suggestionsFor('bench')
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      const ids = options(wrapper).map(o => o.attributes('id'))
+      expect(ids).toHaveLength(expected.length)
+      const last = ids.length - 1
+
+      await key(wrapper, 'ArrowUp')
+      expect(nameInput(wrapper).attributes('aria-activedescendant')).toBe(ids[last])
+
+      await key(wrapper, 'ArrowDown')
+      expect(nameInput(wrapper).attributes('aria-activedescendant')).toBe(ids[0])
+      await key(wrapper, 'ArrowUp')
+      expect(nameInput(wrapper).attributes('aria-activedescendant')).toBe(ids[last])
+    })
+
+    it('Enter with nothing active does not pick a suggestion', async () => {
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      await key(wrapper, 'Enter')
+      expect(nameValue(wrapper)).toBe('bench')
+      expect(wrapper.find('[role="listbox"]').exists()).toBe(true)
+    })
+
+    it('Escape closes the popup, keeps the typed name, and leaves the sheet open', async () => {
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      await key(wrapper, 'ArrowDown')
+
+      await key(wrapper, 'Escape')
+      expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+      expect(nameValue(wrapper)).toBe('bench')
+      // The overlay carries @keydown.escape="closeModal": without
+      // stopPropagation, one Escape would discard the half-typed exercise.
+      expect(wrapper.find('.repMaxOverlay').exists()).toBe(true)
+    })
+
+    it('Escape with the popup closed still falls through to the sheet', async () => {
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await key(wrapper, 'Escape')
+      expect(wrapper.find('.repMaxOverlay').exists()).toBe(false)
+    })
+
+    it('typing after Escape re-opens the popup', async () => {
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      await key(wrapper, 'Escape')
+      expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+
+      await nameInput(wrapper).setValue('bench p')
+      expect(wrapper.find('[role="listbox"]').exists()).toBe(true)
+    })
+
+    it('ArrowDown re-opens a popup dismissed with Escape', async () => {
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      await key(wrapper, 'Escape')
+
+      await key(wrapper, 'ArrowDown')
+      expect(options(wrapper).length).toBeGreaterThan(0)
+      expect(nameInput(wrapper).attributes('aria-activedescendant'))
+        .toBe(options(wrapper)[0].attributes('id'))
+    })
+
+    it('re-typing a name the popup was dismissed at still shows suggestions', async () => {
+      // The dismissal is keyed to a query, so it has to be cleared when the
+      // sheet closes — otherwise typing that exact name again renders nothing.
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      await key(wrapper, 'Escape')   // closes the popup
+      await key(wrapper, 'Escape')   // closes the sheet
+      expect(wrapper.find('.repMaxOverlay').exists()).toBe(false)
+
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      expect(wrapper.find('[role="listbox"]').exists()).toBe(true)
+    })
+
+    it('still selects on tap (mousedown), unchanged', async () => {
+      const expected = suggestionsFor('bench')
+      const wrapper = mountTracker()
+      await openNewExercise(wrapper)
+      await nameInput(wrapper).setValue('bench')
+      await wrapper.findAll('.wtExerciseSuggestionItem')[0].trigger('mousedown')
+      expect(nameValue(wrapper)).toBe(expected[0].name)
+    })
+
+    it('does not fold the suggestion text into the field name, and passes axe', async () => {
+      const wrapper = mount(WorkoutTracker, {
+        attachTo: document.body,
+        global: { stubs: { Teleport: true } },
+      })
+      exposed(wrapper).openNewExerciseModal()
+      await nextTick()
+      await nameInput(wrapper).setValue('bench')
+      expect(wrapper.find('[role="listbox"]').exists()).toBe(true)
+
+      // The listbox must NOT sit inside the <label>: an implicit label
+      // contributes its entire subtree to the accessible name, so a nested
+      // list announced the field as "Exercise name Bench Press Push · Chest …".
+      const label = wrapper.find('.wtNewExerciseNameField .repMaxLabel')
+      expect(label.find('[role="listbox"]').exists()).toBe(false)
+      expect(label.text().replace(/\s+/g, ' ').trim()).toBe('Exercise name')
+
+      // Scoped to the combobox field, not the whole tracker: the surrounding
+      // new-exercise form has an unrelated pre-existing violation (the
+      // `.iosToggle` role="switch" has no accessible name), so a component-wide
+      // scan would fail for a reason this fix does not own. The scope still
+      // covers the full widget — combobox, listbox and every option.
+      const results = await runComponentAxe(wrapper.find('.wtNewExerciseNameField').element)
+      expect(results).toHaveNoViolations()
     })
   })
 })
