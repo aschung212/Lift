@@ -7,7 +7,7 @@
 
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
-import { toLocalDateKey, localDateKey } from './dates'
+import { setDayKey, localDateKey, todayISO } from './dates'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -137,16 +137,24 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
   const toDisplay = input.toDisplayUnits ?? ((lb: number) => lb)
   const unitLabel = input.unitLabel ?? 'lbs'
 
-  const today = input.referenceDate ?? new Date().toISOString().slice(0, 10)
+  // `todayISO()`, never `toISOString().slice(0, 10)` — the latter reports
+  // NEXT month to anyone generating a report on the evening of the 31st
+  // anywhere behind UTC, and the report comes back empty (#1293).
+  const today = input.referenceDate ?? todayISO()
   const { start, end, label } = periodBounds(input.period, today)
 
   // Filter sets within the period
   type SetWithExercise = WorkoutSet & { exerciseName: string; exerciseTags: string[]; exerciseId: string }
   const periodSets: SetWithExercise[] = []
 
+  // Every `set.date` / `entry.date` in this file buckets through `setDayKey`
+  // (#746): a raw `toLocalDateKey` shifts the dominant endOfDayISO stamp
+  // (`…T23:59Z`) forward a day for every user east of UTC, dropping sets on a
+  // period boundary out of the report entirely; a raw `slice(0, 10)` breaks
+  // the other convention instead. `setDayKey` is the one reconciliation point.
   for (const ex of input.exercises) {
     for (const set of ex.sets) {
-      const dateKey = toLocalDateKey(set.date)
+      const dateKey = setDayKey(set.date)
       if (dateKey >= start && dateKey <= end) {
         periodSets.push({
           ...set,
@@ -159,7 +167,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
   }
 
   // Summary stats
-  const workoutDays = new Set(periodSets.map(s => toLocalDateKey(s.date)))
+  const workoutDays = new Set(periodSets.map(s => setDayKey(s.date)))
   const totalSets = periodSets.length
   const totalVolume = Math.round(periodSets.reduce((sum, s) => sum + toDisplay(s.weight) * s.reps, 0))
   const exerciseNames = new Set(periodSets.map(s => s.exerciseName))
@@ -186,7 +194,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
     // Best e1RM per day
     const dayBest = new Map<string, number>()
     for (const s of sets) {
-      const dk = toLocalDateKey(s.date)
+      const dk = setDayKey(s.date)
       const current = dayBest.get(dk) ?? 0
       if (s.estimated1RM > current) dayBest.set(dk, s.estimated1RM)
     }
@@ -215,17 +223,17 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
 
     // PR detection: find sets in this period that beat all prior sets for this exercise
     const allSets = allSetsByExercise.get(exId) ?? []
-    const priorSets = allSets.filter(s => toLocalDateKey(s.date) < start)
+    const priorSets = allSets.filter(s => setDayKey(s.date) < start)
     const priorMaxE1RM = priorSets.length > 0 ? Math.max(...priorSets.map(s => s.estimated1RM)) : 0
 
     // Track running max within the period too
     let runningMax = priorMaxE1RM
-    const periodSetsSorted = [...sets].sort((a, b) => toLocalDateKey(a.date).localeCompare(toLocalDateKey(b.date)))
+    const periodSetsSorted = [...sets].sort((a, b) => setDayKey(a.date).localeCompare(setDayKey(b.date)))
     for (const s of periodSetsSorted) {
       if (s.estimated1RM > runningMax) {
         runningMax = s.estimated1RM
         prTimeline.push({
-          date: toLocalDateKey(s.date),
+          date: setDayKey(s.date),
           exerciseName: name,
           weight: Math.round(toDisplay(s.weight)),
           reps: s.reps,
@@ -257,7 +265,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
   // ── Weekly consistency ──
   const weekMap = new Map<string, { days: Set<string>; sets: number; volume: number }>()
   for (const s of periodSets) {
-    const dk = toLocalDateKey(s.date)
+    const dk = setDayKey(s.date)
     const wk = mondayOfWeek(dk)
     const entry = weekMap.get(wk) ?? { days: new Set(), sets: 0, volume: 0 }
     entry.days.add(dk)
@@ -290,16 +298,20 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
   })
 
   // ── Bodyweight progression ──
+  // Bodyweight carries the SAME two conventions as sets (`bodyweight.ts` writes
+  // an endOfDayISO stamp for a UI-logged entry), so it buckets the same way.
+  // The sort keys off the DERIVED day, not the raw stamp: a real-time evening
+  // instant sorts after the next day's `…T23:59Z` stamp by raw string, which
+  // would emit a non-monotonic timeline and read start/end weights off the
+  // wrong rows. Raw date stays as the within-day tiebreaker.
   const bwInPeriod = input.bodyweight
-    .filter(e => {
-      const dk = e.date.slice(0, 10)
-      return dk >= start && dk <= end
-    })
-    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(e => ({ dayKey: setDayKey(e.date), entry: e }))
+    .filter(({ dayKey }) => dayKey >= start && dayKey <= end)
+    .sort((a, b) => a.dayKey.localeCompare(b.dayKey) || a.entry.date.localeCompare(b.entry.date))
 
-  const bwTimeline = bwInPeriod.map(e => ({
-    date: e.date.slice(0, 10),
-    weight: Math.round(toDisplay(e.weight) * 10) / 10,
+  const bwTimeline = bwInPeriod.map(({ dayKey, entry }) => ({
+    date: dayKey,
+    weight: Math.round(toDisplay(entry.weight) * 10) / 10,
   }))
 
   const startWeight = bwTimeline.length > 0 ? bwTimeline[0].weight : null
