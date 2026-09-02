@@ -1,8 +1,21 @@
 /**
  * Plate Calculator
  *
- * Pure functions for converting between total weight and per-side plate loading.
- * All plate values are PER SIDE. Total weight = barWeight + 2 × sum(plates).
+ * Pure functions for converting between a total weight and the plates that make
+ * it up, in either of the two loading modes `Exercise.plateCountMode` selects
+ * (LIFT-783):
+ *
+ * - `per-side` (barbell, the default): the listed plates go on ONE sleeve and
+ *   the bar carries two of them — total = barWeight + 2 × sum(plates).
+ * - `total` (plate-loaded machine, sled, cable stack): the listed plates ARE
+ *   the whole load — total = barWeight + sum(plates).
+ *
+ * Both directions take the mode as a parameter so the forward form and its
+ * inverse stay adjacent and can't disagree. They used to be split: only the
+ * forward direction knew about total mode (branched at each call site) while
+ * `weightToPlates` always halved, so a typed weight on a machine exercise
+ * decomposed as though half of it were needed and the plate card read 2× low
+ * against the weight field (LIFT-1312).
  *
  * Issue #157
  */
@@ -11,34 +24,42 @@
 export const LBS_PLATES = [45, 25, 10, 5, 2.5]
 export const KG_PLATES = [20, 15, 10, 5, 2.5, 1.25]
 
-/** Per-side plate list, always sorted descending */
+/** Plate list — one sleeve's worth in per-side mode, the whole load in total mode. Always sorted descending. */
 export type PlateSet = number[]
 
-/** Calculate total weight from per-side plates + bar. */
-export function platesToWeight(plates: PlateSet, barWeight: number): number {
-  const perSide = plates.reduce((sum, p) => sum + p, 0)
-  return barWeight + 2 * perSide
+/**
+ * Calculate total weight from a plate set + bar.
+ *
+ * `perSide` (the default) doubles the stack for barbell loading; pass `false`
+ * for total loading, where the listed plates are the entire load.
+ */
+export function platesToWeight(plates: PlateSet, barWeight: number, perSide = true): number {
+  const stack = plates.reduce((sum, p) => sum + p, 0)
+  return barWeight + (perSide ? 2 * stack : stack)
 }
 
 /**
- * Calculate per-side plates needed for a target weight.
+ * Calculate the plates needed for a target weight — the exact inverse of
+ * {@link platesToWeight} in the same loading mode.
  * Uses greedy algorithm (largest plates first).
  * Returns null if the weight is not achievable.
  */
 export function weightToPlates(
   targetWeight: number,
   barWeight: number,
-  denominations: number[] = LBS_PLATES
+  denominations: number[] = LBS_PLATES,
+  perSide = true
 ): PlateSet | null {
   const remainder = targetWeight - barWeight
   if (remainder < 0) return null
   if (remainder === 0) return []
 
-  // Must be evenly divisible by 2 (per-side loading)
-  const perSide = remainder / 2
+  // Per-side loading splits the load across two sleeves, so only half of it is
+  // decomposed; total loading decomposes the whole remainder.
+  const stack = perSide ? remainder / 2 : remainder
 
   const plates: PlateSet = []
-  let remaining = perSide
+  let remaining = stack
 
   // Greedy: use largest plates first
   for (const denom of denominations) {

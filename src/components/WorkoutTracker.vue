@@ -994,7 +994,7 @@ import { useFirstSetCelebration } from '../composables/useFirstSetCelebration'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
-import { platesToWeight, weightToPlates, defaultBarWeight, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, defaultBarWeight, LBS_PLATES, KG_PLATES, type PlateSet } from '../lib/plateCalculator'
 import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
 import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { scoreSet } from '../lib/setScoring'
@@ -1748,7 +1748,7 @@ const ladderLabel = computed(() => {
 function fillFromRung(rung: UsualLadderRung) {
   if (plateMode.value) {
     // Rung weights are canonical lbs; the plate layer works in display units.
-    const plates = weightToPlates(displayWeight(rung.weightLbs), currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    const plates = platesForWeight(displayWeight(rung.weightLbs))
     if (plates) {
       currentPlates.value = plates
       syncPlateWeight()
@@ -1968,7 +1968,7 @@ function acceptOverloadNudge() {
   if (!n) return
   if (plateMode.value) {
     // n.displayWeight is already display units — decompose it directly.
-    const plates = weightToPlates(n.displayWeight, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+    const plates = platesForWeight(n.displayWeight)
     if (plates) {
       currentPlates.value = plates
       syncPlateWeight()
@@ -2071,7 +2071,7 @@ function loadPRTarget() {
   if (!prTargetWeight.value) return
   // prTargetWeight is display units, same space as the denoms and bar (LIFT-1211).
   const target = prTargetWeight.value
-  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
+  const denoms = activeDenominations.value
   const barWt = currentBarWeight.value
   // Smallest weight increment: smallest plate × 2 for per-side, × 1 for total
   const smallestIncrement = denoms[denoms.length - 1] * (isPerSide.value ? 2 : 1)
@@ -2084,7 +2084,7 @@ function loadPRTarget() {
   }
   const roundedPlateWeight = Math.ceil(plateWeight / smallestIncrement) * smallestIncrement
   const roundedTotal = barWt + roundedPlateWeight
-  const plates = weightToPlates(roundedTotal, barWt, denoms)
+  const plates = platesForWeight(roundedTotal)
   if (plates) {
     currentPlates.value = plates
     syncPlateWeight()
@@ -2113,7 +2113,19 @@ const activeDenominations = computed(() =>
   weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
 )
 
-
+/**
+ * Decompose a DISPLAY-unit total into the stack the plate card should show.
+ *
+ * Every "load this weight into the plates" path goes through here so none of
+ * them can forget an input: the display-unit denominations (LIFT-1211), the
+ * exercise's bar, and — the one LIFT-1312 fixed — its loading mode. Before
+ * this, five call sites passed the first two and none passed the third, so a
+ * total-mode (machine) exercise decomposed every typed or tapped weight as
+ * though half of it were needed and the card read 2× low against the field.
+ */
+function platesForWeight(displayTotal: number): PlateSet | null {
+  return weightToPlates(displayTotal, currentBarWeight.value, activeDenominations.value, isPerSide.value)
+}
 
 
 const plateCounts = computed(() => {
@@ -2130,13 +2142,9 @@ const plateCounts = computed(() => {
 // named plateWeightLbs and fed through displayWeight(), which multiplied kg
 // users' already-kg totals by 0.4536 — every plate-mode set they logged was
 // silently corrupted.
-const plateWeightDisplay = computed(() => {
-  if (isPerSide.value) {
-    return platesToWeight(currentPlates.value, currentBarWeight.value)
-  }
-  const plateSum = currentPlates.value.reduce((s, p) => s + p, 0)
-  return currentBarWeight.value + plateSum
-})
+const plateWeightDisplay = computed(() =>
+  platesToWeight(currentPlates.value, currentBarWeight.value, isPerSide.value)
+)
 
 function syncPlateWeight() {
   _plateSync = true
@@ -2157,16 +2165,12 @@ function syncPlatesFromWeight() {
   // w is already in display units — the same space as the denominations and
   // bar weight. Converting it to lbs here (pre-LIFT-1211) decomposed an lbs
   // total against kg plates for kg users.
-  const denoms = weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES
-  const plates = weightToPlates(w, currentBarWeight.value, denoms)
-  currentPlates.value = plates || []
+  currentPlates.value = platesForWeight(w) || []
 }
 
 function addPlate(denom: number) {
   const preview = [...currentPlates.value, denom]
-  const previewWeight = isPerSide.value
-    ? platesToWeight(preview, currentBarWeight.value)
-    : currentBarWeight.value + preview.reduce((s, p) => s + p, 0)
+  const previewWeight = platesToWeight(preview, currentBarWeight.value, isPerSide.value)
   if (previewWeight > MAX_WEIGHT) return
   currentPlates.value = preview.sort((a, b) => b - a)
   syncPlateWeight()
@@ -2595,9 +2599,10 @@ function openLogForExercise(exerciseId: string) {
       // got a stack for a bar 25 kg heavier than the one the total was computed
       // from — usually unloadable, so the card opened blank under a filled
       // weight field and then silently repopulated 250ms later when the
-      // weightStr watcher recomputed it correctly.
+      // weightStr watcher recomputed it correctly. Routed through
+      // `platesForWeight` so the seed carries the loading mode too (LIFT-1312).
       const seedDisplay = displayWeight(seedWeight)
-      const plates = weightToPlates(seedDisplay, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+      const plates = platesForWeight(seedDisplay)
       currentPlates.value = plates || []
       previousPlates.value = plates || []
       weight.value = seedDisplay

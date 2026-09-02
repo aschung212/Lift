@@ -8,6 +8,7 @@ import {
   convertBarWeight,
   defaultBarWeight,
   KG_PLATES,
+  LBS_PLATES,
 } from '../plateCalculator'
 
 describe('plateCalculator', () => {
@@ -98,6 +99,66 @@ describe('plateCalculator', () => {
         expect(plates).not.toBeNull()
         expect(platesToWeight(plates!, 45)).toBe(w)
       }
+    })
+  })
+
+  /**
+   * Regression: LIFT-1312 — `weightToPlates` always halved the remainder, so a
+   * `plateCountMode: 'total'` exercise (plate-loaded machine, sled) decomposed
+   * a target as though half of it were needed. The forward direction knew about
+   * total mode and the inverse didn't, so the plate card and the weight field
+   * disagreed by 2× on every typed weight.
+   *
+   * Both directions now take the mode, and these tests assert them as a pair:
+   * a mode-specific expectation plus the round trip that pins them together.
+   */
+  describe('total loading mode (LIFT-1312)', () => {
+    it('sums the plates once — the listed stack IS the whole load', () => {
+      // Machine with no bar: 45 + 45 + 10 = 100 (per-side would say 200).
+      expect(platesToWeight([45, 45, 10], 0, false)).toBe(100)
+      // A base weight (e.g. a loaded sled) still adds on top, just once.
+      expect(platesToWeight([45, 25], 60, false)).toBe(130)
+    })
+
+    it('decomposes the whole remainder, not half of it', () => {
+      // Pre-fix this halved 100 to 50 and answered [45, 5] — a stack whose
+      // total-mode weight is 50, against a weight field still reading 100.
+      expect(weightToPlates(100, 0, LBS_PLATES, false)).toEqual([45, 45, 10])
+      expect(weightToPlates(130, 60, LBS_PLATES, false)).toEqual([45, 25])
+    })
+
+    it('loads an odd total that per-side decomposition rejects outright', () => {
+      // 95 is one 45 + one 45 + one 5 in total mode. Per-side needs 47.5 a
+      // side, which is loadable too — but the resulting card reads 47.5, not
+      // 95. 25 is loadable in total mode and below the smallest per-side step.
+      expect(weightToPlates(95, 0, LBS_PLATES, false)).toEqual([45, 45, 5])
+      expect(weightToPlates(25, 0, LBS_PLATES, false)).toEqual([25])
+    })
+
+    it('still rejects a total no combination of plates can reach', () => {
+      // 97 is not a multiple of the 2.5 lb smallest plate.
+      expect(weightToPlates(97, 0, LBS_PLATES, false)).toBeNull()
+      // Below the base weight there is nothing to load.
+      expect(weightToPlates(30, 45, LBS_PLATES, false)).toBeNull()
+    })
+
+    it('round-trips in total mode, in both units', () => {
+      for (const w of [10, 25, 50, 95, 100, 180, 250]) {
+        const plates = weightToPlates(w, 0, LBS_PLATES, false)
+        expect(plates).not.toBeNull()
+        expect(platesToWeight(plates!, 0, false)).toBe(w)
+      }
+      for (const w of [10, 25, 46.25, 60, 100]) {
+        const plates = weightToPlates(w, 0, KG_PLATES, false)
+        expect(plates).not.toBeNull()
+        expect(platesToWeight(plates!, 0, false)).toBeCloseTo(w, 5)
+      }
+    })
+
+    it('leaves per-side behaviour untouched when the mode is omitted', () => {
+      // The default is per-side, so every existing caller is unaffected.
+      expect(weightToPlates(135, 45)).toEqual(weightToPlates(135, 45, LBS_PLATES, true))
+      expect(platesToWeight([45], 45)).toBe(platesToWeight([45], 45, true))
     })
   })
 
