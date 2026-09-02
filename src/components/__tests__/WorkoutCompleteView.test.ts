@@ -102,12 +102,12 @@ describe('WorkoutCompleteView', () => {
     })
 
     it('drops the TIME tile when the session span is unknowable', () => {
-      // Regression: every set logged through the UI carries an end-of-day
-      // `date` with no real time on it, so sessionSummary reports an em dash
-      // and the TIME tile rendered permanently empty — a stat that looked
-      // broken on the one screen meant to celebrate the session. The tile is
-      // dropped instead and the row redistributes; it comes back on its own
-      // once sets carry real timestamps.
+      // Regression: sessionSummary reports an em dash when the span is
+      // unknowable, and the TIME tile rendered that as a permanently empty stat
+      // — a broken-looking number on the one screen meant to celebrate the
+      // session. The tile is dropped instead and the row redistributes. Since
+      // #1288 this is a real edge case (an all-legacy or fully back-dated day)
+      // rather than every session for every user.
       const wrapper = mountView(makeSummary({ duration: '\u2014' }))
       const stats = wrapper.findAll('.wcStat')
       expect(stats).toHaveLength(2)

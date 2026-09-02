@@ -85,9 +85,11 @@
                 </div>
               </template>
             </div>
-            <div v-if="exercise.sets.length > SET_LIMIT" class="wtClearWrap">
+            <!-- Gate and count come from the warmup-filtered list, not the raw
+                 total, so the button never promises rows the list won't render. -->
+            <div v-if="listableSets.length > SET_LIMIT" class="wtClearWrap">
               <button class="wtShowAllBtn" @click="toggleShowAll">
-                {{ showAll ? 'Show less' : `Show all ${exercise.sets.length} sets` }}
+                {{ showAll ? 'Show less' : `Show all ${listableSets.length} sets` }}
               </button>
             </div>
           </template>
@@ -264,18 +266,28 @@ function toggleSetActions(setId: string) {
   activeSetId.value = activeSetId.value === setId ? null : setId
 }
 
-function visibleSets(ex: Exercise): WorkoutSet[] {
+/**
+ * Every set the list is willing to show — newest-first, with warmups removed
+ * when the toggle is on — BEFORE the display limit is applied.
+ *
+ * The warmup filter must run first (#1274): slicing to SET_LIMIT and filtering
+ * after spent the limit on rows that were then thrown away, so a lifter doing
+ * 3 warmups + 3 working sets saw ~5 rows instead of 10 with warmups hidden.
+ * This also gives the "Show all" control a count it can actually deliver.
+ * `WorkoutTimeline.filteredTimelineSets` is the same ordering for the
+ * all-exercise history surface.
+ */
+const listableSets = computed((): WorkoutSet[] => {
+  const ex = exercise.value
+  if (!ex) return []
   const sorted = [...ex.sets].sort((a, b) => setDayKey(b.date).localeCompare(setDayKey(a.date)))
-  return showAll.value ? sorted : sorted.slice(0, SET_LIMIT)
-}
+  if (!hideWarmups.value) return sorted
+  const ids = warmupSetIds.value
+  return sorted.filter(s => !ids.has(s.id))
+})
 
 const groupedSets = computed(() => {
-  if (!exercise.value) return []
-  let sets = visibleSets(exercise.value)
-  if (hideWarmups.value) {
-    const ids = warmupSetIds.value
-    sets = sets.filter(s => !ids.has(s.id))
-  }
+  const sets = showAll.value ? listableSets.value : listableSets.value.slice(0, SET_LIMIT)
   const groups: { key: string; sets: WorkoutSet[] }[] = []
   for (const set of sets) {
     const k = setDayKey(set.date)

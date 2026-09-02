@@ -352,6 +352,18 @@ function resolvedDeleteError(result: PromiseSettledResult<unknown>): unknown {
 }
 
 /**
+ * Render a PostgREST error object as a log line. `String(err)` on one yields
+ * "[object Object]", which would strip the code/message a failed deletion needs.
+ */
+function describeSupabaseError(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const { message, code } = err as { message?: unknown; code?: unknown }
+    if (typeof message === 'string') return code ? `${message} (${String(code)})` : message
+  }
+  return String(err)
+}
+
+/**
  * Delete all user data from Supabase, clear local storage & IndexedDB, then sign out.
  * Throws if Supabase deletion fails so the caller can show an error.
  */
@@ -370,6 +382,20 @@ async function deleteAccount(): Promise<void> {
       supabase.from('user_preferences').delete().eq('user_id', userId),
       supabase.from('bodyweight_entries').delete().eq('user_id', userId),
       supabase.from('exercises').delete().eq('user_id', userId), // cascades to sets
+      // The AI-Coach tables (coach_usage, coach_usage_log, coach_consent) are
+      // the second half of LIFT-1225: they arrived in the 2026-06-27 migration,
+      // years after this list was written, and nothing added them — so a user
+      // who deleted their account left behind the record that they consented to
+      // sending health data off-device plus a per-request audit trail. They
+      // deliberately have RLS on with SELECT-only policies, which makes a client
+      // `.from('coach_usage').delete()` the WRONG fix rather than a redundant
+      // one: an RLS-blocked DELETE is not an error in Postgres — it removes zero
+      // rows and PostgREST answers `{ error: null }`, so it would sail past the
+      // check below and report success. The SECURITY DEFINER RPC (which derives
+      // the user from auth.uid() internally) is the only path that actually
+      // deletes, and it returns the same `{ data, error }` shape, so it joins
+      // the batch and is held to the same standard.
+      supabase.rpc('delete_coach_data'),
     ])
 
     // A genuine server-side delete failure must ABORT before we wipe local data,
@@ -383,6 +409,14 @@ async function deleteAccount(): Promise<void> {
     // resolves `{ error: null }` (0 rows), so this never false-positives.
     const failed = results.filter(r => r.status === 'rejected' || !!resolvedDeleteError(r))
     if (failed.length > 0) {
+      // Report before throwing. The user only ever sees the generic message
+      // below, so without this a failed right-to-deletion request leaves no
+      // trace anywhere — the one failure mode that most needs a trail.
+      const first = failed[0].status === 'rejected' ? failed[0].reason : resolvedDeleteError(failed[0])
+      logError(first instanceof Error ? first : new Error(describeSupabaseError(first)), {
+        source: 'deleteAccount:serverDelete',
+        failedCount: failed.length,
+      })
       throw new Error('Failed to delete server data. Please try again.')
     }
   }

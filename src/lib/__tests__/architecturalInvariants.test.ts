@@ -823,6 +823,164 @@ describe('Invariant: RLS enabled on every Supabase table (LIFT-1130)', () => {
   })
 })
 
+// ── Invariant: account deletion covers every user-scoped table (LIFT-1225) ──
+// Guard: deleteAccount()'s table list was written on 2026-04-05 against the
+// seven tables that existed then. The AI-Coach migration (2026-06-27) added
+// three more — coach_usage, coach_usage_log, coach_consent — carrying the
+// record that the user consented to health-data egress plus a per-request
+// audit trail, and nothing updated the list. "Delete my data" wiped the device
+// and left them on the server: a right-to-deletion (GDPR/CCPA) breach that no
+// behavioural test could see, because a hardcoded test only ever pins the
+// tables that existed when it was written. Same failure shape as the
+// REPLAYABLE_COLUMNS drift (LIFT-1039), so it gets the same treatment —
+// coverage is DERIVED from the migrations, not enumerated here.
+
+/** Tables that carry a `user_id` column, i.e. hold rows belonging to a user. */
+function userScopedTables(sql: string): string[] {
+  return createdTables(sql).filter(t => /\buser_id\b/.test(tableBody(sql, t)))
+}
+
+/**
+ * Tables a `create or replace function <name>` deletes from.
+ *
+ * The coach tables have no client DELETE policy by design, so they are removed
+ * through a SECURITY DEFINER RPC. Reading the RPC's own body means a coach
+ * table added to the schema but forgotten inside `delete_coach_data` is still
+ * reported as uncovered.
+ *
+ * Reads the LAST definition, not the first. Migrations are concatenated in
+ * apply order, and extending this RPC means shipping a second
+ * `create or replace function` — so the first match is the stale body. Reading
+ * it would let a later definition that DROPPED a `delete from` still read as
+ * covered, which is the failure this invariant exists to catch.
+ */
+function tablesDeletedByFunction(sql: string, fn: string): string[] {
+  const decl = new RegExp(`create\\s+(?:or\\s+replace\\s+)?function\\s+${SCHEMA}${fn}\\b`, 'gi')
+  let start = -1
+  let m: RegExpExecArray | null
+  while ((m = decl.exec(sql)) !== null) start = m.index
+  if (start === -1) return []
+  // Body runs to the closing `$$` of the dollar-quoted block.
+  const bodyStart = sql.indexOf('$$', start)
+  const bodyEnd = bodyStart === -1 ? -1 : sql.indexOf('$$', bodyStart + 2)
+  if (bodyEnd === -1) return []
+  const body = sql.slice(bodyStart, bodyEnd)
+  const re = new RegExp(`delete\\s+from\\s+["']?${SCHEMA}(\\w+)["']?`, 'gi')
+  const out = new Set<string>()
+  while ((m = re.exec(body)) !== null) out.add(m[1].toLowerCase())
+  return [...out]
+}
+
+/** Tables removed by an `on delete cascade` FK to one of `covered`. */
+function cascadeCoveredTables(sql: string, covered: Set<string>): string[] {
+  const out: string[] = []
+  for (const table of createdTables(sql)) {
+    const body = tableBody(sql, table)
+    const re = new RegExp(`references\\s+${SCHEMA}(\\w+)\\s*\\([^)]*\\)\\s*on\\s+delete\\s+cascade`, 'gi')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(body)) !== null) {
+      if (covered.has(m[1].toLowerCase())) { out.push(table); break }
+    }
+  }
+  return out
+}
+
+describe('Invariant: account deletion covers every user-scoped table (LIFT-1225)', () => {
+  const sql = stripSqlComments(
+    readdirSync(MIGRATIONS_DIR)
+      .filter(f => f.endsWith('.sql'))
+      .sort()
+      .map(f => readFileSync(join(MIGRATIONS_DIR, f), 'utf-8'))
+      .join('\n'),
+  )
+
+  /** The body of deleteAccount() in useAuth.ts, up to its closing brace. */
+  function deleteAccountBody(): string {
+    const src = readFileSync(resolve(SRC_DIR, 'composables/useAuth.ts'), 'utf-8')
+    const start = src.indexOf('async function deleteAccount(')
+    expect(start, 'deleteAccount() not found in useAuth.ts — did it move?').toBeGreaterThan(-1)
+    const end = src.indexOf('\n}', start)
+    return src.slice(start, end)
+  }
+
+  /** Every table deleteAccount removes: direct, via an RPC, or via cascade. */
+  function coveredTables(body: string): Set<string> {
+    const covered = new Set<string>()
+    const direct = /\.from\(\s*['"](\w+)['"]\s*\)\s*\.delete\(/g
+    let m: RegExpExecArray | null
+    while ((m = direct.exec(body)) !== null) covered.add(m[1].toLowerCase())
+
+    const rpc = /\.rpc\(\s*['"](\w+)['"]/g
+    while ((m = rpc.exec(body)) !== null) {
+      for (const t of tablesDeletedByFunction(sql, m[1])) covered.add(t)
+    }
+
+    // Cascades are transitive; iterate to a fixed point so a grandchild table
+    // is covered too.
+    for (;;) {
+      const before = covered.size
+      for (const t of cascadeCoveredTables(sql, covered)) covered.add(t)
+      if (covered.size === before) return covered
+    }
+  }
+
+  it('reads the real schema and deleteAccount source (non-vacuity)', () => {
+    // A broken path would make every check below pass for the wrong reason.
+    expect(userScopedTables(sql)).toEqual(
+      expect.arrayContaining(['exercises', 'sets', 'bodyweight_entries', 'coach_consent']),
+    )
+    expect(deleteAccountBody()).toContain('Promise.allSettled')
+  })
+
+  it('the scan resolves RPC and cascade coverage, and flags a gap (self-test)', () => {
+    const schema = stripSqlComments(`
+      create table parent (id uuid primary key, user_id uuid not null);
+      create table child (
+        id uuid primary key,
+        user_id uuid not null,
+        parent_id uuid not null references parent(id) on delete cascade
+      );
+      create table server_only (user_id uuid primary key);
+      create table orphan (user_id uuid primary key);
+      create or replace function purge() returns void language plpgsql as $$
+      begin
+        delete from public.server_only where user_id = v_uid;
+      end;
+      $$;
+    `)
+    expect(userScopedTables(schema).sort()).toEqual(['child', 'orphan', 'parent', 'server_only'])
+    expect(tablesDeletedByFunction(schema, 'purge')).toEqual(['server_only'])
+    expect(cascadeCoveredTables(schema, new Set(['parent']))).toEqual(['child'])
+    // `orphan` is deleted by nothing — the shape this invariant exists to catch.
+    expect(cascadeCoveredTables(schema, new Set(['parent']))).not.toContain('orphan')
+
+    // A later `create or replace` REPLACES the function. Reading the first
+    // definition would report a table the live function no longer deletes.
+    const redefined = schema + stripSqlComments(`
+      create or replace function purge() returns void language plpgsql as $$
+      begin
+        delete from public.orphan where user_id = v_uid;
+      end;
+      $$;
+    `)
+    expect(tablesDeletedByFunction(redefined, 'purge')).toEqual(['orphan'])
+  })
+
+  it('every user-scoped table is deleted by deleteAccount()', () => {
+    const covered = coveredTables(deleteAccountBody())
+    const missing = userScopedTables(sql).filter(t => !covered.has(t))
+
+    expect(
+      missing,
+      `These tables hold rows keyed to a user but survive account deletion: ${missing.join(', ')}. ` +
+      `"Delete my data" must leave nothing behind. Add the table to deleteAccount() in ` +
+      `src/composables/useAuth.ts — directly when the client has a DELETE policy, or via a ` +
+      `SECURITY DEFINER RPC when it does not (an RLS-blocked DELETE is NOT an error: it removes ` +
+      `zero rows and resolves { error: null }, so it would report success).`,
+    ).toEqual([])
+  })
+})
+
 // ── Invariant: automatic reloads are circuit-broken (#1155) ─────────
 // Guard: 2026-08-17 — the installed iOS PWA hit "A problem repeatedly
 // occurred" (WebKit's kill screen for an app that fails repeatedly at boot).
