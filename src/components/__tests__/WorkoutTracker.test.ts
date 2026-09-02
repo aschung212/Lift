@@ -3466,12 +3466,14 @@ describe('WorkoutTracker', () => {
 
     // ex-3 (Overhead Press) has no sets, so the log modal opens with an empty
     // weight field — no ladder auto-fill to interfere with plate math.
-    function mountPlateTracker(unit: 'lbs' | 'kg', barWeight: number) {
+    // `barWeight: undefined` leaves the exercise without a stored bar, which is
+    // how every numpad-created and sample exercise starts (LIFT-1223).
+    function mountPlateTracker(unit: 'lbs' | 'kg', barWeight?: number) {
       setMockUnit(unit)
       mockState.exercises = createExercises()
       mockState.exercises[2].inputMode = 'plates'
       mockState.exercises[2].plateCountMode = 'per-side'
-      mockState.exercises[2].barWeight = barWeight
+      if (barWeight !== undefined) mockState.exercises[2].barWeight = barWeight
       return mountTracker()
     }
 
@@ -3524,6 +3526,62 @@ describe('WorkoutTracker', () => {
 
       const input = wrapper.find('input[aria-label="Weight"]')
       expect((input.element as HTMLInputElement).value).toBe('135')
+    })
+
+    /**
+     * LIFT-1223: every fixture above hands the exercise an explicit barWeight,
+     * so the `??` fallback had never run under kg. `openLogForExercise` seeded
+     * the plate stack from a hardcoded 45 — read as kg — while the plate card's
+     * own `currentBarWeight` correctly used 20, so the two disagreed by 25 kg
+     * on open.
+     */
+    describe('no stored bar weight', () => {
+      /** ex-3 with one prior set, so the log modal seeds the plate calculator. */
+      function withSeedSet(unit: 'lbs' | 'kg', weightLbs: number) {
+        const wrapper = mountPlateTracker(unit)
+        mockState.exercises[2].sets = [
+          { id: 's-9', date: '2026-01-18T12:00:00', weight: weightLbs, reps: 5, estimated1RM: weightLbs * 1.16 },
+        ]
+        return wrapper
+      }
+
+      const plateCount = (wrapper: VueWrapper, denom: string) =>
+        wrapper.findAll('.wtPlateCol')
+          .find(c => c.find('.wtPlateBtnAdd').text() === denom)
+          ?.find('.wtPlateCountNum').text()
+
+      it('opens with a stack that matches the weight field for a kg user', async () => {
+        // 132.3 lbs displays as 60 kg = the 20 kg default bar + one 20 kg plate
+        // a side. Pre-fix the seed decomposed 132.3 against a 45 "kg" bar, which
+        // kg plates cannot load, so the card opened with no plates under a "60"
+        // field and only repopulated after the 250ms weightStr debounce.
+        const wrapper = withSeedSet('kg', 132.3)
+        await openLogModal(wrapper)
+
+        const input = wrapper.find('input[aria-label="Weight"]')
+        expect((input.element as HTMLInputElement).value).toBe('60')
+        expect(plateCount(wrapper, '+20')).toBe('1')
+      })
+
+      it('defaults an lbs user to the 45 lb bar (135 = bar + 2×45)', async () => {
+        const wrapper = withSeedSet('lbs', 135)
+        await openLogModal(wrapper)
+
+        const input = wrapper.find('input[aria-label="Weight"]')
+        expect((input.element as HTMLInputElement).value).toBe('135')
+        expect(plateCount(wrapper, '+45')).toBe('1')
+      })
+
+      it('adds plates onto the kg default bar, not a 45 kg one', async () => {
+        const wrapper = mountPlateTracker('kg')
+        await openLogModal(wrapper)
+
+        await wrapper.findAll('.wtPlateBtnAdd').find(b => b.text() === '+20')!.trigger('click')
+        await wrapper.vm.$nextTick()
+
+        const input = wrapper.find('input[aria-label="Weight"]')
+        expect((input.element as HTMLInputElement).value).toBe('60')
+      })
     })
   })
 

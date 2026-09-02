@@ -278,6 +278,7 @@ import {
   sanitizeIntensityMaxReps,
 } from '../lib/intensityTable'
 import { classifyExercise } from '../lib/coachAnalytics'
+import { defaultBarWeight } from '../lib/plateCalculator'
 import { MAX_GYMS, GYM_NAME_MAX_LENGTH, sanitizeGymName } from '../lib/gyms'
 
 const props = defineProps<{
@@ -307,7 +308,7 @@ const editTags = ref<string[]>([])
 const newTagInput = ref('')
 const editPlateMode = ref(false)
 const editPlateCountMode = ref<PlateCountMode>('per-side')
-const editBarWeight = ref<number>(45)
+const editBarWeight = ref<number>(defaultBarWeight(weightUnit.value))
 const editBarWeightEditing = ref(false)
 const editBarWeightInputEl = ref<HTMLInputElement | null>(null)
 const confirmDeleteExercise = ref(false)
@@ -411,7 +412,11 @@ watch(() => props.exercise, async (exercise) => {
     editTags.value = [...(exercise.tags || [])]
     editPlateMode.value = exercise.inputMode === 'plates'
     editPlateCountMode.value = exercise.plateCountMode || 'per-side'
-    editBarWeight.value = exercise.barWeight ?? (exercise.plateCountMode === 'total' ? 0 : 45)
+    // The bar field is labelled AND saved in the display unit, so its fallback
+    // has to be too (LIFT-1223) — a hardcoded 45 rendered "45 kg" to a kg user
+    // and, because Save always writes this field, persisted a 99 lb bar.
+    editBarWeight.value = exercise.barWeight
+      ?? (exercise.plateCountMode === 'total' ? 0 : defaultBarWeight(weightUnit.value))
     editIntensityMaxReps.value = exercise.intensityMaxReps ?? DEFAULT_INTENSITY_MAX_REPS
     editEquipment.value = exercise.equipment ?? null
     editGyms.value = [...(exercise.gyms || [])]

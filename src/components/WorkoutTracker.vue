@@ -994,7 +994,7 @@ import { useFirstSetCelebration } from '../composables/useFirstSetCelebration'
 import { useGoalCelebration } from '../composables/useGoalCelebration'
 import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
 import { useProgressionStore } from '../stores/progression'
-import { platesToWeight, weightToPlates, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
+import { platesToWeight, weightToPlates, defaultBarWeight, LBS_PLATES, KG_PLATES } from '../lib/plateCalculator'
 import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
 import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { scoreSet } from '../lib/setScoring'
@@ -2100,7 +2100,7 @@ const currentBarWeight = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   if (ex?.barWeight !== undefined) return ex.barWeight
   // Default: standard bar for per-side (45 lbs / 20 kg), 0 for total (machine)
-  return isPerSide.value ? defaultBarWeight() : 0
+  return isPerSide.value ? defaultBarWeight(weightUnit.value) : 0
 })
 
 const isPerSide = computed(() => {
@@ -2185,11 +2185,7 @@ const newExerciseTags = ref<string[]>([])
 const newExerciseTagInput = ref('')
 const newExercisePlateMode = ref(false)
 const newExercisePlateCountMode = ref<PlateCountMode>('per-side')
-/** Default bar in the user's display unit: 20 kg / 45 lbs (LIFT-1211). */
-function defaultBarWeight(): number {
-  return weightUnit.value === 'kg' ? 20 : 45
-}
-const newExerciseBarWeight = ref(defaultBarWeight())
+const newExerciseBarWeight = ref(defaultBarWeight(weightUnit.value))
 
 // ── Exercise database suggestions ──────────────────────────────
 //
@@ -2288,7 +2284,7 @@ function selectExerciseSuggestion(entry: ExerciseEntry) {
     // units and rounds to whole numbers (LIFT-1211), so convert and round:
     // the 45 lb standard bar lands on 20 kg, matching defaultBarWeight().
     newExerciseBarWeight.value = entry.barWeight === undefined
-      ? defaultBarWeight()
+      ? defaultBarWeight(weightUnit.value)
       : Math.round(displayWeight(entry.barWeight))
   }
   // Choosing an option closes the popup (APG). Dismissing AT the chosen name
@@ -2452,7 +2448,7 @@ function openNewExerciseModal() {
   newGymAdding.value = false
   newExercisePlateMode.value = false
   newExercisePlateCountMode.value = 'per-side'
-  newExerciseBarWeight.value = defaultBarWeight()
+  newExerciseBarWeight.value = defaultBarWeight(weightUnit.value)
   date.value = lastLogDate.value
   showModal.value = true
 }
@@ -2590,11 +2586,21 @@ function openLogForExercise(exerciseId: string) {
     const lastSet = exercise.sets.length > 0 ? exercise.sets[exercise.sets.length - 1] : null
     const seedWeight = (ladderActive.value && nextRung.value) ? nextRung.value.weightLbs : lastSet?.weight ?? null
     if (seedWeight !== null) {
-      const barWt = exercise.barWeight ?? 45
-      const plates = weightToPlates(seedWeight, barWt, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
+      // Seed in DISPLAY units against the same bar the plate card reads — this
+      // is `syncPlatesFromWeight` applied to the seed, so the opening stack and
+      // the weight field agree. It used to decompose the canonical-lbs seed
+      // against a hardcoded 45 lb bar and kg denominations: the last surviving
+      // instance of the LIFT-1211 mixing, and a third answer to "which bar?"
+      // beside `currentBarWeight` (LIFT-1223). A kg user opening a 132 lb lift
+      // got a stack for a bar 25 kg heavier than the one the total was computed
+      // from — usually unloadable, so the card opened blank under a filled
+      // weight field and then silently repopulated 250ms later when the
+      // weightStr watcher recomputed it correctly.
+      const seedDisplay = displayWeight(seedWeight)
+      const plates = weightToPlates(seedDisplay, currentBarWeight.value, weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES)
       currentPlates.value = plates || []
       previousPlates.value = plates || []
-      weight.value = displayWeight(seedWeight)
+      weight.value = seedDisplay
     } else {
       currentPlates.value = []
       previousPlates.value = []
@@ -2949,7 +2955,7 @@ function saveSet() {
       newGymAdding.value = false
       newExercisePlateMode.value = false
       newExercisePlateCountMode.value = 'per-side'
-      newExerciseBarWeight.value = defaultBarWeight()
+      newExerciseBarWeight.value = defaultBarWeight(weightUnit.value)
       logEvent('exercise_add')
     }
     const typedSet = hasSetData.value && weight.value !== null && reps.value !== null
