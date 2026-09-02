@@ -9,7 +9,7 @@
 
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
-import { toLocalDateKey, localDateKey, daysBetweenISO } from './dates'
+import { toLocalDateKey, localDateKey, setDayKey, daysBetweenISO } from './dates'
 import { effectiveSetWeight } from './bodyweightLoad'
 
 export interface SessionHighlight {
@@ -163,6 +163,41 @@ function isEndOfDayJitter(iso: string): boolean {
   return iso.slice(11, 16) === '23:59'
 }
 
+/**
+ * The real wall-clock instant a set was logged, or `null` when that is either
+ * unknowable or knowable but not part of this session.
+ *
+ * Two conventions feed this (#746 / #1288):
+ *  - `createdAt` (#846) is a true UTC instant stamped by `logSet` at the moment
+ *    the set was entered. Every set logged since then carries one — which is the
+ *    whole point: the set's `date` is an `endOfDayISO` stamp carrying the chosen
+ *    calendar day and no time of day, so `date` alone can never yield a span.
+ *  - Legacy sets predate `createdAt`. Their `date` is either an end-of-day stamp
+ *    (genuinely no time on it) or, on `logSet`'s no-date path, a real instant
+ *    that doubles as the log time.
+ *
+ * A `createdAt` counts only when it lands on the local day the set is FILED
+ * under. A set back-dated through the date subtitle — or a pre-#846 set whose
+ * server `created_at` defaulted to its sync time on fetch — carries a real
+ * instant from some *other* day, and folding that into the span reports a
+ * 45-minute session as "3d 6h". That is the same protection `isEndOfDayJitter`
+ * already gave the legacy path, restated against the timestamp that now exists.
+ *
+ * The filed day comes from `setDayKey`, which is the reconciliation point for
+ * both storage conventions (#746) — the same day the rest of the app files the
+ * set under.
+ */
+function sessionInstant(set: WorkoutSet): number | null {
+  if (set.createdAt) {
+    const t = Date.parse(set.createdAt)
+    if (Number.isNaN(t)) return null
+    return localDateKey(new Date(t)) === setDayKey(set.date) ? t : null
+  }
+  if (isEndOfDayJitter(set.date)) return null
+  const t = Date.parse(set.date)
+  return Number.isNaN(t) ? null : t
+}
+
 /** Pure: compute per-day session summary. */
 export function buildSessionSummary(input: SessionSummaryInput): SessionSummary {
   const { rawDate, exercises, xpPerSet, streakWeeks = 0 } = input
@@ -311,17 +346,17 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     }
   }
 
-  // Duration: span between earliest and latest *real-time* timestamps on the date.
-  // End-of-day jitter timestamps (bulk-add / legacy) are excluded entirely —
-  // including them in the max would inflate duration to ~all day when a user
-  // mixes a real-time session with a bulk-added set on the same date.
+  // Duration: span between the earliest and latest real log instants on the
+  // date — `createdAt` where present, else a legacy real-time `date`. See
+  // `sessionInstant` for which timestamps qualify and why. Sessions with no
+  // qualifying instant (all-legacy or fully back-dated) keep the em dash rather
+  // than inventing a span.
   let duration = '—'
   const realTimestamps: number[] = []
   for (const { sets } of todaysByExercise.values()) {
     for (const s of sets) {
-      if (isEndOfDayJitter(s.date)) continue
-      const t = Date.parse(s.date)
-      if (!Number.isNaN(t)) realTimestamps.push(t)
+      const t = sessionInstant(s)
+      if (t !== null) realTimestamps.push(t)
     }
   }
   if (realTimestamps.length > 1) {

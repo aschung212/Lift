@@ -40,10 +40,12 @@ export interface WorkoutSet {
   rpe?: number
   /**
    * Real timestamp the set was logged (ISO 8601), distinct from `date` (which is
-   * stamped end-of-day and carries no time). Optional and currently unpopulated —
-   * the set-time capture work fills it from logSet + the DB `created_at` column,
-   * which lights up time-of-day and within-workout exercise ordering in the AI
-   * Coach payload. See docs/ai-coach.md and the AI Coach issue.
+   * stamped end-of-day and carries no time of day). Stamped by `logSet` and
+   * round-tripped through the `sets.created_at` column (#846); absent only on
+   * legacy sets logged before that landed, which is why every consumer must treat
+   * it as optional. Drives time-of-day + within-workout exercise ordering in the
+   * AI Coach payload (docs/ai-coach.md) and the session-duration span on the
+   * workout summary and share cards (`sessionSummary.sessionInstant`, #1288).
    */
   createdAt?: string
   /**
