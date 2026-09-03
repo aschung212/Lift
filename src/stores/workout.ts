@@ -1558,7 +1558,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   }
 
   /**
-   * The bodyweight (lbs) that `logSet` WILL fold into this exercise's next set —
+   * The bodyweight (lbs) a write to this exercise WILL fold into its e1RM —
    * 0 for a normal exercise, and 0 while the lifter has no tracked bodyweight
    * (matching `logSet`, which then captures nothing).
    *
@@ -1569,8 +1569,13 @@ export const useWorkoutStore = defineStore('workout', () => {
    * back across. Exposed from the store rather than resolved in the component so
    * the preview and the write path read the same bodyweight through the same
    * guard and cannot disagree.
+   *
+   * Pass `setId` when previewing an EDIT: `updateSet` keeps the bodyweight
+   * captured at log time and only falls back to the current one for a set that
+   * predates the flag, so a preview reading today's weigh-in would show an
+   * estimate the save won't produce once the lifter's weight has drifted.
    */
-  function bodyweightFoldFor(exerciseId: string): number {
+  function bodyweightFoldFor(exerciseId: string, setId?: string): number {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     // Short-circuit BEFORE touching the bodyweight store: for a normal exercise
     // the fold is 0 whatever the lifter weighs, and reading `latestWeight`
@@ -1579,7 +1584,10 @@ export const useWorkoutStore = defineStore('workout', () => {
     // `bodyweightFold` still owns the rule; this only skips a lookup it would
     // discard.
     if (!exercise?.bodyweightLoaded) return 0
-    return bodyweightFold(exercise, _currentBodyweight())
+    const captured = setId
+      ? exercise.sets.find((s: WorkoutSet) => s.id === setId)?.bodyweight
+      : undefined
+    return bodyweightFold(exercise, captured ?? _currentBodyweight())
   }
 
   /**

@@ -182,9 +182,10 @@ const mockBodyweightState = reactive({ lbs: null as number | null })
 
 // Delegates to the REAL fold helper so the mock can't invent its own rule about
 // when bodyweight counts — that decision is exactly what #1328 was about.
-function bodyweightFoldFor(id: string): number {
+function bodyweightFoldFor(id: string, setId?: string): number {
   const ex = mockState.exercises.find(e => e.id === id)
-  return bodyweightFold(ex, mockBodyweightState.lbs)
+  const captured = setId ? ex?.sets.find(s => s.id === setId)?.bodyweight : undefined
+  return bodyweightFold(ex, captured ?? mockBodyweightState.lbs)
 }
 
 // Mirrors the real store's sets-per-day index (LIFT-1237): same `setDayKey`
@@ -2332,6 +2333,24 @@ describe('WorkoutTracker', () => {
       expect(card.text()).toContain('no added weight needed')
       // Informational: tapping it must not fill an unsavable 0 into the field.
       expect(card.classes()).not.toContain('repMaxResultTappable')
+    })
+
+    it('edits against the set\'s captured bodyweight, not today\'s weigh-in', async () => {
+      // The lifter has since cut to 150; `updateSet` keeps the 160 captured at
+      // log time, so the estimate must too or it shows a number the save can't
+      // produce.
+      mockBodyweightState.lbs = 150
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.findAll('.wtSetBtn').find(b => b.text() === 'Edit')!.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // The most recent set (25 x 5, captured at 160 lb) opens pre-filled.
+      expect(weightField(wrapper).value).toBe('25')
+      expect(wrapper.find('.repMaxResult').text()).toContain(`${PR} lbs`)
     })
 
     it('folds nothing when the lifter has never tracked their bodyweight', async () => {

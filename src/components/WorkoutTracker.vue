@@ -2134,11 +2134,15 @@ const isPerSide = computed(() => {
  * before it reaches the field, or it folds a second time on save: a 160 lb
  * lifter with a +25 x 5 pull-up PR was shown ~186 as an ADDED weight, which
  * saves as a ~404 e1RM and wins the PR it was only meant to match.
+ *
+ * In edit mode the set's OWN captured bodyweight is the offset — `updateSet`
+ * preserves it — so the estimate stays the one the save will store even after
+ * the lifter's weight has drifted.
  */
 const bodyweightFoldLbs = computed(() => {
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return 0
-  return store.bodyweightFoldFor(id)
+  return store.bodyweightFoldFor(id, editingSet.value?.setId)
 })
 
 
