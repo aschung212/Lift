@@ -1572,6 +1572,13 @@ export const useWorkoutStore = defineStore('workout', () => {
    */
   function bodyweightFoldFor(exerciseId: string): number {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    // Short-circuit BEFORE touching the bodyweight store: for a normal exercise
+    // the fold is 0 whatever the lifter weighs, and reading `latestWeight`
+    // anyway would take a reactive dependency on every bodyweight entry — so
+    // logging a weigh-in would invalidate the log sheet's estimate for nothing.
+    // `bodyweightFold` still owns the rule; this only skips a lookup it would
+    // discard.
+    if (!exercise?.bodyweightLoaded) return 0
     return bodyweightFold(exercise, _currentBodyweight())
   }
 

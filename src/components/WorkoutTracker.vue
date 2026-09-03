@@ -663,10 +663,7 @@
           <div v-else-if="bodyweightBeatsPRTarget" class="repMaxResult repMaxResultTarget">
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
             <span class="repMaxResultValue">Bodyweight × {{ reps }} 🏆</span>
-            <span class="repMaxPersonalBest">
-              Your bodyweight alone at {{ reps }} rep{{ reps === 1 ? '' : 's' }} beats
-              {{ isRecentBaseline ? 'your recent best' : 'your best' }} — no added weight needed
-            </span>
+            <span class="repMaxPersonalBest">Bodyweight alone at {{ reps }} rep{{ reps === 1 ? '' : 's' }} beats {{ isRecentBaseline ? 'your recent best' : 'your best' }} — no added weight needed</span>
           </div>
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="repsStr = '1'">
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
