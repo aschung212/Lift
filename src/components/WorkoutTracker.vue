@@ -657,6 +657,17 @@
             <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
             <span v-if="plateMode" class="repMaxPersonalBest">Tap to load plates</span>
           </div>
+          <!-- Bodyweight-loaded and the lifter's own bodyweight at this rep count
+               already beats their best — no added weight to suggest (#1328).
+               Informational only: "add nothing" isn't a value the field can hold. -->
+          <div v-else-if="bodyweightBeatsPRTarget" class="repMaxResult repMaxResultTarget">
+            <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
+            <span class="repMaxResultValue">Bodyweight × {{ reps }} 🏆</span>
+            <span class="repMaxPersonalBest">
+              Your bodyweight alone at {{ reps }} rep{{ reps === 1 ? '' : 's' }} beats
+              {{ isRecentBaseline ? 'your recent best' : 'your best' }} — no added weight needed
+            </span>
+          </div>
           <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="repsStr = '1'">
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
@@ -997,6 +1008,7 @@ import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, defaultBarWeight, LBS_PLATES, KG_PLATES, type PlateSet } from '../lib/plateCalculator'
 import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
 import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
+import { epley } from '../lib/epley'
 import { scoreSet } from '../lib/setScoring'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
@@ -1644,6 +1656,10 @@ const intensityTable = computed<IntensityRow[]>(() => {
     maxReps: intensityMaxReps.value,
     plateMode: plateMode.value,
     unit: weightUnit.value,
+    // The anchor is an EFFECTIVE 1RM but each row is filled into the weight
+    // field, which means ADDED weight — the generator subtracts the fold before
+    // it ceils so the number it hands back is actually loadable (#1328).
+    baseLoadLbs: bodyweightFoldLbs.value,
   })
 })
 
@@ -2106,6 +2122,26 @@ const currentBarWeight = computed(() => {
 const isPerSide = computed(() => {
   const ex = store.exercises.find(e => e.id === selectedExerciseId.value)
   return (ex?.plateCountMode ?? 'per-side') === 'per-side'
+})
+
+/**
+ * The bodyweight (lbs) the store will fold into this exercise's next set — the
+ * offset between the two weight spaces this sheet straddles (#1328), and 0 for
+ * every normal exercise.
+ *
+ * The weight field, the routine ladder, and the last-session chips are all ADDED
+ * weight (`set.weight`). Everything derived from `estimated1RM` — the live
+ * estimate, the PR badge, the to-beat card, the intensity anchor — is EFFECTIVE
+ * load, because `logSet` folds bodyweight in before storing it (LIFT-834). A
+ * suggestion inverted out of a PR therefore has to come back across this offset
+ * before it reaches the field, or it folds a second time on save: a 160 lb
+ * lifter with a +25 x 5 pull-up PR was shown ~186 as an ADDED weight, which
+ * saves as a ~404 e1RM and wins the PR it was only meant to match.
+ */
+const bodyweightFoldLbs = computed(() => {
+  const id = selectedExerciseId.value
+  if (!id || id === '__new__') return 0
+  return store.bodyweightFoldFor(id)
 })
 
 
@@ -2694,18 +2730,20 @@ function openRestTimer() {
 }
 
 
-const liveEstimate = computed(() => {
+// The estimate this sheet shows must be the number `logSet` will store, so it
+// runs the same `epley()` over the same folded load (#1328) rather than an
+// inlined copy of the formula over the bare field value. On a bodyweight-loaded
+// pull-up the two differed by the lifter's entire bodyweight: "+25 x 5" read as
+// a ~29 lb estimated 1RM against a stored PR of ~216, so the badge below could
+// never fire no matter how heavy the set.
+const liveEstimateLbs = computed<number | null>(() => {
   if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
-  const w = toLbs(weight.value)
-  const est = reps.value === 1 ? w : w * (1 + reps.value / 30)
-  return displayWeight(Math.round(est))
+  return epley(toLbs(weight.value) + bodyweightFoldLbs.value, reps.value)
 })
 
-const liveEstimateLbs = computed(() => {
-  if (!weight.value || weight.value <= 0 || !reps.value || reps.value < 1) return null
-  const w = toLbs(weight.value)
-  return reps.value === 1 ? Math.round(w) : Math.round(w * (1 + reps.value / 30))
-})
+const liveEstimate = computed(() =>
+  liveEstimateLbs.value === null ? null : displayWeight(liveEstimateLbs.value),
+)
 
 const isNewPR = computed(() => {
   if (!liveEstimateLbs.value || isEditMode.value) return false
@@ -2720,7 +2758,13 @@ const isNewPR = computed(() => {
 
 // ── PR target suggestions (inverse Epley) ──────────────────────
 // When only one field is filled, show what's needed in the other to beat the PR
-const prTargetWeight = computed<number | null>(() => {
+//
+// The PR is an EFFECTIVE load, so inverting it yields an effective weight; what
+// the field wants is the ADDED weight, hence the un-fold (#1328). Null covers
+// two distinct cases — nothing to beat, and bodyweight alone already beating it
+// (`bodyweightBeatsPRTarget` below owns that one, since there is no positive
+// weight to suggest).
+const prTargetAddedLbs = computed<number | null>(() => {
   if (isEditMode.value || !reps.value || reps.value < 1) return null
   // Show PR suggestion when weight is empty; show live estimate when weight is filled
   if (weight.value && weight.value > 0) return null
@@ -2730,7 +2774,14 @@ const prTargetWeight = computed<number | null>(() => {
   if (pr <= 0) return null
   // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
   const target = pr + 0.5
-  const rawLbs = reps.value === 1 ? Math.ceil(target) : Math.ceil(target / (1 + reps.value / 30))
+  const effectiveLbs = reps.value === 1 ? target : target / (1 + reps.value / 30)
+  return effectiveLbs - bodyweightFoldLbs.value
+})
+
+const prTargetWeight = computed<number | null>(() => {
+  const addedLbs = prTargetAddedLbs.value
+  if (addedLbs === null || addedLbs <= 0) return null
+  const rawLbs = Math.ceil(addedLbs)
   // Round up to nearest achievable weight increment (5 lbs or 2.5 kg)
   // Round in display-unit space to avoid fractional conversion errors
   if (weightUnit.value === 'kg') {
@@ -2741,6 +2792,15 @@ const prTargetWeight = computed<number | null>(() => {
   const targetLbs = Math.ceil(rawLbs / 5) * 5
   return targetLbs
 })
+
+// A bodyweight-loaded lifter whose own bodyweight at this rep count already
+// beats their best needs no added weight — a real state, not an error, and the
+// weight-axis twin of `prTargetReps === 0`. Informational rather than tappable:
+// the target is "add nothing", and the weight field cannot hold that (a set
+// needs a positive weight to save).
+const bodyweightBeatsPRTarget = computed(
+  () => bodyweightFoldLbs.value > 0 && prTargetAddedLbs.value !== null && prTargetAddedLbs.value <= 0,
+)
 
 // ── Live XP preview (shown when both weight and reps are filled) ──
 // Debounced XP preview — the underlying calculation is expensive (1RM, rep PR,
@@ -2817,7 +2877,9 @@ const prTargetReps = computed<number | null>(() => {
   if (!id || id === '__new__') return null
   const pr = store.getExercisePR(id, prBaselineDate.value)
   if (pr <= 0) return null
-  const wLbs = toLbs(weight.value)
+  // The PR is an effective load, so the typed ADDED weight has to be folded
+  // before it can be compared against it (#1328).
+  const wLbs = toLbs(weight.value) + bodyweightFoldLbs.value
   // Account for Epley rounding: round(w * (1 + r/30)) > pr triggers at pr + 0.5
   if (Math.round(wLbs) > pr) return 0 // any rep beats it (1RM at this weight already exceeds PR)
   const needed = Math.ceil(30 * ((pr + 0.5) / wLbs - 1))

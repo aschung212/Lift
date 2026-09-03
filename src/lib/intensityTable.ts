@@ -31,9 +31,16 @@ import { weightToPlates, LBS_PLATES, type PlateSet } from './plateCalculator'
 export interface IntensityRow {
   /** Rep count this row targets. */
   reps: number
-  /** Total weight in lbs, ceiled to an achievable increment (≥ the exact target). */
+  /**
+   * The LOADABLE weight in lbs, ceiled to an achievable increment (≥ the exact
+   * target) — what goes in the log sheet's weight field. With a `baseLoadLbs`
+   * this is the ADDED weight only, not the total the lifter moves.
+   */
   weightLbs: number
-  /** Estimated 1RM of `weightLbs` at `reps`, in lbs (1 rep = the weight itself). */
+  /**
+   * Estimated 1RM of the full load (`baseLoadLbs + weightLbs`) at `reps`, in lbs
+   * (1 rep = the weight itself) — the space PRs are stored and compared in.
+   */
   e1rm: number
   /** Per-side plates for this weight, or null for non-per-side (machine) loading. */
   plates: PlateSet | null
@@ -58,6 +65,19 @@ export interface IntensityTableOptions {
   plateMode?: boolean
   /** Display unit, used only for numpad rounding (kg rounds in kg-space). Default 'lbs'. */
   unit?: 'lbs' | 'kg'
+  /**
+   * A load that is always present and cannot be changed by plates — the
+   * lifter's bodyweight on a `bodyweightLoaded` exercise (#1328). Same unit as
+   * `oneRepMaxLbs`. Default 0.
+   *
+   * Targets are MET by `baseLoadLbs + weightLbs`, but only `weightLbs` is
+   * loadable, so the offset has to come off BEFORE the ceiling: subtracting it
+   * from an already-ceiled total leaves a weight that is not on the increment
+   * grid at all (a 163.4 lb lifter would be told to add 16.6 lb). Rep rows the
+   * lifter's own bodyweight already covers fall out through the same
+   * below-the-bar / non-positive guards a too-light target always has.
+   */
+  baseLoadLbs?: number
 }
 
 /** Default number of rep rows shown in the intensity table. */
@@ -174,6 +194,10 @@ function ceilToLoadable(rawLbs: number, barWeight: number, increment: number): n
  * 2.5 kg, in kg-space) increment with no bar offset. In plate mode a target
  * below the empty bar is dropped (you can't load less than the bar).
  *
+ * `options.baseLoadLbs` shifts the whole table into ADDED space for a
+ * bodyweight-loaded exercise: the target is still met by the FULL load (which is
+ * what `e1rm` reports), but `weightLbs` is only the part the lifter can load.
+ *
  * Returns an empty array when there is nothing meaningful to show — a
  * non-positive 1RM, or a non-positive intensity.
  */
@@ -189,11 +213,13 @@ export function generateIntensityTable(
     maxReps = DEFAULT_INTENSITY_MAX_REPS,
     plateMode = true,
     unit = 'lbs',
+    baseLoadLbs = 0,
   } = options
 
   if (!Number.isFinite(oneRepMaxLbs) || oneRepMaxLbs <= 0) return []
   if (!Number.isFinite(intensityPct) || intensityPct <= 0) return []
 
+  const baseLoad = Number.isFinite(baseLoadLbs) && baseLoadLbs > 0 ? baseLoadLbs : 0
   const targetE1RM = oneRepMaxLbs * (intensityPct / 100)
   const increment = smallestIncrement(denominations, perSide)
   const cap = sanitizeIntensityMaxReps(maxReps)
@@ -203,7 +229,11 @@ export function generateIntensityTable(
     // Match the app's e1RM convention (see prTargetsTable / xp): a single rep IS
     // the 1RM — no Epley multiplier — so 100% intensity at 1 rep is the 1RM
     // itself. Only multi-rep sets get the (1 + reps/30) factor.
-    const raw = r === 1 ? targetE1RM : targetE1RM / (1 + r / 30)
+    const target = r === 1 ? targetE1RM : targetE1RM / (1 + r / 30)
+    // Everything below rounds the LOADABLE portion, so the offset comes off
+    // first — ceiling the total and subtracting afterwards lands off the
+    // increment grid (#1328).
+    const raw = target - baseLoad
 
     let weightLbs: number
     let plates: PlateSet | null = null
@@ -222,8 +252,12 @@ export function generateIntensityTable(
     }
 
     // Defensive guard against a non-positive row (e.g. a degenerate 0 target).
+    // With a base load this is also the "your bodyweight already covers this rep
+    // count" case — nothing to add, so there is no set to suggest.
     if (weightLbs <= 0) continue
-    const e1rm = r === 1 ? weightLbs : Math.round(weightLbs * (1 + r / 30))
+    // e1RM is of the FULL load, matching how the set will be stored and compared.
+    const load = weightLbs + baseLoad
+    const e1rm = r === 1 ? load : Math.round(load * (1 + r / 30))
     rows.push({ reps: r, weightLbs, e1rm, plates })
   }
 

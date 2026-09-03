@@ -20,7 +20,7 @@ import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachA
 import { sanitizeExerciseGyms } from '../lib/gyms'
 import { mapRemoteExercise, mapRemoteSet } from '../lib/remoteRows'
 import { fetchAllRows } from '../lib/supabasePagination'
-import { effectiveSetWeight } from '../lib/bodyweightLoad'
+import { bodyweightFold, effectiveSetWeight } from '../lib/bodyweightLoad'
 import { attemptedNextRep, pickTopSet } from '../lib/setEffort'
 import { useBodyweightStore } from './bodyweight'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -1558,6 +1558,24 @@ export const useWorkoutStore = defineStore('workout', () => {
   }
 
   /**
+   * The bodyweight (lbs) that `logSet` WILL fold into this exercise's next set —
+   * 0 for a normal exercise, and 0 while the lifter has no tracked bodyweight
+   * (matching `logSet`, which then captures nothing).
+   *
+   * This is the log sheet's window onto the ADDED↔EFFECTIVE offset (#1328).
+   * Every 1RM surface in the log sheet works in ADDED space (that is what the
+   * weight field means) while `estimated1RM` — and therefore `getExercisePR` —
+   * is stored EFFECTIVE, so a suggestion inverted out of a PR has to be brought
+   * back across. Exposed from the store rather than resolved in the component so
+   * the preview and the write path read the same bodyweight through the same
+   * guard and cannot disagree.
+   */
+  function bodyweightFoldFor(exerciseId: string): number {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    return bodyweightFold(exercise, _currentBodyweight())
+  }
+
+  /**
    * Returns the sets from the most recent session (day) for an exercise,
    * excluding today. Used for "Last Session" quick-fill in the log modal.
    * Returns { date, sets } or null if no prior session exists.
@@ -1888,6 +1906,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setsLoggedOn,
     getExercisePR,
     getExercisePRSet,
+    bodyweightFoldFor,
     getLastSession,
     getUsualLadder,
     getOverloadSuggestion
