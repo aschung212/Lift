@@ -63,6 +63,9 @@ describe('isRetryableSyncFailure (LIFT-1321)', () => {
 
   it('retries an expired token so the post-refresh attempt can land', () => {
     expect(isRetryableSyncFailure({ code: 'PGRST301', message: 'JWT expired' }, 401)).toBe(true)
+    // A 401 whose body this app can't parse (an API gateway, a proxy) must not
+    // fall into the permanent 4xx bucket — it is still a token problem.
+    expect(isRetryableSyncFailure({ message: 'no' }, 401)).toBe(true)
   })
 
   it('retries 5xx, 408 and 429 — the server may answer differently next time', () => {

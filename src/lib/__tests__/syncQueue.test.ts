@@ -173,6 +173,20 @@ describe('SyncQueue', () => {
     expect(op).toHaveBeenCalledTimes(6) // 1 initial + 5 retries
   })
 
+  it('refreshes the session on a 401 whose body it cannot parse as an auth error', async () => {
+    // `isAuthError` reads the error BODY; the HTTP status lives on the envelope
+    // beside it. An opaque 401 from a proxy would otherwise skip the refresh
+    // AND be bucketed as a permanent 4xx.
+    const queue = new SyncQueue(100)
+    const op = vi.fn().mockResolvedValue({ data: null, status: 401, error: { message: 'no' } })
+
+    queue.enqueue('set:s1', op)
+    await queue.flush()
+
+    expect(ensureFreshSessionSpy).toHaveBeenCalledTimes(1)
+    expect(queue.pending).toBe(1) // retried after the refresh, not abandoned
+  })
+
   it('does NOT refresh the session for a resolved network failure', async () => {
     const queue = new SyncQueue(100)
     queue.enqueue('set:s1', vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT))

@@ -382,18 +382,30 @@ export class SyncQueue {
    */
   private _settleFailure(
     result: PromiseSettledResult<unknown>,
-  ): { error: unknown; retryable: boolean } | null {
+  ): { error: unknown; retryable: boolean; auth: boolean } | null {
     if (result.status === 'rejected') {
       // A throw carries no response envelope, so classify off the error alone.
       // A bare `Error` with no code stays retryable — the pre-LIFT-1321
       // rejection behavior.
-      return { error: result.reason, retryable: isRetryableSyncFailure(result.reason) }
+      return {
+        error: result.reason,
+        retryable: isRetryableSyncFailure(result.reason),
+        auth: isAuthError(result.reason),
+      }
     }
     const val = result.value as { error?: unknown; status?: unknown } | null | undefined
     if (!val || typeof val !== 'object') return null
     const error = val.error
     if (!error) return null
-    return { error, retryable: isRetryableSyncFailure(error, val.status) }
+    // `isAuthError` reads the error BODY, which for PostgREST carries PGRST301
+    // on an expiry — but the HTTP status lives on the envelope beside it, so a
+    // 401 with a body this app can't parse (an API gateway, a proxy) would
+    // otherwise skip the once-per-batch session refresh entirely.
+    return {
+      error,
+      retryable: isRetryableSyncFailure(error, val.status),
+      auth: isAuthError(error) || val.status === 401,
+    }
   }
 
   /**
@@ -555,8 +567,8 @@ export class SyncQueue {
           return
         }
         hasFailure = true
-        const { error, retryable } = failure
-        if (isAuthError(error)) sawAuthError = true
+        const { error, retryable, auth } = failure
+        if (auth) sawAuthError = true
         const op = entries[i][1]
         const prevAttempt = this._attemptMap.get(key) ?? 0
         const attempt = prevAttempt + 1
@@ -571,10 +583,10 @@ export class SyncQueue {
           // it skips the five identical round-trips and leaves the queue now
           // (LIFT-1321). Both land here because the END STATE is the same.
           //
-          // The in-memory op is dropped,
-          // but the DURABLE journal entry is deliberately RETAINED (LIFT-1229)
-          // so the write replays on the next launch via rehydrate() instead of
-          // being lost. Previously the entry was deleted here, leaving
+          // The in-memory op is dropped, but the DURABLE journal entry is
+          // deliberately RETAINED (LIFT-1229) so the write replays on the next
+          // launch via rehydrate() instead of being lost. Previously the entry
+          // was deleted here, leaving
           // reconciliation in the store's _fetchFromSupabase as the only
           // recovery — but that path only re-pushes missing *sets*, so an
           // exhausted exercise-metadata write (rename / tags / gyms / archive /

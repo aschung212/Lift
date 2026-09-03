@@ -93,7 +93,8 @@ export function classifySyncError(err: unknown): SyncErrorKind {
 export function isRetryableSyncFailure(error: unknown, status?: unknown): boolean {
   // An expired token is retryable by construction: the queue refreshes the
   // session once per batch, so the scheduled retry runs with a fresh JWT
-  // (LIFT-784).
+  // (LIFT-784). A 401 whose body `isAuthError` can't read is caught by the
+  // status check below — never let an opaque 401 fall into the permanent bucket.
   if (isAuthError(error)) return true
   // A transport failure. postgrest-js RESOLVES these as
   // `{ error: { message: 'TypeError: Failed to fetch', code: '' }, status: 0 }`
@@ -102,6 +103,7 @@ export function isRetryableSyncFailure(error: unknown, status?: unknown): boolea
   if (classifySyncError(error) === 'network') return true
   if (typeof status === 'number') {
     if (status === 0) return true                     // never reached the server
+    if (status === 401) return true                   // token problem, refreshable
     if (status === 408 || status === 429) return true // timeout / rate limited
     if (status >= 500) return true                    // server-side, may recover
     if (status >= 400) return false                   // understood, and refused
