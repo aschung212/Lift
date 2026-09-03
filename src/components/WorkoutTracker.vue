@@ -624,13 +624,15 @@
                     v-for="(row, i) in intensityTable"
                     :key="row.reps"
                     :class="['wtPrTargetsRow', { wtPrTargetsRowActive: intensityUsed[i] }]"
-                    :aria-label="`${displayWeight(row.weightLbs)} ${weightUnit} for ${row.reps} reps, ${displayWeight(row.e1rm)} ${weightUnit} estimated 1RM`"
+                    :aria-label="`${row.weight} ${weightUnit} for ${row.reps} reps, ${row.e1rm} ${weightUnit} estimated 1RM`"
                     @click="fillFromIntensity(row, i)"
                   >
                     <span class="wtPrTargetsReps">{{ row.reps }}</span>
                     <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
-                    <span class="wtPrTargetsWeight">{{ displayWeight(row.weightLbs) }} {{ weightUnit }}</span>
-                    <span class="wtPrTargetsE1rm">~{{ displayWeight(row.e1rm) }} {{ weightUnit }} e1RM</span>
+                    <!-- Rows are already in the display unit (LIFT-1315) — running
+                         them through displayWeight() again would convert twice. -->
+                    <span class="wtPrTargetsWeight">{{ row.weight }} {{ weightUnit }}</span>
+                    <span class="wtPrTargetsE1rm">~{{ row.e1rm }} {{ weightUnit }} e1RM</span>
                   </button>
                 </div>
                 <p v-else class="wtIntensityEmpty">Nothing loadable at {{ intensityPct }}% — slide higher.</p>
@@ -1637,10 +1639,15 @@ const intensityPresets = computed<number[]>(() => _prefs.intensityPresets)
 const intensityTable = computed<IntensityRow[]>(() => {
   const oneRM = intensityOneRM.value
   if (oneRM === null) return []
-  return generateIntensityTable(oneRM, intensityPct.value, {
+  // The generator works in DISPLAY units — the same space as the bar and the
+  // denominations it is handed (LIFT-1211). The canonical-lbs PR crosses that
+  // boundary here and nowhere else: passing it raw alongside a kg bar and kg
+  // plates mixed the two spaces, so a kg row labelled 69.2 filled the field
+  // with 152.5 and one tap could save a fake all-time PR (LIFT-1315).
+  return generateIntensityTable(displayWeight(oneRM), intensityPct.value, {
     barWeight: currentBarWeight.value,
     perSide: isPerSide.value,
-    denominations: weightUnit.value === 'kg' ? KG_PLATES : LBS_PLATES,
+    denominations: activeDenominations.value,
     maxReps: intensityMaxReps.value,
     plateMode: plateMode.value,
     unit: weightUnit.value,
@@ -1665,7 +1672,8 @@ function fillFromIntensity(row: IntensityRow, index: number) {
     currentPlates.value = [...row.plates]
     syncPlateWeight()
   } else {
-    weightStr.value = String(displayWeight(row.weightLbs))
+    // Already display units — the same space weightStr is read in.
+    weightStr.value = String(row.weight)
   }
   repsStr.value = String(row.reps)
   intensityUsed.value = { ...intensityUsed.value, [index]: true }

@@ -20,43 +20,61 @@
  * Every row also carries its `e1rm` so the user can see, per option, how the
  * weight relates to their max.
  *
- * All weights are LBS (the app's canonical storage unit); the UI converts for
- * display. Plate breakdowns are PER SIDE and only computed for barbell
- * (per-side) loading — machine/total loading leaves `plates` null.
+ * Every weight here — in, out, and in between — is in the user's DISPLAY unit,
+ * the same space as the `barWeight` and `denominations` this module is handed
+ * (LIFT-1211: the whole plate subsystem operates in display units, so a kg user
+ * stacks kg plates on a kg bar). Canonical lbs cross the boundary at the call
+ * site: `displayWeight()` on the 1RM going in, `toLbs()` at set-save time.
+ *
+ * It used to take a LBS one-rep-max while being handed a display-unit bar and
+ * display-unit plates, so for kg users the ceiling, the below-the-bar guard, and
+ * the plate decomposition all mixed the two spaces: a row labelled 69.2 kg
+ * filled the weight field with 152.5 kg, and one tap on a warmup-looking row
+ * could save a fake all-time PR (LIFT-1315). The spaces coincide for lbs users,
+ * which is why it was invisible on master.
+ *
+ * Plate breakdowns are PER SIDE and only computed for barbell (per-side)
+ * loading — machine/total loading leaves `plates` null.
  */
 
-import { weightToPlates, LBS_PLATES, type PlateSet } from './plateCalculator'
+import { weightToPlates, defaultBarWeight, LBS_PLATES, KG_PLATES, type PlateSet } from './plateCalculator'
 
 /** A concrete, plate-ceiled intensity row ready to display or log. */
 export interface IntensityRow {
   /** Rep count this row targets. */
   reps: number
-  /** Total weight in lbs, ceiled to an achievable increment (≥ the exact target). */
-  weightLbs: number
-  /** Estimated 1RM of `weightLbs` at `reps`, in lbs (1 rep = the weight itself). */
+  /** Total weight in the DISPLAY unit, ceiled to an achievable increment (≥ the exact target). */
+  weight: number
+  /** Estimated 1RM of `weight` at `reps`, same unit (1 rep = the weight itself). */
   e1rm: number
   /** Per-side plates for this weight, or null for non-per-side (machine) loading. */
   plates: PlateSet | null
 }
 
 export interface IntensityTableOptions {
-  /** Bar/base weight in lbs. Default 45 (standard Olympic barbell). */
+  /**
+   * Bar/base weight in the DISPLAY unit. Defaults to the standard bar for
+   * `unit` (45 lbs / 20 kg) — never a hardcoded 45, which a kg user would read
+   * as a 45 kg bar (LIFT-1223).
+   */
   barWeight?: number
   /** Whether the load is per-side (barbell) vs total (machine/cable). Default true. */
   perSide?: boolean
-  /** Available plate denominations, per side. Default {@link LBS_PLATES}. */
+  /** Available plate denominations, per side. Defaults to the set for `unit`. */
   denominations?: number[]
   /** How many rep rows (1..maxReps) to compute. Default {@link DEFAULT_INTENSITY_MAX_REPS}. */
   maxReps?: number
   /**
    * Round to loadable plates above the bar and attach per-side plate
    * breakdowns. When false (numpad mode), round to a clean numeric increment
-   * (5 lb, or 2.5 kg in kg-space) with no plate breakdown — mirroring the PR
-   * targets table so numpad users never see bar-offset fractional weights.
-   * Default true.
+   * (5 lbs / 2.5 kg) with no plate breakdown — mirroring the PR targets table
+   * so numpad users never see bar-offset fractional weights. Default true.
    */
   plateMode?: boolean
-  /** Display unit, used only for numpad rounding (kg rounds in kg-space). Default 'lbs'. */
+  /**
+   * Which display unit the weights are in. Selects the numpad rounding step and
+   * the defaults for `barWeight`/`denominations`. Default 'lbs'.
+   */
   unit?: 'lbs' | 'kg'
 }
 
@@ -129,7 +147,6 @@ export function pickNewPresetValue(presets: number[]): number | null {
   return null
 }
 
-const KG_PER_LB = 0.453592
 const LBS_NUMPAD_STEP = 5
 const KG_NUMPAD_STEP = 2.5
 
@@ -152,50 +169,72 @@ function smallestIncrement(denominations: number[], perSide: boolean): number {
 }
 
 /**
- * Round a raw target UP to the nearest achievable total weight at/above the
- * bar. Ceiling (not nearest/floor) guarantees the resulting weight's intensity
- * MEETS OR EXCEEDS the selected intensity — so 100% reaches PR-beating loads.
+ * Normalize a computed weight to a clean number — it is both rendered directly
+ * and written into the log sheet's weight field, so it has to be a value the
+ * user could have typed and the plate calculator could decompose.
+ *
+ * This is the normalization every row used to inherit from the `displayWeight()`
+ * the caller piped it through (LIFT-1315), but at TWO decimals rather than one:
+ * total-mode kg loading steps by a single 1.25 kg plate, and `toFixed(1)` would
+ * round a legitimate 21.25 to an unloadable 21.3.
  */
-function ceilToLoadable(rawLbs: number, barWeight: number, increment: number): number {
-  const plateLoad = rawLbs - barWeight
-  if (plateLoad <= 0) return barWeight
-  const ceiled = Math.ceil(plateLoad / increment) * increment
-  return barWeight + ceiled
+function snapWeight(value: number): number {
+  return Math.round(value * 100) / 100
 }
 
 /**
- * Generate an intensity table at `intensityPct`% of `oneRepMaxLbs`.
+ * Round a raw target UP to the nearest achievable total weight at/above the
+ * bar. Ceiling (not nearest/floor) guarantees the resulting weight's intensity
+ * MEETS OR EXCEEDS the selected intensity — so 100% reaches PR-beating loads.
+ * `raw`, `barWeight`, and `increment` are all in the display unit.
+ */
+function ceilToLoadable(raw: number, barWeight: number, increment: number): number {
+  const plateLoad = raw - barWeight
+  if (plateLoad <= 0) return barWeight
+  const ceiled = Math.ceil(plateLoad / increment) * increment
+  return snapWeight(barWeight + ceiled)
+}
+
+/**
+ * Generate an intensity table at `intensityPct`% of `oneRepMax`.
+ *
+ * `oneRepMax` — and every weight returned — is in the DISPLAY unit named by
+ * `options.unit`, matching the bar and denominations. Callers holding the
+ * canonical-lbs PR convert once, on the way in.
  *
  * For each rep count 1..maxReps, inverts Epley (e1RM = w·(1 + reps/30); 1 rep =
  * the 1RM itself, no multiplier) to find the weight at the target intensity,
  * then rounds it UP so the resulting set meets or beats that intensity. The
  * rounding mode: plate mode ceils to a loadable plate increment above the bar
- * (and attaches a per-side breakdown); numpad mode ceils to a clean 5 lb (or
- * 2.5 kg, in kg-space) increment with no bar offset. In plate mode a target
- * below the empty bar is dropped (you can't load less than the bar).
+ * (and attaches a per-side breakdown); numpad mode ceils to a clean 5 lbs /
+ * 2.5 kg increment with no bar offset. In plate mode a target below the empty
+ * bar is dropped (you can't load less than the bar).
  *
  * Returns an empty array when there is nothing meaningful to show — a
  * non-positive 1RM, or a non-positive intensity.
  */
 export function generateIntensityTable(
-  oneRepMaxLbs: number,
+  oneRepMax: number,
   intensityPct: number,
   options: IntensityTableOptions = {},
 ): IntensityRow[] {
+  // `unit` is destructured first so the bar and plate defaults can follow it —
+  // a hardcoded 45/LBS_PLATES is read by a kg user as a 45 kg bar (LIFT-1223).
   const {
-    barWeight = 45,
+    unit = 'lbs',
+    barWeight = defaultBarWeight(unit),
     perSide = true,
-    denominations = LBS_PLATES,
+    denominations = unit === 'kg' ? KG_PLATES : LBS_PLATES,
     maxReps = DEFAULT_INTENSITY_MAX_REPS,
     plateMode = true,
-    unit = 'lbs',
   } = options
 
-  if (!Number.isFinite(oneRepMaxLbs) || oneRepMaxLbs <= 0) return []
+  if (!Number.isFinite(oneRepMax) || oneRepMax <= 0) return []
   if (!Number.isFinite(intensityPct) || intensityPct <= 0) return []
 
-  const targetE1RM = oneRepMaxLbs * (intensityPct / 100)
+  const targetE1RM = oneRepMax * (intensityPct / 100)
   const increment = smallestIncrement(denominations, perSide)
+  const numpadStep = unit === 'kg' ? KG_NUMPAD_STEP : LBS_NUMPAD_STEP
   const cap = sanitizeIntensityMaxReps(maxReps)
   const rows: IntensityRow[] = []
 
@@ -205,26 +244,30 @@ export function generateIntensityTable(
     // itself. Only multi-rep sets get the (1 + reps/30) factor.
     const raw = r === 1 ? targetE1RM : targetE1RM / (1 + r / 30)
 
-    let weightLbs: number
+    let weight: number
     let plates: PlateSet | null = null
     if (plateMode) {
       // Below the empty bar there's nothing to load; a target AT the bar is the
       // valid "just the bar" suggestion (ceilToLoadable returns barWeight).
       if (raw < barWeight) continue
-      weightLbs = ceilToLoadable(raw, barWeight, increment)
-      plates = perSide ? weightToPlates(weightLbs, barWeight, denominations) : null
-    } else if (unit === 'kg') {
-      // Ceil in kg-space so the displayed kg value is a clean 2.5 kg step.
-      const ceiledKg = Math.ceil((raw * KG_PER_LB) / KG_NUMPAD_STEP) * KG_NUMPAD_STEP
-      weightLbs = Math.round(ceiledKg / KG_PER_LB)
+      weight = ceilToLoadable(raw, barWeight, increment)
+      // The breakdown a per-side card shows is one sleeve's worth; total loading
+      // has no such halving, so it gets no breakdown. Pass the mode through
+      // rather than leaning on the default (LIFT-1312).
+      plates = perSide ? weightToPlates(weight, barWeight, denominations, perSide) : null
     } else {
-      weightLbs = Math.ceil(raw / LBS_NUMPAD_STEP) * LBS_NUMPAD_STEP
+      // Numpad mode: a clean step in the unit the user reads, no bar offset.
+      weight = snapWeight(Math.ceil(raw / numpadStep) * numpadStep)
     }
 
     // Defensive guard against a non-positive row (e.g. a degenerate 0 target).
-    if (weightLbs <= 0) continue
-    const e1rm = r === 1 ? weightLbs : Math.round(weightLbs * (1 + r / 30))
-    rows.push({ reps: r, weightLbs, e1rm, plates })
+    if (weight <= 0) continue
+    // Rounded to a whole unit — this is a `~`-prefixed context readout, not a
+    // loadable target. That leaves lbs output byte-identical to before the
+    // display-unit move; kg users trade a decimal place for a correct number
+    // (theirs was previously derived from the mixed-space weight).
+    const e1rm = r === 1 ? weight : Math.round(weight * (1 + r / 30))
+    rows.push({ reps: r, weight, e1rm, plates })
   }
 
   return rows
