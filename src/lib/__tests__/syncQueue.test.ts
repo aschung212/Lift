@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SyncQueue, syncStatus, _resetRateLimit, _resetCircuitBreaker, _getCircuitBreakerState } from '../syncQueue'
+import { FAKE_NETWORK_ERROR_RESULT } from '../../__tests__/fakeSupabase'
+
+/**
+ * What a Supabase mutation ACTUALLY resolves with when the device is offline —
+ * postgrest-js catches the fetch rejection and resolves this envelope rather
+ * than rejecting (LIFT-1321). Sourced from the shared fake so this file and the
+ * store-level fakes cannot drift on the shape they call "offline".
+ */
+const FETCH_FAILURE_RESULT = FAKE_NETWORK_ERROR_RESULT
 
 // Mock supabase so the module loads (syncQueue checks supabase for the singleton)
 vi.mock('../supabase', () => ({ supabase: {}, isPreviewMode: { value: false } }))
@@ -138,19 +147,104 @@ describe('SyncQueue', () => {
     expect(ensureFreshSessionSpy).not.toHaveBeenCalled()
   })
 
-  it('treats a resolved non-auth error as the legacy success path (no retry storm)', async () => {
+  // ── Resolved failures (LIFT-1321) ──────────────────────────────
+  //
+  // postgrest-js CATCHES fetch rejections and resolves
+  // `{ error: { message: 'TypeError: Failed to fetch', code: '' }, status: 0 }`,
+  // so a Supabase mutation essentially never rejects when the device is offline.
+  // The queue used to count every resolved non-auth error as a SUCCESS: retries
+  // cleared, durable journal deleted, status 'synced'. That made the retry,
+  // backoff and journal-retention machinery unreachable for the app's single
+  // most common failure class.
+
+  it('treats a resolved fetch-failure envelope as a retryable failure, not a success (LIFT-1321)', async () => {
     const queue = new SyncQueue(100)
-    // A non-auth PostgREST error (e.g. unique violation) keeps the historical
-    // fulfilled-is-success behavior — it is not retried and not a refresh.
-    const op = vi.fn().mockResolvedValue({ error: { code: '23505', message: 'duplicate key' } })
+    const op = vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT)
+
+    queue.enqueue('set:s1', op)
+    await vi.advanceTimersByTimeAsync(100)
+
+    // Before LIFT-1321 this ran exactly once and reported 'synced'.
+    expect(op).toHaveBeenCalledTimes(1)
+    expect(syncStatus.value).not.toBe('synced')
+    expect(queue.pending).toBe(1) // queued for retry
+
+    await vi.runAllTimersAsync()
+    expect(op).toHaveBeenCalledTimes(6) // 1 initial + 5 retries
+  })
+
+  it('does NOT refresh the session for a resolved network failure', async () => {
+    const queue = new SyncQueue(100)
+    queue.enqueue('set:s1', vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT))
+
+    await vi.runAllTimersAsync()
+
+    // Being offline is not a token problem — a refresh would fail anyway.
+    expect(ensureFreshSessionSpy).not.toHaveBeenCalled()
+  })
+
+  it('retries a resolved 5xx — the server may answer differently next time', async () => {
+    const queue = new SyncQueue(100)
+    const op = vi.fn().mockResolvedValue({
+      data: null, status: 503, error: { code: '', message: 'service unavailable' },
+    })
+
+    queue.enqueue('set:s1', op)
+    await vi.runAllTimersAsync()
+
+    expect(op).toHaveBeenCalledTimes(6)
+    expect(syncStatus.value).toBe('error')
+  })
+
+  it('does NOT retry a resolved 4xx the server understood and refused', async () => {
+    const queue = new SyncQueue(100)
+    // A unique violation / RLS denial / schema-cache miss cannot change answer
+    // on a byte-for-byte replay, so it must not burn five more round-trips —
+    // but it IS a failure, so the status has to say so.
+    const op = vi.fn().mockResolvedValue({
+      data: null, status: 409, error: { code: '23505', message: 'duplicate key' },
+    })
 
     queue.enqueue('dup', op)
-    vi.advanceTimersByTime(100)
     await vi.runAllTimersAsync()
 
     expect(op).toHaveBeenCalledTimes(1)
     expect(ensureFreshSessionSpy).not.toHaveBeenCalled()
     expect(queue.pending).toBe(0)
+    expect(syncStatus.value).toBe('error')
+  })
+
+  it('a permanent failure does not shorten the retry budget of a later transient one', async () => {
+    const queue = new SyncQueue(100)
+    const permanent = vi.fn().mockResolvedValue({
+      data: null, status: 400, error: { code: 'PGRST204', message: "column 'gyms' not found" },
+    })
+    queue.enqueue('exercise:e1', permanent)
+    await vi.runAllTimersAsync()
+    expect(permanent).toHaveBeenCalledTimes(1)
+
+    // Same key, now failing transiently: it must still get all five retries.
+    const transient = vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT)
+    queue.enqueue('exercise:e1', transient)
+    await vi.runAllTimersAsync()
+
+    expect(transient).toHaveBeenCalledTimes(6)
+  })
+
+  it('reports offline (not error) when the batch fails while the browser is offline', async () => {
+    // App.vue's connectivity listener sets this same ref to 'offline'; a flush
+    // that overwrote it with 'error' would swap "Offline — changes saved
+    // locally" for "Sync failed" on every set logged in a dead-spot gym.
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    try {
+      const queue = new SyncQueue(100)
+      queue.enqueue('set:s1', vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT))
+      await vi.advanceTimersByTimeAsync(100)
+
+      expect(syncStatus.value).toBe('offline')
+    } finally {
+      onLine.mockRestore()
+    }
   })
 
   it('should clear all pending operations without executing them', () => {

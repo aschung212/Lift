@@ -70,3 +70,48 @@ export function classifySyncError(err: unknown): SyncErrorKind {
   }
   return 'unknown'
 }
+
+/**
+ * Is a failed WRITE worth attempting again in this session? (LIFT-1321)
+ *
+ * The write queue retries with exponential backoff, which only ever helps when
+ * the same request could plausibly get a different answer next time. Splitting
+ * failures this way keeps a dead-spot-in-the-gym network blip on the retry path
+ * while a request the server *understood and refused* leaves the queue after one
+ * attempt instead of burning five more identical round-trips over ~31 seconds.
+ *
+ * `status` is the PostgREST response envelope's HTTP status (postgrest-js puts
+ * it beside `error`, not on it), passed separately because it is the strongest
+ * signal available and the error body alone can't distinguish a 503 from a 409.
+ *
+ * Retryability is NOT about durability: `SyncQueue` retains the durable journal
+ * entry either way (LIFT-1229), so a permanently-refused write still replays on
+ * the next launch — which is exactly what recovers the LIFT-1169 window where
+ * the client ships a column ahead of the migration (a 400/PGRST204 today, a
+ * clean upsert once the schema catches up).
+ */
+export function isRetryableSyncFailure(error: unknown, status?: unknown): boolean {
+  // An expired token is retryable by construction: the queue refreshes the
+  // session once per batch, so the scheduled retry runs with a fresh JWT
+  // (LIFT-784).
+  if (isAuthError(error)) return true
+  // A transport failure. postgrest-js RESOLVES these as
+  // `{ error: { message: 'TypeError: Failed to fetch', code: '' }, status: 0 }`
+  // rather than rejecting, so the message classifier is the primary signal and
+  // the `status: 0` below is corroboration.
+  if (classifySyncError(error) === 'network') return true
+  if (typeof status === 'number') {
+    if (status === 0) return true                     // never reached the server
+    if (status === 408 || status === 429) return true // timeout / rate limited
+    if (status >= 500) return true                    // server-side, may recover
+    if (status >= 400) return false                   // understood, and refused
+  }
+  // No usable HTTP status (a thrown rejection, or a non-PostgREST shape). A
+  // PostgREST / SQLSTATE `code` means the request reached Postgres and was
+  // rejected on its merits — a constraint, an RLS policy, a schema-cache miss —
+  // so replaying it byte-for-byte cannot change the answer. Anything with no
+  // code at all is unclassifiable, and the safe default there is to retry
+  // rather than give up on a real write.
+  const code = (error as { code?: unknown } | null | undefined)?.code
+  return !(typeof code === 'string' && code.length > 0)
+}

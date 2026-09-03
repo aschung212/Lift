@@ -10,14 +10,14 @@
  *      `supabase.from(...)` chain — scanned straight out of the store files, so
  *      a store adopting a new method (e.g. `.limit()`) fails here until the fake
  *      grows to match, instead of silently passing against a stale shape.
- *   2. Each mode (`ok` / `reject` / `apiError`) honors the documented behavioral
- *      contract the sync tests depend on.
+ *   2. Each mode (`ok` / `networkError` / `reject` / `apiError`) honors the
+ *      documented behavioral contract the sync tests depend on.
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { createFakeSupabase, FAKE_SUPABASE_CHAIN_METHODS } from './fakeSupabase'
+import { createFakeSupabase, FAKE_SUPABASE_CHAIN_METHODS, FAKE_NETWORK_ERROR_RESULT } from './fakeSupabase'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const storesDir = resolve(here, '../stores')
@@ -148,6 +148,26 @@ describe('createFakeSupabase modes (LIFT-1009)', () => {
   it("'reject' mode rejects every query", async () => {
     const fake = createFakeSupabase({ mode: 'reject' })
     await expect(fake.from('sets').select('*').eq('user_id', 'u1')).rejects.toThrow('Network request failed')
+  })
+
+  it("'networkError' mode RESOLVES the envelope postgrest-js produces offline (LIFT-1321)", async () => {
+    // The whole point of this mode: a Supabase mutation does not reject when
+    // the device is offline — postgrest-js catches the fetch rejection and
+    // resolves `{ error, status: 0 }`. Modelling offline as a throw is what let
+    // SyncQueue count real offline writes as successes for months, green suite
+    // and all. `status: 0` + an empty `code` are the two markers that separate
+    // "never reached the server" from a real PostgREST rejection.
+    const fake = createFakeSupabase({ mode: 'networkError' })
+    const res = await fake.from('sets').upsert({ id: 's-1', weight: 100 })
+
+    expect(res.status).toBe(0)
+    expect(res.data).toBeNull()
+    expect(res.error).toMatchObject({ message: 'TypeError: Failed to fetch', code: '' })
+    expect(res).toEqual(FAKE_NETWORK_ERROR_RESULT)
+    // The write never reached the server, so the table is untouched…
+    expect(fake.tables.sets).toEqual([])
+    // …though the request was still issued, so it is recorded like apiError's.
+    expect(fake.upsertsFor('sets')).toHaveLength(1)
   })
 
   it("'apiError' mode resolves { data: null, error } without throwing", async () => {
