@@ -8,6 +8,7 @@
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
 import { setDayKey, localDateKey, todayISO } from './dates'
+import { effectiveSetWeight } from './bodyweightLoad'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ export interface TagVolumeEntry {
   tag: string
   /** Total sets in the period. */
   sets: number
-  /** Total volume (weight × reps) in the period, in display units. */
+  /** Total volume (effective weight × reps) in the period, in display units. */
   volume: number
 }
 
@@ -143,8 +144,21 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
   const today = input.referenceDate ?? todayISO()
   const { start, end, label } = periodBounds(input.period, today)
 
-  // Filter sets within the period
-  type SetWithExercise = WorkoutSet & { exerciseName: string; exerciseTags: string[]; exerciseId: string }
+  // Filter sets within the period.
+  //
+  // `effectiveWeight` is the bodyweight-inclusive load (LIFT-834) in STORED
+  // LBS, resolved here — the one place an exercise is still in scope — so the
+  // four volume sums below cannot each forget the fold the way they did until
+  // #1333. It is folded before `toDisplay` because `set.bodyweight` is stored
+  // in lbs like `set.weight`; converting first and folding after would add a
+  // pound count to a kilo count. For every non-bodyweight-loaded exercise it is
+  // exactly `set.weight`.
+  type SetWithExercise = WorkoutSet & {
+    exerciseName: string
+    exerciseTags: string[]
+    exerciseId: string
+    effectiveWeight: number
+  }
   const periodSets: SetWithExercise[] = []
 
   // Every `set.date` / `entry.date` in this file buckets through `setDayKey`
@@ -161,6 +175,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
           exerciseName: ex.name,
           exerciseTags: ex.tags,
           exerciseId: ex.id,
+          effectiveWeight: effectiveSetWeight(set, ex),
         })
       }
     }
@@ -169,7 +184,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
   // Summary stats
   const workoutDays = new Set(periodSets.map(s => setDayKey(s.date)))
   const totalSets = periodSets.length
-  const totalVolume = Math.round(periodSets.reduce((sum, s) => sum + toDisplay(s.weight) * s.reps, 0))
+  const totalVolume = Math.round(periodSets.reduce((sum, s) => sum + toDisplay(s.effectiveWeight) * s.reps, 0))
   const exerciseNames = new Set(periodSets.map(s => s.exerciseName))
 
   // ── Exercise e1RM progressions ──
@@ -208,7 +223,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
     const peakE1RM = Math.max(...timeline.map(t => t.e1RM))
     const startE1RM = timeline[0].e1RM
 
-    const exVolume = Math.round(sets.reduce((sum, s) => sum + toDisplay(s.weight) * s.reps, 0))
+    const exVolume = Math.round(sets.reduce((sum, s) => sum + toDisplay(s.effectiveWeight) * s.reps, 0))
 
     exerciseProgressions.push({
       name,
@@ -250,7 +265,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
   // ── Tag volume breakdown ──
   const tagMap = new Map<string, { sets: number; volume: number }>()
   for (const s of periodSets) {
-    const vol = toDisplay(s.weight) * s.reps
+    const vol = toDisplay(s.effectiveWeight) * s.reps
     for (const tag of s.exerciseTags) {
       const entry = tagMap.get(tag) ?? { sets: 0, volume: 0 }
       entry.sets++
@@ -270,7 +285,7 @@ export function buildTrainingReport(input: ReportInput): TrainingReport {
     const entry = weekMap.get(wk) ?? { days: new Set(), sets: 0, volume: 0 }
     entry.days.add(dk)
     entry.sets++
-    entry.volume += toDisplay(s.weight) * s.reps
+    entry.volume += toDisplay(s.effectiveWeight) * s.reps
     weekMap.set(wk, entry)
   }
 

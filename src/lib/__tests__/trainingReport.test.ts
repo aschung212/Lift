@@ -6,12 +6,14 @@ import type { BodyweightEntry } from '../../stores/bodyweight'
 function makeExercise(
   name: string,
   tags: string[],
-  sets: { date: string; weight: number; reps: number; estimated1RM: number }[],
+  sets: { date: string; weight: number; reps: number; estimated1RM: number; bodyweight?: number }[],
+  bodyweightLoaded = false,
 ): Exercise {
   return {
     id: `ex-${name.toLowerCase().replace(/\s+/g, '-')}`,
     name,
     tags,
+    ...(bodyweightLoaded ? { bodyweightLoaded: true } : {}),
     sets: sets.map((s, i) => ({ id: `set-${name}-${i}`, ...s })),
   }
 }
@@ -315,6 +317,72 @@ describe('buildTrainingReport', () => {
       // Volume should be in kg: 225*0.453592 * 5 ≈ 510
       expect(report.totalVolume).toBeGreaterThan(500)
       expect(report.totalVolume).toBeLessThan(520)
+    })
+  })
+
+  // #1333 — all four of this file's volume sums multiplied the raw `set.weight`,
+  // which on a bodyweightLoaded exercise is only the ADDED plate weight. The
+  // report is what the AI coach reads, so a pull-up block reached the model as
+  // near-zero volume and the digest read the lifter's hardest work as a deload.
+  describe('bodyweight-loaded volume (#1333)', () => {
+    const pullups = makeExercise(
+      'Pull-ups',
+      ['back'],
+      [
+        // Added 0 — the pure-bodyweight case LIFT-834 exists for. 185 × 10.
+        { date: '2026-04-06T10:00:00.000Z', weight: 0, reps: 10, estimated1RM: 246, bodyweight: 185 },
+        // Added 25 on a belt. (185 + 25) × 6.
+        { date: '2026-04-06T10:05:00.000Z', weight: 25, reps: 6, estimated1RM: 252, bodyweight: 185 },
+      ],
+      true,
+    )
+    const EXPECTED = 185 * 10 + 210 * 6 // 3110; was 0 + 150 = 150
+
+    it('folds bodyweight into every volume the report emits', () => {
+      const report = buildTrainingReport({ ...baseInput, exercises: [pullups] })
+
+      expect(report.totalVolume).toBe(EXPECTED)
+      expect(report.exerciseProgressions[0].totalVolume).toBe(EXPECTED)
+      expect(report.tagVolume.find(t => t.tag === 'back')?.volume).toBe(EXPECTED)
+      // 2026-04-06 is a Monday, so the week bucket is its own start.
+      expect(report.weeklyConsistency.find(w => w.weekStart === '2026-04-06')?.volume).toBe(EXPECTED)
+    })
+
+    it('folds in lbs BEFORE converting to display units', () => {
+      // `set.bodyweight` is stored in lbs like `set.weight`, so converting
+      // first and folding after would add a pound count to a kilo count —
+      // the mixed-space failure LIFT-1315 fixed in the intensity table.
+      const toKg = (lbs: number) => lbs * 0.453592
+      const report = buildTrainingReport({
+        ...baseInput,
+        exercises: [pullups],
+        toDisplayUnits: toKg,
+        unitLabel: 'kg',
+      })
+
+      expect(report.totalVolume).toBe(Math.round(toKg(EXPECTED)))
+      // Fold-after-convert would land near 185*10 + 210*6 with only the added
+      // weight converted — an order of magnitude out. Pin the gap explicitly.
+      expect(report.totalVolume).toBeLessThan(EXPECTED / 2)
+    })
+
+    it('leaves a normal barbell lift untouched even when its sets carry a bodyweight', () => {
+      const squat = makeExercise('Squat', ['legs'], [
+        { date: '2026-04-06T10:00:00.000Z', weight: 315, reps: 5, estimated1RM: 368, bodyweight: 185 },
+      ])
+      const report = buildTrainingReport({ ...baseInput, exercises: [squat] })
+      expect(report.totalVolume).toBe(1575)
+    })
+
+    it('degrades to the added weight when a set captured no bodyweight', () => {
+      const dips = makeExercise(
+        'Dips',
+        ['chest'],
+        [{ date: '2026-04-06T10:00:00.000Z', weight: 45, reps: 8, estimated1RM: 57 }],
+        true,
+      )
+      const report = buildTrainingReport({ ...baseInput, exercises: [dips] })
+      expect(report.totalVolume).toBe(360)
     })
   })
 })

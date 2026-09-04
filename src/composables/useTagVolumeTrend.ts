@@ -2,11 +2,12 @@ import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Exercise } from '../stores/workout'
 import type { TimeSeriesEntry } from './useSVGTimeSeries'
 import { localDateKey } from '../lib/dates'
+import { effectiveSetWeight } from '../lib/bodyweightLoad'
 
 export interface UseTagVolumeTrendReturn {
   /**
-   * Per-tag weekly training volume (weight × reps, in stored lbs) across the
-   * full set history. Each tag's series runs from that tag's first trained week
+   * Per-tag weekly training volume (effective weight × reps, in stored lbs)
+   * across the full set history. Each tag's series runs from that tag's first trained week
    * to the most recent trained week across ALL tags, filling intervening (and
    * trailing) gaps with zero so a neglected muscle group shows a declining /
    * flat-zero tail rather than silently dropping off the chart.
@@ -49,7 +50,7 @@ export function useTagVolumeTrend(exercises: Ref<Exercise[]>): UseTagVolumeTrend
       for (const set of exercise.sets) {
         const wk = mondayOfWeek(set.date.slice(0, 10))
         if (globalLast === null || wk > globalLast) globalLast = wk
-        const vol = set.weight * set.reps
+        const vol = effectiveSetWeight(set, exercise) * set.reps
         for (const tag of exercise.tags) {
           let weeks = byTag.get(tag)
           if (!weeks) {
