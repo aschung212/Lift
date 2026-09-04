@@ -449,13 +449,16 @@
             <div class="iosSettingsSection">
               <span class="iosSettingsHeader">Input Mode</span>
               <div class="iosSettingsGroup">
+                <!-- Named by the visible row label, not a duplicated
+                     `aria-label` string — see EditExerciseModal (LIFT-1308). -->
                 <div class="iosSettingsRow">
-                  <span class="iosSettingsRowLabel">Plate calculator</span>
+                  <span id="wt-new-exercise-plate-mode-label" class="iosSettingsRowLabel">Plate calculator</span>
                   <button
                     class="iosToggle"
                     :class="{ iosToggleOn: newExercisePlateMode }"
                     role="switch"
                     :aria-checked="newExercisePlateMode"
+                    aria-labelledby="wt-new-exercise-plate-mode-label"
                     @click="newExercisePlateMode = !newExercisePlateMode"
                   >
                     <span class="iosToggleKnob"></span>

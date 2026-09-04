@@ -3,6 +3,7 @@ import { mount, VueWrapper } from '@vue/test-utils'
 import type { Exercise } from '../../stores/workout'
 import { MAX_GYMS } from '../../lib/gyms'
 import { mockWeightUnit } from '../../__tests__/helpers'
+import { runComponentAxe } from '../../__tests__/axeHelper'
 
 // Switchable unit mock, mirroring WorkoutTracker.test.ts (LIFT-1211): defaults
 // to lbs so every pre-existing test is unaffected, and the bar-weight suite
@@ -305,5 +306,61 @@ describe('EditExerciseModal — default bar weight follows the display unit (LIF
     setMockUnit('kg')
     const wrapper = await openWith(plateExercise({ plateCountMode: 'total' }))
     expect(barStepper(wrapper).find('.iosStepperValue').text()).toBe('0 kg')
+  })
+})
+
+// ── Switch accessible names (LIFT-1308) ─────────────────────────────
+// Both `.iosToggle` switches render nothing but a decorative knob, so with no
+// explicit name AT reached them and announced "switch, off" — twice, in the
+// same sheet, with nothing to tell them apart (WCAG 4.1.2, Level A).
+describe('EditExerciseModal — switch accessible names (LIFT-1308)', () => {
+  /** Attached mount: axe walks the live document, and `getElementById`
+   *  resolving an `aria-labelledby` target needs the tree in it. */
+  async function openAttached(exercise: Exercise): Promise<VueWrapper> {
+    const wrapper = mount(EditExerciseModal, {
+      props: { exercise: null as Exercise | null, allTags: [], allGyms: [] },
+      attachTo: document.body,
+      global: { stubs: { Teleport: true } },
+    })
+    await wrapper.setProps({ exercise })
+    await wrapper.vm.$nextTick()
+    return wrapper
+  }
+
+  /** The accessible name axe computes for a `role="switch"` button whose only
+   *  content is a decorative span: `aria-labelledby` → that element's text. */
+  const accessibleName = (toggle: ReturnType<VueWrapper['find']>) => {
+    const id = toggle.attributes('aria-labelledby')
+    return id ? document.getElementById(id)?.textContent ?? null : null
+  }
+
+  it('names both switches by their own visible row label', async () => {
+    const wrapper = await openAttached(makeExercise({ inputMode: 'plates' }))
+    const toggles = wrapper.findAll('.iosToggle')
+    expect(toggles).toHaveLength(2)
+
+    // Pre-fix both were the empty string, so AT could not tell them apart.
+    expect(toggles.map(accessibleName)).toEqual(['Plate calculator', 'Bodyweight-loaded'])
+    // ...which requires the two label ids to be distinct, not just present.
+    expect(new Set(toggles.map((t) => t.attributes('aria-labelledby'))).size).toBe(2)
+    wrapper.unmount()
+  })
+
+  it('keeps the name stable across a toggle, moving only aria-checked', async () => {
+    const wrapper = await openAttached(makeExercise())
+    const bodyweightToggle = () => wrapper.findAll('.iosToggle')[1]
+    expect(bodyweightToggle().attributes('aria-checked')).toBe('false')
+
+    await bodyweightToggle().trigger('click')
+    expect(bodyweightToggle().attributes('aria-checked')).toBe('true')
+    expect(accessibleName(bodyweightToggle())).toBe('Bodyweight-loaded')
+    wrapper.unmount()
+  })
+
+  it('has no axe violations across the whole sheet', async () => {
+    const wrapper = await openAttached(makeExercise({ inputMode: 'plates' }))
+    const results = await runComponentAxe(wrapper.element)
+    expect(results).toHaveNoViolations()
+    wrapper.unmount()
   })
 })

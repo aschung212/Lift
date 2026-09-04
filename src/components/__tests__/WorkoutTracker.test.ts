@@ -4379,13 +4379,44 @@ describe('WorkoutTracker', () => {
       expect(label.find('[role="listbox"]').exists()).toBe(false)
       expect(label.text().replace(/\s+/g, ' ').trim()).toBe('Exercise name')
 
-      // Scoped to the combobox field, not the whole tracker: the surrounding
-      // new-exercise form has an unrelated pre-existing violation (the
-      // `.iosToggle` role="switch" has no accessible name), so a component-wide
-      // scan would fail for a reason this fix does not own. The scope still
-      // covers the full widget — combobox, listbox and every option.
-      const results = await runComponentAxe(wrapper.find('.wtNewExerciseNameField').element)
+      // Scanned component-wide now that the `.iosToggle` switch below the form
+      // has an accessible name (LIFT-1308). This was scoped to
+      // `.wtNewExerciseNameField` while that violation stood, so the widening
+      // is itself the regression proof: re-drop the switch's label and this
+      // fails on `button-name` even though nothing here mentions toggles.
+      const results = await runComponentAxe(wrapper.element)
       expect(results).toHaveNoViolations()
+    })
+  })
+
+  // ── Switch accessible names (LIFT-1308) ───────────────────────────
+  // The `.iosToggle` switches render a decorative knob and nothing else, so
+  // without an explicit name AT announced only "switch, off". axe catches the
+  // absence; these assert the name is the *visible* row label, which is the
+  // part `button-name` cannot see (any non-empty string satisfies it).
+  describe('plate-calculator switch has an accessible name', () => {
+    it('is named by the visible row label, and the name does not change with state', async () => {
+      const wrapper = mount(WorkoutTracker, {
+        attachTo: document.body,
+        global: { stubs: { Teleport: true } },
+      })
+      exposed(wrapper).openNewExerciseModal()
+      await nextTick()
+
+      // Re-found each read: turning the switch on reveals the Counting and
+      // Starting-weight rows, so a held wrapper goes stale.
+      const toggle = () => wrapper.find('.iosToggle')
+      expect(toggle().exists()).toBe(true)
+      const labelId = toggle().attributes('aria-labelledby')
+      expect(labelId).toBeTruthy()
+      expect(document.getElementById(labelId!)?.textContent).toBe('Plate calculator')
+      expect(toggle().attributes('aria-checked')).toBe('false')
+
+      // Toggling moves `aria-checked` only — the name is state-independent.
+      await toggle().trigger('click')
+      expect(toggle().attributes('aria-checked')).toBe('true')
+      expect(toggle().attributes('aria-labelledby')).toBe(labelId)
+      expect(toggle().attributes('aria-label')).toBeUndefined()
     })
   })
 })
