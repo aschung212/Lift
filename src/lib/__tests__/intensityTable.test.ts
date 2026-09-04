@@ -10,6 +10,7 @@ import {
   DEFAULT_INTENSITY_PRESETS,
   MAX_INTENSITY_PRESETS,
 } from '../intensityTable'
+import { epley } from '../epley'
 import { KG_PLATES, platesToWeight, weightToPlates } from '../plateCalculator'
 
 describe('sanitizeIntensityMaxReps', () => {
@@ -195,6 +196,57 @@ describe('generateIntensityTable', () => {
     const rows = generateIntensityTable(456, 80, { perSide: false, barWeight: 0, maxReps: 4 })
     expect(rows.length).toBeGreaterThan(0)
     expect(rows.every(r => r.plates === null)).toBe(true)
+  })
+
+  // A bodyweight-loaded exercise's PR is stored EFFECTIVE (bodyweight + added),
+  // but the weight field — and so every row of this table — means ADDED (#1328).
+  describe('baseLoad (bodyweight-loaded exercises, #1328)', () => {
+    // 163.4 lb lifter deliberately NOT on a 5 lb boundary: that is the case a
+    // caller-side subtraction gets wrong.
+    const BW = 163.4
+    const opts = { perSide: false, barWeight: 0, plateMode: false as const, maxReps: 6 }
+
+    it('returns the ADDED weight, with e1RM still measured on the full load', () => {
+      const oneRM = 216 // epley(160 + 25, 5), a +25 x 5 pull-up
+      const rows = generateIntensityTable(oneRM, 100, { ...opts, baseLoad: BW })
+      expect(rows.length).toBeGreaterThan(0)
+      for (const row of rows) {
+        // The suggestion is small — belt weight, not a barbell load.
+        expect(row.weight).toBeLessThan(oneRM - BW + 5)
+        // ...but it still meets the intensity, because e1RM folds bodyweight in.
+        expect(row.e1rm).toBeGreaterThanOrEqual(oneRM)
+      }
+    })
+
+    it('ceils the ADDED portion, so every suggestion is actually loadable', () => {
+      // The bug this guards: ceiling the effective total and subtracting the
+      // bodyweight afterwards lands off the increment grid entirely (a lifter
+      // told to add 16.6 lb).
+      const rows = generateIntensityTable(216, 100, { ...opts, baseLoad: BW })
+      for (const row of rows) expect(row.weight % 5).toBe(0)
+    })
+
+    it('drops rep rows the lifter\'s bodyweight already covers', () => {
+      // At 60% of a 216 e1RM every rep target is under 163.4 lb, so there is no
+      // added weight to suggest — not a 0-weight row, and not a negative one.
+      const rows = generateIntensityTable(216, 60, { ...opts, baseLoad: BW, maxReps: 12 })
+      expect(rows).toEqual([])
+    })
+
+    it('agrees with the effective load a set logged from a row would store', () => {
+      const rows = generateIntensityTable(216, 100, { ...opts, baseLoad: BW, maxReps: 5 })
+      for (const row of rows) {
+        // `logSet` stores epley(added + bodyweight, reps) — the row's own e1RM.
+        expect(epley(row.weight + BW, row.reps)).toBe(Math.round(row.e1rm))
+      }
+    })
+
+    it('is the identity at 0 / absent / invalid, leaving normal exercises untouched', () => {
+      const plain = generateIntensityTable(456, 80, { maxReps: 5 })
+      expect(generateIntensityTable(456, 80, { maxReps: 5, baseLoad: 0 })).toEqual(plain)
+      expect(generateIntensityTable(456, 80, { maxReps: 5, baseLoad: -10 })).toEqual(plain)
+      expect(generateIntensityTable(456, 80, { maxReps: 5, baseLoad: NaN })).toEqual(plain)
+    })
   })
 
   /**

@@ -12,6 +12,8 @@ import { useModal } from '../../composables/useModal'
 enableAutoUnmount(afterEach)
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 import { setDayKey } from '../../lib/dates'
+import { bodyweightFold } from '../../lib/bodyweightLoad'
+import { epley } from '../../lib/epley'
 import { searchExerciseDatabase } from '../../lib/exerciseDatabase'
 import { runComponentAxe } from '../../__tests__/axeHelper'
 import { getLocalStorageMock, mockAnalytics, mockTheme, mockWeightUnit, mockRestTimer } from '../../__tests__/helpers'
@@ -171,6 +173,21 @@ function getExercisePRSet(id: string): WorkoutSet | null {
   return ex.sets.reduce((best, s) => s.estimated1RM > best.estimated1RM ? s : best)
 }
 
+// The lifter's tracked bodyweight, as the real store's `_currentBodyweight()`
+// would read it off the bodyweight store (#1328). `reactive` for the same
+// mock-fidelity reason as `mockPrefsState`: a plain object would let the fold
+// computed cache forever and any test that changes bodyweight mid-mount would
+// pass vacuously.
+const mockBodyweightState = reactive({ lbs: null as number | null })
+
+// Delegates to the REAL fold helper so the mock can't invent its own rule about
+// when bodyweight counts — that decision is exactly what #1328 was about.
+function bodyweightFoldFor(id: string, setId?: string): number {
+  const ex = mockState.exercises.find(e => e.id === id)
+  const captured = setId ? ex?.sets.find(s => s.id === setId)?.bodyweight : undefined
+  return bodyweightFold(ex, captured ?? mockBodyweightState.lbs)
+}
+
 // Mirrors the real store's sets-per-day index (LIFT-1237): same `setDayKey`
 // bucketing, and it reads `mockExercises` so it re-answers after a triggerRef.
 function setsLoggedOn(dayKey: string): number {
@@ -246,6 +263,7 @@ vi.mock('../../stores/workout', () => ({
     setsLoggedOn,
     getExercisePR,
     getExercisePRSet,
+    bodyweightFoldFor,
     getOverloadSuggestion: mockGetOverloadSuggestion,
     getLastSession: mockGetLastSession,
     getUsualLadder: mockGetUsualLadder,
@@ -322,6 +340,7 @@ describe('WorkoutTracker', () => {
   beforeEach(() => {
     mockState.exercises = []
     mockPrefsState.gyms = []
+    mockBodyweightState.lbs = null
     mockProgressionState.progressionEnabled = false
     mockProgressionState.streakWeeks = 0
     mockProgressionState.weeklyTarget = 4
@@ -2173,6 +2192,220 @@ describe('WorkoutTracker', () => {
       const lastSessionChips = wrapper.findAll('.wtPrevSessionChip')
         .filter(c => !c.element.closest('.wtIntensityPresetChips'))
       expect(lastSessionChips).toHaveLength(0)
+    })
+  })
+
+  /**
+   * The log sheet straddles two weight spaces on a `bodyweightLoaded` exercise
+   * (#1328): the weight field holds ADDED weight, while `estimated1RM` — and so
+   * `getExercisePR` — is stored EFFECTIVE (added + bodyweight). Every surface
+   * derived from a 1RM has to cross that boundary, in the right direction.
+   *
+   * Why nothing caught this: `bodyweightLoad.test.ts` covered the lib helper and
+   * the store write path, but no test had ever MOUNTED the tracker with
+   * `bodyweightLoaded` set — the whole inverse direction (reading an e1RM back
+   * out and turning it into a field value) was uncovered.
+   */
+  describe('bodyweight-loaded 1RM surfaces (#1328)', () => {
+    const BODYWEIGHT = 160
+    // A 160 lb lifter's +25 x 5 pull-up: stored as weight 25, e1RM epley(185, 5).
+    const PR = epley(BODYWEIGHT + 25, 5) // 216
+
+    function pullups(): Exercise[] {
+      return [{
+        id: 'ex-1',
+        name: 'Pull-Up',
+        tags: ['Back'],
+        bodyweightLoaded: true,
+        sets: [
+          { id: 's-1', date: '2026-01-15T12:00:00', weight: 15, reps: 5, bodyweight: BODYWEIGHT, estimated1RM: epley(BODYWEIGHT + 15, 5) },
+          { id: 's-2', date: '2026-01-20T12:00:00', weight: 25, reps: 5, bodyweight: BODYWEIGHT, estimated1RM: PR },
+        ],
+      }]
+    }
+
+    async function openPullupModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    function weightField(wrapper: VueWrapper) {
+      return wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement
+    }
+
+    /** What `logSet` would store for a set typed into the fields right now. */
+    function savedE1RM(wrapper: VueWrapper, reps: number) {
+      return epley(Number(weightField(wrapper).value) + BODYWEIGHT, reps)
+    }
+
+    beforeEach(() => {
+      mockState.exercises = pullups()
+      mockBodyweightState.lbs = BODYWEIGHT
+    })
+
+    it('estimates the 1RM of the full load, matching what logSet will store', async () => {
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+      await wrapper.find('input[aria-label="Weight"]').setValue('25')
+      await wrapper.find('input[aria-label="Reps"]').setValue('5')
+
+      // Was ~29 lbs — Epley over the bare added weight — against a stored 216.
+      expect(wrapper.find('.repMaxResult').text()).toContain(`${PR} lbs`)
+      expect(savedE1RM(wrapper, 5)).toBe(PR)
+    })
+
+    it('leaves a normal exercise untouched (fold is 0)', async () => {
+      mockState.exercises = [{
+        id: 'ex-1', name: 'Bench Press', tags: [], sets: [
+          { id: 's-1', date: '2026-01-15T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+        ],
+      }]
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+      await wrapper.find('input[aria-label="Weight"]').setValue('185')
+      await wrapper.find('input[aria-label="Reps"]').setValue('5')
+
+      expect(wrapper.find('.repMaxResult').text()).toContain('216 lbs')
+    })
+
+    it('suggests an added weight that just beats the PR, not one that doubles it', async () => {
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+      // Reps only → the "to beat" card fills the weight axis.
+      await wrapper.find('input[aria-label="Reps"]').setValue('5')
+
+      const card = wrapper.find('.repMaxResultTarget')
+      expect(card.exists()).toBe(true)
+      // Was ~186 (the effective total offered as ADDED weight). 30 is the first
+      // 5 lb step past the 25.6 lb of belt weight actually required.
+      expect(card.text()).toContain('30 lbs × 5')
+
+      await wrapper.find('input[aria-label="Weight"]').setValue('30')
+      // The savable consequence: this must edge the PR, not land near 2x it.
+      const saved = savedE1RM(wrapper, 5)
+      expect(saved).toBeGreaterThan(PR)
+      expect(saved).toBeLessThan(PR + 20)
+    })
+
+    it('fills intensity rows in added-weight space', async () => {
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+      // Intensity is the only lens here (no ladder, no last session), so the
+      // drawer starts collapsed and there is no segmented control to click.
+      await wrapper.find('.wtPrTargetsHeader').trigger('click')
+      // 100% = the PR-beating end of the lens, the tap that used to be able to
+      // save a fake all-time PR.
+      await wrapper.find('.wtIntensitySlider').setValue(100)
+
+      const rows = wrapper.findAll('.wtPrTargetsRow')
+      expect(rows.length).toBeGreaterThan(0)
+      await rows[0].trigger('click')
+
+      const filled = Number(weightField(wrapper).value)
+      const filledReps = Number((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value)
+      // A belt load, not the whole effective total.
+      expect(filled).toBeLessThan(PR - BODYWEIGHT + 10)
+      const saved = epley(filled + BODYWEIGHT, filledReps)
+      expect(saved).toBeGreaterThanOrEqual(PR)
+      expect(saved).toBeLessThan(PR + 20)
+    })
+
+    /**
+     * Regression for the LIFT-1315 × #1328 merge seam. The fold is canonical
+     * lbs; the intensity generator moved into DISPLAY units (bar, plates, 1RM
+     * and now the base load all share one space). Passing the fold raw put a
+     * 160 lb bodyweight into a kg table as 160 KG of base load — larger than
+     * the 98 kg anchor itself, so every rep target went negative and the lens
+     * rendered its empty state. The lifter who most needs a suggestion (kg,
+     * bodyweight-loaded) would have been the only one offered none.
+     *
+     * Neither parent branch could catch it: the kg suite uses a normal exercise
+     * (fold 0) and the bodyweight suite runs in lbs, where displayWeight() is
+     * the identity. The bug lives only at the intersection.
+     */
+    it('fills intensity rows in added-weight space for a kg user (LIFT-1315)', async () => {
+      setMockUnit('kg')
+      try {
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        await wrapper.find('.wtPrTargetsHeader').trigger('click')
+        await wrapper.find('.wtIntensitySlider').setValue(100)
+
+        const rows = wrapper.findAll('.wtPrTargetsRow')
+        // The assertion that fails on a raw-lbs fold: the table is not empty.
+        expect(rows.length).toBeGreaterThan(0)
+
+        // A tapped row must fill the field with the number it advertises, in kg.
+        const labelled = rows[0].find('.wtPrTargetsWeight').text().replace(' kg', '')
+        await rows[0].trigger('click')
+        await wrapper.vm.$nextTick()
+        expect(weightField(wrapper).value).toBe(labelled)
+
+        // ...and it is belt weight, not the whole effective total: converted
+        // back to lbs it edges the 216 lb PR rather than doubling it.
+        const addedLbs = Number(weightField(wrapper).value) / 0.453592
+        const filledReps = Number((wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement).value)
+        const saved = epley(addedLbs + BODYWEIGHT, filledReps)
+        expect(saved).toBeGreaterThanOrEqual(PR - 1)
+        expect(saved).toBeLessThan(PR + 20)
+      } finally {
+        setMockUnit('lbs')
+      }
+    })
+
+    it('asks for a reachable rep count at a typed added weight', async () => {
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+      // 25 lb added ties the PR at 5 reps, so 6 reps beats it — not the ~90 the
+      // unfolded comparison (25 vs 216) used to demand.
+      await wrapper.find('input[aria-label="Weight"]').setValue('25')
+
+      const card = wrapper.find('.repMaxResultTarget')
+      expect(card.text()).toContain('25 lbs × 6')
+    })
+
+    it('says bodyweight alone beats the best when no added weight is needed', async () => {
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+      // 12 bodyweight pull-ups out-score a +25 x 5, so there is no positive
+      // added weight to suggest — a real state, not a missing card.
+      await wrapper.find('input[aria-label="Reps"]').setValue('12')
+
+      const card = wrapper.find('.repMaxResultTarget')
+      expect(card.text()).toContain('Bodyweight × 12')
+      expect(card.text()).toContain('no added weight needed')
+      // Informational: tapping it must not fill an unsavable 0 into the field.
+      expect(card.classes()).not.toContain('repMaxResultTappable')
+    })
+
+    it('edits against the set\'s captured bodyweight, not today\'s weigh-in', async () => {
+      // The lifter has since cut to 150; `updateSet` keeps the 160 captured at
+      // log time, so the estimate must too or it shows a number the save can't
+      // produce.
+      mockBodyweightState.lbs = 150
+      const wrapper = mountTracker()
+      await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.findAll('.wtSetBtn').find(b => b.text() === 'Edit')!.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // The most recent set (25 x 5, captured at 160 lb) opens pre-filled.
+      expect(weightField(wrapper).value).toBe('25')
+      expect(wrapper.find('.repMaxResult').text()).toContain(`${PR} lbs`)
+    })
+
+    it('folds nothing when the lifter has never tracked their bodyweight', async () => {
+      // The store captures nothing in that case, so the sheet must not either —
+      // otherwise the preview would disagree with what gets stored.
+      mockBodyweightState.lbs = null
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+      await wrapper.find('input[aria-label="Weight"]').setValue('25')
+      await wrapper.find('input[aria-label="Reps"]').setValue('5')
+
+      expect(wrapper.find('.repMaxResult').text()).toContain(`${epley(25, 5)} lbs`)
     })
   })
 

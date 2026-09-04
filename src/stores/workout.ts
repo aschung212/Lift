@@ -20,7 +20,7 @@ import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachA
 import { sanitizeExerciseGyms } from '../lib/gyms'
 import { mapRemoteExercise, mapRemoteSet } from '../lib/remoteRows'
 import { fetchAllRows } from '../lib/supabasePagination'
-import { effectiveSetWeight } from '../lib/bodyweightLoad'
+import { bodyweightFold, effectiveSetWeight } from '../lib/bodyweightLoad'
 import { attemptedNextRep, pickTopSet } from '../lib/setEffort'
 import { useBodyweightStore } from './bodyweight'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
@@ -1558,6 +1558,39 @@ export const useWorkoutStore = defineStore('workout', () => {
   }
 
   /**
+   * The bodyweight (lbs) a write to this exercise WILL fold into its e1RM —
+   * 0 for a normal exercise, and 0 while the lifter has no tracked bodyweight
+   * (matching `logSet`, which then captures nothing).
+   *
+   * This is the log sheet's window onto the ADDED↔EFFECTIVE offset (#1328).
+   * Every 1RM surface in the log sheet works in ADDED space (that is what the
+   * weight field means) while `estimated1RM` — and therefore `getExercisePR` —
+   * is stored EFFECTIVE, so a suggestion inverted out of a PR has to be brought
+   * back across. Exposed from the store rather than resolved in the component so
+   * the preview and the write path read the same bodyweight through the same
+   * guard and cannot disagree.
+   *
+   * Pass `setId` when previewing an EDIT: `updateSet` keeps the bodyweight
+   * captured at log time and only falls back to the current one for a set that
+   * predates the flag, so a preview reading today's weigh-in would show an
+   * estimate the save won't produce once the lifter's weight has drifted.
+   */
+  function bodyweightFoldFor(exerciseId: string, setId?: string): number {
+    const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
+    // Short-circuit BEFORE touching the bodyweight store: for a normal exercise
+    // the fold is 0 whatever the lifter weighs, and reading `latestWeight`
+    // anyway would take a reactive dependency on every bodyweight entry — so
+    // logging a weigh-in would invalidate the log sheet's estimate for nothing.
+    // `bodyweightFold` still owns the rule; this only skips a lookup it would
+    // discard.
+    if (!exercise?.bodyweightLoaded) return 0
+    const captured = setId
+      ? exercise.sets.find((s: WorkoutSet) => s.id === setId)?.bodyweight
+      : undefined
+    return bodyweightFold(exercise, captured ?? _currentBodyweight())
+  }
+
+  /**
    * Returns the sets from the most recent session (day) for an exercise,
    * excluding today. Used for "Last Session" quick-fill in the log modal.
    * Returns { date, sets } or null if no prior session exists.
@@ -1888,6 +1921,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setsLoggedOn,
     getExercisePR,
     getExercisePRSet,
+    bodyweightFoldFor,
     getLastSession,
     getUsualLadder,
     getOverloadSuggestion
