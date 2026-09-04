@@ -5,6 +5,7 @@ import { logError, logWarn } from './logger'
 import { broadcastSyncStatus } from './crossTabSync'
 import { backupToIDB, restoreFromIDB } from './durableStorage'
 import { isAuthError, ensureFreshSession } from './sessionHealth'
+import { isRetryableSyncFailure } from './syncStatus'
 
 type SyncOperation = () => PromiseLike<unknown>
 
@@ -358,22 +359,53 @@ export class SyncQueue {
   }
 
   /**
-   * Extract a failure reason from a settled op result, or null on success.
+   * Classify a settled op result into a failure, or null when the write landed.
    *
-   * A rejection is always a failure. A *fulfilled* Supabase op resolves
-   * `{ data, error }` even on a 401 — so an expired-token write looks like a
-   * success and was silently dropped (LIFT-784). We surface a resolved AUTH
-   * error as a retryable failure so the write recovers after a refresh, while
-   * leaving non-auth resolved errors on the legacy fulfilled-is-success path to
-   * avoid changing unrelated sync behavior.
+   * A rejection is always a failure. The subtle half is the *fulfilled* one:
+   * postgrest-js catches every fetch rejection internally and RESOLVES
+   * `{ error: { message: 'TypeError: Failed to fetch', code: '' }, status: 0 }`,
+   * so a Supabase mutation essentially never rejects on network failure — and it
+   * resolves `{ error }` for RLS denials, constraint violations and 5xx too.
+   *
+   * This method used to count a resolved error as SUCCESS unless it was an auth
+   * error (the narrow LIFT-784 fix), which made the most common failure class in
+   * the app invisible: an offline flush one second after logging a set cleared
+   * the retry counter, DELETED the durable journal entry, and reported 'synced'
+   * (LIFT-1321). Every piece of the retry/backoff + journal-retention machinery
+   * was therefore unreachable for exactly the case it was built for. Sets happened
+   * to survive via the read-path reconciliation in `_fetchFromSupabase`, but
+   * preferences (a remote-wins blob with no reconciliation) lost the write outright.
+   *
+   * ANY truthy resolved error is now a failure; `isRetryableSyncFailure` decides
+   * only whether it is worth *retrying* in-session. The journal is retained
+   * either way (LIFT-1229).
    */
-  private _resultError(result: PromiseSettledResult<unknown>): unknown {
-    if (result.status === 'rejected') return result.reason
-    const val = result.value as { error?: unknown } | null | undefined
-    if (val && typeof val === 'object' && 'error' in val && val.error && isAuthError(val.error)) {
-      return val.error
+  private _settleFailure(
+    result: PromiseSettledResult<unknown>,
+  ): { error: unknown; retryable: boolean; auth: boolean } | null {
+    if (result.status === 'rejected') {
+      // A throw carries no response envelope, so classify off the error alone.
+      // A bare `Error` with no code stays retryable — the pre-LIFT-1321
+      // rejection behavior.
+      return {
+        error: result.reason,
+        retryable: isRetryableSyncFailure(result.reason),
+        auth: isAuthError(result.reason),
+      }
     }
-    return null
+    const val = result.value as { error?: unknown; status?: unknown } | null | undefined
+    if (!val || typeof val !== 'object') return null
+    const error = val.error
+    if (!error) return null
+    // `isAuthError` reads the error BODY, which for PostgREST carries PGRST301
+    // on an expiry — but the HTTP status lives on the envelope beside it, so a
+    // 401 with a body this app can't parse (an API gateway, a proxy) would
+    // otherwise skip the once-per-batch session refresh entirely.
+    return {
+      error,
+      retryable: isRetryableSyncFailure(error, val.status),
+      auth: isAuthError(error) || val.status === 401,
+    }
   }
 
   /**
@@ -525,8 +557,8 @@ export class SyncQueue {
       let journalChanged = false
       results.forEach((result, i) => {
         const key = entries[i][0]
-        const error = this._resultError(result)
-        if (!error) {
+        const failure = this._settleFailure(result)
+        if (!failure) {
           // Clear retry counter on success so future failures get full retries
           this._attemptMap.delete(key)
           // Write durably landed on the server — drop its journal entry,
@@ -535,19 +567,26 @@ export class SyncQueue {
           return
         }
         hasFailure = true
-        if (isAuthError(error)) sawAuthError = true
+        const { error, retryable, auth } = failure
+        if (auth) sawAuthError = true
         const op = entries[i][1]
         const prevAttempt = this._attemptMap.get(key) ?? 0
         const attempt = prevAttempt + 1
-        if (attempt <= this._maxRetries) {
+        if (retryable && attempt <= this._maxRetries) {
           this._retryQueue.set(key, { op, attempt })
           this._attemptMap.set(key, attempt)
           logWarn(`Sync failed, will retry (attempt ${attempt}/${this._maxRetries})`, { key })
         } else {
-          // Retries exhausted for this session. The in-memory op is dropped,
-          // but the DURABLE journal entry is deliberately RETAINED (LIFT-1229)
-          // so the write replays on the next launch via rehydrate() instead of
-          // being lost. Previously the entry was deleted here, leaving
+          // Either retries are exhausted, or the server understood the request
+          // and refused it (a constraint, an RLS policy, a schema-cache miss) —
+          // a class that cannot change answer on replay within this session, so
+          // it skips the five identical round-trips and leaves the queue now
+          // (LIFT-1321). Both land here because the END STATE is the same.
+          //
+          // The in-memory op is dropped, but the DURABLE journal entry is
+          // deliberately RETAINED (LIFT-1229) so the write replays on the next
+          // launch via rehydrate() instead of being lost. Previously the entry
+          // was deleted here, leaving
           // reconciliation in the store's _fetchFromSupabase as the only
           // recovery — but that path only re-pushes missing *sets*, so an
           // exhausted exercise-metadata write (rename / tags / gyms / archive /
@@ -557,13 +596,21 @@ export class SyncQueue {
           // (upsert/update only), so a write the server already holds is a
           // harmless no-op next launch.
           //
-          // A distinct `event: 'retry_exhausted'` marker (vs a bare logError)
-          // makes exhaustion frequency measurable pre-GA, separate from generic
-          // sync errors. `journalRetained` is false only for descriptor-less
-          // (in-memory-only) writes, which have no durable record to keep.
+          // A distinct `event` marker (vs a bare logError) makes each terminal
+          // outcome measurable pre-GA, separate from generic sync errors —
+          // 'retry_exhausted' (transient, gave up) and 'permanent_failure' (the
+          // server refused) have different fixes and must not blur together.
+          // `journalRetained` is false only for descriptor-less (in-memory-only)
+          // writes, which have no durable record to keep.
+          //
+          // A permanent failure also clears its attempt counter: the op is
+          // leaving the queue the same way a success does, and leaving a partial
+          // count behind would shorten the retry budget of the NEXT, possibly
+          // transient, failure on the same key.
+          if (!retryable) this._attemptMap.delete(key)
           logError(error, {
             source: 'SyncQueue',
-            event: 'retry_exhausted',
+            event: retryable ? 'retry_exhausted' : 'permanent_failure',
             key,
             attempts: attempt,
             journalRetained: this._journal.has(key),
@@ -578,7 +625,17 @@ export class SyncQueue {
       if (sawAuthError) void ensureFreshSession()
       if (journalChanged) this._persistJournal()
       if (this._retryQueue.size > 0) this._scheduleRetry()
-      const newStatus = hasFailure ? 'error' : 'synced' as const
+      // A batch that failed while the browser reports no connectivity is not a
+      // sync *error*, it is the ordinary offline state — and the local-first
+      // store has already saved the write. Reporting 'error' would contradict
+      // the connectivity App.vue independently tracks (its `offline` listener
+      // sets this same ref) and swap "Offline — changes saved locally" for
+      // "Sync failed" on every set logged in a dead-spot gym. Before LIFT-1321
+      // this never came up: an offline write resolved as a *success*, so the
+      // flush overwrote 'offline' with 'synced' instead.
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+      const newStatus: 'synced' | 'error' | 'offline' =
+        !hasFailure ? 'synced' : offline ? 'offline' : 'error'
       syncStatus.value = newStatus
       broadcastSyncStatus(newStatus)
     } finally {

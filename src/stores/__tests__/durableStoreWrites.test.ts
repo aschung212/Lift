@@ -29,7 +29,22 @@ vi.mock('../../lib/durableStorage', () => ({
 }))
 
 // ── Fake Supabase that can be taken "offline" ───────────────────────
-const { fakeSupabase } = vi.hoisted(() => {
+// `offlineResult` is duplicated here rather than imported because a vi.hoisted
+// factory runs before module imports resolve; the test at the bottom of this
+// file asserts it still matches the shared fake's FAKE_NETWORK_ERROR_RESULT.
+const { fakeSupabase, offlineResult } = vi.hoisted(() => {
+  const offlineResult = {
+    data: null,
+    error: {
+      message: 'TypeError: Failed to fetch',
+      details: 'TypeError: Failed to fetch',
+      hint: '',
+      code: '',
+    },
+    count: null,
+    status: 0,
+    statusText: '',
+  }
   type Call = { op: string; table: string; data: unknown; options: unknown; filters: Record<string, unknown> }
   class FakeBuilder {
     op = 'select'
@@ -42,11 +57,20 @@ const { fakeSupabase } = vi.hoisted(() => {
     eq(col: string, val: unknown) { this.filters[col] = val; return this }
     is(col: string, val: unknown) { this.filters[col] = val; return this }
     then<T>(
-      onfulfilled?: (v: { data: unknown[]; error: null }) => T,
+      onfulfilled?: (v: { data: unknown; error: unknown }) => T,
       onrejected?: (e: unknown) => T,
     ): PromiseLike<T> {
       if (this.parent.offline) {
-        return Promise.reject(new Error('offline')).then(onfulfilled, onrejected)
+        // NOT a rejection (LIFT-1321). postgrest-js catches the fetch failure
+        // and resolves this envelope, so a mutation made offline looks like a
+        // fulfilled promise carrying an error — which is exactly how SyncQueue
+        // came to count offline writes as successes and delete their journal
+        // entries. Simulating offline as a throw tested a path production takes
+        // only rarely, and certified the broken one as correct.
+        //
+        // The call is deliberately NOT recorded: `calls` means "reached
+        // Supabase" throughout this file, and an unanswered request did not.
+        return Promise.resolve({ ...offlineResult }).then(onfulfilled, onrejected)
       }
       this.parent.calls.push({
         op: this.op, table: this.table, data: this.data,
@@ -61,7 +85,7 @@ const { fakeSupabase } = vi.hoisted(() => {
     from(table: string) { return new FakeBuilder(this, table) },
     reset() { this.calls = []; this.offline = false },
   }
-  return { fakeSupabase: fake }
+  return { fakeSupabase: fake, offlineResult }
 })
 vi.mock('../../lib/supabase', () => ({
   supabase: fakeSupabase,
@@ -73,7 +97,8 @@ vi.mock('../../lib/crossTabSync', () => ({
 }))
 vi.mock('../../lib/logger', () => ({ logError: vi.fn(), logWarn: vi.fn(), logInfo: vi.fn() }))
 
-import { SyncQueue, syncQueue, _resetRateLimit, _resetCircuitBreaker } from '../../lib/syncQueue'
+import { SyncQueue, syncQueue, syncStatus, _resetRateLimit, _resetCircuitBreaker } from '../../lib/syncQueue'
+import { FAKE_NETWORK_ERROR_RESULT } from '../../__tests__/fakeSupabase'
 import { useBodyweightStore } from '../bodyweight'
 import { usePreferencesStore } from '../preferences'
 import { useProgressionStore } from '../progression'
@@ -201,6 +226,35 @@ describe('durable journal coverage for bodyweight / preferences / progression (L
     const upserts = fakeSupabase.calls.filter(c => c.table === 'user_progression')
     expect(upserts).toHaveLength(1)
     expect(upserts[0].data).toMatchObject({ user_id: 'u1', total_xp: 50 })
+  })
+
+  // LIFT-1321: the three tests above only prove recovery because "offline" is
+  // modelled the way production behaves. While it was modelled as a rejection,
+  // this whole file passed against a SyncQueue that treated real offline writes
+  // as successes — retries cleared, journal deleted, status 'synced'. Pin both
+  // halves so the fidelity can't quietly regress.
+  it('models offline the way postgrest-js does — a resolved error, not a rejection (LIFT-1321)', async () => {
+    expect(offlineResult).toEqual(FAKE_NETWORK_ERROR_RESULT)
+
+    fakeSupabase.offline = true
+    // Awaiting the builder must RESOLVE (it would throw here if it rejected).
+    const result = await fakeSupabase.from('sets').upsert({ id: 's1' })
+    expect(result).toMatchObject({ status: 0, error: { message: 'TypeError: Failed to fetch' } })
+  })
+
+  it('never reports a settings change made offline as synced (LIFT-1321)', async () => {
+    // Preferences is the store with the most to lose: a remote-wins JSONB blob
+    // with no reconciliation pass, so a write counted as a success is gone.
+    const store = usePreferencesStore()
+    store._userId = 'u1'
+    store.weightUnit = 'kg'
+    store._persist()
+
+    fakeSupabase.offline = true
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(syncStatus.value).not.toBe('synced')
+    expect(journaledDescriptors()).toEqual([{ table: 'user_preferences', op: 'upsert' }])
   })
 
   it('does not journal the unbounded clear-all wipe', async () => {

@@ -67,8 +67,17 @@ import {
   JOURNAL_SCHEMA_VERSION,
   type SyncDescriptor,
 } from '../syncQueue'
+import { FAKE_NETWORK_ERROR_RESULT } from '../../__tests__/fakeSupabase'
 
 const UPSERT: SyncDescriptor = { op: 'upsert', table: 'sets', row: { id: 's1', weight: 100 } }
+
+/**
+ * What a Supabase mutation ACTUALLY resolves with when the device is offline
+ * (LIFT-1321) — postgrest-js catches the fetch rejection rather than letting it
+ * propagate. Imported from the shared fake so every "offline" simulation in the
+ * suite agrees on the shape.
+ */
+const FETCH_FAILURE_RESULT = FAKE_NETWORK_ERROR_RESULT
 
 describe('SyncQueue durable journal (LIFT-706)', () => {
   beforeEach(() => {
@@ -166,6 +175,75 @@ describe('SyncQueue durable journal (LIFT-706)', () => {
     expect(upserts[0].data).toEqual({ id: 'e1', user_id: 'u1', name: 'Incline Bench' })
     // Now that it landed, the journal is finally drained.
     expect(session2.journalSize).toBe(0)
+  })
+
+  // Regression LIFT-1321: THE root-cause test. postgrest-js catches the fetch
+  // rejection and RESOLVES `{ error: 'TypeError: Failed to fetch', status: 0 }`,
+  // so an offline mutation does not reject. `_settleFailure` used to count that
+  // as a SUCCESS — which cleared the retry counter, DELETED the durable journal
+  // entry, and reported 'synced'. The entire LIFT-706/1229 durability story was
+  // therefore unreachable for the most common failure the app has.
+  //
+  // Every sync test modelled offline as `Promise.reject`, which is why this
+  // shipped and stayed green: the suite exercised a path production rarely takes.
+  it('keeps the journal entry when an offline write RESOLVES a fetch-failure error (LIFT-1321)', async () => {
+    const queue = new SyncQueue(100)
+    queue.enqueue('set:s1', () => Promise.resolve({ ...FETCH_FAILURE_RESULT }), UPSERT)
+
+    await vi.advanceTimersByTimeAsync(100)
+
+    // The durable record survives the "successful-looking" flush…
+    expect(queue.journalSize).toBe(1)
+    expect(JSON.parse(idbStore.get('lift-sync-journal')!).entries).toHaveLength(1)
+    // …the write is queued for retry rather than dropped…
+    expect(queue.pending).toBe(1)
+    // …and the UI is never told the write landed.
+    expect(syncStatus.value).not.toBe('synced')
+
+    // Retries exhaust; the durable record is still retained for the next launch.
+    await vi.runAllTimersAsync()
+    expect(queue.journalSize).toBe(1)
+    expect(queue.pending).toBe(0)
+  })
+
+  // A set logged in a dead-spot gym is recovered on the next launch — the same
+  // end-to-end path LIFT-1229 proves for rejections, now for the resolved shape
+  // production actually produces.
+  it('replays an offline-resolved write on the next launch (LIFT-1321)', async () => {
+    const session1 = new SyncQueue(100)
+    session1.enqueue('set:s1', () => Promise.resolve({ ...FETCH_FAILURE_RESULT }), UPSERT)
+    await vi.runAllTimersAsync()
+    expect(session1.journalSize).toBe(1)
+    expect(fakeSupabase.calls).toHaveLength(0)
+
+    // Fresh launch, back in signal: the retained entry replays and lands.
+    const session2 = new SyncQueue(100)
+    await session2.rehydrate()
+    await vi.advanceTimersByTimeAsync(100)
+
+    const upserts = fakeSupabase.calls.filter(c => c.op === 'upsert' && c.table === 'sets')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toEqual({ id: 's1', weight: 100 })
+    expect(session2.journalSize).toBe(0)
+  })
+
+  // A permanently-refused write skips the pointless retries but must NOT skip
+  // durability: the LIFT-1169 migrate-db race makes "the client shipped a column
+  // before the migration landed" a real 400, and the journal is what turns that
+  // into a clean upsert on the launch after the schema catches up.
+  it('retains the journal for a permanent (non-retryable) failure (LIFT-1321)', async () => {
+    const queue = new SyncQueue(100)
+    const op = vi.fn(() => Promise.resolve({
+      data: null, status: 400, error: { code: 'PGRST204', message: "column 'gyms' not found" },
+    }))
+    queue.enqueue('exercise:e1', op, UPSERT)
+
+    await vi.runAllTimersAsync()
+
+    expect(op).toHaveBeenCalledTimes(1) // no retry storm
+    expect(queue.journalSize).toBe(1)   // but still durable
+    expect(JSON.parse(idbStore.get('lift-sync-journal')!).entries).toHaveLength(1)
+    expect(syncStatus.value).toBe('error')
   })
 
   // Regression LIFT-1213: a same-key correction enqueued while the previous
