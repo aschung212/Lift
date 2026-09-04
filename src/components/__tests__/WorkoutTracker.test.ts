@@ -3586,6 +3586,128 @@ describe('WorkoutTracker', () => {
   })
 
   /**
+   * Regression: LIFT-1315 — the Intensity lens handed `generateIntensityTable`
+   * a canonical-LBS 1RM alongside the DISPLAY-unit bar and DISPLAY-unit plates
+   * the rest of the plate subsystem uses (LIFT-1211). The two spaces coincide
+   * for lbs users; for a kg user they don't, so a row LABELLED 82.8 kg loaded a
+   * stack the card totalled at 182.5 kg. Unlike a display glitch that number is
+   * savable — `toLbs(182.5)` stores 402 lbs for a lifter whose real best is 228,
+   * a fake all-time PR that wins getExercisePR, re-anchors every later
+   * suggestion, fires the PR burst, and pays PR-multiplier XP.
+   *
+   * The kg plate-mode suite above never opens the Suggestions drawer, and
+   * intensityTable.test.ts's only kg case was `plateMode: false` — the numpad
+   * path, the one that was already unit-correct. The assertion that would have
+   * caught this is the first one below: a tapped row must fill the weight field
+   * with the number the row is labelled.
+   */
+  describe('kg intensity lens (LIFT-1315)', () => {
+    afterEach(() => { setMockUnit('lbs') })
+
+    // ex-1 (Bench Press) in kg plate mode on a 20 kg bar. Its best e1RM is
+    // 228 lbs, which displays as 103.4 kg — the intensity anchor.
+    function mountKgIntensityTracker() {
+      setMockUnit('kg')
+      mockState.exercises = createExercises()
+      mockState.exercises[0].inputMode = 'plates'
+      mockState.exercises[0].plateCountMode = 'per-side'
+      mockState.exercises[0].barWeight = 20
+      return mountTracker()
+    }
+
+    /**
+     * Open Bench's log sheet and expand the drawer. With no ladder and no last
+     * session, intensity is the only lens — so it needs no segmented control,
+     * but it does start collapsed (only quick-fill lenses auto-expand).
+     */
+    async function openIntensityLens(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.find('.wtSuggestions .wtPrTargetsHeader').trigger('click')
+    }
+
+    const rowsOf = (wrapper: VueWrapper) => wrapper.findAll('.wtPrTargetsRow')
+
+    const weightField = (wrapper: VueWrapper) =>
+      (wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value
+
+    /** The weight a row advertises, without its unit: "85 kg" → "85". */
+    const rowLabel = (wrapper: VueWrapper, i: number) =>
+      rowsOf(wrapper)[i].find('.wtPrTargetsWeight').text().replace(' kg', '')
+
+    it('fills the weight field with the weight the row is labelled', async () => {
+      const wrapper = mountKgIntensityTracker()
+      await openIntensityLens(wrapper)
+
+      // 80% of the 103.4 kg max at 1 rep ceils onto the 20 kg bar at 85 kg.
+      expect(rowLabel(wrapper, 0)).toBe('85')
+      await rowsOf(wrapper)[0].trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Pre-fix the field read 182.5 — the lbs target decomposed against kg
+      // plates, off by exactly the 1/0.4536 conversion factor.
+      expect(weightField(wrapper)).toBe('85')
+    })
+
+    // Guards the OTHER half of the boundary, and the likelier future slip: rows
+    // now arrive already in display units, so a `displayWeight(row.weight)` in
+    // the template (which is exactly what this markup used to say) would relabel
+    // an 85 kg row as 38.6 while the field it fills still reads 85. This one is
+    // structural — it cannot fail while both surfaces read `row.weight` — so it
+    // pins the markup, not the arithmetic; the cases above pin the arithmetic.
+    it('labels every row with the number it fills — no second conversion', async () => {
+      const wrapper = mountKgIntensityTracker()
+      await openIntensityLens(wrapper)
+
+      for (const pct of [50, 80, 100]) {
+        await wrapper.find('.wtIntensitySlider').setValue(pct)
+        const count = rowsOf(wrapper).length
+        expect(count).toBeGreaterThan(0)
+        for (let i = 0; i < count; i++) {
+          // Re-find each pass: tapping mutates intensityUsed, so Vue re-renders
+          // and a held wrapper goes stale.
+          const label = rowLabel(wrapper, i)
+          await rowsOf(wrapper)[i].trigger('click')
+          await wrapper.vm.$nextTick()
+          expect(weightField(wrapper)).toBe(label)
+        }
+      }
+    })
+
+    it('saves the weight it showed, not a 2.2x fake all-time PR', async () => {
+      const wrapper = mountKgIntensityTracker()
+      await openIntensityLens(wrapper)
+
+      // 100% is where the damage was worst: the row is meant to be the lightest
+      // load that BEATS the PR, so a mis-scaled one is stored as a real record.
+      await wrapper.find('.wtIntensitySlider').setValue(100)
+      await rowsOf(wrapper)[0].trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.find('.repMaxBtn.repMaxBtnCalc').trigger('click')
+
+      // 105 kg = toLbs 231.5 — just past the 228 lb best, which is what a 100%
+      // 1-rep row means. Pre-fix this saved 507.1 lbs: a 2.2x phantom PR.
+      expect(mockLogSet).toHaveBeenCalledWith('ex-1', 231.5, 1, expect.any(String), expect.objectContaining({}))
+    })
+
+    it('drops rows below the kg bar instead of measuring them against a lbs one', async () => {
+      const wrapper = mountKgIntensityTracker()
+      await openIntensityLens(wrapper)
+
+      // 25% of 103.4 kg = 25.9 kg; past 8 reps the target falls under the 20 kg
+      // bar. Pre-fix `raw` was in lbs (57) and the bar in kg (20), so the guard
+      // never fired and the lens offered a full 10 rows it could not load.
+      await wrapper.find('.wtIntensitySlider').setValue(25)
+      const rows = rowsOf(wrapper)
+      expect(rows.length).toBeLessThan(10)
+      expect(rows.length).toBeGreaterThan(0)
+      for (const row of rows) {
+        expect(Number(row.find('.wtPrTargetsWeight').text().replace(' kg', ''))).toBeGreaterThanOrEqual(20)
+      }
+    })
+  })
+
+  /**
    * Regression: LIFT-1312 — the reverse sync (typed weight → plates) was the
    * only path in the plate subsystem that didn't branch on the loading mode,
    * so a `plateCountMode: 'total'` machine exercise decomposed a typed weight
