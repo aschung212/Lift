@@ -279,17 +279,31 @@ describe('SyncQueue', () => {
 
   describe('offline parking (LIFT-1322)', () => {
     let onLine: ReturnType<typeof vi.spyOn>
+    let queues: SyncQueue[]
+
+    /**
+     * A parked queue holds a `window` `online` listener until it drains. Track
+     * every queue so `clear()` can detach it: a listener surviving its test
+     * would fire on the NEXT test's `online` dispatch and flush a stale queue.
+     */
+    function parkedQueue(delay = 100): SyncQueue {
+      const q = new SyncQueue(delay)
+      queues.push(q)
+      return q
+    }
 
     beforeEach(() => {
+      queues = []
       onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
     })
 
     afterEach(() => {
+      for (const q of queues) q.clear()
       onLine.mockRestore()
     })
 
     it('does not attempt the write, and keeps it pending, while the browser is offline', async () => {
-      const queue = new SyncQueue(100)
+      const queue = parkedQueue()
       const op = vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT)
 
       queue.enqueue('set:s1', op)
@@ -301,7 +315,7 @@ describe('SyncQueue', () => {
     })
 
     it('preserves the full retry budget across an offline stretch far longer than it', async () => {
-      const queue = new SyncQueue(100)
+      const queue = parkedQueue()
       const op = vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT)
       queue.enqueue('set:s1', op)
 
@@ -318,7 +332,7 @@ describe('SyncQueue', () => {
     })
 
     it('drains the parked queue when the connection returns', async () => {
-      const queue = new SyncQueue(100)
+      const queue = parkedQueue()
       const op = vi.fn().mockResolvedValue({ data: null, error: null })
       queue.enqueue('set:s1', op)
       await vi.advanceTimersByTimeAsync(100)
@@ -339,7 +353,7 @@ describe('SyncQueue', () => {
       // outright. Draining its own backlog has to be the queue's business or
       // the parked writes stay parked for the rest of the session.
       const added = vi.spyOn(window, 'addEventListener')
-      const queue = new SyncQueue(100)
+      const queue = parkedQueue()
       queue.enqueue('set:s1', vi.fn().mockResolvedValue({ data: null, error: null }))
       await vi.advanceTimersByTimeAsync(100)
 
@@ -349,7 +363,7 @@ describe('SyncQueue', () => {
 
     it('does not leave the online listener attached after it fires', async () => {
       const removed = vi.spyOn(window, 'removeEventListener')
-      const queue = new SyncQueue(100)
+      const queue = parkedQueue()
       queue.enqueue('set:s1', vi.fn().mockResolvedValue({ data: null, error: null }))
       await vi.advanceTimersByTimeAsync(100)
 

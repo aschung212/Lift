@@ -867,6 +867,11 @@ export class SyncQueue {
     for (const [key, entry] of [...this._journal]) {
       // Anything still pending is fresher than the journal by construction —
       // and re-enqueuing it would reset the attempt count of a live retry.
+      // A key whose op is mid-flight sits in none of these three (flush() clears
+      // _queue before awaiting), so it can be re-armed here. That is safe rather
+      // than merely tolerable: replay is idempotent by construction, and the
+      // LIFT-1213 identity guard stops the in-flight op's completion from
+      // deleting the journal entry this replay just rewrote.
       if (this._queue.has(key) || this._retryQueue.has(key) || _deferredOps.has(key)) continue
       if (this._permanentFailures.has(key)) continue
       const { descriptor, isDelete } = entry
