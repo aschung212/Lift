@@ -4,15 +4,20 @@
  *
  * The app is local-first, so a failed READ degrades silently: each store's
  * `_fetchFromSupabase` records `lastSyncError` and returns, and nothing ever
- * re-runs it. Writes self-heal (the sync queue retries with backoff and
- * journals durably), but reads had no equivalent — so an offline cold start, a
- * transient blip, or a mid-session token expiry left the app on local-only data
- * until a full relaunch. Cross-device changes stayed invisible, and the
- * reconciliation pushes that live inside `_fetchFromSupabase` (re-pushing local
- * rows the server is missing) never resumed either.
+ * re-runs it. Writes were assumed to self-heal (the sync queue retries with
+ * backoff and journals durably), but reads had no equivalent — so an offline
+ * cold start, a transient blip, or a mid-session token expiry left the app on
+ * local-only data until a full relaunch. Cross-device changes stayed invisible,
+ * and the reconciliation pushes that live inside `_fetchFromSupabase`
+ * (re-pushing local rows the server is missing) never resumed either.
  *
- * This module is the single re-fetch entry point for all four stores, plus the
- * listeners that drive it:
+ * Writes turned out to self-heal only within their ~31s retry budget
+ * (LIFT-1322): past that the in-memory op is dropped and its retained journal
+ * entry was read again only at the next cold start. So `run()` now replays that
+ * journal before flushing — the same reconnect signals recover both directions.
+ *
+ * This module is the single WRITE-REPLAY + re-fetch entry point for all four
+ * stores, plus the listeners that drive it:
  *   - `online`               — the connection came back
  *   - foreground resume      — `visibilitychange` + `focus`, the WKWebView
  *                              resume signals `useAuth` already doubles up on
@@ -57,6 +62,19 @@ function isOffline(): boolean {
 }
 
 async function run(trigger: RefetchTrigger): Promise<void> {
+  // Re-arm durable writes that exhausted their retries earlier in the session
+  // (LIFT-1322). Their journal entries are retained (LIFT-1229) but nothing read
+  // them again until the next cold start, so flushing alone would drain an
+  // already-empty queue and leave the backlog stranded. This has to come first:
+  // the flush below is what actually sends them, and both must precede the
+  // remote-wins reads. Separate try from the flush so a replay failure can never
+  // suppress the flush, which is the load-bearing half.
+  try {
+    syncQueue.replayJournal()
+  } catch (err) {
+    logError(err, { source: 'useSyncRecovery', action: 'replay', trigger })
+  }
+
   // Writes before reads. Every store read is remote-wins for the fields it
   // carries, so re-fetching ahead of a pending offline edit would paint the
   // stale server value back over it (the queued write still lands, but the UI

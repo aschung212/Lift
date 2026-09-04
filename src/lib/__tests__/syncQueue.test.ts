@@ -245,20 +245,121 @@ describe('SyncQueue', () => {
     expect(transient).toHaveBeenCalledTimes(6)
   })
 
-  it('reports offline (not error) when the batch fails while the browser is offline', async () => {
+  it('reports offline (not error) when the batch fails after the link drops mid-flight', async () => {
     // App.vue's connectivity listener sets this same ref to 'offline'; a flush
     // that overwrote it with 'error' would swap "Offline — changes saved
     // locally" for "Sync failed" on every set logged in a dead-spot gym.
-    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    //
+    // The flush STARTS online (so the LIFT-1322 park lets it through) and the
+    // radio drops while the request is in flight — which is how a real dead
+    // spot arrives, and the path that still reaches the status branch at the
+    // end of flush().
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
     try {
       const queue = new SyncQueue(100)
-      queue.enqueue('set:s1', vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT))
+      queue.enqueue('set:s1', vi.fn().mockImplementation(() => {
+        onLine.mockReturnValue(false)
+        return Promise.resolve(FETCH_FAILURE_RESULT)
+      }))
       await vi.advanceTimersByTimeAsync(100)
 
       expect(syncStatus.value).toBe('offline')
     } finally {
       onLine.mockRestore()
     }
+  })
+
+  // ── Parking the queue while offline (LIFT-1322) ────────────────
+  //
+  // Five exponential-backoff retries exhaust in ~31s. Spending them against a
+  // radio the browser already knows is dead dropped the in-memory op — and
+  // stranded its journal entry until the next COLD START — for any offline
+  // stretch longer than half a minute. A lifter who trains through a dead spot
+  // is offline for far longer than that.
+
+  describe('offline parking (LIFT-1322)', () => {
+    let onLine: ReturnType<typeof vi.spyOn>
+
+    beforeEach(() => {
+      onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    })
+
+    afterEach(() => {
+      onLine.mockRestore()
+    })
+
+    it('does not attempt the write, and keeps it pending, while the browser is offline', async () => {
+      const queue = new SyncQueue(100)
+      const op = vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT)
+
+      queue.enqueue('set:s1', op)
+      await vi.advanceTimersByTimeAsync(100)
+
+      expect(op).not.toHaveBeenCalled()
+      expect(queue.pending).toBe(1)
+      expect(syncStatus.value).toBe('offline')
+    })
+
+    it('preserves the full retry budget across an offline stretch far longer than it', async () => {
+      const queue = new SyncQueue(100)
+      const op = vi.fn().mockResolvedValue(FETCH_FAILURE_RESULT)
+      queue.enqueue('set:s1', op)
+
+      // Ten minutes in a basement gym — twenty times the ~31s retry budget.
+      await vi.advanceTimersByTimeAsync(600_000)
+      expect(op).not.toHaveBeenCalled()
+
+      onLine.mockReturnValue(true)
+      window.dispatchEvent(new Event('online'))
+      await vi.runAllTimersAsync()
+
+      // 1 initial + all 5 retries: nothing was consumed while parked.
+      expect(op).toHaveBeenCalledTimes(6)
+    })
+
+    it('drains the parked queue when the connection returns', async () => {
+      const queue = new SyncQueue(100)
+      const op = vi.fn().mockResolvedValue({ data: null, error: null })
+      queue.enqueue('set:s1', op)
+      await vi.advanceTimersByTimeAsync(100)
+      expect(op).not.toHaveBeenCalled()
+
+      onLine.mockReturnValue(true)
+      window.dispatchEvent(new Event('online'))
+      await vi.runAllTimersAsync()
+
+      expect(op).toHaveBeenCalledTimes(1)
+      expect(queue.pending).toBe(0)
+      expect(syncStatus.value).toBe('synced')
+    })
+
+    it('resumes on its OWN online listener, independent of useSyncRecovery', async () => {
+      // useSyncRecovery's `online` trigger is rate-limited to one run per 20s,
+      // so an `online` event landing just after a resume re-fetch is dropped
+      // outright. Draining its own backlog has to be the queue's business or
+      // the parked writes stay parked for the rest of the session.
+      const added = vi.spyOn(window, 'addEventListener')
+      const queue = new SyncQueue(100)
+      queue.enqueue('set:s1', vi.fn().mockResolvedValue({ data: null, error: null }))
+      await vi.advanceTimersByTimeAsync(100)
+
+      expect(added).toHaveBeenCalledWith('online', expect.any(Function))
+      added.mockRestore()
+    })
+
+    it('does not leave the online listener attached after it fires', async () => {
+      const removed = vi.spyOn(window, 'removeEventListener')
+      const queue = new SyncQueue(100)
+      queue.enqueue('set:s1', vi.fn().mockResolvedValue({ data: null, error: null }))
+      await vi.advanceTimersByTimeAsync(100)
+
+      onLine.mockReturnValue(true)
+      window.dispatchEvent(new Event('online'))
+      await vi.runAllTimersAsync()
+
+      expect(removed).toHaveBeenCalledWith('online', expect.any(Function))
+      removed.mockRestore()
+    })
   })
 
   it('should clear all pending operations without executing them', () => {

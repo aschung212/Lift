@@ -265,6 +265,21 @@ export function executeDescriptor(descriptor: SyncDescriptor): PromiseLike<unkno
 /** Reactive sync status for UI indicators. */
 export const syncStatus = ref<'synced' | 'syncing' | 'error' | 'offline'>('synced')
 
+/**
+ * Does the browser report no connectivity?
+ *
+ * Deliberately `=== false` rather than `!navigator.onLine`: the flag is only
+ * trustworthy in one direction. `false` means there is no network interface at
+ * all, so a request provably cannot land; `true` merely means an interface
+ * exists and says nothing about whether the uplink works (a captive portal, a
+ * gym dead spot where the radio is still associated). Everything gated on this
+ * therefore treats `false` as "definitely can't", never `true` as "definitely
+ * can" — the latter case is still handled by the ordinary failure path.
+ */
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
 // Rate limiting: max operations per window
 const RATE_LIMIT_MAX = 200
 const RATE_LIMIT_WINDOW = 60_000 // 1 minute
@@ -321,9 +336,45 @@ export class SyncQueue {
   // seen, so descriptor-less queues never touch IndexedDB.
   private _journal = new Map<string, JournalEntry>()
   private _journalActive = false
+  // Keys whose most recent flush ended in a NON-retryable failure — a request
+  // the server understood and refused (LIFT-1321). `replayJournal()` skips
+  // these: their durable record is deliberately retained for the next launch
+  // (LIFT-1229, which recovers the LIFT-1169 code-ahead-of-schema window), but
+  // re-issuing them on every reconnect/resume within THIS session can only
+  // reproduce the same refusal — and would log a fresh Sentry error each time.
+  // Cleared by `enqueue`, so a genuine new write on the key starts over.
+  private _permanentFailures = new Set<string>()
+  // One-shot `online` listener, armed only while the queue is parked offline.
+  private _onlineResume: (() => void) | null = null
 
   constructor(flushDelay = 1000) {
     this._flushDelay = flushDelay
+  }
+
+  /**
+   * Resume a parked queue the instant connectivity returns (LIFT-1322).
+   *
+   * The queue owns this rather than leaning on `useSyncRecovery`'s `online`
+   * listener, because that one is rate-limited to one run per
+   * `REFETCH_COOLDOWN_MS` — an `online` event landing seconds after a resume
+   * re-fetch is simply dropped, which would leave the parked writes parked for
+   * the rest of the session. Draining its own backlog is the queue's business.
+   */
+  private _armOnlineResume(): void {
+    if (this._onlineResume) return
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return
+    const handler = () => {
+      this._disarmOnlineResume()
+      if (this._queue.size > 0) this._scheduleFlush()
+    }
+    this._onlineResume = handler
+    window.addEventListener('online', handler)
+  }
+
+  private _disarmOnlineResume(): void {
+    if (!this._onlineResume) return
+    window.removeEventListener('online', this._onlineResume)
+    this._onlineResume = null
   }
 
   /** Persist the journal to IndexedDB (fire-and-forget). No-op until active. */
@@ -448,6 +499,11 @@ export class SyncQueue {
     }
     this._queue.set(key, op)
     this._retryQueue.delete(key)
+    // A fresh write on the key carries a new payload, so a previous permanent
+    // refusal says nothing about this one — it must not stay barred from
+    // journal replay (LIFT-1322). `replayJournal()` never reaches here for a
+    // barred key: it filters them out rather than re-enqueuing them.
+    this._permanentFailures.delete(key)
     this._scheduleFlush()
   }
 
@@ -535,6 +591,25 @@ export class SyncQueue {
     }
     if (this._flushing || this._queue.size === 0) return
 
+    // PARK, don't attempt, while the browser reports no connectivity
+    // (LIFT-1322). The queue is kept intact and no attempt is counted, so the
+    // five-retry budget — which exhausts in ~31 seconds of exponential backoff
+    // — is spent on requests that could actually land rather than on a dead
+    // radio. Before this, any offline stretch longer than about half a minute
+    // dropped every in-memory op and left its journal entry stranded until the
+    // next COLD START, so a lifter who trained through a dead spot and walked
+    // back into signal kept stale server state for the rest of the session.
+    //
+    // The complementary half is `replayJournal()`: this gate only helps when
+    // the browser KNOWS it is offline, and `navigator.onLine` is frequently
+    // true on a dead uplink (see `isOffline`).
+    if (isOffline()) {
+      this._armOnlineResume()
+      syncStatus.value = 'offline'
+      broadcastSyncStatus('offline')
+      return
+    }
+
     this._flushing = true
     syncStatus.value = 'syncing'
     broadcastSyncStatus('syncing')
@@ -561,6 +636,7 @@ export class SyncQueue {
         if (!failure) {
           // Clear retry counter on success so future failures get full retries
           this._attemptMap.delete(key)
+          this._permanentFailures.delete(key)
           // Write durably landed on the server — drop its journal entry,
           // unless a newer same-key write superseded it mid-flight (LIFT-1213).
           if (this._journalDeleteIfCurrent(key, journalSnapshots[i])) journalChanged = true
@@ -607,7 +683,14 @@ export class SyncQueue {
           // leaving the queue the same way a success does, and leaving a partial
           // count behind would shorten the retry budget of the NEXT, possibly
           // transient, failure on the same key.
-          if (!retryable) this._attemptMap.delete(key)
+          if (!retryable) {
+            this._attemptMap.delete(key)
+            // Bar this key from in-session journal replay (LIFT-1322) — see
+            // `_permanentFailures`. The durable entry is still retained for the
+            // next launch, which is the recovery window that can actually
+            // change the answer (a migration lands, an RLS policy is fixed).
+            this._permanentFailures.add(key)
+          }
           logError(error, {
             source: 'SyncQueue',
             event: retryable ? 'retry_exhausted' : 'permanent_failure',
@@ -633,9 +716,10 @@ export class SyncQueue {
       // "Sync failed" on every set logged in a dead-spot gym. Before LIFT-1321
       // this never came up: an offline write resolved as a *success*, so the
       // flush overwrote 'offline' with 'synced' instead.
-      const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+      // Still reachable with the LIFT-1322 park in place: the flush starts while
+      // the browser reports connectivity and the link drops mid-batch.
       const newStatus: 'synced' | 'error' | 'offline' =
-        !hasFailure ? 'synced' : offline ? 'offline' : 'error'
+        !hasFailure ? 'synced' : isOffline() ? 'offline' : 'error'
       syncStatus.value = newStatus
       broadcastSyncStatus(newStatus)
     } finally {
@@ -659,9 +743,11 @@ export class SyncQueue {
       clearTimeout(this._retryTimer)
       this._retryTimer = null
     }
+    this._disarmOnlineResume()
     this._queue.clear()
     this._retryQueue.clear()
     this._attemptMap.clear()
+    this._permanentFailures.clear()
     _deferredOps.clear()
     const hadJournal = this._journal.size > 0
     this._journal.clear()
@@ -751,6 +837,58 @@ export class SyncQueue {
         this.enqueue(key, () => executeDescriptor(descriptor), descriptor)
       }
     }
+  }
+
+  /**
+   * Re-arm journaled writes that are stranded in-session (LIFT-1322).
+   *
+   * A write whose retries are exhausted leaves the in-memory queue but KEEPS its
+   * durable journal entry (LIFT-1229) — and until now the only thing that ever
+   * read that entry again was `rehydrate()`, called once from
+   * `useAuth.initStores`. So the recovery for "the gym had no signal for a
+   * minute" was *the next cold start*: `useSyncRecovery`'s `online` trigger
+   * flushed a queue that had already been emptied, and the user kept stale
+   * server state for the rest of the session — silently, since the local-first
+   * UI shows the write as saved either way.
+   *
+   * This rebuilds the op from the journal for every key that is not already
+   * pending, so a reconnect / foreground / session-recovery signal pushes the
+   * backlog immediately. It reads the IN-MEMORY journal rather than IndexedDB:
+   * that map already mirrors the persisted entries (both live writes and
+   * whatever `rehydrate()` restored at launch), so replay stays synchronous and
+   * can be sequenced ahead of the remote-wins store reads.
+   *
+   * Returns the number of entries re-armed.
+   */
+  replayJournal(): number {
+    if (!supabase || isPreviewMode.value) return 0
+    let replayed = 0
+    // Snapshot: enqueue() writes back into _journal as it goes.
+    for (const [key, entry] of [...this._journal]) {
+      // Anything still pending is fresher than the journal by construction —
+      // and re-enqueuing it would reset the attempt count of a live retry.
+      if (this._queue.has(key) || this._retryQueue.has(key) || _deferredOps.has(key)) continue
+      if (this._permanentFailures.has(key)) continue
+      const { descriptor, isDelete } = entry
+      // Defense-in-depth: rehydrate() already gates on this, but a descriptor
+      // can also reach the journal straight from a producer.
+      if (!isReplayableDescriptor(descriptor)) continue
+      // A replay is provoked by an external signal that the world changed
+      // (connectivity or session came back), which is exactly the condition a
+      // fresh backoff ladder is for — one lone attempt would strand the write
+      // again on the first blip after reconnect. Scoped deliberately to the
+      // replay path: the plain enqueue() budget carry-over is LIFT-1326.
+      this._attemptMap.delete(key)
+      if (isDelete) {
+        this.enqueueDelete(key, () => executeDescriptor(descriptor), descriptor)
+      } else {
+        this.enqueue(key, () => executeDescriptor(descriptor), descriptor)
+      }
+      // A delete blocked by an open circuit breaker, or an op pushed past the
+      // rate limit, never reaches the queue — count what was actually re-armed.
+      if (this._queue.has(key)) replayed++
+    }
+    return replayed
   }
 
   /** Number of journaled (durable) pending operations. For tests/telemetry. */

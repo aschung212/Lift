@@ -587,6 +587,172 @@ describe('replay allowlist (LIFT-785)', () => {
   })
 })
 
+// In-SESSION replay of stranded journal entries (LIFT-1322).
+//
+// LIFT-1229 retains the durable entry when retries are exhausted, but until now
+// the only thing that ever read it back was `rehydrate()` — called once, from
+// `useAuth.initStores`. So the recovery for "the gym had no signal for a minute"
+// was the NEXT COLD START: `useSyncRecovery`'s `online` trigger flushed a queue
+// that had already been emptied, and the user kept stale server state for the
+// rest of the session, silently.
+describe('in-session journal replay (LIFT-1322)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    syncStatus.value = 'synced'
+    idbStore.clear()
+    fakeSupabase.reset()
+    _resetRateLimit()
+    _resetCircuitBreaker()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Burn every retry against an unreachable server, leaving the entry stranded. */
+  async function strandAWrite(queue: SyncQueue, key = 'set:s1', descriptor = UPSERT) {
+    queue.enqueue(key, () => Promise.resolve({ ...FETCH_FAILURE_RESULT }), descriptor)
+    await vi.runAllTimersAsync()
+    expect(queue.pending).toBe(0)     // the in-memory op is gone…
+    expect(queue.journalSize).toBe(1) // …but the durable record survives
+    expect(fakeSupabase.calls).toHaveLength(0)
+  }
+
+  it('re-arms a retry-exhausted write in the SAME session, without a relaunch', async () => {
+    const queue = new SyncQueue(100)
+    await strandAWrite(queue)
+
+    // Back in signal, same session — no new app launch, no rehydrate().
+    expect(queue.replayJournal()).toBe(1)
+    expect(queue.pending).toBe(1)
+    await vi.advanceTimersByTimeAsync(100)
+
+    const upserts = fakeSupabase.calls.filter(c => c.op === 'upsert' && c.table === 'sets')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toEqual({ id: 's1', weight: 100 })
+    expect(queue.journalSize).toBe(0)
+  })
+
+  it('gives the re-armed write a fresh retry budget', async () => {
+    // The replay is provoked by connectivity coming back, which is exactly the
+    // condition the backoff ladder exists for — one lone attempt would strand
+    // the write again on the first blip after reconnect.
+    const queue = new SyncQueue(100)
+    await strandAWrite(queue)
+
+    const op = vi.fn(() => Promise.resolve({ ...FETCH_FAILURE_RESULT }))
+    queue.replayJournal()
+    // Swap in a counting op for the replayed key without disturbing its state.
+    queue.enqueue('set:s1', op, UPSERT)
+    await vi.runAllTimersAsync()
+
+    expect(op).toHaveBeenCalledTimes(6) // 1 initial + 5 retries, not 0
+  })
+
+  it('routes a stranded DELETE back through the circuit breaker', async () => {
+    const DELETE: SyncDescriptor = {
+      op: 'update', table: 'sets',
+      values: { deleted_at: '2026-09-03T00:00:00Z' }, match: { id: 's1', user_id: 'u1' },
+    }
+    const queue = new SyncQueue(100)
+    queue.enqueueDelete('set:s1', () => Promise.resolve({ ...FETCH_FAILURE_RESULT }), DELETE)
+    await vi.runAllTimersAsync()
+    expect(queue.journalSize).toBe(1)
+    // Zero the breaker so the assertion below is unambiguously about the
+    // REPLAY (the original delete's timestamp has aged out of the 10s rolling
+    // window while the retries backed off anyway).
+    _resetCircuitBreaker()
+
+    queue.replayJournal()
+    await vi.advanceTimersByTimeAsync(100)
+
+    // The breaker still counted it — a replay must never be a way around the
+    // SEV1 guard on runaway deletes.
+    expect(_getCircuitBreakerState().deleteCount).toBe(1)
+    const updates = fakeSupabase.calls.filter(c => c.op === 'update')
+    expect(updates).toHaveLength(1)
+    expect(updates[0].filters).toEqual({ id: 's1', user_id: 'u1' })
+  })
+
+  it('does not disturb a write that is still pending', async () => {
+    // The live op is fresher than the journal by construction, and re-enqueuing
+    // it would reset the attempt count of a retry already in flight.
+    const queue = new SyncQueue(100)
+    const op = vi.fn(() => Promise.resolve({ data: null, error: null }))
+    queue.enqueue('set:s1', op, UPSERT)
+
+    expect(queue.replayJournal()).toBe(0)
+    expect(queue.pending).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(op).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not re-issue a write the server understood and refused', async () => {
+    // A 400/409/RLS refusal cannot change answer on a byte-for-byte replay
+    // within this session, so re-issuing it on every reconnect and foreground
+    // resume would only reproduce the same failure — and log a fresh Sentry
+    // error each time. Its journal entry is still retained for the next launch,
+    // which is the window that CAN change (a migration lands — LIFT-1169).
+    const queue = new SyncQueue(100)
+    const op = vi.fn(() => Promise.resolve({
+      data: null, status: 400, error: { code: 'PGRST204', message: "column 'gyms' not found" },
+    }))
+    queue.enqueue('exercise:e1', op, UPSERT)
+    await vi.runAllTimersAsync()
+    expect(op).toHaveBeenCalledTimes(1)
+
+    expect(queue.replayJournal()).toBe(0)
+    await vi.runAllTimersAsync()
+    expect(op).toHaveBeenCalledTimes(1)
+    // Durability is untouched — the next launch still replays it.
+    expect(queue.journalSize).toBe(1)
+  })
+
+  it('un-bars a refused key once a genuine new write replaces it', async () => {
+    // A fresh write carries a new payload, so the old refusal says nothing
+    // about it.
+    const queue = new SyncQueue(100)
+    queue.enqueue('exercise:e1', () => Promise.resolve({
+      data: null, status: 400, error: { code: 'PGRST204', message: 'no such column' },
+    }), UPSERT)
+    await vi.runAllTimersAsync()
+    expect(queue.replayJournal()).toBe(0)
+
+    const FIXED: SyncDescriptor = {
+      op: 'upsert', table: 'exercises', row: { id: 'e1', user_id: 'u1', name: 'Row' },
+    }
+    queue.enqueue('exercise:e1', () => Promise.resolve({ ...FETCH_FAILURE_RESULT }), FIXED)
+    await vi.runAllTimersAsync()
+
+    expect(queue.replayJournal()).toBe(1)
+  })
+
+  it('drops a tampered journal entry instead of replaying it', async () => {
+    const queue = new SyncQueue(100)
+    await strandAWrite(queue)
+    // Simulate IndexedDB tampering surviving into the in-memory journal by
+    // re-seeding through rehydrate on a fresh queue.
+    idbStore.set('lift-sync-journal', JSON.stringify({
+      version: JOURNAL_SCHEMA_VERSION,
+      entries: [{
+        key: 'evil:1', isDelete: false,
+        descriptor: { op: 'upsert', table: 'profiles', row: { is_admin: true } },
+      }],
+    }))
+    const session2 = new SyncQueue(100)
+    await session2.rehydrate()
+
+    expect(session2.replayJournal()).toBe(0)
+    await vi.runAllTimersAsync()
+    expect(fakeSupabase.calls).toHaveLength(0)
+  })
+
+  it('is a no-op on an empty journal', () => {
+    expect(new SyncQueue(100).replayJournal()).toBe(0)
+  })
+})
+
 // Schema-version envelope: a journal written under an older schema generation
 // may reference columns a migration has since renamed/removed, so it is dropped
 // wholesale on rehydrate rather than replayed into silent PostgREST failures

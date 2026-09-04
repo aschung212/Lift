@@ -30,8 +30,12 @@ vi.mock('../../stores/progression', () => ({
 }))
 
 const flush = vi.fn().mockResolvedValue(undefined)
+const replayJournal = vi.fn().mockReturnValue(0)
 vi.mock('../../lib/syncQueue', () => ({
-  syncQueue: { flush: (...args: unknown[]) => flush(...args) },
+  syncQueue: {
+    flush: (...args: unknown[]) => flush(...args),
+    replayJournal: (...args: unknown[]) => replayJournal(...args),
+  },
 }))
 
 const logError = vi.fn()
@@ -60,13 +64,14 @@ describe('useSyncRecovery', () => {
     _resetSyncRecovery()
     _resetSessionHealth()
     setOnline(true)
-    for (const fn of [fetchWorkout, fetchBodyweight, fetchPreferences, fetchProgression, flush, logError]) {
+    for (const fn of [fetchWorkout, fetchBodyweight, fetchPreferences, fetchProgression, flush, replayJournal, logError]) {
       fn.mockClear()
     }
     for (const fn of [fetchWorkout, fetchBodyweight, fetchPreferences, fetchProgression]) {
       fn.mockResolvedValue(undefined)
     }
     flush.mockResolvedValue(undefined)
+    replayJournal.mockReturnValue(0)
   })
 
   afterEach(() => {
@@ -94,6 +99,32 @@ describe('useSyncRecovery', () => {
       await refetchAllStores('online')
 
       expect(order).toEqual(['flush', 'fetch'])
+    })
+
+    it('replays stranded journal writes BEFORE flushing, and both before reading (LIFT-1322)', async () => {
+      // A write whose retries exhausted mid-session has already left the queue,
+      // so flushing alone drains an empty queue and the backlog stays stranded
+      // until the next cold start. Replay has to re-arm it first — and the
+      // whole write half still has to precede the remote-wins reads.
+      const order: string[] = []
+      replayJournal.mockImplementation(() => { order.push('replay'); return 1 })
+      flush.mockImplementation(async () => { order.push('flush') })
+      fetchWorkout.mockImplementation(async () => { order.push('fetch') })
+
+      await refetchAllStores('online')
+
+      expect(order).toEqual(['replay', 'flush', 'fetch'])
+    })
+
+    it('still flushes and re-fetches when the journal replay throws', async () => {
+      // The flush is the load-bearing half; a broken replay must not suppress it.
+      replayJournal.mockImplementation(() => { throw new Error('journal broke') })
+
+      await expect(refetchAllStores('online')).resolves.toBe(true)
+
+      expect(flush).toHaveBeenCalledTimes(1)
+      expect(fetchWorkout).toHaveBeenCalledTimes(1)
+      expect(logError).toHaveBeenCalled()
     })
 
     it('still re-fetches when the queue flush fails', async () => {
@@ -139,6 +170,7 @@ describe('useSyncRecovery', () => {
 
       await expect(refetchAllStores('resume')).resolves.toBe(false)
 
+      expect(replayJournal).not.toHaveBeenCalled()
       expect(flush).not.toHaveBeenCalled()
       expect(fetchWorkout).not.toHaveBeenCalled()
     })
