@@ -14,14 +14,28 @@
  * surface the stores actually use in ONE place, with per-test behavior selected
  * by a `mode` option rather than copy-pasted chains:
  *
- *   - `'ok'`       — in-memory tables. Records every call; `seed()` rows, then
- *                    reads/upserts/updates/deletes them like a real backend.
- *                    This is the superset used by the read-path fuzz + write-path
- *                    integration tests.
- *   - `'reject'`   — every query rejects (network/offline simulation). Stores
- *                    must preserve local data and never throw out of `init()`.
- *   - `'apiError'` — every query resolves `{ data: null, error }` (a non-throwing
- *                    API/RLS error). Stores must check `.error` and bail out.
+ *   - `'ok'`           — in-memory tables. Records every call; `seed()` rows, then
+ *                        reads/upserts/updates/deletes them like a real backend.
+ *                        This is the superset used by the read-path fuzz +
+ *                        write-path integration tests.
+ *   - `'networkError'` — every query RESOLVES the exact envelope postgrest-js
+ *                        produces when `fetch` rejects (LIFT-1321). See below —
+ *                        this, not `'reject'`, is what being offline looks like.
+ *   - `'reject'`       — every query rejects. A real but much rarer shape (a throw
+ *                        from inside the client, `shouldThrowOnError`); stores
+ *                        must preserve local data and never throw out of `init()`.
+ *   - `'apiError'`     — every query resolves `{ data: null, error }` (a
+ *                        non-throwing API/RLS error). Stores must check `.error`
+ *                        and bail out.
+ *
+ * `'networkError'` exists because the obvious simulation is wrong. postgrest-js
+ * CATCHES the fetch rejection and resolves `{ error: { message: 'TypeError:
+ * Failed to fetch', code: '' }, status: 0 }` — a Supabase mutation essentially
+ * never rejects when the device is offline. Every sync test modelled offline as
+ * a `Promise.reject`, which is why `SyncQueue` could count real offline writes
+ * as successes (clearing retries and deleting the durable journal entry) for
+ * months with the suite green: the tests exercised a code path production takes
+ * only rarely. Same fake-fidelity trap as the `max_rows` cap below.
  *
  * The set of methods on the builder is asserted against the stores' real usage
  * by `fakeSupabase.contract.test.ts`, so a new query method in a store fails the
@@ -49,12 +63,46 @@ export const FAKE_SUPABASE_CHAIN_METHODS = [
   'then',
 ] as const
 
-export type FakeSupabaseMode = 'ok' | 'reject' | 'apiError'
+export type FakeSupabaseMode = 'ok' | 'reject' | 'apiError' | 'networkError'
 
 export interface FakeSupabaseError {
   message: string
   code?: string
+  details?: string
+  hint?: string
 }
+
+/**
+ * The envelope postgrest-js resolves when the underlying `fetch` rejects
+ * (verified against @supabase/postgrest-js dist/index.mjs — the `shouldThrowOnError
+ * === false` catch branch). `status: 0` and an empty `code` are the two markers
+ * that separate "never reached the server" from a real PostgREST rejection.
+ */
+/**
+ * What awaiting a fake query yields. `status` is optional because only the
+ * failure modes that carry one bother to set it — the real client always sends
+ * it, but the `'ok'` path's consumers only ever read `data` / `error`.
+ */
+export interface FakeSupabaseResult {
+  data: unknown
+  error: FakeSupabaseError | null
+  count?: number | null
+  status?: number
+  statusText?: string
+}
+
+export const FAKE_NETWORK_ERROR_RESULT = {
+  data: null,
+  error: {
+    message: 'TypeError: Failed to fetch',
+    details: 'TypeError: Failed to fetch',
+    hint: '',
+    code: '',
+  },
+  count: null,
+  status: 0,
+  statusText: '',
+} as const
 
 export interface FakeSupabaseOptions {
   /** Selects per-query behavior. Defaults to `'ok'`. */
@@ -178,11 +226,18 @@ export class FakeSupabase {
     data: unknown,
     single: boolean,
     range?: { from: number; to: number },
-  ): { data: unknown; error: FakeSupabaseError | null } {
+  ): FakeSupabaseResult {
     this.calls.push({ op, table, filters: { ...filters }, data, range })
 
     if (this.mode === 'apiError') {
       return { data: null, error: this._apiError }
+    }
+
+    // The call IS recorded first: an offline request really is issued, it just
+    // never gets an answer. Tests asserting "nothing reached the server" must
+    // assert on the server-side effect (`fake.tables`), not the call log.
+    if (this.mode === 'networkError') {
+      return { ...FAKE_NETWORK_ERROR_RESULT }
     }
 
     const rows = this._query(op, table, filters, data)
@@ -238,7 +293,7 @@ export class FakeSupabase {
   }
 }
 
-class FakeBuilder implements PromiseLike<{ data: unknown; error: FakeSupabaseError | null }> {
+class FakeBuilder implements PromiseLike<FakeSupabaseResult> {
   private _op: Op = 'select'
   private _filters: Record<string, unknown> = {}
   private _data: unknown = null
@@ -257,8 +312,8 @@ class FakeBuilder implements PromiseLike<{ data: unknown; error: FakeSupabaseErr
   range(from: number, to: number) { this._range = { from, to }; return this }
   single() { this._single = true; return this }
 
-  then<TResult1 = { data: unknown; error: FakeSupabaseError | null }, TResult2 = never>(
-    onfulfilled?: (v: { data: unknown; error: FakeSupabaseError | null }) => TResult1 | PromiseLike<TResult1>,
+  then<TResult1 = FakeSupabaseResult, TResult2 = never>(
+    onfulfilled?: (v: FakeSupabaseResult) => TResult1 | PromiseLike<TResult1>,
     onrejected?: (reason: unknown) => TResult2 | PromiseLike<TResult2>,
   ): PromiseLike<TResult1 | TResult2> {
     if (this._parent.mode === 'reject') {
