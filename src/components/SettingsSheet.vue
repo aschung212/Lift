@@ -594,7 +594,7 @@
             </div>
             <div class="privacyRow">
               <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              <span class="privacyText">{{ user ? 'Synced over encrypted HTTPS' : 'Sign in to sync across devices' }}</span>
+              <span class="privacyText">{{ user && !isGuest ? 'Synced over encrypted HTTPS' : 'Sign in to sync across devices' }}</span>
             </div>
             <div class="privacyRow">
               <svg class="privacyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
@@ -648,13 +648,13 @@
         </div>
 
         <div class="settingsGroup">
-          <button class="settingsSignOut" @click="confirmSignOut">Sign Out</button>
+          <button class="settingsSignOut" @click="confirmSignOut">{{ isGuest ? 'Exit Guest Mode' : 'Sign Out' }}</button>
         </div>
 
         <div class="settingsGroup">
           <div class="settingsHeader">Danger Zone</div>
           <button class="settingsRow settingsRowBtn settingsDeleteAccount" @click="showDeleteAccountConfirm">
-            <span class="settingsLabel">Delete Account</span>
+            <span class="settingsLabel">{{ deleteActionLabel }}</span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
         </div>
@@ -709,8 +709,8 @@
     <Transition name="undoToast">
       <div v-if="deleteAccountOpen" class="confirmOverlay" @click.self="deleteAccountOpen = false" @keydown.escape="deleteAccountOpen = false">
         <div class="confirmSheet deleteConfirmSheet" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-desc">
-          <p id="delete-title" class="confirmMessage deleteConfirmTitle">Delete Account</p>
-          <p id="delete-desc" class="deleteConfirmDesc">This will permanently delete your account and erase all your workout data, progression, and settings. You will not be able to sign back in. This action cannot be undone.</p>
+          <p id="delete-title" class="confirmMessage deleteConfirmTitle">{{ deleteActionLabel }}</p>
+          <p id="delete-desc" class="deleteConfirmDesc">{{ deleteActionDesc }}</p>
           <label class="deleteConfirmLabel" for="delete-confirm-input">Type <strong>DELETE</strong> to confirm</label>
           <input
             id="delete-confirm-input"
@@ -870,7 +870,11 @@ const {
 } = usePRBaseline()
 const progressionStore = useProgressionStore()
 const { celebrateUnlocks } = useXPCeremony()
-const { user } = useAuth()
+// A local-only guest (LIFT-1083) has no account, so every account-shaped string
+// in this sheet has to fork (LIFT-1310). `user` is TRUTHY for a guest — it holds
+// the `guest-local` sentinel — so `isGuest` is the only thing that distinguishes
+// them, and a bare `user ?` check reads as "signed in" when it isn't.
+const { user, isGuest } = useAuth()
 const { logEvent, supportFunnel } = useAnalytics()
 const prefs = usePreferencesStore()
 const workoutStore = useWorkoutStore()
@@ -1186,6 +1190,19 @@ const deletingAccount = ref(false)
 const deleteError = ref('')
 const { deleteAccount } = useAuth()
 
+// Both the Danger Zone row and the dialog title it opens read from ONE label
+// (LIFT-1310) — the title is the alertdialog's accessible name, so a divergence
+// would announce a different action than the one the user just tapped. For a
+// guest there is no account to delete: LIFT-1301 skips both server stages of
+// `deleteAccount`, leaving a local wipe, which is what the copy now says. The
+// description drops "you will not be able to sign back in" for the same reason —
+// a guest lands on the auth gate afterwards and can tap "Continue as guest"
+// again immediately.
+const deleteActionLabel = computed(() => (isGuest.value ? 'Delete All Data' : 'Delete Account'))
+const deleteActionDesc = computed(() => (isGuest.value
+  ? 'This will permanently erase all your workout data, progression, and settings from this device. This action cannot be undone.'
+  : 'This will permanently delete your account and erase all your workout data, progression, and settings. You will not be able to sign back in. This action cannot be undone.'))
+
 function showDeleteAccountConfirm() {
   deleteConfirmText.value = ''
   deleteError.value = ''
@@ -1210,7 +1227,12 @@ async function executeDeleteAccount() {
 }
 
 function confirmSignOut() {
-  showConfirm('Sign out?', () => {
+  // App.vue routes a guest here to `exitGuestMode()`, which keeps every logged
+  // workout on the device — so say so, next to a row that erases them.
+  const message = isGuest.value
+    ? 'Exit guest mode? Your workouts stay on this device.'
+    : 'Sign out?'
+  showConfirm(message, () => {
     emit('update:modelValue', false)
     emit('sign-out')
   })
