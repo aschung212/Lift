@@ -84,11 +84,14 @@
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
-            <span v-if="displaySyncStatus !== 'synced'" class="syncIndicator" :class="'syncIndicator--' + displaySyncStatus" :title="syncStatusLabel" role="img" :aria-label="syncStatusLabel">
+            <!-- Tappable, 44pt (LIFT-1323). It used to be an icon-only <span>
+                 whose only explanation was the :title tooltip — unreachable on
+                 touch, which is the platform this ships on. -->
+            <button v-if="displaySyncStatus !== 'synced'" class="syncIndicator" :class="'syncIndicator--' + displaySyncStatus" :title="syncStatusLabel" :aria-label="syncStatusLabel" aria-haspopup="dialog" @click="syncSheetOpen = true">
               <svg v-if="displaySyncStatus === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               <svg v-else-if="displaySyncStatus === 'offline'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
               <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-            </span>
+            </button>
           </div>
           <div class="appTopBarRight">
             <button
@@ -169,6 +172,20 @@
 
       <!-- AI Review sheet (entry: Calendar-tab top-bar button) -->
       <CoachSheet v-if="coachOpen" @close="coachOpen = false" />
+
+      <!-- Sync details (entry: the top-bar sync indicator, shown only when the
+           app is not fully synced) -->
+      <SyncStatusSheet
+        v-if="syncSheetOpen"
+        :status="displaySyncStatus"
+        :pending-count="pendingSyncCount"
+        :stranded-count="strandedSyncCount"
+        :last-synced-at="lastSyncedAt"
+        :local-only="syncLocalOnly"
+        :busy="manualSyncInFlight"
+        @sync-now="runManualSync"
+        @close="syncSheetOpen = false"
+      />
     </template>
 
     <!-- Undo toast -->
@@ -300,6 +317,8 @@ const SettingsSheet = defineAsyncComponent(() => import('./components/SettingsSh
 // AI Review sheet — reached only from the Calendar-tab top-bar button, so its
 // chunk (and the export/profile UI it pulls in) loads on first open.
 const CoachSheet = defineAsyncComponent(() => import('./views/CoachSheet.vue'))
+// Sync details — most sessions never open it, so it loads on first tap.
+const SyncStatusSheet = defineAsyncComponent(() => import('./components/SyncStatusSheet.vue'))
 import { coachReviewEligibility } from './lib/coachDigest'
 import { COACH_MODE } from './lib/coachExport'
 import { useTheme, connectProgressionStore, connectThemeStore } from './composables/useTheme'
@@ -315,8 +334,8 @@ import { useAnalytics } from './composables/useAnalytics'
 import { captureAcquisitionSource } from './composables/useAcquisitionSource'
 import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
-import { syncStatus } from './lib/syncQueue'
-import { combineSyncStatus } from './lib/syncStatus'
+import { syncStatus, pendingSyncCount, strandedSyncCount } from './lib/syncQueue'
+import { combineSyncStatus, lastSyncedAt } from './lib/syncStatus'
 import { authNeedsReauth } from './lib/sessionHealth'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
@@ -325,7 +344,7 @@ import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useInstallPrompt } from './composables/useInstallPrompt'
 import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
-import { setupSyncRecovery } from './composables/useSyncRecovery'
+import { setupSyncRecovery, syncNow } from './composables/useSyncRecovery'
 import { useAppBadge } from './composables/useAppBadge'
 import { todayISO } from './lib/dates'
 import { useOnboarding } from './composables/useOnboarding'
@@ -420,7 +439,14 @@ const readSyncError = computed(() =>
   ?? prefs.lastSyncError
   ?? null,
 )
-const displaySyncStatus = computed(() => combineSyncStatus(syncStatus.value, readSyncError.value))
+// `strandedSyncCount` keeps the indicator up for writes the queue has given up
+// on (LIFT-1323): `syncStatus` reflects only the LAST batch, so a later
+// unrelated write flushing cleanly used to reset it to 'synced' while local-only
+// rows the server has never seen sat in the journal — the app's least visible
+// failure, and the one this sheet exists to expose.
+const displaySyncStatus = computed(
+  () => combineSyncStatus(syncStatus.value, readSyncError.value, strandedSyncCount.value),
+)
 
 const syncStatusLabel = computed(() => {
   if (displaySyncStatus.value === 'syncing') return 'Syncing...'
@@ -428,6 +454,31 @@ const syncStatusLabel = computed(() => {
   if (displaySyncStatus.value === 'offline') return 'Offline — changes saved locally'
   return ''
 })
+
+// ── Sync details sheet (LIFT-1323) ──────────────────────────────
+// Entry point is the indicator itself, which only renders when the app is not
+// fully synced — so the sheet is reachable exactly when there is something to
+// explain, and adds no permanent chrome when there isn't.
+const syncSheetOpen = ref(false)
+const manualSyncInFlight = ref(false)
+// Nothing to sync TO: a guest (whose `user` is the truthy 'guest-local'
+// sentinel — never test `user` for signed-in-ness, per LIFT-1310/LIFT-1301) or
+// a preview deploy, where every write is deliberately dropped before the queue.
+const syncLocalOnly = computed(() => isGuest.value || isPreviewMode.value)
+
+// The sheet's own `v-if` is `syncSheetOpen`, NOT the indicator's condition: a
+// successful "Sync now" flips the status to 'synced' and removes the indicator,
+// and closing the sheet along with it would yank away the confirmation that the
+// retry the user just asked for actually worked.
+async function runManualSync() {
+  if (manualSyncInFlight.value) return
+  manualSyncInFlight.value = true
+  try {
+    await syncNow()
+  } finally {
+    manualSyncInFlight.value = false
+  }
+}
 
 // Detect offline/online
 function updateOnlineStatus() {

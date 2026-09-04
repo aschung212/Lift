@@ -5,7 +5,7 @@ import { logError, logWarn } from './logger'
 import { broadcastSyncStatus } from './crossTabSync'
 import { backupToIDB, restoreFromIDB } from './durableStorage'
 import { isAuthError, ensureFreshSession } from './sessionHealth'
-import { isRetryableSyncFailure } from './syncStatus'
+import { isRetryableSyncFailure, markSynced } from './syncStatus'
 
 type SyncOperation = () => PromiseLike<unknown>
 
@@ -265,6 +265,29 @@ export function executeDescriptor(descriptor: SyncDescriptor): PromiseLike<unkno
 /** Reactive sync status for UI indicators. */
 export const syncStatus = ref<'synced' | 'syncing' | 'error' | 'offline'>('synced')
 
+/**
+ * Reactive count of writes that have not been confirmed by the server
+ * (LIFT-1323) — queued, awaiting a backoff retry, deferred by the rate limiter,
+ * or journaled and no longer being retried. Keyed by the queue's own dedupe key
+ * and counted as a union, so a write sitting in two of those places is one
+ * change, not two.
+ *
+ * This is the number the sync sheet shows the user, so it must mean "changes of
+ * mine the server does not have" rather than "operations pending internally".
+ */
+export const pendingSyncCount = ref(0)
+
+/**
+ * Reactive count of writes this session has STOPPED retrying while their
+ * durable journal entry survives (LIFT-1323) — i.e. retries exhausted, or the
+ * server understood the request and refused it (LIFT-1321).
+ *
+ * These are the app's most dangerous rows: local-only, invisible, and (before
+ * this) reported nowhere but Sentry. They replay on the next launch via
+ * `rehydrate()`, and `retryNow()` replays them on demand.
+ */
+export const strandedSyncCount = ref(0)
+
 // Rate limiting: max operations per window
 const RATE_LIMIT_MAX = 200
 const RATE_LIMIT_WINDOW = 60_000 // 1 minute
@@ -321,9 +344,32 @@ export class SyncQueue {
   // seen, so descriptor-less queues never touch IndexedDB.
   private _journal = new Map<string, JournalEntry>()
   private _journalActive = false
+  // Keys whose op has LEFT the in-memory queue for good this session while
+  // their journal entry survives (LIFT-1323). Maintained alongside the journal
+  // rather than derived from it, because "no longer being retried" is a
+  // decision `flush` makes and nothing else can reconstruct afterwards.
+  private _stranded = new Set<string>()
 
   constructor(flushDelay = 1000) {
     this._flushDelay = flushDelay
+  }
+
+  /**
+   * Every key with an outstanding write, as a union: an op can sit in the live
+   * queue AND the journal at once, and that is one unsynced change to the user.
+   */
+  private _outstandingKeys(): Set<string> {
+    const keys = new Set<string>(this._queue.keys())
+    for (const key of this._retryQueue.keys()) keys.add(key)
+    for (const key of this._journal.keys()) keys.add(key)
+    for (const key of _deferredOps.keys()) keys.add(key)
+    return keys
+  }
+
+  /** Publish the reactive counts the sync sheet reads. */
+  private _publishCounts(): void {
+    pendingSyncCount.value = this._outstandingKeys().size
+    strandedSyncCount.value = this._stranded.size
   }
 
   /** Persist the journal to IndexedDB (fire-and-forget). No-op until active. */
@@ -441,13 +487,18 @@ export class SyncQueue {
         }
       }, RATE_LIMIT_WINDOW)
     }
+    // A fresh op for this key supersedes whatever the queue gave up on before
+    // (last-write-wins), so it is no longer stranded — it is pending again.
+    this._stranded.delete(key)
     if (_rateCount > RATE_LIMIT_MAX) {
       logWarn('Sync rate limit exceeded, deferring operation', { key })
       _deferredOps.set(key, op)
+      this._publishCounts()
       return
     }
     this._queue.set(key, op)
     this._retryQueue.delete(key)
+    this._publishCounts()
     this._scheduleFlush()
   }
 
@@ -561,6 +612,8 @@ export class SyncQueue {
         if (!failure) {
           // Clear retry counter on success so future failures get full retries
           this._attemptMap.delete(key)
+          // Proven to be on the server — it can no longer be a stranded row.
+          this._stranded.delete(key)
           // Write durably landed on the server — drop its journal entry,
           // unless a newer same-key write superseded it mid-flight (LIFT-1213).
           if (this._journalDeleteIfCurrent(key, journalSnapshots[i])) journalChanged = true
@@ -608,12 +661,20 @@ export class SyncQueue {
           // count behind would shorten the retry budget of the NEXT, possibly
           // transient, failure on the same key.
           if (!retryable) this._attemptMap.delete(key)
+          // The op is gone from memory but its durable record survives, so this
+          // key is now a local-only row the server has never seen (LIFT-1323).
+          // Counting it keeps the sync indicator up — and the sheet's count
+          // truthful — after a later unrelated write flushes cleanly and resets
+          // `syncStatus` to 'synced'. A descriptor-less write has nothing to
+          // replay, so it is not counted: `retryNow()` could not act on it.
+          const journalRetained = this._journal.has(key)
+          if (journalRetained) this._stranded.add(key)
           logError(error, {
             source: 'SyncQueue',
             event: retryable ? 'retry_exhausted' : 'permanent_failure',
             key,
             attempts: attempt,
-            journalRetained: this._journal.has(key),
+            journalRetained,
           })
         }
       })
@@ -636,12 +697,66 @@ export class SyncQueue {
       const offline = typeof navigator !== 'undefined' && navigator.onLine === false
       const newStatus: 'synced' | 'error' | 'offline' =
         !hasFailure ? 'synced' : offline ? 'offline' : 'error'
+      // A clean batch is a confirmed server exchange — the freshest evidence the
+      // device and the account agree, and what the sync sheet shows as "Last
+      // synced" (LIFT-1323).
+      if (!hasFailure) markSynced()
       syncStatus.value = newStatus
       broadcastSyncStatus(newStatus)
     } finally {
       this._flushing = false
+      this._publishCounts()
       if (this._queue.size > 0) this._scheduleFlush()
     }
+  }
+
+  /**
+   * Retry every write this session is holding back, right now (LIFT-1323).
+   *
+   * The automatic paths cannot reach all of them: `flush()` only runs `_queue`,
+   * so writes parked in `_retryQueue` wait out an exponential backoff of up to
+   * a minute, and writes that left the queue for good (retries exhausted, or
+   * refused by the server) are replayed only by `rehydrate()` on the NEXT
+   * launch. A "Sync now" that skipped both would be a placebo for exactly the
+   * failures the user opened the sheet about.
+   *
+   * Callers flush afterwards (`useSyncRecovery.syncNow`).
+   */
+  retryNow(): void {
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer)
+      this._retryTimer = null
+    }
+    // Backoff-parked ops go straight back into the queue: they were already
+    // admitted once, so re-running them through enqueue()/enqueueDelete() would
+    // push a second timestamp at the delete circuit breaker for one logical
+    // delete and could falsely trip the SEV1 guard.
+    for (const [key, { op }] of this._retryQueue) {
+      if (!this._queue.has(key)) this._queue.set(key, op)
+    }
+    this._retryQueue.clear()
+    // Rebuild the given-up writes from their durable descriptors — the same
+    // rebuild rehydrate() does at launch, minus the IndexedDB round trip, since
+    // the in-memory journal is that file's live counterpart. Routed back through
+    // the normal entry points for the same reason rehydrate() is: a replayed
+    // DELETE must stay visible to the circuit breaker. If a large backlog trips
+    // the rate limiter the surplus lands in `_deferredOps` and runs in the next
+    // window — still counted in `pendingSyncCount`, so a deferred write is
+    // delayed rather than silently dropped from the number the user is reading.
+    for (const [key, entry] of [...this._journal]) {
+      if (this._queue.has(key)) continue
+      const { descriptor, isDelete } = entry
+      const op = () => executeDescriptor(descriptor)
+      if (isDelete) this.enqueueDelete(key, op, descriptor)
+      else this.enqueue(key, op, descriptor)
+    }
+    // An explicit retry restores the full retry budget for what it promotes. A
+    // key that exhausted its five attempts keeps `attempt = 5` in `_attemptMap`
+    // (only a *permanent* failure clears it), so without this the writes the
+    // user just asked to retry would fail terminally on their first new
+    // attempt, with no backoff and no second chance.
+    for (const key of this._queue.keys()) this._attemptMap.delete(key)
+    this._publishCounts()
   }
 
   /** Number of pending (unflushed) operations. */
@@ -662,10 +777,12 @@ export class SyncQueue {
     this._queue.clear()
     this._retryQueue.clear()
     this._attemptMap.clear()
+    this._stranded.clear()
     _deferredOps.clear()
     const hadJournal = this._journal.size > 0
     this._journal.clear()
     if (hadJournal) this._persistJournal()
+    this._publishCounts()
   }
 
   /**

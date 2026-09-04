@@ -24,7 +24,7 @@ import { bodyweightFold, effectiveSetWeight } from '../lib/bodyweightLoad'
 import { attemptedNextRep, pickTopSet } from '../lib/setEffort'
 import { useBodyweightStore } from './bodyweight'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
-import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { classifySyncError, markSynced, type SyncErrorKind } from '../lib/syncStatus'
 
 const TOMBSTONE_STORE = 'exercises'
 
@@ -568,6 +568,7 @@ export const useWorkoutStore = defineStore('workout', () => {
 
     if (!remoteExData || !sets) return
     lastSyncError.value = null
+    markSynced()
 
     // Filter out tombstoned exercises (deleted offline, not yet synced)
     const remoteIds = new Set(remoteExData.map(ex => ex.id))

@@ -11,7 +11,7 @@ import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { setDayKey } from '../lib/dates'
-import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { classifySyncError, markSynced, type SyncErrorKind } from '../lib/syncStatus'
 import {
   themeUnlocksToJson,
   streakHistoryToJson,
@@ -322,8 +322,10 @@ export const useProgressionStore = defineStore('progression', {
         if (error) {
           if (error.code === 'PGRST116') {
             // Row genuinely doesn't exist — push local state to create it.
-            // This is not a sync failure; clear any prior error.
+            // This is not a sync failure; clear any prior error. The server
+            // answered, so it counts as a confirmed exchange (LIFT-1323).
             this.lastSyncError = null
+            markSynced()
             this._syncToSupabase()
           } else {
             // Network/auth/RLS error — route through reportFetchError so an
@@ -349,6 +351,7 @@ export const useProgressionStore = defineStore('progression', {
 
       if (!data) return
       this.lastSyncError = null
+      markSynced()
 
       // Merge remote state — remote wins for simple scalar fields
       this.weeklyTarget = data.weekly_target ?? this.weeklyTarget

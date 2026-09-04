@@ -17,7 +17,7 @@ import {
 import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
 import { localDateKey } from '../lib/dates'
-import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { classifySyncError, markSynced, type SyncErrorKind } from '../lib/syncStatus'
 import { useWorkoutStore } from './workout'
 
 const STORAGE_KEY = 'user-preferences'
@@ -470,6 +470,9 @@ export const usePreferencesStore = defineStore('preferences', {
             this.lastSyncError = classifySyncError(error)
           } else {
             this.lastSyncError = null
+            // Includes PGRST116 (no row yet): the server answered, which is
+            // exactly what "last synced" reports (LIFT-1323).
+            markSynced()
           }
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {

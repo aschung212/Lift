@@ -3,7 +3,7 @@ import { supabase, isPreviewMode } from '../lib/supabase'
 import type { Tables } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
-import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { classifySyncError, markSynced, type SyncErrorKind } from '../lib/syncStatus'
 import { mergeEntities } from '../lib/conflictResolver'
 import { uuid, endOfDayISO } from '../lib/uuid'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
@@ -169,6 +169,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
 
       if (!data) return
       this.lastSyncError = null
+      markSynced()
 
       // Filter out tombstoned entries (deleted offline, not yet synced)
       const remoteIds = new Set(data.map(e => e.id))

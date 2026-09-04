@@ -30,8 +30,12 @@ vi.mock('../../stores/progression', () => ({
 }))
 
 const flush = vi.fn().mockResolvedValue(undefined)
+const retryNow = vi.fn()
 vi.mock('../../lib/syncQueue', () => ({
-  syncQueue: { flush: (...args: unknown[]) => flush(...args) },
+  syncQueue: {
+    flush: (...args: unknown[]) => flush(...args),
+    retryNow: (...args: unknown[]) => retryNow(...args),
+  },
 }))
 
 const logError = vi.fn()
@@ -42,7 +46,7 @@ vi.mock('../../lib/logger', () => ({
 
 vi.mock('../../lib/supabase', () => ({ supabase: null }))
 
-import { refetchAllStores, setupSyncRecovery, _resetSyncRecovery, REFETCH_COOLDOWN_MS } from '../useSyncRecovery'
+import { refetchAllStores, syncNow, setupSyncRecovery, _resetSyncRecovery, REFETCH_COOLDOWN_MS } from '../useSyncRecovery'
 import { sessionRecoveryTick, _resetSessionHealth } from '../../lib/sessionHealth'
 
 /** Let queued microtasks (the awaited fetches) settle. */
@@ -60,7 +64,7 @@ describe('useSyncRecovery', () => {
     _resetSyncRecovery()
     _resetSessionHealth()
     setOnline(true)
-    for (const fn of [fetchWorkout, fetchBodyweight, fetchPreferences, fetchProgression, flush, logError]) {
+    for (const fn of [fetchWorkout, fetchBodyweight, fetchPreferences, fetchProgression, flush, retryNow, logError]) {
       fn.mockClear()
     }
     for (const fn of [fetchWorkout, fetchBodyweight, fetchPreferences, fetchProgression]) {
@@ -199,6 +203,74 @@ describe('useSyncRecovery', () => {
       await settle()
 
       expect(fetchWorkout).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  /**
+   * User-initiated sync (LIFT-1323). Before this there was no manual retry
+   * anywhere in the app: a foreground 500 or an RLS regression never re-ran
+   * within the session unless the user happened to background the app.
+   */
+  describe('syncNow', () => {
+    it('drags back the writes the automatic path can no longer reach', async () => {
+      // `flush()` runs `_queue` only, so a backoff-parked write waits out its
+      // delay and a given-up write waits for the next launch. Without this the
+      // button is a placebo for exactly the failures behind it.
+      const order: string[] = []
+      retryNow.mockImplementation(() => { order.push('retryNow') })
+      flush.mockImplementation(async () => { order.push('flush') })
+      fetchWorkout.mockImplementation(async () => { order.push('fetch') })
+
+      await expect(syncNow()).resolves.toBe(true)
+
+      expect(order).toEqual(['retryNow', 'flush', 'fetch'])
+    })
+
+    it('ignores the cooldown, unlike every automatic trigger', async () => {
+      // The cooldown collapses machine-generated bursts. A person pressing a
+      // button is not a burst — and the moment they press it is overwhelmingly
+      // the moment a background attempt just failed, i.e. inside the window.
+      await refetchAllStores('resume')
+      expect(fetchWorkout).toHaveBeenCalledTimes(1)
+
+      await expect(refetchAllStores('resume')).resolves.toBe(false)
+      await expect(syncNow()).resolves.toBe(true)
+
+      expect(fetchWorkout).toHaveBeenCalledTimes(2)
+    })
+
+    it('joins an in-flight pass instead of starting a second', async () => {
+      let release!: () => void
+      fetchWorkout.mockImplementation(() => new Promise<void>(r => { release = () => r() }))
+
+      const background = refetchAllStores('online')
+      await settle()
+      const manual = syncNow()
+      release()
+
+      await expect(manual).resolves.toBe(true)
+      await expect(background).resolves.toBe(true)
+      expect(fetchWorkout).toHaveBeenCalledTimes(1)
+      expect(retryNow).not.toHaveBeenCalled()
+    })
+
+    it('answers offline immediately rather than attempting doomed requests', async () => {
+      setOnline(false)
+
+      await expect(syncNow()).resolves.toBe(false)
+
+      expect(retryNow).not.toHaveBeenCalled()
+      expect(flush).not.toHaveBeenCalled()
+      expect(fetchWorkout).not.toHaveBeenCalled()
+    })
+
+    it('resolves false rather than rejecting when the run itself breaks', async () => {
+      // The caller holds a spinner on this promise, so a rejection would leave
+      // the sheet stuck on "Syncing…" forever.
+      fetchWorkout.mockImplementation(() => { throw new Error('no active pinia') })
+
+      await expect(syncNow()).resolves.toBe(false)
+      expect(logError).toHaveBeenCalled()
     })
   })
 

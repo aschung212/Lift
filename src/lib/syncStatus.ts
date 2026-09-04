@@ -9,6 +9,7 @@
  * this shared classifier so the contract is identical across stores and a single
  * sync-status indicator can read them.
  */
+import { ref } from 'vue'
 import { isAuthError } from './sessionHealth'
 
 /**
@@ -29,8 +30,43 @@ export type SyncErrorKind = 'auth' | 'network' | 'unknown'
 export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline'
 
 /**
- * Fold a background READ fetch failure into the write-queue-driven sync status
- * (LIFT-1179).
+ * Wall-clock ms of the last CONFIRMED exchange with the server, or null when
+ * this session has never completed one (LIFT-1323).
+ *
+ * Stamped from exactly two kinds of place, both of which mean "the server
+ * answered and agreed":
+ *   - `SyncQueue.flush()`, when a batch of writes lands with no failures.
+ *   - each store's `_fetchFromSupabase()`, beside the `lastSyncError = null`
+ *     that already marks a clean read. Marking there rather than in the two
+ *     read ORCHESTRATORS (`useAuth.initStores` and `useSyncRecovery.run`) is
+ *     what makes a cold start count: init reads through the same store method
+ *     recovery does, so one contract line per store covers every caller,
+ *     present and future.
+ *
+ * Deliberately NOT stamped by `syncStatus.value === 'synced'`: that ref starts
+ * at 'synced' before anything has been attempted, so reading it would report a
+ * successful sync to a user whose very first launch was offline — the same
+ * false-'synced' class of bug LIFT-1179 fixed in the indicator itself.
+ */
+export const lastSyncedAt = ref<number | null>(null)
+
+/** Record a confirmed server exchange. See {@link lastSyncedAt}. */
+export function markSynced(at: number = Date.now()): void {
+  lastSyncedAt.value = at
+}
+
+/**
+ * Forget the last-synced stamp. Part of the sign-out teardown (the value is
+ * user-scoped, and a shared device must not show the previous account's sync
+ * time), and the reset hook for tests.
+ */
+export function clearLastSynced(): void {
+  lastSyncedAt.value = null
+}
+
+/**
+ * Fold a background READ fetch failure and any STRANDED writes into the
+ * write-queue-driven sync status (LIFT-1179, extended in LIFT-1323).
  *
  * Each store exposes a typed `lastSyncError` set when a background read fails,
  * but until now nothing surfaced it: the indicator reflected only the write
@@ -42,10 +78,23 @@ export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline'
  * otherwise idle. Any read error kind maps to 'error' (offline is owned by the
  * write/connectivity path); the actionable `auth` kind is additionally
  * surfaced by the re-auth banner.
+ *
+ * `strandedWrites` closes the hole that made "persistent silent divergence" the
+ * app's least visible failure: `syncStatus` reflects only the LAST batch, so a
+ * write that exhausted its retries (or was refused outright) left the indicator
+ * showing 'error' only until the next unrelated write flushed cleanly — after
+ * which the app looked fully synced while holding local-only rows the server
+ * has never seen. A retained journal entry is exactly "this change is not on
+ * the server", so it keeps the indicator up until the change actually lands.
  */
-export function combineSyncStatus(writeStatus: SyncStatus, readError: SyncErrorKind | null): SyncStatus {
+export function combineSyncStatus(
+  writeStatus: SyncStatus,
+  readError: SyncErrorKind | null,
+  strandedWrites = 0,
+): SyncStatus {
   if (writeStatus !== 'synced') return writeStatus
-  return readError ? 'error' : 'synced'
+  if (readError) return 'error'
+  return strandedWrites > 0 ? 'error' : 'synced'
 }
 
 /**

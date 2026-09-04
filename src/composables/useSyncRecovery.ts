@@ -31,8 +31,11 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 
-/** What woke the recovery up. Reported to Sentry when a re-fetch throws. */
-export type RefetchTrigger = 'online' | 'resume' | 'session-recovered'
+/**
+ * What woke the recovery up. Reported to Sentry when a re-fetch throws.
+ * `manual` is the user tapping "Sync now" in the sync sheet (LIFT-1323).
+ */
+export type RefetchTrigger = 'online' | 'resume' | 'session-recovered' | 'manual'
 
 /**
  * Minimum spacing between re-fetches. A resume fires `visibilitychange` AND
@@ -57,6 +60,12 @@ function isOffline(): boolean {
 }
 
 async function run(trigger: RefetchTrigger): Promise<void> {
+  // An explicit "Sync now" also drags back the writes the automatic path can no
+  // longer reach: those parked behind an exponential backoff, and those that
+  // left the queue for good and would otherwise wait for the next launch's
+  // journal replay (LIFT-1323). Without this the button would be a placebo for
+  // precisely the failures that make a user open the sheet.
+  if (trigger === 'manual') syncQueue.retryNow()
   // Writes before reads. Every store read is remote-wins for the fields it
   // carries, so re-fetching ahead of a pending offline edit would paint the
   // stale server value back over it (the queued write still lands, but the UI
@@ -112,6 +121,11 @@ export function refetchAllStores(trigger: RefetchTrigger): Promise<boolean> {
     if (trigger === 'session-recovered') scheduleTrailing(trigger)
     return Promise.resolve(false)
   }
+  return start(trigger)
+}
+
+/** Register and run a pass, reporting a broken run rather than rejecting. */
+function start(trigger: RefetchTrigger): Promise<boolean> {
   _lastRunAt = Date.now()
   // Clear only OUR OWN registration (promise identity, not a bare null): a
   // later run must never be un-registered by an earlier one settling late.
@@ -119,15 +133,38 @@ export function refetchAllStores(trigger: RefetchTrigger): Promise<boolean> {
     if (_inFlight === p) _inFlight = null
   })
   _inFlight = p
-  // Every caller is a fire-and-forget listener (`void refetchAllStores(...)`),
-  // so a rejection would surface as an unhandled rejection rather than as
-  // anything actionable. `run` already contains its own failures; reaching here
-  // means the machinery around them broke (e.g. no active Pinia). Report it and
-  // resolve false so recovery stays a best-effort background concern.
+  // Every automatic caller is a fire-and-forget listener
+  // (`void refetchAllStores(...)`), so a rejection would surface as an unhandled
+  // rejection rather than as anything actionable. `run` already contains its own
+  // failures; reaching here means the machinery around them broke (e.g. no
+  // active Pinia). Report it and resolve false so recovery stays a best-effort
+  // background concern.
   return p.then(() => true, (err: unknown) => {
     logError(err, { source: 'useSyncRecovery', action: 'run', trigger })
     return false
   })
+}
+
+/**
+ * User-initiated sync (LIFT-1323). Resolves once the pass has finished, so a
+ * caller can hold a spinner for its duration; false means nothing ran.
+ *
+ * Differs from the automatic triggers in exactly one way — it ignores
+ * {@link REFETCH_COOLDOWN_MS}. The cooldown exists to collapse machine-generated
+ * bursts (a resume fires two events, a flaky link re-fires `online`); a person
+ * pressing a button is not a burst, and the one moment they press it is
+ * overwhelmingly the moment a background attempt has just failed, i.e. squarely
+ * inside the window. Single-flight still holds: an in-flight pass is JOINED
+ * rather than duplicated, since a sync already running is what was asked for.
+ *
+ * Offline is answered immediately instead of attempted — every request would
+ * fail, `syncStatus` already reads 'offline', and the queued writes are
+ * durable. The caller's button is disabled in that state anyway.
+ */
+export function syncNow(): Promise<boolean> {
+  if (isOffline()) return Promise.resolve(false)
+  if (_inFlight) return _inFlight.then(() => true, () => false)
+  return start('manual')
 }
 
 /**

@@ -335,6 +335,33 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.syncIndicator tappable sync status (LIFT-1323)', () => {
+    // It was a 24px icon-only <span> whose whole explanation was a :title
+    // tooltip — hover-only, on the platform this ships to. As a button it has
+    // to clear the 44pt HIG floor like every other top-bar control.
+    const lines = getRuleLines('.syncIndicator')
+
+    it('meets the 44px iOS HIG touch target in both dimensions', () => {
+      expect(lines.some(l => l.startsWith('width') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('is SIZED, not extended by a ::before overlay', () => {
+      // It tiles horizontally against .settingsGearBtn, so an oversized overlay
+      // would reach into its neighbour and a near miss would open Settings
+      // instead of doing nothing (#990's tiling rule).
+      expect(css.includes('.syncIndicator::before')).toBe(false)
+    })
+  })
+
+  describe('.syncSheetBtn sync-sheet actions (LIFT-1323)', () => {
+    const lines = getRuleLines('.syncSheetBtn')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+  })
+
   describe('Vue component touch target compliance', () => {
     // jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
     // cannot verify sizing in component tests. These CSS regression tests

@@ -5,8 +5,15 @@
  * UI sees one typed contract — auth failures (re-sign-in needed) must be told
  * apart from ordinary offline/network failures (transient, will recover).
  */
-import { describe, it, expect } from 'vitest'
-import { classifySyncError, combineSyncStatus, isRetryableSyncFailure } from '../syncStatus'
+import { describe, it, expect, beforeEach } from 'vitest'
+import {
+  classifySyncError,
+  clearLastSynced,
+  combineSyncStatus,
+  isRetryableSyncFailure,
+  lastSyncedAt,
+  markSynced,
+} from '../syncStatus'
 
 describe('classifySyncError', () => {
   it('classifies a 401 status as auth', () => {
@@ -126,5 +133,43 @@ describe('combineSyncStatus (LIFT-1179)', () => {
     expect(combineSyncStatus('syncing', 'network')).toBe('syncing')
     expect(combineSyncStatus('offline', 'auth')).toBe('offline')
     expect(combineSyncStatus('error', null)).toBe('error')
+  })
+
+  it('keeps the indicator up for writes the queue has given up on (LIFT-1323)', () => {
+    // `syncStatus` reflects only the LAST batch, so a later unrelated write
+    // flushing cleanly reset it to 'synced' while stranded rows the server had
+    // never seen sat in the journal — persistent silent divergence, visible
+    // nowhere in the app.
+    expect(combineSyncStatus('synced', null, 1)).toBe('error')
+    expect(combineSyncStatus('synced', null, 0)).toBe('synced')
+  })
+
+  it('defaults to no stranded writes so existing two-argument callers are unchanged', () => {
+    expect(combineSyncStatus('synced', null)).toBe('synced')
+  })
+
+  it('still lets a live offline/syncing status win over stranded writes', () => {
+    // Being offline is the more useful, more actionable thing to say — and the
+    // stranded count is spelled out in the sheet either way.
+    expect(combineSyncStatus('offline', null, 3)).toBe('offline')
+    expect(combineSyncStatus('syncing', null, 3)).toBe('syncing')
+  })
+})
+
+describe('lastSyncedAt (LIFT-1323)', () => {
+  beforeEach(() => { clearLastSynced() })
+
+  it('starts unknown rather than claiming a sync that never happened', () => {
+    // Deliberately NOT derived from `syncStatus`, which begins at 'synced'
+    // before anything has been attempted — the same false-'synced' class of bug
+    // LIFT-1179 fixed in the indicator itself.
+    expect(lastSyncedAt.value).toBeNull()
+  })
+
+  it('records a confirmed exchange and can be cleared for the next account', () => {
+    markSynced(1_700_000_000_000)
+    expect(lastSyncedAt.value).toBe(1_700_000_000_000)
+    clearLastSynced()
+    expect(lastSyncedAt.value).toBeNull()
   })
 })

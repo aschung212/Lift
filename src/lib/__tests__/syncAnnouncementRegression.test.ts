@@ -20,9 +20,27 @@ const appSource = readFileSync(resolve(__dirname, '../../App.vue'), 'utf-8')
  */
 describe('sync-status announcement (LIFT-1149)', () => {
   it('gives the icon-only sync indicator a text accessible name', () => {
-    // aria-label bound to the label so the SVG-only span is not nameless.
+    // aria-label bound to the label so the SVG-only control is not nameless.
     expect(appSource).toMatch(
       /class="syncIndicator"[^>]*:aria-label="syncStatusLabel"/
+    )
+  })
+
+  it('is a real button that opens the sync sheet, not a hover-only span (LIFT-1323)', () => {
+    // The `:title` tooltip that used to be the ONLY explanation is unreachable
+    // on touch, which is the platform this ships to. It stays as a desktop
+    // enhancement, but the tap path is what makes the state readable at all.
+    expect(appSource).toMatch(/<button v-if="displaySyncStatus !== 'synced'" class="syncIndicator"/)
+    expect(appSource).toMatch(/class="syncIndicator"[^>]*aria-haspopup="dialog"/)
+    expect(appSource).toMatch(/class="syncIndicator"[^>]*@click="syncSheetOpen = true"/)
+  })
+
+  it('keeps the indicator up for writes the queue has given up on (LIFT-1323)', () => {
+    // Without the stranded count, a later unrelated write flushing cleanly
+    // reset the status to 'synced' and removed the only entry point to the
+    // sheet, while local-only rows sat in the journal.
+    expect(appSource).toMatch(
+      /combineSyncStatus\(syncStatus\.value, readSyncError\.value, strandedSyncCount\.value\)/
     )
   })
 

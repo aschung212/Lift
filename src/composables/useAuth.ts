@@ -10,6 +10,7 @@ import { syncQueue } from '../lib/syncQueue'
 import { closeDB } from '../lib/durableStorage'
 import { logError } from '../lib/logger'
 import { clearReauthFlag } from '../lib/sessionHealth'
+import { clearLastSynced } from '../lib/syncStatus'
 import type { User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
@@ -320,6 +321,10 @@ function resetStores(): void {
  */
 function teardownSession(): void {
   syncQueue.clear()
+  // The last-synced stamp is user-scoped like everything else wiped here: on a
+  // shared device the next account's sync sheet must not open showing when the
+  // PREVIOUS one last reached the server (LIFT-1323).
+  clearLastSynced()
   resetStores()
   user.value = null
   // The next sign-in (same user included) must re-hydrate from scratch.
