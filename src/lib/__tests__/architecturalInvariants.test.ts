@@ -1396,8 +1396,12 @@ describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)'
    * or bound) or from the element's contents, which the `switch` role permits
    * — the `.wtWarmupToggle` switches render a visible text span.
    */
-  const SWITCH_ROLE = /role\s*=\s*"switch"/g
-  const NAME_ATTR = /\s:?aria-label(?:ledby)?\s*=/
+  // Both quote styles: a guard that silently misses a switch is worse than no
+  // guard, since it reports green over the exact gap it exists to close.
+  const SWITCH_ROLE = /role\s*=\s*["']switch["']/g
+  // Leading `\s` or `:` so the shorthand, the `v-bind:` longform and the plain
+  // attribute all count — a false failure here reads as a broken rule.
+  const NAME_ATTR = /[\s:]aria-label(?:ledby)?\s*=/
 
   /** Forward scan for the tag's `>`, skipping quoted attribute values so an
    *  arrow function or comparison inside a handler can't end the tag early. */
@@ -1473,11 +1477,17 @@ describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)'
     const byContent = knobOnly.replace('<span class="iosToggleKnob"></span>', '<span>{{ label }}</span>')
     expect(named(switchElements(byContent)[0])).toBe(true)
 
+    const byLongformBind = knobOnly.replace('role="switch"', 'role="switch" v-bind:aria-label="l"')
+    expect(named(switchElements(byLongformBind)[0])).toBe(true)
+
     // A `>` inside a handler must not end the tag before its name attribute.
     const arrowHandler =
       '<button role="switch" @click="() => toggle()" aria-label="Toggle it">\n' +
       '  <span class="knob"></span>\n</button>'
     expect(named(switchElements(arrowHandler)[0])).toBe(true)
+
+    // A single-quoted role attribute is still a switch, and still scanned.
+    expect(switchElements(knobOnly.replace('role="switch"', "role='switch'"))).toHaveLength(1)
   })
 
   it('no component renders a switch with no accessible name', () => {
