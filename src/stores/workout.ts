@@ -560,6 +560,11 @@ export const useWorkoutStore = defineStore('workout', () => {
     } catch (err) {
       reportFetchError('workout', err)
       lastSyncError.value = classifySyncError(err)
+      // Same auth branch as the resolved-error path above. postgrest-js usually
+      // RESOLVES `{ error }` (LIFT-1321), but a token problem raised inside the
+      // client — or by anything else in this try — arrives here instead, and
+      // `isAuthError` normalizes both shapes precisely so neither is special.
+      if (isAuthError(err)) void ensureFreshSession()
       return
     } finally {
       syncing.value = false
