@@ -930,9 +930,24 @@ jobs:
             BODY=$(curl -fsS --max-time 15 "$URL/version.json?ci=$RUN_ID-$i" || true)
             DEPLOYED_SHA=$(printf '%s' "$BODY" | jq -r '.commit // empty' 2>/dev/null || true)
             if [ -n "$DEPLOYED_SHA" ] && [ "$DEPLOYED_SHA" = "$EXPECTED_SHA" ]; then
+              # -D - dumps the response headers; the body goes to /dev/null and
+              # is fetched separately below, so the header check can never be
+              # satisfied by markup that merely mentions the policy.
+              HEADERS=$(curl -fsS -D - -o /dev/null --max-time 15 "$URL/?ci=$RUN_ID-h" || true)
               HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID" || true)
               if printf '%s' "$HTML" | grep -q '<div id="app">'; then
-                echo "Production is serving commit $EXPECTED_SHA and the app shell renders (attempt $i)."
+                # vercel.json's headers reach production by being compiled into
+                # the deployment's routing config, and LIFT-1169 moved the build
+                # that does that compiling into CI. Nothing else checks they
+                # actually serve — vercelHeadersRegression.test.ts only reads the
+                # source file — so a mechanism change that silently dropped the
+                # CSP would ship green. Verified once, at the end state, rather
+                # than by asserting a shape of Vercel's intermediate artifacts.
+                if ! printf '%s' "$HEADERS" | grep -qi '^content-security-policy:'; then
+                  echo "::error::Production is serving commit $EXPECTED_SHA but sent no Content-Security-Policy header — vercel.json's headers did not reach the deployment"
+                  exit 1
+                fi
+                echo "Production is serving commit $EXPECTED_SHA, the app shell renders, and the security headers are present (attempt $i)."
                 exit 0
               fi
               echo "::warning::version.json matched but the app-shell marker is missing; retrying"

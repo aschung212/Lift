@@ -232,4 +232,20 @@ describe('production deploys are ordered after the schema migration (LIFT-1169)'
     expect(needsOf(jobs['notify-failure'])).toContain('deploy-production')
     expect(needsOf(jobs['notify-deploy'])).toContain('deploy-production')
   })
+
+  it('confirms the security headers survived the new build mechanism', () => {
+    // vercel.json's headers reach production by being compiled into the
+    // deployment's routing config, and this change moved the build that does
+    // that compiling into CI. vercelHeadersRegression.test.ts only reads the
+    // source file, so a mechanism that quietly dropped the CSP would ship
+    // green — the smoke test checks the live response instead.
+    const verify = (jobs['smoke-test-production']?.steps ?? []).find((s) =>
+      /version|verify/i.test(s.name ?? ''),
+    )
+    const run = verify?.run ?? ''
+    expect(run).toContain('content-security-policy')
+    // Read off the response headers, not the body: markup that merely mentions
+    // the policy must not be able to satisfy the check.
+    expect(run).toContain('-D -')
+  })
 })
