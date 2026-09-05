@@ -1373,6 +1373,142 @@ describe('Invariant: client RPC names exist in the migrations (#1299)', () => {
   })
 })
 
+
+// ── Invariant: every role="switch" has an accessible name (LIFT-1308) ──
+
+describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)', () => {
+  /**
+   * A `role="switch"` built from a `<button>` plus a decorative knob `<span>`
+   * has NO accessible name — `aria-checked` supplies the state and the role
+   * supplies the role, but AT announces only "switch, off" with nothing saying
+   * what it does (WCAG 4.1.2, Level A). All three `.iosToggle` switches shipped
+   * that way, and `EditExerciseModal` carried two of them in one sheet,
+   * announced identically.
+   *
+   * Derived rather than enumerated, for the same reason the deleteAccount and
+   * REPLAYABLE_COLUMNS invariants are: `accessibility.axe.test.ts` scans a
+   * hardcoded list of three components, so a switch added to any of the other
+   * ~40 is unreachable by it. LIFT-1304 even scoped its own axe scan around
+   * this violation rather than failing on it. A source scan covers every
+   * switch that exists, including the ones nobody has written a test for.
+   *
+   * A name may come from the author (`aria-label` / `aria-labelledby`, static
+   * or bound) or from the element's contents, which the `switch` role permits
+   * — the `.wtWarmupToggle` switches render a visible text span.
+   */
+  // Both quote styles: a guard that silently misses a switch is worse than no
+  // guard, since it reports green over the exact gap it exists to close.
+  const SWITCH_ROLE = /role\s*=\s*["']switch["']/g
+  // Leading `\s` or `:` so the shorthand, the `v-bind:` longform and the plain
+  // attribute all count — a false failure here reads as a broken rule.
+  const NAME_ATTR = /[\s:]aria-label(?:ledby)?\s*=/
+
+  /** Forward scan for the tag's `>`, skipping quoted attribute values so an
+   *  arrow function or comparison inside a handler can't end the tag early. */
+  function tagEnd(source: string, from: number): number {
+    let quote: string | null = null
+    for (let i = from; i < source.length; i++) {
+      const c = source[i]
+      if (quote) {
+        if (c === quote) quote = null
+        continue
+      }
+      if (c === '"' || c === "'") {
+        quote = c
+        continue
+      }
+      if (c === '>') return i
+    }
+    return -1
+  }
+
+  /** Every `role="switch"` element as { tag, inner } — the opening tag's
+   *  attribute text, and the element's contents. */
+  function switchElements(source: string): { tag: string; inner: string }[] {
+    const out: { tag: string; inner: string }[] = []
+    for (const m of source.matchAll(SWITCH_ROLE)) {
+      const start = source.lastIndexOf('<', m.index)
+      if (start === -1) continue
+      const end = tagEnd(source, start)
+      if (end === -1) continue
+      const tag = source.slice(start, end + 1)
+      const tagName = /^<([\w-]+)/.exec(tag)?.[1] ?? ''
+      const close = source.indexOf('</' + tagName + '>', end)
+      out.push({ tag, inner: close === -1 ? '' : source.slice(end + 1, close) })
+    }
+    return out
+  }
+
+  /** Contents with markup removed — `{{ … }}` interpolation counts as text,
+   *  an empty decorative `<span>` does not. */
+  const hasTextContent = (inner: string) => /\S/.test(inner.replace(/<[^>]*>/g, ''))
+
+  const named = (el: { tag: string; inner: string }) =>
+    NAME_ATTR.test(el.tag) || hasTextContent(el.inner)
+
+  const vueFiles = () => getSourceFiles().filter(f => f.path.endsWith('.vue'))
+
+  it('reads the real components and finds every switch (non-vacuity)', () => {
+    const withSwitches = vueFiles().filter(f => switchElements(f.content).length > 0)
+    // The two families: `.iosToggle` (LIFT-1308) and `.glassToggle` (already
+    // named). If either drops out, the scan below passes vacuously.
+    expect(withSwitches.map(f => f.path)).toContain(join('components', 'EditExerciseModal.vue'))
+    expect(withSwitches.map(f => f.path)).toContain(join('components', 'SettingsSheet.vue'))
+    expect(
+      switchElements(vueFiles().find(f => f.path.endsWith('EditExerciseModal.vue'))!.content),
+    ).toHaveLength(2)
+  })
+
+  it('the scan flags an unnamed switch and accepts each naming route (self-test)', () => {
+    const knobOnly =
+      '<button class="iosToggle" role="switch" :aria-checked="on">\n' +
+      '  <span class="iosToggleKnob"></span>\n</button>'
+    expect(named(switchElements(knobOnly)[0])).toBe(false)
+
+    const byLabelledby = knobOnly.replace('role="switch"', 'role="switch" aria-labelledby="x"')
+    expect(named(switchElements(byLabelledby)[0])).toBe(true)
+
+    const byBoundLabel = knobOnly.replace(
+      'role="switch"',
+      'role="switch" :aria-label="on ? \'Disable x\' : \'Enable x\'"',
+    )
+    expect(named(switchElements(byBoundLabel)[0])).toBe(true)
+
+    const byContent = knobOnly.replace('<span class="iosToggleKnob"></span>', '<span>{{ label }}</span>')
+    expect(named(switchElements(byContent)[0])).toBe(true)
+
+    const byLongformBind = knobOnly.replace('role="switch"', 'role="switch" v-bind:aria-label="l"')
+    expect(named(switchElements(byLongformBind)[0])).toBe(true)
+
+    // A `>` inside a handler must not end the tag before its name attribute.
+    const arrowHandler =
+      '<button role="switch" @click="() => toggle()" aria-label="Toggle it">\n' +
+      '  <span class="knob"></span>\n</button>'
+    expect(named(switchElements(arrowHandler)[0])).toBe(true)
+
+    // A single-quoted role attribute is still a switch, and still scanned.
+    expect(switchElements(knobOnly.replace('role="switch"', "role='switch'"))).toHaveLength(1)
+  })
+
+  it('no component renders a switch with no accessible name', () => {
+    const violations: string[] = []
+    for (const file of vueFiles()) {
+      for (const el of switchElements(stripComments(file.content))) {
+        if (named(el)) continue
+        violations.push(
+          `${file.path} — a role="switch" with no aria-label/aria-labelledby ` +
+          'and no text content announces as "switch, off", with nothing saying ' +
+          'what it toggles (WCAG 4.1.2, LIFT-1308). Point aria-labelledby at ' +
+          'the visible row label: ' + el.tag.replace(/\s+/g, ' ').slice(0, 90),
+        )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+})
+
+
 // ── Invariant: volume math folds bodyweight (#1333) ─────────────────
 //
 // `set.weight` is the ADDED weight on a `bodyweightLoaded` exercise (LIFT-834),

@@ -60,13 +60,25 @@
         <div class="iosSettingsSection">
           <span class="iosSettingsHeader">Input Mode</span>
           <div class="iosSettingsGroup">
+            <!--
+              The switch's only content is a decorative knob, so it needs an
+              explicit accessible name (LIFT-1308 — it had none, and this sheet
+              carries two, which AT announced identically as "switch, off").
+              `aria-labelledby` points at the visible row label rather than
+              duplicating the string in an `aria-label`: one source of truth for
+              the copy, and the name is the visible text by construction
+              (WCAG 2.5.3). The state stays in `aria-checked` — a name that
+              changes with state is what the `.glassToggle` rows elsewhere do,
+              and it re-announces on every toggle.
+            -->
             <div class="iosSettingsRow">
-              <span class="iosSettingsRowLabel">Plate calculator</span>
+              <span id="edit-exercise-plate-mode-label" class="iosSettingsRowLabel">Plate calculator</span>
               <button
                 class="iosToggle"
                 :class="{ iosToggleOn: editPlateMode }"
                 role="switch"
                 :aria-checked="editPlateMode"
+                aria-labelledby="edit-exercise-plate-mode-label"
                 @click="editPlateMode = !editPlateMode"
               >
                 <span class="iosToggleKnob"></span>
@@ -116,12 +128,13 @@
           <span class="iosSettingsHeader">Load</span>
           <div class="iosSettingsGroup">
             <div class="iosSettingsRow">
-              <span class="iosSettingsRowLabel">Bodyweight-loaded</span>
+              <span id="edit-exercise-bodyweight-loaded-label" class="iosSettingsRowLabel">Bodyweight-loaded</span>
               <button
                 class="iosToggle"
                 :class="{ iosToggleOn: editBodyweightLoaded }"
                 role="switch"
                 :aria-checked="editBodyweightLoaded"
+                aria-labelledby="edit-exercise-bodyweight-loaded-label"
                 @click="editBodyweightLoaded = !editBodyweightLoaded"
               >
                 <span class="iosToggleKnob"></span>
