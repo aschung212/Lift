@@ -13,6 +13,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import AuthScreen from '../../views/AuthScreen.vue'
 import BodyweightTracker from '../../views/BodyweightTracker.vue'
 import OnboardingScreen from '../../views/OnboardingScreen.vue'
+import { useBodyweightStore } from '../../stores/bodyweight'
 import { runComponentAxe } from '../../__tests__/axeHelper'
 
 vi.mock('../../composables/useAuth', () => ({
@@ -82,6 +83,27 @@ describe('Automated accessibility (axe-core)', () => {
       attachTo: document.body,
       global: { stubs: { Teleport: true } },
     })
+    const results = await runComponentAxe(wrapper.element)
+    expect(results).toHaveNoViolations()
+    wrapper.unmount()
+  })
+
+  // The scan above renders zero entry rows, so the entry list — the only place
+  // a weigh-in can be edited or deleted — had never been audited at all. It was
+  // a role="button" <li> (disallowed on an li in a ul) wrapping the Edit/Delete
+  // buttons, which a children-presentational button role drops from the
+  // accessibility tree. Both went unseen for exactly that reason (LIFT-1349).
+  it('BodyweightTracker (entry list, actions expanded) has no axe violations', async () => {
+    const store = useBodyweightStore()
+    store.addEntry(170, '2026-01-01')
+
+    const wrapper = mount(BodyweightTracker, {
+      attachTo: document.body,
+      global: { stubs: { Teleport: true } },
+    })
+    await wrapper.find('.wtSetRowMain').trigger('click')
+    expect(wrapper.find('.wtSetActions').exists()).toBe(true)
+
     const results = await runComponentAxe(wrapper.element)
     expect(results).toHaveNoViolations()
     wrapper.unmount()

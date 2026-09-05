@@ -318,7 +318,7 @@ describe('BodyweightTracker', () => {
 
     it('reveals edit/delete on entry tap', async () => {
       const wrapper = mountTracker()
-      await wrapper.find('.wtSetRow').trigger('click')
+      await wrapper.find('.wtSetRowMain').trigger('click')
       await wrapper.vm.$nextTick()
 
       expect(wrapper.find('.wtSetActions').exists()).toBe(true)
@@ -329,11 +329,11 @@ describe('BodyweightTracker', () => {
 
     it('hides actions on second tap', async () => {
       const wrapper = mountTracker()
-      await wrapper.find('.wtSetRow').trigger('click')
+      await wrapper.find('.wtSetRowMain').trigger('click')
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.wtSetActions').exists()).toBe(true)
 
-      await wrapper.find('.wtSetRow').trigger('click')
+      await wrapper.find('.wtSetRowMain').trigger('click')
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.wtSetActions').exists()).toBe(false)
     })
@@ -391,45 +391,50 @@ describe('BodyweightTracker', () => {
       entries = [makeEntry('e-1', 170, daysAgo(2))]
     })
 
-    it('entry rows have role=button and tabindex=0', () => {
+    // LIFT-1349: the row used to be a role="button" li with hand-rolled
+    // Enter/Space handlers. Enter/Space now come from the platform, so the
+    // assertion is that the trigger really is a <button> — happy-dom does not
+    // synthesise a click from a keydown, and a test that faked one would only
+    // ever be re-testing its own dispatch.
+    it('the row disclosure is a real <button>, not a role="button" li', () => {
       const wrapper = mountTracker()
+      const trigger = wrapper.find('.wtSetRowMain')
+      expect(trigger.element.tagName).toBe('BUTTON')
+      expect(trigger.attributes('type')).toBe('button')
+
+      // The li is a plain container again — a button role is not allowed on an
+      // li inside a ul, and the tabindex is the platform's to give.
       const row = wrapper.find('.wtSetRow')
-      expect(row.attributes('role')).toBe('button')
-      expect(row.attributes('tabindex')).toBe('0')
+      expect(row.attributes('role')).toBeUndefined()
+      expect(row.attributes('tabindex')).toBeUndefined()
     })
 
-    it('entry rows have aria-expanded reflecting action visibility', async () => {
+    it('the trigger has aria-expanded reflecting action visibility', async () => {
       const wrapper = mountTracker()
-      const row = wrapper.find('.wtSetRow')
-      expect(row.attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('.wtSetRowMain').attributes('aria-expanded')).toBe('false')
 
-      await row.trigger('click')
+      await wrapper.find('.wtSetRowMain').trigger('click')
       await wrapper.vm.$nextTick()
-      expect(row.attributes('aria-expanded')).toBe('true')
+      expect(wrapper.find('.wtSetRowMain').attributes('aria-expanded')).toBe('true')
     })
 
-    it('entry rows have descriptive aria-label', () => {
+    it('the trigger has a descriptive aria-label', () => {
       const wrapper = mountTracker()
-      const row = wrapper.find('.wtSetRow')
-      const label = row.attributes('aria-label')
+      const label = wrapper.find('.wtSetRowMain').attributes('aria-label')
       expect(label).toContain('170')
       expect(label).toContain('lbs')
     })
 
-    it('entry rows respond to Enter key', async () => {
+    it('Edit and Delete are siblings of the trigger, never inside it', async () => {
+      // The button role is children-presentational: action buttons nested
+      // inside the trigger are dropped from the accessibility tree (axe:
+      // nested-interactive), which is how the previous shape hid them.
       const wrapper = mountTracker()
-      const row = wrapper.find('.wtSetRow')
-      await row.trigger('keydown.enter')
+      await wrapper.find('.wtSetRowMain').trigger('click')
       await wrapper.vm.$nextTick()
-      expect(wrapper.find('.wtSetActions').exists()).toBe(true)
-    })
 
-    it('entry rows respond to Space key', async () => {
-      const wrapper = mountTracker()
-      const row = wrapper.find('.wtSetRow')
-      await row.trigger('keydown.space')
-      await wrapper.vm.$nextTick()
-      expect(wrapper.find('.wtSetActions').exists()).toBe(true)
+      expect(wrapper.find('.wtSetRowMain .wtSetBtn').exists()).toBe(false)
+      expect(wrapper.findAll('.wtSetRow > .wtSetActions .wtSetBtn')).toHaveLength(2)
     })
   })
 

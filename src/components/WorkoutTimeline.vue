@@ -32,9 +32,18 @@
           v-for="entry in group.sets"
           :key="entry.set.id"
           :class="['wtTimelineRow', { wtTimelineRowActive: activeSetId === entry.set.id }]"
-          @click="toggleSetActions(entry.set.id)"
         >
-          <div class="wtTimelineRowMain">
+          <!-- Disclosure trigger (LIFT-1349). A real <button> rather than a
+               clickable div: Enter/Space come from the platform, and the
+               Edit/Delete buttons stay siblings so they are not swallowed by
+               a children-presentational button role. -->
+          <button
+            type="button"
+            class="wtTimelineRowMain"
+            :aria-expanded="activeSetId === entry.set.id"
+            :aria-label="setRowLabel(entry)"
+            @click="toggleSetActions(entry.set.id)"
+          >
             <span class="wtTimelineExName">{{ entry.exerciseName }}</span>
             <span class="wtTimelineSetDetail">{{ displayWeight(entry.set.weight) }} {{ weightUnit }} × {{ entry.set.reps }}</span>
             <span
@@ -46,10 +55,10 @@
             <span class="wtTimelineE1RM">~{{ displayWeight(entry.set.estimated1RM) }}</span>
             <span v-if="timelinePRMap[entry.set.id] === 'pr'" class="wtTimelineBadge" aria-label="Personal record">🏆</span>
             <span v-else-if="timelinePRMap[entry.set.id] === 'repPR'" class="wtTimelineBadge" aria-label="Rep personal record">🔥</span>
-          </div>
+          </button>
           <div v-if="activeSetId === entry.set.id" class="wtSetActions">
-            <button class="wtSetBtn" @click.stop="emit('edit-set', entry.exerciseId, entry.set)" aria-label="Edit set">Edit</button>
-            <button class="wtSetBtn wtSetBtnDel" @click.stop="emit('delete-set', entry.exerciseId, entry.set)" aria-label="Delete set">Delete</button>
+            <button class="wtSetBtn" @click="emit('edit-set', entry.exerciseId, entry.set)" aria-label="Edit set">Edit</button>
+            <button class="wtSetBtn wtSetBtnDel" @click="emit('delete-set', entry.exerciseId, entry.set)" aria-label="Delete set">Delete</button>
           </div>
         </div>
       </div>
@@ -172,6 +181,26 @@ const visibleTimelineGroups = computed(() => {
   }
   return groups
 })
+
+// Accessible name for the disclosure trigger. The row's own text ends in a
+// bare "~216", which reads as nothing useful, and the day it belongs to lives
+// in an unassociated date header above the card — so state the set explicitly.
+// Static per row (never "Expand"/"Collapse"): the state is on aria-expanded.
+function setRowLabel(entry: TimelineEntry): string {
+  const parts = [
+    entry.exerciseName,
+    `${displayWeight(entry.set.weight)} ${weightUnit.value} × ${entry.set.reps}`,
+  ]
+  // The badge spans carry their own aria-labels, but a child's label does not
+  // reach a parent that has one of its own — so restate them here or they are
+  // simply gone from the name.
+  if (entry.set.attemptedNextRep) parts.push(`went for rep ${entry.set.reps + 1}`)
+  if (entry.set.rpe) parts.push(`RPE ${entry.set.rpe}`)
+  const badge = timelinePRMap.value[entry.set.id]
+  if (badge === 'pr') parts.push('personal record')
+  else if (badge === 'repPR') parts.push('rep personal record')
+  return parts.join(', ')
+}
 
 // ── Set actions (tap-to-reveal) ──────────────────────────────────
 const activeSetId = ref<string | null>(null)

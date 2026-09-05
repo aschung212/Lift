@@ -200,29 +200,36 @@
         :class="['wtSetRow', entryRowClass(entry), {
           wtSetRowActive: activeEntryId === entry.id,
         }]"
-        role="button"
-        tabindex="0"
-        :aria-expanded="activeEntryId === entry.id"
-        :aria-label="`${formatShortDate(setDayKey(entry.date) + 'T12:00:00')}: ${displayWeight(entry.weight)} ${weightUnit}`"
-        @click="toggleEntryActions(entry.id)"
-        @keydown.enter="toggleEntryActions(entry.id)"
-        @keydown.space.prevent="toggleEntryActions(entry.id)"
       >
-        <span class="wtSetDate">{{ formatShortDate(setDayKey(entry.date) + 'T12:00:00') }}</span>
-        <span :class="['wtSetDetail', weightClass(entry.weight)]">
-          {{ displayWeight(entry.weight) }} {{ weightUnit }}
-          <span v-if="entry.weight === store.minWeight" :class="['bwEntryBadge', isLowGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time low">↓ Low</span>
-          <span v-else-if="entry.weight === store.maxWeight" :class="['bwEntryBadge', isHighGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time high">↑ High</span>
-        </span>
-        <span v-if="entryDelta(entry) != null" :class="['bwDelta', deltaClass(entry)]">
-          {{ displayWeight(entryDelta(entry)!) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)!) }}
-          <span v-if="deltaSentimentLabel(entry)" class="bwSentiment" :aria-label="deltaSentimentLabel(entry)">
-            {{ deltaSentimentLabel(entry) === 'on track' ? '✓' : '✗' }}
+        <!-- Disclosure trigger (LIFT-1349). Was a role="button" li with
+             hand-rolled Enter/Space handlers, which made the Edit/Delete
+             buttons children of a children-presentational button role (and
+             put a button role on an li). A real <button> gives the same
+             keyboard operability from the platform, with the actions as
+             siblings rather than swallowed descendants. -->
+        <button
+          type="button"
+          class="wtSetRowMain"
+          :aria-expanded="activeEntryId === entry.id"
+          :aria-label="`${formatShortDate(setDayKey(entry.date) + 'T12:00:00')}: ${displayWeight(entry.weight)} ${weightUnit}`"
+          @click="toggleEntryActions(entry.id)"
+        >
+          <span class="wtSetDate">{{ formatShortDate(setDayKey(entry.date) + 'T12:00:00') }}</span>
+          <span :class="['wtSetDetail', weightClass(entry.weight)]">
+            {{ displayWeight(entry.weight) }} {{ weightUnit }}
+            <span v-if="entry.weight === store.minWeight" :class="['bwEntryBadge', isLowGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time low">↓ Low</span>
+            <span v-else-if="entry.weight === store.maxWeight" :class="['bwEntryBadge', isHighGood ? 'bwEntryBadgeGood' : 'bwEntryBadgeBad']" title="All-time high">↑ High</span>
           </span>
-        </span>
+          <span v-if="entryDelta(entry) != null" :class="['bwDelta', deltaClass(entry)]">
+            {{ displayWeight(entryDelta(entry)!) > 0 ? '+' : '' }}{{ displayWeight(entryDelta(entry)!) }}
+            <span v-if="deltaSentimentLabel(entry)" class="bwSentiment" :aria-label="deltaSentimentLabel(entry)">
+              {{ deltaSentimentLabel(entry) === 'on track' ? '✓' : '✗' }}
+            </span>
+          </span>
+        </button>
         <div v-if="activeEntryId === entry.id" class="wtSetActions">
-          <button class="wtSetBtn" @click.stop="openModal(entry)" aria-label="Edit entry">Edit</button>
-          <button class="wtSetBtn wtSetBtnDel" @click.stop="deleteEntry(entry.id)" aria-label="Delete entry">Delete</button>
+          <button class="wtSetBtn" @click="openModal(entry)" aria-label="Edit entry">Edit</button>
+          <button class="wtSetBtn wtSetBtnDel" @click="deleteEntry(entry.id)" aria-label="Delete entry">Delete</button>
         </div>
       </li>
     </ul>
