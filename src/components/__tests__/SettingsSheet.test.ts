@@ -237,9 +237,15 @@ vi.mock('../../stores/bodyweight', () => ({
 }))
 
 // ── Auth (Sign Out / Delete Account) ───────────────────────────────
+// `user` is TRUTHY for a guest — continueAsGuest stores the `guest-local`
+// sentinel (LIFT-1083) — so the two refs are driven independently here. A guest
+// fixture that left `user` null would make the sync-claim assertion below
+// vacuous: it would pass off the falsy `user` rather than off `isGuest`.
 const mockDeleteAccount = vi.fn().mockResolvedValue(undefined)
+const mockUser = ref<{ id: string; email: string } | null>(null)
+const mockIsGuest = ref(false)
 vi.mock('../../composables/useAuth', () => ({
-  useAuth: () => ({ user: ref(null), deleteAccount: mockDeleteAccount }),
+  useAuth: () => ({ user: mockUser, isGuest: mockIsGuest, deleteAccount: mockDeleteAccount }),
 }))
 
 // ── XP ceremony, app share, gym actions — no-op surfaces ───────────
@@ -318,8 +324,22 @@ describe('SettingsSheet', () => {
     mockPrBaselineAnchor.value = null
     mockStrengthBaselineMode.value = 'lifetime'
     mockRecentBaselineWeeks.value = 8
+    mockUser.value = null
+    mockIsGuest.value = false
     vi.clearAllMocks()
   })
+
+  /** Local-only guest (LIFT-1083): a truthy sentinel user AND the guest flag. */
+  function continueAsGuest() {
+    mockUser.value = { id: 'guest-local', email: '' }
+    mockIsGuest.value = true
+  }
+
+  /** A real Supabase session — the non-guest side of every fork below. */
+  function signIn() {
+    mockUser.value = { id: 'a3f1c2d4-0000-4000-8000-000000000001', email: 'a@b.co' }
+    mockIsGuest.value = false
+  }
 
   describe('visibility', () => {
     it('renders nothing when modelValue is false', () => {
@@ -634,6 +654,139 @@ describe('SettingsSheet', () => {
       await wrapper.find('.settingsDeleteAccount').trigger('click')
       expect(wrapper.find('.deleteConfirmSheet').exists()).toBe(true)
       expect(mockLogEvent).toHaveBeenCalledWith('delete_account_opened')
+    })
+  })
+
+  // ── Guest copy (LIFT-1310) ───────────────────────────────────────
+  // The BEHAVIOUR already forked for a guest — App.vue routes their sign-out to
+  // exitGuestMode() (data intact) and LIFT-1301 skips the server stages of
+  // deleteAccount() — but this sheet had no `isGuest` conditional anywhere, so
+  // every account-shaped string named something a guest does not have. Two of
+  // them were affirmatively false: "You will not be able to sign back in" (a
+  // guest lands on the auth gate and can tap "Continue as guest" again), and
+  // "Synced over encrypted HTTPS" (nothing a guest logs ever leaves the device
+  // — the app's own guest banner says the opposite on the tab behind this one).
+  //
+  // Nothing caught it because this file had never mounted the sheet as a guest,
+  // the same blind spot that let LIFT-1301 ship: useAuth.test.ts's deleteAccount
+  // block only ever called devSignIn(). Each assertion below is paired with its
+  // signed-in twin, since a fork is only pinned from both sides.
+  describe('guest mode copy (LIFT-1310)', () => {
+    it('offers to exit guest mode rather than sign out of a session', () => {
+      continueAsGuest()
+      expect(mountSheet().find('.settingsSignOut').text()).toBe('Exit Guest Mode')
+    })
+
+    it('still says Sign Out for a real session', () => {
+      signIn()
+      expect(mountSheet().find('.settingsSignOut').text()).toBe('Sign Out')
+    })
+
+    it('promises the guest their workouts survive leaving', async () => {
+      continueAsGuest()
+      const wrapper = mountSheet()
+      await wrapper.find('.settingsSignOut').trigger('click')
+      expect(wrapper.find('#confirm-msg').text())
+        .toBe('Exit guest mode? Your workouts stay on this device.')
+    })
+
+    it('keeps the bare Sign out? confirm for a real session', async () => {
+      signIn()
+      const wrapper = mountSheet()
+      await wrapper.find('.settingsSignOut').trigger('click')
+      expect(wrapper.find('#confirm-msg').text()).toBe('Sign out?')
+    })
+
+    it('leaves the sign-out emit untouched — App.vue owns the guest fork', async () => {
+      continueAsGuest()
+      const wrapper = mountSheet()
+      await wrapper.find('.settingsSignOut').trigger('click')
+      await wrapper.find('.confirmBtnConfirm').trigger('click')
+      expect(wrapper.emitted('sign-out')).toBeTruthy()
+      expect(wrapper.emitted('update:modelValue')?.some(e => e[0] === false)).toBe(true)
+    })
+
+    it('names the danger-zone row for what it deletes, not an account', () => {
+      continueAsGuest()
+      expect(mountSheet().find('.settingsDeleteAccount .settingsLabel').text())
+        .toBe('Delete All Data')
+    })
+
+    it('still names it Delete Account for a real session', () => {
+      signIn()
+      expect(mountSheet().find('.settingsDeleteAccount .settingsLabel').text())
+        .toBe('Delete Account')
+    })
+
+    it('drops the account and sign-back-in clauses from the delete dialog', async () => {
+      continueAsGuest()
+      const wrapper = mountSheet()
+      await wrapper.find('.settingsDeleteAccount').trigger('click')
+      expect(wrapper.find('.deleteConfirmTitle').text()).toBe('Delete All Data')
+      const desc = wrapper.find('.deleteConfirmDesc').text()
+      expect(desc).not.toMatch(/account/i)
+      expect(desc).not.toMatch(/sign back in/i)
+      // The irreversibility is the part that IS true for a guest — keep it.
+      expect(desc).toMatch(/cannot be undone/i)
+      expect(desc).toMatch(/from this device/i)
+    })
+
+    // The title is the alertdialog's accessible name (aria-labelledby), so a
+    // drift from the row would announce a different action than the one just
+    // tapped. Both now read from one computed — this pins that they agree.
+    it('announces the dialog with the same label as the row that opened it', async () => {
+      continueAsGuest()
+      const guest = mountSheet()
+      await guest.find('.settingsDeleteAccount').trigger('click')
+      expect(guest.find('.deleteConfirmTitle').text())
+        .toBe(guest.find('.settingsDeleteAccount .settingsLabel').text())
+      guest.unmount()
+
+      signIn()
+      const member = mountSheet()
+      await member.find('.settingsDeleteAccount').trigger('click')
+      expect(member.find('.deleteConfirmTitle').text())
+        .toBe(member.find('.settingsDeleteAccount .settingsLabel').text())
+    })
+
+    it('keeps the account wording in the delete dialog for a real session', async () => {
+      signIn()
+      const wrapper = mountSheet()
+      await wrapper.find('.settingsDeleteAccount').trigger('click')
+      expect(wrapper.find('.deleteConfirmTitle').text()).toBe('Delete Account')
+      expect(wrapper.find('.deleteConfirmDesc').text()).toMatch(/not be able to sign back in/i)
+    })
+
+    // The gate stays for a guest deliberately: this is the ONLY path a guest has
+    // to erase their device, and it is exactly as irreversible as an account
+    // deletion. Softer copy must not become a softer confirmation.
+    it('holds a guest to the same DELETE-to-confirm gate', async () => {
+      continueAsGuest()
+      const wrapper = mountSheet()
+      await wrapper.find('.settingsDeleteAccount').trigger('click')
+      const deleteBtn = wrapper.find('.deleteConfirmBtn')
+      expect(deleteBtn.attributes('disabled')).toBeDefined()
+
+      await wrapper.find('.deleteConfirmInput').setValue('delete')
+      expect(wrapper.find('.deleteConfirmBtn').attributes('disabled')).toBeDefined()
+
+      await wrapper.find('.deleteConfirmInput').setValue('DELETE')
+      expect(wrapper.find('.deleteConfirmBtn').attributes('disabled')).toBeUndefined()
+      await wrapper.find('.deleteConfirmBtn').trigger('click')
+      expect(mockDeleteAccount).toHaveBeenCalled()
+    })
+
+    it('does not claim a guest is synced — the sentinel user is truthy', () => {
+      continueAsGuest()
+      const rows = mountSheet().findAll('.privacyText').map(r => r.text())
+      expect(rows).toContain('Sign in to sync across devices')
+      expect(rows).not.toContain('Synced over encrypted HTTPS')
+    })
+
+    it('does claim sync for a real session', () => {
+      signIn()
+      const rows = mountSheet().findAll('.privacyText').map(r => r.text())
+      expect(rows).toContain('Synced over encrypted HTTPS')
     })
   })
 
