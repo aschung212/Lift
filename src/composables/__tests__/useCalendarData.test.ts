@@ -4,12 +4,19 @@ import { useCalendarData } from '../useCalendarData'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 
 let setSeq = 0
-function makeSet(date: string, weight: number, reps: number, e1rm: number): WorkoutSet {
-  return { id: `set-${setSeq++}`, date, weight, reps, estimated1RM: e1rm }
+function makeSet(date: string, weight: number, reps: number, e1rm: number, bodyweight?: number): WorkoutSet {
+  return {
+    id: `set-${setSeq++}`,
+    date,
+    weight,
+    reps,
+    estimated1RM: e1rm,
+    ...(bodyweight !== undefined ? { bodyweight } : {}),
+  }
 }
 
-function makeExercise(id: string, name: string, sets: WorkoutSet[]): Exercise {
-  return { id, name, tags: [], sets }
+function makeExercise(id: string, name: string, sets: WorkoutSet[], bodyweightLoaded = false): Exercise {
+  return { id, name, tags: [], sets, ...(bodyweightLoaded ? { bodyweightLoaded: true } : {}) }
 }
 
 // A getExercisePR stand-in mirroring the store: max e1RM on/after an optional baseline.
@@ -170,6 +177,48 @@ describe('useCalendarData', () => {
       })
       // 250*50 = 12500 → 12.5k
       expect(daySummary.value?.volumeDisplay).toBe('12.5k')
+    })
+
+    // #1333 — the summary summed the raw `set.weight`, so tapping a day whose
+    // only work was pull-ups reported "0 lbs" next to a real set count, while
+    // the same sets on the same day charted ~5,550 in the exercise graph. Two
+    // answers, both from the store, one screen apart.
+    it('folds bodyweight into the day’s volume for a bodyweight-loaded exercise (#1333)', () => {
+      const exercises = ref([
+        makeExercise(
+          'pullups',
+          'Pull-ups',
+          [
+            makeSet('2026-03-23T23:59:00.000Z', 0, 10, 246, 185), // 1850
+            makeSet('2026-03-23T23:59:01.000Z', 25, 6, 252, 185), // 1260
+          ],
+          true,
+        ),
+      ])
+      const { daySummary } = useCalendarData({
+        exercises,
+        selectedDay: ref('2026-03-23'),
+        prBaselineDate: ref(null),
+        getExercisePR: makeGetPR(exercises.value),
+        displayWeight: identity,
+      })
+
+      // Before the fix: 0*10 + 25*6 = '150'.
+      expect(daySummary.value?.volumeDisplay).toBe('3110')
+    })
+
+    it('leaves the day’s volume alone for a normal lift whose sets carry a bodyweight', () => {
+      const exercises = ref([
+        makeExercise('squat', 'Squat', [makeSet('2026-03-23T23:59:00.000Z', 200, 5, 233, 185)]),
+      ])
+      const { daySummary } = useCalendarData({
+        exercises,
+        selectedDay: ref('2026-03-23'),
+        prBaselineDate: ref(null),
+        getExercisePR: makeGetPR(exercises.value),
+        displayWeight: identity,
+      })
+      expect(daySummary.value?.volumeDisplay).toBe('1000')
     })
   })
 

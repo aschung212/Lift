@@ -3,11 +3,16 @@ import { computeThemeStats, computeAllThemeStats } from '../themeStats'
 import type { Exercise } from '../../stores/workout'
 import type { SetXPEntry } from '../../stores/progression'
 
-function makeExercise(name: string, sets: { id: string; weight: number; reps: number; date: string }[]): Exercise {
+function makeExercise(
+  name: string,
+  sets: { id: string; weight: number; reps: number; date: string; bodyweight?: number }[],
+  bodyweightLoaded = false,
+): Exercise {
   return {
     id: `ex-${name}`,
     name,
     tags: [],
+    ...(bodyweightLoaded ? { bodyweightLoaded: true } : {}),
     sets: sets.map(s => ({
       ...s,
       estimated1RM: s.reps === 1 ? Math.round(s.weight) : Math.round(s.weight * (1 + s.reps / 30)),
@@ -48,6 +53,40 @@ describe('themeStats', () => {
       expect(stats.totalReps).toBe(9) // 5+3+1
       expect(stats.totalVolume).toBe(135*5 + 185*3 + 225*1) // 675+555+225=1455
       expect(stats.daysUsed).toBe(2) // Apr 1 and Apr 2
+    })
+
+    // #1333 — the per-theme volume stat flattened each set into a lookup that
+    // dropped the exercise, then summed the raw `set.weight`. A theme worn
+    // through a calisthenics block reported a fraction of the work done in it.
+    it('folds bodyweight into the volume of a bodyweight-loaded exercise (#1333)', () => {
+      const xpPerSet: Record<string, SetXPEntry> = {
+        's1': makeEntry({ xp: 60 }),
+        's2': makeEntry({ xp: 70 }),
+      }
+      const exercises = [
+        makeExercise(
+          'Pull-ups',
+          [
+            { id: 's1', weight: 0, reps: 10, date: '2026-04-01T12:00:00Z', bodyweight: 185 },
+            { id: 's2', weight: 25, reps: 6, date: '2026-04-01T12:05:00Z', bodyweight: 185 },
+          ],
+          true,
+        ),
+      ]
+
+      const stats = computeThemeStats('fire', xpPerSet, exercises)
+      // Before the fix: 0*10 + 25*6 = 150.
+      expect(stats.totalVolume).toBe(185 * 10 + 210 * 6)
+    })
+
+    it('leaves a normal lift’s volume alone when its sets carry a bodyweight', () => {
+      const xpPerSet: Record<string, SetXPEntry> = { 's1': makeEntry({ xp: 60 }) }
+      const exercises = [
+        makeExercise('Squat', [
+          { id: 's1', weight: 225, reps: 5, date: '2026-04-01T12:00:00Z', bodyweight: 185 },
+        ]),
+      ]
+      expect(computeThemeStats('fire', xpPerSet, exercises).totalVolume).toBe(1125)
     })
 
     it('ignores sets from other themes', () => {

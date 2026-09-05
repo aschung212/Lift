@@ -9,12 +9,13 @@
 
 import type { Exercise } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
+import { effectiveSetWeight } from './bodyweightLoad'
 
 export interface ThemeStats {
   themeId: string
   totalSets: number
   totalReps: number
-  totalVolume: number       // weight × reps summed
+  totalVolume: number       // effective weight × reps summed (bodyweight folded, LIFT-834)
   totalXP: number
   avgXPPerSet: number
   prCount: number
@@ -40,12 +41,18 @@ export function computeThemeStats(
   xpPerSet: Record<string, SetXPEntry | number>,
   exercises: Exercise[]
 ): ThemeStats {
-  // Build a lookup of setId → exercise info
-  const setLookup = new Map<string, { weight: number; reps: number; date: string; exerciseName: string }>()
+  // Build a lookup of setId → exercise info.
+  //
+  // `effectiveWeight` is the bodyweight-inclusive load (LIFT-834), resolved
+  // here while the exercise is still in scope — the volume sum below only sees
+  // the flattened row, so folding at lookup time is what keeps a
+  // pure-bodyweight pull-up from contributing zero (#1333). Exactly
+  // `set.weight` for every non-bodyweight-loaded exercise.
+  const setLookup = new Map<string, { effectiveWeight: number; reps: number; date: string; exerciseName: string }>()
   for (const ex of exercises) {
     for (const set of ex.sets) {
       setLookup.set(set.id, {
-        weight: set.weight,
+        effectiveWeight: effectiveSetWeight(set, ex),
         reps: set.reps,
         date: set.date,
         exerciseName: ex.name,
@@ -96,7 +103,7 @@ export function computeThemeStats(
     const setInfo = setLookup.get(setId)
     if (setInfo) {
       stats.totalReps += setInfo.reps
-      stats.totalVolume += setInfo.weight * setInfo.reps
+      stats.totalVolume += setInfo.effectiveWeight * setInfo.reps
       dates.add(setInfo.date.slice(0, 10))
 
       if (!stats.firstSetDate || setInfo.date < stats.firstSetDate) {

@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Exercise, WorkoutSet } from '../stores/workout'
+import { effectiveSetWeight } from '../lib/bodyweightLoad'
 
 export interface DaySummary {
   exercises: number
@@ -93,6 +94,10 @@ export function useCalendarData(options: UseCalendarDataOptions): UseCalendarDat
     return !!(prMap.value[dateStr]?.size > 0)
   }
 
+  // Volume sums the bodyweight-inclusive EFFECTIVE load (LIFT-834), matching
+  // `sessionSummary` and the exercise graph — a pure-bodyweight pull-up set
+  // contributes the lifter's weight, not zero. `effectiveSetWeight` is exactly
+  // `s.weight` for every non-bodyweight-loaded exercise.
   const daySummary = computed((): DaySummary | null => {
     if (!selectedDay.value || !trainingMap.value[selectedDay.value]) return null
     const dayStr = selectedDay.value.slice(0, 10)
@@ -107,7 +112,7 @@ export function useCalendarData(options: UseCalendarDataOptions): UseCalendarDat
       exerciseCount++
       totalSets += daySets.length
       for (const s of daySets) {
-        totalVolume += s.weight * s.reps
+        totalVolume += effectiveSetWeight(s, exercise) * s.reps
       }
       const pr = getExercisePR(exercise.id, prBaselineDate.value)
       if (pr && daySets.some(s => s.estimated1RM === pr)) {
