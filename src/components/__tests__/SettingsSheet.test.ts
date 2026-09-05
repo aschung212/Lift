@@ -49,6 +49,9 @@ const mockColorMode = ref<'light' | 'dark' | 'auto'>('dark')
 const mockSelectTheme = vi.fn(() => true)
 const mockPreviewTheme = vi.fn()
 const mockRevertPreview = vi.fn()
+/** Theme ids the mock reports as locked — empty (everything unlocked) unless a
+ *  test needs the locked-theme preview overlay. */
+const mockLockedThemes = ref<string[]>([])
 const THEMES = [
   { id: 'eternal', label: 'Eternal', icon: 'eternal' },
   { id: 'pearl', label: 'Origin', icon: 'pearl' },
@@ -71,7 +74,7 @@ vi.mock('../../composables/useTheme', () => ({
     selectTheme: mockSelectTheme,
     previewTheme: mockPreviewTheme,
     revertPreview: mockRevertPreview,
-    isThemeUnlocked: () => true,
+    isThemeUnlocked: (id: string) => !mockLockedThemes.value.includes(id),
   }),
 }))
 
@@ -326,6 +329,7 @@ describe('SettingsSheet', () => {
     mockRecentBaselineWeeks.value = 8
     mockUser.value = null
     mockIsGuest.value = false
+    mockLockedThemes.value = []
     vi.clearAllMocks()
   })
 
@@ -385,6 +389,87 @@ describe('SettingsSheet', () => {
       const wrapper = mountSheet()
       await wrapper.find('button[aria-label="Use kilograms"]').trigger('click')
       expect(mockWeightUnit.value).toBe('kg')
+    })
+  })
+
+  /**
+   * LIFT-1305 — both progression prompts in the Appearance group are controls:
+   * they scroll to and highlight the Progression toggle. Both shipped as a bare
+   * `@click` on a `<div>`/`<p>` (one with an inline `cursor:pointer`), so they
+   * presented as interactive to a sighted mouse user and were unreachable to
+   * everyone driving the app from a keyboard or switch control — a Level A
+   * failure of WCAG 2.1.1 on the only in-app pointer to the setting that
+   * unlocks the themes the user is looking at.
+   */
+  describe('progression prompts are keyboard-operable (LIFT-1305)', () => {
+    const realScrollIntoView = Element.prototype.scrollIntoView
+    let scrollSpy: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+      scrollSpy = vi.fn()
+      Element.prototype.scrollIntoView = scrollSpy
+    })
+    afterEach(() => {
+      Element.prototype.scrollIntoView = realScrollIntoView
+    })
+
+    /** Both prompts scroll the Progression row into view and pulse it. */
+    function assertScrolledToToggle(wrapper: ReturnType<typeof mountSheet>) {
+      expect(scrollSpy).toHaveBeenCalled()
+      expect(wrapper.find('.settingsRowHighlight').exists()).toBe(true)
+    }
+
+    // Progression off and nothing being previewed → the <p> hint renders.
+    it.each(['enter', 'space'] as const)(
+      'activates the "enable Progression" hint with %s',
+      async key => {
+        const wrapper = mountSheet()
+        const hint = wrapper.find('.badgeEnableHint')
+        expect(hint.exists()).toBe(true)
+        expect(hint.attributes('role')).toBe('button')
+        expect(hint.attributes('tabindex')).toBe('0')
+
+        await hint.trigger(`keydown.${key}`)
+        assertScrolledToToggle(wrapper)
+      },
+    )
+
+    it.each(['enter', 'space'] as const)(
+      'activates the locked-theme preview overlay with %s',
+      async key => {
+        mockLockedThemes.value = ['fire']
+        const wrapper = mountSheet()
+        // Previewing a locked theme with progression off swaps the "XP to
+        // unlock" read-out for the tappable "Enable Progression" prompt.
+        await wrapper.find('button[aria-label="Intensity theme — locked"]').trigger('click')
+        await wrapper.vm.$nextTick()
+
+        const overlay = wrapper.find('.badgePreviewOverlayAction')
+        expect(overlay.text()).toContain('Enable Progression')
+        expect(overlay.attributes('role')).toBe('button')
+        expect(overlay.attributes('tabindex')).toBe('0')
+        // The cursor moved out of an inline style and into the class.
+        expect(overlay.attributes('style')).toBeUndefined()
+
+        await overlay.trigger(`keydown.${key}`)
+        assertScrolledToToggle(wrapper)
+      },
+    )
+
+    // The XP read-out shown when progression IS on does nothing, so it must not
+    // claim to be a button or take a tab stop.
+    it('leaves the non-interactive XP read-out out of the tab order', async () => {
+      mockLockedThemes.value = ['fire']
+      mockProgression.progressionEnabled = true
+      const wrapper = mountSheet()
+      await wrapper.find('button[aria-label="Intensity theme — locked"]').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const overlay = wrapper.find('.badgePreviewOverlay')
+      expect(overlay.text()).toContain('XP to unlock')
+      expect(overlay.classes()).not.toContain('badgePreviewOverlayAction')
+      expect(overlay.attributes('role')).toBeUndefined()
+      expect(overlay.attributes('tabindex')).toBeUndefined()
     })
   })
 
