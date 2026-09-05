@@ -766,6 +766,11 @@ jobs:
       # Fail loudly and specifically. Without this, a missing secret surfaces as
       # a Vercel CLI auth error in a job nobody has read before, on the one push
       # where production stopped updating.
+      #
+      # Deliberately ahead of the deploy gate: "production cannot be deployed"
+      # is broken whether or not THIS commit was going to deploy, so a docs-only
+      # push should surface it rather than pass green and leave the discovery to
+      # the next real change.
       - name: Verify deploy credentials are configured
         run: |
           set -euo pipefail
