@@ -1354,6 +1354,78 @@ describe('workout store', () => {
       expect(result).toHaveLength(1)
       expect(result[0].sets.map(s => s.id)).toEqual(['s1', 's2', 's3'])
     })
+
+    // ── LIFT-1332: the merge must not be count-blind ──────────────
+    //
+    // The merge used to gate incoming sets on a `Set` of `day|weight|reps`
+    // content keys as well as on id. A Set cannot hold a count, so it admitted
+    // at most ONE set per tuple — and straight-set programming (5x5, 3x10)
+    // collides with itself by construction, so the duplicate's whole day of
+    // work was dropped. The existing tests above only ever asserted which
+    // EXERCISES survived, never how many sets came across, which is how a
+    // silent data-loss path sat here from 2026-04-06.
+    it('keeps every set when two independently-created rows share a name', () => {
+      // Device A logged 5x5 @135; device B, offline, made its own "bench press"
+      // row and logged 3x5 @135 the same day. Different exercise UUIDs means
+      // the rows were created independently, so all 8 sets are real work.
+      // endOfDayISO jitters seconds/ms, so each set carries a distinct stamp.
+      const daySets = (prefix: string, count: number, secOffset: number): WorkoutSet[] =>
+        Array.from({ length: count }, (_, i) => ({
+          id: `${prefix}${i}`,
+          date: `2026-09-01T23:59:${String(secOffset + i).padStart(2, '0')}.000Z`,
+          weight: 135,
+          reps: 5,
+          estimated1RM: 152,
+        }))
+      const exercises: Exercise[] = [
+        { id: 'uuid-A', name: 'Bench Press', tags: ['Push'], sets: daySets('a', 5, 10) },
+        { id: 'uuid-B', name: 'bench press', tags: [], sets: daySets('b', 3, 30) },
+      ]
+
+      const { exercises: result } = deduplicateByName(exercises)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].sets).toHaveLength(8)
+      expect(result[0].sets.map(s => s.id).sort()).toEqual(
+        ['a0', 'a1', 'a2', 'a3', 'a4', 'b0', 'b1', 'b2']
+      )
+    })
+
+    it('still merges by id, so a set present on both rows lands once', () => {
+      const shared: WorkoutSet = {
+        id: 'shared', date: '2026-09-01T23:59:12.000Z', weight: 225, reps: 5, estimated1RM: 262,
+      }
+      const exercises: Exercise[] = [
+        { id: 'uuid-A', name: 'Squat', tags: [], sets: [shared, { ...shared, id: 'only-a' }] },
+        { id: 'uuid-B', name: 'squat', tags: [], sets: [shared] },
+      ]
+
+      const { exercises: result } = deduplicateByName(exercises)
+
+      expect(result[0].sets.map(s => s.id)).toEqual(['shared', 'only-a'])
+    })
+
+    it('leaves true re-inserted copies for deduplicateSets to collapse', () => {
+      // A migration re-run mints fresh set UUIDs but copies `date` verbatim, so
+      // the copies collide on the FULL timestamp. That is the case the content
+      // key was reaching for, and the sibling function already handles it —
+      // without the count-blindness, because jittered same-day sets differ.
+      const original: WorkoutSet[] = [
+        { id: 'a0', date: '2026-09-01T23:59:10.000Z', weight: 135, reps: 5, estimated1RM: 152 },
+        { id: 'a1', date: '2026-09-01T23:59:41.000Z', weight: 135, reps: 5, estimated1RM: 152 },
+      ]
+      const exercises: Exercise[] = [
+        { id: 'uuid-A', name: 'Row', tags: [], sets: [...original] },
+        // Same dates, new ids — a second migration of the same localStorage.
+        { id: 'uuid-B', name: 'row', tags: [], sets: original.map((s, i) => ({ ...s, id: `b${i}` })) },
+      ]
+
+      const { exercises: result } = deduplicateByName(exercises)
+      expect(result[0].sets).toHaveLength(4)
+
+      const { unique } = deduplicateSets(result[0].sets)
+      expect(unique.map(s => s.id)).toEqual(['a0', 'a1'])
+    })
   })
 
   // ── setExerciseIntensityMaxReps (#770) ──────────────────────────

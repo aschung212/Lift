@@ -1,0 +1,164 @@
+/**
+ * Regression: merging same-named exercises must not drop repeated sets (LIFT-1332).
+ *
+ * `deduplicateByName` collapses two exercise rows that share a name but carry
+ * different UUIDs — the cross-device case where each device independently
+ * created its own "Bench Press". The merge gated incoming sets on a `Set` of
+ * `day|weight|reps` content keys, and a `Set` cannot hold a count, so it
+ * admitted at most ONE set per (day, weight, reps) tuple. Straight-set
+ * programming collides with itself by construction, so a 5x5 arriving from the
+ * duplicate row merged in as a single set — or, if the primary already logged
+ * that tuple, as nothing at all.
+ *
+ * The loss was permanent from the user's side: `_fetchFromSupabase` commits the
+ * deduped result to `exercises.value` and `_persist()`s it, and every later
+ * fetch re-runs the same dedup over the same server rows. Nothing errors and
+ * nothing ever restores the sets. (The rows do survive on the server — dedup is
+ * strictly local per the 2026-04-12 SEV1 fix — which is exactly why it was
+ * silent, and why this fix heals existing accounts on their next fetch.)
+ *
+ * Why the suite missed it: the two `deduplicateByName` tests in `workout.test.ts`
+ * asserted only which EXERCISES survived, never how many sets came across, and
+ * nothing anywhere drove a cross-device duplicate through the fetch pipeline.
+ * These tests assert set counts, at the pure-function level in `workout.test.ts`
+ * and end-to-end here.
+ */
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
+import { getLocalStorageMock } from '../../__tests__/helpers'
+
+const localStorageMock = getLocalStorageMock()
+
+const { fakeSupabase } = await vi.hoisted(async () => {
+  const { createFakeSupabase } = await import('../../__tests__/fakeSupabase')
+  return { fakeSupabase: createFakeSupabase({ mode: 'ok' }) }
+})
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: fakeSupabase,
+  isPreviewMode: { value: false },
+}))
+
+vi.mock('../../lib/syncQueue', () => ({
+  syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn(), clear: vi.fn() },
+}))
+
+vi.mock('../../lib/logger', () => ({
+  logError: vi.fn(),
+  logWarn: vi.fn(),
+  logInfo: vi.fn(),
+}))
+
+import { useWorkoutStore } from '../workout'
+import type { Exercise } from '../workout'
+
+const USER = 'user-1332'
+const DAY = '2026-09-01'
+
+function exerciseRow(id: string, name: string, updatedAt: string) {
+  return {
+    id, user_id: USER, name, tags: [],
+    created_at: '2026-01-01T00:00:00.000Z', updated_at: updatedAt, deleted_at: null,
+  }
+}
+
+/**
+ * A day of straight sets as the app actually writes them: `endOfDayISO` stamps
+ * `${day}T23:59:${ss}.${ms}Z` with jittered seconds, so same-day repeats of one
+ * weight/rep tuple are distinguishable by their full timestamp but identical at
+ * day granularity — the collision the old content key could not survive.
+ */
+function straightSets(exerciseId: string, prefix: string, count: number, firstSecond: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `${prefix}-${i}`,
+    user_id: USER,
+    exercise_id: exerciseId,
+    date: `${DAY}T23:59:${String(firstSecond + i).padStart(2, '0')}.000Z`,
+    weight: 135,
+    reps: 5,
+    estimated_1rm: 152,
+    created_at: `${DAY}T18:0${i}:00.000Z`,
+    deleted_at: null,
+  }))
+}
+
+/** Two devices each created their own row for the same lift and logged into it. */
+function seedCrossDeviceDuplicate() {
+  fakeSupabase.seed('exercises', [
+    exerciseRow('uuid-a', 'Bench Press', '2026-09-01T10:00:00.000Z'),
+    exerciseRow('uuid-b', 'bench press', '2026-09-01T11:00:00.000Z'),
+  ])
+  fakeSupabase.seed('sets', [
+    ...straightSets('uuid-a', 'a', 5, 10),
+    ...straightSets('uuid-b', 'b', 3, 30),
+  ])
+}
+
+describe('cross-device same-name merge keeps repeated sets (LIFT-1332)', () => {
+  beforeEach(() => {
+    localStorageMock.clear()
+    fakeSupabase.reset()
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('hydrates all 8 sets — device B\'s 3x5 used to vanish entirely', async () => {
+    seedCrossDeviceDuplicate()
+
+    const store = useWorkoutStore()
+    await store.init(USER)
+
+    expect(store.exercises).toHaveLength(1)
+    const ids = store.exercises[0].sets.map(s => s.id).sort()
+    expect(ids).toEqual(['a-0', 'a-1', 'a-2', 'a-3', 'a-4', 'b-0', 'b-1', 'b-2'])
+  })
+
+  it('persists all 8 to localStorage — the dropped sets never came back', async () => {
+    // The commit to localStorage is what made this permanent rather than a
+    // render glitch: the deduped array is what the next cold start loads.
+    seedCrossDeviceDuplicate()
+
+    const store = useWorkoutStore()
+    await store.init(USER)
+
+    const persisted = JSON.parse(localStorageMock.getItem('workout-exercises')!) as Exercise[]
+    expect(persisted).toHaveLength(1)
+    expect(persisted[0].sets).toHaveLength(8)
+  })
+
+  it('is stable across repeated fetches — dedup re-runs on every sync', async () => {
+    seedCrossDeviceDuplicate()
+
+    const store = useWorkoutStore()
+    await store.init(USER)
+    // The second fetch re-runs dedup with the already-merged row in local
+    // state, so every set now arrives from both sides. Id dedup must hold.
+    await store.init(USER)
+
+    expect(store.exercises).toHaveLength(1)
+    expect(store.exercises[0].sets).toHaveLength(8)
+  })
+
+  it('still collapses re-inserted copies that share a full timestamp', async () => {
+    // The case the content key was reaching for: a migration re-run mints fresh
+    // set UUIDs but copies `date` verbatim, so the copies collide exactly.
+    // `deduplicateSets` runs over the merged list right after and catches them —
+    // without dropping jitter-differentiated repeats along with them.
+    fakeSupabase.seed('exercises', [
+      exerciseRow('uuid-a', 'Row', '2026-09-01T10:00:00.000Z'),
+      exerciseRow('uuid-b', 'row', '2026-09-01T11:00:00.000Z'),
+    ])
+    const original = straightSets('uuid-a', 'a', 3, 10)
+    fakeSupabase.seed('sets', [
+      ...original,
+      // Same dates, new ids, filed under the duplicate exercise.
+      ...original.map((s, i) => ({ ...s, id: `copy-${i}`, exercise_id: 'uuid-b' })),
+    ])
+
+    const store = useWorkoutStore()
+    await store.init(USER)
+
+    expect(store.exercises).toHaveLength(1)
+    expect(store.exercises[0].sets.map(s => s.id)).toEqual(['a-0', 'a-1', 'a-2'])
+  })
+})
