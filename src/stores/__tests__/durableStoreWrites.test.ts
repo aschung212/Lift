@@ -135,6 +135,17 @@ async function relaunchAndReplay(): Promise<void> {
   await vi.advanceTimersByTimeAsync(100)
 }
 
+/**
+ * Reconnect WITHOUT relaunching (LIFT-1322): the same live queue re-arms its
+ * stranded journal entries, exactly as `useSyncRecovery.run()` does on an
+ * `online` / foreground / session-recovered signal.
+ */
+async function reconnectAndReplay(): Promise<void> {
+  fakeSupabase.offline = false
+  syncQueue.replayJournal()
+  await vi.runAllTimersAsync()
+}
+
 describe('durable journal coverage for bodyweight / preferences / progression (LIFT-1239)', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -255,6 +266,65 @@ describe('durable journal coverage for bodyweight / preferences / progression (L
 
     expect(syncStatus.value).not.toBe('synced')
     expect(journaledDescriptors()).toEqual([{ table: 'user_preferences', op: 'upsert' }])
+  })
+
+  // ── Reconnect recovery, no relaunch required (LIFT-1322) ─────────
+  //
+  // Every test above proves recovery on the NEXT COLD START, which until now was
+  // the app's only recovery: `rehydrate()` is called once, from
+  // `useAuth.initStores`. Five exponential-backoff retries exhaust in ~31s, so
+  // any offline stretch longer than half a minute — i.e. every real one — left
+  // the write stranded for the remainder of the session, with `useSyncRecovery`
+  // dutifully flushing an already-empty queue when the signal came back.
+
+  it('recovers a settings change on RECONNECT, without waiting for a relaunch (LIFT-1322)', async () => {
+    // Preferences is the store with the most to lose: a remote-wins JSONB blob
+    // with no reconciliation pass. Until the replay lands, every re-fetch paints
+    // the stale server settings back over the user's change.
+    const store = usePreferencesStore()
+    store._userId = 'u1'
+    store.weightUnit = 'kg'
+    store._persist()
+
+    await exhaustRetriesOffline()
+    expect(fakeSupabase.calls).toHaveLength(0)
+    expect(journaledDescriptors()).toHaveLength(1)
+
+    await reconnectAndReplay()
+
+    const upserts = fakeSupabase.calls.filter(c => c.table === 'user_preferences')
+    expect(upserts).toHaveLength(1)
+    expect((upserts[0].data as { preferences: { weightUnit: string } }).preferences.weightUnit).toBe('kg')
+    expect(upserts[0].options).toEqual({ onConflict: 'user_id' })
+    // Landed, so nothing is left for the next launch to replay.
+    expect(journaledDescriptors()).toEqual([])
+    expect(syncStatus.value).toBe('synced')
+  })
+
+  it('recovers a bodyweight entry on reconnect', async () => {
+    const store = useBodyweightStore()
+    store._userId = 'u1'
+    store.addEntry(182.4, '2026-08-27')
+
+    await exhaustRetriesOffline()
+    await reconnectAndReplay()
+
+    const upserts = fakeSupabase.calls.filter(c => c.table === 'bodyweight_entries')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toMatchObject({ user_id: 'u1', weight: 182.4 })
+  })
+
+  it('recovers an XP credit on reconnect', async () => {
+    const store = useProgressionStore()
+    store._userId = 'u1'
+    store.creditSetXP('s1', 50)
+
+    await exhaustRetriesOffline()
+    await reconnectAndReplay()
+
+    const upserts = fakeSupabase.calls.filter(c => c.table === 'user_progression')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0].data).toMatchObject({ user_id: 'u1', total_xp: 50 })
   })
 
   it('does not journal the unbounded clear-all wipe', async () => {

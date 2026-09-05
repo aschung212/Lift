@@ -1507,3 +1507,116 @@ describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)'
     expect(violations).toEqual([])
   })
 })
+
+
+// ── Invariant: volume math folds bodyweight (#1333) ─────────────────
+//
+// `set.weight` is the ADDED weight on a `bodyweightLoaded` exercise (LIFT-834),
+// so `set.weight * set.reps` is not this app's volume — it is the plate volume
+// of a pull-up, which for a plain bodyweight rep is exactly 0. The fold has one
+// owner, `effectiveSetWeight`, and every volume site is supposed to route
+// through it.
+//
+// It has now drifted twice for the same structural reason: the fold needs the
+// EXERCISE, and a volume loop that has flattened its rows (or was written
+// against a `Ref<Exercise[]>` before the flag existed) reaches for the bare
+// `.weight` sitting right there. LIFT-834 folded `sessionSummary` and the
+// exercise graph and left the weekly trend, the per-tag trend, the calendar day
+// summary, the training report and the theme stats un-folded — two different
+// answers for the same sets on two screens of the same app — and no behavioural
+// test could see it, because not one fixture in any of those five suites sets
+// `bodyweightLoaded`. #1328 was the same omission on the inverse direction.
+//
+// A per-file test only ever pins the sites that existed when it was written,
+// which is the failure mode this scan exists to end: a NEW volume sum is
+// structurally unable to forget the fold.
+describe('Invariant: volume math folds bodyweight through effectiveSetWeight (#1333)', () => {
+  // The fold's owner, which necessarily names both halves.
+  const OWNER = join('lib', 'bodyweightLoad.ts')
+
+  // A `.weight` multiplied directly by a `.reps` (either order). The trailing
+  // `\)*` admits an intervening unit conversion — `toDisplay(s.weight) * s.reps`
+  // is the training report's shape and was one of the defects — while the
+  // property-chain operand keeps the two halves in ONE product, so
+  // `a.weight * 2 + b.reps * 3` (two unrelated products) does not flag. Bare
+  // identifiers are deliberately not matched: `epley(weight, reps)` computes
+  // `weight * (1 + reps / 30)` on parameters whose caller has already folded.
+  const OPERAND = String.raw`[\w$]+(?:\.[\w$]+)*`
+  const RAW_VOLUME = new RegExp(
+    String.raw`\.weight\b\s*\)*\s*\*\s*${OPERAND}\.reps\b` +
+      '|' +
+      String.raw`\.reps\b\s*\)*\s*\*\s*${OPERAND}\.weight\b`,
+  )
+
+  /** Every raw-volume expression in `source`, comments already stripped. */
+  function rawVolumeMatches(source: string): string[] {
+    const re = new RegExp(RAW_VOLUME.source, 'g')
+    const found: string[] = []
+    let m: RegExpExecArray | null
+    while ((m = re.exec(source)) !== null) found.push(m[0].replace(/\s+/g, ' '))
+    return found
+  }
+
+  it('the scan reaches the fold owner and its real consumers (non-vacuity)', () => {
+    const files = getSourceFiles()
+    const paths = files.map(f => f.path)
+    expect(paths).toContain(OWNER)
+    // Sanctioned volume sites — if these stop existing (or stop calling the
+    // helper) the scan below would pass having proved nothing.
+    for (const consumer of [
+      join('lib', 'sessionSummary.ts'),
+      join('lib', 'trainingReport.ts'),
+      join('lib', 'themeStats.ts'),
+      join('composables', 'useVolumeTrend.ts'),
+      join('composables', 'useTagVolumeTrend.ts'),
+      join('composables', 'useCalendarData.ts'),
+      join('components', 'ExerciseGraph.vue'),
+    ]) {
+      expect(paths).toContain(consumer)
+      expect(files.find(f => f.path === consumer)!.content).toMatch(/effectiveSetWeight/)
+    }
+  })
+
+  it('the scan flags the #1333 shapes and ignores comments (self-test)', () => {
+    // The five real defects, verbatim in shape.
+    expect(RAW_VOLUME.test('byWeek.set(wk, (byWeek.get(wk) ?? 0) + set.weight * set.reps)')).toBe(true)
+    expect(RAW_VOLUME.test('const vol = set.weight * set.reps')).toBe(true)
+    expect(RAW_VOLUME.test('totalVolume += s.weight * s.reps')).toBe(true)
+    expect(RAW_VOLUME.test('sum + toDisplay(s.weight) * s.reps')).toBe(true)
+    expect(RAW_VOLUME.test('stats.totalVolume += setInfo.weight * setInfo.reps')).toBe(true)
+    // Reversed operand order, and a product split across two lines.
+    expect(RAW_VOLUME.test('total += s.reps * s.weight')).toBe(true)
+    expect(RAW_VOLUME.test('total +=\n  toDisplay(s.weight) *\n  s.reps')).toBe(true)
+
+    // The fixes, and the shapes that must stay legal.
+    expect(RAW_VOLUME.test('const vol = effectiveSetWeight(s, ex) * s.reps')).toBe(false)
+    expect(RAW_VOLUME.test('sum + toDisplay(s.effectiveWeight) * s.reps')).toBe(false)
+    expect(RAW_VOLUME.test('return Math.round(weight * (1 + reps / 30))')).toBe(false)
+    expect(RAW_VOLUME.test('{ weight: s.weight, reps: s.reps }')).toBe(false)
+    // Two separate products, not a volume.
+    expect(RAW_VOLUME.test('a.weight * 2 + b.reps * 3')).toBe(false)
+
+    // Comments quoting the banned shape must not flag — a guard that fails on
+    // its own documentation is a guard people delete.
+    expect(RAW_VOLUME.test(stripComments('// totalVolume += s.weight * s.reps'))).toBe(false)
+    expect(RAW_VOLUME.test(stripComments(' * volume is `set.weight * set.reps`'))).toBe(false)
+  })
+
+  it('no source file multiplies a raw set weight by its reps', () => {
+    const violations = getSourceFiles()
+      .filter(f => f.path !== OWNER)
+      .flatMap(f => rawVolumeMatches(stripComments(f.content)).map(text => ({ path: f.path, text })))
+      .map(
+        v =>
+          `${v.path} — \`${v.text}\` multiplies a raw set weight by its reps. On a ` +
+          'bodyweightLoaded exercise `set.weight` is only the ADDED plate weight, ' +
+          'so this reports 0 volume for a pure-bodyweight set and undercounts every ' +
+          'weighted one (#1333). Multiply `effectiveSetWeight(set, exercise)` ' +
+          'instead — it is exactly `set.weight` for every other exercise. If the ' +
+          'row has been flattened away from its exercise, resolve the effective ' +
+          'weight where the exercise is still in scope (see trainingReport.ts).',
+      )
+
+    expect(violations).toEqual([])
+  })
+})

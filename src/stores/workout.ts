@@ -117,11 +117,6 @@ export interface UsualLadder {
 }
 
 /**
- * Deduplicate exercises by name (case-insensitive).
- * For each group of exercises with the same name, keeps the one with
- * the most sets as primary and merges all other sets into it.
- */
-/**
  * Deduplicate sets within an exercise by exact content (full date + weight + reps).
  * Uses the full ISO timestamp so jitter-differentiated sets are preserved —
  * this protects programs like 5x5 where the same weight/reps is logged
@@ -145,11 +140,10 @@ export function deduplicateSets(sets: WorkoutSet[]): { unique: WorkoutSet[]; rem
 }
 
 /**
- * One-time cleanup for triplicate sync artifacts. Groups end-of-day sets
- * by (day + weight + reps) and keeps only one per group. Real-time sets
- * are never touched. Runs once and sets a localStorage flag.
+ * Deduplicate exercises by name (case-insensitive).
+ * For each group of exercises with the same name, keeps the one with
+ * the most sets as primary and merges all other sets into it.
  */
-
 export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[]; removed: Exercise[] } {
   const groups = new Map<string, Exercise[]>()
   for (const ex of exercises) {
@@ -169,20 +163,25 @@ export function deduplicateByName(exercises: Exercise[]): { exercises: Exercise[
     // Pick the one with the most sets as primary
     group.sort((a, b) => b.sets.length - a.sets.length)
     const primary = group[0]
-    // Merge sets from duplicates, deduplicating by both ID and content.
-    // Uses day-level date (YYYY-MM-DD) for content keys so jitter timestamps
-    // don't prevent dedup. This is safe here because duplicate exercises are
-    // copies of the same workout data from different sync sources — sets
-    // from the dupe represent the same logged sets, not additional ones.
+    // Merge sets from the duplicates by ID only (LIFT-1332). A day-level
+    // content key (`day|weight|reps`) used to gate this as well, on the theory
+    // that a duplicate row's sets are always re-inserted copies of the
+    // primary's. But that key lived in a `Set`, which is count-blind: it
+    // admitted at most ONE set per (day, weight, reps) tuple, so straight-set
+    // programming collided with itself by construction and a whole 5x5 merged
+    // in as a single set. Differing exercise UUIDs mean the rows were created
+    // INDEPENDENTLY — that is this function's entire premise — so their sets
+    // are additional, not artifacts. Genuinely re-inserted copies (a migration
+    // re-run mints fresh set UUIDs but copies `date` verbatim) collide on the
+    // FULL timestamp instead, and `deduplicateSets` — which runs over the
+    // merged list immediately after and is deliberately count-PRESERVING for
+    // jitter-differentiated same-day sets — is what catches those.
     const setIds = new Set(primary.sets.map(s => s.id))
-    const setContentKeys = new Set(primary.sets.map(s => `${s.date.slice(0, 10)}|${s.weight}|${s.reps}`))
     for (let i = 1; i < group.length; i++) {
       for (const set of group[i].sets) {
-        const contentKey = `${set.date.slice(0, 10)}|${set.weight}|${set.reps}`
-        if (!setIds.has(set.id) && !setContentKeys.has(contentKey)) {
+        if (!setIds.has(set.id)) {
           primary.sets.push(set)
           setIds.add(set.id)
-          setContentKeys.add(contentKey)
         }
       }
       removed.push(group[i])

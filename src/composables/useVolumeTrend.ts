@@ -2,12 +2,14 @@ import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Exercise } from '../stores/workout'
 import type { TimeSeriesEntry } from './useSVGTimeSeries'
 import { localDateKey } from '../lib/dates'
+import { effectiveSetWeight } from '../lib/bodyweightLoad'
 
 export interface UseVolumeTrendReturn {
   /**
-   * Total training volume (weight × reps, in stored lbs) bucketed by ISO week.
-   * `date` is the Monday of each week (YYYY-MM-DD); empty weeks between the
-   * first and last trained week are filled with 0 so rest weeks show as dips.
+   * Total training volume (effective weight × reps, in stored lbs) bucketed by
+   * ISO week. `date` is the Monday of each week (YYYY-MM-DD); empty weeks
+   * between the first and last trained week are filled with 0 so rest weeks
+   * show as dips.
    */
   weeklyVolume: ComputedRef<TimeSeriesEntry[]>
   /** Sum of all weekly volume, in stored lbs. */
@@ -44,7 +46,7 @@ export function useVolumeTrend(exercises: Ref<Exercise[]>): UseVolumeTrendReturn
     for (const exercise of exercises.value) {
       for (const set of exercise.sets) {
         const wk = mondayOfWeek(set.date.slice(0, 10))
-        byWeek.set(wk, (byWeek.get(wk) ?? 0) + set.weight * set.reps)
+        byWeek.set(wk, (byWeek.get(wk) ?? 0) + effectiveSetWeight(set, exercise) * set.reps)
       }
     }
     if (byWeek.size === 0) return []
