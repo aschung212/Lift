@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, enableAutoUnmount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, ref } from 'vue'
 import ExerciseDetailModal from '../ExerciseDetailModal.vue'
+import { runComponentAxe } from '../../__tests__/axeHelper'
 import type { Exercise, WorkoutSet } from '../../stores/workout'
 
 enableAutoUnmount(afterEach)
@@ -186,6 +187,72 @@ describe('ExerciseDetailModal', () => {
       setExercises([prRichExercise({ sets: [] })])
       const wrapper = mountModal()
       expect(wrapper.find('.wtSetEmpty').text()).toBe('No sets logged yet.')
+    })
+
+    // ── Row disclosure keyboard reachability (LIFT-1349) ─────────────
+    // This row and the timeline's are the only way to edit or delete a logged
+    // set, and both were bare `<div @click>`s: no role, no tabindex, no key
+    // handler. A keyboard or switch-control user could log sets all day and
+    // then never correct or remove one — WCAG 2.1.1, Level A, with no
+    // alternative path anywhere in the app. Existing row tests only ever
+    // trigger('click'), so the gap was invisible to them by construction.
+    describe('set row disclosure (LIFT-1349)', () => {
+      it('is a real <button>, so Enter and Space come from the platform', () => {
+        setExercises([prRichExercise()])
+        const wrapper = mountModal()
+        const trigger = wrapper.findAll('.wtSetRowMain')[0]
+        expect(trigger.element.tagName).toBe('BUTTON')
+        expect(trigger.attributes('type')).toBe('button')
+        // The row is a plain container: it must not carry the click itself,
+        // or the trigger is decorative and the keyboard path is fake.
+        expect(wrapper.findAll('.wtSetRow')[0].attributes('role')).toBeUndefined()
+      })
+
+      it('carries aria-expanded reflecting whether the actions are shown', async () => {
+        setExercises([prRichExercise()])
+        const wrapper = mountModal()
+        expect(wrapper.findAll('.wtSetRowMain')[0].attributes('aria-expanded')).toBe('false')
+
+        await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
+        expect(wrapper.findAll('.wtSetRowMain')[0].attributes('aria-expanded')).toBe('true')
+      })
+
+      it('names the row with the day it belongs to, which its text never states', () => {
+        // The date lives in an unassociated `.wtSetDateHeader` above the card,
+        // so without this a screen reader cannot tell one day's sets apart.
+        setExercises([prRichExercise()])
+        const wrapper = mountModal()
+        const label = wrapper.findAll('.wtSetRowMain')[0].attributes('aria-label') ?? ''
+        expect(label).toContain('175')
+        expect(label).toContain('lbs')
+        expect(label).toContain(wrapper.findAll('.wtSetDateHeader')[0].text())
+        // Static per row — the state belongs to aria-expanded (LIFT-1308).
+        expect(label).not.toMatch(/expand|collapse|show|hide/i)
+      })
+
+      it('keeps Edit and Delete as siblings of the trigger, never inside it', async () => {
+        // A button role is children-presentational, so action buttons nested
+        // in the trigger drop out of the accessibility tree entirely.
+        setExercises([prRichExercise()])
+        const wrapper = mountModal()
+        await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
+
+        expect(wrapper.find('.wtSetRowMain .wtSetBtn').exists()).toBe(false)
+        expect(wrapper.findAll('.wtSetRow > .wtSetActions .wtSetBtn')).toHaveLength(2)
+      })
+
+      it('has no axe violations with a row expanded', async () => {
+        // axe is blind to the original defect — a missing key handler is a
+        // behaviour, not an attribute. This pins the other half: that the fix
+        // did not reach for a `role="button"` row, whose nested Edit/Delete
+        // buttons axe rejects as `nested-interactive`.
+        setExercises([prRichExercise()])
+        const wrapper = mountModal()
+        await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
+
+        const results = await runComponentAxe(wrapper.find('.wtSetList').element)
+        expect(results).toHaveNoViolations()
+      })
     })
 
     it('groups sets under a per-day date header', () => {
@@ -373,7 +440,7 @@ describe('ExerciseDetailModal', () => {
 
       const topRow = wrapper.findAll('.wtSetRow')[0]
       expect(topRow.find('.wtSetActions').exists()).toBe(false)
-      await topRow.trigger('click')
+      await topRow.find('.wtSetRowMain').trigger('click')
       expect(wrapper.findAll('.wtSetRow')[0].find('.wtSetActions').exists()).toBe(true)
 
       await wrapper.find('.wtSetActions button[aria-label="Edit set"]').trigger('click')

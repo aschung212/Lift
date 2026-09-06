@@ -262,6 +262,46 @@ describe('CSS regression tests', () => {
     })
   })
 
+  // LIFT-1349: the set / bodyweight-entry / timeline rows became disclosures
+  // whose trigger is a real <button>. The row's padding had to move ONTO that
+  // button — a button sized to its text alone inside a padded row is a ~20px
+  // tap target where the row used to be 44px, i.e. fixing the keyboard path by
+  // breaking the touch one.
+  describe('row disclosure triggers fill their row (LIFT-1349)', () => {
+    const triggers = [
+      { trigger: '.wtSetRowMain', row: '.wtSetRow', hint: 'set / bodyweight entry row' },
+      { trigger: '.wtTimelineRowMain', row: '.wtTimelineRow', hint: 'timeline set row' },
+    ]
+
+    for (const { trigger, row, hint } of triggers) {
+      it(`${trigger} (${hint}) has min-height: 44px`, () => {
+        const lines = getRuleLines(trigger)
+        expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+      })
+
+      it(`${trigger} (${hint}) carries the row's padding and spans its width`, () => {
+        const lines = getRuleLines(trigger)
+        expect(lines.some(l => l.startsWith('padding') && l.includes('12px') && l.includes('16px'))).toBe(true)
+        expect(lines.some(l => l.startsWith('width: 100%'))).toBe(true)
+      })
+
+      it(`${row} (${hint}) no longer pads around the trigger`, () => {
+        // A row that keeps its own padding insets the button away from its own
+        // edges, which is the ~20px-target regression above.
+        const lines = getRuleLines(row)
+        const padding = lines.filter(l => l.startsWith('padding'))
+        expect(padding.every(l => !/\d+px\s+\d+px/.test(l))).toBe(true)
+      })
+    }
+
+    it('.wtSetActions carries the row inset itself', () => {
+      // Its row has no padding left to give it (see above), so an action bar
+      // without its own inset sits flush against the card edge.
+      const lines = getRuleLines('.wtSetActions')
+      expect(lines.some(l => l.startsWith('padding') && l.includes('16px'))).toBe(true)
+    })
+  })
+
   describe('.wtPrevSessionChip quick-fill / ladder chips (#741)', () => {
     const lines = getRuleLines('.wtPrevSessionChip')
 

@@ -2665,8 +2665,10 @@ html.theme-fading .settingsSheet {
 .wtTimelineRow {
   display: flex;
   flex-wrap: wrap;
-  padding: 12px 16px;
-  cursor: pointer;
+  /* Padding lives on .wtTimelineRowMain, not here (LIFT-1349): the row is a
+     plain container now and the trigger must fill it, or the tap target
+     shrinks to the text height. */
+  padding: 0;
   border-bottom: 1px solid var(--border);
   content-visibility: auto;
   contain-intrinsic-size: auto 48px;
@@ -2676,10 +2678,23 @@ html.theme-fading .settingsSheet {
   border-bottom: none;
 }
 
+/* Disclosure trigger for a timeline set row (LIFT-1349) — a real <button>,
+   so it is reset to the row's own typography and chrome. */
 .wtTimelineRowMain {
   display: flex;
   align-items: center;
   width: 100%;
+  min-height: 44px;
+  padding: 12px 16px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .wtTimelineExName {
@@ -3537,15 +3552,35 @@ html.theme-fading .settingsSheet {
 .wtSetRow {
   contain: layout style paint;
   display: flex;
+  flex-wrap: wrap;
+  /* Padding and gap live on .wtSetRowMain, not here (LIFT-1349): the row is a
+     plain container now and the trigger must fill it, or the tap target
+     shrinks to the text height. */
+  padding: 0;
+  font-size: var(--font-subhead);
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.12s;
+}
+
+/* Disclosure trigger for a set / bodyweight-entry row (LIFT-1349) — a real
+   <button>, so it is reset to the row's own typography and chrome. */
+.wtSetRowMain {
+  display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 12px 16px;
+  width: 100%;
   min-height: 44px;
-  font-size: var(--font-subhead);
-  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
-  transition: background-color 0.12s;
 }
 
 .wtSetCard > .wtSetRow:last-child { border-bottom: none; }
@@ -3617,7 +3652,8 @@ html.theme-fading .settingsSheet {
   display: flex;
   gap: 8px;
   width: 100%;
-  padding-top: 8px;
+  /* Carries the row inset itself (LIFT-1349) — its row no longer has padding. */
+  padding: 8px 16px 12px;
   flex-shrink: 0;
 }
 

@@ -808,7 +808,7 @@ describe('WorkoutTracker', () => {
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
-      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
       const btns = wrapper.findAll('.wtSetBtn')
@@ -2392,7 +2392,7 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
       await wrapper.vm.$nextTick()
-      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
       await wrapper.vm.$nextTick()
       await wrapper.findAll('.wtSetBtn').find(b => b.text() === 'Edit')!.trigger('click')
       await wrapper.vm.$nextTick()
@@ -2660,7 +2660,7 @@ describe('WorkoutTracker', () => {
       await wrapper.vm.$nextTick()
 
       // Tap a set to reveal actions
-      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
       // Click delete
@@ -2703,7 +2703,7 @@ describe('WorkoutTracker', () => {
       await wrapper.vm.$nextTick()
 
       // Tap a set to reveal actions
-      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
       // Click edit
@@ -2721,7 +2721,7 @@ describe('WorkoutTracker', () => {
       await wrapper.findAll('.wtExerciseRow')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
-      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
       const editBtn = wrapper.findAll('.wtSetBtn').find(b => b.text() === 'Edit')!
@@ -2748,7 +2748,7 @@ describe('WorkoutTracker', () => {
       await wrapper.vm.$nextTick()
 
       // Tap set, click Edit
-      await wrapper.findAll('.wtSetRow')[0].trigger('click')
+      await wrapper.findAll('.wtSetRowMain')[0].trigger('click')
       await wrapper.vm.$nextTick()
       const editBtn = wrapper.findAll('.wtSetBtn').find(b => b.text() === 'Edit')!
       await editBtn.trigger('click')
@@ -3111,13 +3111,77 @@ describe('WorkoutTracker', () => {
 
     it('reveals edit/delete actions on timeline row tap', async () => {
       const wrapper = await mountTimeline()
-      await wrapper.findAll('.wtTimelineRow')[0].trigger('click')
+      await wrapper.findAll('.wtTimelineRowMain')[0].trigger('click')
       await wrapper.vm.$nextTick()
 
       expect(wrapper.find('.wtTimelineRowActive').exists()).toBe(true)
       const btns = wrapper.findAll('.wtSetBtn')
       expect(btns.map(b => b.text())).toContain('Edit')
       expect(btns.map(b => b.text())).toContain('Delete')
+    })
+
+    // ── Row disclosure keyboard reachability (LIFT-1349) ──────────────
+    // Editing and deleting a logged set are reachable ONLY through this row,
+    // and the row was a bare `<div @click>`: no role, no tabindex, no key
+    // handler. A keyboard or switch-control user could log sets all day and
+    // then never correct or remove one — WCAG 2.1.1, Level A, with no
+    // alternative path anywhere in the app.
+    describe('timeline row disclosure (LIFT-1349)', () => {
+      it('is a real <button>, so Enter and Space come from the platform', async () => {
+        const wrapper = await mountTimeline()
+        const trigger = wrapper.findAll('.wtTimelineRowMain')[0]
+        expect(trigger.element.tagName).toBe('BUTTON')
+        expect(trigger.attributes('type')).toBe('button')
+        // The row is a plain container: it must not carry the click itself,
+        // or the trigger is decorative and the keyboard path is fake.
+        expect(wrapper.findAll('.wtTimelineRow')[0].attributes('role')).toBeUndefined()
+      })
+
+      it('carries aria-expanded reflecting whether the actions are shown', async () => {
+        const wrapper = await mountTimeline()
+        expect(wrapper.findAll('.wtTimelineRowMain')[0].attributes('aria-expanded')).toBe('false')
+
+        await wrapper.findAll('.wtTimelineRowMain')[0].trigger('click')
+        await wrapper.vm.$nextTick()
+        expect(wrapper.findAll('.wtTimelineRowMain')[0].attributes('aria-expanded')).toBe('true')
+      })
+
+      it('names the row by its set, not by the bare "~228" its text ends on', async () => {
+        const wrapper = await mountTimeline()
+        const label = wrapper.findAll('.wtTimelineRowMain')[0].attributes('aria-label')
+        expect(label).toContain('Bench Press')
+        expect(label).toContain('195')
+        expect(label).toContain('5')
+        // Static per row — the state belongs to aria-expanded (LIFT-1308).
+        expect(label).not.toMatch(/expand|collapse|show|hide/i)
+      })
+
+      it('keeps Edit and Delete as siblings of the trigger, never inside it', async () => {
+        // A button role is children-presentational, so action buttons nested
+        // in the trigger drop out of the accessibility tree entirely.
+        const wrapper = await mountTimeline()
+        await wrapper.findAll('.wtTimelineRowMain')[0].trigger('click')
+        await wrapper.vm.$nextTick()
+
+        expect(wrapper.find('.wtTimelineRowMain .wtSetBtn').exists()).toBe(false)
+        expect(wrapper.findAll('.wtTimelineRow > .wtSetActions .wtSetBtn')).toHaveLength(2)
+      })
+
+      it('has no axe violations with a row expanded', async () => {
+        // axe is blind to the ORIGINAL defect — a missing key handler is a
+        // behaviour, not an attribute — which is what the structural tests
+        // above are for. This pins the other half: that the fix did not reach
+        // for the `role="button"` row the other two lists carried, whose
+        // nested Edit/Delete buttons axe rejects as `nested-interactive`.
+        // Scoped to the timeline; the tracker's other views are their own
+        // surfaces with their own scans.
+        const wrapper = await mountTimeline()
+        await wrapper.findAll('.wtTimelineRowMain')[0].trigger('click')
+        await wrapper.vm.$nextTick()
+
+        const results = await runComponentAxe(wrapper.find('.wtTimeline').element)
+        expect(results).toHaveNoViolations()
+      })
     })
 
     it('hides tag filter bar in timeline view', async () => {

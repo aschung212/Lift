@@ -56,28 +56,39 @@
                       wtSetRowPR: set.estimated1RM === detailExercisePR && setDayKey(set.date) === prDate,
                       'wtSetRowActive': activeSetId === set.id,
                     }"
-                    @click="toggleSetActions(set.id)"
                   >
-                    <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
-                    <span
-                      v-if="set.attemptedNextRep"
-                      class="wtEffortBadge"
-                      :aria-label="`Went for rep ${set.reps + 1}`"
-                    >+1</span>
-                    <span v-if="set.rpe" class="wtSetRPE">RPE {{ set.rpe }}</span>
-                    <span class="wtSet1RM">
-                      ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
-                      <span v-if="set.estimated1RM === detailExercisePR && setDayKey(set.date) === prDate" class="wtSetPR">🏆</span>
-                    </span>
+                    <!-- Disclosure trigger (LIFT-1349). A real <button> rather
+                         than a clickable div: Enter/Space come from the platform,
+                         and the Edit/Delete buttons stay siblings so they are not
+                         swallowed by a children-presentational button role. -->
+                    <button
+                      type="button"
+                      class="wtSetRowMain"
+                      :aria-expanded="activeSetId === set.id"
+                      :aria-label="setRowLabel(set, group.key)"
+                      @click="toggleSetActions(set.id)"
+                    >
+                      <span class="wtSetDetail">{{ displayWeight(set.weight) }} {{ weightUnit }} × {{ set.reps }}</span>
+                      <span
+                        v-if="set.attemptedNextRep"
+                        class="wtEffortBadge"
+                        :aria-label="`Went for rep ${set.reps + 1}`"
+                      >+1</span>
+                      <span v-if="set.rpe" class="wtSetRPE">RPE {{ set.rpe }}</span>
+                      <span class="wtSet1RM">
+                        ~{{ displayWeight(set.estimated1RM) }} {{ weightUnit }}
+                        <span v-if="set.estimated1RM === detailExercisePR && setDayKey(set.date) === prDate" class="wtSetPR">🏆</span>
+                      </span>
+                    </button>
                     <div v-if="activeSetId === set.id" class="wtSetActions">
                       <button
                         class="wtSetBtn"
-                        @click.stop="$emit('edit-set', exercise, set)"
+                        @click="$emit('edit-set', exercise, set)"
                         aria-label="Edit set"
                       >Edit</button>
                       <button
                         class="wtSetBtn wtSetBtnDel"
-                        @click.stop="$emit('delete-set', exercise.id, set)"
+                        @click="$emit('delete-set', exercise.id, set)"
                         aria-label="Delete set"
                       >Delete</button>
                     </div>
@@ -264,6 +275,29 @@ function toggleShowAll() {
 
 function toggleSetActions(setId: string) {
   activeSetId.value = activeSetId.value === setId ? null : setId
+}
+
+/**
+ * Accessible name for a set row's disclosure trigger.
+ *
+ * The row's own text is only "185 lbs × 5 … ~216 lbs": the day it belongs to
+ * lives in an unassociated `.wtSetDateHeader` above the card, so a screen
+ * reader walking the list has no way to tell one day's sets from another's.
+ * Static per row (never "Expand"/"Collapse") — the state is on aria-expanded.
+ */
+function setRowLabel(set: WorkoutSet, dayKey: string): string {
+  const parts = [
+    `${formatShortDate(dayKey + 'T12:00:00')}: ${displayWeight(set.weight)} ${weightUnit.value} × ${set.reps}`,
+  ]
+  // The badge spans carry their own aria-labels, but a child's label does not
+  // reach a parent that has one of its own — so restate them here or they are
+  // simply gone from the name.
+  if (set.attemptedNextRep) parts.push(`went for rep ${set.reps + 1}`)
+  if (set.rpe) parts.push(`RPE ${set.rpe}`)
+  if (set.estimated1RM === detailExercisePR.value && setDayKey(set.date) === prDate.value) {
+    parts.push('personal record')
+  }
+  return parts.join(', ')
 }
 
 /**
