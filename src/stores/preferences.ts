@@ -4,6 +4,7 @@ import type { Json } from '../lib/database.types'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
+import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { isPlainObject } from '../lib/storage'
 import { sanitizeIntensityPresets, DEFAULT_INTENSITY_PRESETS } from '../lib/intensityTable'
@@ -468,9 +469,15 @@ export const usePreferencesStore = defineStore('preferences', {
           if (error && error.code !== 'PGRST116') {
             reportFetchError('preferences', error)
             this.lastSyncError = classifySyncError(error)
-          } else {
-            this.lastSyncError = null
+            // A 401 means an expired token, not offline — refresh once so the
+            // next fetch recovers rather than staying local-only (LIFT-784).
+            // This store was the only one of the four with no auth branch at
+            // all (LIFT-1179), which was survivable only because it never
+            // fetches alone: its three siblings raise the refresh beside it.
+            if (isAuthError(error)) void ensureFreshSession()
+            return
           }
+          this.lastSyncError = null
           const prefs = data?.preferences as Record<string, unknown> | null
           if (prefs?.features) {
             this._applyPreferences(prefs)
@@ -492,6 +499,7 @@ export const usePreferencesStore = defineStore('preferences', {
           // indicator so the UI can degrade visibly instead of silently (LIFT-820).
           reportFetchError('preferences', err)
           this.lastSyncError = classifySyncError(err)
+          if (isAuthError(err)) void ensureFreshSession()
         } finally {
           this.syncing = false
         }

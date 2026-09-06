@@ -405,6 +405,82 @@ describe('Invariant: _fetchFromSupabase READ path is read-only (SEV1 2026-04-12 
   })
 })
 
+// ── Invariant 3a: every store read handles failure identically (LIFT-1179) ──
+// Guard: the four `_fetchFromSupabase` implementations are four hand-written
+// copies of one contract — report, classify, offer auth recovery, clear the
+// syncing flag — and they drifted. `preferences` had no auth branch at ALL
+// (neither shape), and `workout`/`bodyweight` had one on the resolved-error
+// path but not in their `catch`. That was survivable only by accident: all four
+// stores fetch together under `Promise.allSettled` (initStores, useSyncRecovery),
+// so a token expiry always reached SOME store that raised the refresh, and the
+// gap never showed. A store that ever fetches alone — or a fifth store — would
+// record `lastSyncError = 'auth'`, light the generic "Sync failed" indicator,
+// and never call `ensureFreshSession()`: no token refresh, no `authNeedsReauth`
+// banner telling the user to sign in, and no `sessionRecoveryTick` to re-run the
+// stale reads.
+//
+// This is DERIVED from the store sources rather than enumerated, for the same
+// reason as the REPLAYABLE_COLUMNS and role="switch" invariants: a hardcoded
+// list only ever pins the stores that existed when it was written, which is how
+// three of the four drifted past a suite that already covered this function.
+
+describe('Invariant: every store read handles failure identically (LIFT-1179)', () => {
+  /**
+   * The `_fetchFromSupabase` body from a store source, whichever syntax it uses
+   * — `async function _fetchFromSupabase()` in a setup store, `async
+   * _fetchFromSupabase()` in an options store. Null when the store has no
+   * remote read. Comments are stripped first: several of these bodies *quote*
+   * the calls below while explaining them, and a guard that passes off its own
+   * documentation proves nothing.
+   */
+  function extractFetchBody(source: string): string | null {
+    const stripped = stripComments(source)
+    const signature = /(?:async function|async)\s+_fetchFromSupabase\s*\(\s*\)/.exec(stripped)
+    if (!signature) return null
+    return extractFunctionBody(stripped, signature[0])
+  }
+
+  const count = (body: string, pattern: RegExp): number => (body.match(pattern) ?? []).length
+
+  const stores = getStoreFiles()
+    .map(({ name, content }) => ({ name, body: extractFetchBody(content) }))
+    .filter((s): s is { name: string; body: string } => s.body !== null)
+
+  it('found every store that reads from Supabase', () => {
+    // Non-vacuity: the scan must actually see all four stores. A regex that
+    // silently matches nothing would make every assertion below pass.
+    expect(stores.map(s => s.name).sort()).toEqual(
+      ['bodyweight.ts', 'preferences.ts', 'progression.ts', 'workout.ts'],
+    )
+  })
+
+  it.each(stores)('$name: every reported failure also offers auth recovery', ({ body }) => {
+    const reported = count(body, /\breportFetchError\s*\(/g)
+    expect(reported).toBeGreaterThan(0)
+
+    // Equality, not "at least one": a store with two failure branches and one
+    // refresh is exactly the shape that shipped. Both the resolved `{ error }`
+    // path and the thrown path must route a 401 to a refresh — `isAuthError`
+    // normalizes both shapes precisely so neither is a special case.
+    expect(count(body, /\bensureFreshSession\s*\(/g)).toBe(reported)
+    expect(count(body, /\bisAuthError\s*\(/g)).toBeGreaterThanOrEqual(reported)
+  })
+
+  it.each(stores)('$name: every reported failure records a typed lastSyncError', ({ body }) => {
+    // `lastSyncError` is what App.vue folds into the sync indicator via
+    // `combineSyncStatus`, so a failure branch that reports but doesn't classify
+    // is a failure the user is never shown.
+    expect(count(body, /\bclassifySyncError\s*\(/g)).toBe(count(body, /\breportFetchError\s*\(/g))
+  })
+
+  it.each(stores)('$name: the syncing flag is raised and cleared in a finally', ({ body }) => {
+    expect(body).toMatch(/syncing(?:\.value)?\s*=\s*true/)
+    // In a `finally`, not on the success path: every failure branch returns
+    // early, so a trailing assignment would strand the flag true forever.
+    expect(body).toMatch(/finally\s*\{[^}]*syncing(?:\.value)?\s*=\s*false/)
+  })
+})
+
 // ── Invariant 3b: collection reads must page (#1152) ────────────────
 // Guard: PostgREST truncates every response at max_rows (1000) and reports it
 // nowhere. An unpaged `.select()` on a collection therefore returns the first
@@ -1616,6 +1692,142 @@ describe('Invariant: volume math folds bodyweight through effectiveSetWeight (#1
           'row has been flattened away from its exercise, resolve the effective ' +
           'weight where the exercise is still in scope (see trainingReport.ts).',
       )
+
+    expect(violations).toEqual([])
+  })
+})
+
+
+// ── Invariant: role="button" means keyboard-operable (LIFT-1305) ─────
+//
+// `role="button"` is a promise to assistive tech: this behaves like a button.
+// A native `<button>` keeps that promise for free — it takes focus, and the UA
+// synthesises a click for BOTH Enter and Space. An element that only borrows
+// the role keeps none of it, so the author has to re-supply all three parts,
+// and a partial job is worse than none: the control announces as a button,
+// takes a tab stop, and then swallows the key the user was told to press.
+//
+// The app already had five correct copies of the pattern (the tag/gym/exercise
+// manager labels, the calendar cells, the bodyweight rows) when three of the
+// four to-beat cards in the log sheet shipped with a bare `@click`, and the
+// remaining two `role="button"` divs handled Enter but not Space — Space just
+// scrolled the sheet behind them. It is an omission each time, never a
+// decision, which is exactly the shape a source scan can end.
+//
+// Derived rather than enumerated for the same reason as the `role="switch"`
+// naming rule above: `accessibility.axe.test.ts` scans a hardcoded list of
+// three components, and axe cannot see a missing key handler at all — that is
+// a behaviour, not an attribute. This scan covers every custom button that
+// exists, including the ones nobody has written a test for.
+describe('Invariant: every custom role="button" is keyboard-operable (LIFT-1305)', () => {
+  // Literal `role="button"` and the bound form `:role="cond ? 'button' : …"`,
+  // in either quote style — a guard that misses a call site reports green over
+  // the exact gap it exists to close.
+  const BUTTON_ROLE = /[\s:](?:v-bind:)?role\s*=\s*(?:"[^"]*\bbutton\b[^"]*"|'[^']*\bbutton\b[^']*')/g
+  const TABINDEX = /[\s:](?:v-bind:)?tabindex\s*=/
+  const hasEnter = (tag: string) => /(?:@|v-on:)keydown\.enter\b/.test(tag)
+  const hasSpace = (tag: string) => /(?:@|v-on:)keydown\.space\b/.test(tag)
+
+  /** Forward scan for the tag's `>`, skipping quoted attribute values so a
+   *  ternary or arrow function inside an attribute can't end the tag early. */
+  function tagEnd(source: string, from: number): number {
+    let quote: string | null = null
+    for (let i = from; i < source.length; i++) {
+      const c = source[i]
+      if (quote) {
+        if (c === quote) quote = null
+        continue
+      }
+      if (c === '"' || c === "'") {
+        quote = c
+        continue
+      }
+      if (c === '>') return i
+    }
+    return -1
+  }
+
+  /** Every element carrying a button role, as its opening-tag text. */
+  function buttonRoleTags(source: string): string[] {
+    const out: string[] = []
+    for (const m of source.matchAll(BUTTON_ROLE)) {
+      const start = source.lastIndexOf('<', m.index)
+      if (start === -1) continue
+      const end = tagEnd(source, start)
+      if (end === -1) continue
+      out.push(source.slice(start, end + 1))
+    }
+    return out
+  }
+
+  /** A native <button> is keyboard-operable by definition; a borrowed role
+   *  needs focusability plus both activation keys re-supplied by hand. */
+  function operable(tag: string): boolean {
+    if (/^<button[\s/>]/.test(tag)) return true
+    return TABINDEX.test(tag) && hasEnter(tag) && hasSpace(tag)
+  }
+
+  const vueFiles = () => getSourceFiles().filter(f => f.path.endsWith('.vue'))
+
+  it('reads the real components and finds every custom button (non-vacuity)', () => {
+    const paths = vueFiles()
+      .filter(f => buttonRoleTags(stripComments(f.content)).length > 0)
+      .map(f => f.path)
+    // A literal role, and CalendarView's bound `:role="… ? 'button' : undefined"`.
+    // If either drops out of the scan, the check below passes vacuously.
+    expect(paths).toContain(join('components', 'TagManagerModal.vue'))
+    expect(paths).toContain(join('views', 'CalendarView.vue'))
+    // The log sheet's to-beat card chain plus the plate-calculator hint.
+    const tracker = vueFiles().find(f => f.path.endsWith('WorkoutTracker.vue'))!
+    expect(buttonRoleTags(stripComments(tracker.content)).length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('flags each missing part and accepts a native button (self-test)', () => {
+    const full =
+      '<div class="card" role="button" tabindex="0" ' +
+      '@click="go" @keydown.enter="go" @keydown.space.prevent="go">x</div>'
+    expect(operable(buttonRoleTags(full)[0])).toBe(true)
+
+    // The LIFT-1305 shapes: Space forgotten, Enter forgotten, no tab stop.
+    expect(operable(buttonRoleTags(full.replace(' @keydown.space.prevent="go"', ''))[0])).toBe(false)
+    expect(operable(buttonRoleTags(full.replace(' @keydown.enter="go"', ''))[0])).toBe(false)
+    expect(operable(buttonRoleTags(full.replace(' tabindex="0"', ''))[0])).toBe(false)
+
+    // Bound role + bound tabindex + longform v-on all count.
+    const bound =
+      '<div :role="on ? \'button\' : undefined" :tabindex="on ? 0 : undefined" ' +
+      'v-on:keydown.enter="go" v-on:keydown.space.prevent="go">x</div>'
+    expect(buttonRoleTags(bound)).toHaveLength(1)
+    expect(operable(buttonRoleTags(bound)[0])).toBe(true)
+
+    // A native <button> needs none of it.
+    expect(operable(buttonRoleTags('<button role="button">x</button>')[0])).toBe(true)
+
+    // Single quotes are still a button role; a `>` inside a bound attribute
+    // must not end the tag before its handlers.
+    expect(buttonRoleTags("<span role='button' tabindex='0'>x</span>")).toHaveLength(1)
+    const arrow =
+      '<div :role="n > 0 ? \'button\' : undefined" tabindex="0" ' +
+      '@keydown.enter="go" @keydown.space="go">x</div>'
+    expect(operable(buttonRoleTags(arrow)[0])).toBe(true)
+
+    // Roles that merely contain the letters must not be swept in.
+    expect(buttonRoleTags('<div role="progressbar" aria-valuenow="1"></div>')).toHaveLength(0)
+  })
+
+  it('no component borrows the button role without re-supplying the keyboard', () => {
+    const violations: string[] = []
+    for (const file of vueFiles()) {
+      for (const tag of buttonRoleTags(stripComments(file.content))) {
+        if (operable(tag)) continue
+        violations.push(
+          `${file.path} — a custom role="button" must also carry tabindex plus ` +
+          'BOTH @keydown.enter and @keydown.space, or it announces as a button ' +
+          'and then ignores the keys a button responds to (WCAG 2.1.1, ' +
+          'LIFT-1305): ' + tag.replace(/\s+/g, ' ').slice(0, 110),
+        )
+      }
+    }
 
     expect(violations).toEqual([])
   })

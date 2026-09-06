@@ -1923,18 +1923,24 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('input[aria-label="Weight"]').attributes('placeholder')).toBe('135')
     })
 
-    it('exposes the nudge card as a keyboard-actionable button', async () => {
-      armEligibleNudge()
-      const wrapper = mountTracker()
-      await openBenchModal(wrapper)
+    // Space as well as Enter: `role="button"` tells AT this is a button, so
+    // Space is an expected activation key — without a handler it just scrolls
+    // the sheet (LIFT-1305).
+    it.each(['enter', 'space'] as const)(
+      'exposes the nudge card as a keyboard-actionable button (%s)',
+      async key => {
+        armEligibleNudge()
+        const wrapper = mountTracker()
+        await openBenchModal(wrapper)
 
-      const card = wrapper.find('.wtOverloadCard')
-      expect(card.attributes('role')).toBe('button')
-      expect(card.attributes('tabindex')).toBe('0')
-      expect(card.attributes('aria-label')).toContain('280')
-      await card.trigger('keydown.enter')
-      expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('280')
-    })
+        const card = wrapper.find('.wtOverloadCard')
+        expect(card.attributes('role')).toBe('button')
+        expect(card.attributes('tabindex')).toBe('0')
+        expect(card.attributes('aria-label')).toContain('280')
+        await card.trigger(`keydown.${key}`)
+        expect((wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value).toBe('280')
+      },
+    )
 
     it('settles a stale pending nudge as ignored when a later session stayed lighter', async () => {
       armEligibleNudge()
@@ -2406,6 +2412,123 @@ describe('WorkoutTracker', () => {
       await wrapper.find('input[aria-label="Reps"]').setValue('5')
 
       expect(wrapper.find('.repMaxResult').text()).toContain(`${epley(25, 5)} lbs`)
+    })
+  })
+
+  /**
+   * LIFT-1305 — the to-beat cards are the log sheet's one-tap "load this"
+   * affordance, and three of the four shipped as bare `@click` divs: no role,
+   * no tabindex, no key handler. A keyboard or switch-control user could not
+   * reach them at all (WCAG 2.1.1, Level A). The fourth sibling in the very
+   * same v-else-if chain — the overload nudge, added later — already carried
+   * role/tabindex/Enter, which is what makes this an omission rather than a
+   * convention.
+   *
+   * The behavioural half is here; `architecturalInvariants.test.ts` derives the
+   * structural half over every `role="button"` in `src/`, so a card added to
+   * this chain later cannot repeat the omission.
+   */
+  describe('to-beat cards are keyboard-operable (LIFT-1305)', () => {
+    beforeEach(() => { mockState.exercises = createExercises() })
+
+    const openBench = async (wrapper: VueWrapper) => {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+    const repsField = (wrapper: VueWrapper) =>
+      wrapper.find('input[aria-label="Reps"]').element as HTMLInputElement
+    const weightValue = (wrapper: VueWrapper) =>
+      (wrapper.find('input[aria-label="Weight"]').element as HTMLInputElement).value
+
+    // Bench Press' best e1RM is 228 (195 × 5). A typed weight below that asks
+    // for a rep count; one above it means any single rep beats the baseline.
+    it('activates the "set reps" card with Enter and with Space', async () => {
+      for (const key of ['enter', 'space'] as const) {
+        const wrapper = mountTracker()
+        await openBench(wrapper)
+        await wrapper.find('input[aria-label="Weight"]').setValue('185')
+
+        const card = wrapper.find('.repMaxResultTappable')
+        expect(card.attributes('role')).toBe('button')
+        expect(card.attributes('tabindex')).toBe('0')
+        expect(card.text()).toContain('185 lbs × 8')
+
+        await card.trigger(`keydown.${key}`)
+        await wrapper.vm.$nextTick()
+        expect(repsField(wrapper).value).toBe('8')
+      }
+    })
+
+    it('activates the "any rep beats it" card with Enter and with Space', async () => {
+      for (const key of ['enter', 'space'] as const) {
+        const wrapper = mountTracker()
+        await openBench(wrapper)
+        // 235 > the 228 baseline, so a single rep is the whole target.
+        await wrapper.find('input[aria-label="Weight"]').setValue('235')
+
+        const card = wrapper.find('.repMaxResultTappable')
+        expect(card.attributes('role')).toBe('button')
+        expect(card.attributes('tabindex')).toBe('0')
+        expect(card.text()).toContain('235 lbs × 1')
+
+        await card.trigger(`keydown.${key}`)
+        await wrapper.vm.$nextTick()
+        expect(repsField(wrapper).value).toBe('1')
+      }
+    })
+
+    it('activates the "load plates" card with Enter and with Space', async () => {
+      for (const key of ['enter', 'space'] as const) {
+        mockState.exercises = createExercises()
+        mockState.exercises[0].inputMode = 'plates'
+        mockState.exercises[0].barWeight = 45
+        const wrapper = mountTracker()
+        await openBench(wrapper)
+        // Plate mode seeds the field from the last set, so clear it: the card
+        // only offers a weight when reps are filled and weight is not.
+        await wrapper.find('input[aria-label="Weight"]').setValue('')
+        await wrapper.find('input[aria-label="Reps"]').setValue('5')
+
+        const card = wrapper.find('.repMaxResultTappable')
+        expect(card.attributes('role')).toBe('button')
+        expect(card.attributes('tabindex')).toBe('0')
+        expect(card.text()).toContain('Tap to load plates')
+
+        // 228 e1RM at 5 reps needs ~196 lbs, rounded up to the 5 lb grid.
+        await card.trigger(`keydown.${key}`)
+        await wrapper.vm.$nextTick()
+        expect(weightValue(wrapper)).toBe('200')
+      }
+    })
+
+    // The same card is purely informational without the plate calculator, so it
+    // must NOT advertise itself as a button or sit in the tab order — an empty
+    // stop is its own 2.4.3/4.1.2 problem.
+    it('leaves the to-beat card out of the tab order when it does nothing', async () => {
+      const wrapper = mountTracker()
+      await openBench(wrapper)
+      await wrapper.find('input[aria-label="Reps"]').setValue('5')
+
+      const card = wrapper.find('.repMaxResultTarget')
+      expect(card.exists()).toBe(true)
+      expect(card.classes()).not.toContain('repMaxResultTappable')
+      expect(card.attributes('role')).toBeUndefined()
+      expect(card.attributes('tabindex')).toBeUndefined()
+    })
+
+    it('activates the plate-calculator hint with Space, not just Enter', async () => {
+      const wrapper = mountTracker()
+      await openBench(wrapper)
+
+      const hint = wrapper.find('.wtPlateHint')
+      expect(hint.attributes('role')).toBe('button')
+      expect(hint.attributes('tabindex')).toBe('0')
+      await hint.trigger('keydown.space')
+      await wrapper.vm.$nextTick()
+
+      // Same effect as tapping it: dismissed, and exercise settings opened.
+      expect(wrapper.find('.wtPlateHint').exists()).toBe(false)
+      expect(localStorageMock.getItem('plate-calc-hint-dismissed')).toBe('true')
     })
   })
 

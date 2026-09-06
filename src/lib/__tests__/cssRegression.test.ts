@@ -38,11 +38,17 @@ function getVueStyleBlock(componentPath: string): string {
 // Helper: every .vue file under src/, recursively. The flat readdirSync walks
 // elsewhere in this file only ever look at src/components, which silently skips
 // src/views, src/components/share/cards and src/App.vue.
+//
+// Paths come back with forward slashes on every platform. `resolve` emits the
+// native separator, so on Windows the non-vacuity guard's `includes('/views/')`
+// and `includes('/share/')` checks matched nothing and the guard failed there
+// while passing on Linux CI. Normalizing at the source keeps every consumer —
+// the guard, and the `relative()` offender messages — separator-agnostic.
 function collectVueFiles(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name === '__tests__') continue
-    const full = resolve(dir, entry.name)
+    const full = resolve(dir, entry.name).replace(/\\/g, '/')
     if (entry.isDirectory()) out.push(...collectVueFiles(full))
     else if (entry.name.endsWith('.vue')) out.push(full)
   }

@@ -162,6 +162,9 @@ export const useBodyweightStore = defineStore('bodyweight', {
       } catch (err) {
         reportFetchError('bodyweight', err)
         this.lastSyncError = classifySyncError(err)
+        // Same auth branch as the resolved-error path above — a thrown 401 is
+        // still a 401, and `isAuthError` reads both shapes (LIFT-1179).
+        if (isAuthError(err)) void ensureFreshSession()
         return
       } finally {
         this.syncing = false

@@ -58,11 +58,31 @@
           <div v-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && progressionActive" class="badgePreviewOverlay">
             {{ xpToUnlockPreview.toLocaleString() }} XP to unlock
           </div>
-          <div v-else-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && !progressionActive" class="badgePreviewOverlay" style="cursor:pointer" @click="scrollToProgressionToggle">
+          <!-- Both prompts scroll to the Progression toggle, so both are controls:
+               role + tabindex + BOTH activation keys, the same shape the tag/gym
+               manager labels use (LIFT-1305). The name comes from the visible
+               text, which the button role permits. -->
+          <div
+            v-else-if="previewingThemeId && !isThemeUnlocked(previewingThemeId) && !progressionActive"
+            class="badgePreviewOverlay badgePreviewOverlayAction"
+            role="button"
+            tabindex="0"
+            @click="scrollToProgressionToggle"
+            @keydown.enter="scrollToProgressionToggle"
+            @keydown.space.prevent="scrollToProgressionToggle"
+          >
             Enable Progression to unlock
           </div>
           <!-- Prompt to enable progression when off and locked themes visible -->
-          <p v-if="!progressionActive && !previewingThemeId" class="badgeEnableHint" @click="scrollToProgressionToggle">
+          <p
+            v-if="!progressionActive && !previewingThemeId"
+            class="badgeEnableHint"
+            role="button"
+            tabindex="0"
+            @click="scrollToProgressionToggle"
+            @keydown.enter="scrollToProgressionToggle"
+            @keydown.space.prevent="scrollToProgressionToggle"
+          >
             Unlock more themes by enabling <span class="badgeEnableLink">Progression</span> below.
           </p>
           <!-- Progress bar toward next unlock (verbose mode only, active progression, not when all unlocked) -->

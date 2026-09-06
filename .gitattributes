@@ -1,0 +1,10 @@
+# Check every text file out with LF on every platform.
+#
+# Without this, git's core.autocrlf=true (the Windows default) rewrites the
+# working tree to CRLF, and Vite's SSR transform mis-handles it: its hashbang
+# regex is /^#!.*\n/, and `.` does not match `\r`, so a `#!/usr/bin/env node`
+# line ending in CRLF is never detected. Vite then hoists the module's imports
+# ABOVE the shebang, producing `...await __vite_ssr_import__(...);#!/usr/bin/env
+# node` — a SyntaxError that fails the whole suite at load time. Linux CI never
+# saw it because the index is already LF there.
+* text=auto eol=lf

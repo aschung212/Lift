@@ -656,7 +656,22 @@
             <span v-if="isNewPR" class="wtPrBadge">{{ prBadgeLabel }}</span>
             <span v-if="liveXPPreview" class="wtXPPreview">{{ liveXPPreview.zone }}{{ liveXPPreview.isRepPR ? ` · Rep PR (${XP_CONFIG.repPRMultiplier}x)` : liveXPPreview.isNewWeight ? ' · New weight' : '' }} · {{ liveXPPreview.xp }} XP</span>
           </div>
-          <div v-else-if="prTargetWeight" class="repMaxResult repMaxResultTarget" :class="{ repMaxResultTappable: plateMode }" @click="plateMode && loadPRTarget()">
+          <!-- The to-beat cards are controls, so they carry the app's settled
+               custom-button shape — role + tabindex + BOTH activation keys
+               (LIFT-1305). Accessible name comes from the contents, which the
+               button role permits, so it can never drift from what is on screen.
+               This card is only a control in plate mode, so role/tabindex are
+               bound to the same flag that makes it look tappable. -->
+          <div
+            v-else-if="prTargetWeight"
+            class="repMaxResult repMaxResultTarget"
+            :class="{ repMaxResultTappable: plateMode }"
+            :role="plateMode ? 'button' : undefined"
+            :tabindex="plateMode ? 0 : undefined"
+            @click="plateMode && loadPRTarget()"
+            @keydown.enter="plateMode && loadPRTarget()"
+            @keydown.space.prevent="plateMode && loadPRTarget()"
+          >
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
             <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
             <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
@@ -670,13 +685,29 @@
             <span class="repMaxResultValue">Bodyweight × {{ reps }} 🏆</span>
             <span class="repMaxPersonalBest">Bodyweight alone at {{ reps }} rep{{ reps === 1 ? '' : 's' }} beats {{ isRecentBaseline ? 'your recent best' : 'your best' }} — no added weight needed</span>
           </div>
-          <div v-else-if="prTargetReps === 0" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="repsStr = '1'">
+          <div
+            v-else-if="prTargetReps === 0"
+            class="repMaxResult repMaxResultTarget repMaxResultTappable"
+            role="button"
+            tabindex="0"
+            @click="loadSinglePRTargetRep"
+            @keydown.enter="loadSinglePRTargetRep"
+            @keydown.space.prevent="loadSinglePRTargetRep"
+          >
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
             <span class="repMaxPersonalBest">Any rep at this weight is a {{ isRecentBaseline ? 'new recent best' : 'new PR' }}</span>
             <span class="repMaxPersonalBest">Tap to set reps</span>
           </div>
-          <div v-else-if="prTargetReps" class="repMaxResult repMaxResultTarget repMaxResultTappable" @click="loadPRTargetReps">
+          <div
+            v-else-if="prTargetReps"
+            class="repMaxResult repMaxResultTarget repMaxResultTappable"
+            role="button"
+            tabindex="0"
+            @click="loadPRTargetReps"
+            @keydown.enter="loadPRTargetReps"
+            @keydown.space.prevent="loadPRTargetReps"
+          >
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
             <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
             <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
@@ -691,6 +722,7 @@
             :aria-label="`Load suggested set, ${overloadNudge.displayWeight} ${weightUnit} × ${overloadNudge.reps}`"
             @click="acceptOverloadNudge"
             @keydown.enter="acceptOverloadNudge"
+            @keydown.space.prevent="acceptOverloadNudge"
           >
             <span class="repMaxResultLabel">Suggestion</span>
             <span class="repMaxResultValue">{{ overloadNudge.displayWeight }} {{ weightUnit }} × {{ overloadNudge.reps }}</span>
@@ -865,6 +897,7 @@
             tabindex="0"
             @click="openSettingsFromHint"
             @keydown.enter="openSettingsFromHint"
+            @keydown.space.prevent="openSettingsFromHint"
           >
             <svg class="wtPlateHintIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
             <span class="wtPlateHintText">Tip: Enable the plate calculator in exercise settings</span>
@@ -2122,6 +2155,13 @@ function loadPRTarget() {
 function loadPRTargetReps() {
   if (!prTargetReps.value || prTargetReps.value < 1) return
   repsStr.value = String(prTargetReps.value)
+}
+
+/** `prTargetReps === 0` means any rep at this weight beats the baseline, so the
+ *  card's payload is a single rep. Named rather than inlined because it is bound
+ *  from three places (click + Enter + Space, LIFT-1305). */
+function loadSinglePRTargetRep() {
+  repsStr.value = '1'
 }
 
 const currentBarWeight = computed(() => {
