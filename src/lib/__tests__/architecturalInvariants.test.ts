@@ -405,6 +405,82 @@ describe('Invariant: _fetchFromSupabase READ path is read-only (SEV1 2026-04-12 
   })
 })
 
+// ── Invariant 3a: every store read handles failure identically (LIFT-1179) ──
+// Guard: the four `_fetchFromSupabase` implementations are four hand-written
+// copies of one contract — report, classify, offer auth recovery, clear the
+// syncing flag — and they drifted. `preferences` had no auth branch at ALL
+// (neither shape), and `workout`/`bodyweight` had one on the resolved-error
+// path but not in their `catch`. That was survivable only by accident: all four
+// stores fetch together under `Promise.allSettled` (initStores, useSyncRecovery),
+// so a token expiry always reached SOME store that raised the refresh, and the
+// gap never showed. A store that ever fetches alone — or a fifth store — would
+// record `lastSyncError = 'auth'`, light the generic "Sync failed" indicator,
+// and never call `ensureFreshSession()`: no token refresh, no `authNeedsReauth`
+// banner telling the user to sign in, and no `sessionRecoveryTick` to re-run the
+// stale reads.
+//
+// This is DERIVED from the store sources rather than enumerated, for the same
+// reason as the REPLAYABLE_COLUMNS and role="switch" invariants: a hardcoded
+// list only ever pins the stores that existed when it was written, which is how
+// three of the four drifted past a suite that already covered this function.
+
+describe('Invariant: every store read handles failure identically (LIFT-1179)', () => {
+  /**
+   * The `_fetchFromSupabase` body from a store source, whichever syntax it uses
+   * — `async function _fetchFromSupabase()` in a setup store, `async
+   * _fetchFromSupabase()` in an options store. Null when the store has no
+   * remote read. Comments are stripped first: several of these bodies *quote*
+   * the calls below while explaining them, and a guard that passes off its own
+   * documentation proves nothing.
+   */
+  function extractFetchBody(source: string): string | null {
+    const stripped = stripComments(source)
+    const signature = /(?:async function|async)\s+_fetchFromSupabase\s*\(\s*\)/.exec(stripped)
+    if (!signature) return null
+    return extractFunctionBody(stripped, signature[0])
+  }
+
+  const count = (body: string, pattern: RegExp): number => (body.match(pattern) ?? []).length
+
+  const stores = getStoreFiles()
+    .map(({ name, content }) => ({ name, body: extractFetchBody(content) }))
+    .filter((s): s is { name: string; body: string } => s.body !== null)
+
+  it('found every store that reads from Supabase', () => {
+    // Non-vacuity: the scan must actually see all four stores. A regex that
+    // silently matches nothing would make every assertion below pass.
+    expect(stores.map(s => s.name).sort()).toEqual(
+      ['bodyweight.ts', 'preferences.ts', 'progression.ts', 'workout.ts'],
+    )
+  })
+
+  it.each(stores)('$name: every reported failure also offers auth recovery', ({ body }) => {
+    const reported = count(body, /\breportFetchError\s*\(/g)
+    expect(reported).toBeGreaterThan(0)
+
+    // Equality, not "at least one": a store with two failure branches and one
+    // refresh is exactly the shape that shipped. Both the resolved `{ error }`
+    // path and the thrown path must route a 401 to a refresh — `isAuthError`
+    // normalizes both shapes precisely so neither is a special case.
+    expect(count(body, /\bensureFreshSession\s*\(/g)).toBe(reported)
+    expect(count(body, /\bisAuthError\s*\(/g)).toBeGreaterThanOrEqual(reported)
+  })
+
+  it.each(stores)('$name: every reported failure records a typed lastSyncError', ({ body }) => {
+    // `lastSyncError` is what App.vue folds into the sync indicator via
+    // `combineSyncStatus`, so a failure branch that reports but doesn't classify
+    // is a failure the user is never shown.
+    expect(count(body, /\bclassifySyncError\s*\(/g)).toBe(count(body, /\breportFetchError\s*\(/g))
+  })
+
+  it.each(stores)('$name: the syncing flag is raised and cleared in a finally', ({ body }) => {
+    expect(body).toMatch(/syncing(?:\.value)?\s*=\s*true/)
+    // In a `finally`, not on the success path: every failure branch returns
+    // early, so a trailing assignment would strand the flag true forever.
+    expect(body).toMatch(/finally\s*\{[^}]*syncing(?:\.value)?\s*=\s*false/)
+  })
+})
+
 // ── Invariant 3b: collection reads must page (#1152) ────────────────
 // Guard: PostgREST truncates every response at max_rows (1000) and reports it
 // nowhere. An unpaged `.select()` on a collection therefore returns the first
