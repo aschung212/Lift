@@ -1638,6 +1638,12 @@ html.theme-fading .settingsSheet {
   padding: 4px 16px 8px;
 }
 
+/* The "Enable Progression to unlock" variant is a control (LIFT-1305) — the
+   cursor lived in an inline style until it grew a focus ring to sit beside. */
+.badgePreviewOverlayAction {
+  cursor: pointer;
+}
+
 /* ─── Badge progress bar ─────────────────────────────────────────── */
 
 .badgeProgressBar {
@@ -4729,6 +4735,18 @@ html.theme-fading .settingsSheet {
 
 .repMaxResultTappable:active {
   background: var(--accent-subtle);
+}
+
+/* These cards became keyboard-focusable in LIFT-1305, so they need a visible
+   focus indicator. --accent-subtle (8-12% alpha) is the ring for inputs, which
+   also change border colour on focus; as a standalone indicator it would not
+   clear the 3:1 non-text contrast floor, so the ring is the solid accent. */
+.repMaxResultTappable:focus-visible,
+.wtPlateHint:focus-visible,
+.badgeEnableHint:focus-visible,
+.badgePreviewOverlayAction:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .repMaxTargetHint {
