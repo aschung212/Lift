@@ -775,6 +775,13 @@ jobs:
       # here. Restating it would create a second derivation of one fact, and
       # the two would drift the first time the deployable path list changes —
       # the failure mode called out for cleanup.sh/pr-close-reconcile.sh.
+      #
+      # vercel.json's ignoreCommand is just `bash scripts/vercel-ignore-build.sh`
+      # — the actual pathspec list lives in that script, not inline here,
+      # because Vercel's schema caps ignoreCommand at 256 characters and the
+      # denylist is well past that on its own (LIFT-1354 shipped it inline at
+      # 465 characters and every deploy errored on schema validation instead
+      # of running).
       - name: Skip verification when Vercel skips the deploy
         id: deploy_gate
         run: |
@@ -788,7 +795,7 @@ jobs:
           # Only ever run the known-safe form. vercel.json is committed and
           # reviewed, but this job should not become an arbitrary-command sink.
           case "$IGNORE_CMD" in
-            "git diff --quiet"*) ;;
+            "bash scripts/vercel-ignore-build.sh") ;;
             *) echo "::error::Unrecognised ignoreCommand in vercel.json; refusing to eval it: $IGNORE_CMD"; exit 1 ;;
           esac
           # Vercel's contract: exit 0 from ignoreCommand => SKIP the build.

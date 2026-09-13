@@ -64,10 +64,14 @@ function gateStepOf(jobs: Record<string, Job>): Step | undefined {
 // input deploys rather than silently not deploying.
 //
 // These tests answer "would a commit touching exactly these files deploy?" by
-// EVALUATING the real command out of vercel.json against a path list, rather
-// than asserting on its text. The defect was a path that matched nothing,
-// which no string assertion over an allowlist can see: the old command
-// mentioned every path it knew about, and that was the bug.
+// EVALUATING the real command against a path list, rather than asserting on
+// its text. The defect was a path that matched nothing, which no string
+// assertion over an allowlist can see: the old command mentioned every path
+// it knew about, and that was the bug. The command itself lives in
+// scripts/vercel-ignore-build.sh, not inline in vercel.json's ignoreCommand
+// field — Vercel's schema caps that field at 256 characters, which the
+// pathspec list exceeds on its own; deployGateCommand() resolves the short
+// `bash <script>` form vercel.json holds to the git-diff line inside it.
 //
 // The evaluator below models the two layers the command passes through — the
 // shell's word splitting and git's pathspec matching — and is deliberately
@@ -199,6 +203,26 @@ function ignoreCommandOf(json = readFileSync(resolve(ROOT, 'vercel.json'), 'utf8
   return cmd
 }
 
+/**
+ * The denylist pathspec lives in a script, not inline in vercel.json's
+ * `ignoreCommand` (LIFT-1354 follow-up): Vercel's schema caps that field at
+ * 256 characters, and the pathspec list is well past that on its own — it
+ * shipped inline at 465 characters and every deployment errored with
+ * "`ignoreCommand` should NOT be longer than 256 characters" instead of
+ * running. `ignoreCommandOf()` above returns the short `bash <script>` form
+ * Vercel actually reads; this resolves it to the `git diff …` line the script
+ * runs, which is what the evaluator below needs.
+ */
+function deployGateCommand(): string {
+  const ignoreCmd = ignoreCommandOf()
+  const match = ignoreCmd.match(/^bash (\S+)$/)
+  if (!match) throw new Error(`ignoreCommand is not a \`bash <script>\` invocation: ${ignoreCmd}`)
+  const script = readFileSync(resolve(ROOT, match[1]), 'utf8')
+  const line = script.split('\n').find((l) => l.trim().startsWith('git diff --quiet'))
+  if (!line) throw new Error(`${match[1]} has no \`git diff --quiet\` line`)
+  return line.trim()
+}
+
 describe('production deploy verification (LIFT-1167)', () => {
   const jobs = loadJobs()
 
@@ -307,8 +331,18 @@ describe('production deploy verification (LIFT-1167)', () => {
 })
 
 describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () => {
-  const command = ignoreCommandOf()
+  const command = deployGateCommand()
   const deploys = (paths: string[]) => deploysWhenTouching(paths, command)
+
+  it("ignoreCommand stays within Vercel's 256-character schema limit", () => {
+    // The denylist shipped inline in vercel.json at 465 characters and Vercel
+    // rejected every deployment with a schema-validation error instead of
+    // running it — silently, since that error surfaces only as a failed
+    // Vercel check, not a CI failure. Moving the pathspec list to a script
+    // keeps this field short; this pins it so it can't silently regrow past
+    // the cap the way the inline version did.
+    expect(ignoreCommandOf().length).toBeLessThanOrEqual(256)
+  })
 
   it('the harness would have caught the original defect (self-test)', () => {
     // The command as it shipped before this fix: an allowlist naming
@@ -411,13 +445,15 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
 
   it("CI's deploy gate can still execute the command it reads from vercel.json", () => {
     // ci.yml refuses to eval anything that isn't the known-safe form, so a
-    // rewrite that breaks that prefix would fail every master push with
-    // "Unrecognised ignoreCommand". The accepted prefix is read out of the
+    // rewrite that breaks this would fail every master push with
+    // "Unrecognised ignoreCommand". The accepted literal is read out of the
     // gate step's own `case` arm rather than restated here — restating it is
-    // the drift this whole issue is about.
+    // the drift this whole issue is about. It's an exact match, not a prefix:
+    // ignoreCommand is now a fixed `bash <script>` invocation rather than a
+    // git-diff-with-arbitrary-pathspec form, so there is nothing to prefix.
     const gateRun = gateStepOf(loadJobs())?.run ?? ''
-    const accepted = gateRun.match(/"([^"]+)"\*\)/)?.[1]
-    expect(accepted, "expected the gate step's case guard to name a literal prefix").toBeTruthy()
-    expect(command.startsWith(accepted as string)).toBe(true)
+    const accepted = gateRun.match(/"([^"]+)"\)/)?.[1]
+    expect(accepted, "expected the gate step's case guard to name a literal command").toBeTruthy()
+    expect(ignoreCommandOf()).toBe(accepted)
   })
 })
