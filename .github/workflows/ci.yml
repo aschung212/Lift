@@ -830,6 +830,11 @@ jobs:
       # so it can be executed in deployVerification.test.ts — the defect here
       # was a comparison that could never be true, which no assertion over the
       # text of the comparison can see.
+      #
+      # notify-deploy's "Deployed to production (verified live)" is left
+      # unbranched for the superseded case on purpose: what it claims is that
+      # this commit's code is live, and it is. That is the opposite of the
+      # LIFT-1354 skip path, where nothing had been deployed at all.
       - name: Verify production is serving this commit
         if: steps.deploy_gate.outputs.skip != 'true'
         env:
@@ -850,19 +855,28 @@ jobs:
           SLEEP=10
           DEPLOYED_SHA=""
           STATUS=unknown
+          FETCHED_FOR=""
           for i in $(seq 1 "$ATTEMPTS"); do
             # Cache-bust so an edge-cached version.json can't mask a fresh deploy.
             BODY=$(curl -fsS --max-time 15 "$URL/version.json?ci=$RUN_ID-$i" || true)
             DEPLOYED_SHA=$(printf '%s' "$BODY" | jq -r '.commit // empty' 2>/dev/null || true)
             STATUS=$(bash scripts/classify-deployed-commit.sh "$EXPECTED_SHA" "$DEPLOYED_SHA")
-            if [ "$STATUS" = unknown ] && [ -n "$DEPLOYED_SHA" ]; then
+            if [ "$STATUS" = unknown ] && [ -n "$DEPLOYED_SHA" ] && [ "$FETCHED_FOR" != "$DEPLOYED_SHA" ]; then
               # A commit pushed to master after this job checked out is not in
               # this clone, so it cannot be classified. Pull master again
               # before writing it off — otherwise the very race this check
               # exists to tolerate reads as "production is serving something
               # unrelated". The repo is public and persist-credentials is
               # false, so this is an anonymous fetch.
-              git fetch --no-tags --quiet origin master 2>/dev/null || true
+              #
+              # Once per newly-observed SHA is enough: Vercel cannot have
+              # deployed a commit GitHub does not have, so one successful fetch
+              # always brings it in. Only a fetch that SUCCEEDED is recorded,
+              # so a transient network failure is retried on the next attempt
+              # rather than stranding the poll on a stale clone.
+              if git fetch --no-tags --quiet origin master 2>/dev/null; then
+                FETCHED_FOR=$DEPLOYED_SHA
+              fi
               STATUS=$(bash scripts/classify-deployed-commit.sh "$EXPECTED_SHA" "$DEPLOYED_SHA")
             fi
             if [ "$STATUS" = exact ] || [ "$STATUS" = descendant ]; then
