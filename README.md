@@ -116,6 +116,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Per-entry delta from previous weigh-in (green for down, red for up)
 - Entries sorted by date
 - Smart date label spacing to prevent overlap
+- Apple Health sync on the native iOS build — Settings → Apple Health writes each weigh-in to Health once (backfilling history when first enabled); the PWA's path into Health is the CSV export below
 
 ### Tag Management
 - Rename and delete tags from a dedicated tag manager
@@ -281,23 +282,29 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 The PWA is wrapped with [Capacitor 8](https://capacitorjs.com) for the App Store. The
 shared config lives in `capacitor.config.ts` (`appId: com.aschung212.lift`). The native
 `ios/` project is generated per-machine and is **not** committed — it depends on a local
-Xcode + CocoaPods toolchain. Generate and run it on the Simulator with:
+Xcode toolchain. Generate and run it on the Simulator with:
 
 ```bash
-# One-time: generate the native Xcode project (requires Xcode + CocoaPods)
-npx cap add ios
+# One-time: generate the native Xcode project (Swift Package Manager — no CocoaPods needed)
+npx cap add ios --packagemanager SPM
 
 # Build the web bundle and sync it into the native project
-npm run cap:build        # = npm run build && npx cap sync
+npm run cap:build        # = npm run build && npx cap sync (+ the configure step below)
 
-# Open the project in Xcode, then build & run on a Simulator (e.g. iPhone 15 Pro)
+# Open the project in Xcode, then build & run on a Simulator (e.g. iPhone 16 Pro)
 npm run cap:open:ios
 ```
 
-In Xcode, set the **iOS Deployment Target to 16.0** (App target → General → Minimum
-Deployments) for broad device coverage with modern APIs. The app should launch to the
-auth screen with no white screen. Re-run `npm run cap:build` after any web change to
-re-sync the `dist/` bundle into the native shell.
+Every `npx cap sync` also runs `scripts/configure-ios.mjs` (the `capacitor:sync:after`
+hook in `package.json`), which applies what the stock template lacks and re-applies it
+after any regeneration: the HealthKit usage strings in `Info.plist`, the
+`com.apple.developer.healthkit` entitlement (`App/App.entitlements`, wired into the App
+target's build settings), and an **iOS 16.0 deployment target**. It is idempotent and can
+be run by hand with `npm run cap:configure:ios`. The app should launch to the auth screen
+with no white screen, and **Settings → Apple Health** appears only in this build (HealthKit
+has no web API). The Simulator needs no signing; running on a physical iPhone needs a
+signing team whose App ID carries the HealthKit capability. Re-run `npm run cap:build`
+after any web change to re-sync the `dist/` bundle into the native shell.
 
 ---
 

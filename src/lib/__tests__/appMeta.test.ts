@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { APP_URL, APP_NAME, APP_TAGLINE, SHARE_REF, appUrlWithRef } from '../appMeta'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { APP_URL, APP_NAME, APP_TAGLINE, APP_BUNDLE_ID, SHARE_REF, appUrlWithRef } from '../appMeta'
 
 /**
  * Pins the app-share identity constants. These feed the "Share Lift" entry
@@ -23,6 +25,16 @@ describe('appMeta', () => {
   it('APP_TAGLINE is non-empty and mentions the app', () => {
     expect(APP_TAGLINE.length).toBeGreaterThan(0)
     expect(APP_TAGLINE).toContain('Lift')
+  })
+
+  it('APP_BUNDLE_ID is the appId capacitor.config.ts builds the native shell with', () => {
+    // Derived from the config, not restated: HealthKit reports this id as the
+    // sourceId of every sample Lift writes, and the Health sync matches on it
+    // (#1420) — a drift would make Lift blind to its own samples.
+    const config = readFileSync(resolve(__dirname, '..', '..', '..', 'capacitor.config.ts'), 'utf8')
+    const appId = config.match(/appId:\s*'([^']+)'/)?.[1]
+    expect(appId).toBeDefined()
+    expect(APP_BUNDLE_ID).toBe(appId)
   })
 })
 
