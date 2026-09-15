@@ -1522,7 +1522,8 @@ describe('Invariant: every always-send NULL column is nullable in the migrations
 // migration in one transaction, so the failure rolled back the WHOLE file:
 // `bar_weight` stayed NOT NULL while the shipping client had already begun
 // sending `null` for it, and every later schema push queued behind a red job
-// that also gates smoke-test-production and notify-deploy (LIFT-1167). And
+// that also gates deploy-production, smoke-test-production and notify-deploy
+// (LIFT-1169 / LIFT-1167) — so master stops reaching production too. And
 // nothing could see it coming — `migrate-db` is master-only and post-merge, and
 // the scheduled Integration Tests workflow builds its database FROM these
 // files, where the trigger always exists. A static check is the only reader
