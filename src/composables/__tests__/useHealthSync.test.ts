@@ -275,8 +275,12 @@ describe('useHealthSync', () => {
     const results = await Promise.all([api.syncNow(), api.syncNow(), api.syncNow()])
     expect(results.every(r => r.kind === 'synced' && r.written === 2)).toBe(true)
     expect(mockHealth.saveSample).toHaveBeenCalledTimes(2)
-    await api.syncNow() // drain the single trailing re-run the joins requested
+    // The joins requested ONE trailing re-run; let it finish inside this test
+    // (a run that outlives the test would race the next test's mock resets)
+    // and check it found nothing left to write.
+    await vi.waitFor(() => expect(api.busy.value).toBe(false))
     expect(mockHealth.saveSample).toHaveBeenCalledTimes(2)
+    expect(api.status.value).toBe('idle')
   })
 
   it('a plugin failure while enabling is surfaced as an error, not a crash', async () => {
