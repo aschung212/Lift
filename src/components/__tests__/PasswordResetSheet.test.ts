@@ -15,7 +15,7 @@ const auth = vi.hoisted(() => ({
 }))
 vi.mock('../../composables/useAuth', () => ({ useAuth: () => auth }))
 
-import PasswordResetSheet from '../PasswordResetSheet.vue'
+import PasswordResetSheet from '../../views/PasswordResetSheet.vue'
 
 enableAutoUnmount(afterEach)
 

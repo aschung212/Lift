@@ -4,8 +4,9 @@ import { runComponentAxe } from '../../__tests__/axeHelper'
 
 /**
  * AuthScreen (#1430): the password-reset-by-code flow and the native auth
- * surface. Until this file the screen had no behavioural test at all — only
- * the axe scan in accessibility.axe.test.ts mounted it, in its default state.
+ * surface. Sits beside AuthScreen.test.ts, which covers sign-in / sign-up and
+ * addresses the sign-up toggle as `.authModeSwitch` — which is why the three
+ * text links carry distinct classes.
  */
 
 // Getters so a test can flip the platform after the mock is hoisted.
@@ -29,7 +30,7 @@ vi.mock('../../composables/useAnalytics', () => ({
   useAnalytics: () => ({ logEvent: vi.fn(), tabSwitch: vi.fn(), flushEngagement: vi.fn() }),
 }))
 
-import AuthScreen from '../AuthScreen.vue'
+import AuthScreen from '../../views/AuthScreen.vue'
 
 enableAutoUnmount(afterEach)
 

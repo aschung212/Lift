@@ -67,11 +67,11 @@
       </form>
 
       <div class="authLinks">
-        <button v-if="resetStep === 'none' && !isSignUp" class="authModeSwitch" type="button" @click="handleForgotPassword">Forgot password?</button>
-        <button v-if="resetStep === 'none'" class="authModeSwitch" type="button" @click="toggleMode">
+        <button v-if="resetStep === 'none' && !isSignUp" class="authLinkBtn authForgotBtn" type="button" @click="handleForgotPassword">Forgot password?</button>
+        <button v-if="resetStep === 'none'" class="authLinkBtn authModeSwitch" type="button" @click="toggleMode">
           {{ isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up" }}
         </button>
-        <button v-if="resetStep !== 'none'" class="authModeSwitch" type="button" @click="cancelReset">Back to sign in</button>
+        <button v-if="resetStep !== 'none'" class="authLinkBtn authResetBackBtn" type="button" @click="cancelReset">Back to sign in</button>
       </div>
 
       <!-- Third-party sign-in is web-only until #1426 (system-browser OAuth) and
@@ -342,7 +342,10 @@ function cancelReset() {
   cursor: default;
 }
 
-.authModeSwitch {
+/* The three text links share one style; each keeps its own class so a test
+   (or a future handler) can address the sign-up toggle without catching
+   "Forgot password?" first. */
+.authLinkBtn {
   font-size: var(--font-footnote);
   font-family: inherit;
   color: var(--text-secondary);
@@ -354,7 +357,7 @@ function cancelReset() {
   transition: color 0.12s;
 }
 
-.authModeSwitch:hover {
+.authLinkBtn:hover {
   color: var(--accent);
 }
 
