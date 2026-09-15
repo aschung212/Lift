@@ -278,7 +278,15 @@ vi.mock('../../composables/useFocusTrap', () => ({
 }))
 
 // ── Native/icon/IDB side-effect libs (import-guarded) ──────────────
-vi.mock('../../lib/nativeAppIcon', () => ({ setNativeAppIcon: vi.fn() }))
+// The app-icon picker is gated on the native AppIcon plugin being REGISTERED,
+// not on isNative (#1423): the Swift half does not exist yet, so a picker that
+// rendered on every native build was a dead control. Tests flip this flag.
+const mockAppIconPluginAvailable = { value: false }
+const mockSetNativeAppIcon = vi.fn()
+vi.mock('../../lib/nativeAppIcon', () => ({
+  setNativeAppIcon: (...args: unknown[]) => mockSetNativeAppIcon(...args),
+  isAppIconPluginAvailable: () => mockAppIconPluginAvailable.value,
+}))
 
 // ── Apple Health sync (#1420) — the native-only group ────────────────
 // The composable is faked wholesale (its own suite drives the real plugin
@@ -1055,6 +1063,28 @@ describe('SettingsSheet', () => {
   // useFocusTrap and never took the lock at all — the page stayed scrollable
   // behind it. It now goes through useModal, so it participates in the SAME
   // reference count as every other modal instead of owning a boolean.
+  describe('app icon picker gating (#1423)', () => {
+    afterEach(() => {
+      mockAppIconPluginAvailable.value = false
+      mockSetNativeAppIcon.mockClear()
+    })
+
+    it('does not render the picker, or touch the bridge, while the AppIcon plugin is absent', async () => {
+      const w = mountSheet()
+      await nextTick()
+      expect(w.text()).not.toContain('App Icon')
+      expect(mockSetNativeAppIcon).not.toHaveBeenCalled()
+    })
+
+    it('renders the picker and applies the stored icon once the plugin is registered', async () => {
+      mockAppIconPluginAvailable.value = true
+      const w = mountSheet()
+      await nextTick()
+      expect(w.text()).toContain('App Icon')
+      expect(mockSetNativeAppIcon).toHaveBeenCalled()
+    })
+  })
+
   describe('Apple Health sync (#1420)', () => {
     beforeEach(() => {
       mockHealthSync.isSupported = true

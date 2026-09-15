@@ -24,6 +24,20 @@ describe('capacitor.config.ts regression', () => {
     expect(capacitorConfig).toContain("webDir: 'dist'")
   })
 
+  it('lets the page own the safe areas: contentInset never, keyboard resize native (#1423)', () => {
+    // The first Simulator run showed a ~93pt white band under the tab bar and
+    // a page left shifted after the keyboard closed. Both came from config:
+    // contentInset 'automatic' shrank the layout viewport by the safe-area
+    // insets the CSS already handles via viewport-fit=cover, and Keyboard
+    // resize 'body' rewrote document.body's height around every keyboard.
+    // Both values below are Capacitor's defaults; they are pinned because the
+    // failure is invisible to every web test and only shows on a device.
+    expect(capacitorConfig).toContain("contentInset: 'never'")
+    expect(capacitorConfig).not.toContain("contentInset: 'automatic'")
+    expect(capacitorConfig).toContain("resize: 'native'")
+    expect(capacitorConfig).not.toContain("resize: 'body'")
+  })
+
   it('keeps the iOS custom scheme so deep links and StatusBar config resolve', () => {
     expect(capacitorConfig).toContain("scheme: 'Lift'")
   })

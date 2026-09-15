@@ -855,9 +855,8 @@ import { usePRBaseline } from '../composables/usePRBaseline'
 import { todayISO, formatShortDate } from '../lib/dates'
 import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
 import { showXPToast } from '../composables/xpCeremonyUI'
-import { isNative } from '../lib/platform'
 import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
-import { setNativeAppIcon } from '../lib/nativeAppIcon'
+import { setNativeAppIcon, isAppIconPluginAvailable } from '../lib/nativeAppIcon'
 import { computeThemeStats, type ThemeStats } from '../lib/themeStats'
 import { useXPCeremony } from '../composables/useXPCeremony'
 import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from '../lib/xpMigration'
@@ -1027,8 +1026,11 @@ function disarmSupportImpression() {
   supportObserver = null
 }
 
-// ── App icon picker (native iOS only) ──────────────────────────
-const showAppIconPicker = isNative
+// ── App icon picker (native iOS, and only once the AppIcon plugin exists) ──
+// Gated on the plugin being registered rather than on `isNative`: the Swift
+// half is not shipped yet (#531), and a picker whose taps cannot change the
+// icon is a dead control (#1423).
+const showAppIconPicker = isAppIconPluginAvailable()
 // Mirror the theme-grid unlock rules (incl. the trial period) so a starter's
 // matching icon unlocks exactly when its theme does.
 const unlockedThemeIds = computed<ThemeId[]>(() =>
@@ -1057,7 +1059,7 @@ function selectAppIcon(id: AppIconId) {
 // (immediate) so a preference synced from another device is applied, and on any
 // change — including reverting to the default icon if its theme was re-locked by
 // a progression/prestige reset (resolveAppIconId handles the fallback).
-if (isNative) {
+if (showAppIconPicker) {
   watch(
     () => [prefs.appIcon, unlockedThemeIds.value.join(',')] as const,
     () => {
