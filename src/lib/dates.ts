@@ -62,7 +62,18 @@ export function toLocalDateKey(iso: string): string {
  * evenings on real-time data. This helper is the single reconciliation point.
  */
 export function setDayKey(iso: string): string {
-  return iso.slice(11, 16) === '23:59' ? iso.slice(0, 10) : toLocalDateKey(iso)
+  return isEndOfDayStamp(iso) ? iso.slice(0, 10) : toLocalDateKey(iso)
+}
+
+/**
+ * Whether `iso` is an `endOfDayISO()` day stamp (`…T23:59:ss.SSSZ`) rather than a
+ * real-time instant — the one-minute UTC window is the stamp's signature (see
+ * `setDayKey` above). Exported so a consumer that must treat the two storage
+ * conventions differently (`healthSampleInstant`, #1420) shares this check
+ * instead of re-deriving it.
+ */
+export function isEndOfDayStamp(iso: string): boolean {
+  return iso.slice(11, 16) === '23:59'
 }
 
 /**

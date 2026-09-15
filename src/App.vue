@@ -326,6 +326,7 @@ import { useInstallPrompt } from './composables/useInstallPrompt'
 import { usePRBurst } from './composables/usePRBurst'
 import { useServiceWorker } from './composables/useServiceWorker'
 import { setupSyncRecovery } from './composables/useSyncRecovery'
+import { setupHealthSync } from './composables/useHealthSync'
 import { useAppBadge } from './composables/useAppBadge'
 import { todayISO } from './lib/dates'
 import { useOnboarding } from './composables/useOnboarding'
@@ -806,6 +807,10 @@ onMounted(async () => {
   // reconciliation pushes inside each store's fetch stayed parked — until the
   // user fully relaunched the app.
   teardownSyncRecovery = setupSyncRecovery()
+  // Apple Health bodyweight write-sync (#1420): a no-op everywhere but the
+  // native iOS shell, where it subscribes to the bodyweight store so a weigh-in
+  // reaches Health as it is logged.
+  teardownHealthSync = setupHealthSync()
   // "Rest Again" on the rest-complete notification (LIFT-1355). The warm path is
   // a service-worker message; the cold path is the launch param read in setup,
   // which is parked here and satisfied once WorkoutTracker mounts.
@@ -928,6 +933,7 @@ onMounted(async () => {
 })
 let unsubCrossTab: (() => void) | null = null
 let teardownSyncRecovery: (() => void) | null = null
+let teardownHealthSync: (() => void) | null = null
 let teardownRestTimerIntent: (() => void) | null = null
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
@@ -937,6 +943,7 @@ onUnmounted(() => {
   clearAppBadge()
   unsubCrossTab?.()
   teardownSyncRecovery?.()
+  teardownHealthSync?.()
   teardownRestTimerIntent?.()
 })
 </script>

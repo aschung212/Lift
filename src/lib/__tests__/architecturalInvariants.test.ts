@@ -2446,6 +2446,47 @@ describe('Invariant: the foreground-resume signal set is defined once (LIFT-1392
 // its `updated_at` column is written by nobody and read by nobody (its merge is
 // a field-wise union, not LWW), so requiring a stamp for it would be a false
 // positive, and the derivation excludes it without needing an exemption.
+describe('Invariant: a Capacitor plugin proxy is never the value a promise resolves with (#1420)', () => {
+  // `registerPlugin` returns a Proxy whose `get` trap turns EVERY property read
+  // into a plugin method call — `then` included (only `$typeof`, `toJSON` and
+  // the listener methods are special-cased). Resolving a promise with the proxy
+  // (`import('@capgo/capacitor-health').then(m => m.Health)`, or returning it
+  // from an async function) makes the engine call `Health.then(resolve, reject)`
+  // to assimilate the "thenable": that fires a native `then` that rejects, while
+  // resolve/reject are never invoked — the awaiting caller hangs forever and the
+  // rejection surfaces as unhandled. The first Simulator run of the Apple Health
+  // sync shipped exactly this: a switch that did nothing, with 4504 green tests
+  // behind it, because a plain-object fake has no `then` and cannot see the
+  // trap. The sanctioned shape destructures from the awaited module namespace
+  // (`const { Share } = await import('@capacitor/share')`) or wraps the proxy in
+  // a plain object. This scan pins the `.then(` form; the behavioural half is
+  // `useHealthSync.test.ts`, whose fake goes through the real `registerPlugin`.
+  const PLUGIN_IMPORT_THEN = /import\(\s*['"](?:@capacitor\/|@capgo\/|capacitor-)[^'"]+['"]\s*\)\s*\.then\(/g
+
+  it('no dynamic Capacitor plugin import is chained with .then(', () => {
+    const files = getSourceFiles().filter(f => /\.(ts|vue)$/.test(f.path) && !f.path.includes('__tests__'))
+    // Non-vacuity: the walker must reach the files that dynamically import a
+    // plugin, or this scan proves nothing.
+    const dynamicImporters = files.filter(f => /import\(\s*['"](?:@capacitor\/|@capgo\/)/.test(stripComments(f.content)))
+    expect(dynamicImporters.map(f => f.path)).toEqual(
+      expect.arrayContaining([join('composables', 'useAppShare.ts'), join('composables', 'useHealthSync.ts')]),
+    )
+
+    const violations: string[] = []
+    for (const file of files) {
+      for (const match of stripComments(file.content).matchAll(PLUGIN_IMPORT_THEN)) {
+        violations.push(
+          `${file.path} — \`${match[0]}…\` resolves a promise with whatever the callback ` +
+          `returns; if that is the plugin proxy, the engine calls its \`then\` as a plugin ` +
+          `method and the await never settles (#1420). Destructure from the awaited ` +
+          `module instead: \`const { X } = await import(…)\`.`,
+        )
+      }
+    }
+    expect(violations).toEqual([])
+  })
+})
+
 describe('Invariant: every merge timestamp has an authority that moves it (LIFT-1401)', () => {
   const REMOTE_ROWS = readFileSync(join(SRC_DIR, 'lib', 'remoteRows.ts'), 'utf-8')
 

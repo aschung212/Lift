@@ -580,6 +580,31 @@
           </template>
         </div>
 
+        <!-- Apple Health (#1420): native iOS only. HealthKit has no web API, so the
+             PWA's path into Health stays the Weight-tab CSV export (#1159). -->
+        <div v-if="healthSyncSupported" class="settingsGroup">
+          <div class="settingsHeader">Apple Health</div>
+          <div class="settingsRow">
+            <div class="settingsLabelGroup">
+              <span id="health-sync-label" class="settingsLabel">Sync bodyweight</span>
+              <span class="settingsHint">Adds each weigh-in to Health once. Edits and deletions stay in Lift.</span>
+            </div>
+            <button
+              :class="['glassToggle', { on: healthSyncEnabled }]"
+              role="switch"
+              :aria-checked="healthSyncEnabled"
+              aria-labelledby="health-sync-label"
+              @click="toggleHealthSync"
+            >
+              <span class="glassToggleThumb"></span>
+            </button>
+          </div>
+          <div v-if="healthSyncEnabled || healthSyncStatus !== 'idle'" class="settingsRow">
+            <span class="settingsHint" role="status">{{ healthSyncStatusText }}</span>
+            <button v-if="healthSyncShowRetry" class="exportBtn" aria-label="Sync bodyweight to Apple Health now" @click="healthSyncNow()">Sync now</button>
+          </div>
+        </div>
+
         <div class="settingsGroup">
           <div class="settingsHeader">Data</div>
           <div class="settingsRow">
@@ -827,7 +852,7 @@ import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
-import { todayISO } from '../lib/dates'
+import { todayISO, formatShortDate } from '../lib/dates'
 import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
 import { showXPToast } from '../composables/xpCeremonyUI'
 import { isNative } from '../lib/platform'
@@ -859,6 +884,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useModal } from '../composables/useModal'
 import { useAppShare } from '../composables/useAppShare'
+import { useHealthSync } from '../composables/useHealthSync'
 import LegalSheet from './LegalSheet.vue'
 import ThemeStatsSheet from './ThemeStatsSheet.vue'
 import GymManagerModal from './GymManagerModal.vue'
@@ -1044,6 +1070,54 @@ if (isNative) {
     },
     { immediate: true }
   )
+}
+
+// ── Apple Health bodyweight sync (#1420, native iOS only) ──────────
+const {
+  isSupported: healthSyncSupported,
+  enabled: healthSyncEnabled,
+  status: healthSyncStatus,
+  busy: healthSyncBusy,
+  pendingCount: healthSyncPending,
+  lastSyncedAt: healthSyncLastSyncedAt,
+  enable: enableHealthSync,
+  disable: disableHealthSync,
+  syncNow: healthSyncNow,
+} = useHealthSync()
+
+const healthSyncStatusText = computed(() => {
+  switch (healthSyncStatus.value) {
+    case 'syncing':
+      return 'Syncing…'
+    case 'denied':
+      return 'Health access is off. Turn it on in the Health app: Sharing › Apps & Services › Lift.'
+    case 'unavailable':
+      return 'Apple Health isn’t available on this device.'
+    case 'error':
+      return 'Couldn’t write to Health. Tap Sync now to retry.'
+    case 'idle':
+      break
+  }
+  const n = healthSyncPending.value
+  if (n > 0) return `${n} weigh-in${n === 1 ? '' : 's'} waiting`
+  const last = healthSyncLastSyncedAt.value
+  return last ? `Up to date · synced ${formatShortDate(last)}` : 'Up to date'
+})
+
+// "Sync now" only when a tap can change something: entries waiting, or a failed
+// run to retry. It sits at the end of the row so appearing never shifts the text.
+const healthSyncShowRetry = computed(
+  () => healthSyncEnabled.value && !healthSyncBusy.value
+    && (healthSyncPending.value > 0 || healthSyncStatus.value === 'error'),
+)
+
+async function toggleHealthSync() {
+  if (healthSyncBusy.value) return
+  if (healthSyncEnabled.value) {
+    disableHealthSync()
+    return
+  }
+  await enableHealthSync()
 }
 
 // ── Swipe-to-dismiss for settings sheet ────────────────────────

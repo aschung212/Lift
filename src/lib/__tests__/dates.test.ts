@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { todayISO, localDateKey, toLocalDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../dates'
+import { todayISO, localDateKey, toLocalDateKey, setDayKey, formatShortDate, daysBetweenISO, isEndOfDayStamp } from '../dates'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -147,6 +147,22 @@ describe('setDayKey', () => {
 
   it('falls back to the raw prefix for unparseable input', () => {
     expect(setDayKey('not-a-date')).toBe('not-a-date'.slice(0, 10))
+  })
+})
+
+describe('isEndOfDayStamp', () => {
+  it('recognises the endOfDayISO signature and nothing else', () => {
+    expect(isEndOfDayStamp('2026-09-14T23:59:30.123Z')).toBe(true)
+    expect(isEndOfDayStamp('2026-09-14T23:59:00.000Z')).toBe(true)
+    expect(isEndOfDayStamp('2026-09-14T23:58:59.999Z')).toBe(false)
+    expect(isEndOfDayStamp('2026-09-15T03:30:00.000Z')).toBe(false)
+  })
+
+  it('is the check setDayKey routes on, so the two can never disagree', () => {
+    withTZ('Asia/Tokyo', () => {
+      expect(setDayKey('2026-09-14T23:59:30.000Z')).toBe('2026-09-14')
+      expect(setDayKey('2026-09-14T23:58:30.000Z')).toBe('2026-09-15')
+    })
   })
 })
 

@@ -279,6 +279,25 @@ vi.mock('../../composables/useFocusTrap', () => ({
 
 // ── Native/icon/IDB side-effect libs (import-guarded) ──────────────
 vi.mock('../../lib/nativeAppIcon', () => ({ setNativeAppIcon: vi.fn() }))
+
+// ── Apple Health sync (#1420) — the native-only group ────────────────
+// The composable is faked wholesale (its own suite drives the real plugin
+// boundary); `isSupported` is read once at setup, so tests set it before mount.
+const mockHealthSync = {
+  isSupported: false,
+  enabled: ref(false),
+  status: ref<'idle' | 'syncing' | 'denied' | 'unavailable' | 'error'>('idle'),
+  busy: ref(false),
+  pendingCount: ref(0),
+  lastSyncedAt: ref<string | null>(null),
+  lastError: ref<Error | null>(null),
+  enable: vi.fn().mockResolvedValue('enabled'),
+  disable: vi.fn(),
+  syncNow: vi.fn().mockResolvedValue({ kind: 'synced', written: 0, matched: 0, pending: 0 }),
+  scheduleSync: vi.fn(),
+  cancelScheduled: vi.fn(),
+}
+vi.mock('../../composables/useHealthSync', () => ({ useHealthSync: () => mockHealthSync }))
 vi.mock('../../lib/durableStorage', () => ({ clearIDB: vi.fn() }))
 vi.mock('../../composables/xpCeremonyUI', () => ({ showXPToast: vi.fn() }))
 
@@ -1036,6 +1055,105 @@ describe('SettingsSheet', () => {
   // useFocusTrap and never took the lock at all — the page stayed scrollable
   // behind it. It now goes through useModal, so it participates in the SAME
   // reference count as every other modal instead of owning a boolean.
+  describe('Apple Health sync (#1420)', () => {
+    beforeEach(() => {
+      mockHealthSync.isSupported = true
+      mockHealthSync.enabled.value = false
+      mockHealthSync.status.value = 'idle'
+      mockHealthSync.busy.value = false
+      mockHealthSync.pendingCount.value = 0
+      mockHealthSync.lastSyncedAt.value = null
+      mockHealthSync.enable.mockClear()
+      mockHealthSync.disable.mockClear()
+      mockHealthSync.syncNow.mockClear()
+    })
+    afterEach(() => {
+      mockHealthSync.isSupported = false
+    })
+
+    const group = (w: VueWrapper) =>
+      w.findAll('.settingsGroup').find(g => g.find('.settingsHeader').exists() && g.find('.settingsHeader').text() === 'Apple Health')
+    const healthSwitch = (w: VueWrapper) => w.find('[role="switch"][aria-labelledby="health-sync-label"]')
+
+    it('is absent off the native iOS shell — the PWA path is the Weight-tab CSV export', () => {
+      mockHealthSync.isSupported = false
+      const w = mountSheet()
+      expect(group(w)).toBeUndefined()
+      expect(healthSwitch(w).exists()).toBe(false)
+    })
+
+    it('renders a switch whose accessible name is its visible label (LIFT-1308)', () => {
+      const w = mountSheet()
+      expect(group(w)).toBeDefined()
+      const sw = healthSwitch(w)
+      expect(sw.exists()).toBe(true)
+      expect(sw.attributes('aria-checked')).toBe('false')
+      expect(w.find('#health-sync-label').text()).toBe('Sync bodyweight')
+      // Honest copy about the write-once contract lives beside the switch.
+      expect(group(w)!.text()).toContain('Edits and deletions stay in Lift')
+    })
+
+    it('turning it on asks the composable to enable; turning it off disables', async () => {
+      const w = mountSheet()
+      await healthSwitch(w).trigger('click')
+      expect(mockHealthSync.enable).toHaveBeenCalledTimes(1)
+      expect(mockHealthSync.disable).not.toHaveBeenCalled()
+
+      mockHealthSync.enabled.value = true
+      await nextTick()
+      expect(healthSwitch(w).attributes('aria-checked')).toBe('true')
+      await healthSwitch(w).trigger('click')
+      expect(mockHealthSync.disable).toHaveBeenCalledTimes(1)
+      expect(mockHealthSync.enable).toHaveBeenCalledTimes(1)
+    })
+
+    it('ignores taps while a sync is running', async () => {
+      mockHealthSync.enabled.value = true
+      mockHealthSync.busy.value = true
+      const w = mountSheet()
+      await healthSwitch(w).trigger('click')
+      expect(mockHealthSync.disable).not.toHaveBeenCalled()
+      expect(mockHealthSync.enable).not.toHaveBeenCalled()
+    })
+
+    it('a denied prompt says where to turn access on, even with the switch still off', () => {
+      mockHealthSync.status.value = 'denied'
+      const w = mountSheet()
+      expect(group(w)!.find('[role="status"]').text()).toContain('Health app')
+    })
+
+    it('shows how many weigh-ins are waiting and offers Sync now, which runs a sync', async () => {
+      mockHealthSync.enabled.value = true
+      mockHealthSync.pendingCount.value = 3
+      const w = mountSheet()
+      expect(group(w)!.find('[role="status"]').text()).toBe('3 weigh-ins waiting')
+      const btn = group(w)!.findAll('button').find(b => b.text() === 'Sync now')
+      expect(btn).toBeDefined()
+      await btn!.trigger('click')
+      expect(mockHealthSync.syncNow).toHaveBeenCalledTimes(1)
+
+      mockHealthSync.pendingCount.value = 1
+      await nextTick()
+      expect(group(w)!.find('[role="status"]').text()).toBe('1 weigh-in waiting')
+    })
+
+    it('reads "Up to date" with no button once everything is written', async () => {
+      mockHealthSync.enabled.value = true
+      mockHealthSync.lastSyncedAt.value = '2026-09-15T12:00:00.000Z'
+      const w = mountSheet()
+      expect(group(w)!.find('[role="status"]').text()).toMatch(/^Up to date · synced /)
+      expect(group(w)!.findAll('button').some(b => b.text() === 'Sync now')).toBe(false)
+    })
+
+    it('a failed run offers Sync now to retry', () => {
+      mockHealthSync.enabled.value = true
+      mockHealthSync.status.value = 'error'
+      const w = mountSheet()
+      expect(group(w)!.find('[role="status"]').text()).toContain('Sync now')
+      expect(group(w)!.findAll('button').some(b => b.text() === 'Sync now')).toBe(true)
+    })
+  })
+
   describe('background-scroll lock (#830)', () => {
     const isLocked = () => document.documentElement.classList.contains('modal-open')
 
