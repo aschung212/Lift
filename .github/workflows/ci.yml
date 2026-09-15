@@ -749,8 +749,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # HEAD^ is needed to evaluate vercel.json's ignoreCommand below.
-          fetch-depth: 2
+          # Full history, for two reasons. The deploy gate below diffs HEAD^
+          # against HEAD, and the verification step asks whether the commit
+          # production is serving is a DESCENDANT of this one (LIFT-1414) —
+          # which needs the commits on either side of this push, not just its
+          # parent. A depth-limited fetch of `github.sha` contains only that
+          # commit's ancestors, so the superseding commit would never be in
+          # the clone at all. The repo is ~850 commits; this costs seconds.
+          fetch-depth: 0
 
       # Vercel does not deploy every commit. vercel.json's `ignoreCommand`
       # skips any commit that touches ONLY non-deployable paths, so a CI-only,
@@ -810,6 +816,20 @@ jobs:
       # The production domain is read from CLAUDE.md, the single authoritative
       # source (the SEV1 rule: never hardcode/fabricate a deployment URL — a
       # hallucinated domain shipped to prod once already, see the SEV1 note).
+      #
+      # Success is "production is serving this commit OR a descendant of it",
+      # not string equality (LIFT-1414). The production alias only ever serves
+      # the LATEST ready deployment, and this job does not start until
+      # build-and-test + e2e + migrate-db have finished (~6 minutes), so two
+      # master pushes landing closer together than that leave the first one
+      # polling for a SHA production has already moved past and can never
+      # report again — 300s of waiting and a red "Post-merge CI failed" for a
+      # deploy that succeeded. A descendant is a strictly stronger result than
+      # an exact match: the build being served CONTAINS this commit. The
+      # ancestry question is answered by scripts/classify-deployed-commit.sh
+      # so it can be executed in deployVerification.test.ts — the defect here
+      # was a comparison that could never be true, which no assertion over the
+      # text of the comparison can see.
       - name: Verify production is serving this commit
         if: steps.deploy_gate.outputs.skip != 'true'
         env:
@@ -824,27 +844,44 @@ jobs:
             exit 1
           fi
           URL="https://$DOMAIN"
-          echo "Waiting for $URL to report commit $EXPECTED_SHA"
+          echo "Waiting for $URL to report commit $EXPECTED_SHA (or a descendant of it)"
 
           ATTEMPTS=30
           SLEEP=10
+          DEPLOYED_SHA=""
+          STATUS=unknown
           for i in $(seq 1 "$ATTEMPTS"); do
             # Cache-bust so an edge-cached version.json can't mask a fresh deploy.
             BODY=$(curl -fsS --max-time 15 "$URL/version.json?ci=$RUN_ID-$i" || true)
             DEPLOYED_SHA=$(printf '%s' "$BODY" | jq -r '.commit // empty' 2>/dev/null || true)
-            if [ -n "$DEPLOYED_SHA" ] && [ "$DEPLOYED_SHA" = "$EXPECTED_SHA" ]; then
-              HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID" || true)
+            STATUS=$(bash scripts/classify-deployed-commit.sh "$EXPECTED_SHA" "$DEPLOYED_SHA")
+            if [ "$STATUS" = unknown ] && [ -n "$DEPLOYED_SHA" ]; then
+              # A commit pushed to master after this job checked out is not in
+              # this clone, so it cannot be classified. Pull master again
+              # before writing it off — otherwise the very race this check
+              # exists to tolerate reads as "production is serving something
+              # unrelated". The repo is public and persist-credentials is
+              # false, so this is an anonymous fetch.
+              git fetch --no-tags --quiet origin master 2>/dev/null || true
+              STATUS=$(bash scripts/classify-deployed-commit.sh "$EXPECTED_SHA" "$DEPLOYED_SHA")
+            fi
+            if [ "$STATUS" = exact ] || [ "$STATUS" = descendant ]; then
+              HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID-$i" || true)
               if printf '%s' "$HTML" | grep -q '<div id="app">'; then
-                echo "Production is serving commit $EXPECTED_SHA and the app shell renders (attempt $i)."
+                if [ "$STATUS" = descendant ]; then
+                  echo "Production is serving $DEPLOYED_SHA, a later master commit that contains $EXPECTED_SHA — this push's code is live, its own deployment was superseded. App shell renders (attempt $i)."
+                else
+                  echo "Production is serving commit $EXPECTED_SHA and the app shell renders (attempt $i)."
+                fi
                 exit 0
               fi
-              echo "::warning::version.json matched but the app-shell marker is missing; retrying"
+              echo "::warning::version.json reports a deploy containing this commit, but the app-shell marker is missing; retrying"
             else
-              echo "Attempt $i/$ATTEMPTS: deployed=${DEPLOYED_SHA:-<none>} expected=$EXPECTED_SHA — waiting ${SLEEP}s"
+              echo "Attempt $i/$ATTEMPTS: deployed=${DEPLOYED_SHA:-<none>} ($STATUS) expected=$EXPECTED_SHA — waiting ${SLEEP}s"
             fi
             sleep "$SLEEP"
           done
-          echo "::error::Production never reported commit $EXPECTED_SHA within $((ATTEMPTS * SLEEP))s — the Vercel deploy likely failed or stalled"
+          echo "::error::Production never reported commit $EXPECTED_SHA or a descendant of it within $((ATTEMPTS * SLEEP))s (last seen ${DEPLOYED_SHA:-<none>}, $STATUS) — the Vercel deploy likely failed or stalled"
           exit 1
 
   # Notify Slack on post-merge success (push to master only).
