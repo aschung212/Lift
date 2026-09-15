@@ -752,6 +752,14 @@ jobs:
           # HEAD^ is needed to evaluate vercel.json's ignoreCommand below.
           fetch-depth: 2
 
+      # The domain reader below is a dependency-free Node script (no `npm ci`,
+      # so no cache). Pinned rather than inherited from whatever the runner
+      # image happens to ship: this job is the last gate before the "Deployed
+      # to production" Slack message.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+
       # Vercel does not deploy every commit. vercel.json's `ignoreCommand`
       # skips any commit that touches ONLY non-deployable paths, so a CI-only,
       # docs-only, or scripts-only push to master never produces a new
@@ -810,6 +818,22 @@ jobs:
       # The production domain is read from CLAUDE.md, the single authoritative
       # source (the SEV1 rule: never hardcode/fabricate a deployment URL — a
       # hallucinated domain shipped to prod once already, see the SEV1 note).
+      #
+      # The PARSING lives in scripts/live-domain.mjs (behind the thin CLI
+      # scripts/read-live-domain.mjs) rather than inline here (LIFT-1412). It
+      # used to be `grep | sed -E 's/…/\1/'` guarded by
+      # `[ -z "$DOMAIN" ]`, and that guard could not fire for the failure it
+      # was written for: `sed` passes its input line through VERBATIM when the
+      # substitution misses, so the guard only ever caught a *missing*
+      # `**Live:**` line. A line written in a different-but-reasonable markdown
+      # style — the domain in backticks, or with a scheme — produced the whole
+      # markdown line, which is non-empty, and got interpolated into
+      # `https://$DOMAIN`. Every curl against that failed, `|| true` swallowed
+      # it, and the job spent its full 300s budget before blaming the Vercel
+      # alias for a one-line edit to a markdown file. The reader fails closed,
+      # and deployVerification.test.ts executes it against several `**Live:**`
+      # line shapes — the defect was an expression that matched nothing, which
+      # no string assertion over that expression can see.
       - name: Verify production is serving this commit
         if: steps.deploy_gate.outputs.skip != 'true'
         env:
@@ -817,10 +841,13 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          DOMAIN=$(grep -m1 -E '^\*\*Live:\*\*' CLAUDE.md \
-            | sed -E 's/^\*\*Live:\*\* *([A-Za-z0-9.-]+).*/\1/' || true)
-          if [ -z "$DOMAIN" ]; then
-            echo "::error::Could not read the deployment domain from CLAUDE.md"
+          # The reader exits non-zero and explains itself on stderr when it
+          # cannot parse the line. The `-z` check is a second line of defence
+          # on the INTERPOLATION rather than on the parse — whatever went
+          # wrong, an empty domain must never reach curl and become 300s of
+          # polling blamed on Vercel.
+          if ! DOMAIN=$(node scripts/read-live-domain.mjs CLAUDE.md) || [ -z "$DOMAIN" ]; then
+            echo "::error::Could not read the deployment domain from CLAUDE.md — its **Live:** line must carry a hostname"
             exit 1
           fi
           URL="https://$DOMAIN"
