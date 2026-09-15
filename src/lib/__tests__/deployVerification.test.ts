@@ -1,7 +1,16 @@
-import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { describe, it, expect, afterAll } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { parse } from 'yaml'
+// The domain reader `smoke-test-production` runs. Imported, not
+// re-implemented: these tests must exercise the code CI executes. The wiring
+// tests below pin READER_PATH against the script the workflow invokes, and
+// that script against this module.
+import { main as readLiveDomainCli, parseLiveDomain } from '../../../scripts/live-domain.mjs'
+
+const READER_PATH = 'scripts/read-live-domain.mjs'
+const READER_LIB = 'live-domain.mjs'
 
 // LIFT-1167: the "✅ Deployed to production" Slack message must not fire off
 // green CI alone — CI passing does not prove Vercel promoted the commit (a
@@ -36,6 +45,13 @@ function loadJobs(): Record<string, Job> {
 function needsOf(job: Job | undefined): string[] {
   if (!job?.needs) return []
   return Array.isArray(job.needs) ? job.needs : [job.needs]
+}
+
+/** The step in `smoke-test-production` that polls production for this commit. */
+function verifyStepOf(jobs: Record<string, Job>): Step | undefined {
+  return (jobs['smoke-test-production']?.steps ?? []).find((s) =>
+    /verify production/i.test(s.name ?? ''),
+  )
 }
 
 /** The step in `smoke-test-production` that writes the deploy decision. */
@@ -293,8 +309,7 @@ describe('production deploy verification (LIFT-1167)', () => {
     })
 
     it('the verification step is the one gated on that decision', () => {
-      const verify = (smoke?.steps ?? []).find((s) => /verify production/i.test(s.name ?? ''))
-      expect(verify?.if ?? '').toContain(`steps.${gateStep?.id}.outputs.skip`)
+      expect(verifyStepOf(jobs)?.if ?? '').toContain(`steps.${gateStep?.id}.outputs.skip`)
     })
 
     it('notify-deploy reads the gate decision and branches its message', () => {
@@ -327,6 +342,167 @@ describe('production deploy verification (LIFT-1167)', () => {
       expect(skippedBranch).not.toMatch(/deployed to production/i)
       expect(skippedBranch).not.toMatch(/verified live/i)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LIFT-1412: reading the production domain out of CLAUDE.md.
+//
+// smoke-test-production must never hardcode the deployment URL (the SEV1
+// rule), so it reads the `**Live:**` line out of CLAUDE.md. That read used to
+// be an inline `grep | sed -E 's/…/\1/'` guarded by `[ -z "$DOMAIN" ]`, and
+// the guard could not fire for the failure it was written for: `sed` passes
+// its input line through VERBATIM when the substitution misses, so the guard
+// only ever caught a *missing* `**Live:**` line. A line that existed but was
+// written in a different-but-reasonable markdown style yielded the whole
+// line — non-empty — which was interpolated into `https://$DOMAIN`. Every curl
+// against that failed, `|| true` swallowed it, and the job spent its full 300s
+// poll budget before blaming the Vercel deploy for a markdown edit.
+//
+// These tests EXECUTE the real reader against several `**Live:**` line shapes
+// rather than asserting on its text: the defect was an expression that matched
+// nothing, which no string assertion over that expression can see.
+// ---------------------------------------------------------------------------
+
+// The `sed -E` substitution as it shipped: `^\*\*Live:\*\* *([A-Za-z0-9.-]+)`
+// followed by `.` `*`, replaced by the capture. The one behaviour that matters
+// is the one nothing modelled: `s///` emits the input line UNCHANGED when the
+// pattern does not match, rather than failing or emitting nothing.
+function oldSedExtraction(line: string): string {
+  const pattern = /^\*\*Live:\*\* *([A-Za-z0-9.-]+).*/
+  return pattern.test(line) ? line.replace(pattern, '$1') : line
+}
+
+describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
+  const FIXTURES = mkdtempSync(join(tmpdir(), 'lift-live-domain-'))
+  afterAll(() => rmSync(FIXTURES, { recursive: true, force: true }))
+
+  /** Run the CLI half — argv handling, file read, exit code, stdout. */
+  function runCli(argv: string[]) {
+    const out: string[] = []
+    const err: string[] = []
+    const status = readLiveDomainCli(argv, (l) => out.push(l), (l) => err.push(l))
+    return { status, stdout: out.join('\n'), stderr: err.join('\n') }
+  }
+
+  function fixtureFile(name: string, markdown: string): string {
+    const file = join(FIXTURES, name)
+    writeFileSync(file, markdown)
+    return file
+  }
+
+  it('the verification step runs the reader these tests import', () => {
+    // Derived from the workflow, not restated: if the script is renamed, this
+    // fails until the import at the top of this file follows — which is what
+    // keeps these tests exercising the code CI actually executes.
+    const run = verifyStepOf(loadJobs())?.run ?? ''
+    const invoked = run.match(/node (scripts\/[\w.-]+\.mjs)/)?.[1]
+    expect(invoked, 'the step must read the domain via `node scripts/<reader>.mjs`').toBe(
+      READER_PATH,
+    )
+    expect(run).toContain(`${READER_PATH} CLAUDE.md`)
+
+    // …and that script must be a wrapper over the module tested below, not a
+    // second copy of the parsing. It is deliberately not tested by calling it:
+    // it ends in `process.exit`, and the point of splitting it out is that it
+    // carries no entry guard that could silently decline to run.
+    const cli = readFileSync(resolve(ROOT, READER_PATH), 'utf8')
+    expect(cli).toContain(`from './${READER_LIB}'`)
+  })
+
+  it('a failed read is fatal, and names the domain rather than the deploy', () => {
+    const run = verifyStepOf(loadJobs())?.run ?? ''
+    // The sibling half of the original defect: the old pipeline ended in
+    // `|| true`, so even a reader that failed loudly would have been ignored.
+    const invocation = run.split('\n').find((l) => l.includes(READER_PATH)) ?? ''
+    expect(invocation, 'expected the reader to be invoked').not.toBe('')
+    expect(invocation).not.toMatch(/\|\|\s*true/)
+    // And the annotation must name what actually broke — never the deploy
+    // error 300s later, which is the misattribution this issue is about.
+    expect(run).toMatch(/::error::[^\n]*deployment domain/i)
+  })
+
+  it("parses the repo's own **Live:** line", () => {
+    // Not a fixture: the line CI will really read on the next master push. The
+    // expected value is derived from index.html's canonical URL rather than
+    // restated — the domain CI polls and the domain the app ships as its own
+    // are one fact, and pinning a third copy here is how they drift.
+    const canonical = readFileSync(resolve(ROOT, 'index.html'), 'utf8').match(
+      /<link rel="canonical" href="https:\/\/([^/"]+)"/,
+    )?.[1]
+    expect(canonical, 'index.html must carry a canonical URL').toBeTruthy()
+
+    const result = runCli([resolve(ROOT, 'CLAUDE.md')])
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe(canonical)
+  })
+
+  it.each([
+    ['bare, with a trailing note', '**Live:** newdomain.app (THE ONLY VALID DEPLOYMENT DOMAIN)'],
+    ['in backticks', '**Live:** `newdomain.app`'],
+    ['carrying a scheme', '**Live:** https://newdomain.app'],
+    ['carrying a scheme and a path', '**Live:** https://newdomain.app/'],
+    ['bolded', '**Live:** **newdomain.app**'],
+    ['italicised', '**Live:** _newdomain.app_'],
+    ['as a markdown link', '**Live:** [newdomain.app](https://newdomain.app)'],
+    ['as an autolink', '**Live:** <https://newdomain.app>'],
+    ['with extra spacing', '**Live:**   newdomain.app'],
+  ])('reads the domain when the line is written %s', (_shape, line) => {
+    expect(parseLiveDomain(`# Lift\n\n${line}\n\nmore docs\n`)).toEqual({
+      ok: true,
+      domain: 'newdomain.app',
+    })
+  })
+
+  it('reads a multi-label hostname, and stops at the port', () => {
+    expect(parseLiveDomain('**Live:** https://sub.domain.co.uk:443/x\n')).toEqual({
+      ok: true,
+      domain: 'sub.domain.co.uk',
+    })
+  })
+
+  it.each([
+    ['the line carries prose instead of a domain', '**Live:** not deployed yet\n'],
+    ['the line is empty', '**Live:**\n'],
+    ['there is no **Live:** line at all', '# Lift\n\nNo deployment recorded.\n'],
+    // The domain must be the FIRST thing on the line, not merely somewhere on
+    // it: a search over the whole line would pull a dotted token out of prose
+    // and send the job off to poll `https://infra.md` for 300s — a narrower
+    // rerun of this issue's own misattribution.
+    ['the line names a dotted file in prose', '**Live:** TBD, see infra.md for status\n'],
+    ['the domain is not the first token', '**Live:** mirrored at newdomain.app\n'],
+  ])('fails closed when %s', (_case, markdown) => {
+    // Fails closed: no domain at all, rather than a non-empty best guess that
+    // the job would go on to poll for five minutes.
+    expect(parseLiveDomain(markdown).ok).toBe(false)
+
+    const result = runCli([fixtureFile('CLAUDE.md', markdown)])
+    expect(result.status).not.toBe(0)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toMatch(/read-live-domain/)
+  })
+
+  it('fails closed when CLAUDE.md is missing entirely', () => {
+    const result = runCli([join(FIXTURES, 'nope.md')])
+    expect(result.status).not.toBe(0)
+    expect(result.stdout).toBe('')
+  })
+
+  it('the reader would have caught the original defect (self-test)', () => {
+    // Proves the fixtures above are not vacuous: the same inputs, through the
+    // expression that shipped.
+    const backticked = '**Live:** `newdomain.app`'
+    const schemed = '**Live:** https://newdomain.app'
+
+    // A miss passes the whole markdown line through, so `[ -z "$DOMAIN" ]`
+    // stayed silent and `https://**Live:** ...` went to curl.
+    expect(oldSedExtraction(backticked)).toBe(backticked)
+    // And where it did match, it matched the wrong thing: the character class
+    // stops at the `:`, so the URL became `https://https`.
+    expect(oldSedExtraction(schemed)).toBe('https')
+
+    expect(parseLiveDomain(backticked)).toEqual({ ok: true, domain: 'newdomain.app' })
+    expect(parseLiveDomain(schemed)).toEqual({ ok: true, domain: 'newdomain.app' })
   })
 })
 
