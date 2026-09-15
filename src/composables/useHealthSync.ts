@@ -104,10 +104,26 @@ const SYNC_TRIGGER_ACTIONS: ReadonlySet<string> = new Set([
   '_fetchFromSupabase',
 ])
 
-let pluginPromise: Promise<HealthPlugin> | null = null
-function loadPlugin(): Promise<HealthPlugin> {
-  if (!pluginPromise) pluginPromise = import('@capgo/capacitor-health').then(m => m.Health)
-  return pluginPromise
+type HealthModule = typeof import('@capgo/capacitor-health')
+let modulePromise: Promise<HealthModule> | null = null
+
+/**
+ * Resolve the plugin WITHOUT ever resolving a promise with it.
+ *
+ * `Health` is a Capacitor `registerPlugin` proxy: every property read,
+ * `then` included, becomes a native method call. Resolving a promise with it
+ * (`.then(m => m.Health)`, or `return m.Health` from an async function) makes
+ * the JS engine treat it as a thenable and call `Health.then(resolve, reject)`
+ * — which fires a native `then` that rejects ("not implemented on ios") while
+ * resolve/reject are never invoked, so the awaiting caller hangs forever and
+ * the rejection surfaces as unhandled. That is exactly what the first
+ * Simulator run showed (#1420): a tap on the switch with no reaction at all.
+ * The proxy is handed back inside a plain object, which has no `then`.
+ */
+async function loadPlugin(): Promise<{ health: HealthPlugin }> {
+  if (!modulePromise) modulePromise = import('@capgo/capacitor-health')
+  const m = await modulePromise
+  return { health: m.Health }
 }
 
 function toError(err: unknown): Error {
@@ -158,7 +174,7 @@ function createInstance(): HealthSyncApi {
     let written = 0
     let matched = 0
     try {
-      const health = await loadPlugin()
+      const { health } = await loadPlugin()
       const auth = await health.checkAuthorization(WEIGHT_AUTH)
       if (!auth.writeAuthorized.includes('weight')) {
         status.value = 'denied'
@@ -239,7 +255,7 @@ function createInstance(): HealthSyncApi {
   async function enable(): Promise<HealthSyncEnableResult> {
     if (!isHealthSyncSupported) return 'unavailable'
     try {
-      const health = await loadPlugin()
+      const { health } = await loadPlugin()
       const { available } = await health.isAvailable()
       if (!available) {
         status.value = 'unavailable'

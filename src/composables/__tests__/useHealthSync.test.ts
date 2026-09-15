@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ref, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
+import { registerPlugin } from '@capacitor/core'
+import type { HealthPlugin } from '@capgo/capacitor-health'
 import { HEALTH_SYNC_STATE_KEY, HEALTH_ENTRY_ID_KEY, lbsToKg, healthSampleInstant } from '../../lib/healthSync'
 import { APP_BUNDLE_ID } from '../../lib/appMeta'
 
@@ -13,13 +15,22 @@ import { APP_BUNDLE_ID } from '../../lib/appMeta'
  * singleton instance are module state.
  */
 
-const mockHealth = {
+// The fake is registered through Capacitor's REAL `registerPlugin`, so
+// `mockHealth` is the same kind of Proxy production hands out: every property
+// read — `then` included — becomes a plugin method call that rejects when the
+// implementation lacks it. A plain object here (how this file first shipped)
+// cannot see the thenable trap that hung `enable()` on the first Simulator run
+// (#1420): resolving a promise with the proxy made the engine call
+// `Health.then(resolve, reject)`, which rejected natively while the awaiting
+// caller waited forever. `mockImpl` is what the tests drive and assert on.
+const mockImpl = {
   isAvailable: vi.fn(),
   requestAuthorization: vi.fn(),
   checkAuthorization: vi.fn(),
   readSamples: vi.fn(),
   saveSample: vi.fn(),
 }
+const mockHealth = registerPlugin<HealthPlugin>('LiftHealthUnderTest', { web: mockImpl })
 const mockUser = ref<{ id: string; email: string } | null>({ id: 'user-1', email: 'a@b.c' })
 const mockLogEvent = vi.fn()
 
@@ -47,13 +58,13 @@ describe('useHealthSync', () => {
     setActivePinia(createPinia())
     localStorage.clear()
     vi.useRealTimers()
-    for (const fn of Object.values(mockHealth)) fn.mockReset()
+    for (const fn of Object.values(mockImpl)) fn.mockReset()
     mockLogEvent.mockReset()
-    mockHealth.isAvailable.mockResolvedValue({ available: true })
-    mockHealth.requestAuthorization.mockResolvedValue(GRANTED)
-    mockHealth.checkAuthorization.mockResolvedValue(GRANTED)
-    mockHealth.readSamples.mockResolvedValue({ samples: [] })
-    mockHealth.saveSample.mockResolvedValue(undefined)
+    mockImpl.isAvailable.mockResolvedValue({ available: true })
+    mockImpl.requestAuthorization.mockResolvedValue(GRANTED)
+    mockImpl.checkAuthorization.mockResolvedValue(GRANTED)
+    mockImpl.readSamples.mockResolvedValue({ samples: [] })
+    mockImpl.saveSample.mockResolvedValue(undefined)
     mockUser.value = { id: 'user-1', email: 'a@b.c' }
   })
 
@@ -76,8 +87,8 @@ describe('useHealthSync', () => {
     store.addEntry(185, '2026-09-14')
     await vi.advanceTimersByTimeAsync(1000)
     teardown()
-    expect(mockHealth.isAvailable).not.toHaveBeenCalled()
-    expect(mockHealth.saveSample).not.toHaveBeenCalled()
+    expect(mockImpl.isAvailable).not.toHaveBeenCalled()
+    expect(mockImpl.saveSample).not.toHaveBeenCalled()
     expect(persisted()).toBeNull()
   })
 
@@ -91,10 +102,10 @@ describe('useHealthSync', () => {
 
     await expect(api.enable()).resolves.toBe('enabled')
     expect(api.enabled.value).toBe(true)
-    expect(mockHealth.requestAuthorization).toHaveBeenCalledWith(WRITE_ONLY_WEIGHT)
+    expect(mockImpl.requestAuthorization).toHaveBeenCalledWith(WRITE_ONLY_WEIGHT)
 
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(2)
-    const [first, second] = mockHealth.saveSample.mock.calls.map(c => c[0])
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(2)
+    const [first, second] = mockImpl.saveSample.mock.calls.map(c => c[0])
     expect(first).toEqual({
       dataType: 'weight',
       value: lbsToKg(186),
@@ -113,26 +124,26 @@ describe('useHealthSync', () => {
   })
 
   it('a denied prompt leaves the switch off and reports where access lives', async () => {
-    mockHealth.requestAuthorization.mockResolvedValue(DENIED)
+    mockImpl.requestAuthorization.mockResolvedValue(DENIED)
     const { useHealthSync, store } = await load()
     store.addEntry(185, '2026-09-14')
     const api = useHealthSync()
     await expect(api.enable()).resolves.toBe('denied')
     expect(api.enabled.value).toBe(false)
     expect(api.status.value).toBe('denied')
-    expect(mockHealth.saveSample).not.toHaveBeenCalled()
+    expect(mockImpl.saveSample).not.toHaveBeenCalled()
     expect(persisted()).toBeNull()
     expect(mockLogEvent).toHaveBeenCalledWith('health_sync', { outcome: 'denied' })
   })
 
   it('reports unavailable where HealthKit does not exist (iPad)', async () => {
-    mockHealth.isAvailable.mockResolvedValue({ available: false, reason: 'HealthKit unavailable' })
+    mockImpl.isAvailable.mockResolvedValue({ available: false, reason: 'HealthKit unavailable' })
     const { useHealthSync } = await load()
     const api = useHealthSync()
     await expect(api.enable()).resolves.toBe('unavailable')
     expect(api.status.value).toBe('unavailable')
     expect(api.enabled.value).toBe(false)
-    expect(mockHealth.requestAuthorization).not.toHaveBeenCalled()
+    expect(mockImpl.requestAuthorization).not.toHaveBeenCalled()
   })
 
   it('a weigh-in logged while enabled reaches Health once, and an edit does not re-write it', async () => {
@@ -141,26 +152,26 @@ describe('useHealthSync', () => {
     const api = useHealthSync()
     await api.enable()
     await api.syncNow()
-    expect(mockHealth.saveSample).not.toHaveBeenCalled()
+    expect(mockImpl.saveSample).not.toHaveBeenCalled()
 
     const teardown = setupHealthSync()
     await vi.advanceTimersByTimeAsync(600) // the startup run: nothing pending
     const id = store.addEntry(190, '2026-09-15')
-    expect(mockHealth.saveSample).not.toHaveBeenCalled() // debounced, not synchronous
+    expect(mockImpl.saveSample).not.toHaveBeenCalled() // debounced, not synchronous
     await vi.advanceTimersByTimeAsync(600)
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(1)
-    expect(mockHealth.saveSample.mock.calls[0][0].metadata).toEqual({ [HEALTH_ENTRY_ID_KEY]: id })
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(1)
+    expect(mockImpl.saveSample.mock.calls[0][0].metadata).toEqual({ [HEALTH_ENTRY_ID_KEY]: id })
 
     // Write-once: neither a manual run nor an edit produces a second sample.
     await api.syncNow()
     store.updateEntry(id, 191)
     await vi.advanceTimersByTimeAsync(600)
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(1)
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(1)
 
     teardown()
     store.addEntry(192, '2026-09-16')
     await vi.advanceTimersByTimeAsync(600)
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(1) // unsubscribed
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(1) // unsubscribed
     expect(api.pendingCount.value).toBe(1)
   })
 
@@ -170,7 +181,7 @@ describe('useHealthSync', () => {
     await api.enable() // nothing logged yet: an empty backfill
     const a = store.addEntry(185, '2026-09-14')
     const b = store.addEntry(186, '2026-09-13')
-    mockHealth.readSamples.mockResolvedValue({
+    mockImpl.readSamples.mockResolvedValue({
       samples: [
         // A previous install (or another iPhone on this account) already wrote `a`.
         { dataType: 'weight', value: lbsToKg(185), unit: 'kilogram', startDate: healthSampleInstant('2026-09-14T23:59:00.000Z'), endDate: healthSampleInstant('2026-09-14T23:59:00.000Z'), sourceId: APP_BUNDLE_ID },
@@ -180,10 +191,10 @@ describe('useHealthSync', () => {
     })
     const result = await api.syncNow()
 
-    expect(mockHealth.readSamples).toHaveBeenCalledWith(expect.objectContaining({ dataType: 'weight', limit: 10_000, ascending: true }))
+    expect(mockImpl.readSamples).toHaveBeenCalledWith(expect.objectContaining({ dataType: 'weight', limit: 10_000, ascending: true }))
     expect(result).toMatchObject({ kind: 'synced', written: 1, matched: 1, pending: 0 })
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(1)
-    expect(mockHealth.saveSample.mock.calls[0][0].metadata).toEqual({ [HEALTH_ENTRY_ID_KEY]: b })
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(1)
+    expect(mockImpl.saveSample.mock.calls[0][0].metadata).toEqual({ [HEALTH_ENTRY_ID_KEY]: b })
     expect(persisted().written).toEqual({ [a]: true, [b]: true })
   })
 
@@ -192,12 +203,12 @@ describe('useHealthSync', () => {
     store.addEntry(185, '2026-09-12')
     store.addEntry(186, '2026-09-13')
     store.addEntry(187, '2026-09-14')
-    mockHealth.saveSample.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('HKErrorDomain 5'))
+    mockImpl.saveSample.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('HKErrorDomain 5'))
     const api = useHealthSync()
     // Authorization succeeded, so the switch is on; the backfill's failure is
     // reported through status/lastError rather than the enable result.
     await expect(api.enable()).resolves.toBe('enabled')
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(2)
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(2)
     expect(api.status.value).toBe('error')
     expect(api.lastError.value?.message).toBe('HKErrorDomain 5')
     expect(api.pendingCount.value).toBe(2)
@@ -208,8 +219,8 @@ describe('useHealthSync', () => {
     expect(api.status.value).toBe('idle')
     expect(api.lastError.value).toBeNull()
     // 1 ok + 1 failed + 2 retried; the first entry was never written twice.
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(4)
-    const ids = mockHealth.saveSample.mock.calls.map(c => c[0].metadata[HEALTH_ENTRY_ID_KEY])
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(4)
+    const ids = mockImpl.saveSample.mock.calls.map(c => c[0].metadata[HEALTH_ENTRY_ID_KEY])
     expect(new Set(ids).size).toBe(3)
   })
 
@@ -218,14 +229,14 @@ describe('useHealthSync', () => {
     const api = useHealthSync()
     await api.enable()
     await api.syncNow()
-    mockHealth.checkAuthorization.mockResolvedValue(DENIED)
+    mockImpl.checkAuthorization.mockResolvedValue(DENIED)
     store.addEntry(185, '2026-09-14')
     const result = await api.syncNow()
     expect(result.kind).toBe('denied')
     expect(api.status.value).toBe('denied')
     expect(api.enabled.value).toBe(true)
     expect(api.pendingCount.value).toBe(1)
-    expect(mockHealth.saveSample).not.toHaveBeenCalled()
+    expect(mockImpl.saveSample).not.toHaveBeenCalled()
   })
 
   it('binds the switch to the user who turned it on', async () => {
@@ -253,7 +264,7 @@ describe('useHealthSync', () => {
     const api = useHealthSync()
     await api.enable()
     await api.syncNow()
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(1)
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(1)
 
     api.disable()
     expect(api.enabled.value).toBe(false)
@@ -263,7 +274,7 @@ describe('useHealthSync', () => {
 
     await api.enable()
     await api.syncNow()
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(1)
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(1)
   })
 
   it('concurrent syncNow calls share one run', async () => {
@@ -274,17 +285,32 @@ describe('useHealthSync', () => {
     store.addEntry(186, '2026-09-14')
     const results = await Promise.all([api.syncNow(), api.syncNow(), api.syncNow()])
     expect(results.every(r => r.kind === 'synced' && r.written === 2)).toBe(true)
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(2)
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(2)
     // The joins requested ONE trailing re-run; let it finish inside this test
     // (a run that outlives the test would race the next test's mock resets)
     // and check it found nothing left to write.
     await vi.waitFor(() => expect(api.busy.value).toBe(false))
-    expect(mockHealth.saveSample).toHaveBeenCalledTimes(2)
+    expect(mockImpl.saveSample).toHaveBeenCalledTimes(2)
     expect(api.status.value).toBe('idle')
   })
 
+  it('never resolves a promise with the plugin proxy — the thenable trap that hung the first Simulator run (#1420)', async () => {
+    // A Capacitor plugin proxy answers `.then` with a method call, so a promise
+    // resolved with it (`.then(m => m.Health)`) never settles and the native
+    // `then` rejects unhandled. With the real proxy above, the old loader makes
+    // this race report 'hung'; the fixed one enables within the tick budget.
+    const { useHealthSync } = await load()
+    const api = useHealthSync()
+    const outcome = await Promise.race([
+      api.enable(),
+      new Promise<'hung'>(resolve => setTimeout(() => resolve('hung'), 1000)),
+    ])
+    expect(outcome).toBe('enabled')
+    expect(mockImpl.requestAuthorization).toHaveBeenCalledTimes(1)
+  })
+
   it('a plugin failure while enabling is surfaced as an error, not a crash', async () => {
-    mockHealth.requestAuthorization.mockRejectedValue(new Error('Authorization request was not granted.'))
+    mockImpl.requestAuthorization.mockRejectedValue(new Error('Authorization request was not granted.'))
     const { useHealthSync } = await load()
     const api = useHealthSync()
     await expect(api.enable()).resolves.toBe('error')
