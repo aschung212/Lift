@@ -1074,8 +1074,8 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
   // loop — the danger is code reloading with no human in the path. Every
   // entry here must be a reload behind an explicit user gesture.
   const USER_INITIATED = new Set([
-    // Dev tools (localhost/LAN only), each behind an explicit tap.
-    join('components', 'SettingsSheet.vue'),
+    // Dev tools (dev-server/e2e builds only, #1425), each behind an explicit tap.
+    join('views', 'DevToolsGroup.vue'),
   ])
 
   const RELOAD_CALL = /\blocation\s*\.\s*reload\s*\(/
@@ -1085,7 +1085,7 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
     // Non-vacuity: the walker must reach the owner and the known exempt
     // file, or this scan proves nothing.
     expect(files.map(f => f.path)).toContain(OWNER)
-    expect(files.map(f => f.path)).toContain(join('components', 'SettingsSheet.vue'))
+    expect(files.map(f => f.path)).toContain(join('views', 'DevToolsGroup.vue'))
 
     const violations = files
       .filter(f => f.path !== OWNER && !USER_INITIATED.has(f.path))
@@ -1109,11 +1109,60 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
   })
 
   it('the exempt call sites are still the dev tools they were vetted as', () => {
-    // The allowlist is only sound while its reloads stay behind the
-    // localhost-gated dev tools. If SettingsSheet's dev gate disappears,
-    // re-vet every reload in the file before loosening this.
+    // The allowlist is only sound while its reloads stay behind the dev-only
+    // Settings group, and that group is only dev-only while SettingsSheet
+    // imports it lazily behind the BUILD flag (#1425) — a hostname test is not
+    // a gate: the bundled Capacitor app is served from capacitor://localhost.
+    // If either half changes, re-vet every reload in DevToolsGroup.vue before
+    // loosening this.
     const settingsSheet = readFileSync(join(SRC_DIR, 'components', 'SettingsSheet.vue'), 'utf-8')
-    expect(settingsSheet).toMatch(/const isDev = /)
+    expect(settingsSheet).toMatch(
+      /import\.meta\.env\.DEV[\s\S]{0,200}defineAsyncComponent\(\(\) => import\('\.\.\/views\/DevToolsGroup\.vue'\)\)/,
+    )
+    expect(stripComments(settingsSheet)).not.toMatch(/location\s*\.\s*hostname/)
+  })
+})
+
+// ── Invariant: dev-only UI is gated on build mode, never on hostname (#1425) ─
+// The Settings dev tools were gated on `window.location.hostname` matching
+// localhost / 127. / 192.168. / 10., and the bundled Capacitor app is served
+// from capacitor://localhost — so every native install rendered "Seed 80k XP"
+// and "Clear All Data" as a normal settings group, in a production bundle,
+// and nothing on the web could see it (happy-dom's hostname is localhost too,
+// so every SettingsSheet test mounted WITH the tools and none asserted their
+// absence). A hostname says where the page came from, not whether a dev
+// server is behind it; `import.meta.env.DEV` / VITE_E2E are the only dev
+// gates, and prodBundleGuard.test.ts pins the dev chunks out of dist/.
+
+describe('Invariant: no source file reads location.hostname as a dev gate (#1425)', () => {
+  // supabase.ts compares the hostname against the production domain to pick
+  // the Supabase project for a Vercel preview — a routing decision, not a dev
+  // gate — and is the single sanctioned reader.
+  const ALLOWED = new Set([join('lib', 'supabase.ts')])
+  const HOSTNAME_READ = /\blocation\s*\.\s*hostname\b/
+
+  it('only supabase.ts reads location.hostname', () => {
+    const files = getSourceFiles()
+    // Non-vacuity: the walker must reach the sanctioned reader and the file
+    // that shipped the defect, or this scan proves nothing.
+    expect(files.map(f => f.path)).toContain(join('lib', 'supabase.ts'))
+    expect(files.map(f => f.path)).toContain(join('components', 'SettingsSheet.vue'))
+
+    const violations = files
+      .filter(f => !ALLOWED.has(f.path))
+      .filter(f => HOSTNAME_READ.test(stripComments(f.content)))
+      .map(f =>
+        `${f.path} — reads location.hostname. The bundled Capacitor app is ` +
+        `served from capacitor://localhost, so a localhost/LAN test is true on ` +
+        `every native install (#1425). Gate dev-only code on ` +
+        `import.meta.env.DEV / VITE_E2E, in a separately-chunked component.`,
+      )
+    expect(violations).toEqual([])
+  })
+
+  it('the sanctioned reader still reads it (non-vacuity)', () => {
+    const supabase = readFileSync(join(SRC_DIR, 'lib', 'supabase.ts'), 'utf-8')
+    expect(HOSTNAME_READ.test(stripComments(supabase))).toBe(true)
   })
 })
 

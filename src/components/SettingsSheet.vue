@@ -495,18 +495,9 @@
           </div>
         </div>
 
-        <!-- Dev tools — only on localhost/LAN -->
-        <div v-if="isDev" class="settingsGroup">
-          <div class="settingsHeader">Dev Tools</div>
-          <div class="devToolsGrid">
-            <button class="devBtn" @click="devResetOnboarding">Reset Onboarding</button>
-            <button class="devBtn" @click="devSeedProgression(12400)">Seed 12k XP</button>
-            <button class="devBtn" @click="devSeedProgression(80000)">Seed 80k XP</button>
-            <button class="devBtn" @click="devAddXP(5000)">+5,000 XP</button>
-            <button class="devBtn" @click="devRunMigration">Run Migration</button>
-            <button class="devBtn devBtnDanger" @click="devClearAll">Clear All Data</button>
-          </div>
-        </div>
+        <!-- Dev tools — a separately-chunked component that only a dev-server
+             or e2e build ever imports (#1425); see DevToolsGroup in the script. -->
+        <component :is="DevToolsGroup" v-if="DevToolsGroup" />
 
         <div class="settingsGroup">
           <div class="settingsHeader">Weight Goal</div>
@@ -846,7 +837,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
@@ -859,8 +850,7 @@ import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIco
 import { setNativeAppIcon, isAppIconPluginAvailable } from '../lib/nativeAppIcon'
 import { computeThemeStats, type ThemeStats } from '../lib/themeStats'
 import { useXPCeremony } from '../composables/useXPCeremony'
-import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from '../lib/xpMigration'
-import { clearIDB } from '../lib/durableStorage'
+import { isMigrated, markMigrated, computeRetroactiveXP } from '../lib/xpMigration'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport, downloadBlob } from '../lib/dataExport'
@@ -1871,54 +1861,17 @@ function handleImportFile(event: Event) {
   if (importFileInput.value) importFileInput.value.value = ''
 }
 
-// ── Dev tools (localhost/LAN only) ────────────────────────────────
-const isDev = /^(localhost|127\.|192\.168\.|10\.)/.test(window.location.hostname)
-
-function devResetOnboarding() {
-  localStorage.removeItem('onboarding-complete')
-  localStorage.removeItem('user-progression')
-  location.reload()
-}
-
-function devSeedProgression(xp: number) {
-  const starter = progressionStore.starterTheme || 'fire' as ThemeId
-  progressionStore.totalXP = xp
-  progressionStore.streakWeeks = 8
-  progressionStore.weeklyTarget = 4
-  progressionStore.showProgression = true
-  progressionStore.progressionEnabled = true
-  if (!progressionStore.starterTheme) {
-    progressionStore.starterTheme = starter
-  }
-  progressionStore.streakHistory = [{ weekStart: '2026-03-30', streakCount: 8, weeklyTarget: 4, combinedMultiplier: 1.8 }]
-  progressionStore.unlockedThemes = [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
-  if (!progressionStore.unlockedThemes.some(t => t.id === starter)) {
-    progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
-  }
-  progressionStore.checkUnlocks()
-  progressionStore._persist()
-}
-
-function devAddXP(amount: number) {
-  progressionStore.totalXP += amount
-  progressionStore.checkUnlocks()
-  progressionStore._persist()
-}
-
-function devRunMigration() {
-  clearMigrationFlag()
-  const result = computeRetroactiveXP(workoutStore.exercises, bodyweightStore.entries)
-  progressionStore.totalXP = result.totalXP
-  progressionStore.xpPerSet = result.xpPerSet
-  progressionStore.bodyweightXPDates = result.bodyweightXPDates
-  progressionStore.checkUnlocks()
-  progressionStore._persist()
-  markMigrated()
-}
-
-async function devClearAll() {
-  localStorage.clear()
-  await clearIDB()
-  location.reload()
-}
+// ── Dev tools (dev server + e2e builds only) ──────────────────────
+// Gated on BUILD MODE, never on hostname (#1425): the bundled Capacitor app is
+// served from capacitor://localhost, so the old localhost/LAN hostname test
+// rendered the XP-seeding / Clear-All-Data group on every native install,
+// App Store build included. `import.meta.env.DEV` folds to false in every `vite build`,
+// the ternary drops the dynamic import, and the group's chunk is never emitted
+// — the LIFT-1123 shape AuthScreen uses for its dev sign-in button, pinned by
+// prodBundleGuard.test.ts and scripts/check-no-dev-surface.js. VITE_E2E keeps
+// the e2e build's dev surface, mirroring that gate.
+const DevToolsGroup =
+  import.meta.env.DEV || import.meta.env.VITE_E2E === 'true'
+    ? defineAsyncComponent(() => import('../views/DevToolsGroup.vue'))
+    : null
 </script>
