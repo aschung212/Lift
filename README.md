@@ -277,6 +277,8 @@ npm run preview  # preview production build locally
 
 Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard. Enable Google as an OAuth provider in Supabase and add your Vercel domain to the allowed redirect URLs.
 
+The Privacy Policy and Terms of Service are generated at build time from `src/lib/legalCopy.ts` and served at `/legal/privacy.html` and `/legal/terms.html` — the public URLs App Store Connect and App Review need — and the in-app Legal sheet renders the same source, so the two cannot drift.
+
 ### Native iOS build (Capacitor)
 
 The PWA is wrapped with [Capacitor 8](https://capacitorjs.com) for the App Store. The
