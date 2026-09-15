@@ -6,7 +6,7 @@
       <p class="authTagline">Track your sets, monitor progress, hit PRs.</p>
 
       <!-- Email/password form -->
-      <form class="authForm" @submit.prevent="handleEmailSubmit">
+      <form v-if="resetStep === 'none'" class="authForm" @submit.prevent="handleEmailSubmit">
         <input
           v-model.trim="email"
           type="email"
@@ -35,10 +35,49 @@
         </button>
       </form>
 
-      <button class="authModeSwitch" @click="toggleMode">
-        {{ isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up" }}
-      </button>
+      <!-- Password reset by emailed code (#1430). No redirect, so it works in
+           the native shell too; the emailed LINK is web-only (PasswordResetSheet). -->
+      <form v-else class="authForm" @submit.prevent="handleResetSubmit">
+        <p id="auth-reset-hint" class="authResetHint">We emailed a code to <strong>{{ email }}</strong>. Enter it with a new password.</p>
+        <input
+          v-model.trim="resetCode"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          placeholder="Code from the email"
+          aria-label="Reset code"
+          :aria-describedby="isError && !!message ? 'auth-error' : 'auth-reset-hint'"
+          class="authInput"
+          required
+        />
+        <input
+          v-model="newPassword"
+          type="password"
+          placeholder="New password"
+          aria-label="New password"
+          class="authInput"
+          autocomplete="new-password"
+          minlength="6"
+          :aria-invalid="isError && !!message ? true : undefined"
+          required
+        />
+        <button class="authSubmitBtn" type="submit" :disabled="submitting">
+          {{ submitting ? '...' : 'Set new password' }}
+        </button>
+      </form>
 
+      <div class="authLinks">
+        <button v-if="resetStep === 'none' && !isSignUp" class="authModeSwitch" type="button" @click="handleForgotPassword">Forgot password?</button>
+        <button v-if="resetStep === 'none'" class="authModeSwitch" type="button" @click="toggleMode">
+          {{ isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up" }}
+        </button>
+        <button v-if="resetStep !== 'none'" class="authModeSwitch" type="button" @click="cancelReset">Back to sign in</button>
+      </div>
+
+      <!-- Third-party sign-in is web-only until #1426 (system-browser OAuth) and
+           #542 (Sign in with Apple, App Review 4.8) ship together: Google refuses
+           the WKWebView outright, and a lone button that fails is worse than none. -->
+      <template v-if="!isNative && resetStep === 'none'">
       <div class="authDivider">
         <span class="authDividerLine"></span>
         <span class="authDividerText">or</span>
@@ -57,6 +96,8 @@
         </button>
       </div>
 
+      </template>
+
       <button class="authGuestBtn" @click="handleGuest">Continue without an account</button>
       <p class="authGuestHint">Your workouts stay on this device. Create an account any time to back up &amp; sync.</p>
 
@@ -74,8 +115,9 @@ import { defineAsyncComponent, ref } from 'vue'
 import type { Provider } from '@supabase/supabase-js'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
+import { isNative } from '../lib/platform'
 
-const { signInWithProvider, signInWithEmail, signUp, continueAsGuest } = useAuth()
+const { signInWithProvider, signInWithEmail, signUp, continueAsGuest, requestPasswordReset, confirmPasswordReset } = useAuth()
 const { logEvent } = useAnalytics()
 // The dev sign-in bypass is loaded ONLY in local dev mode OR CI e2e builds.
 // import.meta.env values are inlined + folded at build time, so this ternary
@@ -146,6 +188,61 @@ async function handleOAuth(provider: Provider) {
     message.value = error.message
     logEvent('auth_sign_in_error', { provider })
   }
+}
+
+// ── Password reset by emailed code (#1430) ──────────────────────────
+// 'none' is the sign-in / sign-up form; 'code' is the reset form for the email
+// typed above. The email field is what identifies the account, so an empty one
+// explains rather than sending.
+const resetStep = ref<'none' | 'code'>('none')
+const resetCode = ref('')
+const newPassword = ref('')
+
+async function handleForgotPassword() {
+  message.value = ''
+  if (!email.value) {
+    isError.value = true
+    message.value = 'Enter your email above, then tap Forgot password.'
+    return
+  }
+  submitting.value = true
+  logEvent('auth_password_reset_request')
+  const { error } = await requestPasswordReset(email.value)
+  submitting.value = false
+  if (error) {
+    isError.value = true
+    message.value = error.message
+    logEvent('auth_password_reset_error', { step: 'request' })
+    return
+  }
+  resetCode.value = ''
+  newPassword.value = ''
+  isError.value = false
+  resetStep.value = 'code'
+}
+
+async function handleResetSubmit() {
+  message.value = ''
+  submitting.value = true
+  const { error } = await confirmPasswordReset(email.value, resetCode.value, newPassword.value)
+  submitting.value = false
+  if (error) {
+    isError.value = true
+    message.value = error.message
+    logEvent('auth_password_reset_error', { step: 'confirm' })
+    return
+  }
+  // The verified code signed the user in; App.vue swaps this screen out on the
+  // SIGNED_IN that follows, so the message is only briefly visible.
+  isError.value = false
+  message.value = 'Password updated.'
+  logEvent('auth_password_reset_success')
+}
+
+function cancelReset() {
+  resetStep.value = 'none'
+  message.value = ''
+  isError.value = false
 }
 </script>
 
@@ -371,5 +468,24 @@ async function handleOAuth(provider: Provider) {
 
 .authSuccess {
   color: var(--success);
+}
+/* The text links stack; as inline buttons they ran together on one line. */
+.authLinks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.authResetHint {
+  margin: 0 0 4px;
+  font-size: var(--font-footnote);
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.authResetHint strong {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 </style>

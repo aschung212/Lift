@@ -11,6 +11,8 @@ import { deleteAllIDB } from '../lib/durableStorage'
 import { onForegroundResume } from '../lib/foregroundResume'
 import { logError } from '../lib/logger'
 import { clearReauthFlag } from '../lib/sessionHealth'
+import { isNative } from '../lib/platform'
+import { APP_URL } from '../lib/appMeta'
 import type { User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
@@ -25,6 +27,11 @@ export interface UseAuthReturn {
   signInWithProvider: (provider: Provider) => Promise<{ error: AuthError | null }>
   signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signUp: (email: string, password: string) => Promise<{ error: AuthError | null; needsConfirmation?: boolean }>
+  requestPasswordReset: (email: string) => Promise<{ error: AuthError | null }>
+  confirmPasswordReset: (email: string, code: string, password: string) => Promise<{ error: AuthError | null }>
+  updatePassword: (password: string) => Promise<{ error: AuthError | null }>
+  passwordRecoveryPending: Ref<boolean>
+  clearPasswordRecovery: () => void
   signOut: () => Promise<void>
   devSignIn: () => Promise<void>
   continueAsGuest: () => void
@@ -49,6 +56,14 @@ export const GUEST_BACKUP_PROMPT_DISMISSED_KEY = 'guest-backup-prompt-dismissed'
 const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
 const isGuest: Ref<boolean> = ref(false)
+/**
+ * Raised by a PASSWORD_RECOVERY auth event — the web landing of an emailed
+ * reset link — so App.vue can offer PasswordResetSheet (#1430). The in-app
+ * code flow (confirmPasswordReset) makes verifyOtp fire the same event but sets
+ * the password itself, so it suppresses the prompt via handlingCodeReset.
+ */
+const passwordRecoveryPending: Ref<boolean> = ref(false)
+let handlingCodeReset = false
 
 let _initialized = false
 let _authUnsubscribe: (() => void) | null = null
@@ -202,6 +217,7 @@ function init(): void {
     // A successful (re)auth means the token is healthy again — clear any
     // pending "re-sign-in needed" prompt (LIFT-784).
     if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') clearReauthFlag()
+    if (event === 'PASSWORD_RECOVERY' && !handlingCodeReset) passwordRecoveryPending.value = true
     if (session?.user) {
       user.value = session.user
       if (wasUnauthenticated) {
@@ -216,6 +232,7 @@ function init(): void {
         })
       }
     } else if (event === 'SIGNED_OUT') {
+      passwordRecoveryPending.value = false
       // A SIGNED_OUT event ends the session — either the user tapped sign-out,
       // or the refresh token expired / was revoked server-side and supabase-js
       // dropped the session automatically. Both must run the SAME teardown as
@@ -284,6 +301,58 @@ async function signUp(email: string, password: string): Promise<{ error: AuthErr
     return { error: { message: 'An account with this email already exists.' } }
   }
   return { error, needsConfirmation: !error && !!data?.user && !data?.session }
+}
+
+/**
+ * Password reset, step 1 (#1430): ask Supabase for the recovery email. The
+ * LINK in it only completes in the origin that requested it — supabase-js
+ * keeps the PKCE code_verifier in that origin's storage and exchanges the
+ * link's `?code=` against it — which no native install can be (its origin is
+ * capacitor://localhost, and the link opens Safari). So on native the link is
+ * pointed at the PWA, where it at least lands on a real page, and the emailed
+ * CODE (confirmPasswordReset) is the path that works everywhere.
+ */
+async function requestPasswordReset(email: string): Promise<{ error: AuthError | null }> {
+  if (!supabase) return { error: { message: 'Supabase not configured' } }
+  const redirectTo = isNative ? APP_URL : window.location.origin
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+  return { error }
+}
+
+/**
+ * Password reset, step 2: verify the emailed code — a recovery OTP, so the
+ * Supabase "Reset Password" template must include `{{ .Token }}` — which signs
+ * the user in, then set the new password on that session. verifyOtp fires
+ * PASSWORD_RECOVERY exactly as a link landing would; handlingCodeReset keeps the
+ * handler from ALSO raising the in-app sheet for a password about to be set.
+ */
+async function confirmPasswordReset(email: string, code: string, password: string): Promise<{ error: AuthError | null }> {
+  if (!supabase) return { error: { message: 'Supabase not configured' } }
+  handlingCodeReset = true
+  try {
+    const { error: verifyError } = await supabase.auth.verifyOtp({ email, token: code.trim(), type: 'recovery' })
+    if (verifyError) return { error: verifyError }
+    const { error } = await supabase.auth.updateUser({ password })
+    // Verified but not updated: the session is real, so leave the in-app sheet
+    // armed for another try rather than keeping the old password silently.
+    passwordRecoveryPending.value = !!error
+    return { error }
+  } finally {
+    handlingCodeReset = false
+  }
+}
+
+/** Set a new password on the current session (PasswordResetSheet, #1430). */
+async function updatePassword(password: string): Promise<{ error: AuthError | null }> {
+  if (!supabase) return { error: { message: 'Supabase not configured' } }
+  const { error } = await supabase.auth.updateUser({ password })
+  if (!error) passwordRecoveryPending.value = false
+  return { error }
+}
+
+/** "Not now" on the reset sheet: the session from the link is real either way. */
+function clearPasswordRecovery(): void {
+  passwordRecoveryPending.value = false
 }
 
 async function devSignIn(): Promise<void> {
@@ -524,5 +593,5 @@ function destroy(): void {
 }
 
 export function useAuth(): UseAuthReturn {
-  return { user, loading, isGuest, init, signInWithProvider, signInWithEmail, signUp, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, destroy }
+  return { user, loading, isGuest, init, signInWithProvider, signInWithEmail, signUp, requestPasswordReset, confirmPasswordReset, updatePassword, passwordRecoveryPending, clearPasswordRecovery, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, destroy }
 }

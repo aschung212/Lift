@@ -275,7 +275,7 @@ npm run preview  # preview production build locally
 
 ### Deploy
 
-Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard. Enable Google as an OAuth provider in Supabase and add your Vercel domain to the allowed redirect URLs.
+Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard. Enable Google as an OAuth provider in Supabase and add your Vercel domain to the allowed redirect URLs. For password resets, add `{{ .Token }}` to the **Reset Password** email template (Authentication → Email Templates): the app verifies that 6-digit code in place, which is the only reset path that works inside the native build (the emailed link only completes in the browser that requested it).
 
 ### Native iOS build (Capacitor)
 
