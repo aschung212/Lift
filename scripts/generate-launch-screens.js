@@ -196,7 +196,28 @@ export function generate({ log = true } = {}) {
   return written;
 }
 
-// Run when invoked directly (node scripts/generate-launch-screens.js).
+// ── Native launch screen (Capacitor iOS) ─────────────────────────────────────
+// The committed ios/ project's LaunchScreen.storyboard shows the "Splash" image
+// set; Capacitor's template ships its own logo there, which is what every user
+// would see on cold start of the App Store build. Render the same Eternal mark
+// as the PWA launch images into the three universal 2732×2732 slots so the
+// native cold start matches the web one (#539). Run with:
+//   node scripts/generate-launch-screens.js --native
+export const NATIVE_SPLASH_SIZE = 2732;
+export const NATIVE_SPLASH_FILES = ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png'];
+export const NATIVE_SPLASH_DIR = path.resolve(__dirname, '..', 'ios', 'App', 'App', 'Assets.xcassets', 'Splash.imageset');
+
+export function generateNativeSplash({ log = true, outDir = NATIVE_SPLASH_DIR } = {}) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const size = NATIVE_SPLASH_SIZE;
+  const png = encodePNG(size, size, renderLaunch(size, size));
+  for (const name of NATIVE_SPLASH_FILES) fs.writeFileSync(path.join(outDir, name), png);
+  if (log) console.log(`native splash ${size}×${size} written to ${outDir}/ (${NATIVE_SPLASH_FILES.length} files, ${(png.length / 1024).toFixed(1)} KB each)`);
+  return { size, files: NATIVE_SPLASH_FILES, bytes: png.length };
+}
+
+// Run when invoked directly (node scripts/generate-launch-screens.js [--native]).
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  generate();
+  if (process.argv.includes('--native')) generateNativeSplash();
+  else generate();
 }

@@ -39,8 +39,9 @@ scripts/output/
 supabase/.temp/
 supabase/.branches/
 
-# Capacitor native projects (generated per-machine via `npx cap add ios`)
-ios/
+# The Capacitor iOS project (ios/) IS committed — it is the App Store build.
+# ios/.gitignore (Capacitor's own) keeps the generated bits out: App/App/public,
+# App/App/capacitor.config.json, DerivedData, xcuserdata.
 android/
 
 # Claude Code worktree metadata (not part of the public repo)
