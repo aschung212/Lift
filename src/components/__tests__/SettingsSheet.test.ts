@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ref, reactive, computed, defineComponent, nextTick } from 'vue'
-import { mount, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
+import { mount, flushPromises, VueWrapper, enableAutoUnmount } from '@vue/test-utils'
 import { useModal } from '../../composables/useModal'
 import { resolveStrengthBaseline } from '../../lib/strengthBaseline'
 import { mockIntersectionObservers } from '../../__tests__/setup'
@@ -1242,6 +1242,50 @@ describe('SettingsSheet', () => {
 
       foreign(other).close()
       expect(isLocked()).toBe(false)
+    })
+  })
+  describe('Dev tools gate (#1425)', () => {
+    // The dev tools are a lazily-imported chunk (DevToolsGroup.vue) behind the
+    // BUILD flag, the LIFT-1123 shape. They used to be an inline group behind a
+    // localhost/LAN hostname test, and the bundled Capacitor app is served from
+    // capacitor://localhost — so every native install rendered Seed 80k XP /
+    // Clear All Data in a production bundle. happy-dom's hostname is localhost
+    // too, which is why every test in this file mounted WITH the tools and none
+    // could see the defect: a regression test here must flip the BUILD flag.
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    const devTools = (w: VueWrapper) => w.find('.devToolsGrid')
+    // The async chunk resolves a tick after mount.
+    const settle = async () => { await flushPromises(); await flushPromises() }
+
+    it('renders the dev tools on the Vite dev server (import.meta.env.DEV)', async () => {
+      const w = mountSheet()
+      await settle()
+      expect(devTools(w).exists()).toBe(true)
+      expect(w.text()).toContain('Seed 80k XP')
+    })
+
+    it('a production build renders NO dev tools even though the hostname is localhost (the native shell)', async () => {
+      vi.stubEnv('DEV', false)
+      vi.stubEnv('VITE_E2E', undefined)
+      // The very hostname the old gate keyed on — and the one every real
+      // iPhone has under capacitor://localhost.
+      expect(window.location.hostname).toBe('localhost')
+      const w = mountSheet()
+      await settle()
+      expect(devTools(w).exists()).toBe(false)
+      expect(w.text()).not.toContain('Seed 80k XP')
+      expect(w.text()).not.toContain('Clear All Data')
+    })
+
+    it('the e2e build keeps them (VITE_E2E), mirroring the AuthScreen dev sign-in gate', async () => {
+      vi.stubEnv('DEV', false)
+      vi.stubEnv('VITE_E2E', 'true')
+      const w = mountSheet()
+      await settle()
+      expect(devTools(w).exists()).toBe(true)
     })
   })
 })
