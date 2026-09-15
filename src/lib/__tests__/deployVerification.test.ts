@@ -445,6 +445,7 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
     ['bolded', '**Live:** **newdomain.app**'],
     ['italicised', '**Live:** _newdomain.app_'],
     ['as a markdown link', '**Live:** [newdomain.app](https://newdomain.app)'],
+    ['as an autolink', '**Live:** <https://newdomain.app>'],
     ['with extra spacing', '**Live:**   newdomain.app'],
   ])('reads the domain when the line is written %s', (_shape, line) => {
     expect(parseLiveDomain(`# Lift\n\n${line}\n\nmore docs\n`)).toEqual({
@@ -464,6 +465,12 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
     ['the line carries prose instead of a domain', '**Live:** not deployed yet\n'],
     ['the line is empty', '**Live:**\n'],
     ['there is no **Live:** line at all', '# Lift\n\nNo deployment recorded.\n'],
+    // The domain must be the FIRST thing on the line, not merely somewhere on
+    // it: a search over the whole line would pull a dotted token out of prose
+    // and send the job off to poll `https://infra.md` for 300s — a narrower
+    // rerun of this issue's own misattribution.
+    ['the line names a dotted file in prose', '**Live:** TBD, see infra.md for status\n'],
+    ['the domain is not the first token', '**Live:** mirrored at newdomain.app\n'],
   ])('fails closed when %s', (_case, markdown) => {
     // Fails closed: no domain at all, rather than a non-empty best guess that
     // the job would go on to poll for five minutes.

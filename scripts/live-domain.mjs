@@ -27,16 +27,24 @@ import { readFileSync } from 'node:fs'
 const LIVE_LABEL = '**Live:**'
 
 /**
- * A hostname-shaped token: dot-separated labels ending in an alphabetic TLD.
+ * Everything after the `**Live:**` label: markdown decoration, an optional
+ * scheme, then a hostname (dot-separated labels ending in an alphabetic TLD).
  *
  * Deliberately tolerant of how a URL gets written in markdown — bare,
- * backticked, bolded, italicised, carrying a scheme and/or a path, or as a
- * `[text](target)` link — and deliberately intolerant of everything else, so a
- * line carrying prose instead of a domain is an error rather than a guess. The
- * `**Live:**` label itself holds no dot, so it can never be read as the value.
+ * backticked, bolded, italicised, autolinked, carrying a scheme and/or a path,
+ * or as a `[text](target)` link — and deliberately intolerant of everything
+ * else, so a line carrying prose instead of a domain is an error rather than a
+ * guess.
+ *
+ * ANCHORED at the start of the value: the domain must be the FIRST thing on
+ * the line, not merely somewhere on it. An unanchored search would pull a
+ * dotted token out of prose — `**Live:** TBD, see infra.md for status` would
+ * yield `infra.md` — and the job would then poll `https://infra.md` for 300s
+ * and blame the deploy, which is a narrower rerun of the very misattribution
+ * this reader exists to remove.
  */
-const HOSTNAME =
-  /[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}/
+const LIVE_VALUE =
+  /^[\s`*_[<]*(?:https?:\/\/)?([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,})/
 
 /**
  * @param {string} markdown
@@ -47,11 +55,11 @@ export function parseLiveDomain(markdown) {
   if (line === undefined) {
     return { ok: false, reason: `no '${LIVE_LABEL}' line` }
   }
-  const match = line.match(HOSTNAME)
+  const match = line.slice(LIVE_LABEL.length).match(LIVE_VALUE)
   if (!match) {
     return { ok: false, reason: `the '${LIVE_LABEL}' line carries no hostname: ${line}` }
   }
-  return { ok: true, domain: match[0] }
+  return { ok: true, domain: match[1] }
 }
 
 /**
