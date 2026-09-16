@@ -193,6 +193,9 @@ Each theme defines `--glass-fill`, `--glass-edge`, `--glass-shine`, `--glass-bar
 ### Sync infrastructure
 A debounced sync queue (`lib/syncQueue.ts`) batches rapid Pinia mutations into coalesced Supabase writes. A conflict resolver (`lib/conflictResolver.ts`) implements last-write-wins with `updated_at` timestamp comparison when merging remote and local state.
 
+### Legal pages
+The Privacy Policy and Terms of Service have one source, `src/lib/legalCopy.ts`. The in-app Legal sheet renders it, and `vite-plugin-legal-pages.ts` emits it at build as `/legal/privacy.html` and `/legal/terms.html` — the public URLs App Store Connect and App Review need — so the two cannot drift. `vercel.json` excludes `legal/` from the SPA fallback so a wrong path 404s.
+
 ### iOS HIG compliance
 All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 11pt minimum throughout. Toggle switches are 51×31pt. Text contrast ratios are tuned per-theme for WCAG AA compliance. Safe areas are respected for notched devices.
 

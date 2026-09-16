@@ -95,6 +95,10 @@ describe('vercel.json SPA fallback rewrite scoping (#1155)', () => {
   it('misses the other static build prefixes', () => {
     expect(matcher.test('/manifest.webmanifest')).toBe(false)
     expect(matcher.test('/launch/apple-launch-1170x2532.png')).toBe(false)
+    // The build-emitted legal pages (#537): a wrong path under legal/ must 404,
+    // not answer the app shell with a 200 to an App Review reviewer.
+    expect(matcher.test('/legal/privacy.html')).toBe(false)
+    expect(matcher.test('/legal/terms.html')).toBe(false)
   })
 
   it('still falls back for lookalike paths that are genuinely routes, not files', () => {
@@ -103,5 +107,6 @@ describe('vercel.json SPA fallback rewrite scoping (#1155)', () => {
     expect(matcher.test('/assets-overview')).toBe(true)
     expect(matcher.test('/apidocs')).toBe(true)
     expect(matcher.test('/sw.js-changelog')).toBe(true)
+    expect(matcher.test('/legalese')).toBe(true)
   })
 })
