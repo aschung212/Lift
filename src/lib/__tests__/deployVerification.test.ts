@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from 'yaml'
 
@@ -514,16 +513,17 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
 // judgement, not something readable out of the build graph.
 //
 // So the judgement is written down once, below, and RECONCILED against the
-// repo: a tracked top-level entry with no verdict fails this suite until
-// someone writes one. The next `ios/` therefore forces its decision at the
-// moment it is committed instead of silently inheriting the fail-safe default.
+// repo: a top-level directory that is present and not gitignored, with no
+// verdict, fails this suite until someone writes one. The next `ios/`
+// therefore forces its decision at the moment it stops being ignored, instead
+// of silently inheriting the fail-safe default.
 // ---------------------------------------------------------------------------
 
 type Deployability = 'deploy' | 'skip'
 
 /**
- * Every tracked top-level entry, and whether a commit touching only it should
- * reach production.
+ * Every top-level entry in the repo, and whether a commit touching only it
+ * should reach production.
  *
  * A handful of entries marked 'deploy' are not build inputs at all
  * (`.gitattributes`, `.gitignore`, `.shellcheckrc`, `.run-browser-probe.sh`).
@@ -532,6 +532,10 @@ type Deployability = 'deploy' | 'skip'
  * of the property that an unrecognised path deploys rather than silently not
  * deploying. `ios/` is different in kind — it is touched on every step toward
  * App Store submission.
+ *
+ * `test-results` is listed even though `.gitignore` names it, because one file
+ * under it is tracked anyway (LIFT-1408) and the gate therefore still has an
+ * opinion about it.
  */
 const TOP_LEVEL_DEPLOYABILITY: Record<string, Deployability> = {
   // Ships to production.
@@ -582,49 +586,71 @@ const TOP_LEVEL_DEPLOYABILITY: Record<string, Deployability> = {
 }
 
 /**
- * Every tracked path in the repo, grouped by its top-level entry.
+ * Top-level names `.gitignore` keeps out of the repo, as matchers.
  *
- * `-z` because paths arrive unquoted that way — `git ls-files` otherwise
- * C-quotes anything non-ASCII, and `Screenshots/Lift — Workout Tracker.png`
- * would come back as a literal `"Screenshots\342\200\246"`.
+ * Only patterns that name something at the ROOT are relevant here, so anything
+ * still containing a `/` after the trailing slash is stripped (`scripts/output/`,
+ * `supabase/.temp/`) is dropped along with negations. A pattern `globToRegExp`
+ * cannot model is skipped rather than thrown on: the effect is that its
+ * directory would be asked for a verdict it may not need, which is the safe
+ * direction to be wrong in — the same posture as the denylist itself.
  */
-function trackedPathsByTopLevel(): Map<string, string[]> {
-  let out: string
-  try {
-    out = execFileSync('git', ['ls-files', '-z'], {
-      cwd: ROOT,
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-    })
-  } catch (err) {
-    // Loud, never skipped. A reconciliation that cannot enumerate the repo
-    // passes vacuously, which is the failure mode this guard exists to close.
-    throw new Error(`could not run \`git ls-files\`: ${(err as Error).message}`, { cause: err })
+function ignoredTopLevelMatchers(): RegExp[] {
+  const matchers: RegExp[] = []
+  for (const raw of readFileSync(resolve(ROOT, '.gitignore'), 'utf8').split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#') || line.startsWith('!')) continue
+    const name = line.replace(/\/+$/, '')
+    if (name.includes('/')) continue
+    try {
+      matchers.push(globToRegExp(name))
+    } catch {
+      continue
+    }
   }
-  const byEntry = new Map<string, string[]>()
-  for (const path of out.split('\0').filter(Boolean)) {
-    const entry = path.split('/')[0]
-    const paths = byEntry.get(entry)
-    if (paths) paths.push(path)
-    else byEntry.set(entry, [path])
-  }
-  return byEntry
+  return matchers
+}
+
+/**
+ * Top-level directories that are present and NOT gitignored — i.e. the
+ * directories that are, or are about to be, part of the repo.
+ *
+ * Deliberately directories only. A new top-level FILE is almost always a build
+ * input, and the derived "every root-level module vite.config.js imports must
+ * deploy" assertion above already covers that class. A new top-level DIRECTORY
+ * is a whole subsystem arriving with no derivation available at all — which is
+ * exactly what `ios/` was.
+ */
+function unignoredTopLevelDirs(): string[] {
+  const ignored = ignoredTopLevelMatchers()
+  return readdirSync(ROOT, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .filter((name) => name !== '.git' && !ignored.some((m) => m.test(name)))
+    .sort()
 }
 
 describe('the denylist is reconciled against the repo (LIFT-1438)', () => {
-  const tracked = trackedPathsByTopLevel()
+  const dirs = unignoredTopLevelDirs()
   const command = deployGateCommand()
 
   it('enumerated the repo (the reconciliation is not vacuous)', () => {
-    // If this ever passed on an empty listing, every assertion below would
-    // pass on nothing at all.
-    expect(tracked.get('src')?.length ?? 0).toBeGreaterThan(100)
-    expect(tracked.has('package.json')).toBe(true)
-    expect(tracked.has('vercel.json')).toBe(true)
+    // If this ever ran on an empty listing, the completeness check below would
+    // pass on nothing at all. `ios` is named because it is the entry this
+    // whole guard exists for — the day it goes back to being gitignored, the
+    // reconciliation stops watching it and should be re-thought, not silently
+    // satisfied.
+    expect(dirs).toContain('src')
+    expect(dirs).toContain('public')
+    expect(dirs).toContain('ios')
+    // …and the gitignore filter is doing real work rather than passing
+    // everything through.
+    expect(dirs).not.toContain('node_modules')
+    expect(dirs).not.toContain('dist')
   })
 
-  it('every tracked top-level entry has a verdict', () => {
-    const unclassified = [...tracked.keys()].filter((e) => !(e in TOP_LEVEL_DEPLOYABILITY))
+  it('every top-level directory has a verdict', () => {
+    const unclassified = dirs.filter((d) => !(d in TOP_LEVEL_DEPLOYABILITY))
     expect(
       unclassified,
       `these need a verdict in TOP_LEVEL_DEPLOYABILITY — and, if they should not ` +
@@ -632,27 +658,30 @@ describe('the denylist is reconciled against the repo (LIFT-1438)', () => {
     ).toEqual([])
   })
 
-  it('no verdict names an entry the repo stopped tracking', () => {
+  it('no verdict names something the repo no longer has', () => {
     // The mirror image: LiftApp/ was deleted in #1429 and its denylist entry
     // went with it. A verdict left behind for a path that no longer exists is
-    // a claim nothing checks.
-    const stale = Object.keys(TOP_LEVEL_DEPLOYABILITY).filter((e) => !tracked.has(e))
-    expect(stale, `no longer tracked: ${stale.join(', ')}`).toEqual([])
+    // a claim nothing checks, and it makes the list read as more complete than
+    // it is.
+    const missing = Object.keys(TOP_LEVEL_DEPLOYABILITY).filter(
+      (entry) => !existsSync(resolve(ROOT, entry)),
+    )
+    expect(missing, `no longer present: ${missing.join(', ')}`).toEqual([])
   })
 
-  it('the real gate agrees with every verdict, on every tracked path', () => {
-    // Evaluated against the paths git actually reports rather than a sample
-    // somebody typed, so an entry that is only PARTIALLY excluded — the gap a
-    // glob like `*.md` leaves inside a directory — cannot hide behind a
-    // representative file that happens to land on the right side.
+  it('the real gate agrees with every verdict', () => {
+    // Evaluated by running the command, not by re-reading its pathspec: a
+    // verdict that disagrees with what Vercel would actually do is worse than
+    // no verdict, because it reads as a checked fact.
     const disagreements: string[] = []
-    for (const [entry, paths] of tracked) {
-      const verdict = TOP_LEVEL_DEPLOYABILITY[entry]
-      if (!verdict) continue // already reported above
-      for (const path of paths) {
-        const actual: Deployability = deploysWhenTouching([path], command) ? 'deploy' : 'skip'
-        if (actual !== verdict) disagreements.push(`${path}: expected ${verdict}, gate says ${actual}`)
-      }
+    for (const [entry, verdict] of Object.entries(TOP_LEVEL_DEPLOYABILITY)) {
+      // A directory is probed a few levels down — the `*.md` glob is
+      // FNM_PATHNAME and never crosses a `/`, so a nested file is the case a
+      // directory exclusion has to cover and a root-level one does not.
+      const isDir = existsSync(resolve(ROOT, entry)) && statSync(resolve(ROOT, entry)).isDirectory()
+      const path = isDir ? `${entry}/nested/deeper/file.txt` : entry
+      const actual: Deployability = deploysWhenTouching([path], command) ? 'deploy' : 'skip'
+      if (actual !== verdict) disagreements.push(`${path}: expected ${verdict}, gate says ${actual}`)
     }
     expect(disagreements).toEqual([])
   })
