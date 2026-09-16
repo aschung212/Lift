@@ -7,7 +7,7 @@ take; "Open" names the issue.
 
 | Guideline | Requirement | Status |
 |-----------|-------------|--------|
-| 2.1 App Completeness | No placeholder content, no debug surfaces, no broken links | Done — dev tools removed from production builds (#1425, `check-no-dev-surface.js` in CI); legal links live (#1432) |
+| 2.1 App Completeness | No placeholder content, no debug surfaces, no broken links | Done — dev tools removed from production builds (#1425, `check-no-dev-surface.js` in CI); the bundle cannot be pointed at a dev server (LIFT-1435, `guard:native-config` in `cap:build`); legal links live (#1432) |
 | 2.3 Accurate Metadata | Screenshots and description show the real app | Aaron — [listing.md](listing.md) |
 | 2.5.1 Software Requirements | Public APIs only | Done — Capacitor + `@capgo/capacitor-health` use public APIs; privacy manifests ship for required-reason APIs (#1429) |
 | 3.1 Payments | No IAP, no external payment links | Done — nothing to sell |
@@ -28,6 +28,11 @@ take; "Open" names the issue.
 - [ ] Demo account created and working; review notes pasted from [listing.md](listing.md)
 - [ ] External TestFlight build has been used by at least one friend on their own device (#540)
 - [ ] Build number is fresh (archived from `master` after the last merge)
+- [ ] `npm run cap:build` ran green in the shell the archive was cut from — its last step
+      (`guard:native-config`) is what proves the bundle loads its UI from inside the app
+      and not from a LAN dev server (LIFT-1435)
+- [ ] Airplane mode on the phone: the installed build still opens and logs a set (a
+      dev-server origin looks fine on wifi at home and fails everywhere else)
 - [ ] Supabase Reset Password template carries `{{ .Token }}` (or "Forgot password" in the app cannot complete)
 
 ## If rejected
