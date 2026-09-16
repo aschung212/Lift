@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { parse } from 'yaml'
 
 // LIFT-1167: the "✅ Deployed to production" Slack message must not fire off
@@ -20,6 +22,7 @@ interface Step {
   run?: string
   if?: string
   env?: Record<string, string>
+  with?: Record<string, unknown>
 }
 interface Job {
   needs?: string | string[]
@@ -36,6 +39,13 @@ function loadJobs(): Record<string, Job> {
 function needsOf(job: Job | undefined): string[] {
   if (!job?.needs) return []
   return Array.isArray(job.needs) ? job.needs : [job.needs]
+}
+
+/** The step in `smoke-test-production` that polls production. */
+function verifyStepOf(jobs: Record<string, Job>): Step | undefined {
+  return (jobs['smoke-test-production']?.steps ?? []).find((s) =>
+    /verify production/i.test(s.name ?? ''),
+  )
 }
 
 /** The step in `smoke-test-production` that writes the deploy decision. */
@@ -356,8 +366,10 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
   })
 
   it('compares the pushed commit against its parent', () => {
-    // Anything else and the gate answers for the wrong pair of commits — and
-    // ci.yml checks out with fetch-depth: 2 on the strength of exactly this.
+    // Anything else and the gate answers for the wrong pair of commits — so
+    // whatever `fetch-depth` smoke-test-production checks out with has to
+    // reach HEAD^. It is now 0 (full history) for the ancestry check below,
+    // which subsumes the fetch-depth: 2 this originally rode on.
     expect(parseDeployGate(command).revs).toEqual(['HEAD^', 'HEAD'])
   })
 
@@ -455,5 +467,247 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
     const accepted = gateRun.match(/"([^"]+)"\)/)?.[1]
     expect(accepted, "expected the gate step's case guard to name a literal command").toBeTruthy()
     expect(ignoreCommandOf()).toBe(accepted)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LIFT-1414: a deploy a LATER master push superseded is still a successful
+// deploy of this commit.
+//
+// The verify step compared the two SHAs with string equality, which silently
+// assumed at most one master push lands inside the job's own runtime window.
+// It does not: the job waits on build-and-test + e2e + migrate-db (~6 minutes,
+// e2e alone 3-4), the production alias only ever serves the LATEST ready
+// deployment, and master runs serialize behind `concurrency`. Merging two PRs
+// 90 seconds apart therefore left the first run polling for a SHA production
+// had already moved past and could never report again — it burned the full
+// 300s and posted a red "Post-merge CI failed" for a deploy that reached READY
+// (2026-09-14: #1400, #1404 and #1409 in a row, all three deployed).
+//
+// The decision now lives in scripts/classify-deployed-commit.sh so these tests
+// can EXECUTE it against throwaway git repos rather than assert on the text of
+// a comparison. That is the point: the defect was a comparison that could
+// never be true, and a string assertion over one reads identically whether it
+// is right or wrong — the same argument that made the LIFT-1354 evaluator run
+// the real ignoreCommand.
+//
+// Why nothing caught it before: every existing assertion here is about the
+// wiring (does notify-deploy need this job, does the step read CLAUDE.md) and
+// about the one-push-at-a-time case, which string equality handles correctly.
+// The arrangement that exposes it is a second push landing before the first
+// job polls, which no test modelled because the comparison was never executed.
+// ---------------------------------------------------------------------------
+
+/**
+ * Path to the classification script, derived from the workflow step that
+ * invokes it rather than hardcoded — a rename has to reach both.
+ */
+function classifyScriptPath(): string {
+  const run = verifyStepOf(loadJobs())?.run ?? ''
+  const match = run.match(/bash (\S*classify[\w-]*\.sh)\b/)
+  if (!match) {
+    throw new Error('the verify step does not delegate to a classify-*.sh script')
+  }
+  return resolve(ROOT, match[1])
+}
+
+/** Every word the classification script can print. */
+function classifyVocabulary(): Set<string> {
+  const source = readFileSync(classifyScriptPath(), 'utf8')
+  return new Set([...source.matchAll(/^\s*echo ([a-z]+)\s*$/gm)].map((m) => m[1]))
+}
+
+describe('the deployed commit is classified by ancestry, not equality (LIFT-1414)', () => {
+  const script = classifyScriptPath()
+  let repo = ''
+  // A → B → C on the main line; D diverges from A.
+  let A = ''
+  let B = ''
+  let C = ''
+  let D = ''
+
+  // A throwaway repo, isolated from the machine's git config: a global
+  // commit.gpgsign or core.hooksPath would otherwise decide whether this
+  // fixture can be built at all.
+  const GIT_ENV = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_SYSTEM: '/dev/null',
+    GIT_AUTHOR_NAME: 'Lift CI Test',
+    GIT_AUTHOR_EMAIL: 'ci@example.invalid',
+    GIT_COMMITTER_NAME: 'Lift CI Test',
+    GIT_COMMITTER_EMAIL: 'ci@example.invalid',
+  }
+
+  const git = (...args: string[]) =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8', env: GIT_ENV }).trim()
+
+  const commit = (message: string) => {
+    writeFileSync(join(repo, 'file.txt'), message)
+    git('add', 'file.txt')
+    git('commit', '--quiet', '--no-gpg-sign', '-m', message)
+    return git('rev-parse', 'HEAD')
+  }
+
+  /** Run the real script, in the throwaway repo, exactly as ci.yml does. */
+  const classify = (expected: string, deployed: string) =>
+    execFileSync('bash', [script, expected, deployed], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: GIT_ENV,
+    }).trim()
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), 'lift-deploy-classify-'))
+    git('init', '--quiet', '-b', 'master')
+    A = commit('A')
+    B = commit('B')
+    C = commit('C')
+    git('checkout', '--quiet', '-b', 'side', A)
+    D = commit('D')
+    git('checkout', '--quiet', 'master')
+  }, 30000)
+
+  afterAll(() => {
+    if (repo) rmSync(repo, { recursive: true, force: true })
+  })
+
+  it('reports `exact` for the commit itself', () => {
+    expect(classify(A, A)).toBe('exact')
+  })
+
+  it('reports `descendant` when a later master commit superseded this deploy', () => {
+    // The 2026-09-14 case: #1400 pushed A, #1404 pushed a descendant, and the
+    // alias had moved on by the time #1400's job got to poll.
+    expect(classify(A, C)).toBe('descendant')
+    expect(classify(B, C)).toBe('descendant')
+  })
+
+  it('reports `ancestor` when production is serving an OLDER commit', () => {
+    // This is the stale-deploy case LIFT-1167 exists to catch — a failed
+    // Vercel build leaves the PREVIOUS deployment live, answering 200 — and
+    // widening the rule to ancestry must not start passing it.
+    expect(classify(C, A)).toBe('ancestor')
+  })
+
+  it('reports `unrelated` for a commit on a diverged line', () => {
+    expect(classify(B, D)).toBe('unrelated')
+    expect(classify(D, B)).toBe('unrelated')
+  })
+
+  it('reports `absent` for a well-formed commit this clone does not have', () => {
+    // A commit pushed to master after the job checked out looks like this;
+    // ci.yml answers it by fetching origin master once and re-asking. It is
+    // deliberately distinct from `unknown` so the workflow re-fetches only
+    // when a fetch could possibly help.
+    expect(classify(A, '0'.repeat(39) + '1')).toBe('absent')
+  })
+
+  it.each([
+    ['empty', ''],
+    ['not hex', 'deadbeefzz'],
+    ['too short to be an abbreviation', 'abc'],
+    ['an option, not a SHA', '--upload-pack=touch /tmp/pwned'],
+    ['a ref expression', 'master~1'],
+    ['a shell substitution', '$(id)'],
+  ])('fails closed on a deployed value that is %s', (_label, value) => {
+    // version.json arrives from the public internet, so the value is
+    // shape-checked before it is ever handed to git as an object name — junk
+    // and option-shaped values never reach `git rev-parse`.
+    expect(classify(A, value)).toBe('unknown')
+  })
+
+  it('the harness would have caught the original defect (self-test)', () => {
+    // The rule as it shipped, verbatim: [ "$DEPLOYED_SHA" = "$EXPECTED_SHA" ].
+    // Proves these assertions are not vacuous — the two rules disagree on the
+    // superseded pair, and agree everywhere the old one was right.
+    const oldRulePasses = (expected: string, deployed: string) => deployed === expected
+
+    expect(oldRulePasses(A, C)).toBe(false) // false-failed the #1400 run
+    expect(classify(A, C)).toBe('descendant') // …now a pass
+
+    expect(oldRulePasses(C, A)).toBe(false)
+    expect(classify(C, A)).toBe('ancestor') // …still a failure
+    expect(oldRulePasses(A, A)).toBe(true)
+    expect(classify(A, A)).toBe('exact')
+  })
+})
+
+describe('smoke-test-production consumes the ancestry classification (LIFT-1414)', () => {
+  const jobs = loadJobs()
+  const verify = verifyStepOf(jobs)
+  const run = verify?.run ?? ''
+
+  it('checks out full history', () => {
+    // A depth-limited fetch of github.sha contains only that commit's
+    // ANCESTORS, so the superseding commit would not be in the clone at all
+    // and every poll would classify as `absent`.
+    const checkout = (jobs['smoke-test-production']?.steps ?? []).find((s) =>
+      (s.uses ?? '').startsWith('actions/checkout'),
+    )
+    expect(checkout, 'expected smoke-test-production to check out the repo').toBeDefined()
+    expect(checkout?.with?.['fetch-depth']).toBe(0)
+  })
+
+  it('delegates the comparison to the classification script', () => {
+    expect(run).toMatch(/bash \S*classify[\w-]*\.sh/)
+    // Both operands are passed positionally; neither is interpolated into the
+    // bash body via ${{ }} (the notify jobs' script-injection guard).
+    expect(run).toContain('"$EXPECTED_SHA"')
+    expect(verify?.env?.EXPECTED_SHA).toBe('${{ github.sha }}')
+  })
+
+  it('treats exactly `exact` and `descendant` as a successful deploy', () => {
+    // Located structurally: the success guard is the nearest `$STATUS` test
+    // above the line that passes the job. Matching the first `$STATUS` test in
+    // the step would find the `unknown` re-fetch branch instead.
+    const lines = run.split('\n')
+    const exitOk = lines.findIndex((l) => /^\s*exit 0\s*$/.test(l))
+    expect(exitOk, 'expected the poll loop to exit 0 on success').toBeGreaterThan(0)
+    const guard = lines.slice(0, exitOk).reverse().find((l) => /if \[ "\$STATUS" =/.test(l)) ?? ''
+    const accepted = new Set([...guard.matchAll(/"\$STATUS" = "(\w+)"/g)].map((m) => m[1]))
+    expect(accepted).toEqual(new Set(['exact', 'descendant']))
+
+    // …and each of those is a word the script can actually print. A typo here
+    // ("descendent") would never match and would silently re-create the exact
+    // defect this issue is about: a comparison that can never be true.
+    const vocabulary = classifyVocabulary()
+    expect(vocabulary.size, 'expected the script to print literal status words').toBeGreaterThan(0)
+    for (const status of accepted) {
+      expect(vocabulary, `the script never prints "${status}"`).toContain(status)
+    }
+    // Every other word the script can print falls through to the poll's
+    // timeout by NOT being listed — derived from the script, so a new status
+    // is a failure by default rather than an unhandled one.
+    for (const status of vocabulary) {
+      if (status === 'exact' || status === 'descendant') continue
+      expect(accepted, `"${status}" must not count as a successful deploy`).not.toContain(status)
+    }
+    expect(vocabulary).toContain('ancestor') // the LIFT-1167 stale-deploy case
+  })
+
+  it('re-fetches origin master for a deployed SHA the clone cannot resolve', () => {
+    // A commit pushed DURING the poll window is absent from the checkout —
+    // the same supersession race, one notch narrower — so `absent` re-asks
+    // rather than being written off. `unknown` (junk, not an object name) is
+    // deliberately NOT re-fetched: no fetch can make it resolvable.
+    const marker = '"$STATUS" = "absent"'
+    // Checked before the slice: indexOf returning -1 would silently slice the
+    // last character and every assertion below would pass on it.
+    expect(run, 'expected an `absent` branch in the poll loop').toContain(marker)
+    const absentBranch = run.slice(run.indexOf(marker))
+    expect(absentBranch).toMatch(/git fetch[^\n]*origin master/)
+    expect(classifyVocabulary()).toContain('absent')
+  })
+
+  it('names the last observed commit and its classification when it gives up', () => {
+    const error = run.split('\n').find((l) => l.includes('::error::Production never')) ?? ''
+    expect(error, 'expected the timeout to emit an ::error:: annotation').not.toBe('')
+    // "never reported X" alone sent the reader looking for a failed deploy
+    // that had in fact succeeded; what production WAS serving is the fact that
+    // distinguishes a stale deploy from a superseded one.
+    expect(error).toMatch(/descendant/)
+    expect(error).toContain('$LAST_STATUS')
+    expect(error).toMatch(/LAST_SEEN/)
   })
 })
