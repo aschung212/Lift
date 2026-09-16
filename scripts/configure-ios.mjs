@@ -48,6 +48,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
+import { describeDevServer } from './check-native-release-config.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -394,6 +395,21 @@ function main() {
       ? `[configure-ios] applied App Store config, version ${stamp}: ${result.changed.join(', ')}`
       : `[configure-ios] App Store config already applied, version ${stamp}`,
   )
+
+  // This hook is the last automated step of EVERY `cap sync`, including the
+  // live-reload one (`CAPACITOR_DEV_URL=… npx cap run ios`) — so it is the one
+  // place that can announce a dev-server origin at the moment it is created,
+  // rather than waiting for the next release build to reject it. The state
+  // outlives the session that made it: the synced config is gitignored and
+  // persists until something re-syncs, so an archive taken later inherits it
+  // (LIFT-1435). `npm run cap:build` is the hard gate; this is the heads-up.
+  const devServer = describeDevServer(rootDir)
+  if (devServer) {
+    console.warn(
+      `[configure-ios] ⚠️  live-reload config: ${devServer}\n` +
+        `[configure-ios] ⚠️  This project is NOT archivable as-is. Re-run \`npm run cap:build\` before Product → Archive.`,
+    )
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()

@@ -300,11 +300,26 @@ is why a fresh clone must sync once before Xcode can build:
 
 ```bash
 # Build the web bundle and sync it into the native project (also stamps the version)
-npm run cap:build        # = npm run build && npx cap sync (+ scripts/configure-ios.mjs)
+npm run cap:build        # = build + cap sync (+ configure-ios.mjs) + guard:native-config
 
 # Open the project in Xcode, then build & run on a Simulator or your iPhone
 npm run cap:open:ios
 ```
+
+`cap:build` sets `CAPACITOR_BUILD=true` on **both** halves — the `vite build` and the
+`cap sync` — because that is the release discriminator: `vite.config.js` reads it to
+disable the service worker (#532), and `capacitor.config.ts` reads it to ignore
+`CAPACITOR_DEV_URL` (LIFT-1435). A `VAR=value cmd` prefix binds to one command, so the
+duplication is deliberate. Live reload is unaffected — `CAPACITOR_DEV_URL=http://192.168.1.x:5173
+npx cap run ios` sets no such flag and still points the WebView at the Vite dev server.
+The last step, `npm run guard:native-config`
+(`scripts/check-native-release-config.mjs`), re-reads the `capacitor.config.json` that
+`cap sync` actually emitted and fails the build if it carries `server.url`, `cleartext` or
+`allowNavigation`: that file is gitignored and copied into the `.ipa`, so it is the thing
+an archive really ships, and a bundle that loads its whole UI from a LAN dev server is
+indistinguishable from a good one until it is installed. Run it by hand any time you are
+unsure what state the native project is in; `scripts/configure-ios.mjs` also warns about a
+dev-server origin at the end of every sync, including the live-reload one that creates it.
 
 Every `npx cap sync` also runs `scripts/configure-ios.mjs` (the `capacitor:sync:after`
 hook in `package.json`). On the committed project the only thing it changes is the

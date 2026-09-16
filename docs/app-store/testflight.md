@@ -23,6 +23,14 @@ npm run cap:build      # web bundle → ios/, stamps MARKETING_VERSION + build n
 npm run cap:open:ios
 ```
 
+Run `cap:build` **from the shell you are about to archive from**, and never archive on top
+of a live-reload sync. `CAPACITOR_DEV_URL` points the WebView at the Vite dev server, and
+`cap sync` bakes that into `ios/App/App/capacitor.config.json`, which is gitignored and
+copied into the `.ipa` — an archive taken from it loads its entire UI over plaintext HTTP
+from a LAN address and looks perfectly normal until it is installed (LIFT-1435).
+`cap:build` sets `CAPACITOR_BUILD=true`, so it ignores that variable, and its last step
+(`npm run guard:native-config`) re-checks the emitted file.
+
 In Xcode: destination **Any iOS Device (arm64)** → Product → **Archive** → Organizer →
 **Distribute App** → App Store Connect → Upload (keep the defaults: upload symbols, manage
 version and build number OFF — the hook already stamped them). The export-compliance
@@ -48,6 +56,11 @@ so re-upload at least quarterly while in beta.
 
 ## When something goes wrong
 
+- `guard:native-config` fails with "points the app at a dev server": the sync came from a
+  live-reload session. `unset CAPACITOR_DEV_URL` and re-run `npm run cap:build`.
+- The installed build shows a blank screen or a "cannot connect" error: same cause, reached
+  by archiving before the guard existed. Check `ios/App/App/capacitor.config.json` for
+  `server.url`.
 - "Missing compliance": the Info.plist key was lost — `npm run cap:configure:ios` re-applies it.
 - "Invalid bundle / iPad": `TARGETED_DEVICE_FAMILY` must be `1`; same fix.
 - "Missing privacy manifest": `PrivacyInfo.xcprivacy` is not in Copy Bundle Resources; same fix
