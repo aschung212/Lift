@@ -873,12 +873,15 @@ jobs:
             # brings it in. Only a fetch that SUCCEEDED is recorded, so a
             # transient network failure is retried on the next attempt rather
             # than stranding the rest of the poll on a stale clone. The repo is
-            # public and persist-credentials is false, so this is anonymous.
+            # public and persist-credentials is false, so this is anonymous —
+            # GIT_TERMINAL_PROMPT=0 so that a repo which is one day NOT public
+            # fails the fetch immediately instead of reaching for a credential
+            # prompt inside a job whose whole job is to not hang.
             # `unknown` (a value that is not an object name at all) does not
             # get here — no fetch can make junk resolvable.
             if [ "$STATUS" = "absent" ] && [ "$DEPLOYED_SHA" != "$REFETCHED_FOR" ]; then
               echo "Attempt $i/$ATTEMPTS: $DEPLOYED_SHA is not in this clone — fetching origin master"
-              if git fetch --no-tags --quiet origin master; then
+              if GIT_TERMINAL_PROMPT=0 git fetch --no-tags --quiet origin master; then
                 REFETCHED_FOR="$DEPLOYED_SHA"
                 STATUS=$(bash scripts/classify-deployed-commit.sh "$EXPECTED_SHA" "$DEPLOYED_SHA")
               fi
