@@ -32,7 +32,8 @@
 # no-op deploy looks exactly like a real one right down to the Slack line.
 # A judgement like this cannot be derived from the build graph the way
 # "every module vite.config.js imports" can, so deployVerification.test.ts
-# reconciles the list against the repo's tracked top-level entries instead: a
-# new one fails the suite until someone writes down a verdict for it.
+# reconciles the list against the repo instead: every top-level directory that
+# is present and not gitignored needs a verdict there, and the suite stays red
+# until someone writes one. Adding a directory here means adding it there too.
 set -euo pipefail
 git diff --quiet HEAD^ HEAD -- . ':(exclude).github/' ':(exclude).husky/' ':(exclude)Screenshots/' ':(exclude)docs/' ':(exclude)e2e/' ':(exclude)ios/' ':(exclude)scripts/' ':(exclude)supabase/' ':(exclude)test-results/' ':(exclude).coverage-baseline.json' ':(exclude)capacitor.config.ts' ':(exclude)eslint.config.js' ':(exclude)lighthouserc.json' ':(exclude)netlify.toml' ':(exclude)playwright.config.ts' ':(exclude,glob)*.md' ':(exclude,glob)vitest*.config.js'
