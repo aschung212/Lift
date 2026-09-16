@@ -260,6 +260,14 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
+`.env.local` is gitignored, so a **git worktree** (`.claude/worktrees/…`) starts without it — and a build made there ships with no Supabase at all: the auth screen reads "Supabase not configured", and a native app built from that bundle carries the same. Copy only the two client lines across before building there (the file also holds admin-only secrets):
+
+```bash
+grep -E '^VITE_SUPABASE_(URL|ANON_KEY)=' ~/development/lift/.env.local > .env.local
+```
+
+`grep -l supabase.co dist/assets/*.js` after a build proves the URL made it in.
+
 Run the Supabase migration in `supabase/migration.sql` to create the required tables and RLS policies, then:
 
 ```bash
