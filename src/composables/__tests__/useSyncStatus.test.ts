@@ -217,8 +217,52 @@ describe('useSyncStatus', () => {
     it('reports failure when the status is unchanged afterwards', async () => {
       const sync = useSyncStatus()
       syncStatus.value = 'error'
+      // A queued write is what keeps the failure real — with the queue empty
+      // and the reads clean, the label below would be the stale one instead.
+      setStranded(1)
 
       await expect(sync.syncNow()).resolves.toBe('failed')
+    })
+
+    /**
+     * `reportFetchError` writes a READ failure into the shared write-queue
+     * status ref, and only a successful FLUSH clears it — which returns early
+     * on an empty queue. So a user who only browses history could recover
+     * completely and keep a lit indicator forever. The manual pass verifies
+     * both halves, so it must not report a failure that no longer exists.
+     */
+    it('retires a stale read-driven error once the retry proves reads are clean', async () => {
+      const sync = useSyncStatus()
+      reactiveStores.workout.lastSyncError = 'unknown'
+      syncStatus.value = 'error'
+      await nextTick()
+      refetchAllStores.mockImplementation(async () => {
+        reactiveStores.workout.lastSyncError = null
+        return true
+      })
+
+      await expect(sync.syncNow()).resolves.toBe('synced')
+      expect(syncStatus.value).toBe('synced')
+    })
+
+    it('retires a stale offline label the same way', async () => {
+      const sync = useSyncStatus()
+      syncStatus.value = 'offline'
+
+      await expect(sync.syncNow()).resolves.toBe('synced')
+      expect(syncStatus.value).toBe('synced')
+    })
+
+    // Evidence, not optimism: an unsent change means the write half is still
+    // genuinely failing, whatever the reads said.
+    it('leaves the failure standing while a change is still unsent', async () => {
+      const sync = useSyncStatus()
+      syncStatus.value = 'error'
+      setStranded(1)
+
+      await sync.syncNow()
+
+      expect(syncStatus.value).toBe('error')
     })
 
     it('does not attempt a request the browser knows cannot land', async () => {

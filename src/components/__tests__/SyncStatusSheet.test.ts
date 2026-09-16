@@ -132,6 +132,9 @@ describe('SyncStatusSheet', () => {
   // screen is what made the original indicator untrustworthy.
   it('says the retry did not work rather than silently succeeding', async () => {
     syncStatus.value = 'error'
+    // A still-unsent change is what makes the failure real — with the queue
+    // empty and the reads clean, the retry would correctly retire the label.
+    publishSyncQueueStats({ pending: 0, journaled: 1, stranded: 1 })
     const w = mountSheet()
     await nextTick()
 

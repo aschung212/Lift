@@ -22,6 +22,7 @@
  */
 import { computed, effectScope, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { syncStatus } from '../lib/syncQueue'
+import { broadcastSyncStatus } from '../lib/crossTabSync'
 import { syncQueueStats, formatSyncAge } from '../lib/syncActivity'
 import { combineSyncStatus, type SyncErrorKind, type SyncStatus } from '../lib/syncStatus'
 import { refetchAllStores } from './useSyncRecovery'
@@ -153,6 +154,30 @@ function create(): UseSyncStatusReturn {
     measuredAt.value = Date.now()
   }
 
+  /**
+   * Retire a stale label on the shared write-queue status ref.
+   *
+   * `reportFetchError` writes a READ failure straight into `syncStatus`
+   * (LIFT-786, predating the `lastSyncError` fold in LIFT-1179), and the only
+   * thing that ever clears it is a successful FLUSH — which returns early on an
+   * empty queue. So a read that failed and then recovered leaves the indicator
+   * lit for a user who is only browsing history, with nothing able to reset it.
+   * A parked-offline flush leaves 'offline' behind the same way.
+   *
+   * The manual pass just re-read all four stores and drained the queue, so at
+   * this point BOTH halves have been verified — clearing here is a conclusion
+   * drawn from evidence, not optimism, and without it "Try again" would report
+   * a failure that no longer exists. Deliberately scoped to the user-initiated
+   * path: the ambient recovery triggers have the same gap, which is a
+   * pre-existing defect tracked on its own rather than widened here.
+   */
+  function clearStaleWriteStatus(): void {
+    const stale = syncStatus.value === 'error' || syncStatus.value === 'offline'
+    if (!stale || readError.value !== null || unsentChanges.value !== 0) return
+    syncStatus.value = 'synced'
+    broadcastSyncStatus('synced')
+  }
+
   async function syncNow(): Promise<ManualSyncResult> {
     if (isRetrying.value) return 'failed'
     isRetrying.value = true
@@ -165,6 +190,7 @@ function create(): UseSyncStatusReturn {
       // remote-wins, so reading first would repaint the stale server value over
       // the edit that is still queued.
       await refetchAllStores('manual')
+      clearStaleWriteStatus()
       const outcome: ManualSyncResult =
         status.value === 'synced' ? 'synced'
           : status.value === 'offline' ? 'offline'
