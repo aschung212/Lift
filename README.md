@@ -280,31 +280,43 @@ Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_
 ### Native iOS build (Capacitor)
 
 The PWA is wrapped with [Capacitor 8](https://capacitorjs.com) for the App Store. The
-shared config lives in `capacitor.config.ts` (`appId: com.aschung212.lift`). The native
-`ios/` project is generated per-machine and is **not** committed — it depends on a local
-Xcode toolchain. Generate and run it on the Simulator with:
+shared config lives in `capacitor.config.ts` (`appId: com.aschung212.lift`), and the
+native `ios/` project **is committed** — it is the App Store build: the icon, the launch
+screen, `PrivacyInfo.xcprivacy`, the HealthKit entitlement and the build settings live in
+git like any other shipping artifact. Capacitor's own `ios/.gitignore` keeps the generated
+parts out (`App/App/public`, `capacitor.config.json`, `DerivedData`, `xcuserdata`), which
+is why a fresh clone must sync once before Xcode can build:
 
 ```bash
-# One-time: generate the native Xcode project (Swift Package Manager — no CocoaPods needed)
-npx cap add ios --packagemanager SPM
+# Build the web bundle and sync it into the native project (also stamps the version)
+npm run cap:build        # = npm run build && npx cap sync (+ scripts/configure-ios.mjs)
 
-# Build the web bundle and sync it into the native project
-npm run cap:build        # = npm run build && npx cap sync (+ the configure step below)
-
-# Open the project in Xcode, then build & run on a Simulator (e.g. iPhone 16 Pro)
+# Open the project in Xcode, then build & run on a Simulator or your iPhone
 npm run cap:open:ios
 ```
 
 Every `npx cap sync` also runs `scripts/configure-ios.mjs` (the `capacitor:sync:after`
-hook in `package.json`), which applies what the stock template lacks and re-applies it
-after any regeneration: the HealthKit usage strings in `Info.plist`, the
-`com.apple.developer.healthkit` entitlement (`App/App.entitlements`, wired into the App
-target's build settings), and an **iOS 16.0 deployment target**. It is idempotent and can
-be run by hand with `npm run cap:configure:ios`. The app should launch to the auth screen
-with no white screen, and **Settings → Apple Health** appears only in this build (HealthKit
-has no web API). The Simulator needs no signing; running on a physical iPhone needs a
-signing team whose App ID carries the HealthKit capability. Re-run `npm run cap:build`
-after any web change to re-sync the `dist/` bundle into the native shell.
+hook in `package.json`). On the committed project the only thing it changes is the
+version pair: `MARKETING_VERSION` from `package.json` and `CURRENT_PROJECT_VERSION` from
+the commit count on the current branch, so every archive cut from `master` carries a build
+number App Store Connect accepts as newer than the last — bump `package.json`'s version
+for a new App Store version, never the project file. If the project is ever regenerated
+(`rm -rf ios && npx cap add ios --packagemanager SPM`), the same hook re-applies
+everything the stock template lacks: the HealthKit usage strings and the
+`ITSAppUsesNonExemptEncryption` export-compliance key in `Info.plist`, the
+`com.apple.developer.healthkit` entitlement wired into the App target, the iOS 16.0
+deployment target, iPhone-only `TARGETED_DEVICE_FAMILY`, and `PrivacyInfo.xcprivacy` wired
+into Copy Bundle Resources. It is idempotent and can be run by hand with
+`npm run cap:configure:ios`; `scripts/__tests__/configure-ios.test.mjs` runs it against
+the real template shipped in `@capacitor/cli` **and** asserts the committed project already
+carries all of it, so a setting flipped by hand in Xcode fails CI. The icon and the native
+launch screen come from the same sources as the PWA's: `public/icon-source.png` is copied
+into the asset catalog, and `node scripts/generate-launch-screens.js --native` renders the
+Eternal mark at 2732×2732 into `Splash.imageset`. The Simulator needs no signing; a
+physical iPhone needs a signing team, and a free Personal Team works, HealthKit included.
+**Settings → Apple Health** appears only in this build (HealthKit has no web API). Re-run
+`npm run cap:build` after any web change to re-sync the `dist/` bundle into the native
+shell.
 
 ---
 

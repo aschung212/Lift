@@ -20,4 +20,4 @@
 # guard pins the exact invocation, so a rename here needs a matching edit
 # there and in deployVerification.test.ts.
 set -euo pipefail
-git diff --quiet HEAD^ HEAD -- . ':(exclude).github/' ':(exclude).husky/' ':(exclude)LiftApp/' ':(exclude)Screenshots/' ':(exclude)docs/' ':(exclude)e2e/' ':(exclude)scripts/' ':(exclude)supabase/' ':(exclude)test-results/' ':(exclude).coverage-baseline.json' ':(exclude)capacitor.config.ts' ':(exclude)eslint.config.js' ':(exclude)lighthouserc.json' ':(exclude)netlify.toml' ':(exclude)playwright.config.ts' ':(exclude,glob)*.md' ':(exclude,glob)vitest*.config.js'
+git diff --quiet HEAD^ HEAD -- . ':(exclude).github/' ':(exclude).husky/' ':(exclude)Screenshots/' ':(exclude)docs/' ':(exclude)e2e/' ':(exclude)scripts/' ':(exclude)supabase/' ':(exclude)test-results/' ':(exclude).coverage-baseline.json' ':(exclude)capacitor.config.ts' ':(exclude)eslint.config.js' ':(exclude)lighthouserc.json' ':(exclude)netlify.toml' ':(exclude)playwright.config.ts' ':(exclude,glob)*.md' ':(exclude,glob)vitest*.config.js'
