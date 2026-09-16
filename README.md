@@ -311,7 +311,8 @@ npm run cap:open:ios
 disable the service worker (#532), and `capacitor.config.ts` reads it to ignore
 `CAPACITOR_DEV_URL` (LIFT-1435). A `VAR=value cmd` prefix binds to one command, so the
 duplication is deliberate. Live reload is unaffected — `CAPACITOR_DEV_URL=http://192.168.1.x:5173
-npx cap run ios` sets no such flag and still points the WebView at the Vite dev server.
+npx cap sync` sets no such flag and still points the WebView at the Vite dev server (use
+`cap sync`, not `cap run ios`, which currently cannot build — see #1442).
 The last step, `npm run guard:native-config`
 (`scripts/check-native-release-config.mjs`), re-reads the `capacitor.config.json` that
 `cap sync` actually emitted and fails the build if it carries `server.url`, `cleartext` or

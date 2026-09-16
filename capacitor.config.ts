@@ -1,9 +1,11 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 /**
- * Native live reload: `CAPACITOR_DEV_URL=http://192.168.1.x:5173 npx cap run ios`
- * points the WebView at the Vite dev server instead of the assets bundled in
- * the app.
+ * Native live reload: `CAPACITOR_DEV_URL=http://192.168.1.x:5173` points the
+ * WebView at the Vite dev server instead of the assets bundled in the app. It
+ * is read by every Capacitor CLI command that resolves this config — `cap sync`
+ * is the one to use, because `cap run ios` currently cannot build (#1442:
+ * `ios.scheme` names an Xcode scheme that does not exist).
  *
  * It is deliberately IGNORED for a release build (LIFT-1435). `cap sync`
  * resolves this file and writes the answer verbatim into
@@ -19,8 +21,9 @@ import type { CapacitorConfig } from '@capacitor/cli'
  * `CAPACITOR_BUILD=true` is that discriminator, already set by
  * `npm run cap:build` — the command CLAUDE.md mandates for every native build —
  * and already used the same way by `vite.config.js` to disable the service
- * worker (#532). It must be exported for the `cap sync` half of that script too,
- * not just the `vite build` half, or this branch never runs where it matters.
+ * worker (#532). A `VAR=value cmd` prefix binds to one command, so it has to be
+ * set on the `cap sync` half of that script as well as the `vite build` half —
+ * otherwise this branch never runs where it matters.
  * `npm run guard:native-config` re-checks the file `cap sync` actually emitted,
  * because a config is only trustworthy once resolved.
  */
