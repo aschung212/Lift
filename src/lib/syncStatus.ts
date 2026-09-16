@@ -29,8 +29,8 @@ export type SyncErrorKind = 'auth' | 'network' | 'unknown'
 export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline'
 
 /**
- * Fold a background READ fetch failure into the write-queue-driven sync status
- * (LIFT-1179).
+ * Fold a background READ fetch failure and any stranded WRITES into the
+ * write-queue-driven sync status (LIFT-1179, extended in LIFT-1323).
  *
  * Each store exposes a typed `lastSyncError` set when a background read fails,
  * but until now nothing surfaced it: the indicator reflected only the write
@@ -42,10 +42,25 @@ export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline'
  * otherwise idle. Any read error kind maps to 'error' (offline is owned by the
  * write/connectivity path); the actionable `auth` kind is additionally
  * surfaced by the re-auth banner.
+ *
+ * `strandedWrites` closes the third hole, and it is the one that produced
+ * PERMANENT silent divergence. `syncStatus` tracks the last *batch*, so a write
+ * that exhausted its retries (or that the server refused) flipped it to
+ * 'error' — and then the very next successful flush of an unrelated key set it
+ * back to 'synced' while that change sat unsent in the durable journal, with
+ * nothing on screen. A retained journal entry with no live attempt behind it is
+ * a failed sync that has not been recovered yet, so it reads as 'error' until
+ * a replay lands it. `'syncing'` still wins: a replay in progress is the
+ * recovery, not a failure.
  */
-export function combineSyncStatus(writeStatus: SyncStatus, readError: SyncErrorKind | null): SyncStatus {
+export function combineSyncStatus(
+  writeStatus: SyncStatus,
+  readError: SyncErrorKind | null,
+  strandedWrites = 0,
+): SyncStatus {
   if (writeStatus !== 'synced') return writeStatus
-  return readError ? 'error' : 'synced'
+  if (readError) return 'error'
+  return strandedWrites > 0 ? 'error' : 'synced'
 }
 
 /**

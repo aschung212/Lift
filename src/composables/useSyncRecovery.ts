@@ -37,8 +37,16 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import { usePreferencesStore } from '../stores/preferences'
 import { useProgressionStore } from '../stores/progression'
 
-/** What woke the recovery up. Reported to Sentry when a re-fetch throws. */
-export type RefetchTrigger = 'online' | 'resume' | 'session-recovered'
+/**
+ * What woke the recovery up. Reported to Sentry when a re-fetch throws.
+ *
+ * `manual` is the only user-initiated one — the "Try again" action in the
+ * sync-status sheet (LIFT-1323). It bypasses the cooldown below, because that
+ * floor exists to collapse *ambient* bursts (a resume fires several events, a
+ * flaky link re-fires `online`) and a deliberate tap is neither ambient nor
+ * repeated by the platform.
+ */
+export type RefetchTrigger = 'online' | 'resume' | 'session-recovered' | 'manual'
 
 /**
  * Minimum spacing between re-fetches. A resume fires `visibilitychange` AND
@@ -71,7 +79,12 @@ async function run(trigger: RefetchTrigger): Promise<void> {
   // remote-wins reads. Separate try from the flush so a replay failure can never
   // suppress the flush, which is the load-bearing half.
   try {
-    syncQueue.replayJournal()
+    // A manual retry also re-arms keys the server refused outright. Those are
+    // barred from ambient replay because a reconnect can only reproduce the
+    // same refusal, but the user tapping "Try again" is asking for exactly one
+    // more attempt — and the refusal may since have become answerable (the
+    // LIFT-1169 code-ahead-of-schema window closes this way).
+    syncQueue.replayJournal({ includeRefused: trigger === 'manual' })
   } catch (err) {
     logError(err, { source: 'useSyncRecovery', action: 'replay', trigger })
   }
@@ -122,12 +135,24 @@ function scheduleTrailing(trigger: RefetchTrigger): void {
  * returned 401s, so whatever is currently in flight (or just ran) is exactly the
  * data that must be fetched again. `online` / `resume` are dropped when blocked
  * — an in-flight or just-completed run already carries the fresh data they want.
+ *
+ * `manual` ignores the cooldown but still respects single-flight: when a run is
+ * already in flight it JOINS that one rather than stacking a second identical
+ * pass. The in-flight run started moments ago and does the same three things
+ * (replay, flush, read all four stores), so waiting on it answers the user's
+ * tap with a real result instead of doubling the request load.
  */
 export function refetchAllStores(trigger: RefetchTrigger): Promise<boolean> {
   // Nothing to recover to while the device is offline; the `online` listener is
   // the signal that matters, and it will fire.
   if (isOffline()) return Promise.resolve(false)
-  if (_inFlight || msUntilAllowed() > 0) {
+  const manual = trigger === 'manual'
+  if (_inFlight) {
+    if (manual) return _inFlight.then(() => true, () => false)
+    if (trigger === 'session-recovered') scheduleTrailing(trigger)
+    return Promise.resolve(false)
+  }
+  if (!manual && msUntilAllowed() > 0) {
     if (trigger === 'session-recovered') scheduleTrailing(trigger)
     return Promise.resolve(false)
   }
