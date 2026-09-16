@@ -164,6 +164,10 @@
         </div>
       </nav>
 
+      <!-- Password reset landing (#1430): raised by PASSWORD_RECOVERY when an
+           emailed reset link opens the PWA. The native app resets by code instead. -->
+      <PasswordResetSheet v-if="passwordRecoveryPending" @close="clearPasswordRecovery" />
+
       <!-- Settings bottom sheet (extracted to SettingsSheet.vue) -->
       <SettingsSheet v-if="settingsOpen" ref="settingsSheetRef" v-model="settingsOpen" @sign-out="handleSignOut" />
 
@@ -297,6 +301,7 @@ const BodyweightTracker = defineAsyncComponent({
 // UI many users never open — split it (and its transitive deps) into an on-demand
 // chunk, gated by v-if="settingsOpen" so the chunk isn't fetched until first open.
 const SettingsSheet = defineAsyncComponent(() => import('./components/SettingsSheet.vue'))
+const PasswordResetSheet = defineAsyncComponent(() => import('./views/PasswordResetSheet.vue'))
 // AI Review sheet — reached only from the Calendar-tab top-bar button, so its
 // chunk (and the export/profile UI it pulls in) loads on first open.
 const CoachSheet = defineAsyncComponent(() => import('./views/CoachSheet.vue'))
@@ -347,7 +352,7 @@ const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 const { celebrateUnlocks } = useXPCeremony()
 
-const { user, loading, isGuest, init: initAuth, signOut, exitGuestMode } = useAuth()
+const { user, loading, isGuest, init: initAuth, signOut, exitGuestMode, passwordRecoveryPending, clearPasswordRecovery } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
