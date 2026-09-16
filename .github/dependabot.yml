@@ -8,6 +8,29 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    # LIFT-1434: hold every freshly-published release for five days before
+    # Dependabot will even propose it. master auto-deploys to Vercel
+    # production, so a version bump is a delivery path into the shipping
+    # bundle — the path every documented npm registry compromise has used (the
+    # Sept-2025 `qix` phishing that hit chalk/debug/ansi-styles/strip-ansi; the
+    # 2026-08 CHAINDROP campaign against the `keyv` maintainer). Those releases
+    # are found and yanked in hours-to-days, and npm-audit.yml cannot cover
+    # that window by construction: a version published an hour ago has no
+    # advisory yet, which is precisely what makes the window worth attacking.
+    #
+    # The cooldown is deliberately UNIFORM — no `semver-patch-days` shortcut.
+    # Every compromise above shipped as a patch or minor release, so the short
+    # patch window that reads like a concession to "let security fixes through
+    # fast" would reopen exactly the hole this closes, and it would buy nothing:
+    # GitHub documents `cooldown` as applying to *version* updates only, never
+    # to security updates, so an alert-driven fix for a known CVE is unaffected
+    # either way.
+    #
+    # Five days, not the platform's own implicit three, so the window is a
+    # decision this repo makes rather than a default that can move underneath
+    # it.
+    cooldown:
+      default-days: 5
     groups:
       npm-patch-and-minor:
         update-types:
@@ -26,6 +49,14 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+    # Actions are pinned by commit SHA, which fixes WHAT runs but not WHO
+    # published it — a compromised action release is the same delivery path as
+    # a compromised npm release, and these run with the repo's GITHUB_TOKEN.
+    # `default-days` is the only cooldown key GitHub supports for this
+    # ecosystem (the `semver-*-days` overrides are npm-side only), which is all
+    # this needs.
+    cooldown:
+      default-days: 5
     groups:
       actions-patch-and-minor:
         update-types:

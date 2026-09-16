@@ -1,10 +1,50 @@
-name: Dependabot auto-merge
+name: Dependabot PR triage
+
+# NOTE: the filename is historical. This workflow no longer auto-merges
+# anything; it annotates Dependabot PRs for the human who will.
+#
+# WHY (LIFT-1434): this job used to run `gh pr merge --auto --squash` for every
+# Dependabot PR whose `update-type` was not `version-update:semver-major`.
+# master auto-deploys to Vercel production, so that was a complete, human-free
+# path from "a package maintainer's npm account is phished" to "attacker code
+# is live on spa-rho-sandy.vercel.app": PR #1415 went from opened to merged in
+# 2 minutes 18 seconds. The only gate was `build-and-test`, which runs `npm ci`
+# — i.e. it executes the very install lifecycle scripts a compromised package
+# ships — and the daily npm-audit.yml gate cannot help, because a version
+# published an hour ago has no advisory yet.
+#
+# `update-type != 'version-update:semver-major'` was never a security
+# discriminator: the Sept-2025 `qix` phishing (chalk/debug/ansi-styles) and the
+# 2026-08 CHAINDROP campaign against `keyv` both shipped as ordinary patch and
+# minor releases, indistinguishable here from a routine bump.
+#
+# Two layers replace it:
+#   1. `cooldown: default-days: 5` in .github/dependabot.yml — a release is not
+#      proposed at all until it has survived five days on the registry, which
+#      outlasts the window in which a malicious version is typically yanked.
+#   2. A person merges. Updates are grouped, so that is roughly one PR per
+#      ecosystem per week.
+#
+# WHY NOT "auto-merge security updates only", which is what LIFT-1434 proposed:
+# the only trustworthy signal that a Dependabot PR fixes a published advisory
+# is `steps.metadata.outputs.ghsa-id`, and `dependabot/fetch-metadata`
+# populates that only under `alert-lookup: true`, which its own README
+# documents as requiring a PAT or GitHub App token — the built-in GITHUB_TOKEN
+# cannot read Dependabot alerts, and a `pull_request` run triggered by
+# Dependabot is denied user-defined secrets besides. Sniffing the PR body for
+# "GHSA-" is NOT a substitute: that text is reproduced from the upstream
+# release notes, so a malicious release could put the string in its own
+# changelog to trip the gate. Restoring security-only auto-merge means creating
+# a GitHub App with `Dependabot alerts: read` and moving this workflow to
+# `pull_request_target`. Until then the honest gate is a person.
 
 on: pull_request
 
+# Read-only. The old `contents: write` + `pull-requests: write` pair existed
+# solely to enable auto-merge; nothing here mutates the repository now.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 jobs:
   dependabot:
@@ -18,9 +58,25 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Enable auto-merge for patch and minor updates
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr merge --auto --squash "$PR_URL"
+      - name: Summarize the update for review
+        # Metadata reaches the script through env vars rather than `${{ }}`
+        # interpolation so an upstream package name can never be spliced into
+        # the shell.
+        run: |
+          {
+            echo "### Dependabot update — merge is manual"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Ecosystem | \`${ECOSYSTEM:-unknown}\` |"
+            echo "| Update type | \`${UPDATE_TYPE:-unknown}\` |"
+            echo "| Dependency type | \`${DEPENDENCY_TYPE:-unknown}\` |"
+            echo "| Dependencies | \`${DEPENDENCY_NAMES:-unknown}\` |"
+            echo
+            echo "Auto-merge is disabled deliberately (LIFT-1434): master auto-deploys to production, so no dependency reaches users without a person merging it. Releases are already held 5 days by the \`cooldown\` in \`.github/dependabot.yml\`."
+          } >> "$GITHUB_STEP_SUMMARY"
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCY_TYPE: ${{ steps.metadata.outputs.dependency-type }}
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
