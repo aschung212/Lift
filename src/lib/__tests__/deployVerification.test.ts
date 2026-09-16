@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from 'yaml'
@@ -355,6 +356,17 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
     expect(deploys(['vite-plugin-theme-split.ts'])).toBe(true)
   })
 
+  it('the harness sees the ios/ omission too (self-test, LIFT-1438)', () => {
+    // The denylist as it shipped between #1429 (which committed ios/) and
+    // LIFT-1438. Same evaluator, same commit, opposite answers — so the
+    // ios/ assertions below are pinning a real change, not restating a
+    // property the command already had.
+    const withoutIos =
+      "git diff --quiet HEAD^ HEAD -- . ':(exclude).github/' ':(exclude)docs/' ':(exclude)scripts/'"
+    expect(deploysWhenTouching(['ios/App/App/Info.plist'], withoutIos)).toBe(true)
+    expect(deploys(['ios/App/App/Info.plist'])).toBe(false)
+  })
+
   it('compares the pushed commit against its parent', () => {
     // Anything else and the gate answers for the wrong pair of commits — and
     // ci.yml checks out with fetch-depth: 2 on the strength of exactly this.
@@ -413,6 +425,12 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
     ['playwright.config.ts'],
     ['vitest.config.js'],
     ['vitest.browser.config.js'],
+    // LIFT-1438: the native project is not a web build input. Capacitor's own
+    // ios/.gitignore keeps the copied dist/ and generated capacitor.config.json
+    // out of the repo, so everything tracked here is Xcode/Swift-side state.
+    ['ios/App/App/Info.plist'],
+    ['ios/App/App.xcodeproj/project.pbxproj'],
+    ['ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png'],
   ])('skips a commit touching only %s', (path) => {
     expect(deploys([path])).toBe(false)
   })
@@ -429,6 +447,13 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
     expect(deploys(['.github/workflows/ci.yml', 'docs/notes.md', 'src/main.ts'])).toBe(true)
   })
 
+  it('deploys a native PR that also touches shared TypeScript', () => {
+    // A Capacitor change routinely lands with the composable that drives it
+    // (useHealthSync + the HealthKit entitlement, say). Excluding `ios/` must
+    // not swallow the web half of such a commit.
+    expect(deploys(['ios/App/App/App.entitlements', 'src/composables/useHealthSync.ts'])).toBe(true)
+  })
+
   it('deploys an unrecognised new root-level path (fails safe)', () => {
     // The whole point of a denylist: the next root-level build input to appear
     // deploys by default instead of silently never deploying.
@@ -443,6 +468,15 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
     expect(deploys(['src/scripts/worker.ts'])).toBe(true)
   })
 
+  it('excludes the whole native project, not just its Swift sources', () => {
+    // The `*.md` glob is FNM_PATHNAME, so it never covered
+    // ios/App/CapApp-SPM/README.md — which is the shape of gap a per-file
+    // exclusion leaves behind and a directory exclusion does not.
+    expect(deploys(['ios/App/CapApp-SPM/README.md'])).toBe(false)
+    expect(deploys(['ios/.gitignore'])).toBe(false)
+    expect(deploys(['ios/debug.xcconfig'])).toBe(false)
+  })
+
   it("CI's deploy gate can still execute the command it reads from vercel.json", () => {
     // ci.yml refuses to eval anything that isn't the known-safe form, so a
     // rewrite that breaks this would fail every master push with
@@ -455,5 +489,171 @@ describe('vercel.json ignoreCommand — which commits deploy (LIFT-1354)', () =>
     const accepted = gateRun.match(/"([^"]+)"\)/)?.[1]
     expect(accepted, "expected the gate step's case guard to name a literal command").toBeTruthy()
     expect(ignoreCommandOf()).toBe(accepted)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LIFT-1438: reconciling the denylist against what the repo actually tracks.
+//
+// The assertions above answer "does path X deploy?" for paths somebody thought
+// to name. That is exactly what failed here: `ios/` was a gitignored
+// per-machine artefact when the denylist was written, so there was no path to
+// name, and when #1429 committed it as the App Store build it touched neither
+// the script nor this file. Every native-only commit since — an Info.plist
+// usage string, an entitlement, an icon, a deployment-target or SPM bump —
+// spent a Vercel build and re-promoted production with a web bundle nobody had
+// changed, moving `version.json`'s commit for it. Invisible by construction: a
+// no-op deploy looks exactly like a real one, right down to notify-deploy's
+// "✅ Deployed to production (verified live)".
+//
+// This is the third time this one file has been wrong about a path that
+// existed and was never enumerated (LIFT-1354: the vite-plugin-*.ts files, and
+// package-lock.json). The derived assertion there — every root-level module
+// vite.config.js imports must deploy — closes that class for build inputs, but
+// it cannot close this one: whether a path belongs in the web bundle is a
+// judgement, not something readable out of the build graph.
+//
+// So the judgement is written down once, below, and RECONCILED against the
+// repo: a tracked top-level entry with no verdict fails this suite until
+// someone writes one. The next `ios/` therefore forces its decision at the
+// moment it is committed instead of silently inheriting the fail-safe default.
+// ---------------------------------------------------------------------------
+
+type Deployability = 'deploy' | 'skip'
+
+/**
+ * Every tracked top-level entry, and whether a commit touching only it should
+ * reach production.
+ *
+ * A handful of entries marked 'deploy' are not build inputs at all
+ * (`.gitattributes`, `.gitignore`, `.shellcheckrc`, `.run-browser-probe.sh`).
+ * That is the denylist failing safe, and it is deliberately left as-is: those
+ * files change close to never, and an occasional redundant build is the price
+ * of the property that an unrecognised path deploys rather than silently not
+ * deploying. `ios/` is different in kind — it is touched on every step toward
+ * App Store submission.
+ */
+const TOP_LEVEL_DEPLOYABILITY: Record<string, Deployability> = {
+  // Ships to production.
+  '.csp-hash.mjs': 'deploy',
+  '.gitattributes': 'deploy',
+  '.gitignore': 'deploy',
+  '.run-browser-probe.sh': 'deploy',
+  '.shellcheckrc': 'deploy',
+  'api': 'deploy',
+  'env.d.ts': 'deploy',
+  'index.html': 'deploy',
+  'package-lock.json': 'deploy',
+  'package.json': 'deploy',
+  'public': 'deploy',
+  'src': 'deploy',
+  'tsconfig.json': 'deploy',
+  'vercel.json': 'deploy',
+  'vite-plugin-legal-pages.ts': 'deploy',
+  'vite-plugin-preload-default-view.ts': 'deploy',
+  'vite-plugin-sitemap-lastmod.ts': 'deploy',
+  'vite-plugin-theme-split.ts': 'deploy',
+  'vite-plugin-version-stamp.ts': 'deploy',
+  'vite.config.js': 'deploy',
+
+  // Changes nothing a browser can see.
+  'Screenshots': 'skip',
+  '.coverage-baseline.json': 'skip',
+  '.github': 'skip',
+  '.husky': 'skip',
+  '.lift703-comment.md': 'skip',
+  'CLAUDE.md': 'skip',
+  'CONTRIBUTING.md': 'skip',
+  'README.md': 'skip',
+  'capacitor.config.ts': 'skip',
+  'docs': 'skip',
+  'e2e': 'skip',
+  'eslint.config.js': 'skip',
+  'ios': 'skip',
+  'lighthouserc.json': 'skip',
+  'netlify.toml': 'skip',
+  'playwright.config.ts': 'skip',
+  'scripts': 'skip',
+  'supabase': 'skip',
+  'test-results': 'skip',
+  'vitest.browser.config.js': 'skip',
+  'vitest.config.js': 'skip',
+  'vitest.integration.config.js': 'skip',
+}
+
+/**
+ * Every tracked path in the repo, grouped by its top-level entry.
+ *
+ * `-z` because paths arrive unquoted that way — `git ls-files` otherwise
+ * C-quotes anything non-ASCII, and `Screenshots/Lift — Workout Tracker.png`
+ * would come back as a literal `"Screenshots\342\200\246"`.
+ */
+function trackedPathsByTopLevel(): Map<string, string[]> {
+  let out: string
+  try {
+    out = execFileSync('git', ['ls-files', '-z'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
+  } catch (err) {
+    // Loud, never skipped. A reconciliation that cannot enumerate the repo
+    // passes vacuously, which is the failure mode this guard exists to close.
+    throw new Error(`could not run \`git ls-files\`: ${(err as Error).message}`, { cause: err })
+  }
+  const byEntry = new Map<string, string[]>()
+  for (const path of out.split('\0').filter(Boolean)) {
+    const entry = path.split('/')[0]
+    const paths = byEntry.get(entry)
+    if (paths) paths.push(path)
+    else byEntry.set(entry, [path])
+  }
+  return byEntry
+}
+
+describe('the denylist is reconciled against the repo (LIFT-1438)', () => {
+  const tracked = trackedPathsByTopLevel()
+  const command = deployGateCommand()
+
+  it('enumerated the repo (the reconciliation is not vacuous)', () => {
+    // If this ever passed on an empty listing, every assertion below would
+    // pass on nothing at all.
+    expect(tracked.get('src')?.length ?? 0).toBeGreaterThan(100)
+    expect(tracked.has('package.json')).toBe(true)
+    expect(tracked.has('vercel.json')).toBe(true)
+  })
+
+  it('every tracked top-level entry has a verdict', () => {
+    const unclassified = [...tracked.keys()].filter((e) => !(e in TOP_LEVEL_DEPLOYABILITY))
+    expect(
+      unclassified,
+      `these need a verdict in TOP_LEVEL_DEPLOYABILITY — and, if they should not ` +
+        `deploy, a matching exclusion in scripts/vercel-ignore-build.sh: ${unclassified.join(', ')}`,
+    ).toEqual([])
+  })
+
+  it('no verdict names an entry the repo stopped tracking', () => {
+    // The mirror image: LiftApp/ was deleted in #1429 and its denylist entry
+    // went with it. A verdict left behind for a path that no longer exists is
+    // a claim nothing checks.
+    const stale = Object.keys(TOP_LEVEL_DEPLOYABILITY).filter((e) => !tracked.has(e))
+    expect(stale, `no longer tracked: ${stale.join(', ')}`).toEqual([])
+  })
+
+  it('the real gate agrees with every verdict, on every tracked path', () => {
+    // Evaluated against the paths git actually reports rather than a sample
+    // somebody typed, so an entry that is only PARTIALLY excluded — the gap a
+    // glob like `*.md` leaves inside a directory — cannot hide behind a
+    // representative file that happens to land on the right side.
+    const disagreements: string[] = []
+    for (const [entry, paths] of tracked) {
+      const verdict = TOP_LEVEL_DEPLOYABILITY[entry]
+      if (!verdict) continue // already reported above
+      for (const path of paths) {
+        const actual: Deployability = deploysWhenTouching([path], command) ? 'deploy' : 'skip'
+        if (actual !== verdict) disagreements.push(`${path}: expected ${verdict}, gate says ${actual}`)
+      }
+    }
+    expect(disagreements).toEqual([])
   })
 })
