@@ -13,6 +13,7 @@
     "generate-wide-screenshot": "node scripts/generate-wide-screenshot.js",
     "test": "vitest run",
     "guard:dev-surface": "node scripts/check-no-dev-surface.js",
+    "guard:native-config": "node scripts/check-native-release-config.mjs",
     "test:browser": "vitest run --config vitest.browser.config.js",
     "test:integration": "vitest run --config vitest.integration.config.js",
     "test:e2e": "playwright test",
@@ -30,9 +31,9 @@
     "cap:sync": "npx cap sync",
     "cap:open:ios": "npx cap open ios",
     "cap:run:ios": "npx cap run ios",
-    "cap:build": "CAPACITOR_BUILD=true npm run build && npx cap sync",
+    "cap:build": "CAPACITOR_BUILD=true npm run build && CAPACITOR_BUILD=true npx cap sync && npm run guard:native-config",
     "cap:configure:ios": "node scripts/configure-ios.mjs",
-    "capacitor:sync:after": "node scripts/configure-ios.mjs"
+    "capacitor:sync:after": "node scripts/configure-ios.mjs && node scripts/check-native-release-config.mjs --warn"
   },
   "dependencies": {
     "@capacitor/core": "^8.5.2",

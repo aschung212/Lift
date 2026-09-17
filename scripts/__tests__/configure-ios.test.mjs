@@ -173,9 +173,14 @@ describe('applyEntitlementsSetting / applyDeploymentTarget', () => {
 describe('wiring', () => {
   it('runs from the capacitor:sync:after hook, so it survives every regeneration', () => {
     // A typo in the hook name would silently never run: Capacitor only looks
-    // for the exact script names in package.json.
+    // for the exact script names in package.json. The hook also runs the
+    // native-config warning (LIFT-1435), so it is a chain rather than one
+    // command — this script must stay first, since the warning describes the
+    // project that configure-ios.mjs has just finished stamping.
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
-    expect(pkg.scripts['capacitor:sync:after']).toBe('node scripts/configure-ios.mjs')
+    expect(pkg.scripts['capacitor:sync:after'].split('&&')[0].trim()).toBe(
+      'node scripts/configure-ios.mjs',
+    )
     expect(pkg.scripts['cap:configure:ios']).toBe('node scripts/configure-ios.mjs')
     expect(existsSync(join(ROOT, 'scripts', 'configure-ios.mjs'))).toBe(true)
   })

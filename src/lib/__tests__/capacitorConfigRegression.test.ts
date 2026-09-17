@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
@@ -40,5 +40,52 @@ describe('capacitor.config.ts regression', () => {
 
   it('keeps the iOS custom scheme so deep links and StatusBar config resolve', () => {
     expect(capacitorConfig).toContain("scheme: 'Lift'")
+  })
+})
+
+// LIFT-1435: this config decides where the WebView loads the app FROM, so it is
+// asserted by EVALUATING it, not by reading it — a text assertion cannot tell a
+// gate from a comment about one. `cap sync` resolves this module and writes the
+// answer into ios/App/App/capacitor.config.json, which is gitignored, copied
+// into the .ipa and read by the iOS runtime, so a CAPACITOR_DEV_URL that
+// survives into a release build ships an App Store app whose entire UI comes
+// over plaintext HTTP from a LAN address. Both directions matter: the fix must
+// not quietly delete live reload either.
+describe('capacitor.config.ts dev-server origin (LIFT-1435)', () => {
+  async function loadConfig() {
+    vi.resetModules()
+    const module = await import('../../../capacitor.config')
+    return module.default
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('honours CAPACITOR_DEV_URL for a live-reload build', async () => {
+    vi.stubEnv('CAPACITOR_BUILD', undefined)
+    vi.stubEnv('CAPACITOR_DEV_URL', 'http://192.168.1.42:5173')
+    const config = await loadConfig()
+    expect(config.server?.url).toBe('http://192.168.1.42:5173')
+    expect(config.server?.cleartext).toBe(true)
+  })
+
+  it('ignores CAPACITOR_DEV_URL when CAPACITOR_BUILD=true', async () => {
+    vi.stubEnv('CAPACITOR_BUILD', 'true')
+    vi.stubEnv('CAPACITOR_DEV_URL', 'http://192.168.1.42:5173')
+    const config = await loadConfig()
+    expect(config.server?.url).toBeUndefined()
+    expect(config.server?.cleartext).toBeUndefined()
+  })
+
+  it('leaves the release config free of a dev-server origin when the var is unset', async () => {
+    vi.stubEnv('CAPACITOR_BUILD', 'true')
+    vi.stubEnv('CAPACITOR_DEV_URL', undefined)
+    const config = await loadConfig()
+    expect(config.server?.url).toBeUndefined()
+    // The rest of the config is unaffected by the discriminator.
+    expect(config.appId).toBe('com.aschung212.lift')
+    expect(config.ios?.scheme).toBe('Lift')
   })
 })
