@@ -320,7 +320,8 @@ that file is gitignored and copied into the `.ipa`, so it is what an archive rea
 and a bundle that loads its whole UI from a LAN dev server is indistinguishable from a good
 one until it is installed. Run it by hand any time you are unsure what state the native
 project is in; the same script also runs (in `--warn` mode) at the end of **every** sync,
-including the live-reload one that creates that state.
+including the live-reload one that creates that state. It is not a CI step — the file it
+reads is generated and gitignored, so CI never has one to check.
 
 Every `npx cap sync` also runs `scripts/configure-ios.mjs` (first in the
 `capacitor:sync:after` hook in `package.json`). On the committed project the only thing it changes is the
