@@ -271,18 +271,18 @@
     </transition>
   </Teleport>
 
-  <!-- Full-screen PR celebration — triggered via usePRBurst().presentPRBurst(). -->
+  <!-- The three celebration surfaces a saved set can earn. Exactly one is ever
+       presented per save, and it is `runSetCeremony` (LIFT-1448) that picks
+       which: a PR takeover, a brand-new lifter's first-ever-set card (#762), or
+       the weekly-goal banner. Each reads its own singleton visibility state. -->
   <Teleport to="body">
     <PRBurst />
   </Teleport>
 
-  <!-- First-set activation celebration (#762) — triggered on a new user's first
-       ever logged set via useFirstSetCelebration().presentFirstSetCelebration(). -->
   <Teleport to="body">
     <FirstSetCelebration />
   </Teleport>
 
-  <!-- Weekly-goal celebration — triggered via useGoalCelebration().presentGoalCelebration(). -->
   <Teleport to="body">
     <GoalCelebration />
   </Teleport>
@@ -391,6 +391,14 @@ const { showBanner: installBannerVisible, isIOSPrompt, dismiss: dismissInstallBa
 // Re-surface the install prompt at a peak moment: once a PR celebration is
 // dismissed, the user is at a high point of engagement — a far better time to
 // ask than the raw 3-workout-day gate (#1060). Respects install/snooze state.
+//
+// Deliberately watches the burst's DISMISSAL rather than subscribing to the
+// ceremony outcome `useSetLogCeremony` returns (LIFT-1448): the outcome is
+// known the instant the burst is presented, and surfacing an install banner
+// underneath a full-bleed takeover is the opposite of a peak moment. The
+// false→true→false edge is also the only signal that the burst actually
+// rendered — `presentPRBurst` no-ops under the celebrations opt-out and on a
+// malformed payload, and neither is a moment worth interrupting.
 const { visible: prBurstVisible } = usePRBurst()
 watch(prBurstVisible, (visible, wasVisible) => {
   if (wasVisible && !visible) surfaceInstallAtPeak()

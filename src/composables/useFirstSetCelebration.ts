@@ -8,13 +8,18 @@
  * gated by the caller via a localStorage flag.
  *
  * Respects the user's `experience.prCelebrations` preference (no-ops when the
- * toggle is off, matching the PR burst). Fires a success haptic via useHaptics,
- * which itself honors the haptics toggle.
+ * toggle is off, matching the PR burst).
+ *
+ * Presentation only — it does NOT fire a haptic. A save earns exactly one,
+ * decided with the celebration in `src/lib/setCeremony.ts` and fired once by
+ * `useSetLogCeremony` (LIFT-1448). Owning the haptic here meant it vanished
+ * with the card under the celebrations opt-out, which — because this moment
+ * also suppresses the routine light tap — left a brand-new lifter's very first
+ * save with no feedback at all.
  */
 
 import { ref, type Ref } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
-import { useHaptics } from './useHaptics'
 
 /** How long the card stays up before auto-dismissing (ms). */
 export const FIRST_SET_AUTO_DISMISS_MS = 4200
@@ -32,13 +37,6 @@ function presentFirstSetCelebration(): void {
   }
 
   visible.value = true
-
-  // Celebratory success haptic — useHaptics short-circuits if disabled.
-  try {
-    useHaptics().notifySuccess()
-  } catch {
-    /* silent — haptics are best-effort */
-  }
 
   // Auto-dismiss so the new user isn't left to figure out how to clear it.
   if (dismissTimeoutId !== null) clearTimeout(dismissTimeoutId)

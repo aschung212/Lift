@@ -2735,3 +2735,98 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
     expect(violations).toEqual([])
   })
 })
+
+// ── Invariant: one owner fires a save's haptic (LIFT-1448) ──────────
+
+/**
+ * A saved set earns exactly ONE celebration and exactly ONE haptic pattern,
+ * decided together by `decideSetCeremony` and fired once by
+ * `useSetLogCeremony`. Before LIFT-1448 each celebration composable owned a
+ * haptic of its own and the call site added another, which shipped both halves
+ * of the failure: the PR lane fired `notifySuccess()` twice (two native haptics
+ * back-to-back collapse into a muddy buzz on Capacitor/iOS), while the
+ * first-set lane's haptic lived INSIDE a present call that no-ops under the
+ * celebrations opt-out — and that lane also suppresses the routine light tap,
+ * so a brand-new lifter with celebrations off got nothing at all.
+ *
+ * Two structural rules, because they fail differently: a presenter that
+ * re-acquires `useHaptics` adds a second owner, and a second CALL SITE for a
+ * presenter bypasses the decision entirely (no arbitration, no haptic).
+ *
+ * Derived, not enumerated: the presenter list is read out of
+ * `useSetLogCeremony`'s own imports, so a fourth celebration surface joins both
+ * rules by being wired into the pipeline. A hardcoded list would only ever pin
+ * the three that existed when this was written — the enumeration-drift class of
+ * REPLAYABLE_COLUMNS (LIFT-1039) and LOCAL_ONLY_SET_FIELDS (#1357).
+ */
+describe('Invariant: one owner fires a save-ceremony haptic (LIFT-1448)', () => {
+  const CEREMONY = join('composables', 'useSetLogCeremony.ts')
+
+  /** `{ fn: 'presentPRBurst', module: 'composables/usePRBurst.ts' }` per presenter. */
+  function presenters(): { fn: string; module: string }[] {
+    const ceremony = getSourceFiles().find(f => f.path === CEREMONY)
+    expect(ceremony, CEREMONY + ' owns the post-save pipeline').toBeDefined()
+    const out: { fn: string; module: string }[] = []
+    // `const { presentPRBurst } = usePRBurst()` — the destructure names the
+    // function, the composable call names the module it came from.
+    const re = /const\s*\{\s*(present\w+)[^}]*\}\s*=\s*(use\w+)\(\)/g
+    for (const m of stripComments(ceremony!.content).matchAll(re)) {
+      out.push({ fn: m[1], module: join('composables', m[2] + '.ts') })
+    }
+    return out
+  }
+
+  it('reads the real pipeline and finds every celebration presenter (non-vacuity)', () => {
+    const found = presenters()
+    // The three surfaces a save can earn. If any drops out of the scan, both
+    // rules below pass vacuously for it.
+    expect(found.map(p => p.fn).sort()).toEqual([
+      'presentFirstSetCelebration',
+      'presentGoalCelebration',
+      'presentPRBurst',
+    ])
+    const paths = getSourceFiles().map(f => f.path)
+    for (const p of found) {
+      expect(paths, p.fn + ' resolves to ' + p.module).toContain(p.module)
+    }
+  })
+
+  it('no celebration composable fires a haptic of its own', () => {
+    const files = getSourceFiles()
+    const violations: string[] = []
+    for (const { fn, module } of presenters()) {
+      const source = files.find(f => f.path === module)
+      if (!source) continue
+      if (/\buseHaptics\b/.test(stripComments(source.content))) {
+        violations.push(
+          `${module} (${fn}) reaches for useHaptics. The save's single haptic is ` +
+            'decided with the celebration in lib/setCeremony.ts and fired once by ' +
+            'useSetLogCeremony — a presenter firing its own adds a second owner, ' +
+            'which is how every PR came to buzz twice. Return the pattern from ' +
+            'decideSetCeremony instead.',
+        )
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
+  it('every presenter is called from the ceremony pipeline and nowhere else', () => {
+    const violations: string[] = []
+    for (const { fn, module } of presenters()) {
+      const callers = getSourceFiles()
+        .filter(f => f.path !== CEREMONY && f.path !== module)
+        // A call, not a re-export: the name followed by an open paren.
+        .filter(f => new RegExp('\\b' + fn + '\\s*\\(').test(stripComments(f.content)))
+        .map(f => f.path)
+      if (callers.length > 0) {
+        violations.push(
+          `${callers.join(', ')} call ${fn} directly. Every celebration goes ` +
+            'through runSetCeremony so exactly one surface is presented and ' +
+            'exactly one haptic fires; a second call site stacks two full-screen ' +
+            'moments and skips the haptic entirely.',
+        )
+      }
+    }
+    expect(violations).toEqual([])
+  })
+})
