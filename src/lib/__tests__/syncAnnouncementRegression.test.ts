@@ -20,7 +20,7 @@ const appSource = readFileSync(resolve(__dirname, '../../App.vue'), 'utf-8')
  */
 describe('sync-status announcement (LIFT-1149)', () => {
   it('gives the icon-only sync indicator a text accessible name', () => {
-    // aria-label bound to the label so the SVG-only span is not nameless.
+    // aria-label bound to the label so the SVG-only control is not nameless.
     expect(appSource).toMatch(
       /class="syncIndicator"[^>]*:aria-label="syncStatusLabel"/
     )
@@ -45,6 +45,50 @@ describe('sync-status announcement (LIFT-1149)', () => {
   it('announces recovery only when returning to synced from offline/error', () => {
     expect(appSource).toMatch(
       /status === 'synced' && \(prev === 'offline' \|\| prev === 'error'\)/
+    )
+  })
+})
+
+/**
+ * The indicator is REACHABLE, not just readable (LIFT-1323).
+ *
+ * LIFT-1149 gave the icon-only `<span>` an accessible name and a live region,
+ * which fixed it for assistive tech — and left a sighted touch user with
+ * nothing but a `:title` tooltip, which does not exist on iOS. So the app's
+ * most consequential failure state (a write the server refused, replaying from
+ * the journal every launch) had no explanation and no recovery path on the
+ * platform the app ships to. The element is now a real `<button>` that opens
+ * the sync sheet, and these pin the three pieces a refactor could quietly undo.
+ */
+describe('sync-indicator is tappable (LIFT-1323)', () => {
+  /** The indicator element, from its `v-if` through its closing tag. */
+  const indicator = appSource.match(
+    /<button\s+v-if="displaySyncStatus !== 'synced'"[\s\S]*?<\/button>/,
+  )?.[0]
+
+  it('renders the indicator as a button, not a hover-only span', () => {
+    expect(indicator).toBeTruthy()
+  })
+
+  it('opens the sync sheet on tap', () => {
+    expect(indicator).toMatch(/@click="syncSheetOpen = true"/)
+  })
+
+  it('declares the dialog it controls so AT announces it as expandable', () => {
+    expect(indicator).toMatch(/aria-haspopup="dialog"/)
+    expect(indicator).toMatch(/:aria-expanded="syncSheetOpen"/)
+  })
+
+  it('mounts the sheet the button opens', () => {
+    expect(appSource).toMatch(/<SyncStatusSheet v-if="syncSheetOpen" @close="syncSheetOpen = false" \/>/)
+  })
+
+  it('reads its status from the shared composable, not a private copy', () => {
+    // App.vue used to fold the write queue and the four stores' read errors
+    // itself. The sheet needs the same answer, and two folds is one drift away
+    // from an icon that disagrees with the explanation behind it.
+    expect(appSource).toMatch(
+      /const \{ status: displaySyncStatus, label: syncStatusLabel \} = useSyncStatus\(\)/,
     )
   })
 })

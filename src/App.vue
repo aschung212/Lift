@@ -84,11 +84,26 @@
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
-            <span v-if="displaySyncStatus !== 'synced'" class="syncIndicator" :class="'syncIndicator--' + displaySyncStatus" :title="syncStatusLabel" role="img" :aria-label="syncStatusLabel">
+            <!--
+              A real button, not the icon-only span it used to be (LIFT-1323):
+              the explanation lived in a :title tooltip, which does not exist on
+              touch, so the app's most consequential failure state was
+              unreachable on the platform it ships to.
+            -->
+            <button
+              v-if="displaySyncStatus !== 'synced'"
+              class="syncIndicator"
+              :class="'syncIndicator--' + displaySyncStatus"
+              :title="syncStatusLabel"
+              :aria-label="syncStatusLabel"
+              aria-haspopup="dialog"
+              :aria-expanded="syncSheetOpen"
+              @click="syncSheetOpen = true"
+            >
               <svg v-if="displaySyncStatus === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               <svg v-else-if="displaySyncStatus === 'offline'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
               <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-            </span>
+            </button>
           </div>
           <div class="appTopBarRight">
             <button
@@ -173,6 +188,9 @@
 
       <!-- AI Review sheet (entry: Calendar-tab top-bar button) -->
       <CoachSheet v-if="coachOpen" @close="coachOpen = false" />
+
+      <!-- Sync status + manual retry (entry: the top-bar sync indicator) -->
+      <SyncStatusSheet v-if="syncSheetOpen" @close="syncSheetOpen = false" />
     </template>
 
     <!-- Undo toast -->
@@ -305,6 +323,9 @@ const PasswordResetSheet = defineAsyncComponent(() => import('./views/PasswordRe
 // AI Review sheet — reached only from the Calendar-tab top-bar button, so its
 // chunk (and the export/profile UI it pulls in) loads on first open.
 const CoachSheet = defineAsyncComponent(() => import('./views/CoachSheet.vue'))
+// Reached only from the sync indicator, which itself only renders when
+// something is wrong — so this chunk is never fetched on a healthy session.
+const SyncStatusSheet = defineAsyncComponent(() => import('./components/SyncStatusSheet.vue'))
 import { coachReviewEligibility } from './lib/coachDigest'
 import { COACH_MODE } from './lib/coachExport'
 import { useTheme, connectProgressionStore, connectThemeStore } from './composables/useTheme'
@@ -321,7 +342,7 @@ import { captureAcquisitionSource } from './composables/useAcquisitionSource'
 import { usePreferencesStore } from './stores/preferences'
 import { useWorkoutStore } from './stores/workout'
 import { syncStatus } from './lib/syncQueue'
-import { combineSyncStatus } from './lib/syncStatus'
+import { useSyncStatus } from './composables/useSyncStatus'
 import { authNeedsReauth } from './lib/sessionHealth'
 import { useBodyweightStore } from './stores/bodyweight'
 import { useUndoToast } from './composables/useUndoToast'
@@ -416,26 +437,11 @@ watch(loading, (isLoading) => {
   }
 }, { immediate: true })
 
-// A background READ fetch failure is recorded on each store's `lastSyncError`
-// (LIFT-820) but the indicator used to reflect only the write queue, so a silent
-// read failure (RLS regression, expired token, offline first-load) still showed
-// 'synced'. Fold the four stores' read errors into the displayed status
-// (LIFT-1179) — first non-null wins; the value only matters as present/absent.
-const readSyncError = computed(() =>
-  workoutStore.lastSyncError
-  ?? bodyweightStore.lastSyncError
-  ?? progressionStore.lastSyncError
-  ?? prefs.lastSyncError
-  ?? null,
-)
-const displaySyncStatus = computed(() => combineSyncStatus(syncStatus.value, readSyncError.value))
-
-const syncStatusLabel = computed(() => {
-  if (displaySyncStatus.value === 'syncing') return 'Syncing...'
-  if (displaySyncStatus.value === 'error') return 'Sync failed — changes saved locally'
-  if (displaySyncStatus.value === 'offline') return 'Offline — changes saved locally'
-  return ''
-})
+// The folded sync status — write queue + the four stores' read errors + writes
+// that gave up — now lives in `useSyncStatus` (LIFT-1323) so the indicator here
+// and the sheet behind it read one description and cannot disagree.
+const { status: displaySyncStatus, label: syncStatusLabel } = useSyncStatus()
+const syncSheetOpen = ref(false)
 
 // Detect offline/online
 function updateOnlineStatus() {
