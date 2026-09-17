@@ -728,7 +728,10 @@ jobs:
   # the PREVIOUS deployment live — so a plain reachability curl answers 200 off
   # the stale deploy and can't tell success from failure. `vite-plugin-version-
   # stamp` writes `/version.json` carrying the built commit SHA, so we poll it
-  # until the DEPLOYED commit matches the pushed commit. Only then does
+  # until the DEPLOYED commit is this pushed commit OR a later master commit
+  # that contains it (LIFT-1414 — production only ever serves the LATEST ready
+  # deployment, so a second push landing inside this job's ~6-minute wait moves
+  # the alias past a SHA that can then never come back). Only then does
   # notify-deploy (which needs this job) fire; a mismatch/timeout fails this job
   # and routes to notify-failure instead of a falsely-green "Deployed" message.
   # Deliberately does NOT depend on ratchet-baseline: that job pushes a
@@ -752,8 +755,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # HEAD^ is needed to evaluate vercel.json's ignoreCommand below.
-          fetch-depth: 2
+          # Full history, for two reasons. HEAD^ is needed to evaluate
+          # vercel.json's ignoreCommand below (fetch-depth: 2 covered that on
+          # its own). The ancestry check in the verify step needs more: a
+          # depth-limited fetch of github.sha contains only that commit's
+          # ANCESTORS, so a LATER master commit that superseded this deploy
+          # would not be in the clone at all and every poll would classify as
+          # `absent` — a fetch per attempt, all of them pointless (LIFT-1414).
+          fetch-depth: 0
 
       # Vercel does not deploy every commit. vercel.json's `ignoreCommand`
       # skips any commit that touches ONLY non-deployable paths, so a CI-only,
@@ -813,6 +822,22 @@ jobs:
       # The production domain is read from CLAUDE.md, the single authoritative
       # source (the SEV1 rule: never hardcode/fabricate a deployment URL — a
       # hallucinated domain shipped to prod once already, see the SEV1 note).
+      #
+      # Success is "production is serving THIS commit, or a later master commit
+      # that contains it" (LIFT-1414). String equality was the original rule
+      # and it silently assumed at most one master push lands inside this job's
+      # own runtime window — but this job waits on build-and-test + e2e +
+      # migrate-db (~6 minutes, e2e alone 3-4) and the production alias only
+      # ever serves the LATEST ready deployment, so merging two PRs 90 seconds
+      # apart left the first run polling for a SHA production had already moved
+      # past. It burned the full budget and posted a red "Post-merge CI failed"
+      # for a deploy that reached READY (2026-09-14: #1400, #1404 and #1409).
+      #
+      # The ancestry rule is STRONGER than equality, not looser — the build
+      # being served contains this commit's code — and it still fails on an
+      # OLDER commit, which is the stale-deploy case LIFT-1167 exists to catch.
+      # scripts/classify-deployed-commit.sh owns the decision so the suite can
+      # execute it; see its header for the full rationale.
       - name: Verify production is serving this commit
         if: steps.deploy_gate.outputs.skip != 'true'
         env:
@@ -827,27 +852,78 @@ jobs:
             exit 1
           fi
           URL="https://$DOMAIN"
-          echo "Waiting for $URL to report commit $EXPECTED_SHA"
+          echo "Waiting for $URL to report commit $EXPECTED_SHA, or a later master commit containing it"
 
           ATTEMPTS=30
           SLEEP=10
+          LAST_SEEN=""
+          LAST_STATUS="none"
+          REFETCHED_FOR=""
+          SHELL_MISSING=0
           for i in $(seq 1 "$ATTEMPTS"); do
             # Cache-bust so an edge-cached version.json can't mask a fresh deploy.
             BODY=$(curl -fsS --max-time 15 "$URL/version.json?ci=$RUN_ID-$i" || true)
             DEPLOYED_SHA=$(printf '%s' "$BODY" | jq -r '.commit // empty' 2>/dev/null || true)
-            if [ -n "$DEPLOYED_SHA" ] && [ "$DEPLOYED_SHA" = "$EXPECTED_SHA" ]; then
+            STATUS=$(bash scripts/classify-deployed-commit.sh "$EXPECTED_SHA" "${DEPLOYED_SHA:-}")
+
+            # A commit pushed to master AFTER this job checked out is not in
+            # the clone yet, so it classifies as `absent` — the same
+            # supersession race, one notch narrower. Fetch once per
+            # newly-observed SHA and re-ask: Vercel cannot have deployed a
+            # commit GitHub does not have, so one successful fetch always
+            # brings it in. Only a fetch that SUCCEEDED is recorded, so a
+            # transient network failure is retried on the next attempt rather
+            # than stranding the rest of the poll on a stale clone. The repo is
+            # public and persist-credentials is false, so this is anonymous —
+            # GIT_TERMINAL_PROMPT=0 so that a repo which is one day NOT public
+            # fails the fetch immediately instead of reaching for a credential
+            # prompt inside a job whose whole job is to not hang.
+            # `unknown` (a value that is not an object name at all) does not
+            # get here — no fetch can make junk resolvable.
+            if [ "$STATUS" = "absent" ] && [ "$DEPLOYED_SHA" != "$REFETCHED_FOR" ]; then
+              echo "Attempt $i/$ATTEMPTS: $DEPLOYED_SHA is not in this clone — fetching origin master"
+              if GIT_TERMINAL_PROMPT=0 git fetch --no-tags --quiet origin master; then
+                REFETCHED_FOR="$DEPLOYED_SHA"
+                STATUS=$(bash scripts/classify-deployed-commit.sh "$EXPECTED_SHA" "$DEPLOYED_SHA")
+              fi
+            fi
+
+            if [ -n "$DEPLOYED_SHA" ]; then
+              LAST_SEEN="$DEPLOYED_SHA"
+              LAST_STATUS="$STATUS"
+            fi
+
+            # `descendant` passes: a later master commit that CONTAINS this one
+            # is serving this commit's code, which is exactly what the
+            # "verified live" claim means. `ancestor` does not — that is the
+            # stale-deploy case this job exists to catch.
+            if [ "$STATUS" = "exact" ] || [ "$STATUS" = "descendant" ]; then
               HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID" || true)
               if printf '%s' "$HTML" | grep -q '<div id="app">'; then
-                echo "Production is serving commit $EXPECTED_SHA and the app shell renders (attempt $i)."
+                echo "Production is serving $DEPLOYED_SHA and the app shell renders (attempt $i) — $STATUS match against $EXPECTED_SHA."
                 exit 0
               fi
+              # Recorded rather than re-derived below: the accepted-status list
+              # lives in the `if` above and must not be restated, or the two
+              # copies drift the next time a status word is added.
+              SHELL_MISSING=1
               echo "::warning::version.json matched but the app-shell marker is missing; retrying"
             else
-              echo "Attempt $i/$ATTEMPTS: deployed=${DEPLOYED_SHA:-<none>} expected=$EXPECTED_SHA — waiting ${SLEEP}s"
+              echo "Attempt $i/$ATTEMPTS: deployed=${DEPLOYED_SHA:-<none>} ($STATUS) expected=$EXPECTED_SHA — waiting ${SLEEP}s"
             fi
             sleep "$SLEEP"
           done
-          echo "::error::Production never reported commit $EXPECTED_SHA within $((ATTEMPTS * SLEEP))s — the Vercel deploy likely failed or stalled"
+
+          # Two different failures, and they blame different systems. Reaching
+          # the success branch and failing only the app-shell check means the
+          # deploy DID land — saying "production never reported this commit"
+          # there sends the reader to Vercel's build log for a build that
+          # succeeded, the same wrong-system report LIFT-1414 is about.
+          if [ "$SHELL_MISSING" = "1" ]; then
+            echo "::error::Production is serving $LAST_SEEN ($LAST_STATUS against $EXPECTED_SHA) but the app-shell marker never rendered within $((ATTEMPTS * SLEEP))s — the deploy landed; the HTML it serves did not"
+            exit 1
+          fi
+          echo "::error::Production never reported commit $EXPECTED_SHA or a descendant of it within $((ATTEMPTS * SLEEP))s (last seen: ${LAST_SEEN:-<none>}, classified $LAST_STATUS) — the Vercel deploy likely failed or stalled"
           exit 1
 
   # Notify Slack on post-merge success (push to master only).
@@ -861,6 +937,12 @@ jobs:
   # exists to eliminate, entering through the skip path rather than the
   # failed-build path. Reporting nothing instead would be worse: silence is
   # indistinguishable from a broken workflow.
+  #
+  # It deliberately does NOT branch for the superseded case (LIFT-1414), which
+  # is not an oversight beside the skip branch: there, nothing was deployed at
+  # all and the claim would be a lie; here, a later master commit containing
+  # this one is live, so this commit's code IS serving — exactly what
+  # "verified live" claims.
   #
   # SECURITY: commit message + URL come in via env var, NOT direct
   # `${{ ... }}` interpolation into the bash body. Inline interpolation
