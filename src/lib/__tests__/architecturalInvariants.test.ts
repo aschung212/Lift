@@ -1571,7 +1571,8 @@ describe('Invariant: every always-send NULL column is nullable in the migrations
 // migration in one transaction, so the failure rolled back the WHOLE file:
 // `bar_weight` stayed NOT NULL while the shipping client had already begun
 // sending `null` for it, and every later schema push queued behind a red job
-// that also gates smoke-test-production and notify-deploy (LIFT-1167). And
+// that also gates deploy-production, smoke-test-production and notify-deploy
+// (LIFT-1169 / LIFT-1167) — so master stops reaching production too. And
 // nothing could see it coming — `migrate-db` is master-only and post-merge, and
 // the scheduled Integration Tests workflow builds its database FROM these
 // files, where the trigger always exists. A static check is the only reader
@@ -1717,9 +1718,11 @@ describe('Invariant: migrations tolerate an object production may not have (LIFT
 // It bites hardest on the account-deletion path (#1299). `delete_user_account`
 // runs LAST, after the per-table deletes have already succeeded, so a
 // name/schema mismatch there fails having already destroyed the user's rows.
-// LIFT-1169 (migrate-db racing Vercel's git auto-deploy) makes the
-// code-ahead-of-schema window real rather than theoretical, so the caller and
-// its migration have to ship in the same commit.
+// LIFT-1169 closed the *ordering* half of this — production now deploys from
+// CI behind `migrate-db`, so code can no longer go live ahead of a migration
+// that applied late. What that cannot catch is a caller shipped with no
+// migration at all, which is broken at every ordering; hence this check, and
+// hence the caller and its migration still have to ship in the same commit.
 describe('Invariant: client RPC names exist in the migrations (#1299)', () => {
   const migrationSql = stripSqlComments(
     readdirSync(MIGRATIONS_DIR)
