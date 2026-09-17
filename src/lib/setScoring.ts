@@ -2,14 +2,15 @@
  * Set scoring — the shared PR/zone/XP derivation for a single logged (or
  * previewed) set.
  *
- * WorkoutTracker had two copies of this logic: one on the real log path
- * (`computeAndLogXP`) and one on the live-preview path (`_computeXPPreview`).
- * Both derived the same values (established best 1RM, PR/tie/rep-PR flags,
- * zone classification, base XP) from the exercise's prior sets — a drift
- * hazard where a tweak to one copy would silently miss the other. This module
- * is the single pure owner of that derivation; the component now formats the
- * result for each surface (machine zone for storage, display string for the
- * live preview) rather than re-deriving it.
+ * WorkoutTracker had two copies of this logic: one on the real log path (the
+ * inline `computeAndLogXP`, since moved to `useSetLogCeremony._attributeXP` by
+ * LIFT-1448) and one on the live-preview path (`_computeXPPreview`). Both
+ * derived the same values (established best 1RM, PR/tie/rep-PR flags, zone
+ * classification, base XP) from the exercise's prior sets — a drift hazard
+ * where a tweak to one copy would silently miss the other. This module is the
+ * single pure owner of that derivation; the callers now format the result for
+ * each surface (machine zone for storage, display string for the live preview)
+ * rather than re-deriving it.
  */
 
 import type { WorkoutSet } from '../stores/workout'
