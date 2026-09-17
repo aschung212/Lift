@@ -1053,10 +1053,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useModal } from '../composables/useModal'
 import { useHaptics } from '../composables/useHaptics'
 import { usePRBaseline } from '../composables/usePRBaseline'
-import { usePRBurst } from '../composables/usePRBurst'
-import { useFirstSetCelebration } from '../composables/useFirstSetCelebration'
-import { useGoalCelebration } from '../composables/useGoalCelebration'
-import { decideGoalCelebration, readGoalCelebrationState, markGoalWeekCelebrated } from '../lib/goalCelebration'
+import { useSetLogCeremony } from '../composables/useSetLogCeremony'
 import { useProgressionStore } from '../stores/progression'
 import { platesToWeight, weightToPlates, defaultBarWeight, LBS_PLATES, KG_PLATES, type PlateSet } from '../lib/plateCalculator'
 import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
@@ -1064,7 +1061,6 @@ import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/
 import { epley } from '../lib/epley'
 import { allowsZeroWeight, formatSetLoad, isLoggableWeight } from '../lib/bodyweightLoad'
 import { scoreSet } from '../lib/setScoring'
-import { useXPCeremony } from '../composables/useXPCeremony'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
 import RestTimerContent from './RestTimerContent.vue'
@@ -1085,12 +1081,10 @@ const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 const { show: showUndo } = useUndoToast()
 const { currentTheme } = useTheme()
-const { restTimerEnabled, restTimerAutoStart } = useRestTimer()
+const { restTimerEnabled } = useRestTimer()
 const { weightUnit, displayWeight, toLbs } = useWeightUnit()
-const { impactLight, notifySuccess } = useHaptics()
-const { logSetXPCeremony } = useXPCeremony()
+const { impactLight } = useHaptics()
 const { prBaselineDate, strengthBaselineMode } = usePRBaseline()
-const { presentPRBurst } = usePRBurst()
 
 // Labels that name the baseline in force (#1272). Every "best" the log sheet
 // shows — the intensity anchor, the live estimate, the to-beat card — is
@@ -1104,17 +1098,18 @@ const prTargetLabel = computed(() =>
   isRecentBaseline.value ? 'To Beat Your Recent Best' : 'To Beat Your Est. 1RM',
 )
 const prBadgeLabel = computed(() => (isRecentBaseline.value ? 'New recent best! 🏆' : 'New PR! 🏆'))
-const { presentFirstSetCelebration } = useFirstSetCelebration()
-const { presentGoalCelebration } = useGoalCelebration()
-
-// One-time activation flag (#762): celebrate a brand-new user's first ever set.
-const FIRST_SET_FLAG = 'first-set-celebrated'
-
 // Rest timer controller — all timer state and logic extracted into composable
 const timerCtrl = useRestTimerController(
   () => { skipToNextSet() },
   showUndo,
 )
+
+// Post-save ceremony (LIFT-1448) — XP attribution, the single celebration a
+// save earns, its single haptic, and the rest-timer autostart. `saveSet` keeps
+// validation, the store write and the form reset.
+const { captureSetCeremony, runSetCeremony } = useSetLogCeremony({
+  startRestTimer: () => { timerCtrl.startRestTimer() },
+})
 
 // Screen Wake Lock — keep display on during active workouts
 import { useWakeLock } from '../composables/useWakeLock'
@@ -1123,44 +1118,6 @@ import { searchExerciseDatabase } from '../lib/exerciseDatabase'
 import type { ExerciseEntry } from '../lib/exerciseDatabase'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
-
-function computeAndLogXP(exerciseId: string, setId: string, estimated1RM: number, weight: number, reps: number) {
-  const exercise = store.exercises.find(e => e.id === exerciseId)
-  if (!exercise) return
-
-  // Score against existing sets (the just-logged set is already in the array).
-  const otherSets = exercise.sets.filter(s => s.id !== setId)
-  const { best1RM, isPR, isTie, isRepPR, zone, baseXP } = scoreSet({
-    priorSets: otherSets,
-    estimated1RM,
-    weightLbs: weight,
-    reps,
-    dateKey: date.value || todayISO(),
-    baseline: prBaselineDate.value,
-  })
-
-  const mult = progressionStore.currentMultiplier
-  let xp = applyStreakMultiplier(baseXP, progressionStore.streakHistory, new Date().toISOString())
-  // If no history entry for current week, apply currentMultiplier directly
-  if (xp === baseXP && mult > 1) {
-    xp = Math.round(baseXP * mult)
-  }
-  logSetXPCeremony({
-    setId,
-    exerciseId,
-    xp,
-    baseXP,
-    zone,
-    isPR,
-    isTie,
-    isRepPR,
-    activeTheme: currentTheme.value,
-    estimated1RM,
-    exerciseBest1RM: best1RM,
-    streakMultiplier: mult,
-    onUnlock: notifySuccess,
-  })
-}
 
 // ── Fresh-start transition card ─────────────────────────────────
 // Shown after user clears sample data, dismissed on first exercise add
@@ -1506,36 +1463,6 @@ const weekStreak = computed(() => {
   if (!progressionStore.progressionEnabled) return 0
   return progressionStore.streakWeeks
 })
-
-/**
- * Fire the weekly-goal celebration the first time the goal is met each week
- * (LIFT-764). Called after a set is logged. Skipped while a PR burst is showing
- * so the two overlays never stack — the week is left unmarked so the
- * celebration still fires on the next non-PR set. The once-per-week guard lives
- * in device-local storage, mirroring the overload nudge.
- *
- * Returns `true` when a celebration (and its success/milestone haptic) actually
- * fired, so the caller can suppress the routine light tap and avoid two native
- * haptics colliding into a muddy buzz on Capacitor/iOS.
- */
-function maybeCelebrateWeeklyGoal(prShown: boolean): boolean {
-  if (prShown) return false
-  const info = weeklyGoalInfo.value
-  if (!info) return false
-  const state = readGoalCelebrationState()
-  const decision = decideGoalCelebration(info.met, progressionStore.streakWeeks, state.lastCelebratedWeek)
-  if (!decision) return false
-  markGoalWeekCelebrated(decision.weekKey)
-  const celebrated = presentGoalCelebration({ streak: decision.streak, milestone: decision.milestone, target: info.target })
-  logEvent('weekly_goal_celebrated', { streak: decision.streak, milestone: decision.milestone })
-  // A streak-tier crossing (2/4/8/12-week multiplier bump) is a distinct
-  // progression-depth signal from simply hitting the weekly goal — emit a
-  // dedicated event so streak retention is filterable in the dashboard (#796).
-  if (decision.milestone) {
-    logEvent('streak_milestone', { streak: decision.streak, target: info.target })
-  }
-  return celebrated
-}
 
 /**
  * Count of exercises carrying each tag — powers the "Push 23" suffix on tag
@@ -3213,18 +3140,10 @@ function saveSet() {
         if (_ghostRearmTimer) clearTimeout(_ghostRearmTimer)
         _ghostRearmTimer = setTimeout(() => { ghostJustSaved.value = false }, GHOST_REARM_MS)
       }
-      // Capture the pre-log baseline PR so the burst can show old → new e1RM.
-      const oldE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
-      // Snapshot PR count before logging so we can detect the user's very first PR.
-      const prCountBefore = wasPR ? progressionStore.totalPRCount : 0
-      // Detect a brand-new user's very first ever set (#762): no sets logged yet
-      // anywhere, and the one-time flag hasn't fired. A first set can never be a
-      // PR (PRs need a prior established session), so this won't collide with the
-      // PR burst below.
-      const isFirstSetEver =
-        !wasPR &&
-        localStorage.getItem(FIRST_SET_FLAG) !== 'true' &&
-        store.exercises.every(e => e.sets.length === 0)
+      // Snapshot what the ceremony can't recover once the set is in the store:
+      // the pre-log baseline PR (the burst's "old" number), whether the lifter
+      // had ever logged anything (#762), and whether they'd ever hit a PR.
+      const ceremonyBefore = captureSetCeremony(exerciseId)
       store.logSet(exerciseId, effWeightLbs, effReps, date.value, {
         rpe: selectedRPE.value ?? undefined,
         attemptedNextRep: attemptedNextRep.value,
@@ -3236,64 +3155,24 @@ function saveSet() {
         selectedExercise.value,
       )
       announceSet(`Logged ${selectedExerciseName.value}: ${loggedLoad} × ${effReps} rep${effReps === 1 ? '' : 's'}${wasPR ? ', new personal record' : ''}`)
-      // XP: get the just-logged set (last in array) and compute XP
+      // Everything after the write — XP attribution, the ONE celebration this
+      // save earns, its single haptic, and the rest-timer autostart — belongs to
+      // the ceremony pipeline (LIFT-1448). The exclusion rules between the PR
+      // burst, the first-set card and the weekly-goal banner are a tested matrix
+      // in `src/lib/setCeremony.ts`, not four `if`s and a paragraph here.
       const exercise = store.exercises.find(e => e.id === exerciseId)
-      if (exercise && exercise.sets.length > 0) {
-        const newSet = exercise.sets[exercise.sets.length - 1]
-        computeAndLogXP(exerciseId, newSet.id, newSet.estimated1RM, newSet.weight, newSet.reps)
-      }
-      // Haptic feedback — stronger for PRs
-      if (wasPR) {
-        notifySuccess()
-        // Full-bleed PR celebration (respects the PR baseline via oldE1RM,
-        // and the prCelebrations opt-out inside presentPRBurst).
-        const newE1RM = store.getExercisePR(exerciseId, prBaselineDate.value)
-        // Build the session summary here (WorkoutTracker owns store access) and
-        // hand it to the burst so the presentational PRBurst component can drive
-        // its "Share this PR" flow without reaching into stores (LIFT-916). The
-        // set is already persisted and its XP logged above, so this reflects it.
-        const prRawDate = date.value || todayISO()
-        presentPRBurst({
+      runSetCeremony(
+        {
+          exerciseId,
           exerciseName: selectedExerciseName.value,
-          oldE1RM,
-          newE1RM,
-          setWeight: effWeightLbs,
-          setReps: effReps,
-          isFirstPR: prCountBefore === 0,
-          shareSummary: buildSessionSummary({
-            rawDate: prRawDate,
-            exercises: store.exercises,
-            xpPerSet: progressionStore.xpPerSet,
-            streakWeeks: progressionStore.streakWeeks,
-            toDisplayUnits: displayWeight,
-            unitLabel: weightUnit.value,
-          }),
-        })
-        if (prCountBefore === 0) {
-          logEvent('first_pr', { exercise: selectedExerciseName.value })
-        }
-      } else if (isFirstSetEver) {
-        // Activation moment — celebrate the first set (fires its own haptic).
-        localStorage.setItem(FIRST_SET_FLAG, 'true')
-        logEvent('first_set', { exercise: selectedExerciseName.value })
-        presentFirstSetCelebration()
-      }
-      // Celebrate the first weekly-goal completion of the week (LIFT-764). When
-      // it fires its own success/milestone haptic, suppress the routine light
-      // tap: two native haptics fired back-to-back collapse into a muddy /
-      // truncated buzz on Capacitor/iOS. The light tap stays for the common
-      // non-PR, no-celebration path. (PRs already played notifySuccess above and
-      // skip the goal banner, so they never reach the light tap.) The first-set
-      // activation overlay likewise fires its own haptic and suppresses the goal
-      // banner (passed in below) so the two full-screen moments never stack — the
-      // week is left unmarked, so the goal celebration still fires on the next set.
-      const celebrated = maybeCelebrateWeeklyGoal(wasPR || isFirstSetEver)
-      if (!wasPR && !isFirstSetEver && !celebrated) {
-        impactLight()
-      }
-      if (restTimerEnabled.value && restTimerAutoStart.value) {
-        timerCtrl.startRestTimer()
-      }
+          weightLbs: effWeightLbs,
+          reps: effReps,
+          rawDate: date.value || todayISO(),
+          wasPR,
+          loggedSet: exercise?.sets[exercise.sets.length - 1] ?? null,
+        },
+        ceremonyBefore,
+      )
       // Clear fields and stay on the modal for the next set
       plateNumpadOverride.value = false
       selectedRPE.value = null
