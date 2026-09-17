@@ -2563,8 +2563,12 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
     for (const chunk of src.split(/\bexport\s+function\s+/).slice(1)) {
       const body = chunk.slice(0, chunk.indexOf('\n}\n') + 1 || undefined)
       const table = /Tables<'(\w+)'>/.exec(body)
+      if (!table) continue
+      // An unparseable parameter (a destructured one, say) is reported as '',
+      // NOT dropped: a mapper that falls out of this list silently stops being
+      // checked, which is the failure mode the derivation exists to avoid.
       const param = /^\w+\s*\(\s*([A-Za-z_$][\w$]*)\s*:/.exec(stripComments(body))
-      if (table && param) out.push({ body, table: table[1].toLowerCase(), param: param[1] })
+      out.push({ body, table: table[1].toLowerCase(), param: param ? param[1] : '' })
     }
     return out
   }
@@ -2589,6 +2593,7 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
    * comma cannot appear inside one.
    */
   function stampExpressions(m: Mapper): string[] {
+    if (!m.param) return []
     return [...stripComments(m.body).matchAll(/\bupdated_at\s*:\s*([^,}\n]+)/g)]
       .map(x => x[1].trim())
       .filter(expr => expr.includes(`${m.param}.`))
@@ -2781,6 +2786,18 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
     }
     expect(stampExpressions(buggy)).toEqual(['row.created_at || new Date().toISOString()'])
     expect(stampExpressions(buggy)[0]).not.toContain('row.updated_at')
+
+    // A mapper whose parameter the scan cannot read stays IN the list with an
+    // empty param and reports no expression — so it fails the invariant loudly
+    // rather than dropping out of every check in this describe.
+    const unparseable = mapperBodies(
+      "export function mapRemoteWidget({ id }: Tables<'widgets'>) {\n  return { id, updated_at: 'x' }\n}\n",
+    )
+    expect(unparseable.map(m => m.table)).toEqual(['widgets'])
+    expect(unparseable[0].param).toBe('')
+    expect(stampExpressions(unparseable[0])).toEqual([])
+    expect(mergeTimestampedTables("export function mapRemoteWidget({ id }: Tables<'widgets'>) {\n" +
+      "  return { id, updated_at: 'x' }\n}\n")).toEqual(['widgets'])
   })
 
   it('every merge-timestamped table has a producer listed here', () => {
