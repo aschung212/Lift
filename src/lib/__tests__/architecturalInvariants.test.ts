@@ -2546,24 +2546,57 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
   const MIGRATION_SQL = migrationFiles.map(f => f.sql).join('\n')
 
   /**
-   * Tables whose remote-row mapper builds an `updated_at` — i.e. the tables
-   * whose rows become `Timestamped` inputs to `mergeEntities`.
+   * Each remote-row mapper, with the table it maps and the name of its row
+   * parameter.
    *
    * The table name comes from the mapper's own `Tables<'…'>` parameter, so the
    * two halves (which row shape, which merge input) are read off one
    * declaration and cannot be paired wrongly here.
    */
-  function mergeTimestampedTables(src: string): string[] {
-    const out = new Set<string>()
+  interface Mapper { body: string; table: string; param: string }
+
+  function mapperBodies(src: string): Mapper[] {
+    const out: Mapper[] = []
     // Split on the export boundary so each mapper is inspected in isolation —
     // a lazy scan across the file would let one mapper's `updated_at` vouch for
     // the next one's table.
     for (const chunk of src.split(/\bexport\s+function\s+/).slice(1)) {
       const body = chunk.slice(0, chunk.indexOf('\n}\n') + 1 || undefined)
       const table = /Tables<'(\w+)'>/.exec(body)
-      if (table && /\bupdated_at\b/.test(body)) out.add(table[1].toLowerCase())
+      if (!table) continue
+      // An unparseable parameter (a destructured one, say) is reported as '',
+      // NOT dropped: a mapper that falls out of this list silently stops being
+      // checked, which is the failure mode the derivation exists to avoid.
+      const param = /^\w+\s*\(\s*([A-Za-z_$][\w$]*)\s*:/.exec(stripComments(body))
+      out.push({ body, table: table[1].toLowerCase(), param: param ? param[1] : '' })
     }
-    return [...out]
+    return out
+  }
+
+  /**
+   * Tables whose remote-row mapper builds an `updated_at` — i.e. the tables
+   * whose rows become `Timestamped` inputs to `mergeEntities`.
+   */
+  function mergeTimestampedTables(src: string): string[] {
+    return [...new Set(
+      mapperBodies(src).filter(m => /\bupdated_at\b/.test(m.body)).map(m => m.table),
+    )]
+  }
+
+  /**
+   * The expressions a mapper assigns to `updated_at`, narrowed to the ones that
+   * read something off the row — which drops the `{ updated_at: string }` in
+   * the return-type annotation and keeps the real derivation.
+   *
+   * The value ends at the property separator (`,` for an object member, `}` for
+   * the last one); no expression in this file carries a call argument, so a
+   * comma cannot appear inside one.
+   */
+  function stampExpressions(m: Mapper): string[] {
+    if (!m.param) return []
+    return [...stripComments(m.body).matchAll(/\bupdated_at\s*:\s*([^,}\n]+)/g)]
+      .map(x => x[1].trim())
+      .filter(expr => expr.includes(`${m.param}.`))
   }
 
   /**
@@ -2688,6 +2721,83 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
     expect(triggersLeftDisabled('alter table a disable trigger t;')).toEqual(['a.t'])
     expect(triggersLeftDisabled('alter table a disable trigger t; update a set x = 1; alter table a enable trigger t;'))
       .toEqual([])
+  })
+
+  // ── The other half of the same rule: the mapper must READ the column ───────
+  // A trigger that moves `updated_at` buys nothing if the mapper derives the
+  // merge stamp from a different column, and that is not hypothetical:
+  // `mapRemoteBodyweightEntry` built it from `created_at` — `default now()`,
+  // frozen for the life of the row — while its sibling one function down read
+  // `updated_at` (LIFT-1402). The local stamp is rewritten by `updateEntry` on
+  // every correction, so the two sides tied, `mergeEntities` gave the tie to
+  // local, and `_fetchFromSupabase` re-upserted the stale weight over the other
+  // device's fix: a remote bodyweight edit could never win, and the user's only
+  // evidence was that the number they had corrected was wrong again.
+  //
+  // LIFT-1401's scan above could not see it. It asks whether SOMETHING stamps
+  // the table's column, and answers yes — from the migrations, which are right.
+  // The gap was between the column and the mapper, and it survived because the
+  // two mappers were never compared: `remoteRows.test.ts` asserted the mapped
+  // DOMAIN fields, and every fixture in the suite built a freshly-inserted row
+  // where `created_at` and `updated_at` coincide, under which the wrong column
+  // is indistinguishable from the right one.
+  //
+  // Derived, like everything else here: a future mapper is covered the day it
+  // is written, rather than the day someone remembers to add it to a list.
+  it('every merge-timestamped mapper derives the stamp from the row updated_at column', () => {
+    const violations: string[] = []
+    for (const mapper of mapperBodies(REMOTE_ROWS)) {
+      if (!/\bupdated_at\b/.test(mapper.body)) continue
+      const exprs = stampExpressions(mapper)
+      const wrong = exprs.filter(e => !e.includes(`${mapper.param}.updated_at`))
+      if (exprs.length === 0 || wrong.length > 0) {
+        violations.push(
+          `${mapper.table}: the mapper's merge stamp is \`${exprs.join(' / ') || '(not read off the row)'}\`, ` +
+            `which never reads \`${mapper.param}.updated_at\`. That column is the only one the ` +
+            "`update_updated_at_column()` trigger moves — `created_at` is `default now()` and is " +
+            'frozen for the life of the row, so the remote side of every merge ties with whatever ' +
+            'this device last adopted, `mergeEntities` scores a tie as a LOCAL win, and the stale ' +
+            'copy is re-upserted over the other device\'s edit (LIFT-1402).',
+        )
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
+  it('the stamp scan reads real expressions and flags the created_at form (self-test)', () => {
+    // Non-vacuity: the real mappers parse, and the return-type annotation's
+    // `{ updated_at: string }` does not masquerade as the derivation.
+    const mappers = mapperBodies(REMOTE_ROWS)
+    expect(mappers.map(m => m.table)).toEqual(expect.arrayContaining(['exercises', 'bodyweight_entries', 'sets']))
+    for (const m of mappers) expect(m.param).toBe('row')
+    for (const table of ['exercises', 'bodyweight_entries']) {
+      const exprs = stampExpressions(mappers.find(m => m.table === table)!)
+      expect(exprs).toHaveLength(1)
+      expect(exprs[0]).toContain('row.updated_at')
+      expect(exprs[0]).not.toBe('string')
+    }
+
+    // The defect's exact shape, which must not parse as compliant.
+    const buggy: Mapper = {
+      table: 'widgets',
+      param: 'row',
+      body: "mapRemoteWidget(\n  row: Tables<'widgets'>,\n): (Widget & { updated_at: string }) | null {\n" +
+        '  return { ...w, updated_at: row.created_at || new Date().toISOString() }\n}\n',
+    }
+    expect(stampExpressions(buggy)).toEqual(['row.created_at || new Date().toISOString()'])
+    expect(stampExpressions(buggy)[0]).not.toContain('row.updated_at')
+
+    // A mapper whose parameter the scan cannot read stays IN the list with an
+    // empty param and reports no expression — so it fails the invariant loudly
+    // rather than dropping out of every check in this describe.
+    const unparseable = mapperBodies(
+      "export function mapRemoteWidget({ id }: Tables<'widgets'>) {\n  return { id, updated_at: 'x' }\n}\n",
+    )
+    expect(unparseable.map(m => m.table)).toEqual(['widgets'])
+    expect(unparseable[0].param).toBe('')
+    expect(stampExpressions(unparseable[0])).toEqual([])
+    expect(mergeTimestampedTables("export function mapRemoteWidget({ id }: Tables<'widgets'>) {\n" +
+      "  return { id, updated_at: 'x' }\n}\n")).toEqual(['widgets'])
   })
 
   it('every merge-timestamped table has a producer listed here', () => {

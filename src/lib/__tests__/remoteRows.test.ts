@@ -58,6 +58,13 @@ function exRow(overrides: Partial<Tables<'exercises'>> = {}): Tables<'exercises'
   }
 }
 
+/**
+ * A row that has been UPDATED server-side: `updated_at` is later than
+ * `created_at`. Every fixture in the suite used to build a freshly-inserted row
+ * where the two coincide (or omit `updated_at` entirely, which is the branch
+ * the fallback was written for), which is precisely why nothing noticed that
+ * the mapper read the wrong one (LIFT-1402).
+ */
 function bwRow(overrides: Partial<Tables<'bodyweight_entries'>> = {}): Tables<'bodyweight_entries'> {
   return {
     id: 'bw-1',
@@ -65,6 +72,7 @@ function bwRow(overrides: Partial<Tables<'bodyweight_entries'>> = {}): Tables<'b
     date: '2026-08-12T23:59:00Z',
     weight: 185,
     created_at: '2026-08-12T18:00:00Z',
+    updated_at: '2026-08-14T09:30:00Z',
     deleted_at: null,
     ...overrides,
   }
@@ -162,14 +170,31 @@ describe('mapRemoteExercise', () => {
 })
 
 describe('mapRemoteBodyweightEntry', () => {
-  it('maps a well-formed row and preserves the created_at → updated_at fallback', () => {
+  it('maps a well-formed row and takes the merge stamp from updated_at (LIFT-1402)', () => {
     const entry = mapRemoteBodyweightEntry(bwRow())
     expect(entry).toMatchObject({
       id: 'bw-1',
       date: '2026-08-12T23:59:00Z',
       weight: 185,
-      updated_at: '2026-08-12T18:00:00Z',
+      updated_at: '2026-08-14T09:30:00Z',
     })
+    // The specific defect: `created_at` is `default now()` and never moves, so
+    // reading it froze the remote side of the merge at the row's INSERT time.
+    expect(entry!.updated_at).not.toBe('2026-08-12T18:00:00Z')
+  })
+
+  it('matches mapRemoteExercise — a server-side edit outranks the local copy that adopted created_at', () => {
+    // Both mappers feed the same `mergeEntities`, so they must answer the same
+    // question the same way. A device holding T0 (what it adopted before the
+    // edit) must LOSE to a row the server has since stamped T1.
+    const created = '2026-08-12T18:00:00Z'
+    const edited = '2026-08-14T09:30:00Z'
+    const bw = mapRemoteBodyweightEntry(bwRow({ created_at: created, updated_at: edited }))
+    const ex = mapRemoteExercise(exRow({ created_at: created, updated_at: edited }))
+    expect(bw!.updated_at).toBe(edited)
+    expect(ex.updated_at).toBe(edited)
+    // `mergeEntities` scores a tie as a local win, so "later" is what decides it.
+    expect(new Date(bw!.updated_at).getTime()).toBeGreaterThan(new Date(created).getTime())
   })
 
   it('drops an entry with a non-finite weight', () => {
@@ -177,8 +202,15 @@ describe('mapRemoteBodyweightEntry', () => {
     expect(mapRemoteBodyweightEntry(bwRow({ weight: null as unknown as number }))).toBeNull()
   })
 
-  it('falls back to now when created_at is null so the entry does not lose the merge', () => {
-    const entry = mapRemoteBodyweightEntry(bwRow({ created_at: null as unknown as string }))
+  it('falls back updated_at → created_at → now', () => {
+    // A row written before the column existed reads back NULL; it must still
+    // carry a usable stamp rather than dropping out of the merge.
+    expect(mapRemoteBodyweightEntry(bwRow({ updated_at: null as unknown as string }))!.updated_at)
+      .toBe('2026-08-12T18:00:00Z')
+
+    const entry = mapRemoteBodyweightEntry(
+      bwRow({ updated_at: null as unknown as string, created_at: null as unknown as string }),
+    )
     expect(typeof entry?.updated_at).toBe('string')
     expect(entry!.updated_at.length).toBeGreaterThan(0)
   })

@@ -53,15 +53,27 @@ export function mapRemoteSet(row: Tables<'sets'>): WorkoutSet | null {
 
 /**
  * Validate one remote `bodyweight_entries` row, or `null` if the weight is
- * non-finite. Preserves the store's existing `updated_at` fallback
- * (`created_at || now`) so last-write-wins merge timestamps are unchanged.
+ * non-finite. `updated_at` uses the same `updated_at || created_at || now`
+ * fallback chain as `mapRemoteExercise` below (LIFT-1402).
+ *
+ * It used to read `created_at` alone — carried across verbatim by LIFT-1135's
+ * extraction from an expression that was already wrong. `created_at` is
+ * `default now()` and never moves, so the remote stamp was pinned at the row's
+ * INSERT time while the local one is rewritten on every `updateEntry`. Since
+ * `mergeEntities` scores an exact tie as a LOCAL win and `_fetchFromSupabase`
+ * re-pushes every local win, a weigh-in corrected on device B was reverted the
+ * moment device A — holding the same T0 it had adopted from `created_at` —
+ * fetched: tie, A wins, A re-upserts its stale weight. A remote edit could
+ * never win, and the user's only evidence was that the number they fixed was
+ * wrong again. The trigger restored in `20260910000000` is the other half; it
+ * moves the column, this reads it.
  */
 export function mapRemoteBodyweightEntry(
   row: Tables<'bodyweight_entries'>,
 ): (BodyweightEntry & { updated_at: string }) | null {
   const entry = parseBodyweightEntry({ id: row.id, date: row.date, weight: row.weight })
   if (!entry) return null
-  return { ...entry, updated_at: row.created_at || new Date().toISOString() }
+  return { ...entry, updated_at: row.updated_at || row.created_at || new Date().toISOString() }
 }
 
 /**
