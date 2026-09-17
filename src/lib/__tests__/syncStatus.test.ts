@@ -127,4 +127,30 @@ describe('combineSyncStatus (LIFT-1179)', () => {
     expect(combineSyncStatus('offline', 'auth')).toBe('offline')
     expect(combineSyncStatus('error', null)).toBe('error')
   })
+
+  /**
+   * Stranded writes (LIFT-1323). `syncStatus` describes the last BATCH, so a
+   * write that exhausted its retries — or one the server refused outright —
+   * flipped it to 'error' and then had that flipped straight back by the next
+   * clean flush of an unrelated key. The change stayed unsent in the durable
+   * journal with nothing on screen: permanent, silent divergence.
+   */
+  it('surfaces a stranded write even when the last batch flushed cleanly', () => {
+    expect(combineSyncStatus('synced', null, 1)).toBe('error')
+  })
+
+  it('stays synced when the journal is empty', () => {
+    expect(combineSyncStatus('synced', null, 0)).toBe('synced')
+  })
+
+  it('defaults to no stranded writes so existing callers are unaffected', () => {
+    expect(combineSyncStatus('synced', null)).toBe('synced')
+  })
+
+  it('lets an in-progress replay outrank the writes it is recovering', () => {
+    // A stranded write being replayed IS the recovery — reporting it as a
+    // failure while the retry is in flight would contradict the spinner.
+    expect(combineSyncStatus('syncing', null, 3)).toBe('syncing')
+    expect(combineSyncStatus('offline', null, 3)).toBe('offline')
+  })
 })

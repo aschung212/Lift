@@ -4,33 +4,58 @@ import { readFileSync, readdirSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 
 /**
- * Guard: the dev sign-in bypass must never ship to production (LIFT-1123).
+ * Guard: dev-only UI must never ship to production.
  *
- * AuthScreen exposes a "Continue as Dev" button that calls devSignIn(), which
- * fabricates a `{ id: 'local-dev' }` session and skips the entire auth gate. It
- * exists only for local dev and the CI e2e build (which sets VITE_E2E=true).
+ * Two surfaces exist only for local dev and the CI e2e build (VITE_E2E=true):
  *
- * The button lives in DevSignInButton.vue, lazily imported by AuthScreen behind
- * a build-time `import.meta.env.VITE_E2E` flag, so a normal production build
- * folds the flag to false, tree-shakes the component, and never emits its chunk.
- * The only thing that could reintroduce it is a misconfigured Vercel env var
- * setting VITE_E2E — a silent auth-UI bypass with no other gate.
+ *   1. The dev sign-in bypass (LIFT-1123). AuthScreen exposes a "Continue as
+ *      Dev" button that calls devSignIn(), which fabricates a
+ *      `{ id: 'local-dev' }` session and skips the entire auth gate.
+ *   2. The Settings dev tools (#1425): Seed XP, Reset Onboarding, Run
+ *      Migration, Clear All Data. They used to be an inline group behind a
+ *      localhost/LAN hostname test — and the bundled Capacitor app is served
+ *      from capacitor://localhost, so every native install rendered them in a
+ *      production bundle. Nothing on the web could see it, and happy-dom's
+ *      hostname is localhost too, so no SettingsSheet test could either.
+ *
+ * Each lives in its own component, lazily imported by its host behind a
+ * build-time `import.meta.env.DEV || import.meta.env.VITE_E2E === 'true'`
+ * gate, so a normal production build folds the flag to false, tree-shakes the
+ * component, and never emits its chunk. An inline `v-if` cannot do that: it
+ * compiles into the host's render function and ships in every bundle, merely
+ * hidden — which is why the structural half below fails the moment a marker
+ * reappears in a host. The only other way in is a misconfigured Vercel env
+ * var setting VITE_E2E.
  *
  * These are structural pins (mirroring metaRegression.test.ts). The definitive
  * build-output check — grep the real production dist/ — runs in CI via
- * `npm run guard:dev-signin` (scripts/check-no-dev-signin.js), and is mirrored
- * below whenever a build exists locally.
+ * `npm run guard:dev-surface` (scripts/check-no-dev-surface.js), and is
+ * mirrored below whenever a build exists locally.
  */
 
 const root = resolve(__dirname, '../../..')
 const srcDir = resolve(root, 'src')
 
-// UI markers unique to the dev sign-in button. We deliberately do NOT pin
+// UI markers unique to each surface. We deliberately do NOT pin
 // 'local-dev' / 'dev@localhost': those live in useAuth's devSignIn helper, part
-// of the composable's always-bundled API. The button's class + label are the
-// strings that actually render the bypass and that get tree-shaken out.
-const DEV_SIGNIN_MARKERS = ['authDevBtn', 'Continue as Dev']
-const DEV_SIGNIN_COMPONENT = 'DevSignInButton.vue'
+// of the composable's always-bundled API. A class + a label are the strings
+// that actually render each surface and that get tree-shaken out with it.
+const SURFACES = [
+  {
+    id: 'dev sign-in bypass (LIFT-1123)',
+    host: 'views/AuthScreen.vue',
+    component: 'views/DevSignInButton.vue',
+    importSpecifier: "import('./DevSignInButton.vue')",
+    markers: ['authDevBtn', 'Continue as Dev'],
+  },
+  {
+    id: 'Settings dev tools (#1425)',
+    host: 'components/SettingsSheet.vue',
+    component: 'views/DevToolsGroup.vue',
+    importSpecifier: "import('../views/DevToolsGroup.vue')",
+    markers: ['devToolsGrid', 'Seed 80k XP'],
+  },
+] as const
 
 function walk(dir: string): string[] {
   const out: string[] = []
@@ -52,52 +77,59 @@ function sourceFiles(): string[] {
   )
 }
 
-describe('production bundle guard: dev sign-in bypass (LIFT-1123)', () => {
-  describe('source structure keeps the bypass tree-shakeable', () => {
-    const authScreen = readFileSync(resolve(srcDir, 'views/AuthScreen.vue'), 'utf-8')
+describe.each(SURFACES)('production bundle guard: $id', (surface) => {
+  const host = readFileSync(resolve(srcDir, surface.host), 'utf-8')
 
-    it('AuthScreen no longer renders the dev button inline', () => {
+  describe('source structure keeps the surface tree-shakeable', () => {
+    it('the host does not render the surface inline', () => {
       // Inlined, it compiles to an always-present runtime v-if that ships in
       // every bundle. It must live in a separately-chunked component instead.
-      for (const marker of DEV_SIGNIN_MARKERS) {
-        expect(authScreen).not.toContain(marker)
+      for (const marker of surface.markers) {
+        expect(host).not.toContain(marker)
       }
     })
 
-    it('AuthScreen gates the dev button behind the VITE_E2E build flag', () => {
-      expect(authScreen).toContain('import.meta.env.VITE_E2E')
-      expect(authScreen).toContain('defineAsyncComponent')
-      expect(authScreen).toContain(DEV_SIGNIN_COMPONENT)
+    it('the host gates the lazy import behind the build flags', () => {
+      expect(host).toContain('import.meta.env.DEV')
+      expect(host).toContain('import.meta.env.VITE_E2E')
+      expect(host).toContain('defineAsyncComponent')
+      expect(host).toContain(surface.importSpecifier)
     })
 
-    it('the dev button component still carries the markers (guard is non-vacuous)', () => {
-      const component = readFileSync(resolve(srcDir, 'views', DEV_SIGNIN_COMPONENT), 'utf-8')
-      for (const marker of DEV_SIGNIN_MARKERS) {
+    it('the host never gates on the hostname (#1425)', () => {
+      // capacitor://localhost makes a localhost/LAN test true on every native
+      // install; the build flag is the only dev gate.
+      expect(host).not.toMatch(/location\s*\.\s*hostname/)
+    })
+
+    it('the component still carries the markers (guard is non-vacuous)', () => {
+      const component = readFileSync(resolve(srcDir, surface.component), 'utf-8')
+      for (const marker of surface.markers) {
         expect(component).toContain(marker)
       }
     })
 
-    it('DevSignInButton.vue is the ONLY source file that renders the bypass', () => {
+    it('the component is the ONLY source file that renders the surface', () => {
       const offenders = sourceFiles().filter((file) => {
-        if (file.endsWith(DEV_SIGNIN_COMPONENT)) return false
+        if (file.endsWith(surface.component)) return false
         const contents = readFileSync(file, 'utf-8')
-        return DEV_SIGNIN_MARKERS.some((marker) => contents.includes(marker))
+        return surface.markers.some((marker) => contents.includes(marker))
       })
       expect(offenders).toEqual([])
     })
   })
 
-  // Mirrors scripts/check-no-dev-signin.js. Only runs when a build exists (it
+  // Mirrors scripts/check-no-dev-surface.js. Only runs when a build exists (it
   // does after `npm run build`; CI enforces the real check in build-and-test).
-  describe('built production bundle omits the bypass', () => {
+  describe('built production bundle omits the surface', () => {
     const distDir = resolve(root, 'dist')
     const hasBuild = existsSync(distDir)
 
-    it.runIf(hasBuild)('no emitted JS chunk contains the dev sign-in markers', () => {
+    it.runIf(hasBuild)('no emitted JS chunk contains the markers', () => {
       const jsFiles = walk(distDir).filter((f) => f.endsWith('.js'))
       const offenders = jsFiles.filter((file) => {
         const contents = readFileSync(file, 'utf-8')
-        return DEV_SIGNIN_MARKERS.some((marker) => contents.includes(marker))
+        return surface.markers.some((marker) => contents.includes(marker))
       })
       expect(offenders).toEqual([])
     })

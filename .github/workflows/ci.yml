@@ -290,12 +290,13 @@ jobs:
 
       - run: npm run build
 
-      # Fail the production build if the dev sign-in bypass ("Continue as Dev")
-      # tree-shakes back in — e.g. VITE_E2E leaked into a prod build or the
-      # AuthScreen flag gate was removed (LIFT-1123). This job builds WITHOUT
-      # VITE_E2E, so the dev-signin chunk must be absent from dist/.
-      - name: Guard against dev sign-in in production bundle
-        run: npm run guard:dev-signin
+      # Fail the production build if a dev-only surface tree-shakes back in —
+      # the "Continue as Dev" sign-in bypass (LIFT-1123) or the Settings dev
+      # tools (#1425) — e.g. VITE_E2E leaked into a prod build or a flag gate
+      # was removed. This job builds WITHOUT VITE_E2E, so both chunks must be
+      # absent from dist/.
+      - name: Guard against dev-only UI in production bundle
+        run: npm run guard:dev-surface
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -322,14 +323,16 @@ jobs:
         run: |
           # Total JS bundle budget: 640 KB (currently ~597 KB).
           # Sums every emitted JS chunk, so code-splitting does not lower the total —
-          # bumped 500 → 550 → 570 → 600 → 640 KB as the app legitimately outgrew each
+          # bumped 500 → 550 → 570 → 600 → 640 → 672 KB as the app legitimately outgrew each
           # ceiling (last bump: master had drifted to 597 KB, leaving 3 KB of headroom,
           # so the exercise database (#615, +6 KB) and consistency heatmap (#620, +7 KB)
-          # both failed the gate on size alone).
+          # both failed the gate on size alone; the 672 KB bump: master sat within 1 KB
+          # of 640 KB, and the privacy policy + terms shipping in-app (#537) and the
+          # password reset (#1430) — App Store content, not bloat — tripped it).
           TOTAL_JS=$(find dist/assets -name '*.js' ! -name 'workbox-*' ! -name 'sw.*' -exec wc -c {} + | tail -1 | awk '{print $1}')
           TOTAL_CSS=$(find dist/assets -name '*.css' -exec wc -c {} + | tail -1 | awk '{print $1}')
           TOTAL_CSS=${TOTAL_CSS:-0}
-          BUDGET=655360
+          BUDGET=688128
 
           echo "js_bytes=$TOTAL_JS" >> "$GITHUB_OUTPUT"
           echo "css_bytes=$TOTAL_CSS" >> "$GITHUB_OUTPUT"
@@ -360,7 +363,7 @@ jobs:
             const jsBytes = parseInt('${{ steps.bundle.outputs.js_bytes }}', 10);
             const cssBytes = parseInt('${{ steps.bundle.outputs.css_bytes }}', 10);
             // Keep in sync with BUDGET in the "Measure bundle sizes" step above.
-            const budget = 583680;
+            const budget = 688128;
 
             let body = '## 📦 Bundle Size Report\n\n';
 

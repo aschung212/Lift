@@ -8,8 +8,12 @@
  *   presentPRBurst({ exerciseName, oldE1RM, newE1RM, setWeight, setReps })
  *
  * Respects the user's `experience.prCelebrations` preference (no-ops when
- * the toggle is off, even if presentPRBurst is called). Also fires a
- * success haptic via useHaptics, which itself honors the haptics toggle.
+ * the toggle is off, even if presentPRBurst is called).
+ *
+ * Presentation only — it does NOT fire a haptic. A save earns exactly one,
+ * decided with the celebration in `src/lib/setCeremony.ts` and fired once by
+ * `useSetLogCeremony` (LIFT-1448). This composable firing its own on top of the
+ * caller's is what produced the muddy back-to-back buzz on iOS.
  *
  * PR baseline: callers are expected to compare new vs. previous e1RM using
  * `workoutStore.getExercisePR(id, prBaselineDate)` so the burst respects
@@ -20,7 +24,6 @@
 
 import { ref, type Ref } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
-import { useHaptics } from './useHaptics'
 import type { SessionSummary } from '../lib/sessionSummary'
 
 export interface PRBurstPayload {
@@ -63,18 +66,6 @@ function presentPRBurst(p: PRBurstPayload): void {
 
   payload.value = p
   visible.value = true
-
-  // Haptic on present — heavier for first PR. useHaptics short-circuits
-  // if the user disabled haptics.
-  try {
-    const haptics = useHaptics()
-    if (p.isFirstPR) {
-      haptics.impactHeavy()
-    }
-    haptics.notifySuccess()
-  } catch {
-    /* silent — haptics are best-effort */
-  }
 }
 
 function dismissPRBurst(): void {

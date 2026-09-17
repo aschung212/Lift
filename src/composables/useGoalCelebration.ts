@@ -6,12 +6,17 @@
  * Distinct from usePRBurst: a PR is the big full-bleed takeover; hitting the
  * weekly goal is the quieter, recurring habit-loop reward, so this renders as a
  * compact auto-dismissing banner. It shares the `experience.prCelebrations`
- * opt-out (the app's single "celebrations" switch) and fires a success haptic.
+ * opt-out (the app's single "celebrations" switch).
+ *
+ * Presentation only — it does NOT fire a haptic. A save earns exactly one,
+ * decided with the celebration in `src/lib/setCeremony.ts` and fired once by
+ * `useSetLogCeremony` (LIFT-1448); this used to return a boolean so the caller
+ * could decide whether to add its own, which is the arrangement that let two
+ * haptics collide on iOS.
  */
 
 import { ref, type Ref } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
-import { useHaptics } from './useHaptics'
 
 export interface GoalCelebrationPayload {
   /** Projected consecutive-week streak after meeting this week's goal. */
@@ -30,19 +35,12 @@ const payload: Ref<GoalCelebrationPayload | null> = ref(null)
 let autoDismissId: ReturnType<typeof setTimeout> | null = null
 let clearPayloadId: ReturnType<typeof setTimeout> | null = null
 
-/**
- * Present the banner and fire its celebration haptic. Returns `true` when the
- * celebration was actually presented (and thus a success / milestone haptic was
- * fired), `false` when it was suppressed by the celebrations opt-out. Callers
- * use the return value to avoid firing a second, colliding haptic: two native
- * haptics fired back-to-back collapse into a muddy/truncated buzz on
- * Capacitor/iOS (see WorkoutTracker.saveSet).
- */
-function presentGoalCelebration(p: GoalCelebrationPayload): boolean {
+/** Present the banner. No-ops under the celebrations opt-out. */
+function presentGoalCelebration(p: GoalCelebrationPayload): void {
   // Honor the celebrations opt-out (Settings → Experience).
   try {
     const prefs = usePreferencesStore()
-    if (prefs.experience?.prCelebrations === false) return false
+    if (prefs.experience?.prCelebrations === false) return
   } catch {
     // Pinia unavailable (e.g. some test setups) — proceed.
   }
@@ -52,20 +50,9 @@ function presentGoalCelebration(p: GoalCelebrationPayload): boolean {
 
   if (clearPayloadId !== null) { clearTimeout(clearPayloadId); clearPayloadId = null }
 
-  // Success haptic — heavier when a multiplier milestone is reached. useHaptics
-  // short-circuits if the user disabled haptics.
-  try {
-    const haptics = useHaptics()
-    if (p.milestone) haptics.impactHeavy()
-    haptics.notifySuccess()
-  } catch {
-    /* silent — haptics are best-effort */
-  }
-
   // Auto-dismiss — celebrations should never block the next set.
   if (autoDismissId !== null) clearTimeout(autoDismissId)
   autoDismissId = setTimeout(dismissGoalCelebration, AUTO_DISMISS_MS)
-  return true
 }
 
 function dismissGoalCelebration(): void {
@@ -82,7 +69,7 @@ function dismissGoalCelebration(): void {
 export interface UseGoalCelebrationReturn {
   visible: Ref<boolean>
   payload: Ref<GoalCelebrationPayload | null>
-  presentGoalCelebration: (p: GoalCelebrationPayload) => boolean
+  presentGoalCelebration: (p: GoalCelebrationPayload) => void
   dismissGoalCelebration: () => void
 }
 

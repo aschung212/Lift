@@ -5,7 +5,8 @@ import type { ThemeId } from './themes'
  *
  * Each elemental theme has a matching home-screen icon. Picking an alternate
  * icon is a native-only capability (iOS `setAlternateIconName`) — the picker is
- * hidden on web/PWA where alternate icons cannot be applied. Icons are unlocked
+ * hidden on web/PWA where alternate icons cannot be applied, and on native
+ * until the `AppIcon` plugin is actually registered (`isAppIconPluginAvailable`). Icons are unlocked
  * alongside their matching theme, reusing the existing XP progression model
  * rather than introducing a parallel entitlement.
  *

@@ -14,6 +14,14 @@ export const APP_URL = 'https://spa-rho-sandy.vercel.app'
 export const APP_NAME = 'Lift'
 
 /**
+ * iOS bundle identifier of the native Capacitor shell. Mirrors `appId` in
+ * capacitor.config.ts (the two are pinned equal by appMeta.test.ts). HealthKit
+ * reports it as the `sourceId` of every sample Lift writes, which is how the
+ * Apple Health sync tells its own samples from a scale's (#1420).
+ */
+export const APP_BUNDLE_ID = 'com.aschung212.lift'
+
+/**
  * One-line pitch used when sharing the app itself (word-of-mouth loop, #713).
  * Kept in sync with index.html's og:description so the message a user sends
  * matches the link preview the recipient sees.

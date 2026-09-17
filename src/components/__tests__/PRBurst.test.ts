@@ -14,7 +14,10 @@ vi.mock('../../composables/useAnalytics', () => ({
   useAnalytics: () => ({ logEvent: logEventMock }),
 }))
 
-// usePRBurst fires haptics on present; keep them observable + side-effect free.
+// The burst itself fires no haptic (LIFT-1448) — the save's single haptic is
+// decided with the celebration in lib/setCeremony and fired by
+// useSetLogCeremony. Mocked so the assertion below is observable and any
+// re-introduced call is side-effect free.
 vi.mock('../../composables/useHaptics', () => ({
   useHaptics: () => ({
     impactLight: vi.fn(),
@@ -94,7 +97,7 @@ describe('PRBurst', () => {
     expect(burst.attributes('role')).toBe('dialog')
     expect(burst.attributes('aria-modal')).toBe('true')
     expect(burst.attributes('aria-label')).toBe('Personal record')
-    expect(notifySuccessMock).toHaveBeenCalledTimes(1)
+    expect(notifySuccessMock).not.toHaveBeenCalled()
   })
 
   it('shows the eyebrow, delta, subtitle and set chip', async () => {

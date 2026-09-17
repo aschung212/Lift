@@ -6,6 +6,7 @@ import { broadcastSyncStatus } from './crossTabSync'
 import { backupToIDB, restoreFromIDB } from './durableStorage'
 import { isAuthError, ensureFreshSession } from './sessionHealth'
 import { isRetryableSyncFailure } from './syncStatus'
+import { publishSyncQueueStats } from './syncActivity'
 
 type SyncOperation = () => PromiseLike<unknown>
 
@@ -344,8 +345,40 @@ export class SyncQueue {
   // reproduce the same refusal — and would log a fresh Sentry error each time.
   // Cleared by `enqueue`, so a genuine new write on the key starts over.
   private _permanentFailures = new Set<string>()
+  // Keys whose op is mid-flight. `flush()` clears `_queue` before awaiting, so
+  // without this a write enqueued DURING a flush would publish its in-flight
+  // siblings as `stranded` — and stranded writes light the sync indicator
+  // (LIFT-1323), so a routine mid-flush set would flash "Sync failed".
+  private _inFlightKeys = new Set<string>()
   // One-shot `online` listener, armed only while the queue is parked offline.
   private _onlineResume: (() => void) | null = null
+
+  /**
+   * Publish the reactive snapshot the sync-status UI reads (LIFT-1323).
+   *
+   * `stranded` is every journaled key with no live attempt behind it: not
+   * queued, not awaiting retry, not rate-limit deferred, not in flight. Those
+   * are writes that gave up — retries exhausted, or a refusal the server will
+   * repeat — and their durable entry is retained for the next launch
+   * (LIFT-1229) with nothing in between telling the user.
+   *
+   * Call after every transition that can change the queue or the journal. This
+   * is a DISPLAY signal, so a missed call costs a stale count until the next
+   * transition, never correctness.
+   */
+  private _publishStats(): void {
+    let stranded = 0
+    for (const key of this._journal.keys()) {
+      if (
+        this._queue.has(key)
+        || this._retryQueue.has(key)
+        || this._inFlightKeys.has(key)
+        || _deferredOps.has(key)
+      ) continue
+      stranded++
+    }
+    publishSyncQueueStats({ pending: this.pending, journaled: this._journal.size, stranded })
+  }
 
   constructor(flushDelay = 1000) {
     this._flushDelay = flushDelay
@@ -495,6 +528,7 @@ export class SyncQueue {
     if (_rateCount > RATE_LIMIT_MAX) {
       logWarn('Sync rate limit exceeded, deferring operation', { key })
       _deferredOps.set(key, op)
+      this._publishStats()
       return
     }
     this._queue.set(key, op)
@@ -504,6 +538,7 @@ export class SyncQueue {
     // journal replay (LIFT-1322). `replayJournal()` never reaches here for a
     // barred key: it filters them out rather than re-enqueuing them.
     this._permanentFailures.delete(key)
+    this._publishStats()
     this._scheduleFlush()
   }
 
@@ -607,6 +642,7 @@ export class SyncQueue {
       this._armOnlineResume()
       syncStatus.value = 'offline'
       broadcastSyncStatus('offline')
+      this._publishStats()
       return
     }
 
@@ -622,6 +658,7 @@ export class SyncQueue {
     // lose the correction if the app reloaded before the next flush.
     const journalSnapshots = entries.map(([key]) => this._journal.get(key))
     this._queue.clear()
+    for (const [key] of entries) this._inFlightKeys.add(key)
 
     try {
       const results = await Promise.allSettled(
@@ -724,6 +761,8 @@ export class SyncQueue {
       broadcastSyncStatus(newStatus)
     } finally {
       this._flushing = false
+      this._inFlightKeys.clear()
+      this._publishStats()
       if (this._queue.size > 0) this._scheduleFlush()
     }
   }
@@ -748,10 +787,12 @@ export class SyncQueue {
     this._retryQueue.clear()
     this._attemptMap.clear()
     this._permanentFailures.clear()
+    this._inFlightKeys.clear()
     _deferredOps.clear()
     const hadJournal = this._journal.size > 0
     this._journal.clear()
     if (hadJournal) this._persistJournal()
+    this._publishStats()
   }
 
   /**
@@ -859,8 +900,16 @@ export class SyncQueue {
    * can be sequenced ahead of the remote-wins store reads.
    *
    * Returns the number of entries re-armed.
+   *
+   * `includeRefused` lifts the `_permanentFailures` bar for ONE pass. The bar
+   * exists because an ambient reconnect/resume signal can only reproduce a
+   * refusal the server already gave, logging a fresh Sentry error each time —
+   * but a user tapping "Try again" in the sync sheet (LIFT-1323) is not
+   * ambient, happens once per tap, and is the one moment where re-issuing is
+   * what they asked for (the LIFT-1169 window, where the client shipped a
+   * column ahead of its migration, resolves exactly this way).
    */
-  replayJournal(): number {
+  replayJournal(options: { includeRefused?: boolean } = {}): number {
     if (!supabase || isPreviewMode.value) return 0
     let replayed = 0
     // Snapshot: enqueue() writes back into _journal as it goes.
@@ -873,7 +922,7 @@ export class SyncQueue {
       // LIFT-1213 identity guard stops the in-flight op's completion from
       // deleting the journal entry this replay just rewrote.
       if (this._queue.has(key) || this._retryQueue.has(key) || _deferredOps.has(key)) continue
-      if (this._permanentFailures.has(key)) continue
+      if (!options.includeRefused && this._permanentFailures.has(key)) continue
       const { descriptor, isDelete } = entry
       // Defense-in-depth: rehydrate() already gates on this, but a descriptor
       // can also reach the journal straight from a producer.

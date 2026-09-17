@@ -495,18 +495,9 @@
           </div>
         </div>
 
-        <!-- Dev tools — only on localhost/LAN -->
-        <div v-if="isDev" class="settingsGroup">
-          <div class="settingsHeader">Dev Tools</div>
-          <div class="devToolsGrid">
-            <button class="devBtn" @click="devResetOnboarding">Reset Onboarding</button>
-            <button class="devBtn" @click="devSeedProgression(12400)">Seed 12k XP</button>
-            <button class="devBtn" @click="devSeedProgression(80000)">Seed 80k XP</button>
-            <button class="devBtn" @click="devAddXP(5000)">+5,000 XP</button>
-            <button class="devBtn" @click="devRunMigration">Run Migration</button>
-            <button class="devBtn devBtnDanger" @click="devClearAll">Clear All Data</button>
-          </div>
-        </div>
+        <!-- Dev tools — a separately-chunked component that only a dev-server
+             or e2e build ever imports (#1425); see DevToolsGroup in the script. -->
+        <component :is="DevToolsGroup" v-if="DevToolsGroup" />
 
         <div class="settingsGroup">
           <div class="settingsHeader">Weight Goal</div>
@@ -578,6 +569,31 @@
               </div>
             </div>
           </template>
+        </div>
+
+        <!-- Apple Health (#1420): native iOS only. HealthKit has no web API, so the
+             PWA's path into Health stays the Weight-tab CSV export (#1159). -->
+        <div v-if="healthSyncSupported" class="settingsGroup">
+          <div class="settingsHeader">Apple Health</div>
+          <div class="settingsRow">
+            <div class="settingsLabelGroup">
+              <span id="health-sync-label" class="settingsLabel">Sync bodyweight</span>
+              <span class="settingsHint">Adds each weigh-in to Health once. Edits and deletions stay in Lift.</span>
+            </div>
+            <button
+              :class="['glassToggle', { on: healthSyncEnabled }]"
+              role="switch"
+              :aria-checked="healthSyncEnabled"
+              aria-labelledby="health-sync-label"
+              @click="toggleHealthSync"
+            >
+              <span class="glassToggleThumb"></span>
+            </button>
+          </div>
+          <div v-if="healthSyncEnabled || healthSyncStatus !== 'idle'" class="settingsRow">
+            <span class="settingsHint" role="status">{{ healthSyncStatusText }}</span>
+            <button v-if="healthSyncShowRetry" class="exportBtn" aria-label="Sync bodyweight to Apple Health now" @click="healthSyncNow()">Sync now</button>
+          </div>
         </div>
 
         <div class="settingsGroup">
@@ -821,22 +837,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted, type ComponentPublicInstance } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, defineAsyncComponent, type ComponentPublicInstance } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useRestTimer } from '../composables/useRestTimer'
 import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
-import { todayISO } from '../lib/dates'
+import { todayISO, formatShortDate } from '../lib/dates'
 import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
 import { showXPToast } from '../composables/xpCeremonyUI'
-import { isNative } from '../lib/platform'
 import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
-import { setNativeAppIcon } from '../lib/nativeAppIcon'
+import { setNativeAppIcon, isAppIconPluginAvailable } from '../lib/nativeAppIcon'
 import { computeThemeStats, type ThemeStats } from '../lib/themeStats'
 import { useXPCeremony } from '../composables/useXPCeremony'
-import { isMigrated, markMigrated, clearMigrationFlag, computeRetroactiveXP } from '../lib/xpMigration'
-import { clearIDB } from '../lib/durableStorage'
+import { isMigrated, markMigrated, computeRetroactiveXP } from '../lib/xpMigration'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport, downloadBlob } from '../lib/dataExport'
@@ -859,6 +873,7 @@ import { useSwipeToDismiss } from '../composables/useSwipeToDismiss'
 import { useFocusTrap } from '../composables/useFocusTrap'
 import { useModal } from '../composables/useModal'
 import { useAppShare } from '../composables/useAppShare'
+import { useHealthSync } from '../composables/useHealthSync'
 import LegalSheet from './LegalSheet.vue'
 import ThemeStatsSheet from './ThemeStatsSheet.vue'
 import GymManagerModal from './GymManagerModal.vue'
@@ -1001,8 +1016,11 @@ function disarmSupportImpression() {
   supportObserver = null
 }
 
-// ── App icon picker (native iOS only) ──────────────────────────
-const showAppIconPicker = isNative
+// ── App icon picker (native iOS, and only once the AppIcon plugin exists) ──
+// Gated on the plugin being registered rather than on `isNative`: the Swift
+// half is not shipped yet (#531), and a picker whose taps cannot change the
+// icon is a dead control (#1423).
+const showAppIconPicker = isAppIconPluginAvailable()
 // Mirror the theme-grid unlock rules (incl. the trial period) so a starter's
 // matching icon unlocks exactly when its theme does.
 const unlockedThemeIds = computed<ThemeId[]>(() =>
@@ -1031,7 +1049,7 @@ function selectAppIcon(id: AppIconId) {
 // (immediate) so a preference synced from another device is applied, and on any
 // change — including reverting to the default icon if its theme was re-locked by
 // a progression/prestige reset (resolveAppIconId handles the fallback).
-if (isNative) {
+if (showAppIconPicker) {
   watch(
     () => [prefs.appIcon, unlockedThemeIds.value.join(',')] as const,
     () => {
@@ -1044,6 +1062,54 @@ if (isNative) {
     },
     { immediate: true }
   )
+}
+
+// ── Apple Health bodyweight sync (#1420, native iOS only) ──────────
+const {
+  isSupported: healthSyncSupported,
+  enabled: healthSyncEnabled,
+  status: healthSyncStatus,
+  busy: healthSyncBusy,
+  pendingCount: healthSyncPending,
+  lastSyncedAt: healthSyncLastSyncedAt,
+  enable: enableHealthSync,
+  disable: disableHealthSync,
+  syncNow: healthSyncNow,
+} = useHealthSync()
+
+const healthSyncStatusText = computed(() => {
+  switch (healthSyncStatus.value) {
+    case 'syncing':
+      return 'Syncing…'
+    case 'denied':
+      return 'Health access is off. Turn it on in the Health app: Sharing › Apps & Services › Lift.'
+    case 'unavailable':
+      return 'Apple Health isn’t available on this device.'
+    case 'error':
+      return 'Couldn’t write to Health. Tap Sync now to retry.'
+    case 'idle':
+      break
+  }
+  const n = healthSyncPending.value
+  if (n > 0) return `${n} weigh-in${n === 1 ? '' : 's'} waiting`
+  const last = healthSyncLastSyncedAt.value
+  return last ? `Up to date · synced ${formatShortDate(last)}` : 'Up to date'
+})
+
+// "Sync now" only when a tap can change something: entries waiting, or a failed
+// run to retry. It sits at the end of the row so appearing never shifts the text.
+const healthSyncShowRetry = computed(
+  () => healthSyncEnabled.value && !healthSyncBusy.value
+    && (healthSyncPending.value > 0 || healthSyncStatus.value === 'error'),
+)
+
+async function toggleHealthSync() {
+  if (healthSyncBusy.value) return
+  if (healthSyncEnabled.value) {
+    disableHealthSync()
+    return
+  }
+  await enableHealthSync()
 }
 
 // ── Swipe-to-dismiss for settings sheet ────────────────────────
@@ -1795,54 +1861,17 @@ function handleImportFile(event: Event) {
   if (importFileInput.value) importFileInput.value.value = ''
 }
 
-// ── Dev tools (localhost/LAN only) ────────────────────────────────
-const isDev = /^(localhost|127\.|192\.168\.|10\.)/.test(window.location.hostname)
-
-function devResetOnboarding() {
-  localStorage.removeItem('onboarding-complete')
-  localStorage.removeItem('user-progression')
-  location.reload()
-}
-
-function devSeedProgression(xp: number) {
-  const starter = progressionStore.starterTheme || 'fire' as ThemeId
-  progressionStore.totalXP = xp
-  progressionStore.streakWeeks = 8
-  progressionStore.weeklyTarget = 4
-  progressionStore.showProgression = true
-  progressionStore.progressionEnabled = true
-  if (!progressionStore.starterTheme) {
-    progressionStore.starterTheme = starter
-  }
-  progressionStore.streakHistory = [{ weekStart: '2026-03-30', streakCount: 8, weeklyTarget: 4, combinedMultiplier: 1.8 }]
-  progressionStore.unlockedThemes = [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
-  if (!progressionStore.unlockedThemes.some(t => t.id === starter)) {
-    progressionStore.unlockedThemes.push({ id: starter, unlockedAt: new Date().toISOString() })
-  }
-  progressionStore.checkUnlocks()
-  progressionStore._persist()
-}
-
-function devAddXP(amount: number) {
-  progressionStore.totalXP += amount
-  progressionStore.checkUnlocks()
-  progressionStore._persist()
-}
-
-function devRunMigration() {
-  clearMigrationFlag()
-  const result = computeRetroactiveXP(workoutStore.exercises, bodyweightStore.entries)
-  progressionStore.totalXP = result.totalXP
-  progressionStore.xpPerSet = result.xpPerSet
-  progressionStore.bodyweightXPDates = result.bodyweightXPDates
-  progressionStore.checkUnlocks()
-  progressionStore._persist()
-  markMigrated()
-}
-
-async function devClearAll() {
-  localStorage.clear()
-  await clearIDB()
-  location.reload()
-}
+// ── Dev tools (dev server + e2e builds only) ──────────────────────
+// Gated on BUILD MODE, never on hostname (#1425): the bundled Capacitor app is
+// served from capacitor://localhost, so the old localhost/LAN hostname test
+// rendered the XP-seeding / Clear-All-Data group on every native install,
+// App Store build included. `import.meta.env.DEV` folds to false in every `vite build`,
+// the ternary drops the dynamic import, and the group's chunk is never emitted
+// — the LIFT-1123 shape AuthScreen uses for its dev sign-in button, pinned by
+// prodBundleGuard.test.ts and scripts/check-no-dev-surface.js. VITE_E2E keeps
+// the e2e build's dev surface, mirroring that gate.
+const DevToolsGroup =
+  import.meta.env.DEV || import.meta.env.VITE_E2E === 'true'
+    ? defineAsyncComponent(() => import('../views/DevToolsGroup.vue'))
+    : null
 </script>

@@ -35,6 +35,9 @@ vi.mock('../../lib/migrate', () => ({
 const mockSignInWithOAuth = vi.fn().mockResolvedValue({ error: null })
 const mockSignInWithPassword = vi.fn().mockResolvedValue({ error: null })
 const mockSignUp = vi.fn().mockResolvedValue({ data: { user: { identities: [{}] }, session: {} }, error: null })
+const mockResetPasswordForEmail = vi.fn().mockResolvedValue({ data: {}, error: null })
+const mockVerifyOtp = vi.fn().mockResolvedValue({ data: { session: {}, user: {} }, error: null })
+const mockUpdateUser = vi.fn().mockResolvedValue({ data: { user: {} }, error: null })
 const mockSignOut = vi.fn().mockResolvedValue({})
 const mockGetSession = vi.fn().mockResolvedValue({ data: { session: null } })
 const mockOnAuthStateChange = vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } })
@@ -53,6 +56,9 @@ vi.mock('../../lib/supabase', () => ({
       signInWithOAuth: (...args: unknown[]) => mockSignInWithOAuth(...args),
       signInWithPassword: (...args: unknown[]) => mockSignInWithPassword(...args),
       signUp: (...args: unknown[]) => mockSignUp(...args),
+      resetPasswordForEmail: (...args: unknown[]) => mockResetPasswordForEmail(...args),
+      verifyOtp: (...args: unknown[]) => mockVerifyOtp(...args),
+      updateUser: (...args: unknown[]) => mockUpdateUser(...args),
       signOut: (...args: unknown[]) => mockSignOut(...args),
       getSession: (...args: unknown[]) => mockGetSession(...args),
       onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
@@ -1012,5 +1018,112 @@ describe('useAuth', () => {
         process.off('unhandledRejection', onUnhandled)
       }
     })
+  })
+})
+
+// ── Password reset by emailed code (#1430) ─────────────────────────────
+describe('password reset (#1430)', () => {
+  type AuthCb = (event: string, session: unknown) => void
+
+  /** init() with no stored session, then hand back the auth listener. */
+  async function initSignedOut() {
+    vi.stubEnv('DEV', false)
+    mockGetSession.mockResolvedValue({ data: { session: null } })
+    vi.resetModules()
+    const mod = await import('../useAuth')
+    const auth = mod.useAuth()
+    auth.init()
+    await vi.waitFor(() => expect(mockOnAuthStateChange).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const cb = mockOnAuthStateChange.mock.calls.at(-1)![0] as AuthCb
+    return { auth, cb }
+  }
+
+  beforeEach(() => {
+    mockResetPasswordForEmail.mockClear()
+    mockVerifyOtp.mockClear()
+    mockUpdateUser.mockClear()
+    mockResetPasswordForEmail.mockResolvedValue({ data: {}, error: null })
+    mockVerifyOtp.mockResolvedValue({ data: { session: {}, user: {} }, error: null })
+    mockUpdateUser.mockResolvedValue({ data: { user: {} }, error: null })
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.doUnmock('../../lib/platform')
+  })
+
+  it('requestPasswordReset asks for the recovery email with THIS origin as the link target (web)', async () => {
+    const { requestPasswordReset } = useAuth()
+    expect(await requestPasswordReset('a@b.co')).toEqual({ error: null })
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith('a@b.co', { redirectTo: window.location.origin })
+  })
+
+  it('on native the link points at the PWA — capacitor://localhost can never complete a PKCE exchange', async () => {
+    vi.doMock('../../lib/platform', () => ({ isNative: true, isIOS: true, platform: 'ios' }))
+    vi.resetModules()
+    const mod = await import('../useAuth')
+    const { APP_URL } = await import('../../lib/appMeta')
+    await mod.useAuth().requestPasswordReset('a@b.co')
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith('a@b.co', { redirectTo: APP_URL })
+    expect(APP_URL.startsWith('https://')).toBe(true)
+    expect(APP_URL).not.toContain('localhost')
+  })
+
+  it('confirmPasswordReset verifies the recovery code, THEN sets the password on that session', async () => {
+    const { confirmPasswordReset, passwordRecoveryPending } = useAuth()
+    expect(await confirmPasswordReset('a@b.co', ' 123456 ', 'hunter22')).toEqual({ error: null })
+    expect(mockVerifyOtp).toHaveBeenCalledWith({ email: 'a@b.co', token: '123456', type: 'recovery' })
+    expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'hunter22' })
+    expect(mockVerifyOtp.mock.invocationCallOrder[0]).toBeLessThan(mockUpdateUser.mock.invocationCallOrder[0])
+    expect(passwordRecoveryPending.value).toBe(false)
+  })
+
+  it('a wrong code short-circuits: no password write, the error surfaces', async () => {
+    mockVerifyOtp.mockResolvedValueOnce({ data: { session: null, user: null }, error: { message: 'Token has expired or is invalid' } })
+    const { confirmPasswordReset } = useAuth()
+    const result = await confirmPasswordReset('a@b.co', '000000', 'hunter22')
+    expect(result.error?.message).toBe('Token has expired or is invalid')
+    expect(mockUpdateUser).not.toHaveBeenCalled()
+  })
+
+  it('verified but not updated leaves the in-app sheet armed for another try', async () => {
+    mockUpdateUser.mockResolvedValueOnce({ data: { user: null }, error: { message: 'Password should be at least 6 characters' } })
+    const { confirmPasswordReset, passwordRecoveryPending } = useAuth()
+    const result = await confirmPasswordReset('a@b.co', '123456', 'short')
+    expect(result.error?.message).toMatch(/at least 6/)
+    expect(passwordRecoveryPending.value).toBe(true)
+  })
+
+  it('a PASSWORD_RECOVERY event (the web link landing) raises the flag; a successful updatePassword clears it', async () => {
+    const { auth, cb } = await initSignedOut()
+    cb('PASSWORD_RECOVERY', { user: { id: 'u1', email: 'a@b.co' } })
+    expect(auth.passwordRecoveryPending.value).toBe(true)
+    expect(auth.user.value?.id).toBe('u1')
+    expect(await auth.updatePassword('hunter22')).toEqual({ error: null })
+    expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'hunter22' })
+    expect(auth.passwordRecoveryPending.value).toBe(false)
+  })
+
+  it('the code flow does NOT raise the sheet for the PASSWORD_RECOVERY its own verifyOtp fires', async () => {
+    const { auth, cb } = await initSignedOut()
+    mockVerifyOtp.mockImplementationOnce(async (params: { email: string }) => {
+      cb('PASSWORD_RECOVERY', { user: { id: 'u1', email: params.email } })
+      return { data: { session: {}, user: {} }, error: null }
+    })
+    await auth.confirmPasswordReset('a@b.co', '123456', 'hunter22')
+    expect(auth.passwordRecoveryPending.value).toBe(false)
+    expect(auth.user.value?.id).toBe('u1')
+  })
+
+  it('signing out drops a pending recovery, and clearPasswordRecovery is the "Not now" path', async () => {
+    const { auth, cb } = await initSignedOut()
+    cb('PASSWORD_RECOVERY', { user: { id: 'u1', email: 'a@b.co' } })
+    expect(auth.passwordRecoveryPending.value).toBe(true)
+    auth.clearPasswordRecovery()
+    expect(auth.passwordRecoveryPending.value).toBe(false)
+    cb('PASSWORD_RECOVERY', { user: { id: 'u1', email: 'a@b.co' } })
+    expect(auth.passwordRecoveryPending.value).toBe(true)
+    cb('SIGNED_OUT', null)
+    expect(auth.passwordRecoveryPending.value).toBe(false)
   })
 })

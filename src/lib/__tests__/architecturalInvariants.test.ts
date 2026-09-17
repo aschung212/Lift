@@ -1074,8 +1074,8 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
   // loop — the danger is code reloading with no human in the path. Every
   // entry here must be a reload behind an explicit user gesture.
   const USER_INITIATED = new Set([
-    // Dev tools (localhost/LAN only), each behind an explicit tap.
-    join('components', 'SettingsSheet.vue'),
+    // Dev tools (dev-server/e2e builds only, #1425), each behind an explicit tap.
+    join('views', 'DevToolsGroup.vue'),
   ])
 
   const RELOAD_CALL = /\blocation\s*\.\s*reload\s*\(/
@@ -1085,7 +1085,7 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
     // Non-vacuity: the walker must reach the owner and the known exempt
     // file, or this scan proves nothing.
     expect(files.map(f => f.path)).toContain(OWNER)
-    expect(files.map(f => f.path)).toContain(join('components', 'SettingsSheet.vue'))
+    expect(files.map(f => f.path)).toContain(join('views', 'DevToolsGroup.vue'))
 
     const violations = files
       .filter(f => f.path !== OWNER && !USER_INITIATED.has(f.path))
@@ -1109,11 +1109,60 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
   })
 
   it('the exempt call sites are still the dev tools they were vetted as', () => {
-    // The allowlist is only sound while its reloads stay behind the
-    // localhost-gated dev tools. If SettingsSheet's dev gate disappears,
-    // re-vet every reload in the file before loosening this.
+    // The allowlist is only sound while its reloads stay behind the dev-only
+    // Settings group, and that group is only dev-only while SettingsSheet
+    // imports it lazily behind the BUILD flag (#1425) — a hostname test is not
+    // a gate: the bundled Capacitor app is served from capacitor://localhost.
+    // If either half changes, re-vet every reload in DevToolsGroup.vue before
+    // loosening this.
     const settingsSheet = readFileSync(join(SRC_DIR, 'components', 'SettingsSheet.vue'), 'utf-8')
-    expect(settingsSheet).toMatch(/const isDev = /)
+    expect(settingsSheet).toMatch(
+      /import\.meta\.env\.DEV[\s\S]{0,200}defineAsyncComponent\(\(\) => import\('\.\.\/views\/DevToolsGroup\.vue'\)\)/,
+    )
+    expect(stripComments(settingsSheet)).not.toMatch(/location\s*\.\s*hostname/)
+  })
+})
+
+// ── Invariant: dev-only UI is gated on build mode, never on hostname (#1425) ─
+// The Settings dev tools were gated on `window.location.hostname` matching
+// localhost / 127. / 192.168. / 10., and the bundled Capacitor app is served
+// from capacitor://localhost — so every native install rendered "Seed 80k XP"
+// and "Clear All Data" as a normal settings group, in a production bundle,
+// and nothing on the web could see it (happy-dom's hostname is localhost too,
+// so every SettingsSheet test mounted WITH the tools and none asserted their
+// absence). A hostname says where the page came from, not whether a dev
+// server is behind it; `import.meta.env.DEV` / VITE_E2E are the only dev
+// gates, and prodBundleGuard.test.ts pins the dev chunks out of dist/.
+
+describe('Invariant: no source file reads location.hostname as a dev gate (#1425)', () => {
+  // supabase.ts compares the hostname against the production domain to pick
+  // the Supabase project for a Vercel preview — a routing decision, not a dev
+  // gate — and is the single sanctioned reader.
+  const ALLOWED = new Set([join('lib', 'supabase.ts')])
+  const HOSTNAME_READ = /\blocation\s*\.\s*hostname\b/
+
+  it('only supabase.ts reads location.hostname', () => {
+    const files = getSourceFiles()
+    // Non-vacuity: the walker must reach the sanctioned reader and the file
+    // that shipped the defect, or this scan proves nothing.
+    expect(files.map(f => f.path)).toContain(join('lib', 'supabase.ts'))
+    expect(files.map(f => f.path)).toContain(join('components', 'SettingsSheet.vue'))
+
+    const violations = files
+      .filter(f => !ALLOWED.has(f.path))
+      .filter(f => HOSTNAME_READ.test(stripComments(f.content)))
+      .map(f =>
+        `${f.path} — reads location.hostname. The bundled Capacitor app is ` +
+        `served from capacitor://localhost, so a localhost/LAN test is true on ` +
+        `every native install (#1425). Gate dev-only code on ` +
+        `import.meta.env.DEV / VITE_E2E, in a separately-chunked component.`,
+      )
+    expect(violations).toEqual([])
+  })
+
+  it('the sanctioned reader still reads it (non-vacuity)', () => {
+    const supabase = readFileSync(join(SRC_DIR, 'lib', 'supabase.ts'), 'utf-8')
+    expect(HOSTNAME_READ.test(stripComments(supabase))).toBe(true)
   })
 })
 
@@ -2446,6 +2495,47 @@ describe('Invariant: the foreground-resume signal set is defined once (LIFT-1392
 // its `updated_at` column is written by nobody and read by nobody (its merge is
 // a field-wise union, not LWW), so requiring a stamp for it would be a false
 // positive, and the derivation excludes it without needing an exemption.
+describe('Invariant: a Capacitor plugin proxy is never the value a promise resolves with (#1420)', () => {
+  // `registerPlugin` returns a Proxy whose `get` trap turns EVERY property read
+  // into a plugin method call — `then` included (only `$typeof`, `toJSON` and
+  // the listener methods are special-cased). Resolving a promise with the proxy
+  // (`import('@capgo/capacitor-health').then(m => m.Health)`, or returning it
+  // from an async function) makes the engine call `Health.then(resolve, reject)`
+  // to assimilate the "thenable": that fires a native `then` that rejects, while
+  // resolve/reject are never invoked — the awaiting caller hangs forever and the
+  // rejection surfaces as unhandled. The first Simulator run of the Apple Health
+  // sync shipped exactly this: a switch that did nothing, with 4504 green tests
+  // behind it, because a plain-object fake has no `then` and cannot see the
+  // trap. The sanctioned shape destructures from the awaited module namespace
+  // (`const { Share } = await import('@capacitor/share')`) or wraps the proxy in
+  // a plain object. This scan pins the `.then(` form; the behavioural half is
+  // `useHealthSync.test.ts`, whose fake goes through the real `registerPlugin`.
+  const PLUGIN_IMPORT_THEN = /import\(\s*['"](?:@capacitor\/|@capgo\/|capacitor-)[^'"]+['"]\s*\)\s*\.then\(/g
+
+  it('no dynamic Capacitor plugin import is chained with .then(', () => {
+    const files = getSourceFiles().filter(f => /\.(ts|vue)$/.test(f.path) && !f.path.includes('__tests__'))
+    // Non-vacuity: the walker must reach the files that dynamically import a
+    // plugin, or this scan proves nothing.
+    const dynamicImporters = files.filter(f => /import\(\s*['"](?:@capacitor\/|@capgo\/)/.test(stripComments(f.content)))
+    expect(dynamicImporters.map(f => f.path)).toEqual(
+      expect.arrayContaining([join('composables', 'useAppShare.ts'), join('composables', 'useHealthSync.ts')]),
+    )
+
+    const violations: string[] = []
+    for (const file of files) {
+      for (const match of stripComments(file.content).matchAll(PLUGIN_IMPORT_THEN)) {
+        violations.push(
+          `${file.path} — \`${match[0]}…\` resolves a promise with whatever the callback ` +
+          `returns; if that is the plugin proxy, the engine calls its \`then\` as a plugin ` +
+          `method and the await never settles (#1420). Destructure from the awaited ` +
+          `module instead: \`const { X } = await import(…)\`.`,
+        )
+      }
+    }
+    expect(violations).toEqual([])
+  })
+})
+
 describe('Invariant: every merge timestamp has an authority that moves it (LIFT-1401)', () => {
   const REMOTE_ROWS = readFileSync(join(SRC_DIR, 'lib', 'remoteRows.ts'), 'utf-8')
 
@@ -2456,24 +2546,57 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
   const MIGRATION_SQL = migrationFiles.map(f => f.sql).join('\n')
 
   /**
-   * Tables whose remote-row mapper builds an `updated_at` — i.e. the tables
-   * whose rows become `Timestamped` inputs to `mergeEntities`.
+   * Each remote-row mapper, with the table it maps and the name of its row
+   * parameter.
    *
    * The table name comes from the mapper's own `Tables<'…'>` parameter, so the
    * two halves (which row shape, which merge input) are read off one
    * declaration and cannot be paired wrongly here.
    */
-  function mergeTimestampedTables(src: string): string[] {
-    const out = new Set<string>()
+  interface Mapper { body: string; table: string; param: string }
+
+  function mapperBodies(src: string): Mapper[] {
+    const out: Mapper[] = []
     // Split on the export boundary so each mapper is inspected in isolation —
     // a lazy scan across the file would let one mapper's `updated_at` vouch for
     // the next one's table.
     for (const chunk of src.split(/\bexport\s+function\s+/).slice(1)) {
       const body = chunk.slice(0, chunk.indexOf('\n}\n') + 1 || undefined)
       const table = /Tables<'(\w+)'>/.exec(body)
-      if (table && /\bupdated_at\b/.test(body)) out.add(table[1].toLowerCase())
+      if (!table) continue
+      // An unparseable parameter (a destructured one, say) is reported as '',
+      // NOT dropped: a mapper that falls out of this list silently stops being
+      // checked, which is the failure mode the derivation exists to avoid.
+      const param = /^\w+\s*\(\s*([A-Za-z_$][\w$]*)\s*:/.exec(stripComments(body))
+      out.push({ body, table: table[1].toLowerCase(), param: param ? param[1] : '' })
     }
-    return [...out]
+    return out
+  }
+
+  /**
+   * Tables whose remote-row mapper builds an `updated_at` — i.e. the tables
+   * whose rows become `Timestamped` inputs to `mergeEntities`.
+   */
+  function mergeTimestampedTables(src: string): string[] {
+    return [...new Set(
+      mapperBodies(src).filter(m => /\bupdated_at\b/.test(m.body)).map(m => m.table),
+    )]
+  }
+
+  /**
+   * The expressions a mapper assigns to `updated_at`, narrowed to the ones that
+   * read something off the row — which drops the `{ updated_at: string }` in
+   * the return-type annotation and keeps the real derivation.
+   *
+   * The value ends at the property separator (`,` for an object member, `}` for
+   * the last one); no expression in this file carries a call argument, so a
+   * comma cannot appear inside one.
+   */
+  function stampExpressions(m: Mapper): string[] {
+    if (!m.param) return []
+    return [...stripComments(m.body).matchAll(/\bupdated_at\s*:\s*([^,}\n]+)/g)]
+      .map(x => x[1].trim())
+      .filter(expr => expr.includes(`${m.param}.`))
   }
 
   /**
@@ -2600,6 +2723,83 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
       .toEqual([])
   })
 
+  // ── The other half of the same rule: the mapper must READ the column ───────
+  // A trigger that moves `updated_at` buys nothing if the mapper derives the
+  // merge stamp from a different column, and that is not hypothetical:
+  // `mapRemoteBodyweightEntry` built it from `created_at` — `default now()`,
+  // frozen for the life of the row — while its sibling one function down read
+  // `updated_at` (LIFT-1402). The local stamp is rewritten by `updateEntry` on
+  // every correction, so the two sides tied, `mergeEntities` gave the tie to
+  // local, and `_fetchFromSupabase` re-upserted the stale weight over the other
+  // device's fix: a remote bodyweight edit could never win, and the user's only
+  // evidence was that the number they had corrected was wrong again.
+  //
+  // LIFT-1401's scan above could not see it. It asks whether SOMETHING stamps
+  // the table's column, and answers yes — from the migrations, which are right.
+  // The gap was between the column and the mapper, and it survived because the
+  // two mappers were never compared: `remoteRows.test.ts` asserted the mapped
+  // DOMAIN fields, and every fixture in the suite built a freshly-inserted row
+  // where `created_at` and `updated_at` coincide, under which the wrong column
+  // is indistinguishable from the right one.
+  //
+  // Derived, like everything else here: a future mapper is covered the day it
+  // is written, rather than the day someone remembers to add it to a list.
+  it('every merge-timestamped mapper derives the stamp from the row updated_at column', () => {
+    const violations: string[] = []
+    for (const mapper of mapperBodies(REMOTE_ROWS)) {
+      if (!/\bupdated_at\b/.test(mapper.body)) continue
+      const exprs = stampExpressions(mapper)
+      const wrong = exprs.filter(e => !e.includes(`${mapper.param}.updated_at`))
+      if (exprs.length === 0 || wrong.length > 0) {
+        violations.push(
+          `${mapper.table}: the mapper's merge stamp is \`${exprs.join(' / ') || '(not read off the row)'}\`, ` +
+            `which never reads \`${mapper.param}.updated_at\`. That column is the only one the ` +
+            "`update_updated_at_column()` trigger moves — `created_at` is `default now()` and is " +
+            'frozen for the life of the row, so the remote side of every merge ties with whatever ' +
+            'this device last adopted, `mergeEntities` scores a tie as a LOCAL win, and the stale ' +
+            'copy is re-upserted over the other device\'s edit (LIFT-1402).',
+        )
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
+  it('the stamp scan reads real expressions and flags the created_at form (self-test)', () => {
+    // Non-vacuity: the real mappers parse, and the return-type annotation's
+    // `{ updated_at: string }` does not masquerade as the derivation.
+    const mappers = mapperBodies(REMOTE_ROWS)
+    expect(mappers.map(m => m.table)).toEqual(expect.arrayContaining(['exercises', 'bodyweight_entries', 'sets']))
+    for (const m of mappers) expect(m.param).toBe('row')
+    for (const table of ['exercises', 'bodyweight_entries']) {
+      const exprs = stampExpressions(mappers.find(m => m.table === table)!)
+      expect(exprs).toHaveLength(1)
+      expect(exprs[0]).toContain('row.updated_at')
+      expect(exprs[0]).not.toBe('string')
+    }
+
+    // The defect's exact shape, which must not parse as compliant.
+    const buggy: Mapper = {
+      table: 'widgets',
+      param: 'row',
+      body: "mapRemoteWidget(\n  row: Tables<'widgets'>,\n): (Widget & { updated_at: string }) | null {\n" +
+        '  return { ...w, updated_at: row.created_at || new Date().toISOString() }\n}\n',
+    }
+    expect(stampExpressions(buggy)).toEqual(['row.created_at || new Date().toISOString()'])
+    expect(stampExpressions(buggy)[0]).not.toContain('row.updated_at')
+
+    // A mapper whose parameter the scan cannot read stays IN the list with an
+    // empty param and reports no expression — so it fails the invariant loudly
+    // rather than dropping out of every check in this describe.
+    const unparseable = mapperBodies(
+      "export function mapRemoteWidget({ id }: Tables<'widgets'>) {\n  return { id, updated_at: 'x' }\n}\n",
+    )
+    expect(unparseable.map(m => m.table)).toEqual(['widgets'])
+    expect(unparseable[0].param).toBe('')
+    expect(stampExpressions(unparseable[0])).toEqual([])
+    expect(mergeTimestampedTables("export function mapRemoteWidget({ id }: Tables<'widgets'>) {\n" +
+      "  return { id, updated_at: 'x' }\n}\n")).toEqual(['widgets'])
+  })
+
   it('every merge-timestamped table has a producer listed here', () => {
     // A new LWW-merged table must not skip the producer half of the check by
     // simply being absent from the map above.
@@ -2639,6 +2839,101 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
             'one transaction, so a suppression undone by a LATER file leaves ' +
             'the trigger dead until that file lands — and dead forever on a ' +
             'database that never applies it. Re-enable it in the same file.',
+        )
+      }
+    }
+    expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant: one owner fires a save's haptic (LIFT-1448) ──────────
+
+/**
+ * A saved set earns exactly ONE celebration and exactly ONE haptic pattern,
+ * decided together by `decideSetCeremony` and fired once by
+ * `useSetLogCeremony`. Before LIFT-1448 each celebration composable owned a
+ * haptic of its own and the call site added another, which shipped both halves
+ * of the failure: the PR lane fired `notifySuccess()` twice (two native haptics
+ * back-to-back collapse into a muddy buzz on Capacitor/iOS), while the
+ * first-set lane's haptic lived INSIDE a present call that no-ops under the
+ * celebrations opt-out — and that lane also suppresses the routine light tap,
+ * so a brand-new lifter with celebrations off got nothing at all.
+ *
+ * Two structural rules, because they fail differently: a presenter that
+ * re-acquires `useHaptics` adds a second owner, and a second CALL SITE for a
+ * presenter bypasses the decision entirely (no arbitration, no haptic).
+ *
+ * Derived, not enumerated: the presenter list is read out of
+ * `useSetLogCeremony`'s own imports, so a fourth celebration surface joins both
+ * rules by being wired into the pipeline. A hardcoded list would only ever pin
+ * the three that existed when this was written — the enumeration-drift class of
+ * REPLAYABLE_COLUMNS (LIFT-1039) and LOCAL_ONLY_SET_FIELDS (#1357).
+ */
+describe('Invariant: one owner fires a save-ceremony haptic (LIFT-1448)', () => {
+  const CEREMONY = join('composables', 'useSetLogCeremony.ts')
+
+  /** `{ fn: 'presentPRBurst', module: 'composables/usePRBurst.ts' }` per presenter. */
+  function presenters(): { fn: string; module: string }[] {
+    const ceremony = getSourceFiles().find(f => f.path === CEREMONY)
+    expect(ceremony, CEREMONY + ' owns the post-save pipeline').toBeDefined()
+    const out: { fn: string; module: string }[] = []
+    // `const { presentPRBurst } = usePRBurst()` — the destructure names the
+    // function, the composable call names the module it came from.
+    const re = /const\s*\{\s*(present\w+)[^}]*\}\s*=\s*(use\w+)\(\)/g
+    for (const m of stripComments(ceremony!.content).matchAll(re)) {
+      out.push({ fn: m[1], module: join('composables', m[2] + '.ts') })
+    }
+    return out
+  }
+
+  it('reads the real pipeline and finds every celebration presenter (non-vacuity)', () => {
+    const found = presenters()
+    // The three surfaces a save can earn. If any drops out of the scan, both
+    // rules below pass vacuously for it.
+    expect(found.map(p => p.fn).sort()).toEqual([
+      'presentFirstSetCelebration',
+      'presentGoalCelebration',
+      'presentPRBurst',
+    ])
+    const paths = getSourceFiles().map(f => f.path)
+    for (const p of found) {
+      expect(paths, p.fn + ' resolves to ' + p.module).toContain(p.module)
+    }
+  })
+
+  it('no celebration composable fires a haptic of its own', () => {
+    const files = getSourceFiles()
+    const violations: string[] = []
+    for (const { fn, module } of presenters()) {
+      const source = files.find(f => f.path === module)
+      if (!source) continue
+      if (/\buseHaptics\b/.test(stripComments(source.content))) {
+        violations.push(
+          `${module} (${fn}) reaches for useHaptics. The save's single haptic is ` +
+            'decided with the celebration in lib/setCeremony.ts and fired once by ' +
+            'useSetLogCeremony — a presenter firing its own adds a second owner, ' +
+            'which is how every PR came to buzz twice. Return the pattern from ' +
+            'decideSetCeremony instead.',
+        )
+      }
+    }
+    expect(violations).toEqual([])
+  })
+
+  it('every presenter is called from the ceremony pipeline and nowhere else', () => {
+    const violations: string[] = []
+    for (const { fn, module } of presenters()) {
+      const callers = getSourceFiles()
+        .filter(f => f.path !== CEREMONY && f.path !== module)
+        // A call, not a re-export: the name followed by an open paren.
+        .filter(f => new RegExp('\\b' + fn + '\\s*\\(').test(stripComments(f.content)))
+        .map(f => f.path)
+      if (callers.length > 0) {
+        violations.push(
+          `${callers.join(', ')} call ${fn} directly. Every celebration goes ` +
+            'through runSetCeremony so exactly one surface is presented and ' +
+            'exactly one haptic fires; a second call site stacks two full-screen ' +
+            'moments and skips the haptic entirely.',
         )
       }
     }

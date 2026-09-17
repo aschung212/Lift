@@ -1,19 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-// Mock useHaptics before we import the module under test so its inline
-// haptics.notifySuccess() call on present is observable.
+// Mock useHaptics so we can assert the burst fires NOTHING. The save's single
+// haptic is decided with the celebration in `lib/setCeremony` and fired once by
+// `useSetLogCeremony` (LIFT-1448); this composable owning one too is what put
+// two `notifySuccess()` calls back-to-back on the PR path, which iOS collapses
+// into a muddy buzz.
 const notifySuccessMock = vi.fn()
+const impactLightMock = vi.fn()
+const impactHeavyMock = vi.fn()
 vi.mock('../useHaptics', () => ({
   useHaptics: () => ({
-    impactLight: vi.fn(),
+    impactLight: impactLightMock,
     impactMedium: vi.fn(),
-    impactHeavy: vi.fn(),
+    impactHeavy: impactHeavyMock,
     notifySuccess: notifySuccessMock,
     notifyWarning: vi.fn(),
     notifyError: vi.fn(),
   }),
 }))
+
+function expectNoHaptic(): void {
+  expect(notifySuccessMock).not.toHaveBeenCalled()
+  expect(impactLightMock).not.toHaveBeenCalled()
+  expect(impactHeavyMock).not.toHaveBeenCalled()
+}
 
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn() },
@@ -27,6 +38,8 @@ describe('usePRBurst', () => {
     vi.useFakeTimers()
     setActivePinia(createPinia())
     notifySuccessMock.mockClear()
+    impactLightMock.mockClear()
+    impactHeavyMock.mockClear()
     const { dismissPRBurst } = usePRBurst()
     dismissPRBurst()
     // Flush the 200ms dismiss timeout so it doesn't leak across tests
@@ -50,7 +63,7 @@ describe('usePRBurst', () => {
     expect(payload.value?.exerciseName).toBe('Hack Squat')
     expect(payload.value?.oldE1RM).toBe(594)
     expect(payload.value?.newE1RM).toBe(606)
-    expect(notifySuccessMock).toHaveBeenCalledTimes(1)
+    expectNoHaptic()
   })
 
   it('skips when the user disables PR celebrations', () => {
@@ -66,7 +79,7 @@ describe('usePRBurst', () => {
       setReps: 6,
     })
     expect(visible.value).toBe(false)
-    expect(notifySuccessMock).not.toHaveBeenCalled()
+    expectNoHaptic()
   })
 
   it('guards against malformed payloads where new <= old', () => {
@@ -89,10 +102,9 @@ describe('usePRBurst', () => {
     expect(visible.value).toBe(false)
   })
 
-  it('fires heavy haptic for first PR', () => {
-    vi.mocked(notifySuccessMock).mockClear()
-
-    // The heavy haptic is called inside presentPRBurst when isFirstPR is true
+  it('carries isFirstPR through the payload without firing the heavier pattern itself', () => {
+    // The heavier `heavy-success` pattern belongs to `decideSetCeremony`; this
+    // composable only renders the first-PR copy.
     const { presentPRBurst, visible, payload } = usePRBurst()
     presentPRBurst({
       exerciseName: 'Bench Press',
@@ -104,7 +116,7 @@ describe('usePRBurst', () => {
     })
     expect(visible.value).toBe(true)
     expect(payload.value?.isFirstPR).toBe(true)
-    expect(notifySuccessMock).toHaveBeenCalledTimes(1)
+    expectNoHaptic()
   })
 
   it('passes isFirstPR false for subsequent PRs', () => {

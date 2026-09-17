@@ -1,12 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-// Mock useHaptics so the inline haptic calls on present are observable.
+// Mock useHaptics so we can assert the banner fires NOTHING. The save's single
+// haptic is decided with the celebration in `lib/setCeremony` and fired once by
+// `useSetLogCeremony` (LIFT-1448) — this composable used to return a boolean so
+// the caller could decide whether to add its own, which is what let two native
+// haptics collide on iOS.
 const notifySuccessMock = vi.fn()
 const impactHeavyMock = vi.fn()
+const impactLightMock = vi.fn()
 vi.mock('../useHaptics', () => ({
   useHaptics: () => ({
-    impactLight: vi.fn(),
+    impactLight: impactLightMock,
     impactMedium: vi.fn(),
     impactHeavy: impactHeavyMock,
     notifySuccess: notifySuccessMock,
@@ -14,6 +19,12 @@ vi.mock('../useHaptics', () => ({
     notifyError: vi.fn(),
   }),
 }))
+
+function expectNoHaptic(): void {
+  expect(notifySuccessMock).not.toHaveBeenCalled()
+  expect(impactHeavyMock).not.toHaveBeenCalled()
+  expect(impactLightMock).not.toHaveBeenCalled()
+}
 
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: { enqueue: vi.fn(), enqueueDelete: vi.fn() },
@@ -28,6 +39,7 @@ describe('useGoalCelebration', () => {
     setActivePinia(createPinia())
     notifySuccessMock.mockClear()
     impactHeavyMock.mockClear()
+    impactLightMock.mockClear()
     const { dismissGoalCelebration } = useGoalCelebration()
     dismissGoalCelebration()
     vi.advanceTimersByTime(220)
@@ -37,35 +49,30 @@ describe('useGoalCelebration', () => {
     vi.useRealTimers()
   })
 
-  it('presents the banner and fires a success haptic', () => {
+  it('presents the banner and fires no haptic of its own', () => {
     const { presentGoalCelebration, visible, payload } = useGoalCelebration()
-    const fired = presentGoalCelebration({ streak: 1, milestone: false, target: 3 })
-    // Returns true so the caller (saveSet) suppresses its routine light tap and
-    // the two native haptics don't collide on iOS.
-    expect(fired).toBe(true)
+    presentGoalCelebration({ streak: 1, milestone: false, target: 3 })
     expect(visible.value).toBe(true)
     expect(payload.value).toEqual({ streak: 1, milestone: false, target: 3 })
-    expect(notifySuccessMock).toHaveBeenCalledTimes(1)
-    expect(impactHeavyMock).not.toHaveBeenCalled()
+    expectNoHaptic()
   })
 
-  it('fires a heavy haptic on a milestone', () => {
-    const { presentGoalCelebration } = useGoalCelebration()
+  it('renders a milestone without firing the heavier pattern itself', () => {
+    // `heavy-success` belongs to `decideSetCeremony`; the banner only shows the
+    // milestone copy.
+    const { presentGoalCelebration, payload } = useGoalCelebration()
     presentGoalCelebration({ streak: 2, milestone: true, target: 4 })
-    expect(impactHeavyMock).toHaveBeenCalledTimes(1)
-    expect(notifySuccessMock).toHaveBeenCalledTimes(1)
+    expect(payload.value?.milestone).toBe(true)
+    expectNoHaptic()
   })
 
   it('skips when the user disables celebrations', () => {
     const prefs = usePreferencesStore()
     prefs.setExperienceFlag('prCelebrations', false)
     const { presentGoalCelebration, visible } = useGoalCelebration()
-    const fired = presentGoalCelebration({ streak: 1, milestone: false, target: 3 })
-    // Returns false (no celebration haptic) so the caller still plays its
-    // routine light tap for the logged set.
-    expect(fired).toBe(false)
+    presentGoalCelebration({ streak: 1, milestone: false, target: 3 })
     expect(visible.value).toBe(false)
-    expect(notifySuccessMock).not.toHaveBeenCalled()
+    expectNoHaptic()
   })
 
   it('auto-dismisses after the timeout', () => {

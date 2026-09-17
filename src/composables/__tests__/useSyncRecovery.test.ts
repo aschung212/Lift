@@ -232,6 +232,53 @@ describe('useSyncRecovery', () => {
 
       expect(fetchWorkout).toHaveBeenCalledTimes(2)
     })
+
+    /**
+     * The manual trigger (LIFT-1323) — "Try again now" in the sync sheet. The
+     * cooldown exists to collapse AMBIENT bursts: a resume delivers several
+     * events, a flaky link re-fires `online`. A deliberate tap is neither, and
+     * a retry button that silently does nothing for 20 seconds is worse than
+     * no button — it is the same untrustworthy silence the issue is about.
+     */
+    describe('manual trigger', () => {
+      it('ignores the cooldown', async () => {
+        await refetchAllStores('resume')
+        expect(fetchWorkout).toHaveBeenCalledTimes(1)
+
+        await expect(refetchAllStores('manual')).resolves.toBe(true)
+        expect(fetchWorkout).toHaveBeenCalledTimes(2)
+      })
+
+      it('re-arms journal entries the server refused, which ambient triggers skip', async () => {
+        await refetchAllStores('online')
+        expect(replayJournal).toHaveBeenLastCalledWith({ includeRefused: false })
+
+        await refetchAllStores('manual')
+        expect(replayJournal).toHaveBeenLastCalledWith({ includeRefused: true })
+      })
+
+      it('joins an in-flight run instead of stacking a second identical pass', async () => {
+        let release!: () => void
+        fetchWorkout.mockImplementation(() => new Promise<void>(r => { release = () => r() }))
+
+        const ambient = refetchAllStores('online')
+        await settle()
+        const manual = refetchAllStores('manual')
+        await settle()
+
+        expect(fetchWorkout).toHaveBeenCalledTimes(1)
+        release()
+        await expect(ambient).resolves.toBe(true)
+        await expect(manual).resolves.toBe(true)
+      })
+
+      it('still refuses to attempt anything while the device is offline', async () => {
+        setOnline(false)
+
+        await expect(refetchAllStores('manual')).resolves.toBe(false)
+        expect(flush).not.toHaveBeenCalled()
+      })
+    })
   })
 
   describe('setupSyncRecovery', () => {

@@ -381,6 +381,43 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('.syncIndicator sync-status button (LIFT-1323)', () => {
+    // It was a 24px icon-only span explaining itself through a :title tooltip.
+    // Now that it opens the sync sheet it is a real button, and it owes the
+    // same 44pt target as its top-bar siblings.
+    const lines = getRuleLines('.syncIndicator')
+
+    it('meets the 44px iOS HIG touch target in both dimensions', () => {
+      expect(lines.some(l => l.startsWith('width') && l.includes('44px'))).toBe(true)
+      expect(lines.some(l => l.startsWith('height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('resets the native button chrome it now inherits', () => {
+      expect(lines.some(l => l.startsWith('border') && l.includes('none'))).toBe(true)
+      expect(lines.some(l => l.startsWith('background') && l.includes('none'))).toBe(true)
+    })
+
+    // The spin belongs on the icon: animating the 44pt box would drag its
+    // pressed-state background around with it.
+    it('spins the icon rather than the hit area', () => {
+      expect(getRuleLines('.syncIndicator--syncing').some(l => l.startsWith('animation'))).toBe(false)
+      expect(getRuleLines('.syncIndicator--syncing svg').some(l => l.includes('syncSpin'))).toBe(true)
+    })
+  })
+
+  describe('sync-status sheet actions (LIFT-1323)', () => {
+    it.each(['.syncSheetRetry', '.syncSheetClose'])('%s has min-height: 44px', (selector) => {
+      expect(getRuleLines(selector).some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    // The retry outcome renders directly above the button that produced it, so
+    // appearing from nothing would shove that button down under the finger
+    // that just pressed it.
+    it('reserves space for the retry outcome so it cannot shift the layout', () => {
+      expect(getRuleLines('.syncSheetResult').some(l => l.startsWith('min-height'))).toBe(true)
+    })
+  })
+
   describe('Vue component touch target compliance', () => {
     // jsdom does not apply scoped CSS from Vue SFCs, so getComputedStyle
     // cannot verify sizing in component tests. These CSS regression tests

@@ -116,6 +116,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Per-entry delta from previous weigh-in (green for down, red for up)
 - Entries sorted by date
 - Smart date label spacing to prevent overlap
+- Apple Health sync on the native iOS build — Settings → Apple Health writes each weigh-in to Health once (backfilling history when first enabled); the PWA's path into Health is the CSV export below
 
 ### Tag Management
 - Rename and delete tags from a dedicated tag manager
@@ -192,6 +193,9 @@ Each theme defines `--glass-fill`, `--glass-edge`, `--glass-shine`, `--glass-bar
 ### Sync infrastructure
 A debounced sync queue (`lib/syncQueue.ts`) batches rapid Pinia mutations into coalesced Supabase writes. A conflict resolver (`lib/conflictResolver.ts`) implements last-write-wins with `updated_at` timestamp comparison when merging remote and local state.
 
+### Legal pages
+The Privacy Policy and Terms of Service have one source, `src/lib/legalCopy.ts`. The in-app Legal sheet renders it, and `vite-plugin-legal-pages.ts` emits it at build as `/legal/privacy.html` and `/legal/terms.html` — the public URLs App Store Connect and App Review need — so the two cannot drift. `vercel.json` excludes `legal/` from the SPA fallback so a wrong path 404s.
+
 ### iOS HIG compliance
 All interactive elements meet Apple's 44pt minimum touch target. Font sizes are 11pt minimum throughout. Toggle switches are 51×31pt. Text contrast ratios are tuned per-theme for WCAG AA compliance. Safe areas are respected for notched devices.
 
@@ -259,6 +263,14 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
+`.env.local` is gitignored, so a **git worktree** (`.claude/worktrees/…`) starts without it — and a build made there ships with no Supabase at all: the auth screen reads "Supabase not configured", and a native app built from that bundle carries the same. Copy only the two client lines across before building there (the file also holds admin-only secrets):
+
+```bash
+grep -E '^VITE_SUPABASE_(URL|ANON_KEY)=' ~/development/lift/.env.local > .env.local
+```
+
+`grep -l supabase.co dist/assets/*.js` after a build proves the URL made it in.
+
 Run the Supabase migration in `supabase/migration.sql` to create the required tables and RLS policies, then:
 
 ```bash
@@ -274,30 +286,65 @@ npm run preview  # preview production build locally
 
 ### Deploy
 
-Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard. Enable Google as an OAuth provider in Supabase and add your Vercel domain to the allowed redirect URLs.
+Push to GitHub, connect to [Vercel](https://vercel.com), and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables in the Vercel dashboard. Enable Google as an OAuth provider in Supabase and add your Vercel domain to the allowed redirect URLs. For password resets, add `{{ .Token }}` to the **Reset Password** email template (Authentication → Email Templates): the app verifies that 6-digit code in place, which is the only reset path that works inside the native build (the emailed link only completes in the browser that requested it).
 
 ### Native iOS build (Capacitor)
 
 The PWA is wrapped with [Capacitor 8](https://capacitorjs.com) for the App Store. The
-shared config lives in `capacitor.config.ts` (`appId: com.aschung212.lift`). The native
-`ios/` project is generated per-machine and is **not** committed — it depends on a local
-Xcode + CocoaPods toolchain. Generate and run it on the Simulator with:
+shared config lives in `capacitor.config.ts` (`appId: com.aschung212.lift`), and the
+native `ios/` project **is committed** — it is the App Store build: the icon, the launch
+screen, `PrivacyInfo.xcprivacy`, the HealthKit entitlement and the build settings live in
+git like any other shipping artifact. Capacitor's own `ios/.gitignore` keeps the generated
+parts out (`App/App/public`, `capacitor.config.json`, `DerivedData`, `xcuserdata`), which
+is why a fresh clone must sync once before Xcode can build:
 
 ```bash
-# One-time: generate the native Xcode project (requires Xcode + CocoaPods)
-npx cap add ios
+# Build the web bundle and sync it into the native project (also stamps the version)
+npm run cap:build        # = build + cap sync (+ configure-ios.mjs) + guard:native-config
 
-# Build the web bundle and sync it into the native project
-npm run cap:build        # = npm run build && npx cap sync
-
-# Open the project in Xcode, then build & run on a Simulator (e.g. iPhone 15 Pro)
+# Open the project in Xcode, then build & run on a Simulator or your iPhone
 npm run cap:open:ios
 ```
 
-In Xcode, set the **iOS Deployment Target to 16.0** (App target → General → Minimum
-Deployments) for broad device coverage with modern APIs. The app should launch to the
-auth screen with no white screen. Re-run `npm run cap:build` after any web change to
-re-sync the `dist/` bundle into the native shell.
+`cap:build` sets `CAPACITOR_BUILD=true` on **both** halves — the `vite build` and the
+`cap sync` — because that is the release discriminator: `vite.config.js` reads it to
+disable the service worker (#532), and `capacitor.config.ts` reads it to ignore
+`CAPACITOR_DEV_URL` (LIFT-1435). A `VAR=value cmd` prefix binds to one command, so the
+duplication is deliberate. Live reload is unaffected: `CAPACITOR_DEV_URL=http://192.168.1.x:5173
+npx cap sync` sets no such flag and still points the WebView at the Vite dev server (use
+`cap sync`, not `cap run ios`, which currently cannot build — see #1442). The last step,
+`npm run guard:native-config` (`scripts/check-native-release-config.mjs`), re-reads the
+`capacitor.config.json` that `cap sync` actually emitted and fails the build if it carries
+`server.url`, `cleartext` or `allowNavigation`, or if the web bundle was never copied in:
+that file is gitignored and copied into the `.ipa`, so it is what an archive really ships,
+and a bundle that loads its whole UI from a LAN dev server is indistinguishable from a good
+one until it is installed. Run it by hand any time you are unsure what state the native
+project is in; the same script also runs (in `--warn` mode) at the end of **every** sync,
+including the live-reload one that creates that state. It is not a CI step — the file it
+reads is generated and gitignored, so CI never has one to check.
+
+Every `npx cap sync` also runs `scripts/configure-ios.mjs` (first in the
+`capacitor:sync:after` hook in `package.json`). On the committed project the only thing it changes is the
+version pair: `MARKETING_VERSION` from `package.json` and `CURRENT_PROJECT_VERSION` from
+the commit count on the current branch, so every archive cut from `master` carries a build
+number App Store Connect accepts as newer than the last — bump `package.json`'s version
+for a new App Store version, never the project file. If the project is ever regenerated
+(`rm -rf ios && npx cap add ios --packagemanager SPM`), the same hook re-applies
+everything the stock template lacks: the HealthKit usage strings and the
+`ITSAppUsesNonExemptEncryption` export-compliance key in `Info.plist`, the
+`com.apple.developer.healthkit` entitlement wired into the App target, the iOS 16.0
+deployment target, iPhone-only `TARGETED_DEVICE_FAMILY`, and `PrivacyInfo.xcprivacy` wired
+into Copy Bundle Resources. It is idempotent and can be run by hand with
+`npm run cap:configure:ios`; `scripts/__tests__/configure-ios.test.mjs` runs it against
+the real template shipped in `@capacitor/cli` **and** asserts the committed project already
+carries all of it, so a setting flipped by hand in Xcode fails CI. The icon and the native
+launch screen come from the same sources as the PWA's: `public/icon-source.png` is copied
+into the asset catalog, and `node scripts/generate-launch-screens.js --native` renders the
+Eternal mark at 2732×2732 into `Splash.imageset`. The Simulator needs no signing; a
+physical iPhone needs a signing team, and a free Personal Team works, HealthKit included.
+**Settings → Apple Health** appears only in this build (HealthKit has no web API). Re-run
+`npm run cap:build` after any web change to re-sync the `dist/` bundle into the native
+shell.
 
 ---
 
