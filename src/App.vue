@@ -253,18 +253,18 @@
     </transition>
   </Teleport>
 
-  <!-- Full-screen PR celebration — triggered via usePRBurst().presentPRBurst(). -->
+  <!-- The three celebration surfaces a saved set can earn. Exactly one is ever
+       presented per save, and it is `runSetCeremony` (LIFT-1448) that picks
+       which: a PR takeover, a brand-new lifter's first-ever-set card (#762), or
+       the weekly-goal banner. Each reads its own singleton visibility state. -->
   <Teleport to="body">
     <PRBurst />
   </Teleport>
 
-  <!-- First-set activation celebration (#762) — triggered on a new user's first
-       ever logged set via useFirstSetCelebration().presentFirstSetCelebration(). -->
   <Teleport to="body">
     <FirstSetCelebration />
   </Teleport>
 
-  <!-- Weekly-goal celebration — triggered via useGoalCelebration().presentGoalCelebration(). -->
   <Teleport to="body">
     <GoalCelebration />
   </Teleport>
