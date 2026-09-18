@@ -645,17 +645,19 @@ describe('production may serve a commit NEWER than this one (LIFT-1414)', () => 
     expect(checkout?.with?.['fetch-depth']).toBe(0)
   })
 
-  it.each([
-    ['production serves exactly this commit', () => [B, B], 'serving', EXIT.verified],
-    ['a later master commit has superseded it', () => [B, C], 'superseded', EXIT.verified],
-    ['production is still on an earlier commit', () => [B, A], 'stale', EXIT.waiting],
-    ['production serves a commit on neither side', () => [B, X], 'unrelated', EXIT.waiting],
-    ['the deployed commit is not in this checkout', () => [B, '0'.repeat(40)], 'unknown', EXIT.unknownHistory],
-    ['version.json carried no commit', () => [B, ''], 'absent', EXIT.waiting],
-    ['version.json carried something that is not a SHA', () => [B, 'not-a-sha'], 'malformed', EXIT.waiting],
-    ['production reports the same commit in short form', () => [B, B.slice(0, 10)], 'serving', EXIT.verified],
-  ])('reports %s', (_case, shas, verdict, status) => {
-    const [expected, deployed] = shas()
+  /** [case, expected SHA, deployed SHA, verdict, exit code] */
+  const CASES: Array<[string, string, string, string, number]> = [
+    ['production serves exactly this commit', B, B, 'serving', EXIT.verified],
+    ['a later master commit has superseded it', B, C, 'superseded', EXIT.verified],
+    ['production is still on an earlier commit', B, A, 'stale', EXIT.waiting],
+    ['production serves a commit on neither side', B, X, 'unrelated', EXIT.waiting],
+    ['the deployed commit is not in this checkout', B, '0'.repeat(40), 'unknown', EXIT.unknownHistory],
+    ['version.json carried no commit', B, '', 'absent', EXIT.waiting],
+    ['version.json carried something that is not a SHA', B, 'not-a-sha', 'malformed', EXIT.waiting],
+    ['production reports the same commit in short form', B, B.slice(0, 10), 'serving', EXIT.verified],
+  ]
+
+  it.each(CASES)('reports %s', (_case, expected, deployed, verdict, status) => {
     const result = check(expected, deployed)
     expect(result.stdout.split(':')[0], result.stdout).toBe(verdict)
     expect(result.status, result.stdout).toBe(status)
@@ -664,21 +666,12 @@ describe('production may serve a commit NEWER than this one (LIFT-1414)', () => 
     expect(result.stdout).toMatch(new RegExp(`^${verdict}: \\S`))
   })
 
-  it('every verdict the module can report is exercised above', () => {
-    // Otherwise a verdict could be added with no test and no exit code anyone
-    // has ever seen the workflow take.
-    const covered = new Set(
-      [
-        [B, B],
-        [B, C],
-        [B, A],
-        [B, X],
-        [B, '0'.repeat(40)],
-        [B, ''],
-        [B, 'not-a-sha'],
-      ].map(([expected, deployed]) => check(expected, deployed).stdout.split(':')[0]),
+  it('every verdict the module can report has a case above', () => {
+    // Derived from the module, so a verdict cannot be added with no test and no
+    // exit code anyone has ever watched the workflow take.
+    expect([...new Set(CASES.map(([, , , verdict]) => verdict))].sort()).toEqual(
+      [...VERDICTS].sort(),
     )
-    expect([...covered].sort()).toEqual([...VERDICTS].sort())
   })
 
   it('an unverifiable EXPECTED_SHA stops the job instead of polling for 300s', () => {
