@@ -1,7 +1,7 @@
 /**
  * Orchestrates the share flow for issue #305 share cards:
  *   1. Mount a card component offscreen (detached Vue app, no Pinia needed —
- *      cards are pure presentational components that take a typed summary prop).
+ *      cards are pure presentational components that take a typed payload prop).
  *   2. Wait for the next tick so the DOM and CSS are settled, then rasterize
  *      the card to a PNG Blob via `modern-screenshot`.
  *   3. Share via the native iOS share sheet (Capacitor), the Web Share API
@@ -20,7 +20,6 @@ import {
   EXPORT_PIXEL_RATIO,
   type CardFormat,
 } from '../lib/shareImage'
-import type { SessionSummary } from '../lib/sessionSummary'
 import { downloadBlob } from '../lib/dataExport'
 import { useAnalytics } from './useAnalytics'
 import { useShareFlow, isShareCancellation, type ShareResult } from './useShareFlow'
@@ -36,8 +35,24 @@ export interface ShareCardRequest {
   component: Component
   /** Format determines preview size and pixel-ratio'd output. */
   format: CardFormat
-  /** The summary the card needs to render. */
-  summary: SessionSummary
+  /**
+   * The prop bag the card renders from, handed to the offscreen mount
+   * verbatim: `{ summary }` for a session card, `{ recap }` for a Year in
+   * Review card (#1018). The pipeline is deliberately payload-agnostic — it
+   * named `summary` outright until a second payload shape existed — and it
+   * cannot type-check the bag against the component, so the bucket a card
+   * comes from is what guarantees the match (see `cardRegistry`). A card
+   * mounted with the wrong prop rasterizes a BLANK PNG and nothing throws,
+   * which is why the bag is spread rather than re-keyed on the way through.
+   */
+  props: Record<string, unknown>
+  /**
+   * Filename stem: `lift-<filenameKey>[-story].png`. A session card passes its
+   * `summary.rawDate`; the recap sheet passes `year-2026`, which is why this is
+   * a free-form key the caller owns rather than a date the pipeline reads off
+   * the payload — a recap spans a year and has no single date.
+   */
+  filenameKey: string
   /** Used to scope the offscreen container's data-theme/data-mode. */
   theme: string
   mode: 'dark' | 'light'
@@ -138,7 +153,11 @@ async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
 
   document.body.appendChild(host)
   const app = createApp({
-    render: () => h(req.component, { summary: req.summary }),
+    // Spread, never re-key: the offscreen mount is the one place that decides
+    // what the card receives, and naming a prop here would silently drop every
+    // payload that isn't a `SessionSummary` — the card would render its empty
+    // state and rasterize a blank PNG with nothing thrown (#1018).
+    render: () => h(req.component, { ...req.props }),
   })
 
   try {
@@ -193,7 +212,7 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
     const result = await run([
       async () => {
         const blob = await renderCardOffscreen(req)
-        const filename = defaultShareFilename(req.summary.rawDate, req.format)
+        const filename = defaultShareFilename(req.filenameKey, req.format)
         const file = new File([blob], filename, { type: 'image/png' })
 
         // Capacitor native path needs `@capacitor/filesystem` to write the
@@ -229,7 +248,7 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
     const result = await run([
       async () => {
         const blob = await renderCardOffscreen(req)
-        const filename = defaultShareFilename(req.summary.rawDate, req.format)
+        const filename = defaultShareFilename(req.filenameKey, req.format)
         downloadBlob(blob, filename)
         return { kind: 'downloaded', filename }
       },

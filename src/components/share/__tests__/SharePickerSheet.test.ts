@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { flushPromises, mount, VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
 import SharePickerSheet from '../SharePickerSheet.vue'
+import { SQUARE_CARDS, loadCardComponent } from '../cardRegistry'
 import type { SessionSummary } from '../../../lib/sessionSummary'
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -67,6 +68,12 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
 describe('SharePickerSheet share-funnel analytics (#712)', () => {
   let wrapper: VueWrapper
 
+  beforeAll(async () => {
+    // Warm the code-split card chunks (#937) so the sheet's own
+    // `await loadCardComponent(...)` settles inside a single flushPromises.
+    for (const { id } of SQUARE_CARDS) expect(await loadCardComponent(id)).toBeTruthy()
+  })
+
   beforeEach(async () => {
     vi.clearAllMocks()
     wrapper = mount(SharePickerSheet, { props: { summary: makeSummary() } })
@@ -109,5 +116,33 @@ describe('SharePickerSheet share-funnel analytics (#712)', () => {
       'share_card_selected',
       expect.objectContaining({ format: 'square' }),
     )
+  })
+
+  // The export pipeline takes an untyped `props` bag and a caller-owned
+  // `filenameKey` so the Year in Review cards can reuse it (#1018), and
+  // `vue-tsc` skips `src/**/__tests__/**`, so nothing type-checks either half
+  // at a caller. `YearRecapSheet.test.ts` pins the `{ recap }` side; this is
+  // the session side — a sheet that stopped passing the summary would
+  // rasterize a blank card, and one that stopped passing the date would write
+  // `lift-undefined.png`, both without throwing.
+
+  it('shares the session card with the summary as its props and the session date as the filename key', async () => {
+    const summary = makeSummary()
+    await wrapper.find('.spActionPrimary').trigger('click')
+    await flushPromises()
+
+    const req = mockShareCard.mock.calls[0][0]
+    expect(req.props).toEqual({ summary })
+    expect(req.filenameKey).toBe(summary.rawDate)
+  })
+
+  it('saves with the same prop bag and filename key as sharing', async () => {
+    const summary = makeSummary()
+    await wrapper.find('.spActionSecondary').trigger('click')
+    await flushPromises()
+
+    const req = mockDownloadCard.mock.calls[0][0]
+    expect(req.props).toEqual({ summary })
+    expect(req.filenameKey).toBe(summary.rawDate)
   })
 })

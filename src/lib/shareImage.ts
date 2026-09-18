@@ -125,10 +125,15 @@ export function createWatermarkElement(): HTMLDivElement {
 }
 
 /**
- * Build a default `share-summary-YYYY-MM-DD.png` filename.
- * Used for the download fallback path on browsers without `navigator.share`.
+ * Build a `lift-<key>[-story].png` filename, used for the download fallback
+ * path on browsers without `navigator.share`.
+ *
+ * The key is the caller's stem, not necessarily a date: a session card passes
+ * its raw `YYYY-MM-DD`, the Year in Review sheet passes `year-2026` (#1018).
+ * The pipeline can no longer read a date off the payload, because a recap card
+ * has none — it spans a whole year.
  */
-export function defaultShareFilename(rawDate: string, format: CardFormat = 'square'): string {
+export function defaultShareFilename(key: string, format: CardFormat = 'square'): string {
   const suffix = format === 'story' ? '-story' : ''
-  return `lift-${rawDate}${suffix}.png`
+  return `lift-${key}${suffix}.png`
 }

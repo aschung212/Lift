@@ -1,5 +1,9 @@
+/* eslint-disable vue/one-component-per-file --
+   Two test doubles for the offscreen mount: a static card and a probe that
+   records the prop bag it received (#1018). They are fixtures, not components
+   the app ships. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { defineComponent } from 'vue'
+import { defineComponent, h } from 'vue'
 import type { ShareCardRequest } from '../useWorkoutShare'
 import type { SessionSummary } from '../../lib/sessionSummary'
 
@@ -33,6 +37,22 @@ vi.mock('../useAnalytics', () => ({
 
 const DummyCard = defineComponent({ name: 'DummyCard', template: '<div>card</div>' })
 
+/**
+ * Records the prop bag it was mounted with. The pipeline hands `req.props`
+ * straight to `h()` and this component declares no props of its own, so
+ * everything lands in `attrs` — which is exactly why a wrong bag rasterizes a
+ * blank card instead of throwing (#1018).
+ */
+const receivedProps: Record<string, unknown>[] = []
+const ProbeCard = defineComponent({
+  name: 'ProbeCard',
+  inheritAttrs: false,
+  setup(_props, { attrs }) {
+    receivedProps.push({ ...attrs })
+    return () => h('div', 'probe')
+  },
+})
+
 function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
     rawDate: '2026-05-20',
@@ -54,11 +74,20 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
   }
 }
 
+/**
+ * A session-card request: the `{ summary }` prop bag plus the summary's own
+ * `rawDate` as the filename stem — the shape `SharePickerSheet` builds. The
+ * pipeline takes an untyped bag and a caller-owned key (#1018), so the two are
+ * derived from ONE summary here; a harness that let them drift is what would
+ * produce `lift-undefined.png` unnoticed.
+ */
 function makeRequest(overrides: Partial<ShareCardRequest> = {}): ShareCardRequest {
+  const summary = makeSummary()
   return {
     component: DummyCard,
     format: 'square',
-    summary: makeSummary(),
+    props: { summary },
+    filenameKey: summary.rawDate,
     theme: 'eternal',
     mode: 'dark',
     ...overrides,
@@ -77,6 +106,7 @@ describe('useWorkoutShare', () => {
     vi.useFakeTimers()
     mockLogEvent.mockClear()
     mockRenderNodeToBlob.mockResolvedValue(fakeBlob)
+    receivedProps.length = 0
 
     createObjectURLSpy = vi.fn().mockReturnValue('blob:mock-url')
     revokeObjectURLSpy = vi.fn()
@@ -433,6 +463,62 @@ describe('useWorkoutShare', () => {
       const hostNode = mockRenderNodeToBlob.mock.calls[0][0]
       expect(hostNode.style.left).toBe('-10000px')
       expect(hostNode.style.position).toBe('absolute')
+    })
+  })
+
+  // ── Payload-agnostic contract (#1018) ──────────────────────────────
+  //
+  // The pipeline carries an untyped `props` bag and a caller-owned
+  // `filenameKey` so a second payload family (the Year in Review cards, which
+  // render from a `YearRecap`) can reuse it. Neither half is type-checked: the
+  // bag is `Record<string, unknown>`, and `vue-tsc` excludes
+  // `src/**/__tests__/**` entirely, so a pipeline that re-keys the bag to the
+  // session prop compiles clean and fails at runtime — a blank PNG for the
+  // bag, `lift-undefined.png` for the key. Both are asserted here rather than
+  // inferred from a session card happening to work.
+
+  describe('payload-agnostic rendering', () => {
+    it('mounts the card with the request prop bag verbatim', async () => {
+      const { shareCard } = await getComposable()
+      const summary = makeSummary()
+      await shareCard(makeRequest({ component: ProbeCard, props: { summary } }))
+
+      expect(receivedProps).toHaveLength(1)
+      expect(receivedProps[0]).toEqual({ summary })
+    })
+
+    it('mounts a non-summary payload under its own prop name', async () => {
+      const { shareCard } = await getComposable()
+      const recap = { year: 2026, totalVolume: 1_200_000 }
+      await shareCard(makeRequest({ component: ProbeCard, props: { recap } }))
+
+      // `{ recap }`, not `{ summary: … }` — a pipeline that named the session
+      // prop on the way through would mount the card with an undefined
+      // summary and rasterize a blank card without throwing.
+      expect(receivedProps[0]).toEqual({ recap })
+    })
+
+    it('names the file from filenameKey, not from the payload', async () => {
+      const { shareCard } = await getComposable()
+      const result = await shareCard(
+        makeRequest({ component: ProbeCard, props: { recap: { year: 2026 } }, filenameKey: 'year-2026' }),
+      )
+
+      expect(result).toEqual({ kind: 'downloaded', filename: 'lift-year-2026.png' })
+    })
+
+    it('appends -story to a non-date filenameKey', async () => {
+      const { downloadCard } = await getComposable()
+      const result = await downloadCard(
+        makeRequest({
+          component: ProbeCard,
+          format: 'story',
+          props: { recap: { year: 2026 } },
+          filenameKey: 'year-2026',
+        }),
+      )
+
+      expect(result).toEqual({ kind: 'downloaded', filename: 'lift-year-2026-story.png' })
     })
   })
 

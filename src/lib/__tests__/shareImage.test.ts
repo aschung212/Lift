@@ -59,6 +59,13 @@ describe('shareImage', () => {
     it('appends -story for vertical format', () => {
       expect(defaultShareFilename('2026-04-21', 'story')).toBe('lift-2026-04-21-story.png')
     })
+
+    // The key is the caller's stem, not a date: session cards pass their raw
+    // date, the Year in Review sheet passes `year-2026` (#1018).
+    it('accepts a non-date stem in both formats', () => {
+      expect(defaultShareFilename('year-2026')).toBe('lift-year-2026.png')
+      expect(defaultShareFilename('year-2026', 'story')).toBe('lift-year-2026-story.png')
+    })
   })
 
   describe('PREVIEW_SIZE', () => {

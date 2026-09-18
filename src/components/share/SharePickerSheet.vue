@@ -150,7 +150,10 @@ async function onShare() {
   const res = await shareCard({
     component,
     format: card.format,
-    summary: props.summary,
+    // Session cards render from `{ summary }`; the Year in Review sheet passes
+    // `{ recap }` through the same payload-agnostic pipeline (#1018).
+    props: { summary: props.summary },
+    filenameKey: props.summary.rawDate,
     theme: currentTheme.value,
     mode: resolvedMode.value,
     watermark: showWatermark.value,
@@ -169,7 +172,8 @@ async function onSave() {
   const res = await downloadCard({
     component,
     format: card.format,
-    summary: props.summary,
+    props: { summary: props.summary },
+    filenameKey: props.summary.rawDate,
     theme: currentTheme.value,
     mode: resolvedMode.value,
     watermark: showWatermark.value,
