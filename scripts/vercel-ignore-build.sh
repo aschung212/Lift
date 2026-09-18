@@ -14,11 +14,13 @@
 # errored with "`ignoreCommand` should NOT be longer than 256 characters"
 # instead of running. `vercel.json` just does `bash scripts/vercel-ignore-build.sh`.
 #
-# .github/workflows/ci.yml's `smoke-test-production` job executes this same
-# command (read out of vercel.json, not restated) to decide whether to poll
-# production for a deploy that Vercel was never going to make — its `case`
-# guard pins the exact invocation, so a rename here needs a matching edit
-# there and in deployVerification.test.ts.
+# .github/workflows/ci.yml's `deploy-production` job executes this same command
+# (read out of vercel.json, not restated) to decide whether to deploy at all —
+# since LIFT-1169 CI owns the production deploy, so CI has to apply the gate
+# Vercel no longer gets to. Its `case` guard pins the exact invocation, so a
+# rename here needs a matching edit there and in deployVerification.test.ts.
+# `smoke-test-production` reads that job's `deployed` output rather than
+# re-running this, so "did this commit deploy" has one derivation.
 #
 # `ios/` is excluded for the same reason `capacitor.config.ts` is (LIFT-1438):
 # nothing under it reaches the web bundle. Capacitor's own ios/.gitignore keeps
