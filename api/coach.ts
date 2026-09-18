@@ -50,9 +50,12 @@ export const config = { maxDuration: 60 }
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 const ANTHROPIC_VERSION = '2023-06-01'
 
-// Origins allowed to call the proxy. The native Capacitor build is cross-origin
-// (ios.scheme: 'Lift'), so it must be allow-listed explicitly here AND in the CSP
-// connect-src (see vercel.json) before the native build ships.
+// Origins allowed to call the proxy. The native Capacitor build is cross-origin:
+// the bundled app is served from `capacitor://localhost`, because `server.iosScheme`
+// defaults to `capacitor` and Lift does not set it (#1442 — `ios.scheme`, which an
+// earlier version of this comment cited, is the Xcode BUILD scheme and never
+// produced a URL scheme). So that origin must be allow-listed explicitly here AND
+// in the CSP connect-src (see vercel.json) before the native build ships.
 const ALLOWED_ORIGINS = new Set([
   'https://spa-rho-sandy.vercel.app',
   'capacitor://localhost',
