@@ -78,15 +78,21 @@ describe('findDevServerSettings', () => {
     // `cap copy` writes the config as authored, so an explicit `false` / `[]` is
     // the Capacitor default written out, not a dev-server pointer.
     expect(
-      findDevServerSettings({ server: { cleartext: false, allowNavigation: [], iosScheme: 'Lift' } }),
+      findDevServerSettings({ server: { cleartext: false, allowNavigation: [], iosScheme: 'capacitor' } }),
     ).toEqual([])
   })
 
   it('does not flag the server options that are legitimate in a release build', () => {
-    // hostname / iosScheme / androidScheme / errorPath are production settings —
-    // Lift ships `iosScheme: 'Lift'` (#1423 deep links) and must keep doing so.
+    // hostname / iosScheme / androidScheme / errorPath are production settings:
+    // Capacitor's own docs mark only url / cleartext / allowNavigation as not
+    // intended for production. Lift sets none of them — `server.iosScheme` is
+    // left at its `capacitor` default, which is what makes the bundled app's
+    // origin `capacitor://localhost` (#1442: `ios.scheme` is the Xcode BUILD
+    // scheme and never produced a URL scheme, so an earlier version of this
+    // comment claiming Lift ships `iosScheme: 'Lift'` was doubly wrong) — but a
+    // project that did set a custom one must still archive.
     const findings = findDevServerSettings({
-      server: { hostname: 'localhost', iosScheme: 'Lift', androidScheme: 'https', errorPath: 'error.html' },
+      server: { hostname: 'localhost', iosScheme: 'lift', androidScheme: 'https', errorPath: 'error.html' },
     })
     expect(findings).toEqual([])
   })

@@ -3,9 +3,13 @@ import type { CapacitorConfig } from '@capacitor/cli'
 /**
  * Native live reload: `CAPACITOR_DEV_URL=http://192.168.1.x:5173` points the
  * WebView at the Vite dev server instead of the assets bundled in the app. Every
- * Capacitor CLI command that resolves this config reads it — use `npx cap sync`,
- * since `cap run ios` currently cannot build (#1442: `ios.scheme` names an Xcode
- * scheme that does not exist).
+ * Capacitor CLI command that resolves this config reads it, so
+ * `CAPACITOR_DEV_URL=… npx cap sync` is the route into the Xcode flow.
+ * `npx cap run ios --live-reload` is Capacitor's own route and builds again now
+ * that `ios.scheme` no longer names a scheme that does not exist (#1442). It
+ * needs no variable — it writes `server.url` straight into the EMITTED config
+ * and reverts that on Ctrl-C — but it writes `url` ALONE, where the branch below
+ * pairs it with `cleartext: true` to waive ATS for a plain-HTTP dev server.
  *
  * It is deliberately IGNORED for a release build (LIFT-1435). `cap sync` resolves
  * this file and writes the answer verbatim into
@@ -46,7 +50,26 @@ const config: CapacitorConfig = {
     // 'never' is Capacitor's default.
     contentInset: 'never',
     preferredContentMode: 'mobile',
-    scheme: 'Lift',
+    // `ios.scheme` is deliberately ABSENT, and its absence is the fix for #1442.
+    // It is not a URL scheme: in `CapacitorConfig` it is the Xcode BUILD scheme
+    // handed to `xcodebuild -scheme` (`@capacitor/cli`'s own declarations:
+    // "iOS build scheme to use. Usually this matches your app's target in
+    // Xcode", default `App`). It read 'Lift', the committed project's only
+    // target — and therefore its only scheme — is `App`, so `npx cap run ios`
+    // ran `xcodebuild -scheme Lift` and could not build, including
+    // `--live-reload`, which is Capacitor's own sanctioned live-reload path.
+    // `cap open ios` + Product → Archive never reads the key, which is why the
+    // documented App Store flow worked throughout and this went unnoticed.
+    // Absence — not a corrected `scheme: 'App'` — resolves to the same scheme
+    // and says there is no decision here to get wrong; a restated default is
+    // what let the wrong value read as a deliberate setting.
+    //
+    // The WebView's ORIGIN is a different option: `server.iosScheme` (default
+    // `capacitor`), which Lift does not set — so the bundled app is served from
+    // `capacitor://localhost`, the origin #1425's dev-surface gate, #1430's
+    // password-reset flow and api/coach.ts's CORS allow-list all reason about.
+    // Wanting a custom URL scheme is a separate decision that also needs the
+    // matching `CFBundleURLTypes` work; it is not a rename of this key.
   },
   plugins: {
     Keyboard: {
