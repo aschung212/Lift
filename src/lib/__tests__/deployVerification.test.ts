@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parse } from 'yaml'
@@ -8,9 +9,20 @@ import { parse } from 'yaml'
 // tests below pin READER_PATH against the script the workflow invokes, and
 // that script against this module.
 import { main as readLiveDomainCli, parseLiveDomain } from '../../../scripts/live-domain.mjs'
+// Same arrangement for the "is production serving this commit?" decision
+// (LIFT-1414): the logic lives in a module the workflow reaches through a thin
+// CLI, and CHECKER_PATH is pinned against the script the workflow invokes.
+import {
+  main as checkDeployedCommitCli,
+  EXIT,
+  VERDICTS,
+  VERDICT_EXIT,
+} from '../../../scripts/deployed-commit.mjs'
 
 const READER_PATH = 'scripts/read-live-domain.mjs'
 const READER_LIB = 'live-domain.mjs'
+const CHECKER_PATH = 'scripts/check-deployed-commit.mjs'
+const CHECKER_LIB = 'deployed-commit.mjs'
 
 // LIFT-1167: the "✅ Deployed to production" Slack message must not fire off
 // green CI alone — CI passing does not prove Vercel promoted the commit (a
@@ -29,6 +41,7 @@ interface Step {
   run?: string
   if?: string
   env?: Record<string, string>
+  with?: Record<string, unknown>
 }
 interface Job {
   needs?: string | string[]
@@ -52,6 +65,20 @@ function verifyStepOf(jobs: Record<string, Job>): Step | undefined {
   return (jobs['smoke-test-production']?.steps ?? []).find((s) =>
     /verify production/i.test(s.name ?? ''),
   )
+}
+
+/**
+ * The body of one `if`/`elif` branch of a shell conditional, starting at the
+ * variable it tests. Sliced to the next `elif`/`else`/`fi` rather than to the
+ * first `else` in the string — notify-deploy's conditional has three arms, and
+ * `indexOf('else')` skips straight past `elif` to the last one.
+ */
+function branchTesting(run: string, variable: string): string {
+  const start = run.indexOf(`$${variable}`)
+  if (start === -1) return ''
+  const rest = run.slice(start)
+  const end = rest.search(/\n\s*(elif|else|fi)\b/)
+  return end === -1 ? rest : rest.slice(0, end)
 }
 
 /** The step in `smoke-test-production` that writes the deploy decision. */
@@ -337,7 +364,7 @@ describe('production deploy verification (LIFT-1167)', () => {
       // …and the skipped branch still says SOMETHING (silence reads as a
       // broken workflow) without claiming a deploy or a verification. The
       // exact wording is deliberately not pinned; the lie is.
-      const skippedBranch = run.slice(run.indexOf(`$${envName}`), run.indexOf('else'))
+      const skippedBranch = branchTesting(run, envName as string)
       expect(skippedBranch).toMatch(/MSG=".+"/)
       expect(skippedBranch).not.toMatch(/deployed to production/i)
       expect(skippedBranch).not.toMatch(/verified live/i)
@@ -503,6 +530,271 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
 
     expect(parseLiveDomain(backticked)).toEqual({ ok: true, domain: 'newdomain.app' })
     expect(parseLiveDomain(schemed)).toEqual({ ok: true, domain: 'newdomain.app' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LIFT-1414: production may legitimately be serving a NEWER commit than this one.
+//
+// The production alias serves the LATEST ready deployment and nothing else, so
+// whenever two master pushes land closer together than this job's own
+// dependencies take to run (`build-and-test` + `e2e` + `migrate-db`, ~5-6
+// minutes), the alias has already moved past the commit under verification
+// before the first poll. An exact-match test then waits out its full 300s
+// budget for a SHA that can never come back, fails, and fires
+// `🔴 Post-merge CI failed on master` for a deploy that succeeded — which is
+// what #1400 and #1404 did on 2026-09-13, 26 seconds apart, both READY.
+//
+// master is linear, so a later commit CONTAINS this one and production serving
+// a descendant means this commit's code is live. The decision therefore lives
+// in scripts/deployed-commit.mjs and is EXECUTED here against a real git
+// repository: the direction of an ancestry question is exactly the kind of
+// thing that is easy to write backwards and invisible to any assertion over
+// the text of the expression that asks it.
+// ---------------------------------------------------------------------------
+
+/**
+ * A throwaway repository with a real history:
+ *
+ *     A ── B ── C        (the master line)
+ *      \
+ *       X               (a commit on neither side of B)
+ *
+ * Isolated from the developer's own git config — a global `commit.gpgsign` or
+ * hooks path would otherwise reach in and make this fail on one machine only.
+ */
+function buildAncestryFixture() {
+  const repo = mkdtempSync(join(tmpdir(), 'lift-deploy-ancestry-'))
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' }
+
+  const run = (args: string[]) => {
+    const result = spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', env })
+    return { status: typeof result.status === 'number' ? result.status : 128, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+  }
+  const git = (args: string[]) => {
+    const result = run(args)
+    if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`)
+    return result.stdout.trim()
+  }
+
+  git(['init', '--quiet'])
+  git(['config', 'user.email', 'ci@example.test'])
+  git(['config', 'user.name', 'CI'])
+  git(['config', 'commit.gpgsign', 'false'])
+
+  const commit = (body: string) => {
+    writeFileSync(join(repo, 'file.txt'), body)
+    git(['add', 'file.txt'])
+    git(['commit', '--quiet', '--no-verify', '-m', body])
+    return git(['rev-parse', 'HEAD'])
+  }
+
+  const A = commit('a')
+  const B = commit('b')
+  const C = commit('c')
+  // Deliberately by SHA, so this never depends on the default branch name.
+  git(['checkout', '--quiet', '-b', 'side', A])
+  const X = commit('x')
+
+  return { repo, A, B, C, X, runGit: (args: string[]) => run(args) }
+}
+
+describe('production may serve a commit NEWER than this one (LIFT-1414)', () => {
+  const jobs = loadJobs()
+  const { repo, A, B, C, X, runGit } = buildAncestryFixture()
+  afterAll(() => rmSync(repo, { recursive: true, force: true }))
+
+  /** The checker CI runs, pointed at the fixture repo but otherwise untouched. */
+  function check(expected: string, deployed: string) {
+    const out: string[] = []
+    const err: string[] = []
+    const status = checkDeployedCommitCli(
+      [expected, deployed],
+      (l) => out.push(l),
+      (l) => err.push(l),
+      runGit,
+    )
+    return { status, stdout: out.join('\n'), stderr: err.join('\n') }
+  }
+
+  it('the verification step runs the checker these tests import', () => {
+    // Derived from the workflow, not restated: renaming the script fails this
+    // until the import at the top of this file follows, which is what keeps
+    // these tests exercising the code CI actually executes.
+    const run = verifyStepOf(jobs)?.run ?? ''
+    const invoked = run.match(/node (scripts\/[\w.-]+\.mjs) "\$EXPECTED_SHA"/)?.[1]
+    expect(invoked, 'the poll loop must decide via `node scripts/<checker>.mjs`').toBe(CHECKER_PATH)
+
+    // …and that script must be a wrapper over the module tested below rather
+    // than a second copy of the rule, for the same reason read-live-domain.mjs
+    // is: it ends in a process exit code and carries no entry guard that could
+    // silently decline to run.
+    expect(readFileSync(resolve(ROOT, CHECKER_PATH), 'utf8')).toContain(`from './${CHECKER_LIB}'`)
+  })
+
+  it('the checkout fetches the history the ancestry question needs', () => {
+    // `merge-base --is-ancestor` can only answer about commits this checkout
+    // holds. `fetch-depth: 2` is all the deploy gate's `HEAD^ HEAD` diff needs,
+    // and under it every superseding commit resolves as `unknown` — not a
+    // pass — so the job silently reverts to the exact-match behaviour this
+    // issue is about while every assertion below still passes.
+    const checkout = (jobs['smoke-test-production']?.steps ?? []).find((s) =>
+      (s.uses ?? '').startsWith('actions/checkout'),
+    )
+    expect(checkout, 'expected smoke-test-production to check out the repo').toBeDefined()
+    expect(checkout?.with?.['fetch-depth']).toBe(0)
+  })
+
+  it.each([
+    ['production serves exactly this commit', () => [B, B], 'serving', EXIT.verified],
+    ['a later master commit has superseded it', () => [B, C], 'superseded', EXIT.verified],
+    ['production is still on an earlier commit', () => [B, A], 'stale', EXIT.waiting],
+    ['production serves a commit on neither side', () => [B, X], 'unrelated', EXIT.waiting],
+    ['the deployed commit is not in this checkout', () => [B, '0'.repeat(40)], 'unknown', EXIT.unknownHistory],
+    ['version.json carried no commit', () => [B, ''], 'absent', EXIT.waiting],
+    ['version.json carried something that is not a SHA', () => [B, 'not-a-sha'], 'malformed', EXIT.waiting],
+    ['production reports the same commit in short form', () => [B, B.slice(0, 10)], 'serving', EXIT.verified],
+  ])('reports %s', (_case, shas, verdict, status) => {
+    const [expected, deployed] = shas()
+    const result = check(expected, deployed)
+    expect(result.stdout.split(':')[0], result.stdout).toBe(verdict)
+    expect(result.status, result.stdout).toBe(status)
+    // The workflow reads the verdict name off the front of this line with
+    // `${VERDICT%%:*}`, so the separator is load-bearing, not cosmetic.
+    expect(result.stdout).toMatch(new RegExp(`^${verdict}: \\S`))
+  })
+
+  it('every verdict the module can report is exercised above', () => {
+    // Otherwise a verdict could be added with no test and no exit code anyone
+    // has ever seen the workflow take.
+    const covered = new Set(
+      [
+        [B, B],
+        [B, C],
+        [B, A],
+        [B, X],
+        [B, '0'.repeat(40)],
+        [B, ''],
+        [B, 'not-a-sha'],
+      ].map(([expected, deployed]) => check(expected, deployed).stdout.split(':')[0]),
+    )
+    expect([...covered].sort()).toEqual([...VERDICTS].sort())
+  })
+
+  it('an unverifiable EXPECTED_SHA stops the job instead of polling for 300s', () => {
+    // The LIFT-1412 posture: a broken input is an error reported in one second,
+    // never five minutes of polling blamed on the Vercel deploy.
+    const result = check('', B)
+    expect(result.status).toBe(EXIT.badInput)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toMatch(/check-deployed-commit/)
+
+    const run = verifyStepOf(jobs)?.run ?? ''
+    expect(run).toContain(`${EXIT.badInput})`)
+    expect(run).toMatch(/::error::EXPECTED_SHA/)
+  })
+
+  it('an exact match is decided without consulting git at all', () => {
+    // The common case must stay answerable in a checkout with no history —
+    // otherwise a future shallow-clone change would break the ordinary path,
+    // not just the superseded one.
+    const exploding = () => {
+      throw new Error('git must not be consulted for an exact match')
+    }
+    expect(checkDeployedCommitCli([B, B], () => {}, () => {}, exploding)).toBe(EXIT.verified)
+    expect(checkDeployedCommitCli([B, ''], () => {}, () => {}, exploding)).toBe(EXIT.waiting)
+  })
+
+  it('the poll loop acts on every outcome the checker can report', () => {
+    // Derived from the module: a new exit code meant to change what the loop
+    // does would otherwise land with no arm and silently behave as "keep
+    // polling". `waiting` is deliberately the fall-through and has no arm.
+    const run = verifyStepOf(jobs)?.run ?? ''
+    const caseBody = run.slice(run.indexOf('case "$STATUS" in'))
+    expect(caseBody, 'expected the poll loop to branch on the checker exit code').not.toBe('')
+    const handled = new Set([...caseBody.matchAll(/^\s*(\d+)\)/gm)].map((m) => Number(m[1])))
+
+    for (const code of new Set(Object.values(VERDICT_EXIT))) {
+      if (code === EXIT.waiting) continue
+      expect(handled, `exit code ${code} has no arm in the poll loop`).toContain(code)
+    }
+  })
+
+  it('an unknown deployed commit deepens history rather than passing', () => {
+    // A master push that landed AFTER this job's checkout is not in the object
+    // store, so ancestry is unanswerable. Fetching is what closes that window;
+    // treating it as a pass would be the rubber stamp this whole job exists to
+    // avoid.
+    expect(check(B, '0'.repeat(40)).status).toBe(EXIT.unknownHistory)
+    const run = verifyStepOf(jobs)?.run ?? ''
+    const arm = run.slice(run.indexOf(`${EXIT.unknownHistory})`))
+    expect(arm.slice(0, arm.indexOf(';;'))).toMatch(/git fetch/)
+  })
+
+  it('the checker would have caught the original false failure (self-test)', () => {
+    // Proves the cases above are not vacuous: the rule as it shipped was a
+    // string comparison in bash, and it answers the opposite way on the one
+    // case this issue is about.
+    const oldExactMatch = (expected: string, deployed: string) => deployed === expected
+
+    expect(oldExactMatch(B, C)).toBe(false) // 300s of polling, then a red Slack ping
+    expect(check(B, C).status).toBe(EXIT.verified)
+
+    // …and it has not become a rubber stamp. A deploy that genuinely stalled
+    // leaves production on an EARLIER commit, and that still fails.
+    expect(check(B, A).status).not.toBe(EXIT.verified)
+    expect(check(B, X).status).not.toBe(EXIT.verified)
+  })
+
+  describe('Slack says which of the two happened', () => {
+    const smoke = jobs['smoke-test-production']
+    const verifyId = verifyStepOf(jobs)?.id
+    const notify = (jobs['notify-deploy']?.steps ?? []).find((s) => /notify slack/i.test(s.name ?? ''))
+
+    it('the verification step publishes a supersession as a job output', () => {
+      expect(verifyId, 'the verify step needs an id to be referenced as an output').toBeTruthy()
+
+      const run = verifyStepOf(jobs)?.run ?? ''
+      // Keyed on the module's own verdict name, so renaming the verdict breaks
+      // here rather than silently never setting the flag.
+      expect(VERDICTS).toContain('superseded')
+      expect(run).toContain('"superseded"')
+      expect(run).toMatch(/superseded=true" >> "\$GITHUB_OUTPUT"/)
+
+      const exposed = Object.values(smoke?.outputs ?? {}).find((v) =>
+        v.includes(`steps.${verifyId}.outputs.superseded`),
+      )
+      expect(exposed, `smoke-test-production must expose steps.${verifyId}.outputs.superseded`).toBeDefined()
+    })
+
+    it('notify-deploy reads it and does not claim a plain verified deploy', () => {
+      const outputName = Object.entries(smoke?.outputs ?? {}).find(([, v]) =>
+        v.includes(`steps.${verifyId}.outputs.superseded`),
+      )?.[0]
+      expect(outputName).toBeDefined()
+
+      // Via env, not inline `${{ }}` in the bash body — the same
+      // script-injection guard as the commit message beside it.
+      const envName = Object.entries(notify?.env ?? {}).find(
+        ([, v]) =>
+          v.includes('needs.smoke-test-production.outputs') && v.includes(outputName as string),
+      )?.[0]
+      expect(envName, 'notify-deploy must read the supersession via env').toBeDefined()
+
+      const run = notify?.run ?? ''
+      expect(run).toMatch(new RegExp(`\\[ "\\$${envName}" = "true" \\]`))
+
+      // It is still a successful deploy — this commit's code IS live — so the
+      // branch keeps claiming one, and says how it got there. What it must not
+      // do is read identically to a deploy that was promoted on its own.
+      const branch = branchTesting(run, envName as string)
+      expect(branch).toMatch(/MSG=".+"/)
+      const messages = [...run.matchAll(/MSG="([^"]*)"/g)].map((m) => m[1])
+      expect(
+        new Set(messages).size,
+        'two branches of the notification say exactly the same thing',
+      ).toBe(messages.length)
+    })
   })
 })
 

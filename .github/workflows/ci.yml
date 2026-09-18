@@ -748,12 +748,23 @@ jobs:
     # claimed a verified deploy for commits Vercel never built.
     outputs:
       deploy-skipped: ${{ steps.deploy_gate.outputs.skip }}
+      # Whether production reached this commit's code inside a LATER commit
+      # (LIFT-1414). Published so notify-deploy can say which of the two it was:
+      # "verified live" for a deploy that was promoted, and something honest for
+      # one a subsequent master push superseded before we ever looked.
+      deploy-superseded: ${{ steps.verify.outputs.superseded }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # HEAD^ is needed to evaluate vercel.json's ignoreCommand below.
-          fetch-depth: 2
+          # Full history, for two independent reasons. The deploy gate below
+          # evaluates `git diff HEAD^ HEAD`, and the verification step resolves
+          # ANCESTRY between this commit and whatever production reports
+          # (LIFT-1414) — which a shallow clone cannot answer, so a superseding
+          # commit would come back `unknown` and the job would fail exactly the
+          # way it did before that fix. The full clone of a repo this size costs
+          # seconds, against a step allowed to poll for 300 of them.
+          fetch-depth: 0
 
       # The domain reader below is a dependency-free Node script (no `npm ci`,
       # so no cache). Pinned rather than inherited from whatever the runner
@@ -837,7 +848,19 @@ jobs:
       # and deployVerification.test.ts executes it against several `**Live:**`
       # line shapes — the defect was an expression that matched nothing, which
       # no string assertion over that expression can see.
+      #
+      # What counts as "serving this commit" is decided by
+      # scripts/check-deployed-commit.mjs, not by a string comparison here
+      # (LIFT-1414). The production alias only ever serves the LATEST ready
+      # deployment, so when a second master push lands closer together than this
+      # job's own dependencies take to run (~5-6 minutes), the alias has already
+      # moved past this commit before the first poll — and an exact-match test
+      # then waits 300s for a SHA that can never come back and reports a
+      # succeeded deploy as a failure. master is linear, so a later commit
+      # CONTAINS this one: a descendant is a pass, an ancestor or an unrelated
+      # commit is still the failure it always was.
       - name: Verify production is serving this commit
+        id: verify
         if: steps.deploy_gate.outputs.skip != 'true'
         env:
           EXPECTED_SHA: ${{ github.sha }}
@@ -854,27 +877,57 @@ jobs:
             exit 1
           fi
           URL="https://$DOMAIN"
-          echo "Waiting for $URL to report commit $EXPECTED_SHA"
+          echo "Waiting for $URL to report commit $EXPECTED_SHA, or a later commit containing it"
 
           ATTEMPTS=30
           SLEEP=10
+          LAST_SEEN=""
           for i in $(seq 1 "$ATTEMPTS"); do
             # Cache-bust so an edge-cached version.json can't mask a fresh deploy.
             BODY=$(curl -fsS --max-time 15 "$URL/version.json?ci=$RUN_ID-$i" || true)
             DEPLOYED_SHA=$(printf '%s' "$BODY" | jq -r '.commit // empty' 2>/dev/null || true)
-            if [ -n "$DEPLOYED_SHA" ] && [ "$DEPLOYED_SHA" = "$EXPECTED_SHA" ]; then
-              HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID" || true)
-              if printf '%s' "$HTML" | grep -q '<div id="app">'; then
-                echo "Production is serving commit $EXPECTED_SHA and the app shell renders (attempt $i)."
-                exit 0
-              fi
-              echo "::warning::version.json matched but the app-shell marker is missing; retrying"
-            else
-              echo "Attempt $i/$ATTEMPTS: deployed=${DEPLOYED_SHA:-<none>} expected=$EXPECTED_SHA — waiting ${SLEEP}s"
+            if [ -n "$DEPLOYED_SHA" ]; then
+              LAST_SEEN="$DEPLOYED_SHA"
             fi
+
+            # One call yields both the exit code (control flow) and the verdict
+            # line (the log, and the superseded flag) — the alternative is two
+            # derivations of one answer, which is how they drift.
+            STATUS=0
+            VERDICT=$(node scripts/check-deployed-commit.mjs "$EXPECTED_SHA" "$DEPLOYED_SHA") || STATUS=$?
+            echo "Attempt $i/$ATTEMPTS: $VERDICT"
+
+            case "$STATUS" in
+              0)
+                HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID" || true)
+                if printf '%s' "$HTML" | grep -q '<div id="app">'; then
+                  if [ "${VERDICT%%:*}" = "superseded" ]; then
+                    echo "superseded=true" >> "$GITHUB_OUTPUT"
+                  fi
+                  echo "The app shell renders; verified on attempt $i."
+                  exit 0
+                fi
+                echo "::warning::version.json matched but the app-shell marker is missing; retrying"
+                ;;
+              2)
+                # Production is serving a commit this checkout has never seen —
+                # a master push that landed AFTER the checkout above. Without
+                # its object, ancestry is unanswerable and the verdict stays
+                # `unknown`, which is not a pass. Best effort, since
+                # persist-credentials is off: the repo is public, so an
+                # anonymous fetch works, and if that ever stops being true this
+                # degrades to the exact-match behaviour rather than breaking.
+                echo "Deepening history so the deployed commit can be resolved"
+                git fetch --no-tags --quiet origin master || true
+                ;;
+              3)
+                echo "::error::EXPECTED_SHA is not a commit SHA — there is nothing to verify against"
+                exit 1
+                ;;
+            esac
             sleep "$SLEEP"
           done
-          echo "::error::Production never reported commit $EXPECTED_SHA within $((ATTEMPTS * SLEEP))s — the Vercel deploy likely failed or stalled"
+          echo "::error::Production never served commit $EXPECTED_SHA or a later commit containing it within $((ATTEMPTS * SLEEP))s (last reported: ${LAST_SEEN:-<none>}) — the Vercel deploy likely failed or stalled"
           exit 1
 
   # Notify Slack on post-merge success (push to master only).
@@ -888,6 +941,12 @@ jobs:
   # exists to eliminate, entering through the skip path rather than the
   # failed-build path. Reporting nothing instead would be worse: silence is
   # indistinguishable from a broken workflow.
+  #
+  # A third branch covers the case where this commit's code reached production
+  # inside a LATER commit (LIFT-1414) — a real, verified deploy, but one whose
+  # own deployment may never have held the production alias. "Verified live"
+  # unqualified would read as "this commit was promoted", which is the same
+  # small lie in the same message, so it says which of the two happened.
   #
   # SECURITY: commit message + URL come in via env var, NOT direct
   # `${{ ... }}` interpolation into the bash body. Inline interpolation
@@ -907,10 +966,13 @@ jobs:
           COMMIT_MSG_RAW: ${{ github.event.head_commit.message }}
           COMMIT_URL: ${{ github.event.head_commit.url }}
           DEPLOY_SKIPPED: ${{ needs.smoke-test-production.outputs.deploy-skipped }}
+          DEPLOY_SUPERSEDED: ${{ needs.smoke-test-production.outputs.deploy-superseded }}
         run: |
           COMMIT_MSG=$(printf '%s' "$COMMIT_MSG_RAW" | head -1)
           if [ "$DEPLOY_SKIPPED" = "true" ]; then
             MSG="⏭️ *CI passed — no production deploy* (this commit touches no deployable path, so production still serves the previous commit)\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
+          elif [ "$DEPLOY_SUPERSEDED" = "true" ]; then
+            MSG="✅ *Deployed to production* (verified live inside a newer commit — a later master push took the production alias first)\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
           else
             MSG="✅ *Deployed to production* (verified live)\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
           fi
