@@ -107,6 +107,7 @@ Lift lets you track any strength exercise over time. Log a set (weight + reps + 
 - Log sets directly from the calendar
 - Tag filtering shared with workouts tab
 - Weekly view surfaces a muscle-group volume snapshot (tap any tag to drill into its week-over-week volume trend) plus an overall training-volume trend line (hand-rolled SVG)
+- Year view pairs the consistency heatmap with a shareable **Year in Review** recap card (1080×1080 post + 1080×1920 story): the year's total volume, training days, sets, PRs, heaviest lift, most-trained tag, longest week streak and a month-by-month volume chart. Recaps whichever year the heatmap is showing, so previous years are one `‹` away
 
 ### Body Weight Tracking
 - Log daily weigh-ins with date

@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { eligibleSquareCards, eligibleStoryCards, findCard, resolveInitialCard, SQUARE_CARDS, STORY_CARDS } from '../cardRegistry'
+import {
+  eligibleSquareCards,
+  eligibleStoryCards,
+  findCard,
+  loadCardComponent,
+  recapCardFor,
+  resolveInitialCard,
+  RECAP_CARDS,
+  SQUARE_CARDS,
+  STORY_CARDS,
+} from '../cardRegistry'
 import type { SessionSummary, SessionProgress } from '../../../lib/sessionSummary'
 
 function makeProgress(overrides: Partial<SessionProgress> = {}): SessionProgress {
@@ -126,6 +136,44 @@ describe('cardRegistry', () => {
     it('returns null when the card exists but is ineligible for this summary', () => {
       // pr-focus is hidden when there are no PRs — caller should fall back.
       expect(resolveInitialCard(makeSummary({ prs: 0 }), 'pr-focus')).toBeNull()
+    })
+  })
+
+  describe('recap bucket (#1018)', () => {
+    it('offers exactly one recap card per format, and recapCardFor returns it', () => {
+      // `YearRecapSheet` reads `.id` off this answer with no null check, so the
+      // map has to be total over CardFormat — the reason it is keyed rather
+      // than searched.
+      expect(recapCardFor('square').id).toBe('year-recap')
+      expect(recapCardFor('story').id).toBe('year-recap-story')
+      expect(RECAP_CARDS.map((c) => c.id)).toEqual(['year-recap', 'year-recap-story'])
+    })
+
+    it('resolves recap ids through findCard so the sheet can load their components', async () => {
+      // The sheet renders its preview via `cardComponent(id)` and rasterizes via
+      // `loadCardComponent(id)`; both route through findCard, which searched
+      // only the two session buckets before the recap cards existed.
+      expect(findCard('year-recap')?.format).toBe('square')
+      expect(findCard('year-recap-story')?.format).toBe('story')
+      for (const { id } of RECAP_CARDS) expect(await loadCardComponent(id)).toBeTruthy()
+    })
+
+    it('keeps recap cards OUT of the post-workout picker, for any summary', () => {
+      // A recap card takes `{ recap }`; the picker mounts what it lists with
+      // `{ summary }`. Listing one there rasterizes a blank PNG, and a missing
+      // prop throws nothing — so the separation is asserted, not assumed.
+      const loud = makeSummary({ prs: 3, progress: makeProgress() })
+      for (const summary of [makeSummary(), loud]) {
+        const ids = [...eligibleSquareCards(summary), ...eligibleStoryCards(summary)].map((c) => c.id)
+        for (const { id } of RECAP_CARDS) expect(ids).not.toContain(id)
+      }
+    })
+
+    it('refuses to pre-select a recap card as a session picker target', () => {
+      // findCard now finds it, so the contextual share entry points (#716) have
+      // to keep falling back rather than opening the picker on an index of -1.
+      expect(resolveInitialCard(makeSummary({ prs: 1 }), 'year-recap')).toBeNull()
+      expect(resolveInitialCard(makeSummary(), 'year-recap-story')).toBeNull()
     })
   })
 })

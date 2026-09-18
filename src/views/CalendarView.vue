@@ -48,6 +48,19 @@
         @prev-year="heatmapYear--"
         @next-year="heatmapYear++"
       />
+      <!-- Year in Review (#1018). Lives here because the year the card recaps
+           is the year the heatmap is already showing — the "Share 2025" a user
+           taps in January is the one reachable by the ‹ they just pressed.
+           Hidden for an untrained year: a recap of nothing has nothing to
+           brag about, and the button would be a dead end. -->
+      <button
+        v-if="hasYearRecapData(yearRecap)"
+        class="calYearRecapBtn"
+        @click="openYearRecap"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+        Share your {{ heatmapYear }} in Review
+      </button>
     </template>
 
     <!-- Monthly view -->
@@ -321,6 +334,10 @@
       </div>
     </div>
   </Teleport>
+
+  <!-- Year in Review share sheet (#1018). Teleports itself; mounted only while
+       open so the recap aggregation and the card chunks are paid for on tap. -->
+  <YearRecapSheet v-if="yearRecapOpen" :recap="yearRecap" @close="yearRecapOpen = false" />
 </template>
 
 <script setup lang="ts">
@@ -340,6 +357,7 @@ import { useCalendarData, type CalendarSet } from '../composables/useCalendarDat
 import ExercisePickerModal from '../components/ExercisePickerModal.vue'
 import { allowsZeroWeight, formatSetLoad, isLoggableWeight } from '../lib/bodyweightLoad'
 import { epley } from '../lib/epley'
+import { buildYearRecap, hasYearRecapData } from '../lib/yearRecap'
 import type { HeatmapDay } from '../components/ConsistencyHeatmap.vue'
 
 const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
@@ -347,6 +365,7 @@ const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/Mus
 const VolumeTrendChart = defineAsyncComponent(() => import('../components/VolumeTrendChart.vue'))
 const RepRangeChart = defineAsyncComponent(() => import('../components/RepRangeChart.vue'))
 const ConsistencyHeatmap = defineAsyncComponent(() => import('../components/ConsistencyHeatmap.vue'))
+const YearRecapSheet = defineAsyncComponent(() => import('../components/share/YearRecapSheet.vue'))
 
 const emit = defineEmits<{
   /** The backfill picker's "+ New exercise" row — routed to the Workouts tab. */
@@ -615,6 +634,25 @@ const repRangeCollapsed = ref(true)
 
 // ── Year view (heatmap) ──────────────────────────────────────────
 const heatmapYear = ref(new Date().getFullYear())
+
+// ── Year in Review (#1018) ───────────────────────────────────────
+// `buildYearRecap` is clock-free: the year is the one the heatmap is showing,
+// never `new Date()`, so a test pins the year it asks about and ‹ / › recap a
+// previous year for free. Reading `store.exercises` inside the computed takes
+// the reactive dependency on the shallowRef the store mutates in place, so a
+// set logged while the sheet is open re-derives the card (#963).
+const yearRecapOpen = ref(false)
+const yearRecap = computed(() => buildYearRecap({
+  year: heatmapYear.value,
+  exercises: store.exercises,
+  toDisplayUnits: displayWeight,
+  unitLabel: weightUnit.value,
+}))
+
+function openYearRecap() {
+  yearRecapOpen.value = true
+  logEvent('year_recap_opened', { year: heatmapYear.value })
+}
 
 // Map YYYY-MM-DD → total sets (all exercises, ignoring tag filters for year-wide view)
 const allDaySets = computed(() => {

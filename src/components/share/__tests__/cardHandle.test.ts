@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { SQUARE_CARDS, STORY_CARDS, loadCardComponent } from '../cardRegistry'
+import { RECAP_CARDS, SQUARE_CARDS, STORY_CARDS, loadCardComponent } from '../cardRegistry'
 import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import type { YearRecap } from '../../../lib/yearRecap'
 
 /**
  * Regression guard for the share-card acquisition loop (issue #714).
@@ -40,6 +41,54 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
   }
 }
 
+/**
+ * A recap card (#1018) renders a `YearRecap`, not a `SessionSummary`, so it
+ * cannot ride the `it.each` below — but the handle rule is about every card the
+ * app can export, and the recap sheet exports these two. Iterating the bucket
+ * (rather than naming the two ids) keeps the guard total if a third recap
+ * format is added.
+ */
+function makeRecap(overrides: Partial<YearRecap> = {}): YearRecap {
+  return {
+    year: 2026,
+    totalVolume: 1_250_400,
+    workouts: 148,
+    sets: 2140,
+    exercises: 22,
+    prs: 31,
+    bestLift: {
+      exerciseId: 'ex1',
+      name: 'Deadlift',
+      loadLabel: '405 lbs',
+      reps: 3,
+      e1RM: 446,
+      dateKey: '2026-08-14',
+    },
+    topTag: { tag: 'Push', sets: 620 },
+    longestStreakWeeks: 19,
+    monthlyVolume: [90_000, 102_000, 118_000, 96_000, 130_000, 108_000, 99_000, 141_000, 88_000, 92_000, 84_000, 2_400],
+    busiestMonth: 7,
+    unitLabel: 'lbs',
+    ...overrides,
+  }
+}
+
+/** A year with nothing in it — every optional field null, every month zero. */
+function emptyRecap(): YearRecap {
+  return makeRecap({
+    totalVolume: 0,
+    workouts: 0,
+    sets: 0,
+    exercises: 0,
+    prs: 0,
+    bestLift: null,
+    topTag: null,
+    longestStreakWeeks: 0,
+    monthlyVolume: new Array(12).fill(0),
+    busiestMonth: null,
+  })
+}
+
 const ALL_CARDS = [...SQUARE_CARDS, ...STORY_CARDS]
 
 describe('share-card handle (issue #714)', () => {
@@ -62,6 +111,25 @@ describe('share-card handle (issue #714)', () => {
       expect(wrapper.text()).toContain(SHARE_CARD_HANDLE)
     },
   )
+
+  it.each(RECAP_CARDS.map((c) => c.id))(
+    'renders the app handle on the %s recap card',
+    async (id) => {
+      const component = (await loadCardComponent(id))!
+      const wrapper = mount(component, { props: { recap: makeRecap() } })
+      expect(wrapper.text()).toContain(SHARE_CARD_HANDLE)
+    },
+  )
+
+  it('still renders the handle on a recap of an untrained year', async () => {
+    // bestLift/topTag/busiestMonth are all v-if'd or null-branched; the handle
+    // sits outside them, same contract as the empty-day case below.
+    for (const { id } of RECAP_CARDS) {
+      const component = (await loadCardComponent(id))!
+      const wrapper = mount(component, { props: { recap: emptyRecap() } })
+      expect(wrapper.text()).toContain(SHARE_CARD_HANDLE)
+    }
+  })
 
   it('still renders the handle when there is no best set (defensive empty-day render)', async () => {
     // PR Focus / Best Set bodies are v-if'd on bestSet; the handle lives

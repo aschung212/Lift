@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { loadCardComponent } from '../cardRegistry'
 import type { SessionSummary, SessionHighlight } from '../../../lib/sessionSummary'
+import type { YearRecap } from '../../../lib/yearRecap'
 
 /**
- * Render smoke tests for the 11 share-card components (issue #1188).
+ * Render smoke tests for the 13 share-card components (issue #1188; the two
+ * Year in Review cards joined in #1018).
  *
  * Before this file the entire `cards/` directory had 0% render coverage — only
  * the wrappers (registry, handle, picker, shareImage helpers) were tested. Each
@@ -57,6 +59,37 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
 async function mountCard(id: string, summary: SessionSummary) {
   const component = (await loadCardComponent(id))!
   return mount(component, { props: { summary } })
+}
+
+function makeRecap(overrides: Partial<YearRecap> = {}): YearRecap {
+  return {
+    year: 2026,
+    totalVolume: 1_250_400,
+    workouts: 148,
+    sets: 2140,
+    exercises: 22,
+    prs: 31,
+    bestLift: {
+      exerciseId: 'ex1',
+      name: 'Deadlift',
+      loadLabel: '405 lbs',
+      reps: 3,
+      e1RM: 446,
+      dateKey: '2026-08-14',
+    },
+    topTag: { tag: 'Push', sets: 620 },
+    longestStreakWeeks: 19,
+    monthlyVolume: [90_000, 102_000, 118_000, 96_000, 130_000, 108_000, 99_000, 141_000, 88_000, 92_000, 84_000, 2_400],
+    busiestMonth: 7,
+    unitLabel: 'lbs',
+    ...overrides,
+  }
+}
+
+/** Resolve + mount a Year in Review card by registry id (#1018). */
+async function mountRecapCard(id: string, recap: YearRecap) {
+  const component = (await loadCardComponent(id))!
+  return mount(component, { props: { recap } })
 }
 
 describe('share-card render smoke tests (issue #1188)', () => {
@@ -248,6 +281,112 @@ describe('share-card render smoke tests (issue #1188)', () => {
     it('renders "NEW" when there is no prior-week baseline', async () => {
       const wrapper = await mountCard('week-chart-story', makeSummary({ priorWeekVolume: 0 }))
       expect(wrapper.text()).toContain('NEW')
+    })
+  })
+
+  // ── Year in Review (#1018) ──────────────────────────────────────────
+  //
+  // The one bucket that doesn't consume a `SessionSummary`. Both designs read
+  // the same `YearRecap` through the shared derivations in `yearRecap.ts`, so
+  // a field rename breaks both at once — and unlike a session card, this one
+  // is exported once a year into a social feed.
+
+  describe('year-recap (YearRecapCard)', () => {
+    it('renders the year, the volume brag, and the four headline stats', async () => {
+      const wrapper = await mountRecapCard('year-recap', makeRecap())
+      const text = wrapper.text()
+      expect(text).toContain('2026')
+      expect(text).toContain('1,250,400') // formatted totalVolume
+      expect(text).toContain('lbs moved')
+      expect(text).toContain('148') // workouts
+      expect(text).toContain('2140') // sets
+      expect(text).toContain('31') // PRs
+      expect(text).toContain('19') // longest streak, weeks
+    })
+
+    it('names the best lift through the load label the aggregator decided', async () => {
+      // `loadLabel` is produced by formatSetLoad at aggregation time
+      // (LIFT-1373) — the card must print it verbatim rather than re-deriving
+      // an ADDED weight beside a folded e1RM.
+      const wrapper = await mountRecapCard(
+        'year-recap',
+        makeRecap({
+          bestLift: { exerciseId: 'ex9', name: 'Weighted Pull-up', loadLabel: 'Bodyweight', reps: 12, e1RM: 224, dateKey: '2026-03-02' },
+        }),
+      )
+      const text = wrapper.text()
+      expect(text).toContain('Weighted Pull-up')
+      expect(text).toContain('Bodyweight × 12')
+      expect(text).not.toContain('0 lbs')
+    })
+
+    it('marks the busiest month on the twelve-month chart', async () => {
+      const wrapper = await mountRecapCard('year-recap', makeRecap())
+      // Twelve columns always render — an untrained month keeps a stub bar so
+      // the axis still reads as a year.
+      expect(wrapper.findAll('.yrBarCol')).toHaveLength(12)
+      expect(wrapper.findAll('.yrBarPeak')).toHaveLength(1)
+      expect(wrapper.find('.yrChart').attributes('aria-label')).toContain('busiest month Aug')
+    })
+
+    it('degrades to the stats alone when a year has no best lift or tagged work', async () => {
+      const wrapper = await mountRecapCard('year-recap', makeRecap({ bestLift: null, topTag: null }))
+      const text = wrapper.text()
+      expect(text).not.toContain('Best lift')
+      expect(text).not.toContain('Most trained')
+      expect(text).toContain('1,250,400') // the headline survives
+    })
+
+    it('renders a flat axis and no peak bar for a zero-volume year', async () => {
+      const wrapper = await mountRecapCard(
+        'year-recap',
+        makeRecap({ monthlyVolume: new Array(12).fill(0), busiestMonth: null, totalVolume: 0 }),
+      )
+      expect(wrapper.findAll('.yrBarCol')).toHaveLength(12)
+      expect(wrapper.findAll('.yrBarPeak')).toHaveLength(0)
+      expect(wrapper.find('.yrChart').attributes('aria-label')).toBe('Monthly training volume for 2026')
+    })
+  })
+
+  describe('year-recap-story (YearRecapStory)', () => {
+    it('renders the year, volume, stats and both highlight rows', async () => {
+      const wrapper = await mountRecapCard('year-recap-story', makeRecap())
+      const text = wrapper.text()
+      expect(text).toContain('Year in Review')
+      expect(text).toContain('2026')
+      expect(text).toContain('1,250,400')
+      expect(text).toContain('Deadlift')
+      expect(text).toContain('405 lbs × 3')
+      expect(text).toContain('~446 lbs e1RM')
+      expect(text).toContain('Push')
+      expect(text).toContain('620 sets across 22 exercises')
+    })
+
+    it('labels weights in the recap unit, not a hardcoded lbs', async () => {
+      const wrapper = await mountRecapCard(
+        'year-recap-story',
+        makeRecap({ unitLabel: 'kg', totalVolume: 567_120, bestLift: { exerciseId: 'ex1', name: 'Deadlift', loadLabel: '184 kg', reps: 3, e1RM: 202, dateKey: '2026-08-14' } }),
+      )
+      const text = wrapper.text()
+      expect(text).toContain('kg moved')
+      expect(text).toContain('184 kg × 3')
+      expect(text).toContain('~202 kg e1RM')
+    })
+
+    // The two formats are one recap in two layouts; the derivations are shared
+    // (`yearRecap.ts`) precisely so they cannot disagree, and the chart's
+    // accessible name is the half no visual check would catch.
+    it('agrees with the square card on the stats and the chart label', async () => {
+      const recap = makeRecap()
+      const square = await mountRecapCard('year-recap', recap)
+      const story = await mountRecapCard('year-recap-story', recap)
+
+      expect(story.find('.yrsChart').attributes('aria-label')).toBe(
+        square.find('.yrChart').attributes('aria-label'),
+      )
+      expect(story.findAll('.yrsStatValue').map((n) => n.text())).toEqual(
+        square.findAll('.yrStatValue').map((n) => n.text()),
+      )
     })
   })
 })
