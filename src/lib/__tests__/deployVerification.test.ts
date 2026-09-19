@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parse } from 'yaml'
@@ -8,9 +9,19 @@ import { parse } from 'yaml'
 // tests below pin READER_PATH against the script the workflow invokes, and
 // that script against this module.
 import { main as readLiveDomainCli, parseLiveDomain } from '../../../scripts/live-domain.mjs'
+// Likewise the freshness classifier it runs once per poll attempt.
+import {
+  classifyDeployFreshness,
+  gitRunner,
+  main as readDeployFreshnessCli,
+  DEPLOY_FRESHNESS_STATES,
+  LIVE_STATES,
+} from '../../../scripts/deploy-freshness.mjs'
 
 const READER_PATH = 'scripts/read-live-domain.mjs'
 const READER_LIB = 'live-domain.mjs'
+const FRESHNESS_READER_PATH = 'scripts/read-deploy-freshness.mjs'
+const FRESHNESS_READER_LIB = 'deploy-freshness.mjs'
 
 // LIFT-1167: the "✅ Deployed to production" Slack message must not fire off
 // green CI alone — CI passing does not prove Vercel promoted the commit (a
@@ -337,7 +348,15 @@ describe('production deploy verification (LIFT-1167)', () => {
       // …and the skipped branch still says SOMETHING (silence reads as a
       // broken workflow) without claiming a deploy or a verification. The
       // exact wording is deliberately not pinned; the lie is.
-      const skippedBranch = run.slice(run.indexOf(`$${envName}`), run.indexOf('else'))
+      //
+      // Sliced to the NEXT branch rather than to the final `else`: the chain
+      // grew a third arm in LIFT-1414 (a deploy verified inside a newer
+      // commit), and reaching past it would judge the skipped branch by
+      // another branch's words.
+      const chain = run.slice(run.indexOf(`$${envName}`))
+      const nextBranch = chain.search(/\n(?:elif|else)\b/)
+      expect(nextBranch, 'expected the message to branch on the gate decision').toBeGreaterThan(0)
+      const skippedBranch = chain.slice(0, nextBranch)
       expect(skippedBranch).toMatch(/MSG=".+"/)
       expect(skippedBranch).not.toMatch(/deployed to production/i)
       expect(skippedBranch).not.toMatch(/verified live/i)
@@ -396,11 +415,14 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
     // fails until the import at the top of this file follows — which is what
     // keeps these tests exercising the code CI actually executes.
     const run = verifyStepOf(loadJobs())?.run ?? ''
-    const invoked = run.match(/node (scripts\/[\w.-]+\.mjs)/)?.[1]
-    expect(invoked, 'the step must read the domain via `node scripts/<reader>.mjs`').toBe(
+    // Matched together with its CLAUDE.md argument rather than as the first
+    // `node scripts/*.mjs` in the body: the step runs a second reader inside
+    // the poll loop (LIFT-1414), and an assertion that depended on which one
+    // appears first would start pinning the wrong script the day they swap.
+    const invoked = run.match(/node (scripts\/[\w.-]+\.mjs) CLAUDE\.md/)?.[1]
+    expect(invoked, 'the step must read the domain via `node scripts/<reader>.mjs CLAUDE.md`').toBe(
       READER_PATH,
     )
-    expect(run).toContain(`${READER_PATH} CLAUDE.md`)
 
     // …and that script must be a wrapper over the module tested below, not a
     // second copy of the parsing. It is deliberately not tested by calling it:
@@ -503,6 +525,307 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
 
     expect(parseLiveDomain(backticked)).toEqual({ ok: true, domain: 'newdomain.app' })
     expect(parseLiveDomain(schemed)).toEqual({ ok: true, domain: 'newdomain.app' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LIFT-1414: "production is serving this commit" has to mean this commit OR a
+// descendant of it.
+//
+// The prod alias only ever serves the newest ready deployment, and
+// smoke-test-production does not start until build-and-test, e2e and
+// migrate-db have finished (~6 min). Merge two PRs closer together than that
+// and the alias has moved past the earlier commit before its job polls: the
+// old string-equality check then waited the full 300s for a SHA that can never
+// come back and exited with "the Vercel deploy likely failed or stalled",
+// firing a red Slack message for a deploy that succeeded. That is what
+// happened to #1400 on 2026-09-17 — three PRs ~90s apart, all three READY.
+//
+// These tests EXECUTE the classifier against real git in temporary
+// repositories, and model the old equality predicate beside it to prove the
+// fixtures are not vacuous. The defect was a comparison that could not express
+// "newer than", which no assertion over the comparison's text can see.
+// ---------------------------------------------------------------------------
+
+/** The predicate that shipped: the deployed SHA had to equal ours exactly. */
+function oldEqualityCheck(expected: string, deployed: string): boolean {
+  return deployed !== '' && deployed === expected
+}
+
+describe('a descendant deploy counts as live (LIFT-1414)', () => {
+  const REPOS = mkdtempSync(join(tmpdir(), 'lift-deploy-freshness-'))
+  afterAll(() => rmSync(REPOS, { recursive: true, force: true }))
+
+  /**
+   * Run git in a fixture repo, isolated from Aaron's global config (commit
+   * signing, hooks, a default branch name) so the fixtures behave the same on
+   * every machine and in CI.
+   */
+  function git(cwd: string, args: string[]): string {
+    return execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_SYSTEM: '/dev/null',
+        GIT_AUTHOR_NAME: 'Lift Test',
+        GIT_AUTHOR_EMAIL: 'test@example.com',
+        GIT_COMMITTER_NAME: 'Lift Test',
+        GIT_COMMITTER_EMAIL: 'test@example.com',
+      },
+    }).trim()
+  }
+
+  let seq = 0
+  function newRepo(): string {
+    const dir = join(REPOS, `repo-${(seq += 1)}`)
+    mkdirSync(dir, { recursive: true })
+    git(dir, ['init', '--quiet', '--initial-branch=master'])
+    return dir
+  }
+
+  function commit(repo: string, message: string): string {
+    writeFileSync(join(repo, 'file.txt'), `${message}\n`)
+    git(repo, ['add', 'file.txt'])
+    git(repo, ['commit', '--quiet', '--no-gpg-sign', '-m', message])
+    return git(repo, ['rev-parse', 'HEAD'])
+  }
+
+  /** A linear master: A → B → C, the shape a run of merged PRs produces. */
+  function linearRepo() {
+    const repo = newRepo()
+    const a = commit(repo, 'A')
+    const b = commit(repo, 'B')
+    const c = commit(repo, 'C')
+    return { repo, a, b, c, run: gitRunner(repo) }
+  }
+
+  it('accepts the commit itself', () => {
+    const { a, run } = linearRepo()
+    expect(classifyDeployFreshness(a, a, run).state).toBe('current')
+  })
+
+  it('accepts a descendant — this is the case that used to false-fail', () => {
+    const { a, c, run } = linearRepo()
+    // Two commits later took the alias while this job was still in e2e.
+    expect(classifyDeployFreshness(a, c, run).state).toBe('superseded')
+    expect(LIVE_STATES).toContain(classifyDeployFreshness(a, c, run).state)
+
+    // The self-test: the predicate that shipped called the same situation a
+    // failed deploy, so the fixture above is not asserting something that was
+    // already true.
+    expect(oldEqualityCheck(a, c)).toBe(false)
+    expect(oldEqualityCheck(a, a)).toBe(true)
+  })
+
+  it('still rejects an OLDER deploy — the failure the job exists to catch', () => {
+    const { a, c, run } = linearRepo()
+    // Production is behind us: our build never landed. Relaxing equality must
+    // not relax this, or the job stops detecting a stalled deploy at all.
+    expect(classifyDeployFreshness(c, a, run).state).toBe('behind')
+    expect(LIVE_STATES).not.toContain('behind')
+  })
+
+  it('rejects a commit on a rewritten history rather than calling it newer', () => {
+    const { repo, a, b, run } = linearRepo()
+    git(repo, ['checkout', '--quiet', '-b', 'rewritten', a])
+    const diverged = commit(repo, 'D')
+
+    const result = classifyDeployFreshness(b, diverged, run)
+    expect(result.state).toBe('unrelated')
+    expect(LIVE_STATES).not.toContain(result.state)
+    // And the diagnostic says ancestry, not "the deploy stalled" — the message
+    // has to name the system that actually broke.
+    expect(result.detail).toMatch(/ancestry/)
+  })
+
+  it('reports an empty and a garbled version.json distinctly', () => {
+    const { b, run } = linearRepo()
+    expect(classifyDeployFreshness(b, '', run).state).toBe('none')
+    expect(classifyDeployFreshness(b, '   ', run).state).toBe('none')
+    // Not a git object id, so it never reaches a git argument list.
+    expect(classifyDeployFreshness(b, 'not-a-sha', run).state).toBe('malformed')
+    expect(classifyDeployFreshness(b, '--upload-pack=touch /tmp/pwned', run).state).toBe('malformed')
+  })
+
+  it('resolves an abbreviated object id instead of reading it as unrelated', () => {
+    const { a, c, run } = linearRepo()
+    expect(classifyDeployFreshness(a, c.slice(0, 10), run).state).toBe('superseded')
+    expect(classifyDeployFreshness(a, a.slice(0, 10), run).state).toBe('current')
+  })
+
+  // The residual form of the same race: the poll window is 300s wide, so a
+  // THIRD push can land and take the alias after this job's checkout has
+  // already fetched. Without the recovery below that commit is simply absent
+  // from the object database and every attempt answers `unknown` — the 300s
+  // false failure again, one level deeper.
+  it('fetches a commit that landed after the checkout', () => {
+    const origin = newRepo()
+    const a = commit(origin, 'A')
+    // github.com serves an arbitrary reachable SHA (the capability
+    // actions/checkout relies on to fetch a merge commit by id); a bare local
+    // repo does not by default, so the fixture opts in to model it.
+    git(origin, ['config', 'uploadpack.allowAnySHA1InWant', 'true'])
+
+    const clone = join(REPOS, `clone-${(seq += 1)}`)
+    execFileSync('git', ['clone', '--quiet', origin, clone], { encoding: 'utf8' })
+
+    // master moves on AFTER the clone, exactly as a later merge would.
+    const b = commit(origin, 'B')
+    const run = gitRunner(clone)
+    expect(run(['cat-file', '-e', `${b}^{commit}`]), 'B must start out absent').toBe(false)
+
+    expect(classifyDeployFreshness(a, b, run).state).toBe('superseded')
+  })
+
+  it('degrades to `unknown` when the commit cannot be fetched at all', () => {
+    const { b, run } = linearRepo() // no remote configured
+    const absent = 'a'.repeat(40)
+    const result = classifyDeployFreshness(b, absent, run)
+    // Honest ignorance, never a confident `unrelated` — an unresolvable
+    // commit is not evidence that the deploy failed, and the timeout message
+    // says which of the two it is.
+    expect(result.state).toBe('unknown')
+    expect(result.detail).toMatch(/cannot resolve/)
+  })
+
+  describe('the reader CLI', () => {
+    function runCli(argv: string[], cwd: string) {
+      const out: string[] = []
+      const err: string[] = []
+      const status = readDeployFreshnessCli(
+        argv,
+        (l) => out.push(l),
+        (l) => err.push(l),
+        gitRunner(cwd),
+      )
+      return { status, stdout: out.join('\n'), stderr: err.join('\n') }
+    }
+
+    it('prints the state on stdout and exits 0 for an answer of any kind', () => {
+      const { repo, a, c } = linearRepo()
+      expect(runCli([a, c], repo)).toMatchObject({ status: 0, stdout: 'superseded' })
+      // Exit 0 means "the classification ran", not "the deploy is live" — the
+      // workflow reads the state word for that.
+      expect(runCli([c, a], repo)).toMatchObject({ status: 0, stdout: 'behind' })
+    })
+
+    it('fails closed when called wrong rather than guessing', () => {
+      const { repo, a } = linearRepo()
+      // A missing second argument must not read as "production reported
+      // nothing" — that answer is indistinguishable from a real empty
+      // version.json and would be polled against for 300s (the LIFT-1412
+      // property: a caller mistake is a one-second error, not a best guess).
+      expect(runCli([a], repo).status).toBe(2)
+      expect(runCli([a], repo).stdout).toBe('')
+      expect(runCli([], repo).status).toBe(2)
+      expect(runCli([a, 'x', 'y'], repo).status).toBe(2)
+      expect(runCli(['not-a-sha', a], repo).status).toBe(2)
+    })
+
+    it('names the shallow checkout when our own commit is missing', () => {
+      const { a } = linearRepo()
+      const elsewhere = newRepo()
+      commit(elsewhere, 'unrelated')
+      const result = runCli([a, a], elsewhere)
+      // The whole comparison rests on full history, so a `fetch-depth` that
+      // drops it must say so instead of answering `unrelated` for every
+      // descendant.
+      expect(result.status).toBe(2)
+      expect(result.stderr).toMatch(/fetch-depth/)
+    })
+  })
+
+  describe('the workflow wiring', () => {
+    const jobs = loadJobs()
+    const verify = verifyStepOf(jobs)
+    const run = verify?.run ?? ''
+
+    it('the verification step runs the reader these tests import', () => {
+      // Derived from the workflow rather than restated: renaming the script
+      // fails here until the import at the top of this file follows, which is
+      // what keeps these tests exercising the code CI executes.
+      const invoked = run.match(/node (scripts\/[\w.-]+\.mjs) "\$EXPECTED_SHA"/)?.[1]
+      expect(invoked, 'the step must classify via `node scripts/<reader>.mjs "$EXPECTED_SHA" …`')
+        .toBe(FRESHNESS_READER_PATH)
+      const cli = readFileSync(resolve(ROOT, FRESHNESS_READER_PATH), 'utf8')
+      expect(cli).toContain(`from './${FRESHNESS_READER_LIB}'`)
+    })
+
+    it('checks out full history, which the comparison needs', () => {
+      // `git merge-base --is-ancestor` needs both commits in the object
+      // database. At the old `fetch-depth: 2` every descendant would classify
+      // as `unknown` and the job would false-fail exactly as before — silently,
+      // since nothing else in the workflow reads history.
+      const checkout = (jobs['smoke-test-production']?.steps ?? []).find((s) =>
+        (s.uses ?? '').startsWith('actions/checkout'),
+      ) as (Step & { with?: Record<string, unknown> }) | undefined
+      expect(checkout?.with?.['fetch-depth']).toBe(0)
+    })
+
+    it('acts on the reader vocabulary, not on words of its own', () => {
+      // Every state the step branches on must be a state the classifier can
+      // actually return. A rename on either side would otherwise fall through
+      // to "keep waiting" and then to the wrong timeout message — invisible,
+      // because a `case` arm that matches nothing is not a syntax error.
+      const arms = [...run.matchAll(/^\s{2,}([a-z|]+)\)\s*$/gm)].flatMap((m) => m[1].split('|'))
+      expect(arms.length, 'expected the step to case on the reader state').toBeGreaterThan(0)
+      for (const arm of arms) {
+        expect(DEPLOY_FRESHNESS_STATES, `unknown state in a case arm: ${arm}`).toContain(arm)
+      }
+      // …and the arm that declares success must be exactly the live states,
+      // so a newly-added live state cannot be left out of it.
+      const successArm = run.match(/^\s+([a-z|]+)\)\n[^\n]*\bHTML=/m)?.[1]?.split('|')
+      expect(successArm?.slice().sort()).toEqual([...LIVE_STATES].sort())
+    })
+
+    it('blames the Vercel deploy only when the deploy is what stalled', () => {
+      // The trailing `case` turns the last observed state into the error
+      // annotation. Reporting an unrelated/unresolvable/garbled commit as a
+      // failed deploy is the LIFT-1367 misattribution this chain exists to
+      // avoid — the message's job is to name the broken system.
+      const timeout = run.slice(run.lastIndexOf('WAITED='))
+      expect(timeout).toMatch(/::error::/)
+      for (const state of ['unrelated', 'unknown', 'malformed']) {
+        const arm = timeout.match(new RegExp(`${state}\\)\\n\\s*([^\\n]*)`))?.[1] ?? ''
+        expect(arm, `${state} needs its own annotation`).toMatch(/::error::/)
+        expect(arm, `${state} must not be reported as a Vercel deploy failure`).not.toMatch(
+          /vercel/i,
+        )
+      }
+      expect(timeout).toMatch(/::error::[^\n]*Vercel deploy/i)
+    })
+
+    it('tells Slack which of the two it verified', () => {
+      // `superseded` means nothing ever observed THIS commit's bundle serving
+      // — only a newer one containing it. An unqualified "verified live" would
+      // be the same overstatement LIFT-1354 removed from the skip path.
+      const output = Object.entries(jobs['smoke-test-production']?.outputs ?? {}).find(([, v]) =>
+        v.includes(`steps.${verify?.id}.outputs.superseded-by`),
+      )
+      expect(verify?.id, 'the verification step needs an id to publish an output').toBeTruthy()
+      expect(output, 'smoke-test-production must expose the superseding commit').toBeDefined()
+      expect(run).toContain('superseded-by=$DEPLOYED_SHA')
+
+      const notify = (jobs['notify-deploy']?.steps ?? []).find((s) =>
+        /notify slack/i.test(s.name ?? ''),
+      )
+      // Consumed via env, not inline `${{ }}` in the bash body — the same
+      // script-injection guard as the commit message beside it.
+      const envName = Object.entries(notify?.env ?? {}).find(
+        ([, v]) =>
+          v.includes('needs.smoke-test-production.outputs') && v.includes(output?.[0] as string),
+      )?.[0]
+      expect(envName, 'notify-deploy must read the output via env').toBeDefined()
+
+      const body = notify?.run ?? ''
+      expect(body).toMatch(new RegExp(`elif \\[ -n "\\$${envName}" \\]`))
+      // The branch has to actually disclose the superseding commit; a third
+      // message that read like the second would defeat the point.
+      const branch = body.slice(body.indexOf(`-n "$${envName}"`), body.lastIndexOf('else'))
+      expect(branch).toMatch(new RegExp(`\\$\\{${envName}`))
+    })
   })
 })
 
