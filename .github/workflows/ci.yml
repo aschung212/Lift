@@ -621,9 +621,25 @@ jobs:
     needs: build-and-test
     env:
       # Build-time flag: makes the dev sign-in button available in the
-      # production bundle so e2e tests can authenticate without Supabase.
-      # Real Vercel deploys do not set this, so the button stays hidden.
+      # production bundle so e2e tests can reach the app without a real
+      # Supabase session. Real Vercel deploys do not set this, so the button
+      # stays hidden.
       VITE_E2E: 'true'
+      # Point the bundle at the loopback Supabase stub (LIFT-1008). Without a
+      # client, EVERY entry point of the sync layer returns at its first line
+      # (`if (!supabase …) return`) — the durable write queue, the IndexedDB
+      # journal, the offline park and the reconnect replay had never executed in
+      # a browser. This URL is both baked into the build (Vite exposes VITE_*
+      # process env vars) and read by playwright.config.ts to start
+      # e2e/support/supabase-stub.mjs on the same port, so there is one value,
+      # not two. The stub serves every read as empty, which is what keeps the
+      # other specs' behaviour identical while the write path goes live.
+      #
+      # This key is an opaque local placeholder, not a credential: it addresses
+      # a process on 127.0.0.1 that authenticates nothing. supabase-js only
+      # requires the key to be non-empty.
+      VITE_SUPABASE_URL: 'http://127.0.0.1:54331'
+      VITE_SUPABASE_ANON_KEY: 'e2e-local-stub-key'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
