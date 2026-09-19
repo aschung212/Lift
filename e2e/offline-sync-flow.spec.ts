@@ -81,7 +81,16 @@ function uniqueExerciseName(base: string): string {
   return `${base} ${Math.random().toString(36).slice(2, 8)}`
 }
 
-/** Wait for an exercise row to reach the stub, and return the id it was given. */
+/**
+ * Wait for an exercise row to reach the stub, and return the id it was given.
+ *
+ * Every later assertion is scoped by that id rather than by name, and this is
+ * load-bearing: because the stub answers every count as 0,
+ * `migrateLocalStorageToSupabase` re-runs on each sign-in that finds data in
+ * localStorage and pushes a copy of it under FRESHLY MINTED uuids. Keyed on the
+ * id the app actually pushed, a migration copy can neither satisfy an assertion
+ * nor pollute one.
+ */
 async function expectExerciseOnServer(name: string): Promise<string> {
   let id = ''
   await expect

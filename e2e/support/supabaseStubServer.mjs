@@ -39,6 +39,16 @@
  * here; the substantive half ("the offline write reached the server") is, and
  * that is the half the mocked unit tests fake away.
  *
+ * It has one surprising consequence worth knowing before you read the write
+ * log. `migrateLocalStorageToSupabase` only runs against an account with no
+ * cloud data, and it decides that from a `count` this stub always answers as 0
+ * — so every sign-in that finds data in localStorage re-runs the migration and
+ * pushes a COPY of it. Those copies carry FRESHLY MINTED uuids (`buildExercise
+ * AndSetRows` never reuses the local ids), which is exactly why the specs
+ * capture the id of the row the app pushed and scope every later assertion to
+ * it: a migration copy can neither satisfy nor pollute an assertion keyed on
+ * the original id. Matching on name alone would not have that property.
+ *
  * ## Fidelity
  *
  * Shapes match real PostgREST wherever the client can tell the difference,
