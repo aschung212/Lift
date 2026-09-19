@@ -63,6 +63,16 @@ export const DEPLOY_FRESHNESS_STATES = Object.freeze([
 export const LIVE_STATES = Object.freeze(['current', 'superseded'])
 
 /**
+ * How long any one git command may take. Only the `fetch` below can block at
+ * all (it talks to a remote), and it runs inside a poll loop that already has
+ * a fixed budget — a hung negotiation would eat that budget and then be
+ * reported as a stalled deploy, which is the misattribution this file exists
+ * to remove. A timeout throws, so it degrades to `unknown` like any other
+ * unreachable commit.
+ */
+const GIT_TIMEOUT_MS = 15_000
+
+/**
  * A git runner for `classifyDeployFreshness`: runs git and reports only
  * whether it exited 0. Every git command this module needs (`cat-file -e`,
  * `merge-base --is-ancestor`, `fetch`) answers through its exit status, so the
@@ -75,7 +85,11 @@ export const LIVE_STATES = Object.freeze(['current', 'superseded'])
 export function gitRunner(cwd = process.cwd()) {
   return (args) => {
     try {
-      execFileSync('git', args, { cwd, stdio: ['ignore', 'ignore', 'ignore'] })
+      execFileSync('git', args, {
+        cwd,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        timeout: GIT_TIMEOUT_MS,
+      })
       return true
     } catch {
       return false

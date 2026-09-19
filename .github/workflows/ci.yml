@@ -765,8 +765,9 @@ jobs:
           # is what lets the verification step ask whether the commit
           # production serves is a DESCENDANT of this one rather than merely
           # equal to it (LIFT-1414) — `git merge-base --is-ancestor` needs both
-          # commits in the object database. 866 commits / ~15 MB, so the extra
-          # fetch is cheap next to the 300s poll it keeps from false-failing.
+          # commits in the object database. The repo is small enough that the
+          # extra history costs far less than the 300s poll it stops from
+          # false-failing.
           fetch-depth: 0
 
       # The domain reader below is a dependency-free Node script (no `npm ci`,
