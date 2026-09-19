@@ -11,8 +11,12 @@
  * the build environment's commit SHA (Vercel exposes `VERCEL_GIT_COMMIT_SHA`;
  * GitHub Actions exposes `GITHUB_SHA`). The `smoke-test-production` CI job then
  * polls `<prod>/version.json` and only sends the success notification once the
- * *deployed* commit matches the pushed commit — genuinely verifying the deploy
- * landed rather than assuming it did.
+ * *deployed* commit is the pushed commit or a descendant of it — genuinely
+ * verifying the deploy landed rather than assuming it did. Descendants count
+ * because the production alias serves only the newest ready deployment, so a
+ * follow-up push can take it before the earlier commit's job gets to poll, and
+ * a descendant's build contains that commit anyway (LIFT-1414); the comparison
+ * itself lives in `scripts/deploy-freshness.mjs`.
  *
  * The commit value is read from an authoritative build-env variable, never
  * fabricated (the SEV1 rule). Locally, with neither var set, `commit` is '' —
