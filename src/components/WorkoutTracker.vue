@@ -66,6 +66,7 @@
       <div class="wtTagFilterBar" role="group" aria-label="Filter by gym">
         <button
           :class="['wtTagChip', { wtTagChipActive: !effectiveGymFilter }]"
+          :aria-pressed="!effectiveGymFilter"
           @click="activeGymFilter = null"
           aria-label="Show exercises from all gyms"
         >All Gyms</button>
@@ -88,9 +89,10 @@
 
     <!-- Tag filter chips with counts (exercises view only) -->
     <template v-if="listView === 'exercises' && store.allTags.length > 0">
-      <div class="wtTagFilterBar">
+      <div class="wtTagFilterBar" role="group" aria-label="Filter by tag">
         <button
           :class="['wtTagChip', { wtTagChipActive: activeTagFilters.length === 0 && !searchQuery }]"
+          :aria-pressed="activeTagFilters.length === 0 && !searchQuery"
           @click="clearSearchAndTags"
           aria-label="Show all exercises"
         >All</button>

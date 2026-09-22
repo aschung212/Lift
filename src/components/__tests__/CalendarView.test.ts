@@ -551,6 +551,18 @@ describe('CalendarView', () => {
       expect(navBtns[1].attributes('aria-label')).toBe('Next')
     })
 
+    // LIFT-1469. The calendar's row shipped as a bare <div>, so its chips were
+    // announced as an unintroduced run of buttons ("Push, button") with nothing
+    // saying what they filtered — while the workout tab's gym row one screen
+    // over was a properly-introduced group.
+    it('the tag filter row is an introduced group', () => {
+      exercises = makeExercises(['2026-03-31'])
+      const wrapper = mountCalendar()
+      const bar = wrapper.find('.wtTagFilterBar')
+      expect(bar.attributes('role')).toBe('group')
+      expect(bar.attributes('aria-label')).toBe('Filter by tag')
+    })
+
     it('view toggle buttons have aria-pressed', () => {
       const wrapper = mountCalendar()
       const btns = wrapper.findAll('.calToggleBtn')
