@@ -34,6 +34,7 @@ interface Job {
   needs?: string | string[]
   if?: string
   outputs?: Record<string, string>
+  permissions?: string | Record<string, string>
   steps?: Step[]
 }
 
@@ -52,6 +53,30 @@ function verifyStepOf(jobs: Record<string, Job>): Step | undefined {
   return (jobs['smoke-test-production']?.steps ?? []).find((s) =>
     /verify production/i.test(s.name ?? ''),
   )
+}
+
+/**
+ * Jobs that WRITE to the repository rather than validate it — bookkeeping,
+ * not a gate on whether master is healthy (LIFT-1475).
+ *
+ * Derived from two independent signals so removing one doesn't disarm the
+ * scan: a job that grants itself `contents: write` (the whole workflow is
+ * `contents: read` by default), and a job whose steps actually commit or
+ * push. `ratchet-baseline` carries both today; a future bookkeeping job is
+ * caught by whichever it carries.
+ *
+ * `git diff` is deliberately NOT a signal — smoke-test-production runs the
+ * deploy gate's `git diff --quiet` and reads the repo without writing it.
+ */
+function repoWritingJobs(jobs: Record<string, Job>): string[] {
+  return Object.entries(jobs)
+    .filter(([, job]) => {
+      const perms = job.permissions
+      const contents = typeof perms === 'string' ? perms : perms?.contents
+      if (contents === 'write' || contents === 'write-all') return true
+      return (job.steps ?? []).some((s) => /\bgit\s+(commit|push)\b/.test(s.run ?? ''))
+    })
+    .map(([name]) => name)
 }
 
 /** The step in `smoke-test-production` that writes the deploy decision. */
@@ -341,6 +366,55 @@ describe('production deploy verification (LIFT-1167)', () => {
       expect(skippedBranch).toMatch(/MSG=".+"/)
       expect(skippedBranch).not.toMatch(/deployed to production/i)
       expect(skippedBranch).not.toMatch(/verified live/i)
+    })
+  })
+
+  // LIFT-1475: the three jobs that make up the deploy-verification chain each
+  // declare their own `needs`, and the lists drifted. smoke-test-production
+  // deliberately excludes ratchet-baseline — and says why — but both notify
+  // jobs listed it, so a coverage-bookkeeping failure (an expired
+  // coverage-summary artifact, a malformed coverage-summary.json, an
+  // unguarded git config/add/commit) withheld "✅ Deployed to production" and
+  // posted "🔴 Post-merge CI failed on master" for a push whose deploy the
+  // smoke test had just verified live on the same run. The one message whose
+  // job is to name the broken system named the wrong one — LIFT-1367's
+  // complaint from the opposite side.
+  //
+  // Both rules below are DERIVED, in the two directions that can be wrong. A
+  // hardcoded `expect(needs).not.toContain('ratchet-baseline')` would only
+  // ever pin the one job that existed when it was written, which is exactly
+  // how these three lists came to disagree.
+  describe('the notify jobs report on the deploy, not on bookkeeping', () => {
+    const notifyJobs = ['notify-deploy', 'notify-failure'] as const
+    const chain = ['smoke-test-production', ...notifyJobs] as const
+
+    it('the repo-writing scan finds something (the rule below is not vacuous)', () => {
+      // Floor assertion: if the derivation stops matching — `permissions:`
+      // reformatted, the commit moved into a script — every assertion below
+      // passes having checked nothing.
+      expect(repoWritingJobs(jobs).length).toBeGreaterThan(0)
+    })
+
+    it.each(chain)('%s does not depend on a job that writes to the repo', (name) => {
+      const writers = repoWritingJobs(jobs)
+      const depended = needsOf(jobs[name]).filter((n) => writers.includes(n))
+      expect(
+        depended,
+        `${name} must not gate on bookkeeping: ${depended.join(', ')} push commits rather than validate master`,
+      ).toEqual([])
+    })
+
+    // The other direction, and the reason the notify lists are longer than
+    // smoke-test-production's rather than equal to it: a FAILED deploy
+    // prerequisite leaves smoke-test-production `skipped`, and a skipped
+    // dependency does not make `success()` false. Drop migrate-db from
+    // notify-deploy and a failed schema push would post "verified live" for a
+    // verification that never ran — LIFT-1167's falsely-green claim, reached
+    // by pruning the wrong name off these lists.
+    it.each(notifyJobs)('%s depends on every deploy prerequisite of the smoke test', (name) => {
+      const prerequisites = needsOf(jobs['smoke-test-production'])
+      expect(prerequisites.length, 'expected smoke-test-production to declare needs').toBeGreaterThan(0)
+      expect(needsOf(jobs[name])).toEqual(expect.arrayContaining(prerequisites))
     })
   })
 })
