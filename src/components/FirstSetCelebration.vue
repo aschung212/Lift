@@ -129,7 +129,7 @@ watch(visible, async (v) => {
 
 .firstSetEyebrow {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--font-caption2);
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -139,7 +139,7 @@ watch(visible, async (v) => {
 
 .firstSetTitle {
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 28px;
+  font-size: var(--font-title1);
   font-weight: 800;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -149,7 +149,7 @@ watch(visible, async (v) => {
 }
 
 .firstSetSubtitle {
-  font-size: 15px;
+  font-size: var(--font-subhead);
   font-weight: 500;
   line-height: 1.45;
   color: var(--text-secondary);
@@ -162,7 +162,7 @@ watch(visible, async (v) => {
   bottom: calc(44px + env(safe-area-inset-bottom, 0px));
   text-align: center;
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;

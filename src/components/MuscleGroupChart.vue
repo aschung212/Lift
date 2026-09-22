@@ -130,7 +130,7 @@ function toggleTag(tag: string) {
 }
 
 .mgTitle {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -145,7 +145,7 @@ function toggleTag(tag: string) {
 }
 
 .mgCollapsedSummary {
-  font-size: 12px;
+  font-size: var(--font-caption1);
   color: var(--text-muted);
 }
 
@@ -205,9 +205,12 @@ function toggleTag(tag: string) {
 }
 
 .mgLabel {
-  font-size: 12px;
+  font-size: var(--font-caption1);
   color: var(--text-secondary);
-  width: 72px;
+  /* rem, not px: the label column has to grow with the label (4.5rem = the
+     same 72px at the default root), or a raised text size clips the tag name
+     against the bar track. Same for .mgCount below. */
+  width: 4.5rem;
   flex-shrink: 0;
   text-align: right;
 }
@@ -229,16 +232,16 @@ function toggleTag(tag: string) {
 }
 
 .mgCount {
-  font-size: 12px;
+  font-size: var(--font-caption1);
   font-weight: 600;
   color: var(--text-primary);
-  width: 24px;
+  width: 1.5rem;
   text-align: right;
   flex-shrink: 0;
 }
 
 .mgTotal {
-  font-size: 11px;
+  font-size: var(--font-caption2);
   color: var(--text-muted);
   margin: 8px 0 0;
   text-align: center;
