@@ -2,7 +2,7 @@
  * Guided session plan — the day-level "repeat your last session" view (#1256).
  *
  * Beta feedback asked for Strong-style workout templates ("load up your entire
- * day workout in one session"). Lift's answer stays authoring-free: history IS
+ * day workout in one session"). Logbook's answer stays authoring-free: history IS
  * the template. Given the exercises in the current filter scope (gym + tags),
  * the plan is the most recent prior day any of them was trained; each exercise
  * carries that day's set count as its target, its heaviest set as the

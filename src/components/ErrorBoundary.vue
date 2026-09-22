@@ -5,7 +5,7 @@
     <h2 class="errorBoundaryTitle">Something went wrong</h2>
     <p class="errorBoundaryMessage">{{ error.message }}</p>
     <p v-if="reloadSuppressed" class="errorBoundaryMessage errorBoundaryHint">
-      Reloading didn't clear the problem. Fully close and reopen Lift to try a
+      Reloading didn't clear the problem. Fully close and reopen Logbook to try a
       fresh start.
     </p>
     <div class="errorBoundaryActions">

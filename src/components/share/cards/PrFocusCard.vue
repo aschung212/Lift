@@ -16,7 +16,7 @@
     </div>
 
     <div class="prBrand">
-      <span class="prMark">LIFT</span>
+      <span class="prMark">LOGBOOK</span>
       <span class="prHandle">{{ SHARE_CARD_HANDLE }}</span>
     </div>
   </div>

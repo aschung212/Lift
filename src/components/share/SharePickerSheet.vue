@@ -100,7 +100,7 @@ const { shareCard, downloadCard, isSharing } = useWorkoutShare()
 const { isSupporter } = useSupporter()
 const { logEvent } = useAnalytics()
 
-// Free tier gets the "Made with Lift" watermark; supporters get clean cards.
+// Free tier gets the "Made with Logbook" watermark; supporters get clean cards.
 const showWatermark = computed(() => !isSupporter.value)
 
 const FORMAT_OPTIONS: { value: CardFormat; label: string }[] = [

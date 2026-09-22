@@ -1,6 +1,6 @@
-# Contributing to Lift
+# Contributing to Logbook
 
-Thanks for your interest in contributing to Lift! This guide will help you get set up and start contributing.
+Thanks for your interest in contributing to Logbook! This guide will help you get set up and start contributing.
 
 ## Prerequisites
 

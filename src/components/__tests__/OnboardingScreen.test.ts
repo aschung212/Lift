@@ -65,7 +65,7 @@ describe('OnboardingScreen', () => {
 
   describe('rendering', () => {
     it('displays the app logo', () => {
-      expect(wrapper.find('.obLogo').text()).toBe('Lift')
+      expect(wrapper.find('.obLogo').text()).toBe('Logbook')
     })
 
     it('shows the onboarding prompt', () => {

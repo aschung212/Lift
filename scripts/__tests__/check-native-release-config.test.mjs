@@ -85,11 +85,11 @@ describe('findDevServerSettings', () => {
   it('does not flag the server options that are legitimate in a release build', () => {
     // hostname / iosScheme / androidScheme / errorPath are production settings:
     // Capacitor's own docs mark only url / cleartext / allowNavigation as not
-    // intended for production. Lift sets none of them — `server.iosScheme` is
+    // intended for production. Logbook sets none of them — `server.iosScheme` is
     // left at its `capacitor` default, which is what makes the bundled app's
     // origin `capacitor://localhost` (#1442: `ios.scheme` is the Xcode BUILD
     // scheme and never produced a URL scheme, so an earlier version of this
-    // comment claiming Lift ships `iosScheme: 'Lift'` was doubly wrong) — but a
+    // comment claiming Logbook ships `iosScheme: 'Lift'` was doubly wrong) — but a
     // project that did set a custom one must still archive.
     const findings = findDevServerSettings({
       server: { hostname: 'localhost', iosScheme: 'lift', androidScheme: 'https', errorPath: 'error.html' },

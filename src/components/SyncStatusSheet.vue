@@ -99,7 +99,7 @@ const lastSyncedValue = computed(() => {
 const resultMessage = computed(() => {
   switch (lastRetryResult.value) {
     case 'synced': return 'All changes synced.'
-    case 'offline': return 'Still offline — Lift will retry as soon as you reconnect.'
+    case 'offline': return 'Still offline — Logbook will retry as soon as you reconnect.'
     case 'failed': return 'Still could not sync. Your changes are safe on this device.'
     default: return ''
   }

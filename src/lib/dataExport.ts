@@ -113,11 +113,11 @@ export function buildCsvExport(
   const timestamp = metadata.exportDate.slice(0, 10)
   const lines = [
     // Weights are canonical lbs — labeled in the comment and the column
-    // header so re-imports never guess (LIFT-1215). importLift accepts both
+    // header so re-imports never guess (LIFT-1215). importLogbook accepts both
     // the labeled header and the legacy bare "Weight" for old exports.
-    `# Lift Export — ${timestamp} — v${metadata.appVersion} — ${metadata.userIdHash} — weights in lbs`,
+    `# Logbook Export — ${timestamp} — v${metadata.appVersion} — ${metadata.userIdHash} — weights in lbs`,
     // "Went For Next Rep" is appended LAST so every column an older importer
-    // looks up by header keeps its meaning; importLift resolves by name, and
+    // looks up by header keeps its meaning; importLogbook resolves by name, and
     // third-party tools that read by position ignore the trailing field.
     'Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags,RPE,Went For Next Rep',
   ]

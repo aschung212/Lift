@@ -66,7 +66,7 @@
           </div>
 
           <p class="coachPrivacyNote">
-            Nothing leaves Lift until you paste it — this only copies your training
+            Nothing leaves Logbook until you paste it — this only copies your training
             data and profile to your clipboard or saves it to a file.
           </p>
 

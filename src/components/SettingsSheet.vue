@@ -578,7 +578,7 @@
           <div class="settingsRow">
             <div class="settingsLabelGroup">
               <span id="health-sync-label" class="settingsLabel">Sync bodyweight</span>
-              <span class="settingsHint">Adds each weigh-in to Health once. Edits and deletions stay in Lift.</span>
+              <span class="settingsHint">Adds each weigh-in to Health once. Edits and deletions stay in Logbook.</span>
             </div>
             <button
               :class="['glassToggle', { on: healthSyncEnabled }]"
@@ -645,7 +645,7 @@
           <button class="settingsRow settingsRowBtn" :disabled="appShareInFlight" @click="shareLift">
             <span class="settingsLabel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: -2px; margin-right: 6px; color: var(--accent)"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-              Share Lift
+              Share Logbook
             </span>
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -667,7 +667,7 @@
             <svg class="settingsChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
           <p class="settingsGroupNote">
-            Your support covers AI Coach and sync server costs. Lift stays ad-free and never sells your data.
+            Your support covers AI Coach and sync server costs. Logbook stays ad-free and never sells your data.
           </p>
         </div>
 
@@ -1082,7 +1082,7 @@ const healthSyncStatusText = computed(() => {
     case 'syncing':
       return 'Syncing…'
     case 'denied':
-      return 'Health access is off. Turn it on in the Health app: Sharing › Apps & Services › Lift.'
+      return 'Health access is off. Turn it on in the Health app: Sharing › Apps & Services › Logbook.'
     case 'unavailable':
       return 'Apple Health isn’t available on this device.'
     case 'error':
@@ -1799,10 +1799,10 @@ async function exportData(format: 'csv' | 'json') {
       unlockedThemes: progressionStore.unlockedThemes,
       xpPerSet: progressionStore.xpPerSet,
     })
-    downloadFile(`lift-export-${timestamp}.json`, JSON.stringify(data, null, 2), 'application/json')
+    downloadFile(`logbook-export-${timestamp}.json`, JSON.stringify(data, null, 2), 'application/json')
   } else {
     const csv = buildCsvExport(metadata, workoutStore.exercises, bodyweightStore.sortedEntries)
-    downloadFile(`lift-export-${timestamp}.csv`, csv, 'text/csv')
+    downloadFile(`logbook-export-${timestamp}.csv`, csv, 'text/csv')
   }
   logEvent('data_export', { format })
 }
@@ -1844,7 +1844,7 @@ function handleImportFile(event: Event) {
     const text = reader.result as string
     const result = importCSV(text)
     if (result.format === 'unknown' || result.exercises.length === 0) {
-      importResult.value = { exercises: 0, sets: 0, format: 'unknown', error: 'Unrecognized format. Supported: Strong, Hevy, Lift CSV.' }
+      importResult.value = { exercises: 0, sets: 0, format: 'unknown', error: 'Unrecognized format. Supported: Strong, Hevy, Logbook CSV.' }
       return
     }
     for (const ex of result.exercises) {

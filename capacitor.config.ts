@@ -36,7 +36,7 @@ const devServerUrl = isReleaseBuild ? undefined : process.env.CAPACITOR_DEV_URL
 
 const config: CapacitorConfig = {
   appId: 'com.aschung212.lift',
-  appName: 'Lift',
+  appName: 'Logbook',
   webDir: 'dist',
   server: {
     ...(devServerUrl ? { url: devServerUrl, cleartext: true } : {}),
@@ -65,7 +65,7 @@ const config: CapacitorConfig = {
     // what let the wrong value read as a deliberate setting.
     //
     // The WebView's ORIGIN is a different option: `server.iosScheme` (default
-    // `capacitor`), which Lift does not set — so the bundled app is served from
+    // `capacitor`), which Logbook does not set — so the bundled app is served from
     // `capacitor://localhost`, the origin #1425's dev-surface gate, #1430's
     // password-reset flow and api/coach.ts's CORS allow-list all reason about.
     // Wanting a custom URL scheme is a separate decision that also needs the

@@ -81,7 +81,7 @@ describe('index.html meta tag regression tests', () => {
     it('application-name labels the app for Android/Windows installs', () => {
       const match = html.match(/<meta name="application-name" content="([^"]+)"/)
       expect(match).not.toBeNull()
-      expect(match![1]).toBe('Lift')
+      expect(match![1]).toBe('Logbook')
     })
   })
 

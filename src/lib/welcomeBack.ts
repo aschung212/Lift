@@ -2,7 +2,7 @@
  * Welcome-back re-entry logic (LIFT-1107).
  *
  * When a user returns after a long gap (default ≥14 days since their last logged
- * workout), Lift shows the same cold normal state as any session — no
+ * workout), Logbook shows the same cold normal state as any session — no
  * acknowledgement, no "your data is safe", no bridge back in. Churn research on
  * the first-30-day window favors an "educate, don't apologize" win-back moment
  * over a silent cold start. This module decides, purely, whether to surface a

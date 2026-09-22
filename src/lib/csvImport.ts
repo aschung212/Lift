@@ -5,7 +5,7 @@ export interface ImportResult {
   exercises: Exercise[]
   totalSets: number
   skippedRows: number
-  format: 'strong' | 'hevy' | 'lift' | 'unknown'
+  format: 'strong' | 'hevy' | 'logbook' | 'unknown'
 }
 
 /** Epley formula: weight × (1 + reps / 30) */
@@ -68,11 +68,11 @@ function parseCSV(text: string): string[][] {
   return rows
 }
 
-function detectFormat(headers: string[]): 'strong' | 'hevy' | 'lift' | 'unknown' {
+function detectFormat(headers: string[]): 'strong' | 'hevy' | 'logbook' | 'unknown' {
   const lower = headers.map(h => h.toLowerCase().trim())
   if (lower.includes('exercise name') && lower.includes('set order')) return 'strong'
   if (lower.includes('exercise_title') && lower.includes('set_index')) return 'hevy'
-  if (lower.includes('exercise') && lower.includes('estimated 1rm')) return 'lift'
+  if (lower.includes('exercise') && lower.includes('estimated 1rm')) return 'logbook'
   return 'unknown'
 }
 
@@ -201,12 +201,12 @@ function importHevy(rows: string[][], headers: string[]): ImportResult {
   return { exercises: [...exerciseMap.values()], totalSets, skippedRows, format: 'hevy' }
 }
 
-function importLift(rows: string[][], headers: string[]): ImportResult {
+function importLogbook(rows: string[][], headers: string[]): ImportResult {
   const col = (name: string) => headers.findIndex(h => h.toLowerCase().trim() === name.toLowerCase())
   const iExercise = col('exercise')
   const iDate = col('date')
   // Exports label the column "Weight (lbs)" since LIFT-1215; older exports
-  // used bare "Weight". Accept both so every Lift export round-trips.
+  // used bare "Weight". Accept both so every Logbook export round-trips.
   const iWeightLabeled = col('weight (lbs)')
   const iWeight = iWeightLabeled !== -1 ? iWeightLabeled : col('weight')
   const iReps = col('reps')
@@ -260,15 +260,15 @@ function importLift(rows: string[][], headers: string[]): ImportResult {
     totalSets++
   }
 
-  return { exercises: [...exerciseMap.values()], totalSets, skippedRows, format: 'lift' }
+  return { exercises: [...exerciseMap.values()], totalSets, skippedRows, format: 'logbook' }
 }
 
 /**
  * Parse a CSV file and return exercises with sets.
- * Auto-detects Strong, Hevy, and Lift formats.
+ * Auto-detects Strong, Hevy, and Logbook formats.
  */
 export function importCSV(text: string): ImportResult {
-  // Skip comment lines (Lift export starts with #)
+  // Skip comment lines (Logbook export starts with #)
   const lines = text.split('\n')
   const dataStart = lines.findIndex(l => !l.startsWith('#') && l.trim())
   const cleanText = lines.slice(dataStart).join('\n')
@@ -284,7 +284,7 @@ export function importCSV(text: string): ImportResult {
   switch (format) {
     case 'strong': return importStrong(rows, headers)
     case 'hevy': return importHevy(rows, headers)
-    case 'lift': return importLift(rows, headers)
+    case 'logbook': return importLogbook(rows, headers)
     default:
       return { exercises: [], totalSets: 0, skippedRows: rows.length - 1, format: 'unknown' }
   }

@@ -1,6 +1,6 @@
 # Browser-Mode Testing (LIFT-666)
 
-Most of Lift's ~2,900 unit/component tests run under **happy-dom** (`vitest.config.js`)
+Most of Logbook's ~2,900 unit/component tests run under **happy-dom** (`vitest.config.js`)
 — fast, headless, and perfect for logic and DOM wiring. But happy-dom has no
 layout engine: `getBoundingClientRect()`, `offsetHeight`, `offsetWidth`,
 `scrollTop`, and `visualViewport` all report **zeros**. A handful of our

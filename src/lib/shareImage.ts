@@ -75,7 +75,7 @@ export async function renderNodeToBlob(node: HTMLElement, opts: ExportOptions): 
  * there is a single injection point shared by the export pipeline and the
  * picker preview, so what the user previews is exactly what ships.
  */
-export const WATERMARK_TEXT = 'Made with Lift'
+export const WATERMARK_TEXT = 'Made with Logbook'
 
 /**
  * The app's public URL, stamped onto every share card so a viewer who sees a
@@ -130,5 +130,5 @@ export function createWatermarkElement(): HTMLDivElement {
  */
 export function defaultShareFilename(rawDate: string, format: CardFormat = 'square'): string {
   const suffix = format === 'story' ? '-story' : ''
-  return `lift-${rawDate}${suffix}.png`
+  return `logbook-${rawDate}${suffix}.png`
 }

@@ -3,7 +3,7 @@
     <div class="wsHead">
       <div class="wsEyebrow">Week {{ weekdayLabel }}</div>
       <div class="wsBrand">
-        <span class="wsMark">LIFT</span>
+        <span class="wsMark">LOGBOOK</span>
         <span class="wsHandle">{{ SHARE_CARD_HANDLE }}</span>
       </div>
     </div>

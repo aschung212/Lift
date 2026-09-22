@@ -119,10 +119,10 @@ function create(): UseSyncStatusReturn {
       return 'Your workouts are saved on this device. They will sync automatically when you are back online.'
     }
     if (isAuthFailure.value) {
-      return 'Your session expired, so Lift cannot reach your account. Sign in again to resume syncing — nothing on this device is lost.'
+      return 'Your session expired, so Logbook cannot reach your account. Sign in again to resume syncing — nothing on this device is lost.'
     }
     if (status.value === 'error') {
-      return 'Your workouts are saved on this device and nothing has been lost. Lift keeps retrying in the background.'
+      return 'Your workouts are saved on this device and nothing has been lost. Logbook keeps retrying in the background.'
     }
     return 'Your workouts are backed up to your account.'
   })

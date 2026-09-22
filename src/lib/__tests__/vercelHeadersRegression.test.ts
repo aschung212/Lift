@@ -82,7 +82,7 @@ describe('vercel.json security headers', () => {
 
     /**
      * CORP blocks other origins from embedding our responses as
-     * sub-resources. Everything Lift serves is same-origin, so
+     * sub-resources. Everything Logbook serves is same-origin, so
      * `same-origin` is the safe, maximally-restrictive choice.
      */
     it('sets Cross-Origin-Resource-Policy to same-origin', () => {

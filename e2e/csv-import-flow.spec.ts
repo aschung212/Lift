@@ -72,18 +72,18 @@ test.describe('CSV Import', () => {
     await expect(page.locator('.wtExerciseName', { hasText: 'Squat' })).toBeVisible()
   })
 
-  test('imports a Lift export with tags and renders exercises', async ({ page }) => {
-    await importFixture(page, 'lift.csv')
+  test('imports a Logbook export with tags and renders exercises', async ({ page }) => {
+    await importFixture(page, 'logbook.csv')
 
     const result = page.locator('.settingsImportSuccess')
     await expect(result).toBeVisible()
     await expect(result).toContainText('2 exercises')
     await expect(result).toContainText('3 sets')
-    await expect(result).toContainText('lift')
+    await expect(result).toContainText('logbook')
 
     await closeSettings(page)
     await expect(page.locator('.wtExerciseName', { hasText: 'Bench Press' })).toBeVisible()
-    // Lift format carries tags — the imported Bench Press exercise surfaces them.
+    // Logbook format carries tags — the imported Bench Press exercise surfaces them.
     await expect(page.locator('.wtExerciseTag', { hasText: 'Push' })).toBeVisible()
   })
 

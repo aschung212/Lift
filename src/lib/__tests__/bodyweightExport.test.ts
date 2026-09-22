@@ -86,7 +86,7 @@ describe('buildBodyweightCsv', () => {
 
 describe('bodyweightCsvFilename', () => {
   it('carries the unit and export day', () => {
-    expect(bodyweightCsvFilename('lbs', '2026-08-17')).toBe('lift-bodyweight-lbs-2026-08-17.csv')
-    expect(bodyweightCsvFilename('kg', '2026-08-17')).toBe('lift-bodyweight-kg-2026-08-17.csv')
+    expect(bodyweightCsvFilename('lbs', '2026-08-17')).toBe('logbook-bodyweight-lbs-2026-08-17.csv')
+    expect(bodyweightCsvFilename('kg', '2026-08-17')).toBe('logbook-bodyweight-kg-2026-08-17.csv')
   })
 })

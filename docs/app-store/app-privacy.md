@@ -11,7 +11,7 @@ build ships (`PRIVACY_MANIFEST_XML` in `scripts/configure-ios.mjs`) and the Priv
 | Contact Info → Email Address | Yes | Yes | No | App Functionality | Sign-in and sync (Supabase auth) |
 | Identifiers → User ID | Yes | Yes | No | App Functionality | The Supabase account id that scopes synced rows |
 | Health & Fitness → Fitness | Yes | Yes | No | App Functionality | Sets, reps, weights, PRs, tags, gyms |
-| Health & Fitness → Health | Yes | Yes | No | App Functionality | Bodyweight entries. (HealthKit itself is written on-device; Lift stores only the entries the user typed into Lift) |
+| Health & Fitness → Health | Yes | Yes | No | App Functionality | Bodyweight entries. (HealthKit itself is written on-device; Logbook stores only the entries the user typed into Logbook) |
 | Diagnostics → Crash Data | Yes | No | No | App Functionality | Sentry, `sendDefaultPii: false`, IP scrubbed |
 | Diagnostics → Performance Data | Yes | No | No | App Functionality | Sentry traces at 10% sample |
 

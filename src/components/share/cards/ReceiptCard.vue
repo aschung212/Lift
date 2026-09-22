@@ -1,6 +1,6 @@
 <template>
   <div class="rcRoot">
-    <div class="rcBrandLine">LIFT &nbsp;·&nbsp; RECEIPT</div>
+    <div class="rcBrandLine">LOGBOOK &nbsp;·&nbsp; RECEIPT</div>
 
     <div class="rcMeta">
       <span>{{ summary.date.toUpperCase() }}</span>

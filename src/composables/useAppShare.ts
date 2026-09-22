@@ -58,7 +58,7 @@ export function useAppShare(): UseAppShareReturn {
             title: APP_NAME,
             text: APP_TAGLINE,
             url: shareUrl,
-            dialogTitle: 'Share Lift',
+            dialogTitle: 'Share Logbook',
           })
           return { kind: 'shared' }
         } catch (err) {
