@@ -63,6 +63,29 @@ describe('OnboardingScreen', () => {
     wrapper = mount(OnboardingScreen)
   })
 
+  // Option order after the 01-auth.png restyle: [0] Popular, [1] Empty, [2] Explore.
+  const POPULAR = 0
+  const EMPTY = 1
+  const EXPLORE = 2
+
+  /** The starter flow stacks its secondaries as [Skip, Back] — target by text. */
+  function starterButton(label: string) {
+    const btn = wrapper.findAll('.spfSecondary').find(b => b.text().startsWith(label))
+    expect(btn, `a "${label}" button should be rendered`).toBeDefined()
+    return btn!
+  }
+
+  /**
+   * Walk the whole flow: pick a path, then Skip out of the starter picker.
+   * Nothing is written until onboarding actually COMPLETES (#1461), so every
+   * assertion about seeded data has to go through here rather than stopping at
+   * the choice tap.
+   */
+  async function completeVia(optionIndex: number) {
+    await wrapper.findAll('.obOption')[optionIndex].trigger('click')
+    await starterButton('Skip').trigger('click')
+  }
+
   describe('rendering', () => {
     it('displays the app logo', () => {
       expect(wrapper.find('.obLogo').text()).toBe('Logbook')
@@ -109,11 +132,7 @@ describe('OnboardingScreen', () => {
   })
 
   describe('Start empty', () => {
-    async function chooseEmptyAndSkip() {
-      // Order after 01-auth.png restyle: [0] Popular, [1] Empty, [2] Explore.
-      await wrapper.findAll('.obOption')[1].trigger('click')
-      await wrapper.find('.spfSecondary').trigger('click')
-    }
+    const chooseEmptyAndSkip = () => completeVia(EMPTY)
 
     it('advances to progression explainer step', async () => {
       await wrapper.findAll('.obOption')[1].trigger('click')
@@ -148,7 +167,7 @@ describe('OnboardingScreen', () => {
   describe('Popular exercises', () => {
     it('adds 6 starter exercises with tags', async () => {
       // Popular is the featured / first option after the 01-auth.png restyle.
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await completeVia(POPULAR)
       expect(mockAddExercise).toHaveBeenCalledTimes(6)
       expect(mockAddExercise).toHaveBeenCalledWith('Bench Press', ['Push', 'Chest'])
       expect(mockAddExercise).toHaveBeenCalledWith('Squat', ['Legs'])
@@ -159,18 +178,17 @@ describe('OnboardingScreen', () => {
     })
 
     it('emits complete event after skipping starter', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
-      await wrapper.find('.spfSecondary').trigger('click')
+      await completeVia(POPULAR)
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
     it('does not log any sets', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await completeVia(POPULAR)
       expect(mockLogSet).not.toHaveBeenCalled()
     })
 
     it('sets plate calculator mode on barbell exercises via store method', async () => {
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await completeVia(POPULAR)
       // setExerciseInputMode should be called for each barbell exercise (not Pull-ups)
       expect(mockSetExerciseInputMode).toHaveBeenCalledTimes(5)
       const barbellNames = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
@@ -187,38 +205,36 @@ describe('OnboardingScreen', () => {
 
   describe('Explore first (sample data)', () => {
     it('adds exercises with sample sets', async () => {
-      await wrapper.findAll('.obOption')[2].trigger('click')
+      await completeVia(EXPLORE)
       expect(mockAddExercise).toHaveBeenCalled()
       expect(mockLogSet).toHaveBeenCalled()
     })
 
     it('adds bodyweight entries', async () => {
-      await wrapper.findAll('.obOption')[2].trigger('click')
+      await completeVia(EXPLORE)
       expect(mockAddEntry).toHaveBeenCalled()
       // Should have 78 sample weight entries (365 days of realistic data)
       expect(mockAddEntry.mock.calls.length).toBe(78)
     })
 
     it('sets sample-data flag in localStorage after skipping starter', async () => {
-      await wrapper.findAll('.obOption')[2].trigger('click')
-      await wrapper.find('.spfSecondary').trigger('click')
+      await completeVia(EXPLORE)
       expect(localStorageMock.setItem).toHaveBeenCalledWith('sample-data', 'true')
     })
 
     it('emits complete event after skipping starter', async () => {
-      await wrapper.findAll('.obOption')[2].trigger('click')
-      await wrapper.find('.spfSecondary').trigger('click')
+      await completeVia(EXPLORE)
       expect(wrapper.emitted('complete')).toHaveLength(1)
     })
 
     it('logs sets for 5 exercises with sample data', async () => {
-      await wrapper.findAll('.obOption')[2].trigger('click')
+      await completeVia(EXPLORE)
       // Extended sample data: ~365 days across 5 exercises (multiple sets per session)
       expect(mockLogSet.mock.calls.length).toBe(367)
     })
 
     it('sets plate calculator mode on barbell exercises', async () => {
-      await wrapper.findAll('.obOption')[2].trigger('click')
+      await completeVia(EXPLORE)
       const barbellNames = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Barbell Row']
       for (const name of barbellNames) {
         const ex = mockExercises.find(e => e.name === name)
@@ -235,38 +251,42 @@ describe('OnboardingScreen', () => {
 
   // ── Edge cases (MAS-270) ────────────────────────────────────────
   describe('edge cases', () => {
-    it('chooseStarter does not duplicate exercises that already exist', async () => {
+    it('the starter path does not duplicate exercises that already exist', async () => {
       // Simulate existing exercises by having addExercise return the same id
       // (the real store returns existing id for duplicates)
       mockAddExercise.mockReturnValue('existing-id')
-      await wrapper.findAll('.obOption')[0].trigger('click')
+      await completeVia(POPULAR)
       // Should still call addExercise 6 times — dedup is the store's job
       expect(mockAddExercise).toHaveBeenCalledTimes(6)
       // No sets should be logged for starter path
       expect(mockLogSet).not.toHaveBeenCalled()
     })
 
-    it('chooseExplore does not log sets if addExercise returns null (empty name guard)', async () => {
+    it('the explore path does not log sets if addExercise returns null (empty name guard)', async () => {
       // If addExercise returns null (rejected), logSet should not be called for that exercise
       mockAddExercise.mockReturnValue(null)
-      await wrapper.findAll('.obOption')[2].trigger('click')
+      await completeVia(EXPLORE)
       // logSet should not be called since all addExercise calls returned null
       expect(mockLogSet).not.toHaveBeenCalled()
     })
 
-    it('chooseExplore passes sync:false to addExercise for sample data', async () => {
+    it('the explore path passes sync:false to addExercise for sample data', async () => {
       mockAddExercise.mockReturnValue('mock-id')
-      await wrapper.findAll('.obOption')[2].trigger('click')
-      // Every addExercise call in chooseExplore should include { sync: false }
+      await completeVia(EXPLORE)
+      // Every addExercise call on the explore path should include { sync: false }
       const exploreCalls = mockAddExercise.mock.calls
+      expect(exploreCalls.length).toBeGreaterThan(0)
       for (const call of exploreCalls) {
         expect(call[2]).toEqual({ sync: false })
       }
     })
 
-    it('chooseStarter does NOT pass sync:false (starter data should sync)', async () => {
-      await wrapper.findAll('.obOption')[1].trigger('click')
+    it('the starter path does NOT pass sync:false (starter data should sync)', async () => {
+      // Deliberately POPULAR, not EMPTY: this ran against the empty path for so
+      // long that its loop had nothing to iterate and it passed vacuously.
+      await completeVia(POPULAR)
       const starterCalls = mockAddExercise.mock.calls
+      expect(starterCalls.length).toBe(6)
       for (const call of starterCalls) {
         // Starter exercises only pass (name, tags) — no options object
         expect(call.length).toBe(2)
@@ -274,12 +294,85 @@ describe('OnboardingScreen', () => {
     })
 
     it('sets onboarding-complete even if no exercises are added', async () => {
-      // Start empty path → skip starter. After 01-auth.png restyle, the "Start empty"
-      // option is the second one (index 1) — Popular exercises is featured/first.
-      await wrapper.findAll('.obOption')[1].trigger('click')
-      await wrapper.find('.spfSecondary').trigger('click')
+      await completeVia(EMPTY)
       expect(localStorageMock.setItem).toHaveBeenCalledWith('onboarding-complete', 'true')
       expect(mockAddExercise).not.toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * #1461. The 4-dot progress indicator advertises a flow you can move around
+   * in, but the path choice used to be a one-way door: all three options wrote
+   * to the stores on the first tap (the starter path with Supabase sync on) and
+   * no step before the weekly goal had a Back. A mis-tap on "Popular exercises"
+   * was therefore unrecoverable — the user could not return to reconsider
+   * "Start empty", and the 6 exercises they never wanted were already synced.
+   *
+   * Why the existing tests missed it: every one of them walked the flow
+   * FORWARD, and the seeding assertions fired straight after the choice tap —
+   * i.e. they pinned the early write as the expected behaviour. Nothing ever
+   * asked whether a choice could be taken back.
+   */
+  describe('reversible path choice (#1461)', () => {
+    it('writes nothing to the stores when a path is chosen', async () => {
+      for (const option of [POPULAR, EMPTY, EXPLORE]) {
+        vi.clearAllMocks()
+        mockExercises.length = 0
+        wrapper = mount(OnboardingScreen)
+
+        await wrapper.findAll('.obOption')[option].trigger('click')
+
+        expect(mockAddExercise, `option ${option}`).not.toHaveBeenCalled()
+        expect(mockLogSet, `option ${option}`).not.toHaveBeenCalled()
+        expect(mockAddEntry, `option ${option}`).not.toHaveBeenCalled()
+      }
+    })
+
+    it('offers a Back on the explainer step that returns to the path choice', async () => {
+      await wrapper.findAll('.obOption')[POPULAR].trigger('click')
+      expect(wrapper.find('.obOption').exists()).toBe(false)
+      expect(wrapper.find('.obDots').attributes('aria-valuenow')).toBe('2')
+
+      await starterButton('Back').trigger('click')
+
+      expect(wrapper.findAll('.obOption')).toHaveLength(3)
+      expect(wrapper.text()).toContain('get started')
+      expect(wrapper.find('.obDots').attributes('aria-valuenow')).toBe('1')
+      expect(wrapper.find('.obDots').attributes('aria-label')).toBe('Step 1 of 4')
+    })
+
+    it('seeds only the re-chosen path after backing out of the first one', async () => {
+      await wrapper.findAll('.obOption')[POPULAR].trigger('click')
+      await starterButton('Back').trigger('click')
+      await completeVia(EMPTY)
+
+      // The abandoned starter path leaves nothing behind.
+      expect(mockAddExercise).not.toHaveBeenCalled()
+      expect(mockAddEntry).not.toHaveBeenCalled()
+      expect(wrapper.emitted('complete')).toHaveLength(1)
+    })
+
+    it('does not flag sample data after backing out of Explore first', async () => {
+      await wrapper.findAll('.obOption')[EXPLORE].trigger('click')
+      await starterButton('Back').trigger('click')
+      await completeVia(POPULAR)
+
+      expect(mockLogSet).not.toHaveBeenCalled()
+      expect(mockAddEntry).not.toHaveBeenCalled()
+      const sampleDataCalls = localStorageMock.setItem.mock.calls.filter(
+        ([key]: [string]) => key === 'sample-data'
+      )
+      expect(sampleDataCalls.length).toBe(0)
+      // …and the re-chosen path still seeds normally.
+      expect(mockAddExercise).toHaveBeenCalledTimes(6)
+    })
+
+    it('seeds exactly once when the same path is re-chosen after Back', async () => {
+      await wrapper.findAll('.obOption')[POPULAR].trigger('click')
+      await starterButton('Back').trigger('click')
+      await completeVia(POPULAR)
+
+      expect(mockAddExercise).toHaveBeenCalledTimes(6)
     })
   })
 

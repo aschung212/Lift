@@ -144,6 +144,54 @@ describe('StarterPickerFlow', () => {
     })
   })
 
+  /**
+   * #1461. The flow could only be walked forwards from the explainer: the goal
+   * step's Back reached the picker and nothing reached the explainer or the
+   * host's own preceding step.
+   */
+  describe('back navigation', () => {
+    const backButton = () => wrapper.findAll('.spfSecondary').find(b => b.text() === 'Back')
+
+    it('does not render the first-step Back unless the host opts in', () => {
+      expect(backButton()).toBeUndefined()
+    })
+
+    it('emits back from the explainer step when showBack is set', async () => {
+      wrapper = mount(StarterPickerFlow, { props: { showSkip: true, showBack: true } })
+
+      await backButton()!.trigger('click')
+
+      expect(wrapper.emitted('back')).toHaveLength(1)
+      expect(mockLogEvent).toHaveBeenCalledWith('onboarding_step', { step: 'back', from: 'explainer' })
+    })
+
+    it('returns from the pick step to the explainer without needing the host', async () => {
+      await wrapper.find('.spfPrimary').trigger('click') // explainer → pick
+      expect(wrapper.find('.spfTitle').text()).toBe('Pick Your Starter')
+
+      await backButton()!.trigger('click')
+
+      expect(wrapper.find('.spfTitle').text()).toBe('Theme Progression')
+      expect(wrapper.emitted('back')).toBeUndefined()
+      expect(mockLogEvent).toHaveBeenCalledWith('onboarding_step', { step: 'back', from: 'pick' })
+    })
+
+    it('drops the pending selection and its live preview when leaving the picker', async () => {
+      await wrapper.find('.spfPrimary').trigger('click') // explainer → pick
+      await wrapper.findAll('.spfCard')[0].trigger('click') // select fire (previews it)
+      expect(wrapper.emitted('revert-preview')).toBeUndefined()
+
+      await backButton()!.trigger('click') // pick → explainer
+      expect(wrapper.emitted('revert-preview')).toHaveLength(1)
+
+      // Returning to the picker: nothing selected, so Next is disabled again —
+      // a card left rendering as "selected" would contradict the reverted theme.
+      await wrapper.find('.spfPrimary').trigger('click')
+      expect(wrapper.findAll('.spfCard').some(c => c.classes().includes('selected'))).toBe(false)
+      expect((wrapper.find('.spfPrimary').element as HTMLButtonElement).disabled).toBe(true)
+    })
+  })
+
   describe('reset', () => {
     it('emits revert-preview on reset', async () => {
       await wrapper.find('.spfPrimary').trigger('click') // go to pick step

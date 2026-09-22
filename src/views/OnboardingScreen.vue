@@ -18,7 +18,7 @@
         <div class="obOptions">
           <button
             class="obOption obOptionFeatured"
-            @click="chooseStarter"
+            @click="choosePath('starter')"
             aria-label="Popular Exercises — Pre-load 6 common lifts with tags, start logging in seconds"
           >
             <span class="obOptionIcon" aria-hidden="true">
@@ -38,7 +38,7 @@
 
           <button
             class="obOption"
-            @click="chooseEmpty"
+            @click="choosePath('empty')"
             aria-label="Start Empty — Add your own exercises from scratch"
           >
             <span class="obOptionIcon" aria-hidden="true">
@@ -55,7 +55,7 @@
 
           <button
             class="obOption"
-            @click="chooseExplore"
+            @click="choosePath('explore')"
             aria-label="Explore First — See the app with sample data, clear it when you're ready"
           >
             <span class="obOptionIcon" aria-hidden="true">
@@ -76,8 +76,10 @@
       <template v-else>
         <div class="obLogo">Logbook</div>
         <StarterPickerFlow
+          show-back
           @confirm="handleStarterConfirm"
           @skip="handleStarterSkip"
+          @back="handleStarterBack"
           @preview="handleStarterPreview"
           @revert-preview="handleStarterRevertPreview"
           @step-change="onStarterStepChange"
@@ -103,11 +105,12 @@ const bwStore = useBodyweightStore()
 const progressionStore = useProgressionStore()
 const { logEvent } = useAnalytics()
 
+type OnboardingPath = 'empty' | 'starter' | 'explore'
+
 const step = ref<'setup' | 'starter-flow'>('setup')
 const starterStep = ref<'explainer' | 'pick' | 'goal'>('explainer')
-let pendingSampleData = false
 let onboardingStartMs = 0
-let chosenPath = ''
+let chosenPath: OnboardingPath | '' = ''
 
 const STEP_MAP = { explainer: 2, pick: 3, goal: 4 } as const
 const currentStep = computed(() =>
@@ -422,17 +425,26 @@ const SAMPLE_WEIGHTS = [
   { weight: 172.5, date: daysAgo(1) },
 ]
 
-function finish(sampleData: boolean) {
+/**
+ * The single commit point for the whole flow (#1461).
+ *
+ * Every write the chosen path promises happens HERE, not on the tap that chose
+ * it. Steps 2–4 never display the seeded data, so there is nothing to gain by
+ * writing early — and writing early is exactly what made the choice
+ * irreversible: a mis-tap on "Popular exercises" left 6 exercises already
+ * pushed to Supabase, with no way back to reconsider "Start empty". Deferring
+ * means Back has nothing to undo (no deletes, no tombstones, no server churn),
+ * and a flow abandoned mid-way leaves the account as untouched as it started.
+ */
+function finish() {
+  if (chosenPath === 'starter') seedStarterExercises()
+  else if (chosenPath === 'explore') seedSampleData()
+
   localStorage.setItem('onboarding-complete', 'true')
-  if (sampleData) {
+  if (chosenPath === 'explore') {
     localStorage.setItem('sample-data', 'true')
   }
   emit('complete')
-}
-
-function goToStarter(sampleData: boolean) {
-  pendingSampleData = sampleData
-  step.value = 'starter-flow'
 }
 
 const { currentTheme, previewTheme, revertPreview } = useTheme()
@@ -451,38 +463,53 @@ function handleStarterConfirm(themeId: ThemeId, weeklyGoal: number) {
   currentTheme.value = themeId
   const durationMs = onboardingStartMs ? Date.now() - onboardingStartMs : 0
   logEvent('onboarding_complete', { path: chosenPath, theme: themeId, goal: weeklyGoal, durationMs })
-  finish(pendingSampleData)
+  finish()
 }
 
 function handleStarterSkip() {
   revertPreview()
   const durationMs = onboardingStartMs ? Date.now() - onboardingStartMs : 0
   logEvent('onboarding_complete', { path: chosenPath, theme: 'default', goal: 0, durationMs, skipped: true })
-  finish(pendingSampleData)
+  finish()
 }
 
-function chooseEmpty() {
-  onboardingStartMs = Date.now()
-  chosenPath = 'empty'
-  logEvent('onboarding_choice', { choice: 'empty' })
-  logEvent('onboarding_step', { step: 'choice', value: 'empty' })
-  emit('started')
-  goToStarter(false)
+/**
+ * Return to the path choice. Nothing has been written yet (see `finish`), so
+ * this only has to forget which path was picked — re-tapping a different one
+ * seeds that one instead. The preview revert mirrors the other two exits from
+ * the flow, so every way out leaves the live theme where it was found.
+ *
+ * `starterStep` is reset explicitly because it MIRRORS a child that is about to
+ * be destroyed: the next entry mounts a fresh StarterPickerFlow already on
+ * 'explainer', and its `step` watcher only emits on a change, so no
+ * `step-change` arrives to correct a stale mirror.
+ */
+function handleStarterBack() {
+  revertPreview()
+  chosenPath = ''
+  starterStep.value = 'explainer'
+  step.value = 'setup'
 }
 
-function chooseStarter() {
-  onboardingStartMs = Date.now()
-  chosenPath = 'starter'
-  logEvent('onboarding_choice', { choice: 'starter' })
-  logEvent('onboarding_step', { step: 'choice', value: 'starter' })
+function choosePath(path: OnboardingPath) {
+  // Measured from the FIRST choice: with Back in play the user can re-enter the
+  // flow, and restarting the clock there would report onboarding as faster than
+  // it was.
+  if (!onboardingStartMs) onboardingStartMs = Date.now()
+  chosenPath = path
+  logEvent('onboarding_choice', { choice: path })
+  logEvent('onboarding_step', { step: 'choice', value: path })
   emit('started')
+  step.value = 'starter-flow'
+}
+
+function seedStarterExercises() {
   for (const ex of STARTER_EXERCISES) {
     const id = workoutStore.addExercise(ex.name, ex.tags)
     if (id && ex.inputMode) {
       workoutStore.setExerciseInputMode(id, ex.inputMode)
     }
   }
-  goToStarter(false)
 }
 
 const noSync = { sync: false }
@@ -496,12 +523,7 @@ function applyPlateConfig(id: string, starter: typeof STARTER_EXERCISES[number])
   if (starter.barWeight != null) exercise.barWeight = starter.barWeight
 }
 
-function chooseExplore() {
-  onboardingStartMs = Date.now()
-  chosenPath = 'explore'
-  logEvent('onboarding_choice', { choice: 'explore' })
-  logEvent('onboarding_step', { step: 'choice', value: 'explore' })
-  emit('started')
+function seedSampleData() {
   // Add exercises with sample sets — skip Supabase sync for sample data (MAS-197)
   for (const group of SAMPLE_SETS) {
     const starter = STARTER_EXERCISES.find(e => e.name === group.exercise)
@@ -523,7 +545,6 @@ function chooseExplore() {
   for (const entry of SAMPLE_WEIGHTS) {
     bwStore.addEntry(entry.weight, entry.date, noSync)
   }
-  goToStarter(true)
 }
 </script>
 
