@@ -125,7 +125,7 @@ const ariaLabel = computed(() => {
 }
 
 .rrTitle {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -140,7 +140,7 @@ const ariaLabel = computed(() => {
 }
 
 .rrCollapsedSummary {
-  font-size: 12px;
+  font-size: var(--font-caption1);
   color: var(--text-muted);
 }
 
@@ -197,29 +197,32 @@ const ariaLabel = computed(() => {
 }
 
 .rrLegendLabel {
-  font-size: 12px;
+  font-size: var(--font-caption1);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .rrLegendRange {
-  font-size: 11px;
+  font-size: var(--font-caption2);
   color: var(--text-muted);
 }
 
+/* The two right-hand columns are sized in rem (2.25rem/3.25rem = the same
+   36px/52px at the default root) so they widen with the numbers they hold —
+   a px column clips "100%" / "12 sets" the moment text size is raised. */
 .rrLegendPct {
-  font-size: 12px;
+  font-size: var(--font-caption1);
   font-weight: 600;
   color: var(--text-primary);
   margin-left: auto;
-  width: 36px;
+  width: 2.25rem;
   text-align: right;
 }
 
 .rrLegendSets {
-  font-size: 11px;
+  font-size: var(--font-caption2);
   color: var(--text-secondary);
-  width: 52px;
+  width: 3.25rem;
   text-align: right;
   flex-shrink: 0;
 }

@@ -123,7 +123,7 @@ function onShow(tag: string) {
 }
 
 .mgTitle {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 8px;
@@ -182,13 +182,13 @@ function onShow(tag: string) {
 
 .recName {
   flex: 1;
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--text-primary);
   text-align: left;
 }
 
 .recDays {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
   flex-shrink: 0;
 }
@@ -206,7 +206,7 @@ function onShow(tag: string) {
 }
 
 .recSettingLabel {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
 }
 
@@ -217,7 +217,10 @@ function onShow(tag: string) {
 }
 
 .recDaysInput {
-  width: 48px;
+  /* rem so the box tracks the rem-anchored font inside it (3rem = the same
+     48px at the default root); a px width clips two digits once text is
+     raised, which is how LIFT-1376's font-size fix left this half-done. */
+  width: 3rem;
   min-height: 36px;
   padding: 8px;
   /* Token, not a raw px: the scale is rem-anchored so text honors Dynamic
@@ -237,7 +240,7 @@ function onShow(tag: string) {
 }
 
 .recDaysUnit {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   color: var(--text-muted);
 }
 
@@ -251,7 +254,7 @@ function onShow(tag: string) {
   border: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  font-size: 13px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
 }
 
@@ -274,7 +277,7 @@ function onShow(tag: string) {
   border: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  font-size: 12px;
+  font-size: var(--font-caption1);
   color: var(--text-muted);
   min-height: 44px;
 }
@@ -303,7 +306,7 @@ function onShow(tag: string) {
 }
 
 .recHiddenName {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--text-muted);
 }
 

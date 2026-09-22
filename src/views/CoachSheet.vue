@@ -701,7 +701,7 @@ onUnmounted(() => {
 .coachSectionTag {
   font-family: var(--ff-mono);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-caption2);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent);
@@ -742,7 +742,7 @@ onUnmounted(() => {
 .coachFocusTag {
   font-family: var(--ff-mono);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-caption2);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent);

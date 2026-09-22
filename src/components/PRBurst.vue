@@ -245,7 +245,7 @@ watch(visible, async (v) => {
 
 .prBurstFirstBadge {
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 32px;
+  font-size: 2rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--accent);
@@ -257,7 +257,7 @@ watch(visible, async (v) => {
 
 .prBurstEyebrow {
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--font-caption2);
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -267,7 +267,7 @@ watch(visible, async (v) => {
 
 .prBurstDelta {
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 84px;
+  font-size: 5.25rem;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.04em;
@@ -278,7 +278,7 @@ watch(visible, async (v) => {
 }
 
 .prBurstSubtitle {
-  font-size: 15px;
+  font-size: var(--font-subhead);
   font-weight: 600;
   line-height: 1.4;
   color: var(--text-secondary);
@@ -297,7 +297,7 @@ watch(visible, async (v) => {
   border: 1px solid var(--border-strong);
   border-radius: 99px;
   padding: 8px 16px;
-  font-size: 13px;
+  font-size: var(--font-footnote);
   font-weight: 500;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -316,7 +316,7 @@ watch(visible, async (v) => {
   border: 0;
   border-radius: 99px;
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 15px;
+  font-size: var(--font-subhead);
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -337,7 +337,7 @@ watch(visible, async (v) => {
   bottom: calc(44px + env(safe-area-inset-bottom, 0px));
   text-align: center;
   font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;

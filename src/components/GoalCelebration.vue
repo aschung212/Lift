@@ -119,7 +119,7 @@ onMounted(() => {
 
 .goalCelebTitle {
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 15px;
+  font-size: var(--font-subhead);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text-primary);
@@ -130,7 +130,7 @@ onMounted(() => {
 }
 
 .goalCelebSubtitle {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   font-weight: 500;
   line-height: 1.3;
   color: var(--text-secondary);

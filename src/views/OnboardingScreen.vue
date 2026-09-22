@@ -575,7 +575,7 @@ function chooseExplore() {
 
 .obLogo {
   font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-  font-size: 72px;
+  font-size: 4.5rem;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.035em;
@@ -680,14 +680,14 @@ function chooseExplore() {
 }
 
 .obOptionText strong {
-  font-size: 16px;
+  font-size: var(--font-callout);
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.2;
 }
 
 .obOptionText span {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   color: var(--text-secondary);
   line-height: 1.4;
 }
