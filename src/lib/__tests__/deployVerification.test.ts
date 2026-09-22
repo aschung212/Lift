@@ -558,7 +558,12 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
 // of the thing under test, and would agree with whatever it copied.
 // ---------------------------------------------------------------------------
 
-/** Deterministic git: no user identity, no signing, no ambient config. */
+/**
+ * Deterministic git: identity supplied inline so an unconfigured runner works,
+ * signing off so a machine with `commit.gpgsign` set globally does not block,
+ * and `--no-verify` so a global `core.hooksPath` (this repo configures one for
+ * husky) cannot run the project's own hooks inside a throwaway fixture.
+ */
 function commitIn(git: GitRunner, message: string, file: string, contents: string, dir: string) {
   writeFileSync(join(dir, file), contents)
   expect(git(['add', file]).status).toBe(0)
@@ -570,6 +575,7 @@ function commitIn(git: GitRunner, message: string, file: string, contents: strin
     '-c',
     'commit.gpgsign=false',
     'commit',
+    '--no-verify',
     '-q',
     '-m',
     message,
