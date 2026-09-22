@@ -28,6 +28,23 @@ function getRuleLines(selector: string, source = css): string[] {
   return source.slice(start, end - 1).split('\n').map((l: string) => l.trim()).filter(Boolean)
 }
 
+// Helper: extract the body of a @keyframes at-rule by animation name.
+// Mirrors getRuleLines' brace walk; returns '' when the name is undefined.
+function getKeyframes(name: string, source = css): string {
+  const needle = '\n@keyframes ' + name + ' {'
+  const idx = source.indexOf(needle)
+  if (idx === -1) return ''
+  const start = source.indexOf('{', idx) + 1
+  let depth = 1
+  let end = start
+  while (depth > 0 && end < source.length) {
+    if (source[end] === '{') depth++
+    if (source[end] === '}') depth--
+    end++
+  }
+  return source.slice(start, end - 1)
+}
+
 // Helper: extract the <style> block from a Vue SFC
 function getVueStyleBlock(componentPath: string): string {
   const content = readFileSync(resolve(__dirname, '../../components', componentPath), 'utf-8')
@@ -146,6 +163,79 @@ describe('CSS regression tests', () => {
     // Regression: drag handle hidden behind Dynamic Island in PWA mode (PR #22)
     it('has safe-area-inset-top padding for Dynamic Island', () => {
       expect(lines.some(l => l.includes('safe-area-inset-top'))).toBe(true)
+    })
+  })
+
+  describe('every .repMaxOverlay panel animates in (LIFT-1463)', () => {
+    // The overlay itself fades in (overlayFadeIn, on .repMaxOverlay), so a panel
+    // with no entrance of its own hard-cuts into place against a backdrop that
+    // is still fading — the modal arrives before the scrim it sits on.
+    //
+    // Derived from the .vue sources, not enumerated. Ten of the eleven panels
+    // carry .repMaxModal and inherit modalScaleIn for free, so a hardcoded list
+    // would have listed exactly the ten that were already fine: the one that was
+    // missed is ExerciseDetailModal — the app's most-opened modal — precisely
+    // BECAUSE it is the single panel with its own box class (.wtDetailModal) and
+    // therefore the single one not covered by that inheritance. The next panel
+    // to opt out of .repMaxModal has the same shape and is caught here.
+    const srcRoot = resolve(__dirname, '../..')
+    const panels: { file: string; classes: string[]; scoped: string }[] = []
+    for (const file of collectVueFiles(srcRoot)) {
+      const content = readFileSync(file, 'utf-8')
+      const scoped = allVueStyleBlocks(content)
+      for (const m of content.matchAll(/class="repMaxOverlay\b[^"]*"/g)) {
+        // The panel is the next element carrying a static class attribute.
+        const rest = content.slice((m.index ?? 0) + m[0].length)
+        const panel = rest.match(/>\s*<[a-zA-Z][^>]*?\bclass="([^"]+)"/)
+        if (!panel) continue
+        panels.push({
+          file: relative(srcRoot, file).replace(/\\/g, '/'),
+          classes: panel[1].split(/\s+/).filter(Boolean),
+          scoped,
+        })
+      }
+    }
+
+    it('resolves a panel for every overlay in the sources', () => {
+      // Non-vacuity: a derivation that stops matching would otherwise pass by
+      // finding nothing to check.
+      expect(panels.length).toBeGreaterThanOrEqual(10)
+      expect(panels.every(p => p.classes.length > 0)).toBe(true)
+      // The scan must reach src/views, not just src/components — that is where
+      // the offender lives.
+      expect(panels.some(p => p.classes.includes('wtDetailModal'))).toBe(true)
+    })
+
+    it('every panel class set declares an enter animation', () => {
+      const offenders = panels
+        .filter(p => !p.classes.some(c =>
+          [...getRuleLines('.' + c), ...getRuleLines('.' + c, p.scoped)]
+            .some(l => l.startsWith('animation'))
+        ))
+        .map(p => `${p.file}: .${p.classes.join('.')}`)
+      expect(offenders).toEqual([])
+    })
+
+    it('ExerciseDetailModal enters without animating transform', () => {
+      // Premise, stated rather than assumed: this panel is bound to
+      // useSwipeToDismiss's dragStyle(), which writes an inline `transform`
+      // while the user drags. A RUNNING CSS animation outranks inline author
+      // styles, so an entrance keyframed on `transform` would swallow the first
+      // 250ms of a drag and then snap to it. `translate`/`scale` apply before
+      // `transform` in the same chain, so they compose with the gesture.
+      const sfc = readFileSync(resolve(srcRoot, 'views/ExerciseDetailModal.vue'), 'utf-8')
+      expect(sfc).toContain('dragStyle()')
+
+      const decl = getRuleLines('.wtDetailModal').find(l => l.startsWith('animation'))
+      expect(decl, '.wtDetailModal must declare an animation').toBeDefined()
+      const name = decl?.match(/animation:\s*([\w-]+)/)?.[1] ?? ''
+      const frames = getKeyframes(name)
+      expect(frames, `@keyframes ${name} must exist`).not.toBe('')
+      expect(frames).not.toMatch(/\btransform\s*:/)
+      // …and is not a no-op keyframe that trivially satisfies the line above.
+      expect(frames).toMatch(/\btranslate\s*:/)
+      expect(frames).toMatch(/\bscale\s*:/)
+      expect(frames).toMatch(/\bopacity\s*:/)
     })
   })
 
