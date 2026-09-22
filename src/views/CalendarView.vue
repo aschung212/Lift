@@ -19,7 +19,7 @@
 
     <!-- Tag filter -->
     <template v-if="store.allTags.length > 0 && view !== 'year'">
-      <div class="wtTagFilterBar">
+      <div class="wtTagFilterBar" role="group" aria-label="Filter by tag">
         <button
           v-for="tag in store.allTags"
           :key="tag"

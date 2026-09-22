@@ -3063,12 +3063,67 @@ describe('WorkoutTracker', () => {
     it('tag filter buttons have aria-pressed reflecting active state', () => {
       mockState.exercises = createExercises()
       const wrapper = mountTracker()
-      // Only actual tag chips have aria-pressed — skip "All", "× Clear",
-      // and the tag-manager chip added in the 03-workouts.png restyle.
+      // Skip the tag-manager chip: it is an action, not a toggle, so
+      // aria-pressed would be wrong on it. The "All" reset chip IS a toggle
+      // and carries one since LIFT-1469 — it is covered below.
       const tagBtns = wrapper.findAll('.wtTagChip').filter(c => c.find('.wtTagChipLabel').exists())
       expect(tagBtns.length).toBeGreaterThan(0)
       tagBtns.forEach(btn => {
         expect(btn.attributes('aria-pressed')).toBe('false')
+      })
+    })
+
+    // LIFT-1469. The reset chips are the DEFAULT state of their rows — no gym
+    // selected, no tag selected — so in the state every user launches into,
+    // they were the one chip drawn as active and the only one announcing
+    // nothing. Every chip in the row read as a plain or not-pressed button and
+    // nothing said which filter was in force: WCAG 1.4.1 for the state, 4.1.2
+    // for the missing value. The pre-existing assertions all read `classes()`,
+    // i.e. exactly the colour cue that was the problem, which is why these
+    // assert the rendered attribute instead.
+    describe('reset chips expose their state, not just their colour (LIFT-1469)', () => {
+      it('"All" is pressed by default and releases when a tag is selected', async () => {
+        mockState.exercises = createExercises()
+        const wrapper = mountTracker()
+        const allChip = () =>
+          wrapper.findAll('.wtTagChip').find(c => c.text() === 'All')!
+
+        expect(allChip().attributes('aria-pressed')).toBe('true')
+
+        const tagChip = wrapper.findAll('.wtTagChip').find(c => c.find('.wtTagChipLabel').exists())!
+        await tagChip.trigger('click')
+
+        // Re-find: Vue replaces the nodes, so the held wrapper goes stale.
+        expect(allChip().attributes('aria-pressed')).toBe('false')
+      })
+
+      it('"All" also releases on a search with no tag selected', async () => {
+        // The search bar needs 5+ exercises to render at all.
+        mockState.exercises = [
+          { id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] },
+          { id: 'ex-2', name: 'Squat', tags: ['Legs'], sets: [] },
+          { id: 'ex-3', name: 'Deadlift', tags: ['Back'], sets: [] },
+          { id: 'ex-4', name: 'Overhead Press', tags: ['Shoulders'], sets: [] },
+          { id: 'ex-5', name: 'Barbell Row', tags: ['Back'], sets: [] },
+        ]
+        const wrapper = mountTracker()
+
+        await wrapper.find('.wtSearchInput').setValue('bench')
+
+        // The chip is drawn inactive while searching; the announced state has
+        // to follow the same expression, or the two drift apart.
+        const allChip = wrapper.findAll('.wtTagChip').find(c => c.text() === 'All')!
+        expect(allChip.classes()).not.toContain('wtTagChipActive')
+        expect(allChip.attributes('aria-pressed')).toBe('false')
+      })
+
+      it('the tag row is an introduced group, like its gym sibling', () => {
+        mockState.exercises = createExercises()
+        const wrapper = mountTracker()
+        const bars = wrapper.findAll('.wtTagFilterBar')
+        expect(bars.map(b => b.attributes('aria-label')))
+          .toEqual(['Filter by gym', 'Filter by tag'])
+        bars.forEach(b => expect(b.attributes('role')).toBe('group'))
       })
     })
 
@@ -3613,10 +3668,34 @@ describe('WorkoutTracker', () => {
       const wrapper = mountTracker()
       const chips = gymChipRow(wrapper).findAll('.wtTagChip')
       expect(chips.map(c => c.text())).toEqual(['All Gyms', 'Gym A', 'Gym B', ''])
-      // Exclusive default: All Gyms is the active chip.
+      // Exclusive default: All Gyms is the active chip — announced as well as
+      // drawn (LIFT-1469).
       expect(chips[0].classes()).toContain('wtTagChipActive')
+      expect(chips[0].attributes('aria-pressed')).toBe('true')
+      // The manage chip is an action, not a toggle, so it must stay unpressed.
+      expect(chips[3].attributes('aria-pressed')).toBeUndefined()
       // Trailing icon-only chip opens the gym manager.
       expect(gymChipRow(wrapper).find('[aria-label="Manage gyms"]').exists()).toBe(true)
+    })
+
+    // LIFT-1469. The active gym is persisted device-locally (#961), so a
+    // returning user can land on an already-filtered list — with the state
+    // carried by colour alone, all they heard was a shorter list.
+    it('"All Gyms" releases when a gym is selected, and re-presses on reset', async () => {
+      mockPrefsState.gyms = ['Gym A', 'Gym B']
+      mockState.exercises = createGymExercises()
+      const wrapper = mountTracker()
+
+      await gymChip(wrapper, 'Gym A').trigger('click')
+
+      // Re-find after each state change: Vue replaces the nodes.
+      expect(gymChip(wrapper, 'All Gyms').attributes('aria-pressed')).toBe('false')
+      expect(gymChip(wrapper, 'Gym A').attributes('aria-pressed')).toBe('true')
+
+      await gymChip(wrapper, 'All Gyms').trigger('click')
+
+      expect(gymChip(wrapper, 'All Gyms').attributes('aria-pressed')).toBe('true')
+      expect(gymChip(wrapper, 'Gym A').attributes('aria-pressed')).toBe('false')
     })
 
     it('filters exclusively: only the active gym\'s + unassigned exercises remain', async () => {
