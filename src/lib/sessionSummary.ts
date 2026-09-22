@@ -11,6 +11,10 @@ import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
 import { setDayKey, localDateKey, daysBetweenISO } from './dates'
 import { effectiveSetWeight } from './bodyweightLoad'
+import {
+  sanitizeStrengthBaselineMode,
+  type StrengthBaselineMode,
+} from './strengthBaseline'
 
 export interface SessionHighlight {
   exerciseId: string
@@ -70,6 +74,17 @@ export interface SessionSummary {
   progress: SessionProgress | null
   /** Display unit label for any weight field — 'lbs' or 'kg'. */
   unitLabel: string
+  /**
+   * Strength baseline the `isPR` flags were measured against, so the surfaces
+   * built from this summary can NAME what they are celebrating (LIFT-1459).
+   *
+   * Carried on the summary for the same reason `unitLabel` is: the share cards
+   * and `WorkoutCompleteView` are presentational and hold no store access
+   * (LIFT-916), so everything they need to render a label has to travel with
+   * the data. Read it through `prCopy()` rather than branching on it, and never
+   * re-measure from it — it describes stored flags, it does not produce them.
+   */
+  baselineMode: StrengthBaselineMode
 }
 
 /**
@@ -110,6 +125,11 @@ export interface SessionSummaryInput {
   toDisplayUnits?: (lbValue: number) => number
   /** Label to surface alongside weight values. Defaults to 'lbs'. */
   unitLabel?: string
+  /**
+   * Baseline mode in force (`usePRBaseline().strengthBaselineMode`). Defaults
+   * to 'lifetime' — the historical wording — for a caller that has none.
+   */
+  baselineMode?: StrengthBaselineMode
 }
 
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
@@ -203,6 +223,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
   const { rawDate, exercises, xpPerSet, streakWeeks = 0 } = input
   const toDisplay = input.toDisplayUnits ?? ((lb: number) => lb)
   const unitLabel = input.unitLabel ?? 'lbs'
+  const baselineMode = sanitizeStrengthBaselineMode(input.baselineMode)
   /** Round small per-set values nicely; volume gets the same treatment then string-formatted. */
   const cv = (lb: number) => {
     const v = toDisplay(lb)
@@ -408,6 +429,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     streak: streakWeeks,
     progress,
     unitLabel,
+    baselineMode,
   }
 }
 
