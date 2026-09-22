@@ -1085,6 +1085,26 @@ jobs:
   # failed-build path. Reporting nothing instead would be worse: silence is
   # indistinguishable from a broken workflow.
   #
+  # Deliberately does NOT depend on ratchet-baseline, for the same reason
+  # smoke-test-production doesn't (LIFT-1475). That job pushes a `[skip ci]`
+  # coverage-bookkeeping commit, and every way it can fail — a
+  # coverage-summary artifact that was flaky, expired, or aged out of
+  # retention on a re-run; a malformed coverage/coverage-summary.json; an
+  # unguarded git config/add/commit under `set -e` — is a bookkeeping
+  # problem. None of them says anything about whether master is healthy or
+  # whether this commit reached production, so gating on it withheld the one
+  # positive signal per merge AND routed to notify-failure's "🔴 Post-merge
+  # CI failed on master" for a push whose deploy smoke-test-production had
+  # just verified live, on the same run, seconds earlier — the LIFT-1367
+  # misattribution entering from the opposite side. The ratchet's own blocked
+  # push is already tolerated on purpose (::warning::, floor simply holds);
+  # everything around it should be too. Its failures still redden the run in
+  # the Actions UI, which is where a bookkeeping problem belongs.
+  #
+  # notify-failure keeping the OTHER gates is correct and must not change: a
+  # red lint/typecheck/test/e2e/migrate-db genuinely is a post-merge CI
+  # failure on master.
+  #
   # SECURITY: commit message + URL come in via env var, NOT direct
   # `${{ ... }}` interpolation into the bash body. Inline interpolation
   # is a known GitHub Actions script-injection vector — any commit
@@ -1094,7 +1114,7 @@ jobs:
   notify-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, deploy-production, ratchet-baseline, smoke-test-production]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, deploy-production, smoke-test-production]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
@@ -1125,11 +1145,13 @@ jobs:
   # notification instead of silently withholding any message. Since LIFT-1169
   # this is also the alarm for "production stopped updating": with git
   # auto-deploy off, a broken deploy-production job is the only thing standing
-  # between master and users.
+  # between master and users. Excludes ratchet-baseline for the reason spelled
+  # out above notify-deploy (LIFT-1475): this message names which system
+  # broke, so it must not fire for coverage bookkeeping.
   notify-failure:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, deploy-production, ratchet-baseline, smoke-test-production]
+    needs: [lint, typecheck, test, build-and-test, e2e, migrate-db, deploy-production, smoke-test-production]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
       - name: Notify Slack
