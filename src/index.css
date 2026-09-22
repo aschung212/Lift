@@ -2807,6 +2807,15 @@ html.theme-fading .settingsSheet {
   font-weight: 500;
 }
 
+/* No-match line inside the picker's 300px list (LIFT-1462). Takes .wtEmpty's
+   type and colour and only trims its 32px page padding, which would eat a
+   third of the list. The "+ New exercise" row stays below it: a search that
+   finds nothing is exactly when the user wants to create one, and leaving
+   only Cancel is the dead end LIFT-1375 closed. */
+.wtExPickerEmpty {
+  padding: 16px 0;
+}
+
 .wtTimelineShowMore {
   width: 100%;
   padding: 12px;

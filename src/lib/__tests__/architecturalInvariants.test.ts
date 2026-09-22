@@ -2576,6 +2576,64 @@ describe('Invariant: the exercise picker has one implementation (LIFT-1375)', ()
       'and handle `select` + `create-new` instead.',
     ).toEqual([])
   })
+
+  /**
+   * A host that traps focus into the picker must focus the DIALOG, not its
+   * first focusable descendant (LIFT-1462).
+   *
+   * `useFocusTrap` focuses the first focusable by default, which was harmless
+   * while that was an exercise row `<button>`. The search field made it a text
+   * input, and on iOS a programmatically-focused input shows a caret, withholds
+   * the soft keyboard, and won't raise it on a later tap either — the field is
+   * already focused (#830). The picker would open onto a dead search box.
+   *
+   * Derived from the ids the picker's dialog can carry rather than a list of
+   * hosts, because the host that needs this most does not exist yet:
+   * WorkoutTracker drives the picker with a bare ref today, and LIFT-1380 is
+   * open to route it through `useModal` — at which point this rule starts
+   * applying to it with nothing further to remember.
+   */
+  it('focuses the dialog, not the search field, wherever it traps focus', () => {
+    const files = getSourceFiles()
+    const picker = files.find(f => f.path === PICKER)!
+
+    // Every id the picker's <h2> can carry: the prop default plus each literal
+    // bound by a host.
+    const titleIds = new Set<string>()
+    const defaultId = picker.content.match(/titleId:\s*'([^']+)'/)
+    if (defaultId) titleIds.add(defaultId[1])
+    for (const f of files) {
+      for (const m of f.content.matchAll(/<ExercisePickerModal\b[^>]*?\btitle-id="([^"]+)"/gs)) {
+        titleIds.add(m[1])
+      }
+    }
+    expect(titleIds.size, 'found no picker dialog ids — the scan below is vacuous')
+      .toBeGreaterThan(0)
+
+    // `useModal({ ... })` calls whose selector names one of those dialogs.
+    const trapping: { path: string; options: string }[] = []
+    for (const f of files) {
+      for (const m of stripComments(f.content).matchAll(/useModal\(\s*\{([\s\S]*?)\}\s*\)/g)) {
+        if ([...titleIds].some(id => m[1].includes(id))) {
+          trapping.push({ path: f.path, options: m[1] })
+        }
+      }
+    }
+    expect(trapping.length, 'no host traps focus into the picker — the scan below is vacuous')
+      .toBeGreaterThan(0)
+
+    const violations = trapping
+      .filter(t => !/focusContainer:\s*true/.test(t.options))
+      .map(t => t.path)
+
+    expect(violations, violations.length === 0 ? '' :
+      violations.join(', ') + ' traps focus into the exercise picker without ' +
+      '`focusContainer: true`, so the trap focuses the first focusable — the ' +
+      'search field once the list passes the threshold (LIFT-1462). On iOS that ' +
+      'shows a caret, withholds the keyboard, and will not raise it on a later ' +
+      'tap either, because the field is already focused (#830).',
+    ).toEqual([])
+  })
 })
 
 // ── Invariant: the foreground-resume signal set is defined once (LIFT-1392) ──
