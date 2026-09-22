@@ -101,7 +101,7 @@ describe('dataExport', () => {
     it('includes metadata comment header with version and user hash', () => {
       const csv = buildCsvExport(metadata, exercises, bodyweight)
       const lines = csv.split('\n')
-      expect(lines[0]).toBe('# Lift Export — 2026-04-05 — v1.0.0 — abc123 — weights in lbs')
+      expect(lines[0]).toBe('# Logbook Export — 2026-04-05 — v1.0.0 — abc123 — weights in lbs')
     })
 
     it('includes column header row', () => {

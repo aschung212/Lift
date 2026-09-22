@@ -10,7 +10,7 @@ import type { SessionSummary } from '../../../lib/sessionSummary'
  * Every share card must stamp the app's public handle so a viewer who sees a
  * card on social has a path to find and install the app — the link is the
  * conversion mechanism that closes the loop. Before #714 the cards rendered a
- * "LIFT" wordmark but zero links, so the funnel leaked at the final step.
+ * "LOGBOOK" wordmark but zero links, so the funnel leaked at the final step.
  *
  * Mounting every registered card (rather than asserting on source text) means
  * a card added later that forgets the handle fails here, and a card whose

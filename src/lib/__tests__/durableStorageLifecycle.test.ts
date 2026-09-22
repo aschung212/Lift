@@ -6,7 +6,7 @@
  * that nothing here used to exercise:
  *
  * 1. An open connection BLOCKS `indexedDB.deleteDatabase()`. Account deletion
- *    closes this tab's handle, but a second Lift tab kept its own — so the
+ *    closes this tab's handle, but a second Logbook tab kept its own — so the
  *    delete fired `blocked`, was never observed, and the previous user's
  *    workout backup plus the durable sync journal survived on a shared device
  *    after they were told the account was deleted.
@@ -96,7 +96,7 @@ describe('durableStorage connection lifecycle (LIFT-1356)', () => {
     it('yields its connection on versionchange so account deletion is not blocked', async () => {
       const tabA = mod
       // Tab A writes, which opens and CACHES a connection — the state every
-      // running Lift tab is in the moment it persists anything.
+      // running Logbook tab is in the moment it persists anything.
       tabA.backupToIDB('workout-exercises', 'tab-a-data')
       await vi.waitFor(async () => {
         expect(await tabA.restoreFromIDB('workout-exercises')).toBe('tab-a-data')

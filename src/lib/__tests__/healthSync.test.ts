@@ -134,17 +134,17 @@ describe('pendingHealthEntries', () => {
 })
 
 describe('matchExistingSamples', () => {
-  it('matches only Lift-sourced samples on the same local day within 0.01 kg', () => {
+  it('matches only Logbook-sourced samples on the same local day within 0.01 kg', () => {
     withTZ('America/Los_Angeles', () => {
       const a = entry({ id: 'a', date: END_OF_DAY, weight: 185 }) // 83.915 kg on Sept 14
       const b = entry({ id: 'b', date: '2026-09-13T23:59:10.000Z', weight: 186 }) // 84.368 kg on Sept 13
       const c = entry({ id: 'c', date: '2026-09-12T23:59:10.000Z', weight: 187 })
       const samples = [
-        // Lift's own sample, HealthKit's double a hair off the stored value.
+        // Logbook's own sample, HealthKit's double a hair off the stored value.
         { value: 83.9149, startDate: healthSampleInstant(END_OF_DAY), sourceId: APP_BUNDLE_ID },
-        // A smart scale reading the same day — not "already written by Lift".
+        // A smart scale reading the same day — not "already written by Logbook".
         { value: 84.368, startDate: healthSampleInstant(b.date), sourceId: 'com.example.scale' },
-        // Lift's own sample, but a different weigh-in.
+        // Logbook's own sample, but a different weigh-in.
         { value: 85.5, startDate: healthSampleInstant(c.date), sourceId: APP_BUNDLE_ID },
       ]
       expect(matchExistingSamples([a, b, c], samples)).toEqual(['a'])
@@ -158,7 +158,7 @@ describe('matchExistingSamples', () => {
   it('does not match across the local day boundary east of UTC', () => {
     withTZ('Asia/Tokyo', () => {
       const a = entry({ id: 'a', date: END_OF_DAY, weight: 185 })
-      // A Lift sample whose instant is the raw stamp: 08:59 on Sept 15 in Tokyo.
+      // A Logbook sample whose instant is the raw stamp: 08:59 on Sept 15 in Tokyo.
       const stale = [{ value: 83.915, startDate: END_OF_DAY, sourceId: APP_BUNDLE_ID }]
       expect(matchExistingSamples([a], stale)).toEqual([])
     })

@@ -2,6 +2,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "trailingSlash": false,
+  "git": {
+    "deploymentEnabled": {
+      "master": false
+    }
+  },
   "ignoreCommand": "bash scripts/vercel-ignore-build.sh",
   "rewrites": [
     {

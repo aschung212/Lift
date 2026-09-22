@@ -1,5 +1,5 @@
 /**
- * WCAG 2.1 AA contrast ratio audit for all 10 Lift themes (20 variants).
+ * WCAG 2.1 AA contrast ratio audit for all 10 Logbook themes (20 variants).
  *
  * The theme palettes are parsed directly from src/index.css at test time —
  * index.css is the single source of truth, so the audit can never validate a

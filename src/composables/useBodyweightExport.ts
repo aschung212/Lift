@@ -19,7 +19,7 @@ import { downloadBlob } from '../lib/dataExport'
 import { todayISO } from '../lib/dates'
 
 /** Title shown in the share sheet above the attached CSV. */
-const SHARE_TITLE = 'Lift bodyweight export'
+const SHARE_TITLE = 'Logbook bodyweight export'
 
 export interface UseBodyweightExportReturn {
   exportCsv: () => Promise<ShareResult>

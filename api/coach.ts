@@ -1,7 +1,7 @@
 /**
  * AI Coach — server-side proxy (Phase 1 scaffold).
  *
- * This is Lift's FIRST server-side component. It is the entire trust boundary for
+ * This is Logbook's FIRST server-side component. It is the entire trust boundary for
  * the AI Coach feature: it holds the Anthropic key, verifies the caller, enforces
  * the per-user quota + global daily spend ceiling, validates the payload and the
  * model output, and only then returns a digest. Nothing in the client bundle is
@@ -52,7 +52,7 @@ const ANTHROPIC_VERSION = '2023-06-01'
 
 // Origins allowed to call the proxy. The native Capacitor build is cross-origin:
 // the bundled app is served from `capacitor://localhost`, because `server.iosScheme`
-// defaults to `capacitor` and Lift does not set it (#1442 — `ios.scheme`, which an
+// defaults to `capacitor` and Logbook does not set it (#1442 — `ios.scheme`, which an
 // earlier version of this comment cited, is the Xcode BUILD scheme and never
 // produced a URL scheme). So that origin must be allow-listed explicitly here AND
 // in the CSP connect-src (see vercel.json) before the native build ships.

@@ -51,7 +51,7 @@ export function renderLegalPage(kind: LegalDocumentKind, updated: string = LEGAL
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>${escapeHtml(doc.title)} · Lift</title>
+  <title>${escapeHtml(doc.title)} · Logbook</title>
   <style>
     :root { color-scheme: light dark; }
     body { margin: 0; padding: 32px 20px 64px; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1c1c1e; background: #ffffff; }
@@ -73,7 +73,7 @@ export function renderLegalPage(kind: LegalDocumentKind, updated: string = LEGAL
 </head>
 <body>
   <main>
-    <a class="brand" href="/">Lift</a>
+    <a class="brand" href="/">Logbook</a>
     <h1>${escapeHtml(doc.title)}</h1>
     <p class="meta">Last updated ${escapeHtml(updated)}</p>
 ${doc.sections.map(renderSection).join('\n')}

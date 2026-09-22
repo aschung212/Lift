@@ -66,7 +66,7 @@
           </div>
 
           <p class="coachPrivacyNote">
-            Nothing leaves Lift until you paste it — this only copies your training
+            Nothing leaves Logbook until you paste it — this only copies your training
             data and profile to your clipboard or saves it to a file.
           </p>
 
@@ -701,7 +701,7 @@ onUnmounted(() => {
 .coachSectionTag {
   font-family: var(--ff-mono);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-caption2);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent);
@@ -742,7 +742,7 @@ onUnmounted(() => {
 .coachFocusTag {
   font-family: var(--ff-mono);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-caption2);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent);

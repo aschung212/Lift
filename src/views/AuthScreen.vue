@@ -1,8 +1,8 @@
 <template>
   <div class="authScreen">
     <div class="authCard">
-      <img src="/icon-512.png" alt="Lift" class="authIcon" width="96" height="96" />
-      <div class="authLogo">Lift</div>
+      <img src="/icon-512.png" alt="Logbook" class="authIcon" width="96" height="96" />
+      <div class="authLogo">Logbook</div>
       <p class="authTagline">Track your sets, monitor progress, hit PRs.</p>
 
       <!-- Email/password form -->

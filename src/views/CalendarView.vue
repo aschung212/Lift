@@ -19,7 +19,7 @@
 
     <!-- Tag filter -->
     <template v-if="store.allTags.length > 0 && view !== 'year'">
-      <div class="wtTagFilterBar">
+      <div class="wtTagFilterBar" role="group" aria-label="Filter by tag">
         <button
           v-for="tag in store.allTags"
           :key="tag"
@@ -721,8 +721,16 @@ function formatSelectedDay(dateStr: string) {
 }
 
 // ── Log modal ─────────────────────────────────────────────────────
+// focusContainer: the picker's first focusable is its search field once the
+// list passes the threshold (LIFT-1462), and the trap's default is to focus the
+// first focusable descendant — which on iOS shows a caret, withholds the soft
+// keyboard, and won't raise it on a later tap either, since the field is
+// already focused (#830). Focusing the dialog announces it and leaves the first
+// tap to the user. It is also the right default below the threshold: opening a
+// picker should announce "Choose Exercise", not silently focus one exercise.
 const { isOpen: pickerOpen, open: openPicker, close: closePicker } = useModal({
   selector: '[aria-labelledby="calendar-picker-title"]',
+  focusContainer: true,
 })
 // focusContainer: the first field is a number input — focusing the dialog
 // (not the field) lets iOS raise the keyboard on the user's first tap instead

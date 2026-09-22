@@ -22,7 +22,7 @@
     <div class="pgFoot">
       <div class="pgTagline">Estimated 1-rep max</div>
       <div class="pgBrand">
-        <span class="pgMark">LIFT</span>
+        <span class="pgMark">LOGBOOK</span>
         <span class="pgHandle">{{ SHARE_CARD_HANDLE }}</span>
       </div>
     </div>

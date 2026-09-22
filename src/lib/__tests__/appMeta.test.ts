@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { APP_URL, APP_NAME, APP_TAGLINE, APP_BUNDLE_ID, SHARE_REF, appUrlWithRef } from '../appMeta'
 
 /**
- * Pins the app-share identity constants. These feed the "Share Lift" entry
+ * Pins the app-share identity constants. These feed the "Share Logbook" entry
  * point (#713) and any future attribution, so a fabricated/competitor domain
  * here would silently send users elsewhere — the exact SEV1 class of bug from
  * 2026-04-02 (see CLAUDE.md). Mirrors metaRegression.test.ts's domain pinning.
@@ -19,18 +19,18 @@ describe('appMeta', () => {
   })
 
   it('APP_NAME is the display name', () => {
-    expect(APP_NAME).toBe('Lift')
+    expect(APP_NAME).toBe('Logbook')
   })
 
   it('APP_TAGLINE is non-empty and mentions the app', () => {
     expect(APP_TAGLINE.length).toBeGreaterThan(0)
-    expect(APP_TAGLINE).toContain('Lift')
+    expect(APP_TAGLINE).toContain('Logbook')
   })
 
   it('APP_BUNDLE_ID is the appId capacitor.config.ts builds the native shell with', () => {
     // Derived from the config, not restated: HealthKit reports this id as the
-    // sourceId of every sample Lift writes, and the Health sync matches on it
-    // (#1420) — a drift would make Lift blind to its own samples.
+    // sourceId of every sample Logbook writes, and the Health sync matches on it
+    // (#1420) — a drift would make Logbook blind to its own samples.
     const config = readFileSync(resolve(__dirname, '..', '..', '..', 'capacitor.config.ts'), 'utf8')
     const appId = config.match(/appId:\s*'([^']+)'/)?.[1]
     expect(appId).toBeDefined()

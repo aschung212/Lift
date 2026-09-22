@@ -53,11 +53,11 @@ describe('shareImage', () => {
 
   describe('defaultShareFilename', () => {
     it('builds a YYYY-MM-DD prefixed filename for square format', () => {
-      expect(defaultShareFilename('2026-04-21')).toBe('lift-2026-04-21.png')
+      expect(defaultShareFilename('2026-04-21')).toBe('logbook-2026-04-21.png')
     })
 
     it('appends -story for vertical format', () => {
-      expect(defaultShareFilename('2026-04-21', 'story')).toBe('lift-2026-04-21-story.png')
+      expect(defaultShareFilename('2026-04-21', 'story')).toBe('logbook-2026-04-21-story.png')
     })
   })
 

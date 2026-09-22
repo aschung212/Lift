@@ -8,7 +8,7 @@ test.describe('Auth Screen', () => {
 
   test('shows auth screen with email form and providers', async ({ page }) => {
     await expect(page.locator('.authScreen')).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('.authLogo')).toHaveText('Lift')
+    await expect(page.locator('.authLogo')).toHaveText('Logbook')
     await expect(page.locator('.authTagline')).toBeVisible()
 
     // Email form

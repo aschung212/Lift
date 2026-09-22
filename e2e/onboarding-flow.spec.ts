@@ -17,7 +17,7 @@ test.describe('Onboarding Flow', () => {
 
     // Onboarding should appear (not the main app)
     await expect(page.locator('.obScreen')).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('.obLogo')).toHaveText('Lift')
+    await expect(page.locator('.obLogo')).toHaveText('Logbook')
     await expect(page.locator('.obTagline')).toBeVisible()
   })
 

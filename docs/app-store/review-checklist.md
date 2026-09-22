@@ -37,7 +37,7 @@ take; "Open" names the issue.
 
 ## If rejected
 
-Reply in Resolution Center with specifics; file a Lift issue for any code change; the
+Reply in Resolution Center with specifics; file a Logbook issue for any code change; the
 common first-submission rejections and their answers are already handled above
 (Sign in with Apple — none offered; privacy URL — live; demo credentials — provided;
 HealthKit justification — in the notes and the policy).

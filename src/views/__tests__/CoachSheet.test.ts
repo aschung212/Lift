@@ -197,7 +197,7 @@ describe('CoachSheet — bring-your-own-AI export (open loop)', () => {
     expect(text).toContain('Bring your own AI')
     expect(text).toContain('Copy to clipboard')
     expect(text).toContain('Download file')
-    expect(text).toContain('Nothing leaves Lift until you paste it')
+    expect(text).toContain('Nothing leaves Logbook until you paste it')
     // Server affordances are absent.
     expect(text).not.toContain('Generate review')
     expect(document.body.querySelector('.coachExportActions')).not.toBeNull()
@@ -233,7 +233,7 @@ describe('CoachSheet — bring-your-own-AI export (open loop)', () => {
     dlBtn!.click()
     await nextTick()
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
-    expect(clickNames[0]).toMatch(/^lift-ai-review-\d{4}-\d{2}-\d{2}\.md$/)
+    expect(clickNames[0]).toMatch(/^logbook-ai-review-\d{4}-\d{2}-\d{2}\.md$/)
   })
 
   it('offers a review-depth control and a profile entry point', () => {

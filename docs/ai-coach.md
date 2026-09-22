@@ -1,7 +1,7 @@
 # AI Coach — AI Review (design)
 
 > **Naming (#972):** the user-facing feature name is **"AI Review"** (sheet title, aria-labels,
-> download filename `lift-ai-review-YYYY-MM-DD.md`). It was called "Weekly Review" until
+> download filename `logbook-ai-review-YYYY-MM-DD.md`). It was called "Weekly Review" until
 > 2026-07-16; the weekly *cadence* (quota window, digest framing) is unchanged — only the label.
 
 Status: **Phase 1 in progress** (backend scaffold landed; UI + consent + deletion wiring remain).
@@ -31,7 +31,7 @@ This collapses the three UX options we considered into the best one:
 
 ## The load-bearing reality
 
-Lift is a pure static SPA today — **zero server-side compute** before this feature. The entire
+Logbook is a pure static SPA today — **zero server-side compute** before this feature. The entire
 trust boundary (key secrecy, quota, consent) depends on a backend that did not exist. So the
 **first deliverable is the backend** (`api/coach.ts` + the migration), and the client-side
 counter is cosmetic — the server is the only real cap.
@@ -64,7 +64,7 @@ destination. So until the key is provisioned we deliver the value with **zero se
   `<athlete>` block and is chosen per export via a segmented control; one prompt serves both.
 - `CoachSheet` (when `COACH_MODE === 'byo'`) renders the export panel: review-depth control,
   profile entry point, a bodyweight opt-out (passes `[]` to `buildCoachPayload`), a
-  "nothing leaves Lift until you paste it" disclosure, and **Copy to clipboard** + **Download
+  "nothing leaves Logbook until you paste it" disclosure, and **Copy to clipboard** + **Download
   `.md`** actions. The server states stay intact behind `mode === 'server'`.
 - **Open loop by decision:** no paste-back / JSON round-trip — the coaching lives in the chat.
 - No key, no quota, no consent-to-transmit surface (nothing is sent), so the entry point drops the

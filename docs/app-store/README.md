@@ -1,6 +1,6 @@
 # App Store submission — the path, in order
 
-Everything Lift needs to ship to TestFlight and the App Store, with what is done, what is
+Everything Logbook needs to ship to TestFlight and the App Store, with what is done, what is
 Aaron-only, and where each artifact lives. Parent epic: #216. The trigger fired on
 2026-09-15 (Aaron chose to share the app with friends), so the "blocked-indefinite" issues
 under #216 are live.

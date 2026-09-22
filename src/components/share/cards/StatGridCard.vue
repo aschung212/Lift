@@ -2,7 +2,7 @@
   <div class="sgRoot">
     <div class="sgHead">
       <div class="sgBrand">
-        <span class="sgEyebrow">Lift · {{ weekdayLabel }}</span>
+        <span class="sgEyebrow">Logbook · {{ weekdayLabel }}</span>
         <span class="sgHandle">{{ SHARE_CARD_HANDLE }}</span>
       </div>
       <div class="sgDate">{{ summary.date }}</div>

@@ -1120,7 +1120,7 @@ describe('SettingsSheet', () => {
       expect(sw.attributes('aria-checked')).toBe('false')
       expect(w.find('#health-sync-label').text()).toBe('Sync bodyweight')
       // Honest copy about the write-once contract lives beside the switch.
-      expect(group(w)!.text()).toContain('Edits and deletions stay in Lift')
+      expect(group(w)!.text()).toContain('Edits and deletions stay in Logbook')
     })
 
     it('turning it on asks the composable to enable; turning it off disables', async () => {

@@ -48,8 +48,8 @@ describe('offline fallback page', () => {
     expect(offlineHtml).toMatch(/data.*saved.*locally|saved locally/i)
   })
 
-  it('includes the Lift wordmark', () => {
-    expect(offlineHtml).toContain('Lift')
+  it('includes the Logbook wordmark', () => {
+    expect(offlineHtml).toContain('Logbook')
   })
 
   it('has minimum 48px touch target for retry button', () => {

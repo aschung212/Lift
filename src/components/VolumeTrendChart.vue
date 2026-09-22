@@ -129,7 +129,7 @@ function formatVolume(lbs: number): string {
 }
 
 .vtTitle {
-  font-size: 13px;
+  font-size: var(--font-footnote);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -144,7 +144,7 @@ function formatVolume(lbs: number): string {
 }
 
 .vtCollapsedSummary {
-  font-size: 12px;
+  font-size: var(--font-caption1);
   color: var(--text-muted);
 }
 

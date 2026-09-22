@@ -32,7 +32,7 @@ describe('renderReport', () => {
   it('includes the period label in the title and header', () => {
     const html = renderReport(makeReport({ periodLabel: 'Q2 2026' }))
     expect(html).toContain('Q2 2026')
-    expect(html).toContain('<title>Lift Training Report')
+    expect(html).toContain('<title>Logbook Training Report')
   })
 
   it('renders summary stat cards', () => {
@@ -137,11 +137,11 @@ describe('renderReport', () => {
     expect(html).toContain('.print-hint { display: none; }')
   })
 
-  it('includes a "Back to Lift" button in the toolbar', () => {
+  it('includes a "Back to Logbook" button in the toolbar', () => {
     const html = renderReport(makeReport())
-    expect(html).toContain('id="back-to-lift"')
-    expect(html).toContain('Back to Lift')
-    expect(html).toContain('aria-label="Close report and return to Lift"')
+    expect(html).toContain('id="back-to-logbook"')
+    expect(html).toContain('Back to Logbook')
+    expect(html).toContain('aria-label="Close report and return to Logbook"')
   })
 
   it('hides the toolbar in @media print', () => {
@@ -151,14 +151,14 @@ describe('renderReport', () => {
 
   it('includes a click handler that closes the window with a navigation fallback', () => {
     const html = renderReport(makeReport())
-    expect(html).toContain("getElementById('back-to-lift')")
+    expect(html).toContain("getElementById('back-to-logbook')")
     expect(html).toContain('window.close()')
     expect(html).toContain('window.location.replace')
   })
 
   it('skips navigation fallback when the document is no longer visible', () => {
     // Prevents a race where window.close() succeeds asynchronously
-    // (iOS WKWebView, animated tab close) and the fallback reloads Lift
+    // (iOS WKWebView, animated tab close) and the fallback reloads Logbook
     // into a tab the browser is already tearing down.
     const html = renderReport(makeReport())
     expect(html).toContain("document.visibilityState !== 'visible'")

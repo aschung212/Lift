@@ -56,6 +56,33 @@ function stripComments(source: string): string {
     .join('\n')
 }
 
+/**
+ * Forward scan for an opening tag's `>`, starting at its `<`, skipping quoted
+ * attribute values so a ternary, a comparison or an arrow function inside an
+ * attribute can't end the tag early. Returns -1 if the tag never closes.
+ *
+ * Shared by the three template scans below (LIFT-1308 switches, LIFT-1305
+ * custom buttons, LIFT-1469 filter chips) — they each need "the opening tag
+ * this attribute belongs to", and three copies of a parser is three places for
+ * one subtle fix to land in only two.
+ */
+function tagEnd(source: string, from: number): number {
+  let quote: string | null = null
+  for (let i = from; i < source.length; i++) {
+    const c = source[i]
+    if (quote) {
+      if (c === quote) quote = null
+      continue
+    }
+    if (c === '"' || c === "'") {
+      quote = c
+      continue
+    }
+    if (c === '>') return i
+  }
+  return -1
+}
+
 /** Returns absolute paths of all non-test .ts files in src/stores/. */
 function getStoreFilePaths(): string[] {
   return readdirSync(STORES_DIR)
@@ -1571,7 +1598,8 @@ describe('Invariant: every always-send NULL column is nullable in the migrations
 // migration in one transaction, so the failure rolled back the WHOLE file:
 // `bar_weight` stayed NOT NULL while the shipping client had already begun
 // sending `null` for it, and every later schema push queued behind a red job
-// that also gates smoke-test-production and notify-deploy (LIFT-1167). And
+// that also gates deploy-production, smoke-test-production and notify-deploy
+// (LIFT-1169 / LIFT-1167) — so master stops reaching production too. And
 // nothing could see it coming — `migrate-db` is master-only and post-merge, and
 // the scheduled Integration Tests workflow builds its database FROM these
 // files, where the trigger always exists. A static check is the only reader
@@ -1717,9 +1745,11 @@ describe('Invariant: migrations tolerate an object production may not have (LIFT
 // It bites hardest on the account-deletion path (#1299). `delete_user_account`
 // runs LAST, after the per-table deletes have already succeeded, so a
 // name/schema mismatch there fails having already destroyed the user's rows.
-// LIFT-1169 (migrate-db racing Vercel's git auto-deploy) makes the
-// code-ahead-of-schema window real rather than theoretical, so the caller and
-// its migration have to ship in the same commit.
+// LIFT-1169 closed the *ordering* half of this — production now deploys from
+// CI behind `migrate-db`, so code can no longer go live ahead of a migration
+// that applied late. What that cannot catch is a caller shipped with no
+// migration at all, which is broken at every ordering; hence this check, and
+// hence the caller and its migration still have to ship in the same commit.
 describe('Invariant: client RPC names exist in the migrations (#1299)', () => {
   const migrationSql = stripSqlComments(
     readdirSync(MIGRATIONS_DIR)
@@ -1807,25 +1837,6 @@ describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)'
   // Leading `\s` or `:` so the shorthand, the `v-bind:` longform and the plain
   // attribute all count — a false failure here reads as a broken rule.
   const NAME_ATTR = /[\s:]aria-label(?:ledby)?\s*=/
-
-  /** Forward scan for the tag's `>`, skipping quoted attribute values so an
-   *  arrow function or comparison inside a handler can't end the tag early. */
-  function tagEnd(source: string, from: number): number {
-    let quote: string | null = null
-    for (let i = from; i < source.length; i++) {
-      const c = source[i]
-      if (quote) {
-        if (c === quote) quote = null
-        continue
-      }
-      if (c === '"' || c === "'") {
-        quote = c
-        continue
-      }
-      if (c === '>') return i
-    }
-    return -1
-  }
 
   /** Every `role="switch"` element as { tag, inner } — the opening tag's
    *  attribute text, and the element's contents. */
@@ -2057,25 +2068,6 @@ describe('Invariant: every custom role="button" is keyboard-operable (LIFT-1305)
   const hasEnter = (tag: string) => /(?:@|v-on:)keydown\.enter\b/.test(tag)
   const hasSpace = (tag: string) => /(?:@|v-on:)keydown\.space\b/.test(tag)
 
-  /** Forward scan for the tag's `>`, skipping quoted attribute values so a
-   *  ternary or arrow function inside an attribute can't end the tag early. */
-  function tagEnd(source: string, from: number): number {
-    let quote: string | null = null
-    for (let i = from; i < source.length; i++) {
-      const c = source[i]
-      if (quote) {
-        if (c === quote) quote = null
-        continue
-      }
-      if (c === '"' || c === "'") {
-        quote = c
-        continue
-      }
-      if (c === '>') return i
-    }
-    return -1
-  }
-
   /** Every element carrying a button role, as its opening-tag text. */
   function buttonRoleTags(source: string): string[] {
     const out: string[] = []
@@ -2154,6 +2146,218 @@ describe('Invariant: every custom role="button" is keyboard-operable (LIFT-1305)
           'BOTH @keydown.enter and @keydown.space, or it announces as a button ' +
           'and then ignores the keys a button responds to (WCAG 2.1.1, ' +
           'LIFT-1305): ' + tag.replace(/\s+/g, ' ').slice(0, 110),
+        )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+})
+
+
+// ── Invariant: a filter chip announces its own on/off state (LIFT-1469) ─
+//
+// The filter chip rows are toggle groups in which exactly one chip is "on", and
+// `.wtTagChipActive` is what draws that. Three of the four chip kinds bound
+// `:aria-pressed` beside it; the two RESET chips — "All Gyms" and "All" — bound
+// only the class, so the default state every user launches into (no gym, no tag)
+// announced as a row of plain or not-pressed buttons with nothing saying which
+// filter was in force. Colour alone carried it: WCAG 1.4.1 (Level A) for the
+// state, 4.1.2 for the missing value. Not a corner case either — the active gym
+// is persisted device-locally (#961), so a returning user can land on an already
+// filtered list and only hear that it is shorter.
+//
+// Derived rather than enumerated for the same reason as the `role="switch"` and
+// `role="button"` scans above. A hardcoded list would pin the four chips that
+// exist today, which is precisely how the reset chips came to differ from their
+// siblings — and axe cannot see this at all: a `<button>` with an accessible
+// name and no `aria-pressed` is valid markup, so "this control has a state it
+// is not exposing" is a semantic judgement, not an attribute violation.
+// `WorkoutTracker.test.ts` did assert these rows extensively, but every
+// assertion read `classes()` — i.e. it checked exactly the visual cue that was
+// the whole problem.
+//
+// Two halves, both keyed on markup that already exists:
+//
+//   1. Any element binding `wtTagChipActive` must bind `aria-pressed` to the
+//      SAME expression. Equality, not mere presence: binding the class off one
+//      expression and the announced state off another is the drift this exists
+//      to prevent, and re-using the class's own expression makes the visual and
+//      announced states one decision. The ACTION chips (`wtTagChipManage`,
+//      `wtTagChipClear`) are out of scope by construction rather than by an
+//      exception list — they have no on/off state, so they never bind the
+//      active class, and `aria-pressed` would be wrong on them.
+//
+//   2. Every `.wtTagFilterBar` is a labelled `role="group"`. The gym row shipped
+//      as one in #961 and the two older tag rows did not, so a user heard a
+//      properly-introduced gym group followed by an unlabelled run of buttons
+//      ("Push, button") with nothing saying it filtered by tag.
+
+describe('Invariant: every filter chip exposes its state (LIFT-1469)', () => {
+  const ACTIVE_CLASS = /wtTagChipActive\s*:/g
+  const FILTER_BAR = /wtTagFilterBar/g
+  // Leading `\s` or `:` so the shorthand, the `v-bind:` longform and a (wrong)
+  // static attribute all match — a static value is caught by the equality
+  // check below rather than slipping past the scan.
+  const PRESSED_ATTR = /[\s:](?:v-bind:)?aria-pressed\s*=\s*(?:"([^"]*)"|'([^']*)')/
+  const LABEL_ATTR = /[\s:](?:v-bind:)?aria-label(?:ledby)?\s*=/
+  const GROUP_ROLE = /[\s:](?:v-bind:)?role\s*=\s*(?:"[^"]*\bgroup\b[^"]*"|'[^']*\bgroup\b[^']*')/
+
+  /** The opening tag the match at `idx` belongs to, or '' when the match is not
+   *  inside one (a `.wtTagFilterBar` mentioned in a `<style>` block, say). */
+  function enclosingTag(source: string, idx: number): string {
+    const start = source.lastIndexOf('<', idx)
+    if (start === -1 || !/^<[\w-]/.test(source.slice(start, start + 2))) return ''
+    const end = tagEnd(source, start)
+    // `end < idx` means the tag closed before the match — so the match is in the
+    // element's CONTENT or in some other construct, not in its attributes.
+    if (end === -1 || end < idx) return ''
+    return source.slice(start, end + 1)
+  }
+
+  /** The expression bound to `wtTagChipActive:` — read to the `,` or `}` that
+   *  ends it at depth 0, so `a && b` and `f(x, y)` both survive intact. */
+  function activeExpression(source: string, from: number): string {
+    let depth = 0
+    let quote: string | null = null
+    for (let i = from; i < source.length; i++) {
+      const c = source[i]
+      if (quote) {
+        if (c === quote) quote = null
+        continue
+      }
+      if (c === '"' || c === "'" || c === '`') { quote = c; continue }
+      if (c === '{' || c === '[' || c === '(') { depth++; continue }
+      if (depth > 0 && (c === '}' || c === ']' || c === ')')) { depth--; continue }
+      if (depth === 0 && (c === ',' || c === '}')) return source.slice(from, i)
+    }
+    return source.slice(from)
+  }
+
+  /**
+   * Collapse whitespace, and drop a redundant boolean→string ternary tail.
+   * `:aria-pressed="x"` and `:aria-pressed="x ? 'true' : 'false'"` render the
+   * identical attribute (Vue passes a bound boolean straight to `setAttribute`,
+   * and `aria-pressed` is not an HTML boolean attribute), and four components
+   * already use the longer form. Normalizing means the guard tests whether the
+   * two states can DRIFT, not which of two identical spellings was chosen.
+   */
+  function normalizeExpr(expr: string): string {
+    return expr
+      .replace(/\?\s*(['"])true\1\s*:\s*(['"])false\2\s*$/, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+  }
+
+  /** Every chip binding the active class, as { tag, active, pressed }. */
+  function activeChips(source: string): { tag: string; active: string; pressed: string | null }[] {
+    const out: { tag: string; active: string; pressed: string | null }[] = []
+    for (const m of source.matchAll(ACTIVE_CLASS)) {
+      const tag = enclosingTag(source, m.index)
+      if (!tag) continue
+      const p = PRESSED_ATTR.exec(tag)
+      out.push({
+        tag,
+        active: normalizeExpr(activeExpression(source, m.index + m[0].length)),
+        pressed: p ? normalizeExpr(p[1] ?? p[2]) : null,
+      })
+    }
+    return out
+  }
+
+  /** Every filter-bar container, as its opening-tag text. */
+  function filterBars(source: string): string[] {
+    const out: string[] = []
+    for (const m of source.matchAll(FILTER_BAR)) {
+      const tag = enclosingTag(source, m.index)
+      if (tag) out.push(tag)
+    }
+    return out
+  }
+
+  const vueFiles = () => getSourceFiles().filter(f => f.path.endsWith('.vue'))
+
+  it('reads the real components and finds every chip and row (non-vacuity)', () => {
+    const tracker = vueFiles().find(f => f.path.endsWith('WorkoutTracker.vue'))!
+    const calendar = vueFiles().find(f => f.path.endsWith('CalendarView.vue'))!
+    // Two reset chips + the gym and tag `v-for` chips; if any drops out of the
+    // scan the check below passes vacuously over the exact gap it exists for.
+    expect(activeChips(stripComments(tracker.content))).toHaveLength(4)
+    expect(activeChips(stripComments(calendar.content))).toHaveLength(1)
+    expect(filterBars(stripComments(tracker.content))).toHaveLength(2)
+    expect(filterBars(stripComments(calendar.content))).toHaveLength(1)
+  })
+
+  it('flags the LIFT-1469 shapes and accepts each correct spelling (self-test)', () => {
+    const reset =
+      '<button :class="[\'wtTagChip\', { wtTagChipActive: !effectiveGymFilter }]" ' +
+      'aria-label="Show exercises from all gyms">All Gyms</button>'
+    // The chip as it shipped: styled active, announcing nothing.
+    expect(activeChips(reset)[0].pressed).toBe(null)
+
+    const fixed = reset.replace('aria-label=', ':aria-pressed="!effectiveGymFilter" aria-label=')
+    expect(activeChips(fixed)[0].pressed).toBe(activeChips(fixed)[0].active)
+
+    // The redundant-ternary spelling is the same state, not a violation.
+    const ternary = reset.replace(
+      'aria-label=',
+      ':aria-pressed="!effectiveGymFilter ? \'true\' : \'false\'" aria-label=',
+    )
+    expect(activeChips(ternary)[0].pressed).toBe(activeChips(ternary)[0].active)
+
+    // Drift — the class and the announced state read different things.
+    const drifted = reset.replace('aria-label=', ':aria-pressed="somethingElse" aria-label=')
+    expect(activeChips(drifted)[0].pressed).not.toBe(activeChips(drifted)[0].active)
+
+    // A hardcoded state is drift too: it can never go back to false.
+    const frozen = reset.replace('aria-label=', 'aria-pressed="true" aria-label=')
+    expect(activeChips(frozen)[0].pressed).not.toBe(activeChips(frozen)[0].active)
+
+    // A multi-clause expression must survive the `,`/`}` scan intact.
+    const compound =
+      '<button :class="[\'wtTagChip\', { wtTagChipActive: a.length === 0 && !q }]" ' +
+      ':aria-pressed="a.length === 0 && !q">All</button>'
+    expect(activeChips(compound)[0].active).toBe('a.length === 0 && !q')
+    expect(activeChips(compound)[0].pressed).toBe(activeChips(compound)[0].active)
+
+    // The action chips never bind the active class, so they are out of scope
+    // without an exception list — `aria-pressed` would be wrong on them.
+    expect(activeChips('<button class="wtTagChip wtTagChipManage">Manage</button>')).toHaveLength(0)
+
+    // Rows: labelled group accepted, bare div flagged, CSS mention ignored.
+    expect(filterBars('<div class="wtTagFilterBar" role="group" aria-label="Filter by tag">')).toHaveLength(1)
+    expect(GROUP_ROLE.test(filterBars('<div class="wtTagFilterBar">')[0])).toBe(false)
+    expect(filterBars('<style>\n.wtTagFilterBar { gap: 8px; }\n</style>')).toHaveLength(0)
+  })
+
+  it('no filter chip conveys its active state by colour alone', () => {
+    const violations: string[] = []
+    for (const file of vueFiles()) {
+      for (const chip of activeChips(stripComments(file.content))) {
+        if (chip.pressed === chip.active) continue
+        violations.push(
+          `${file.path} — a chip binding wtTagChipActive must bind aria-pressed ` +
+          `to the SAME expression, or its on/off state is conveyed by colour ` +
+          `alone (WCAG 1.4.1/4.1.2, LIFT-1469). class="${chip.active}" vs ` +
+          `aria-pressed=${chip.pressed === null ? 'absent' : `"${chip.pressed}"`}: ` +
+          chip.tag.replace(/\s+/g, ' ').slice(0, 110),
+        )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  it('every filter chip row is an introduced group', () => {
+    const violations: string[] = []
+    for (const file of vueFiles()) {
+      for (const tag of filterBars(stripComments(file.content))) {
+        if (GROUP_ROLE.test(tag) && LABEL_ATTR.test(tag)) continue
+        violations.push(
+          `${file.path} — a .wtTagFilterBar must carry role="group" and an ` +
+          'aria-label, or its chips are announced as an unintroduced run of ' +
+          'buttons with nothing saying what they filter (LIFT-1469): ' +
+          tag.replace(/\s+/g, ' ').slice(0, 110),
         )
       }
     }
@@ -2370,6 +2574,64 @@ describe('Invariant: the exercise picker has one implementation (LIFT-1375)', ()
       "first — the calendar's leaked archived exercises and lost the " +
       '"+ New exercise" row (LIFT-1375). Import the component, bind `exercises`, ' +
       'and handle `select` + `create-new` instead.',
+    ).toEqual([])
+  })
+
+  /**
+   * A host that traps focus into the picker must focus the DIALOG, not its
+   * first focusable descendant (LIFT-1462).
+   *
+   * `useFocusTrap` focuses the first focusable by default, which was harmless
+   * while that was an exercise row `<button>`. The search field made it a text
+   * input, and on iOS a programmatically-focused input shows a caret, withholds
+   * the soft keyboard, and won't raise it on a later tap either — the field is
+   * already focused (#830). The picker would open onto a dead search box.
+   *
+   * Derived from the ids the picker's dialog can carry rather than a list of
+   * hosts, because the host that needs this most does not exist yet:
+   * WorkoutTracker drives the picker with a bare ref today, and LIFT-1380 is
+   * open to route it through `useModal` — at which point this rule starts
+   * applying to it with nothing further to remember.
+   */
+  it('focuses the dialog, not the search field, wherever it traps focus', () => {
+    const files = getSourceFiles()
+    const picker = files.find(f => f.path === PICKER)!
+
+    // Every id the picker's <h2> can carry: the prop default plus each literal
+    // bound by a host.
+    const titleIds = new Set<string>()
+    const defaultId = picker.content.match(/titleId:\s*'([^']+)'/)
+    if (defaultId) titleIds.add(defaultId[1])
+    for (const f of files) {
+      for (const m of f.content.matchAll(/<ExercisePickerModal\b[^>]*?\btitle-id="([^"]+)"/gs)) {
+        titleIds.add(m[1])
+      }
+    }
+    expect(titleIds.size, 'found no picker dialog ids — the scan below is vacuous')
+      .toBeGreaterThan(0)
+
+    // `useModal({ ... })` calls whose selector names one of those dialogs.
+    const trapping: { path: string; options: string }[] = []
+    for (const f of files) {
+      for (const m of stripComments(f.content).matchAll(/useModal\(\s*\{([\s\S]*?)\}\s*\)/g)) {
+        if ([...titleIds].some(id => m[1].includes(id))) {
+          trapping.push({ path: f.path, options: m[1] })
+        }
+      }
+    }
+    expect(trapping.length, 'no host traps focus into the picker — the scan below is vacuous')
+      .toBeGreaterThan(0)
+
+    const violations = trapping
+      .filter(t => !/focusContainer:\s*true/.test(t.options))
+      .map(t => t.path)
+
+    expect(violations, violations.length === 0 ? '' :
+      violations.join(', ') + ' traps focus into the exercise picker without ' +
+      '`focusContainer: true`, so the trap focuses the first focusable — the ' +
+      'search field once the list passes the threshold (LIFT-1462). On iOS that ' +
+      'shows a caret, withholds the keyboard, and will not raise it on a later ' +
+      'tap either, because the field is already focused (#830).',
     ).toEqual([])
   })
 })

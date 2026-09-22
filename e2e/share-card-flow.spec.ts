@@ -66,7 +66,7 @@ async function saveAndAssertPng(page: Page, saveButton: Locator) {
   await saveButton.click()
   const download = await downloadPromise
 
-  expect(download.suggestedFilename()).toMatch(/^lift-.*\.png$/)
+  expect(download.suggestedFilename()).toMatch(/^logbook-.*\.png$/)
 
   const path = await download.path()
   expect(path).toBeTruthy()

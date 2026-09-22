@@ -56,8 +56,8 @@ export default defineConfig({
         // orphan existing installs and spawn a duplicate app. Pinning id to the current
         // derived value ('/') keeps identity stable regardless of start_url changes.
         id: '/',
-        name: 'Lift — Workout Tracker',
-        short_name: 'Lift',
+        name: 'Logbook — Workout Tracker',
+        short_name: 'Logbook',
         description: 'Free, offline-capable PWA workout tracker. Log sets, track estimated 1RM progress, visualize training history, and hit new PRs.',
         theme_color: '#0f0f0f',
         background_color: '#0f0f0f',

@@ -269,8 +269,10 @@ onUnmounted(() => {
 .wcHeroNumber {
   margin-top: 12px;
   /* Scales with the viewport so a six-figure volume can't run to the bezels
-     on a 375pt screen the way a fixed 88px did. */
-  font: 800 clamp(52px, 17vw, 72px) / 1 var(--ff-display);
+     on a 375pt screen the way a fixed 88px did. The two bounds are rem so a
+     raised text size lifts the floor (the vw term is unaffected by it), which
+     is what keeps the hero growing with the labels around it. */
+  font: 800 clamp(3.25rem, 17vw, 4.5rem) / 1 var(--ff-display);
   letter-spacing: -0.045em;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
@@ -306,7 +308,7 @@ onUnmounted(() => {
 }
 
 .wcStatKey {
-  font: 500 10px / 1 var(--ff-mono);
+  font: 500 0.625rem / 1 var(--ff-mono);
   letter-spacing: 0.14em;
   color: var(--text-muted);
 }
@@ -339,7 +341,7 @@ onUnmounted(() => {
 }
 
 .wcBestSetEyebrow {
-  font: 500 10px / 1 var(--ff-mono);
+  font: 500 0.625rem / 1 var(--ff-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -349,7 +351,7 @@ onUnmounted(() => {
 }
 
 .wcBestSetBadge {
-  font: 700 10px / 1 var(--ff-mono);
+  font: 700 0.625rem / 1 var(--ff-mono);
   color: var(--accent);
   background: var(--accent-subtle);
   padding: 4px 8px;
@@ -359,14 +361,14 @@ onUnmounted(() => {
 
 .wcBestSetName {
   margin-top: 12px;
-  font: 700 19px / 1.15 var(--ff-display);
+  font: 700 1.1875rem / 1.15 var(--ff-display);
   letter-spacing: -0.01em;
   color: var(--text-primary);
 }
 
 .wcBestSetWeight {
   margin-top: 8px;
-  font: 600 26px / 1 var(--ff-display);
+  font: 600 1.625rem / 1 var(--ff-display);
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
@@ -436,7 +438,7 @@ onUnmounted(() => {
 
 .wcBreakdownBadge {
   flex: none;
-  font: 700 9px / 1 var(--ff-mono);
+  font: 700 0.5625rem / 1 var(--ff-mono);
   letter-spacing: 0.1em;
   color: var(--accent);
   background: var(--accent-subtle);

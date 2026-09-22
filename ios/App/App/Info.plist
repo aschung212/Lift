@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Lift</string>
+        <string>Logbook</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -67,9 +67,9 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Lift adds the bodyweight you log to Apple Health.</string>
+	<string>Logbook adds the bodyweight you log to Apple Health.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Lift checks Health for weigh-ins it already added, so it never adds one twice.</string>
+	<string>Logbook checks Health for weigh-ins it already added, so it never adds one twice.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

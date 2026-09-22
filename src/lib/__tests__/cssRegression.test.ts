@@ -28,6 +28,23 @@ function getRuleLines(selector: string, source = css): string[] {
   return source.slice(start, end - 1).split('\n').map((l: string) => l.trim()).filter(Boolean)
 }
 
+// Helper: extract the body of a @keyframes at-rule by animation name.
+// Mirrors getRuleLines' brace walk; returns '' when the name is undefined.
+function getKeyframes(name: string, source = css): string {
+  const needle = '\n@keyframes ' + name + ' {'
+  const idx = source.indexOf(needle)
+  if (idx === -1) return ''
+  const start = source.indexOf('{', idx) + 1
+  let depth = 1
+  let end = start
+  while (depth > 0 && end < source.length) {
+    if (source[end] === '{') depth++
+    if (source[end] === '}') depth--
+    end++
+  }
+  return source.slice(start, end - 1)
+}
+
 // Helper: extract the <style> block from a Vue SFC
 function getVueStyleBlock(componentPath: string): string {
   const content = readFileSync(resolve(__dirname, '../../components', componentPath), 'utf-8')
@@ -146,6 +163,79 @@ describe('CSS regression tests', () => {
     // Regression: drag handle hidden behind Dynamic Island in PWA mode (PR #22)
     it('has safe-area-inset-top padding for Dynamic Island', () => {
       expect(lines.some(l => l.includes('safe-area-inset-top'))).toBe(true)
+    })
+  })
+
+  describe('every .repMaxOverlay panel animates in (LIFT-1463)', () => {
+    // The overlay itself fades in (overlayFadeIn, on .repMaxOverlay), so a panel
+    // with no entrance of its own hard-cuts into place against a backdrop that
+    // is still fading — the modal arrives before the scrim it sits on.
+    //
+    // Derived from the .vue sources, not enumerated. Ten of the eleven panels
+    // carry .repMaxModal and inherit modalScaleIn for free, so a hardcoded list
+    // would have listed exactly the ten that were already fine: the one that was
+    // missed is ExerciseDetailModal — the app's most-opened modal — precisely
+    // BECAUSE it is the single panel with its own box class (.wtDetailModal) and
+    // therefore the single one not covered by that inheritance. The next panel
+    // to opt out of .repMaxModal has the same shape and is caught here.
+    const srcRoot = resolve(__dirname, '../..')
+    const panels: { file: string; classes: string[]; scoped: string }[] = []
+    for (const file of collectVueFiles(srcRoot)) {
+      const content = readFileSync(file, 'utf-8')
+      const scoped = allVueStyleBlocks(content)
+      for (const m of content.matchAll(/class="repMaxOverlay\b[^"]*"/g)) {
+        // The panel is the next element carrying a static class attribute.
+        const rest = content.slice((m.index ?? 0) + m[0].length)
+        const panel = rest.match(/>\s*<[a-zA-Z][^>]*?\bclass="([^"]+)"/)
+        if (!panel) continue
+        panels.push({
+          file: relative(srcRoot, file).replace(/\\/g, '/'),
+          classes: panel[1].split(/\s+/).filter(Boolean),
+          scoped,
+        })
+      }
+    }
+
+    it('resolves a panel for every overlay in the sources', () => {
+      // Non-vacuity: a derivation that stops matching would otherwise pass by
+      // finding nothing to check.
+      expect(panels.length).toBeGreaterThanOrEqual(10)
+      expect(panels.every(p => p.classes.length > 0)).toBe(true)
+      // The scan must reach src/views, not just src/components — that is where
+      // the offender lives.
+      expect(panels.some(p => p.classes.includes('wtDetailModal'))).toBe(true)
+    })
+
+    it('every panel class set declares an enter animation', () => {
+      const offenders = panels
+        .filter(p => !p.classes.some(c =>
+          [...getRuleLines('.' + c), ...getRuleLines('.' + c, p.scoped)]
+            .some(l => l.startsWith('animation'))
+        ))
+        .map(p => `${p.file}: .${p.classes.join('.')}`)
+      expect(offenders).toEqual([])
+    })
+
+    it('ExerciseDetailModal enters without animating transform', () => {
+      // Premise, stated rather than assumed: this panel is bound to
+      // useSwipeToDismiss's dragStyle(), which writes an inline `transform`
+      // while the user drags. A RUNNING CSS animation outranks inline author
+      // styles, so an entrance keyframed on `transform` would swallow the first
+      // 250ms of a drag and then snap to it. `translate`/`scale` apply before
+      // `transform` in the same chain, so they compose with the gesture.
+      const sfc = readFileSync(resolve(srcRoot, 'views/ExerciseDetailModal.vue'), 'utf-8')
+      expect(sfc).toContain('dragStyle()')
+
+      const decl = getRuleLines('.wtDetailModal').find(l => l.startsWith('animation'))
+      expect(decl, '.wtDetailModal must declare an animation').toBeDefined()
+      const name = decl?.match(/animation:\s*([\w-]+)/)?.[1] ?? ''
+      const frames = getKeyframes(name)
+      expect(frames, `@keyframes ${name} must exist`).not.toBe('')
+      expect(frames).not.toMatch(/\btransform\s*:/)
+      // …and is not a no-op keyframe that trivially satisfies the line above.
+      expect(frames).toMatch(/\btranslate\s*:/)
+      expect(frames).toMatch(/\bscale\s*:/)
+      expect(frames).toMatch(/\bopacity\s*:/)
     })
   })
 
@@ -1123,15 +1213,196 @@ describe('type scale is rem-anchored (WCAG 1.4.4 — LIFT-988)', () => {
     })
   }
 
-  it('no font-size declaration in index.css uses a fixed px value', () => {
-    // Relative units (rem/em) scale with the user's text-size preference; px does not.
-    const pxFontSizes = css.match(/font-size:\s*[0-9.]+px/g)
-    expect(pxFontSizes, `found fixed-px font-size(s): ${pxFontSizes?.join(', ')}`).toBeNull()
-  })
-
   it('does not pin the root font-size, so 1rem tracks the user preference', () => {
     // A fixed `html { font-size: 16px }` would defeat rem-based scaling.
     expect(css).not.toMatch(/\bhtml\s*\{[^}]*font-size:\s*\d+px/)
+  })
+})
+
+/**
+ * The same rule, over every stylesheet the app ships (LIFT-1460).
+ *
+ * LIFT-988 rem-anchored the scale and guarded it — but only inside
+ * `src/index.css`. Scoped component styles are a second stylesheet with equal
+ * standing, and 49 declarations across 11 screens had gone straight to px
+ * there, so a reader at 150–200% text got a recovery widget and three charts
+ * that did not grow at all while the global chrome around them did. The drift
+ * was visible inside a single block: `WorkoutCompleteView`'s `.wcMicrolabel`
+ * used `var(--font-caption2)` and the adjacent `.wcStatKey` hardcoded 10px.
+ *
+ * DERIVED, not enumerated: the sources come out of a filesystem walk, so a
+ * `.vue` or `.css` added tomorrow is covered the day it lands. A hardcoded
+ * file list is how the original rule came to pin exactly one of the app's ~90
+ * stylesheets, and it is why `src/views/` — which holds the onboarding
+ * wordmark and the AI-coach sheet — was never in scope at all.
+ *
+ * `font` shorthands count. Three of `WorkoutCompleteView`'s seven offenders
+ * were `font: 500 10px / 1 var(--ff-mono)`, which a `font-size:`-only regex
+ * cannot see.
+ *
+ * ONE exemption, and it is a pin rather than a pass: the share cards render
+ * into a fixed 360px surface that html-to-image rasterises, so their text must
+ * NOT track the reader's text preference or the exported PNG would reflow.
+ */
+describe('component stylesheets are rem-anchored too (WCAG 1.4.4 — LIFT-1460)', () => {
+  const SRC = resolve(__dirname, '../..')
+  const REPO = resolve(SRC, '..')
+
+  /** Fixed-size export surface: px there is correct. See the assertion below. */
+  const CARD_DIR = 'src/components/share/cards/'
+  /** The one px declaration outside CARD_DIR, pinned to its shareImage.ts twin. */
+  const WATERMARK_SELECTOR = '.spWatermark'
+
+  function collectCssFiles(dir: string): string[] {
+    const out: string[] = []
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === '__tests__') continue
+      const full = resolve(dir, entry.name).replace(/\\/g, '/')
+      if (entry.isDirectory()) out.push(...collectCssFiles(full))
+      else if (entry.name.endsWith('.css')) out.push(full)
+    }
+    return out
+  }
+
+  const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
+
+  /**
+   * Drop `var(--x, fallback)` references. A fallback only applies when the
+   * token is undefined, which never happens here — flagging `var(--font-
+   * callout, 14px)` would be a false positive. Repeated so nested vars unwind.
+   */
+  function stripVars(value: string): string {
+    let out = value
+    for (let i = 0; i < 8; i++) {
+      const next = out.replace(/var\([^()]*\)/g, '')
+      if (next === out) break
+      out = next
+    }
+    return out
+  }
+
+  type Decl = { file: string; selector: string; prop: string; raw: string }
+
+  /** Every `font-size:` / `font:` declaration, keyed to its innermost rule. */
+  function collectFontDecls(source: string, file: string): Decl[] {
+    const out: Decl[] = []
+    // Innermost-rule match: the inner `[^{}]*` cannot span a nested block, so
+    // an @media/@supports prelude never captures as a selector while the rules
+    // inside it still do.
+    for (const rule of stripComments(source).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      for (const d of rule[2].matchAll(/(?:^|;)\s*(font-size|font)\s*:\s*([^;]+)/g)) {
+        out.push({ file, selector: rule[1].trim().replace(/\s+/g, ' '), prop: d[1], raw: d[2].trim() })
+      }
+    }
+    return out
+  }
+
+  const decls: Decl[] = []
+  for (const file of [...collectVueFiles(SRC), ...collectCssFiles(SRC)]) {
+    const content = readFileSync(file, 'utf-8')
+    const rel = relative(REPO, file).replace(/\\/g, '/')
+    const source = file.endsWith('.vue') ? allVueStyleBlocks(content) : content
+    if (source.trim()) decls.push(...collectFontDecls(source, rel))
+  }
+
+  const hasPx = (raw: string) => /[\d.]+px/.test(stripVars(raw))
+
+  it('found the declarations to check — in components, views AND cards', () => {
+    // Non-vacuity. A walk or regex that stopped matching would turn the checks
+    // below into assertions about an empty list, which is the failure mode this
+    // whole file exists to prevent (LIFT-1412).
+    expect(decls.length).toBeGreaterThan(300)
+    expect(decls.some((d) => d.file === 'src/index.css')).toBe(true)
+    expect(decls.some((d) => d.file.includes('/views/'))).toBe(true)
+    expect(decls.some((d) => d.file.startsWith(CARD_DIR))).toBe(true)
+    // The `font` shorthand really is reachable — three of LIFT-1460's offenders
+    // were shorthands, and a `font-size:`-only scan saw none of them.
+    expect(decls.some((d) => d.prop === 'font')).toBe(true)
+    // And the px detector fires on the shapes that shipped, while the var
+    // fallback (always resolved in practice) is correctly ignored.
+    expect(hasPx('500 10px / 1 var(--ff-mono)')).toBe(true)
+    expect(hasPx('clamp(52px, 17vw, 72px)')).toBe(true)
+    expect(hasPx('var(--font-callout, 14px)')).toBe(false)
+    expect(hasPx('var(--font-caption2)')).toBe(false)
+    expect(hasPx('0.625rem')).toBe(false)
+  })
+
+  it('no font-size or font shorthand outside the share cards uses a fixed px value', () => {
+    const offenders = decls
+      .filter((d) => !d.file.startsWith(CARD_DIR))
+      .filter((d) => !d.selector.split(',').some((s) => s.trim() === WATERMARK_SELECTOR))
+      .filter((d) => hasPx(d.raw))
+      .map((d) => `${d.file} \`${d.selector}\` ${d.prop}: ${d.raw}`)
+
+    expect(
+      offenders,
+      'fixed-px text ignores the reader\'s browser/OS text size (WCAG 1.4.4). '
+        + 'Use the nearest --font-* token, or a rem equivalent (9px = 0.5625rem, '
+        + `10px = 0.625rem, 14px = 0.875rem):\n${offenders.join('\n')}`,
+    ).toEqual([])
+  })
+
+  it('every --font-* token a component reaches for resolves to a real px size', () => {
+    // The other half of the conversion. Swapping `13px` for
+    // `var(--font-footnote)` only holds if the token exists — a typo'd or
+    // retired token silently resolves to the *initial* value (medium, ~16px)
+    // and there is no error anywhere, which is how `--bg-tertiary` rendered
+    // transparent in all 20 theme variants for months (LIFT-1094). The
+    // existing token-resolution test reads index.css alone, so until now
+    // nothing checked the references scoped component styles make.
+    const declared = new Map<string, string>()
+    for (const m of stripComments(css).matchAll(/(--font-[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
+      declared.set(m[1], m[2].trim())
+    }
+    expect(declared.size, 'no --font-* tokens parsed out of index.css').toBeGreaterThan(10)
+
+    const unresolved: string[] = []
+    for (const d of decls) {
+      if (d.file === 'src/index.css') continue
+      for (const ref of d.raw.matchAll(/var\(\s*(--font-[a-z0-9-]+)\s*[,)]/gi)) {
+        const size = declared.get(ref[1])
+        if (size === undefined) unresolved.push(`${d.file} \`${d.selector}\` → ${ref[1]} is not declared`)
+        else if (!/^[\d.]+rem$/.test(size)) unresolved.push(`${d.file} \`${d.selector}\` → ${ref[1]} is \`${size}\`, not rem`)
+      }
+    }
+    expect(unresolved, unresolved.join('\n')).toEqual([])
+
+    // Non-vacuity: the components really do reference the tokens this PR moved
+    // them onto, so the loop above is checking something.
+    const referenced = new Set(
+      decls.filter((d) => d.file !== 'src/index.css')
+        .flatMap((d) => [...d.raw.matchAll(/var\(\s*(--font-[a-z0-9-]+)/gi)].map((m) => m[1])),
+    )
+    for (const t of ['--font-caption2', '--font-caption1', '--font-footnote', '--font-subhead']) {
+      expect(referenced.has(t), `${t} is not referenced by any component`).toBe(true)
+    }
+  })
+
+  it('the share cards are still the fixed-size surface the exemption is for', () => {
+    // The exemption is scoped to a directory, so it must not be allowed to
+    // outlive the reason for it. These cards are rendered at a fixed 360px and
+    // rasterised by html-to-image; if that stops being true, px stops being
+    // correct there and this exemption has to be revisited rather than kept.
+    const picker = readFileSync(resolve(SRC, 'components/share/SharePickerSheet.vue'), 'utf-8')
+    expect(picker).toMatch(/\.spThumbInner\s*\{[^}]*width:\s*360px/)
+    expect(picker).toMatch(/cardComponent\(/)
+    expect(decls.filter((d) => d.file.startsWith(CARD_DIR) && hasPx(d.raw)).length).toBeGreaterThan(20)
+  })
+
+  it('the preview watermark matches the px size shareImage.ts exports', () => {
+    // .spWatermark sits INSIDE that 360px surface and is a copy of
+    // createWatermarkElement(), which builds an inline style string and so can
+    // read no stylesheet. Pinning the two together is what makes the exemption
+    // self-justifying: change one and this fails, rather than letting the
+    // preview silently stop matching the PNG.
+    const picker = readFileSync(resolve(SRC, 'components/share/SharePickerSheet.vue'), 'utf-8')
+    const shareImage = readFileSync(resolve(SRC, 'lib/shareImage.ts'), 'utf-8')
+
+    const inCss = stripComments(picker).match(/\.spWatermark\s*\{[^}]*font-size:\s*([\d.]+px)/)
+    const inTs = shareImage.match(/'font-size:\s*([\d.]+px)'/)
+    expect(inCss, '.spWatermark font-size not found in SharePickerSheet.vue').not.toBeNull()
+    expect(inTs, "font-size not found in shareImage.ts's createWatermarkElement()").not.toBeNull()
+    expect(inCss![1]).toBe(inTs![1])
   })
 })
 

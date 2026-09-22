@@ -18,7 +18,7 @@ export default defineConfig({
     timeout: isCI ? 30000 : 15000,
   },
   projects: [
-    // WebKit is the primary target: Lift is an iOS-first PWA shipping in
+    // WebKit is the primary target: Logbook is an iOS-first PWA shipping in
     // WKWebView via Capacitor, and Safari-only behaviors (container scroll-lock,
     // backdrop-filter glass, viewport keyboard, safe-area insets) don't repro on
     // Blink. The iPhone 14 Pro descriptor supplies an accurate mobile-Safari

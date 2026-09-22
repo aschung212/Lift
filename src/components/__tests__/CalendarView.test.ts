@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { getLocalStorageMock, mockAnalytics, mockWeightUnit } from '../../__tests__/helpers'
 import { bodyweightFold } from '../../lib/bodyweightLoad'
@@ -551,6 +552,18 @@ describe('CalendarView', () => {
       expect(navBtns[1].attributes('aria-label')).toBe('Next')
     })
 
+    // LIFT-1469. The calendar's row shipped as a bare <div>, so its chips were
+    // announced as an unintroduced run of buttons ("Push, button") with nothing
+    // saying what they filtered — while the workout tab's gym row one screen
+    // over was a properly-introduced group.
+    it('the tag filter row is an introduced group', () => {
+      exercises = makeExercises(['2026-03-31'])
+      const wrapper = mountCalendar()
+      const bar = wrapper.find('.wtTagFilterBar')
+      expect(bar.attributes('role')).toBe('group')
+      expect(bar.attributes('aria-label')).toBe('Filter by tag')
+    })
+
     it('view toggle buttons have aria-pressed', () => {
       const wrapper = mountCalendar()
       const btns = wrapper.findAll('.calToggleBtn')
@@ -944,6 +957,68 @@ describe('CalendarView', () => {
 
       expect(wrapper.find('[aria-labelledby="cal-modal-title"]').exists()).toBe(true)
       expect(wrapper.find('#cal-modal-title').text()).toBe('Bench Press')
+    })
+
+    /**
+     * The picker's focus trap must focus the DIALOG, not its first focusable
+     * descendant (LIFT-1462).
+     *
+     * That descendant used to be an exercise row — a button, harmless to focus.
+     * Adding the search field made it a text input, and `useFocusTrap`'s default
+     * is first-focusable: on iOS a programmatically-focused input shows a caret,
+     * withholds the soft keyboard, and won't raise it on a later tap either,
+     * because the field is already focused (#830). The backfill picker would
+     * have opened onto a dead search box.
+     *
+     * These mounts attach to the document because `useModal` resolves its trap
+     * element with `document.querySelector` — the rest of this file's mounts are
+     * detached, so the trap silently never activates in them and a focus
+     * assertion there would pass no matter what the option said.
+     */
+    describe('focus on open', () => {
+      // Attached mounts must be torn down even when an assertion throws:
+      // `useModal` resolves its trap with `document.querySelector`, so a
+      // leaked dialog would be the one the NEXT test's trap grabs, and that
+      // test would then report focus on an element from the previous mount.
+      let attached: ReturnType<typeof mount> | null = null
+      afterEach(() => {
+        attached?.unmount()
+        attached = null
+      })
+
+      async function openAttachedPicker() {
+        attached = mount(CalendarView, {
+          attachTo: document.body,
+          global: { stubs: { Teleport: true } },
+        })
+        await attached.find('.calCellToday').trigger('click')
+        await attached.find('.calLogBtn').trigger('click')
+        await nextTick()
+        return attached
+      }
+
+      it('focuses the dialog rather than the search field', async () => {
+        // Past the search threshold, so the field is the first focusable.
+        exercises = Array.from({ length: 6 }, (_, i) => ({
+          id: `ex-${i}`, name: `Exercise ${i}`, tags: [], sets: [],
+        }))
+        const wrapper = await openAttachedPicker()
+
+        const dialog = wrapper.find('[aria-labelledby="calendar-picker-title"]')
+        const input = wrapper.find('.wtSearchInput')
+        expect(input.exists()).toBe(true)
+        expect(document.activeElement).not.toBe(input.element)
+        expect(document.activeElement).toBe(dialog.element)
+      })
+
+      it('focuses the dialog below the threshold too, not the first exercise', async () => {
+        exercises = [{ id: 'ex-1', name: 'Bench Press', tags: ['Chest'], sets: [] }]
+        const wrapper = await openAttachedPicker()
+
+        expect(wrapper.find('.wtSearchInput').exists()).toBe(false)
+        expect(document.activeElement)
+          .toBe(wrapper.find('[aria-labelledby="calendar-picker-title"]').element)
+      })
     })
   })
 })

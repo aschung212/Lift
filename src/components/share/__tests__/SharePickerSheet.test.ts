@@ -16,7 +16,7 @@ vi.mock('../../../composables/useAnalytics', () => ({
 }))
 
 const mockShareCard = vi.fn().mockResolvedValue({ kind: 'shared' })
-const mockDownloadCard = vi.fn().mockResolvedValue({ kind: 'downloaded', filename: 'lift.png' })
+const mockDownloadCard = vi.fn().mockResolvedValue({ kind: 'downloaded', filename: 'logbook.png' })
 vi.mock('../../../composables/useWorkoutShare', () => ({
   useWorkoutShare: () => ({
     shareCard: mockShareCard,

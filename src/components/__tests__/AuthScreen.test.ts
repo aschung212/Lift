@@ -29,7 +29,7 @@ describe('AuthScreen', () => {
 
   describe('rendering', () => {
     it('displays the app name and tagline', () => {
-      expect(wrapper.find('.authLogo').text()).toBe('Lift')
+      expect(wrapper.find('.authLogo').text()).toBe('Logbook')
       expect(wrapper.find('.authTagline').text()).toContain('Track your sets')
     })
 

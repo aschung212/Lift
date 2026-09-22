@@ -2,7 +2,7 @@
   <div class="bsRoot">
     <div class="bsHead">
       <div class="bsBrand">
-        <span class="bsMark">Lift</span>
+        <span class="bsMark">Logbook</span>
         <span class="bsHandle">{{ SHARE_CARD_HANDLE }}</span>
       </div>
       <div class="bsDate">{{ summary.date }}</div>

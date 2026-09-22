@@ -110,28 +110,28 @@ Morning,2026-04-01T08:00:00Z,2026-04-01T09:00:00Z,Squat,,,,normal,100,3,,,,`
     })
   })
 
-  describe('Lift format', () => {
+  describe('Logbook format', () => {
     it('round-trips the labeled "Weight (lbs)" header from current exports (LIFT-1215)', () => {
-      const csv = `# Lift Export — 2026-04-05 — v1.0.0 — abc123 — weights in lbs
+      const csv = `# Logbook Export — 2026-04-05 — v1.0.0 — abc123 — weights in lbs
 Exercise,Date,Weight (lbs),Reps,Estimated 1RM,Tags
 Bench Press,2026-04-05,225,5,253,chest;push`
 
       const result = importCSV(csv)
-      expect(result.format).toBe('lift')
+      expect(result.format).toBe('logbook')
       expect(result.totalSets).toBe(1)
       expect(result.exercises[0].sets[0].weight).toBe(225)
       expect(result.exercises[0].tags).toEqual(['chest', 'push'])
     })
 
-    it('parses Lift CSV with tags', () => {
-      const csv = `# Lift Export — 2026-04-05 — v1.0.0
+    it('parses Logbook CSV with tags', () => {
+      const csv = `# Logbook Export — 2026-04-05 — v1.0.0
 Exercise,Date,Weight,Reps,Estimated 1RM,Tags
 Bench Press,2026-04-01,185,5,216,Push;Chest
 Bench Press,2026-04-01,185,5,216,Push;Chest
 Squat,2026-04-01,225,3,248,Legs`
 
       const result = importCSV(csv)
-      expect(result.format).toBe('lift')
+      expect(result.format).toBe('logbook')
       expect(result.exercises).toHaveLength(2)
 
       const bench = result.exercises.find(e => e.name === 'Bench Press')!

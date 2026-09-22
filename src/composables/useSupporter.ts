@@ -2,7 +2,7 @@
  * Supporter (paid tier) entitlement — single source of truth (issue #601).
  *
  * Read this anywhere the free vs. paid experience diverges. Today the only
- * consumer is the share-card "Made with Lift" watermark: free users get the
+ * consumer is the share-card "Made with Logbook" watermark: free users get the
  * watermark, supporters get clean cards.
  *
  * Module-level singleton ref so the value is global, not per-component.

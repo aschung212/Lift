@@ -9,7 +9,7 @@
  *   - `buildCoachUserMessage` serializes the payload into a delimited data block.
  *
  * This module composes those into a single ready-to-paste block the user hands
- * to their OWN LLM (Claude, ChatGPT, …). Nothing is sent anywhere by Lift — the
+ * to their OWN LLM (Claude, ChatGPT, …). Nothing is sent anywhere by Logbook — the
  * user copies or downloads it and chooses where to paste. This is an OPEN loop:
  * the coaching lives in the user's chat; there is no JSON round-trip back into
  * the app (that's why the recommended prompt asks for prose, not the server's
@@ -95,5 +95,5 @@ export function buildCoachExportText(payload: CoachPayload, athleteBlock = ''): 
  */
 export function coachExportFilename(dateKey: string): string {
   const safe = /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : 'review'
-  return `lift-ai-review-${safe}.md`
+  return `logbook-ai-review-${safe}.md`
 }

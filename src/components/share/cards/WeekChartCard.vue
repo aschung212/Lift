@@ -3,7 +3,7 @@
     <div class="wcHead">
       <div class="wcEyebrow">Week {{ weekdayLabel }}</div>
       <div class="wcBrand">
-        <span class="wcMark">LIFT</span>
+        <span class="wcMark">LOGBOOK</span>
         <span class="wcHandle">{{ SHARE_CARD_HANDLE }}</span>
       </div>
     </div>

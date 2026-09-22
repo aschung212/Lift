@@ -6,16 +6,18 @@ web listing says.
 
 ## Name
 
-"Lift" alone is contested in App Store search (`Lift: Workout Tracker Gym Log` and others
-exist). Reserve one of these when creating the record — the name reservation tool tells
-you immediately whether it is free:
+The app is **Logbook** — `APP_NAME` in `src/lib/appMeta.ts`, the PWA `short_name`, and
+`CFBundleDisplayName` in the committed `ios/` project all carry it. Check whether the bare
+name is free with the name reservation tool when creating the record (it answers
+immediately); if it is taken, reserve one of these instead, in order of preference:
 
-1. **Lift — Workout Tracker** (the og:title the site already uses)
-2. **Liftlog**
-3. **Lift PR**
-4. **Lift Tracker by Aaron Chung**
+1. **Logbook — Workout Tracker** (the og:title the site already uses)
+2. **Logbook: Workout Tracker**
+3. **Logbook Workout Log by Aaron Chung**
 
-The in-app name stays "Lift" (`CFBundleDisplayName`) regardless of the store name.
+The in-app name stays "Logbook" (`CFBundleDisplayName`) regardless of the store name. The
+bundle ID (`com.aschung212.lift`) and SKU (`lift-ios`) keep the original codename: they are
+identity, not branding, and cannot change once the record exists.
 
 ## Fields
 
@@ -39,8 +41,8 @@ The in-app name stays "Lift" (`CFBundleDisplayName`) regardless of the store nam
 ## Description (4000)
 
 ```
-Lift is a workout tracker that stays out of your way. Log weight and reps in two taps,
-and Lift does the rest: estimated one-rep max on every set, PR detection with a trophy on
+Logbook is a workout tracker that stays out of your way. Log weight and reps in two taps,
+and Logbook does the rest: estimated one-rep max on every set, PR detection with a trophy on
 the row that earned it, and a chart per exercise that shows where your strength is going.
 
 TRACK
@@ -62,7 +64,7 @@ KEEP
 • Ten themes unlocked by training, light and dark
 
 PRIVACY
-Lift stores what you enter and nothing else. No ads, no tracking, no selling data. Apple
+Logbook stores what you enter and nothing else. No ads, no tracking, no selling data. Apple
 Health sync is opt-in and write-only. Full policy: spa-rho-sandy.vercel.app/legal/privacy.html
 ```
 
@@ -100,7 +102,7 @@ phones if these are omitted. iPad screenshots are not needed: the target is iPho
 - Notes template:
 
 ```
-Lift is a workout tracker. No account is required (tap "Continue without an account");
+Logbook is a workout tracker. No account is required (tap "Continue without an account");
 a demo account is provided above for the synced experience. Apple Health is used only to
 WRITE bodyweight entries the user logs, opt-in from Settings → Apple Health; the app reads
 back only the samples it wrote. There is no third-party sign-in on this build; Sign in

@@ -100,7 +100,7 @@ const { shareCard, downloadCard, isSharing } = useWorkoutShare()
 const { isSupporter } = useSupporter()
 const { logEvent } = useAnalytics()
 
-// Free tier gets the "Made with Lift" watermark; supporters get clean cards.
+// Free tier gets the "Made with Logbook" watermark; supporters get clean cards.
 const showWatermark = computed(() => !isSupporter.value)
 
 const FORMAT_OPTIONS: { value: CardFormat; label: string }[] = [
@@ -254,7 +254,7 @@ onUnmounted(() => {
 .spCount {
   font-family: var(--ff-mono);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-caption2);
   letter-spacing: 0.12em;
   color: var(--text-muted);
 }
@@ -355,7 +355,15 @@ onUnmounted(() => {
 
 /* Mirrors createWatermarkElement() in shareImage.ts so the preview matches
    the exported PNG exactly. Lives inside .spThumbInner (the 360px card
-   surface) so it scales down with the thumbnail. */
+   surface) so it scales down with the thumbnail.
+
+   The px font-size is deliberate and is the one exception to the rem-anchored
+   type scale (LIFT-1460): this text is part of a fixed 360px card that
+   html-to-image rasterises at a fixed size, exactly like src/components/
+   share/cards/**. In rem it would rescale with the reader's text preference
+   and shift the watermark inside the exported PNG — and drift from the px
+   literal in shareImage.ts, which has no stylesheet to read. Both sizes are
+   pinned together in cssRegression.test.ts. */
 .spWatermark {
   position: absolute;
   right: 14px;
@@ -373,7 +381,7 @@ onUnmounted(() => {
 .spThumbLabel {
   font-family: var(--ff-mono);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-caption2);
   line-height: 1;
   letter-spacing: 0.12em;
   text-transform: uppercase;

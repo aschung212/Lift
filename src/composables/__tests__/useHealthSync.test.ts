@@ -175,7 +175,7 @@ describe('useHealthSync', () => {
     expect(api.pendingCount.value).toBe(1)
   })
 
-  it('marks entries Health already holds from Lift without writing them again', async () => {
+  it('marks entries Health already holds from Logbook without writing them again', async () => {
     const { useHealthSync, store } = await load()
     const api = useHealthSync()
     await api.enable() // nothing logged yet: an empty backfill
@@ -185,7 +185,7 @@ describe('useHealthSync', () => {
       samples: [
         // A previous install (or another iPhone on this account) already wrote `a`.
         { dataType: 'weight', value: lbsToKg(185), unit: 'kilogram', startDate: healthSampleInstant('2026-09-14T23:59:00.000Z'), endDate: healthSampleInstant('2026-09-14T23:59:00.000Z'), sourceId: APP_BUNDLE_ID },
-        // A scale logged the same number as `b` — that is not Lift's sample.
+        // A scale logged the same number as `b` — that is not Logbook's sample.
         { dataType: 'weight', value: lbsToKg(186), unit: 'kilogram', startDate: healthSampleInstant('2026-09-13T23:59:00.000Z'), endDate: healthSampleInstant('2026-09-13T23:59:00.000Z'), sourceId: 'com.example.scale' },
       ],
     })

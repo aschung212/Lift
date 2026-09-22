@@ -48,7 +48,7 @@ describe('useBodyweightExport', () => {
     const { exportCsv } = useBodyweightExport()
     const result = await exportCsv()
 
-    const filename = `lift-bodyweight-lbs-${todayISO()}.csv`
+    const filename = `logbook-bodyweight-lbs-${todayISO()}.csv`
     expect(result).toEqual({ kind: 'downloaded', filename })
     expect(downloadBlobMock).toHaveBeenCalledTimes(1)
     expect(downloadBlobMock).toHaveBeenCalledWith(expect.any(Blob), filename)
@@ -65,7 +65,7 @@ describe('useBodyweightExport', () => {
     expect(shareMock).toHaveBeenCalledTimes(1)
     const payload = shareMock.mock.calls[0][0] as ShareData
     expect(payload.files).toHaveLength(1)
-    expect(payload.files![0].name).toBe(`lift-bodyweight-lbs-${todayISO()}.csv`)
+    expect(payload.files![0].name).toBe(`logbook-bodyweight-lbs-${todayISO()}.csv`)
     expect(payload.files![0].type).toBe('text/csv')
     expect(downloadBlobMock).not.toHaveBeenCalled()
     expect(logEventMock).toHaveBeenCalledWith('bodyweight_export', { outcome: 'shared' })

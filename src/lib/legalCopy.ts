@@ -1,5 +1,5 @@
 /**
- * The ONE source of Lift's Privacy Policy and Terms of Service (#537).
+ * The ONE source of Logbook's Privacy Policy and Terms of Service (#537).
  *
  * Rendered in two places from this file: the in-app Legal sheet
  * (LegalSheet.vue) and the static pages the build emits at
@@ -7,7 +7,7 @@
  * public URLs App Store Connect, the App Privacy questionnaire and App Review
  * point at. Two copies of legal text drift; this is why there is one.
  *
- * When a feature changes what Lift collects or who it sends data to (a new
+ * When a feature changes what Logbook collects or who it sends data to (a new
  * third party, a new data type, a new permission), change it HERE, and in the
  * same commit update the iOS privacy manifest (scripts/configure-ios.mjs) and
  * the App Privacy answers (docs/app-store/) — Apple compares all three.
@@ -39,44 +39,44 @@ export interface LegalDocument {
 }
 
 /** ISO date of the latest change to either document. Bump when the words change. */
-export const LEGAL_UPDATED = '2026-09-15'
+export const LEGAL_UPDATED = '2026-09-21'
 
 export const LEGAL_CONTACT_EMAIL = 'aaronschung@gmail.com'
 
 export const PRIVACY_POLICY: LegalSection[] = [
   {
-    heading: 'What Lift collects',
+    heading: 'What Logbook collects',
     paragraphs: [
-      'Lift stores what you enter: exercises, sets, reps, weights, notes, tags, gyms, and bodyweight entries. Nothing is inferred from your device beyond that.',
-      'If you create an account, Lift stores your email address and an account ID to sign you in and sync your data. If you sign in with Google, Google shares your email address and Google account ID with Lift; Lift never sees your Google password.',
-      'If you continue without an account, everything stays on your device and Lift collects nothing at all.',
+      'Logbook stores what you enter: exercises, sets, reps, weights, notes, tags, gyms, and bodyweight entries. Nothing is inferred from your device beyond that.',
+      'If you create an account, Logbook stores your email address and an account ID to sign you in and sync your data. If you sign in with Google, Google shares your email address and Google account ID with Logbook; Logbook never sees your Google password.',
+      'If you continue without an account, everything stays on your device and Logbook collects nothing at all.',
     ],
   },
   {
     heading: 'Where your data lives',
     paragraphs: [
-      'Your data lives on your device first: browser storage in the web app, the app\'s own storage on iOS. If you sign in, it also syncs to Supabase, the cloud database behind Lift, so you can use Lift on more than one device. Data in transit is encrypted with HTTPS.',
-      'Lift does not sell your data, show ads, or use your data for advertising or tracking of any kind.',
+      'Your data lives on your device first: browser storage in the web app, the app\'s own storage on iOS. If you sign in, it also syncs to Supabase, the cloud database behind Logbook, so you can use Logbook on more than one device. Data in transit is encrypted with HTTPS.',
+      'Logbook does not sell your data, show ads, or use your data for advertising or tracking of any kind.',
     ],
   },
   {
     heading: 'Apple Health (iOS app)',
     paragraphs: [
-      'Turning on Sync bodyweight in Settings lets the iOS app write the bodyweight entries you log to the Health app on your iPhone. Lift asks only for permission to write weight. It reads back only the samples it wrote itself, to avoid adding one twice, and never reads any other Health data.',
-      'Health data written this way is held by Apple Health on your device and in your iCloud Health account under Apple\'s terms. Lift keeps no copy of your Health data on its servers beyond the bodyweight entries you already logged in Lift, and never uses Health data for advertising or shares it with third parties.',
+      'Turning on Sync bodyweight in Settings lets the iOS app write the bodyweight entries you log to the Health app on your iPhone. Logbook asks only for permission to write weight. It reads back only the samples it wrote itself, to avoid adding one twice, and never reads any other Health data.',
+      'Health data written this way is held by Apple Health on your device and in your iCloud Health account under Apple\'s terms. Logbook keeps no copy of your Health data on its servers beyond the bodyweight entries you already logged in Logbook, and never uses Health data for advertising or shares it with third parties.',
     ],
   },
   {
     heading: 'AI coach (optional)',
     paragraphs: [
-      'The AI coach is off by default, and nothing is sent unless you use it. When you ask for a review, Lift sends the training summary it shows you, which is your sets, reps, weights and personal records, derived volume and consistency figures, and your bodyweight unless you opt out, to Anthropic, the AI provider, through Lift\'s own server to generate the review.',
-      'Your name, email address and account identifiers are never included. The profile fields you may fill in, such as age and injuries, are included only when you copy or download a review yourself. Lift records that you consented and logs each request for rate limiting. You can turn the coach off at any time.',
+      'The AI coach is off by default, and nothing is sent unless you use it. When you ask for a review, Logbook sends the training summary it shows you, which is your sets, reps, weights and personal records, derived volume and consistency figures, and your bodyweight unless you opt out, to Anthropic, the AI provider, through Logbook\'s own server to generate the review.',
+      'Your name, email address and account identifiers are never included. The profile fields you may fill in, such as age and injuries, are included only when you copy or download a review yourself. Logbook records that you consented and logs each request for rate limiting. You can turn the coach off at any time.',
     ],
   },
   {
     heading: 'Crash reports and analytics',
     paragraphs: [
-      'Lift uses Sentry to collect crash reports so bugs can be fixed. Reports carry no personal data: IP addresses are removed and reports are not tied to your account.',
+      'Logbook uses Sentry to collect crash reports so bugs can be fixed. Reports carry no personal data: IP addresses are removed and reports are not tied to your account.',
       'The web app uses Vercel Analytics for anonymous, aggregated page and feature usage with no personally identifiable information. The iOS app includes no analytics.',
     ],
   },
@@ -95,19 +95,19 @@ export const PRIVACY_POLICY: LegalSection[] = [
     heading: 'Your data, your choice',
     paragraphs: [
       'Export everything as CSV or JSON at any time from Settings, under Data.',
-      'Delete your account and every synced record from Settings, under Danger Zone, with Delete Account. This removes your data from Lift\'s database and your sign-in immediately; there is nothing to request and no waiting period. Without an account, Delete All Data in the same place erases the device copy.',
+      'Delete your account and every synced record from Settings, under Danger Zone, with Delete Account. This removes your data from Logbook\'s database and your sign-in immediately; there is nothing to request and no waiting period. Without an account, Delete All Data in the same place erases the device copy.',
     ],
   },
   {
     heading: 'Children',
     paragraphs: [
-      'Lift is not directed at children under 13, and Lift does not knowingly collect personal data from them.',
+      'Logbook is not directed at children under 13, and Logbook does not knowingly collect personal data from them.',
     ],
   },
   {
     heading: 'Changes',
     paragraphs: [
-      'This policy may change as Lift changes. The date at the top reflects the latest revision.',
+      'This policy may change as Logbook changes. The date at the top reflects the latest revision.',
     ],
   },
   {
@@ -119,39 +119,39 @@ export const PRIVACY_POLICY: LegalSection[] = [
 export const TERMS_OF_SERVICE: LegalSection[] = [
   {
     heading: 'Acceptance',
-    paragraphs: ['By using Lift, on the web or as the iOS app, you agree to these terms. If you do not agree, please do not use Lift.'],
+    paragraphs: ['By using Logbook, on the web or as the iOS app, you agree to these terms. If you do not agree, please do not use Logbook.'],
   },
   {
     heading: 'Description',
     paragraphs: [
-      'Lift is a free workout tracking app provided as-is. Lift makes no guarantees about uptime, data retention, or feature availability, and may change or discontinue features at any time.',
+      'Logbook is a free workout tracking app provided as-is. Logbook makes no guarantees about uptime, data retention, or feature availability, and may change or discontinue features at any time.',
     ],
   },
   {
     heading: 'Your account and your data',
     paragraphs: [
-      'You are responsible for keeping your account credentials secure and for what happens under your account. You retain ownership of everything you enter into Lift, and you can export or delete it at any time from Settings.',
+      'You are responsible for keeping your account credentials secure and for what happens under your account. You retain ownership of everything you enter into Logbook, and you can export or delete it at any time from Settings.',
     ],
   },
   {
     heading: 'Acceptable use',
-    paragraphs: ['Do not attempt to exploit, reverse-engineer, overload, or interfere with the operation of Lift or its infrastructure.'],
+    paragraphs: ['Do not attempt to exploit, reverse-engineer, overload, or interfere with the operation of Logbook or its infrastructure.'],
   },
   {
     heading: 'Health disclaimer',
     paragraphs: [
-      'Lift, including its AI coach, is a tracking tool, not medical advice. Consult a medical professional before starting or changing an exercise program, and stop if something hurts.',
+      'Logbook, including its AI coach, is a tracking tool, not medical advice. Consult a medical professional before starting or changing an exercise program, and stop if something hurts.',
     ],
   },
   {
     heading: 'Limitation of liability',
     paragraphs: [
-      'Lift is provided "as is" without warranty of any kind. To the fullest extent permitted by law, Lift and its author are not liable for any data loss, injury, or damages arising from use of the app.',
+      'Logbook is provided "as is" without warranty of any kind. To the fullest extent permitted by law, Logbook and its author are not liable for any data loss, injury, or damages arising from use of the app.',
     ],
   },
   {
     heading: 'Changes',
-    paragraphs: ['These terms may change. Continued use of Lift after a change means you accept the updated terms. The date at the top reflects the latest revision.'],
+    paragraphs: ['These terms may change. Continued use of Logbook after a change means you accept the updated terms. The date at the top reflects the latest revision.'],
   },
   {
     heading: 'Contact',

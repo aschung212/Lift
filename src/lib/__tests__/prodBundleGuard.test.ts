@@ -1,5 +1,8 @@
 /// <reference types="node" />
 import { describe, it, expect } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 
@@ -133,5 +136,70 @@ describe.each(SURFACES)('production bundle guard: $id', (surface) => {
       })
       expect(offenders).toEqual([])
     })
+  })
+})
+
+// The script itself, run the way CI runs it. Nothing outside CI executed it
+// before, so its contract was unpinned — and LIFT-1169 now depends on the
+// directory argument: deploy-production points it at `.vercel/output/static`,
+// the tree `vercel deploy --prebuilt` uploads, rather than assuming
+// `vercel build` leaves `dist/` behind. Drop the argument handling and that job
+// either scans the wrong tree or hard-fails on a missing one.
+describe('scripts/check-no-dev-surface.js scans the directory it is given', () => {
+  const script = resolve(root, 'scripts/check-no-dev-surface.js')
+
+  function runGuard(...args: string[]) {
+    return spawnSync(process.execPath, [script, ...args], { encoding: 'utf-8' })
+  }
+
+  function withFixture(js: string, run: (relDir: string) => void) {
+    const dir = mkdtempSync(join(tmpdir(), 'lift-guard-'))
+    try {
+      mkdirSync(join(dir, 'assets'))
+      writeFileSync(join(dir, 'assets', 'index-abc123.js'), js)
+      run(dir)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('passes on a clean bundle in the given directory', () => {
+    withFixture('export const a=1;\n', (dir) => {
+      const result = runGuard(dir)
+      expect(result.status, result.stderr).toBe(0)
+    })
+  })
+
+  // Without these the case above would pass just as happily against a guard
+  // that never opened a file. Driven off SURFACES so a third dev-only surface
+  // is covered here by being declared there, rather than by someone
+  // remembering to extend a second list.
+  it.each(SURFACES)('fails when the given directory carries $id (non-vacuity)', (surface) => {
+    withFixture(`const c="${surface.markers[0]}";\n`, (dir) => {
+      const result = runGuard(dir)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain(surface.markers[0])
+    })
+  })
+
+  it('fails loudly when the given directory does not exist', () => {
+    // A silent pass here would be the worst outcome: CI would report the
+    // deployed bundle clean having inspected nothing at all.
+    const result = runGuard(join(tmpdir(), 'lift-guard-does-not-exist'))
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('not found')
+  })
+
+  it('still defaults to dist/ with no argument', () => {
+    // build-and-test invokes it bare (`npm run guard:dev-surface`), so the
+    // argument LIFT-1169 added must not have displaced the default. Compared
+    // against the explicit form rather than asserted on a literal: both runs
+    // see the same tree whether or not a build exists locally, so this holds
+    // in CI (where dist/ is present) and on a clean checkout (where the
+    // matching "not found" message names the path both resolved to).
+    const bare = runGuard()
+    const explicit = runGuard('dist')
+    expect(bare.status).toBe(explicit.status)
+    expect(bare.stderr + bare.stdout).toBe(explicit.stderr + explicit.stdout)
   })
 })
