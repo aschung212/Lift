@@ -1,5 +1,5 @@
 /**
- * Shared test utilities for Lift.
+ * Shared test utilities for Logbook.
  *
  * Provides reusable mock factories and mount helpers to reduce
  * boilerplate across component and store tests.

@@ -23,8 +23,8 @@ describe('capacitor.config.ts regression', () => {
     expect(capacitorConfig).not.toContain('app.lift.tracker')
   })
 
-  it('keeps appName as Lift and webDir pointing at the Vite dist bundle', () => {
-    expect(capacitorConfig).toContain("appName: 'Lift'")
+  it('keeps appName as Logbook and webDir pointing at the Vite dist bundle', () => {
+    expect(capacitorConfig).toContain("appName: 'Logbook'")
     expect(capacitorConfig).toContain("webDir: 'dist'")
   })
 

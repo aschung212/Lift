@@ -123,7 +123,7 @@ describe('useWorkoutShare', () => {
       const { shareCard, isSharing } = await getComposable()
       const result = await shareCard(makeRequest())
 
-      expect(result).toEqual({ kind: 'downloaded', filename: 'lift-2026-05-20.png' })
+      expect(result).toEqual({ kind: 'downloaded', filename: 'logbook-2026-05-20.png' })
       expect(isSharing.value).toBe(false)
     })
 
@@ -131,7 +131,7 @@ describe('useWorkoutShare', () => {
       const { shareCard } = await getComposable()
       const result = await shareCard(makeRequest({ format: 'story' }))
 
-      expect(result).toEqual({ kind: 'downloaded', filename: 'lift-2026-05-20-story.png' })
+      expect(result).toEqual({ kind: 'downloaded', filename: 'logbook-2026-05-20-story.png' })
     })
 
     it('uses Web Share API when available and supported', async () => {
@@ -147,7 +147,7 @@ describe('useWorkoutShare', () => {
       expect(shareFn).toHaveBeenCalledWith(
         expect.objectContaining({
           files: expect.arrayContaining([expect.any(File)]),
-          title: 'Lift workout',
+          title: 'Logbook workout',
         }),
       )
     })
@@ -164,9 +164,9 @@ describe('useWorkoutShare', () => {
       expect(shareFn).toHaveBeenCalledWith(
         expect.objectContaining({
           files: expect.arrayContaining([expect.any(File)]),
-          title: 'Lift workout',
+          title: 'Logbook workout',
           url: 'https://spa-rho-sandy.vercel.app',
-          text: expect.stringContaining('Lift'),
+          text: expect.stringContaining('Logbook'),
         }),
       )
     })
@@ -209,7 +209,7 @@ describe('useWorkoutShare', () => {
       const { shareCard } = await getComposable()
       const result = await shareCard(makeRequest())
 
-      expect(result).toEqual({ kind: 'downloaded', filename: 'lift-2026-05-20.png' })
+      expect(result).toEqual({ kind: 'downloaded', filename: 'logbook-2026-05-20.png' })
     })
 
     it('returns cancelled when already sharing (reentrance guard)', async () => {
@@ -311,7 +311,7 @@ describe('useWorkoutShare', () => {
       const { downloadCard } = await getComposable()
       const result = await downloadCard(makeRequest())
 
-      expect(result).toEqual({ kind: 'downloaded', filename: 'lift-2026-05-20.png' })
+      expect(result).toEqual({ kind: 'downloaded', filename: 'logbook-2026-05-20.png' })
       expect(shareFn).not.toHaveBeenCalled()
     })
 
@@ -439,14 +439,14 @@ describe('useWorkoutShare', () => {
   // ── Watermark (#601) ───────────────────────────────────────────────
 
   describe('watermark', () => {
-    it('injects the "Made with Lift" watermark when watermark is true', async () => {
+    it('injects the "Made with Logbook" watermark when watermark is true', async () => {
       const { shareCard } = await getComposable()
       await shareCard(makeRequest({ watermark: true }))
 
       const hostNode = mockRenderNodeToBlob.mock.calls[0][0]
       const mark = hostNode.querySelector('[data-share-watermark]')
       expect(mark).not.toBeNull()
-      expect(mark?.textContent).toBe('Made with Lift')
+      expect(mark?.textContent).toBe('Made with Logbook')
     })
 
     it('omits the watermark when watermark is false', async () => {

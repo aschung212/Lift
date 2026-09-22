@@ -8,7 +8,7 @@
  * calendar day (the same latest-entry-per-day rule the tracker chart uses),
  * sorted ascending, weights converted to the user's display unit. The import
  * tools ask for (or assume) a unit rather than reading one from the file, so
- * the filename carries it (`lift-bodyweight-lbs-2026-08-17.csv`) and the
+ * the filename carries it (`logbook-bodyweight-lbs-2026-08-17.csv`) and the
  * columns stay strictly `Date,Weight` for maximum importer compatibility.
  */
 
@@ -59,5 +59,5 @@ export function buildBodyweightCsv(entries: BodyweightEntry[], unit: WeightUnit)
 
 /** `todayKey` is a yyyy-MM-dd local day key (todayISO()). */
 export function bodyweightCsvFilename(unit: WeightUnit, todayKey: string): string {
-  return `lift-bodyweight-${unit}-${todayKey}.csv`
+  return `logbook-bodyweight-${unit}-${todayKey}.csv`
 }

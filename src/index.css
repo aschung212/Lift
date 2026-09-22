@@ -803,7 +803,7 @@ button, [role="tab"], [role="switch"], a {
   with `overflow: hidden`, so any nested surface sized in a larger unit (`dvh`,
   or bare `vh` which equals `lvh`) could exceed the shell and be clipped. Use
   `dvh`/`lvh` ONLY where an element is intended to grow with the chrome — no
-  surface in Lift currently needs that. cssRegression.test.ts enforces this.
+  surface in Logbook currently needs that. cssRegression.test.ts enforces this.
 */
 #app {
   height: 100svh;

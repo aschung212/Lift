@@ -1,4 +1,4 @@
-# Lift — Workout Tracker PWA
+# Logbook — Workout Tracker PWA
 
 A **mobile-first Progressive Web App** for tracking strength training, bodyweight, and personal records. Built with Vue 3 + TypeScript, Pinia, Supabase, and hand-rolled SVG — no UI component libraries, no external chart packages. Designed to feel like a native iOS app.
 
@@ -24,7 +24,7 @@ A **mobile-first Progressive Web App** for tracking strength training, bodyweigh
 
 ## What It Does
 
-Lift lets you track any strength exercise over time. Log a set (weight + reps + date), and the app immediately computes your estimated 1-rep max, detects whether you just hit a personal record, and plots your progress on a time-proportional SVG chart. Sign in with Google or email to sync your data across devices via Supabase.
+Logbook lets you track any strength exercise over time. Log a set (weight + reps + date), and the app immediately computes your estimated 1-rep max, detects whether you just hit a personal record, and plots your progress on a time-proportional SVG chart. Sign in with Google or email to sync your data across devices via Supabase.
 
 ---
 

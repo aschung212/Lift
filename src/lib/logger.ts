@@ -16,11 +16,11 @@ export function setSentryCaptureException(fn: CaptureExceptionFn): void {
 /** Log an error with structured context. Sends to Sentry in production. */
 export function logError(err: unknown, context?: ErrorContext): void {
   const error = err instanceof Error ? err : new Error(String(err))
-  console.error(`[Lift]`, error.message, context ?? '')
+  console.error(`[Logbook]`, error.message, context ?? '')
   _captureException?.(error, context)
 }
 
 /** Log a warning (console only, no Sentry). */
 export function logWarn(message: string, context?: ErrorContext): void {
-  console.warn(`[Lift]`, message, context ?? '')
+  console.warn(`[Logbook]`, message, context ?? '')
 }

@@ -18,7 +18,7 @@ describe('renderLegalPage (#537)', () => {
     expect(html.startsWith('<!doctype html>')).toBe(true)
     expect(html).toContain('<html lang="en">')
     expect(html).toContain('<meta name="viewport"')
-    expect(html).toContain(`<title>${LEGAL_DOCUMENTS[kind].title} · Lift</title>`)
+    expect(html).toContain(`<title>${LEGAL_DOCUMENTS[kind].title} · Logbook</title>`)
     expect(html).toContain(`Last updated ${LEGAL_UPDATED}`)
     expect(html).not.toContain('<script')
     for (const text of allText(LEGAL_DOCUMENTS[kind].sections)) {

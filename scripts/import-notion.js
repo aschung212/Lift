@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Notion → Lift Migration Script
+ * Notion → Logbook Migration Script
  *
- * One-time script to import workout data from Notion CSV exports into Lift.
+ * One-time script to import workout data from Notion CSV exports into Logbook.
  *
  * Usage:
  *   1. In Notion, go to the "Sets" database → ••• menu → Export → CSV
@@ -199,7 +199,7 @@ function escSQL(str) {
   return str.replace(/'/g, "''")
 }
 
-let sql = `-- Notion → Lift migration for user ${userId}
+let sql = `-- Notion → Logbook migration for user ${userId}
 -- Generated ${new Date().toISOString()}
 -- SAFETY: All operations scoped to user_id = '${userId}'
 

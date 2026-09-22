@@ -13,13 +13,13 @@
  *    nor update one, and HealthKit's own upsert semantics
  *    (`HKMetadataKeySyncIdentifier` + `SyncVersion`) are unreachable through its
  *    string-only metadata. So a weigh-in is written exactly ONCE — the ledger
- *    below — and a later edit or deletion in Lift is deliberately NOT propagated:
+ *    below — and a later edit or deletion in Logbook is deliberately NOT propagated:
  *    the only thing it could do is add a second sample beside the first. The
  *    Settings copy says so. Moving to HealthKit's sync-identifier upsert needs a
  *    custom Swift plugin and is tracked as a follow-up.
  *
  *  - Weight is written in kilograms — the only mass unit the plugin accepts —
- *    converted with the app-wide factor so Health shows the number Lift shows.
+ *    converted with the app-wide factor so Health shows the number Logbook shows.
  *
  * The ledger is bound to the user who switched sync on (`ownerId`): Health
  * belongs to the phone's owner, so a different account signing in on the same
@@ -42,7 +42,7 @@ export const HEALTH_SYNC_STATE_KEY = 'health-sync-state'
 export const KG_PER_LB = 0.453592
 
 /**
- * Custom HealthKit metadata key stamped on every sample Lift writes, carrying
+ * Custom HealthKit metadata key stamped on every sample Logbook writes, carrying
  * the entry id. Reverse-DNS so it can never collide with an `HKMetadataKey*`.
  * Not read back today (the plugin drops metadata on read) — it documents
  * provenance in the store for a future plugin that can.
@@ -179,13 +179,13 @@ export interface ExistingHealthSample {
 }
 
 /**
- * Ids of `pending` entries Health ALREADY holds from Lift — same local day and
+ * Ids of `pending` entries Health ALREADY holds from Logbook — same local day and
  * the same kilograms within tolerance, from this app's own bundle id — so they
  * are marked written without a second sample. This is what keeps a reinstall
  * (fresh ledger) or a second iPhone on the same account from duplicating every
  * weigh-in; the ledger alone only protects one device across one install.
- * Samples from other sources (a smart scale) are not "already written by Lift"
- * and are ignored, so the match never hides a genuine Lift entry behind a
+ * Samples from other sources (a smart scale) are not "already written by Logbook"
+ * and are ignored, so the match never hides a genuine Logbook entry behind a
  * coincidentally-equal reading.
  */
 export function matchExistingSamples(

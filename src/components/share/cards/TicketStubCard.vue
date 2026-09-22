@@ -3,7 +3,7 @@
     <div class="tsTicket">
       <div class="tsLeft">
         <div>
-          <div class="tsEyebrow">Lift · Session</div>
+          <div class="tsEyebrow">Logbook · Session</div>
           <div class="tsHandle">{{ SHARE_CARD_HANDLE }}</div>
           <div class="tsTitle">Workout</div>
           <div class="tsMeta">{{ summary.date.toUpperCase() }} · {{ summary.duration }}</div>

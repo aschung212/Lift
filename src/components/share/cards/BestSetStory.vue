@@ -13,7 +13,7 @@
     </div>
 
     <div class="bsBrand">
-      <span class="bsMark">LIFT</span>
+      <span class="bsMark">LOGBOOK</span>
       <span class="bsHandle">{{ SHARE_CARD_HANDLE }}</span>
     </div>
   </div>

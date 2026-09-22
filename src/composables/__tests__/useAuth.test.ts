@@ -804,7 +804,7 @@ describe('useAuth', () => {
     //
     // deleteAccount used to call `indexedDB.deleteDatabase(...)` and return
     // without touching the request it hands back. So a delete still blocked by
-    // a second open Lift tab looked exactly like a completed one, and the
+    // a second open Logbook tab looked exactly like a completed one, and the
     // previous user's workout backup — plus the durable sync journal — stayed
     // on disk on a shared device after they were told the account was deleted.
     it('waits for the IndexedDB wipe instead of firing the request and moving on', async () => {

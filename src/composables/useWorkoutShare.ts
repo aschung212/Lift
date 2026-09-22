@@ -29,7 +29,7 @@ import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
 export type { ShareResult }
 
 /** Title shown in the share sheet for a rasterized workout card. */
-const SHARE_TITLE = 'Lift workout'
+const SHARE_TITLE = 'Logbook workout'
 
 export interface ShareCardRequest {
   /** The Vue component that renders the card. */
@@ -42,7 +42,7 @@ export interface ShareCardRequest {
   theme: string
   mode: 'dark' | 'light'
   /**
-   * Stamp the free-tier "Made with Lift" watermark onto the rendered card.
+   * Stamp the free-tier "Made with Logbook" watermark onto the rendered card.
    * Set by the caller from the supporter entitlement (#601). Defaults to
    * off so callers must opt in explicitly.
    */

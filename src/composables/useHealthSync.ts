@@ -16,7 +16,7 @@
  *    user, then runs a backfill of every existing weigh-in.
  *  - `syncNow()` is single-flight with one trailing re-run: it re-checks
  *    authorization (a user can revoke access in the Health app at any time),
- *    reads back Lift's own samples over the pending window so a reinstall or a
+ *    reads back Logbook's own samples over the pending window so a reinstall or a
  *    second device never duplicates, then writes the rest oldest-first, marking
  *    the ledger after EACH successful save — an interruption mid-backfill costs
  *    a retry, never a duplicate.
@@ -86,7 +86,7 @@ const WEIGHT_AUTH: AuthorizationOptions = { read: [], write: ['weight'] }
 /**
  * Explicit, generous cap on the read-back query. The plugin defaults to 100,
  * which a backfill of daily weigh-ins passes in four months; without read
- * authorization the query only ever returns Lift's own samples, so even a
+ * authorization the query only ever returns Logbook's own samples, so even a
  * multi-year history sits far under this.
  */
 const READ_BACK_LIMIT = 10_000

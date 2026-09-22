@@ -27,7 +27,7 @@ import type { CoachPayload, CoachReview } from './aiCoach'
 export const COACH_PATH = '/api/coach'
 
 /**
- * The native Capacitor build is cross-origin (ios scheme 'Lift'), so it must call
+ * The native Capacitor build is cross-origin (`capacitor://localhost`, #1442), so it must call
  * the absolute production origin. This is the authoritative deployment domain
  * (CLAUDE.md SEV1 rule — never fabricate); it matches `PROD_HOSTNAME` in supabase.ts
  * and the function's CORS allowlist in api/coach.ts.

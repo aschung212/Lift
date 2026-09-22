@@ -40,7 +40,7 @@ function openDB(): Promise<IDBDatabase> {
       // Another context (this tab or another) asked to delete or version-bump
       // the database. An open connection BLOCKS that request indefinitely, so
       // without closing here the wipe `deleteAccount` performs simply never
-      // happens while a second Lift tab is open — and the previous user's
+      // happens while a second Logbook tab is open — and the previous user's
       // workout backup plus the durable sync journal survive on a shared
       // device after they were told the account was deleted. Dropping the
       // cache lets the next write reopen cleanly.

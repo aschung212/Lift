@@ -2,7 +2,7 @@
  * Plateau / stall detection for an exercise's estimated-1RM trend (LIFT-1025).
  *
  * The #1 competitor complaint in 2026 reviews is "it records, it doesn't
- * think" — loggers show a flat curve but never name the stall. Lift already
+ * think" — loggers show a flat curve but never name the stall. Logbook already
  * computes `estimated1RM` per set; this pure helper reads the per-session
  * daily-best e1RM sequence and flags when an exercise's best e1RM has not made
  * a new high across the most recent N sessions.

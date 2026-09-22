@@ -9,7 +9,7 @@
       <!-- Step 1: Setup path -->
       <template v-if="step === 'setup'">
         <div class="obHero">
-          <div class="obLogo">Lift</div>
+          <div class="obLogo">Logbook</div>
           <p class="obSubtitle">Strength tracking, quietly.</p>
           <p class="obFreeBadge">Unlimited exercises &amp; full history — free, no paywall.</p>
         </div>
@@ -74,7 +74,7 @@
 
       <!-- Steps 2-4: Progression explainer + starter pick + weekly goal -->
       <template v-else>
-        <div class="obLogo">Lift</div>
+        <div class="obLogo">Logbook</div>
         <StarterPickerFlow
           @confirm="handleStarterConfirm"
           @skip="handleStarterSkip"
@@ -592,7 +592,7 @@ function chooseExplore() {
 
 /*
  * Honest positioning callout (LIFT-1028): unlike Strong/Hevy/Alpha Progression,
- * Lift caps neither exercises nor history behind a subscription. Surfaced as a
+ * Logbook caps neither exercises nor history behind a subscription. Surfaced as a
  * subtle accent pill so it reads as reassurance, not a sales pitch.
  */
 .obFreeBadge {

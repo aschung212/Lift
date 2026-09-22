@@ -117,7 +117,7 @@ describe('applyHealthUsagePlist', () => {
 <plist version="1.0">
 <dict>
 \t<key>CFBundleDisplayName</key>
-\t<string>Lift</string>
+\t<string>Logbook</string>
 \t<key>UIApplicationSceneManifest</key>
 \t<dict>
 \t\t<key>UIApplicationSupportsMultipleScenes</key>
@@ -298,7 +298,7 @@ describe('the committed ios/ project already carries every transform', () => {
 
   const pngSize = buf => ({ width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) })
 
-  it('carries the Lift icon, not Capacitor\'s placeholder', () => {
+  it('carries the Logbook icon, not Capacitor\'s placeholder', () => {
     const icon = readFileSync(join(IOS, 'App', 'App', 'Assets.xcassets', 'AppIcon.appiconset', 'AppIcon-512@2x.png'))
     expect(pngSize(icon)).toEqual({ width: 1024, height: 1024 })
     expect(icon.equals(readFileSync(join(ROOT, 'public', 'icon-source.png')))).toBe(true)

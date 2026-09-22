@@ -22,7 +22,7 @@
     <div class="bsFoot">
       <div class="bsE1RM" v-if="summary.bestSet">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM</div>
       <div class="bsBrand">
-        <span class="bsMark">LIFT</span>
+        <span class="bsMark">LOGBOOK</span>
         <span class="bsHandle">{{ SHARE_CARD_HANDLE }}</span>
       </div>
     </div>

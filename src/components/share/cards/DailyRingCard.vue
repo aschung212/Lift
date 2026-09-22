@@ -36,7 +36,7 @@
     </div>
 
     <div class="drBrand">
-      <span class="drMark">LIFT</span>
+      <span class="drMark">LOGBOOK</span>
       <span class="drHandle">{{ SHARE_CARD_HANDLE }}</span>
     </div>
   </div>

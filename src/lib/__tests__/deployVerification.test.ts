@@ -448,7 +448,7 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
     ['as an autolink', '**Live:** <https://newdomain.app>'],
     ['with extra spacing', '**Live:**   newdomain.app'],
   ])('reads the domain when the line is written %s', (_shape, line) => {
-    expect(parseLiveDomain(`# Lift\n\n${line}\n\nmore docs\n`)).toEqual({
+    expect(parseLiveDomain(`# Logbook\n\n${line}\n\nmore docs\n`)).toEqual({
       ok: true,
       domain: 'newdomain.app',
     })
@@ -464,7 +464,7 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
   it.each([
     ['the line carries prose instead of a domain', '**Live:** not deployed yet\n'],
     ['the line is empty', '**Live:**\n'],
-    ['there is no **Live:** line at all', '# Lift\n\nNo deployment recorded.\n'],
+    ['there is no **Live:** line at all', '# Logbook\n\nNo deployment recorded.\n'],
     // The domain must be the FIRST thing on the line, not merely somewhere on
     // it: a search over the whole line would pull a dotted token out of prose
     // and send the job off to poll `https://infra.md` for 300s — a narrower

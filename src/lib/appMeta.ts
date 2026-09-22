@@ -11,12 +11,12 @@
 export const APP_URL = 'https://spa-rho-sandy.vercel.app'
 
 /** Display name. */
-export const APP_NAME = 'Lift'
+export const APP_NAME = 'Logbook'
 
 /**
  * iOS bundle identifier of the native Capacitor shell. Mirrors `appId` in
  * capacitor.config.ts (the two are pinned equal by appMeta.test.ts). HealthKit
- * reports it as the `sourceId` of every sample Lift writes, which is how the
+ * reports it as the `sourceId` of every sample Logbook writes, which is how the
  * Apple Health sync tells its own samples from a scale's (#1420).
  */
 export const APP_BUNDLE_ID = 'com.aschung212.lift'
@@ -27,7 +27,7 @@ export const APP_BUNDLE_ID = 'com.aschung212.lift'
  * matches the link preview the recipient sees.
  */
 export const APP_TAGLINE =
-  'Lift — a free, offline-capable workout tracker. Log sets, track estimated 1RM progress, and hit new PRs.'
+  'Logbook — a free, offline-capable workout tracker. Log sets, track estimated 1RM progress, and hit new PRs.'
 
 /**
  * Attribution `?ref=` tokens stamped onto shared URLs so a share-driven install
@@ -37,7 +37,7 @@ export const APP_TAGLINE =
  * "direct" and the share→install funnel can't be measured.
  */
 export const SHARE_REF = {
-  /** The "Share Lift" entry point that shares the app itself (#713). */
+  /** The "Share Logbook" entry point that shares the app itself (#713). */
   app: 'share_app',
   /** A rasterized workout / PR card shared from the share sheet (#305 / #794). */
   card: 'share_card',
