@@ -38,6 +38,7 @@
     </div>
     <button class="spfPrimary" @click="goToPick">Pick a Starter Theme</button>
     <button v-if="showSkip" class="spfSecondary" @click="skipFlow('explainer')">Skip — I'll use the defaults</button>
+    <button v-if="showBack" class="spfSecondary" @click="backToSetup">Back</button>
   </template>
 
   <!-- Step 2: Starter pick -->
@@ -65,6 +66,7 @@
     <div class="spfWarning">This choice is semi-permanent. You can change it later, but your progression will reset.</div>
     <button class="spfPrimary" :disabled="!selection" @click="goToGoal">Next</button>
     <button v-if="showSkip" class="spfSecondary" @click="skipFlow('pick')">Skip</button>
+    <button class="spfSecondary" @click="backToExplainer">Back</button>
   </template>
 
   <!-- Step 3: Weekly goal -->
@@ -96,14 +98,23 @@ import { useAnalytics } from '../composables/useAnalytics'
 const props = withDefaults(defineProps<{
   showSkip?: boolean
   resolvedMode?: 'dark' | 'light'
+  /**
+   * Render a Back on the FIRST step, leaving the flow entirely (`back`). Only a
+   * host that has a step before the explainer can honour it — OnboardingScreen's
+   * path choice. Off by default: SettingsSheet opens this flow as its own modal,
+   * where "back" would have nowhere to go.
+   */
+  showBack?: boolean
 }>(), {
   showSkip: true,
   resolvedMode: 'dark',
+  showBack: false,
 })
 
 const emit = defineEmits<{
   confirm: [themeId: ThemeId, weeklyGoal: number]
   skip: []
+  back: []
   preview: [themeId: ThemeId]
   'revert-preview': []
   'step-change': [step: 'explainer' | 'pick' | 'goal']
@@ -176,6 +187,24 @@ function skipFlow(fromStep: string) {
   logEvent('onboarding_step', { step: 'skip', from: fromStep })
   emit('revert-preview')
   emit('skip')
+}
+
+/**
+ * Leaving the picker drops the pending selection along with its live theme
+ * preview — keeping the selection would leave a card rendering as "selected"
+ * while the theme underneath it had already reverted. The goal step's Back
+ * keeps both, because there the picker is where it is going.
+ */
+function backToExplainer() {
+  logEvent('onboarding_step', { step: 'back', from: 'pick' })
+  selection.value = null
+  emit('revert-preview')
+  step.value = 'explainer'
+}
+
+function backToSetup() {
+  logEvent('onboarding_step', { step: 'back', from: 'explainer' })
+  emit('back')
 }
 
 function selectStarter(id: ThemeId) {
