@@ -3475,6 +3475,15 @@ html.theme-fading .settingsSheet {
   border-radius: 16px;
   overflow: hidden;
   touch-action: auto;
+  /*
+    Enter animation (LIFT-1463). This was the one .repMaxOverlay child panel
+    with no entrance: every other one carries .repMaxModal and so picks up
+    modalScaleIn, while this panel hard-cut into place as its own overlay faded
+    in behind it. Same duration and easing as .repMaxModal, but draggablePanelIn
+    rather than modalScaleIn because the element is bound to
+    useSwipeToDismiss's dragStyle() — see that keyframe's comment.
+  */
+  animation: draggablePanelIn 0.25s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .wtDetailHeader {
@@ -4156,6 +4165,27 @@ html.theme-fading .settingsSheet {
 @keyframes modalScaleIn {
   from { opacity: 0; transform: scale(0.92) translateY(8px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/*
+  modalScaleIn's motion, expressed with the individual `scale` / `translate`
+  properties instead of `transform` (LIFT-1463).
+
+  A panel that is bound to useSwipeToDismiss's `dragStyle()` carries an inline
+  `transform` while the user drags it, and a RUNNING CSS animation outranks
+  inline author styles — so a transform-based entrance silently swallows the
+  first 250ms of a drag and then snaps to it once the animation ends.
+  `translate` and `scale` are applied BEFORE `transform` in the same transform
+  chain, so an entrance written this way COMPOSES with the gesture instead of
+  replacing it, and needs no gate, no class toggle and no animationend hook
+  (re-adding a removed animation restarts it, which is how a naive gate replays
+  the entrance mid-dismiss).
+
+  Use this — not modalScaleIn — on any panel bound to `dragStyle()`.
+*/
+@keyframes draggablePanelIn {
+  from { opacity: 0; scale: 0.92; translate: 0 8px; }
+  to   { opacity: 1; scale: 1; translate: 0 0; }
 }
 
 /* ─── Modals ─────────────────────────────────────────────────────────────── */
