@@ -52,9 +52,12 @@ function getVueStyleBlock(componentPath: string): string {
   return match ? match[1] : ''
 }
 
-// Helper: every .vue file under src/, recursively. The flat readdirSync walks
-// elsewhere in this file only ever look at src/components, which silently skips
-// src/views, src/components/share/cards and src/App.vue.
+// Helper: every .vue file under src/, recursively. It exists because the flat
+// readdirSync walks this file used to be built on only ever looked at
+// src/components, silently skipping src/views, src/components/share and
+// src/App.vue. Every rule here now walks through this helper (LIFT-1482) —
+// a new `.vue` anywhere under src/ is in scope the day it lands, which a
+// per-directory walk can never promise.
 //
 // Paths come back with forward slashes on every platform. `resolve` emits the
 // native separator, so on Windows the non-vacuity guard's `includes('/views/')`
@@ -71,6 +74,12 @@ function collectVueFiles(dir: string): string[] {
   }
   return out.sort()
 }
+
+// Helper: drop /* … */ comments. Any rule that DERIVES its expectations from
+// the stylesheet has to run this first, or the prose explaining a declaration
+// reads as the declaration — e.g. the comment in index.css's --space-* block
+// that names the token LIFT-1482 deleted would re-add 20px to the scale.
+const stripCssComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
 
 // Helper: concatenate every <style> block in an SFC. matchAll, not match — a
 // component may carry several (e.g. a scoped block alongside a global one).
@@ -761,25 +770,33 @@ describe('CSS regression tests', () => {
       }
     })
 
-    it('Vue component style blocks have balanced braces', () => {
-      const componentsDir = resolve(__dirname, '../../components')
-      const vueFiles = readdirSync(componentsDir).filter((f: string) => f.endsWith('.vue'))
-      for (const file of vueFiles) {
-        const content = readFileSync(resolve(componentsDir, file), 'utf-8')
-        const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/)
-        if (!styleMatch) continue
-        let depth = 0
-        const lines = styleMatch[1].split('\n')
-        for (let i = 0; i < lines.length; i++) {
-          for (const ch of lines[i]) {
+    // The third flat readdirSync in this file, and the last (LIFT-1482). It had
+    // the same blind spot the spacing rule below did — src/views and
+    // src/components/share were never in scope — and an unbalanced brace there
+    // is worse than off-scale spacing: it silently swallows or leaks rules past
+    // the end of the block the author was editing.
+    it('Vue component style blocks have balanced braces — in views and share too', () => {
+      const src = resolve(__dirname, '../..')
+      const scanned: string[] = []
+      for (const file of collectVueFiles(src)) {
+        const content = readFileSync(file, 'utf-8')
+        const rel = relative(resolve(src, '..'), file).replace(/\\/g, '/')
+        for (const m of content.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
+          scanned.push(rel)
+          let depth = 0
+          for (const ch of m[1]) {
             if (ch === '{') depth++
             if (ch === '}') depth--
           }
-        }
-        if (depth !== 0) {
-          expect.fail(`${file}: brace imbalance (${depth > 0 ? depth + ' unclosed' : Math.abs(depth) + ' extra closing'})`)
+          if (depth !== 0) {
+            expect.fail(`${rel}: brace imbalance (${depth > 0 ? depth + ' unclosed' : Math.abs(depth) + ' extra closing'})`)
+          }
         }
       }
+      // Non-vacuity: a walk that reached nothing would pass this silently.
+      expect(scanned.length).toBeGreaterThan(25)
+      expect(scanned.some((f) => f.startsWith('src/views/'))).toBe(true)
+      expect(scanned.some((f) => f.startsWith('src/components/share/'))).toBe(true)
     })
   })
 
@@ -822,68 +839,178 @@ describe('CSS regression tests', () => {
     })
   })
 
+  /**
+   * Spacing scale compliance (LIFT-1482).
+   *
+   * Two things were wrong here until LIFT-1482, and they compounded.
+   *
+   * (1) The component half walked its files with a FLAT readdirSync of
+   *     src/components, so src/views, src/components/share/** and src/App.vue
+   *     had never been in scope — the same blind spot LIFT-1460 closed one
+   *     `describe` over, in the sibling rule, over the same file tree. It was
+   *     not vacuous: the two AI-Coach sheets (the newest views, i.e. exactly
+   *     where an unwatched rule drifts first) carried four off-scale values,
+   *     and SharePickerSheet's sheet chrome carried four more.
+   *
+   * (2) The SCALE was a restated literal, and it disagreed with the stylesheet
+   *     it was policing: index.css declared `--space-5: 20px` while the set
+   *     omitted 20 and CLAUDE.md's UI checklist names 4/8/12/16/24/32. The set
+   *     is now DERIVED from the `--space-*` declarations, so the tokens and the
+   *     rule are one decision — the enumeration-drift lesson LIFT-1460's font
+   *     tokens carry, applied to the other axis of the same design system.
+   *     `--space-5` was deleted rather than admitted into the scale: it had
+   *     zero references anywhere in the app, and index.css's ~9k lines contain
+   *     no 20px spacing value at all, so the codebase had already voted. The
+   *     four bare `20px` gutters it would have blessed lived in the one file
+   *     the flat walk could not see, 4px out of line with the thumbnail rail
+   *     directly above them.
+   *
+   * ONE exemption, the same boundary LIFT-1460 drew: src/components/share/cards/**
+   * renders into a fixed 360x360 / 360x640 surface that html-to-image
+   * rasterises, so its geometry is a canvas layout rather than app chrome.
+   * SharePickerSheet's own sheet chrome sits outside that surface and IS in
+   * scope — the line is the card directory, not the share directory.
+   */
   describe('spacing scale compliance (4/8/12/16/24/32)', () => {
-    // Valid spacing values: 0, 1, 2, 4, 8, 12, 16, 24, 32, and multiples of 8 above 32
-    const SCALE = new Set([0, 1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128])
+    const SRC = resolve(__dirname, '../..')
+    const REPO = resolve(SRC, '..')
+    /** Fixed-size export surface: off-scale geometry there is correct. */
+    const CARD_DIR = 'src/components/share/cards/'
+
+    // Derived from the tokens, not restated beside them. Comments are stripped
+    // first: the block's own prose names the token this issue deleted, and an
+    // unstripped read would take that sentence for a declaration and hand 20px
+    // straight back. Above the top token the 4pt grid continues in 8px steps
+    // (40, 48, 56, …), which is a rule rather than a declaration, so it stays
+    // explicit.
+    const SCALE = new Set<number>()
+    for (const m of stripCssComments(css).matchAll(/--space-\d+\s*:\s*(\d+)px\s*;/g)) {
+      SCALE.add(parseInt(m[1], 10))
+    }
     const isOnScale = (v: number) => SCALE.has(v) || (v >= 32 && v % 8 === 0)
 
     const spacingProps = /^\s*(padding|margin|gap|padding-top|padding-bottom|padding-left|padding-right|margin-top|margin-bottom|margin-left|margin-right|row-gap|column-gap)\s*:/
     const pxVal = /-?\d+(?=px)/g
 
-    function findViolations(): { line: number; text: string; values: number[] }[] {
-      const violations: { line: number; text: string; values: number[] }[] = []
-      css.split('\n').forEach((text, i) => {
-        if (!spacingProps.test(text)) return
-        if (text.includes('calc(') || text.includes('env(')) return
-        const offScale: number[] = []
-        let match
-        pxVal.lastIndex = 0
-        while ((match = pxVal.exec(text)) !== null) {
-          const abs = Math.abs(parseInt(match[0], 10))
-          if (abs > 2 && !isOnScale(abs)) offScale.push(abs)
-        }
-        if (offScale.length > 0) violations.push({ line: i + 1, text: text.trim(), values: offScale })
-      })
-      return violations
+    /** The off-scale px values on one declaration line; [] when there are none. */
+    function offScaleValues(text: string): number[] {
+      if (!spacingProps.test(text)) return []
+      // calc() arithmetic is not a grid step, and env() insets are opaque.
+      if (text.includes('calc(') || text.includes('env(')) return []
+      const out: number[] = []
+      let match
+      pxVal.lastIndex = 0
+      while ((match = pxVal.exec(text)) !== null) {
+        const abs = Math.abs(parseInt(match[0], 10))
+        // 1–2px are hairlines and optical nudges, not grid steps.
+        if (abs > 2 && !isOnScale(abs)) out.push(abs)
+      }
+      return out
     }
 
+    type Violation = { file: string; line: number; text: string; values: number[] }
+
+    /** `firstLine` is the file line that `source`'s first line maps to. */
+    function scan(source: string, file: string, firstLine: number): Violation[] {
+      const out: Violation[] = []
+      source.split('\n').forEach((text, i) => {
+        const values = offScaleValues(text)
+        if (values.length > 0) out.push({ file, line: firstLine + i, text: text.trim(), values })
+      })
+      return out
+    }
+
+    const report = (v: Violation[]) =>
+      v.map(x => `  ${x.file}:${x.line}: ${x.text} (off-scale: ${x.values.join(', ')}px)`).join('\n')
+
+    // Every .vue <style> block under src/, with real line numbers. matchAll,
+    // not match: a component may carry several blocks (a scoped one alongside
+    // a global one), and the second would otherwise be invisible.
+    const vueFiles = collectVueFiles(SRC)
+    const scannedFiles: string[] = []
+    const componentViolations: Violation[] = []
+    const cardViolations: Violation[] = []
+    for (const file of vueFiles) {
+      const content = readFileSync(file, 'utf-8')
+      const rel = relative(REPO, file).replace(/\\/g, '/')
+      let hasStyle = false
+      for (const m of content.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
+        hasStyle = true
+        const styleTagLine = content.slice(0, m.index).split('\n').length
+        const found = scan(m[1], rel, styleTagLine)
+        ;(rel.startsWith(CARD_DIR) ? cardViolations : componentViolations).push(...found)
+      }
+      if (hasStyle) scannedFiles.push(rel)
+    }
+
+    it('derives the scale from index.css\'s --space-* tokens', () => {
+      // Pinning the DERIVED set is what forces the token block and CLAUDE.md's
+      // UI checklist to stay one decision: re-declaring a `--space-5: 20px`
+      // fails here rather than silently widening what the guard will accept.
+      expect([...SCALE].sort((a, b) => a - b)).toEqual([4, 8, 12, 16, 24, 32])
+      // And the rule above the top token still holds.
+      expect(isOnScale(40)).toBe(true)
+      expect(isOnScale(20)).toBe(false)
+
+      // The comment stripping is load-bearing, not housekeeping: index.css's
+      // own note in that block quotes the deleted declaration verbatim, and a
+      // derivation that reads a sentence as a declaration is invisible to any
+      // assertion over its output alone (LIFT-1412's class). Modelled on a
+      // fixture rather than on the real file, so the proof survives a reword
+      // of the prose it is about.
+      const withComment = ':root { --space-4: 16px; /* not a --space-5: 20px; */ }'
+      const read = (s: string) => [...s.matchAll(/--space-\d+\s*:\s*(\d+)px\s*;/g)].map(m => m[1])
+      expect(read(withComment)).toEqual(['16', '20'])
+      expect(read(stripCssComments(withComment))).toEqual(['16'])
+    })
+
+    it('scans index.css and every .vue <style> block — components, views AND cards', () => {
+      // Non-vacuity. A walk that reached almost nothing is exactly what was
+      // passing here for a long time (LIFT-1412's class), so the sweep has to
+      // assert it arrived somewhere before the checks below mean anything.
+      expect(scannedFiles.length).toBeGreaterThan(25)
+      expect(scannedFiles.some(f => f.startsWith('src/views/'))).toBe(true)
+      expect(scannedFiles).toContain('src/components/share/SharePickerSheet.vue')
+      expect(scannedFiles.some(f => f.startsWith(CARD_DIR))).toBe(true)
+      // App.vue carries no <style> block today — its CSS lives in index.css —
+      // so it contributes nothing to scannedFiles. Pin the FILE list instead,
+      // which is what puts a block added there tomorrow in scope.
+      expect(vueFiles.some(f => f.endsWith('/App.vue'))).toBe(true)
+
+      // The detector fires on the shapes that shipped, and not on the ones it
+      // must ignore. The old rule matched a real 20px gutter as compliant.
+      expect(offScaleValues('  padding: 10px 14px;')).toEqual([10, 14])
+      expect(offScaleValues('  gap: 6px;')).toEqual([6])
+      expect(offScaleValues('  padding: 0 20px 4px;')).toEqual([20])
+      expect(offScaleValues('  gap: 12px;')).toEqual([])
+      expect(offScaleValues('  width: 220px;')).toEqual([])
+      expect(offScaleValues('  padding: calc(8px + env(safe-area-inset-bottom));')).toEqual([])
+    })
+
     it('has no off-scale spacing values in index.css', () => {
-      const violations = findViolations()
+      const violations = scan(css, 'src/index.css', 1)
       if (violations.length > 0) {
-        const report = violations.map(v => `  L${v.line}: ${v.text} (off-scale: ${v.values.join(', ')}px)`).join('\n')
-        expect.fail(`Found ${violations.length} spacing scale violation(s):\n${report}`)
+        expect.fail(`Found ${violations.length} spacing scale violation(s):\n${report(violations)}`)
       }
     })
 
     it('has no off-scale spacing values in Vue component style blocks', () => {
-      const componentsDir = resolve(__dirname, '../../components')
-      const vueFiles = readdirSync(componentsDir).filter((f: string) => f.endsWith('.vue'))
-      const allViolations: { file: string; line: number; text: string; values: number[] }[] = []
-
-      for (const file of vueFiles) {
-        const content = readFileSync(resolve(componentsDir, file), 'utf-8')
-        const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/)
-        if (!styleMatch) continue
-        const styleBlock = styleMatch[1]
-        const styleStartLine = content.slice(0, content.indexOf(styleMatch[0])).split('\n').length
-        styleBlock.split('\n').forEach((text, i) => {
-          if (!spacingProps.test(text)) return
-          if (text.includes('calc(') || text.includes('env(')) return
-          const offScale: number[] = []
-          let match
-          pxVal.lastIndex = 0
-          while ((match = pxVal.exec(text)) !== null) {
-            const abs = Math.abs(parseInt(match[0], 10))
-            if (abs > 2 && !isOnScale(abs)) offScale.push(abs)
-          }
-          if (offScale.length > 0) allViolations.push({ file, line: styleStartLine + i, text: text.trim(), values: offScale })
-        })
+      if (componentViolations.length > 0) {
+        expect.fail(
+          `Found ${componentViolations.length} spacing scale violation(s) in Vue components:\n`
+          + report(componentViolations),
+        )
       }
+    })
 
-      if (allViolations.length > 0) {
-        const report = allViolations.map(v => `  ${v.file}:${v.line}: ${v.text} (off-scale: ${v.values.join(', ')}px)`).join('\n')
-        expect.fail(`Found ${allViolations.length} spacing scale violation(s) in Vue components:\n${report}`)
-      }
+    it('the share-card exemption is still load-bearing', () => {
+      // A directory-scoped exemption must not outlive its reason. LIFT-1460's
+      // `the share cards are still the fixed-size surface the exemption is for`
+      // pins the premise itself (.spThumbInner is a fixed 360px surface fed by
+      // cardComponent()); this asserts the exemption is still doing work, so a
+      // future cleanup that brings the cards onto the grid deletes it here
+      // instead of leaving a dead pass behind.
+      expect(cardViolations.length).toBeGreaterThan(10)
     })
   })
 
@@ -1264,7 +1391,7 @@ describe('component stylesheets are rem-anchored too (WCAG 1.4.4 — LIFT-1460)'
     return out
   }
 
-  const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
+  const stripComments = stripCssComments
 
   /**
    * Drop `var(--x, fallback)` references. A fallback only applies when the
@@ -1543,7 +1670,7 @@ describe('iOS focus-zoom floor: text controls are at least 16px (LIFT-1376)', ()
 
   // --- font-size values, resolved to px ------------------------------------
 
-  const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
+  const stripComments = stripCssComments
 
   const fontTokens = new Map<string, number>()
   for (const m of stripComments(css).matchAll(/(--font-[a-z0-9-]+)\s*:\s*([\d.]+)(rem|px)\s*;/gi)) {

@@ -227,11 +227,14 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
+/* The sheet gutter. .spHeader, .spFormatToggle, .spActions and .spStatus form
+   one aligned column and must move together — and at 16px they now line up
+   with .spThumbRow's rail below, which they were 4px out from (LIFT-1482). */
 .spHeader {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: 0 20px 4px;
+  padding: 0 16px 4px;
 }
 
 .spTitle {
@@ -260,7 +263,7 @@ onUnmounted(() => {
 }
 
 .spFormatToggle {
-  margin: 12px 20px 0;
+  margin: 12px 16px 0;
   display: flex;
   gap: 4px;
   background: var(--bg-elevated);
@@ -393,7 +396,7 @@ onUnmounted(() => {
 }
 
 .spActions {
-  padding: 8px 20px 0;
+  padding: 8px 16px 0;
   display: flex;
   gap: 12px;
 }
@@ -433,7 +436,7 @@ onUnmounted(() => {
 }
 
 .spStatus {
-  margin: 12px 20px 0;
+  margin: 12px 16px 0;
   font-family: var(--ff);
   font-size: var(--font-footnote);
   color: var(--text-secondary);
