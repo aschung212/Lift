@@ -213,6 +213,15 @@ describe('scripts/check-no-dev-surface.js scans the directory it is given', () =
     expect(bare.stderr + bare.stdout).toBe(explicit.stderr + explicit.stdout)
   })
 
+  it('refuses an unrecognised flag instead of silently scanning dist/', () => {
+    // A mistyped `--natve` inside cap:build would otherwise scan the production
+    // bundle and print a green line while standing in for the native check —
+    // a guard answering confidently about a tree it never opened.
+    const result = runGuard('--natve')
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('--natve')
+  })
+
   it.runIf(existsSync(resolve(root, 'dist')))('passes against a real build, reporting what it opened', () => {
     // The case above compares two runs of the same code, so it holds just as
     // well if both are broken. This one pins the default path end to end — and

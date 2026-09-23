@@ -85,6 +85,22 @@ import { NATIVE_PLATFORMS } from './check-native-release-config.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const args = process.argv.slice(2);
+
+// An unrecognised flag is refused rather than ignored. A mistyped `--natve`
+// would otherwise scan `dist/` and print a green line, i.e. vouch for the
+// production bundle while standing in for the native one inside `cap:build` —
+// a guard answering confidently about a tree it never opened, which is the
+// failure this script exists to prevent.
+const KNOWN_FLAGS = ['--native', '--warn'];
+const unknownFlags = args.filter((arg) => arg.startsWith('-') && !KNOWN_FLAGS.includes(arg));
+if (unknownFlags.length > 0) {
+  console.error(
+    `Error: unknown option${unknownFlags.length > 1 ? 's' : ''} ${unknownFlags.join(', ')}.\n` +
+      `Usage: node scripts/check-no-dev-surface.js [buildDir] | --native [--warn]`,
+  );
+  process.exit(1);
+}
+
 const nativeMode = args.includes('--native');
 // Only meaningful with --native: the dist/ runs are CI gates and have nothing to
 // step aside for.
