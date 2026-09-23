@@ -2643,6 +2643,259 @@ describe('WorkoutTracker', () => {
   })
 
   /**
+   * LIFT-1486 — the same vocabulary one step earlier in the flow. LIFT-1373
+   * gave every surface that reads a LOGGED set back one formatter; the
+   * surfaces that SUGGEST the next one kept printing the added portion bare,
+   * so a lifter whose routine is five sets of plain pull-ups saw a row of
+   * chips reading "0 × 12", a Save button reading "Save 0 × 12", and a nudge
+   * reading "Up from 0 lbs × 12" — directly above a to-beat card that already
+   * spells the word out.
+   *
+   * Why nothing caught it: every ladder, last-session and nudge fixture in this
+   * file uses a positive added weight on an unflagged exercise, so the two
+   * fields that make a chip contradict the card beneath it were never both
+   * present — the same blind spot that hid #1328's inverse direction.
+   */
+  describe('bodyweight-loaded quick-fill surfaces (LIFT-1486)', () => {
+    const BODYWEIGHT = 170
+
+    /** Local calendar date, matching the component's todayISO(). */
+    function localDay(daysAgo = 0): string {
+      const d = new Date()
+      d.setDate(d.getDate() - daysAgo)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+
+    function pullups(): Exercise[] {
+      return [{
+        id: 'ex-1',
+        name: 'Pull-Up',
+        tags: ['Back'],
+        bodyweightLoaded: true,
+        sets: [
+          { id: 's-1', date: `${localDay(4)}T12:00:00`, weight: 0, reps: 12, bodyweight: BODYWEIGHT, estimated1RM: epley(BODYWEIGHT, 12) },
+          { id: 's-2', date: `${localDay(4)}T12:00:00`, weight: 25, reps: 5, bodyweight: BODYWEIGHT, estimated1RM: epley(BODYWEIGHT + 25, 5) },
+        ],
+      }]
+    }
+
+    /** A mixed routine: two pure-bodyweight rungs, then a weighted top set. */
+    function pullupLadder() {
+      return {
+        rungs: [
+          { weightLbs: 0, reps: 12, source: 'consensus' },
+          { weightLbs: 0, reps: 10, source: 'consensus' },
+          { weightLbs: 25, reps: 5, source: 'consensus' },
+        ],
+        consensusCount: 3,
+        sessionsSampled: 4,
+      }
+    }
+
+    /** Appends a set dated today so the doneness derivation sees it. */
+    function seedTodaySet(weight: number, reps: number) {
+      mockState.exercises[0].sets.push({
+        id: `s-today-${weight}-${reps}`,
+        date: `${localDay()}T23:59:00.000Z`,
+        weight,
+        reps,
+        bodyweight: BODYWEIGHT,
+        estimated1RM: epley(BODYWEIGHT + weight, reps),
+      })
+    }
+
+    async function openPullupModal(wrapper: VueWrapper) {
+      await wrapper.findAll('.wtExerciseLogBtn')[0].trigger('click')
+      await wrapper.vm.$nextTick()
+    }
+
+    beforeEach(() => {
+      mockState.exercises = pullups()
+      mockBodyweightState.lbs = BODYWEIGHT
+    })
+
+    it('names a bodyweight-only rung on the routine chips instead of printing its 0', async () => {
+      mockGetUsualLadder.mockReturnValue(pullupLadder())
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      const chips = wrapper.findAll('.wtPrevSessionChip')
+      expect(chips.map(c => c.text())).toEqual(['Bodyweight × 12', 'Bodyweight × 10', '+25 × 5'])
+    })
+
+    it('gives the chip aria-label the same load words as its visible text', async () => {
+      // The pair LIFT-1373 exists to keep together: both strings come from one
+      // derivation, so the label can never claim a different load (and, per
+      // WCAG 2.5.3, still contains the visible text).
+      mockGetUsualLadder.mockReturnValue(pullupLadder())
+      seedTodaySet(0, 12)
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      const chips = wrapper.findAll('.wtPrevSessionChip')
+      expect(chips[0].classes()).toContain('wtPrevSessionChipUsed')
+      expect(chips[0].attributes('aria-label')).toBe('Bodyweight × 12, logged')
+      expect(chips[0].attributes('aria-label')).toContain(chips[0].text())
+    })
+
+    it('names the load on a skipped rung too', async () => {
+      mockGetUsualLadder.mockReturnValue(pullupLadder())
+      seedTodaySet(25, 5) // straight to the top set — the light rungs are moot
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      const chips = wrapper.findAll('.wtPrevSessionChip')
+      expect(chips[0].classes()).toContain('wtPrevSessionChipSkipped')
+      expect(chips[0].attributes('aria-label')).toBe('Bodyweight × 12, skipped')
+    })
+
+    it('names the reps on the ghost-arm Save when there is no weight to add', async () => {
+      // "Save Bodyweight × 12" overflows this button (its text is also its
+      // accessible name, and it shares a two-up bar with Done), so the one
+      // slot the word does not fit says what the tap actually decides.
+      mockGetUsualLadder.mockReturnValue(pullupLadder())
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      const saveBtn = wrapper.find('.repMaxBtn.repMaxBtnCalc')
+      expect(saveBtn.text()).toBe('Save 12 reps')
+      expect(saveBtn.attributes('disabled')).toBeUndefined()
+    })
+
+    it('still states the payload when the armed rung carries added weight', async () => {
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [{ weightLbs: 25, reps: 1, source: 'consensus' }],
+        consensusCount: 1,
+        sessionsSampled: 4,
+      })
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      expect(wrapper.find('.repMaxBtn.repMaxBtnCalc').text()).toBe('Save +25 × 1')
+    })
+
+    it('says "1 rep" rather than "1 reps"', async () => {
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [{ weightLbs: 0, reps: 1, source: 'consensus' }],
+        consensusCount: 1,
+        sessionsSampled: 4,
+      })
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      expect(wrapper.find('.repMaxBtn.repMaxBtnCalc').text()).toBe('Save 1 rep')
+    })
+
+    it('names a bodyweight-only set on the last-session chips', async () => {
+      mockGetLastSession.mockReturnValue({
+        date: localDay(4),
+        sets: [
+          { id: 's-1', date: `${localDay(4)}T12:00:00`, weight: 0, reps: 12, estimated1RM: 0 },
+          { id: 's-2', date: `${localDay(4)}T12:00:00`, weight: 25, reps: 5, estimated1RM: 0 },
+        ],
+      })
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      const chips = wrapper.findAll('.wtPrevSessionChip')
+      expect(chips.map(c => c.text())).toEqual(['Bodyweight × 12', '+25 × 5'])
+      // Tapping still fills the ADDED weight, unchanged by the wording.
+      await chips[0].trigger('click')
+      expect((wrapper.find('input[aria-label="Added weight"]').element as HTMLInputElement).value).toBe('0')
+    })
+
+    it('names both halves of the overload nudge', async () => {
+      // `getOverloadSuggestion` only ever suggests something heavier, but the
+      // rung it is raising can be the pure-bodyweight one — which is how the
+      // card came to read "Up from 0 lbs × 12".
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [{ weightLbs: 0, reps: 12, source: 'consensus' }],
+        consensusCount: 1,
+        sessionsSampled: 4,
+      })
+      mockGetOverloadSuggestion.mockReturnValue({
+        type: 'increase_weight', weight: 5, reps: 10, reason: 'x', confidence: 'high',
+      })
+      mockGetLastSession.mockReturnValue({
+        date: localDay(2),
+        sets: [{ id: 's-p', date: `${localDay(2)}T12:00:00`, weight: 0, reps: 12, estimated1RM: 0 }],
+      })
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      const card = wrapper.find('.wtOverloadCard')
+      expect(card.exists()).toBe(true)
+      expect(card.text()).toContain('+5 lbs × 10')
+      expect(card.text()).toContain('Up from Bodyweight × 12')
+      expect(card.text()).not.toContain('0 lbs')
+      expect(card.attributes('aria-label')).toBe('Load suggested set, +5 lbs × 10')
+    })
+
+    it('names the session-plan row\'s top set', async () => {
+      // A read-back rather than a suggestion, so it uses the bodyweight the set
+      // captured — but it is flattened away from its exercise, which is why
+      // `topSet` had to start carrying it.
+      mockState.exercises = [{
+        id: 'ex-1', name: 'Pull-Up', tags: ['Back'], bodyweightLoaded: true,
+        sets: [
+          { id: 'p1', date: `${localDay(2)}T12:00:00`, weight: 0, reps: 12, bodyweight: BODYWEIGHT, estimated1RM: epley(BODYWEIGHT, 12) },
+          { id: 'p2', date: `${localDay(2)}T12:00:00`, weight: 0, reps: 10, bodyweight: BODYWEIGHT, estimated1RM: epley(BODYWEIGHT, 10) },
+        ],
+      }]
+      const wrapper = mountTracker()
+      await wrapper.find('.wtSessionPlanToggle').trigger('click')
+
+      const meta = wrapper.find('.wtSessionPlanRowMeta').text()
+      expect(meta).toContain('top Bodyweight × 12')
+      expect(meta).not.toContain('0 lbs')
+    })
+
+    it('keeps the words unit-free in kg, and converts the added portion', async () => {
+      setMockUnit('kg')
+      try {
+        mockGetUsualLadder.mockReturnValue(pullupLadder())
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+
+        const chips = wrapper.findAll('.wtPrevSessionChip')
+        expect(chips[0].text()).toBe('Bodyweight × 12')
+        expect(chips[2].text()).toBe('+11.3 × 5')
+        expect(wrapper.find('.repMaxBtn.repMaxBtnCalc').text()).toBe('Save 12 reps')
+      } finally {
+        setMockUnit('lbs')
+      }
+    })
+
+    it('leaves an unflagged exercise printing plain numbers', async () => {
+      // The fold is what the word describes, so an exercise without it — or a
+      // lifter who has never weighed in — must keep reading as a bare load.
+      mockState.exercises = createExercises()
+      mockGetUsualLadder.mockReturnValue({
+        rungs: [{ weightLbs: 135, reps: 10, source: 'consensus' }],
+        consensusCount: 1,
+        sessionsSampled: 4,
+      })
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      expect(wrapper.find('.wtPrevSessionChip').text()).toBe('135 × 10')
+      expect(wrapper.find('.repMaxBtn.repMaxBtnCalc').text()).toBe('Save 135 × 10')
+    })
+
+    it('keeps printing 0 when the lifter has no bodyweight on record', async () => {
+      // Nothing to fold, so the stored e1RM is off the bare weight and the
+      // chip must not claim a bodyweight the set will never capture.
+      mockBodyweightState.lbs = null
+      mockGetUsualLadder.mockReturnValue(pullupLadder())
+      const wrapper = mountTracker()
+      await openPullupModal(wrapper)
+
+      expect(wrapper.find('.wtPrevSessionChip').text()).toBe('0 × 12')
+      expect(wrapper.find('.repMaxBtn.repMaxBtnCalc').text()).toBe('Save 0 × 12')
+    })
+  })
+
+  /**
    * LIFT-1305 — the to-beat cards are the log sheet's one-tap "load this"
    * affordance, and three of the four shipped as bare `@click` divs: no role,
    * no tabindex, no key handler. A keyboard or switch-control user could not

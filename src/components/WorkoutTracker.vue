@@ -168,7 +168,7 @@
             <span class="wtSessionPlanNameBlock">
               <span class="wtSessionPlanName">{{ item.name }}</span>
               <span class="wtSessionPlanRowMeta">
-                {{ item.plannedSets }} {{ item.plannedSets === 1 ? 'set' : 'sets' }}<template v-if="item.topSet"> · top {{ displayWeight(item.topSet.weightLbs) }} {{ weightUnit }} × {{ item.topSet.reps }}</template>
+                {{ item.plannedSets }} {{ item.plannedSets === 1 ? 'set' : 'sets' }}<template v-if="item.topSet"> · top {{ planTopSetLoad(item) }} × {{ item.topSet.reps }}</template>
               </span>
             </span>
             <span v-if="item.doneSets >= item.plannedSets" class="wtSessionPlanCheck" aria-hidden="true">
@@ -573,10 +573,10 @@
                       wtPrevSessionChipSkipped: rungStates[i] === 'skipped',
                     }"
                     :aria-current="rungStates[i] === 'next' ? 'step' : undefined"
-                    :aria-label="rungStates[i] === 'done' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, logged`
-                      : rungStates[i] === 'skipped' ? `${displayWeight(rung.weightLbs)} × ${rung.reps}, skipped` : undefined"
+                    :aria-label="rungStates[i] === 'done' ? `${rungLoadText(rung)}, logged`
+                      : rungStates[i] === 'skipped' ? `${rungLoadText(rung)}, skipped` : undefined"
                     @click="fillFromRung(rung)"
-                  >{{ displayWeight(rung.weightLbs) }} × {{ rung.reps }}</button>
+                  >{{ rungLoadText(rung) }}</button>
                 </div>
               </template>
 
@@ -590,7 +590,7 @@
                     class="wtPrevSessionChip"
                     :class="{ wtPrevSessionChipUsed: lastSessionUsed[i] }"
                     @click="fillFromLastSession(s, i)"
-                  >{{ displayWeight(s.weight) }} × {{ s.reps }}</button>
+                  >{{ addedLoadValue(displayWeight(s.weight)) }} × {{ s.reps }}</button>
                 </div>
               </template>
 
@@ -733,14 +733,14 @@
             class="repMaxResult repMaxResultTarget repMaxResultTappable wtOverloadCard"
             role="button"
             tabindex="0"
-            :aria-label="`Load suggested set, ${overloadNudge.displayWeight} ${weightUnit} × ${overloadNudge.reps}`"
+            :aria-label="`Load suggested set, ${addedLoadLabel(overloadNudge.displayWeight)} × ${overloadNudge.reps}`"
             @click="acceptOverloadNudge"
             @keydown.enter="acceptOverloadNudge"
             @keydown.space.prevent="acceptOverloadNudge"
           >
             <span class="repMaxResultLabel">Suggestion</span>
-            <span class="repMaxResultValue">{{ overloadNudge.displayWeight }} {{ weightUnit }} × {{ overloadNudge.reps }}</span>
-            <span class="repMaxPersonalBest">Up from {{ displayWeight(overloadNudge.fromWeightLbs) }} {{ weightUnit }} × {{ overloadNudge.fromReps }} · Tap to load</span>
+            <span class="repMaxResultValue">{{ addedLoadLabel(overloadNudge.displayWeight) }} × {{ overloadNudge.reps }}</span>
+            <span class="repMaxPersonalBest">Up from {{ addedLoadLabel(displayWeight(overloadNudge.fromWeightLbs)) }} × {{ overloadNudge.fromReps }} · Tap to load</span>
           </div>
           <div v-else-if="!isEditMode && isLogForExercise" class="repMaxResult repMaxResultPlaceholder">
             <span class="repMaxResultLabel">Estimated 1RM</span>
@@ -950,7 +950,7 @@
           <!-- Actions (always last) -->
           <div class="repMaxActions">
             <button class="repMaxBtn repMaxBtnCalc" :disabled="!canSave" @click="saveSet">
-              {{ isEditMode ? 'Save Changes' : (selectedExerciseId === '__new__' && !hasSetData ? 'Add Exercise' : (ghostArmed && nextRung ? `Save ${displayWeight(nextRung.weightLbs)} × ${nextRung.reps}` : 'Save')) }}
+              {{ isEditMode ? 'Save Changes' : (selectedExerciseId === '__new__' && !hasSetData ? 'Add Exercise' : (ghostArmed && nextRung ? ghostSaveLabel : 'Save')) }}
             </button>
             <button class="repMaxBtn repMaxBtnClose" @click="closeModal">{{ isEditMode ? 'Cancel' : 'Done' }}</button>
           </div>
@@ -1039,7 +1039,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useWorkoutStore } from '../stores/workout'
 import { buildSessionSummary } from '../lib/sessionSummary'
-import { buildSessionPlan } from '../lib/sessionPlan'
+import { buildSessionPlan, type SessionPlanItem } from '../lib/sessionPlan'
 import { todayISO, localDateKey, setDayKey, formatShortDate, daysBetweenISO } from '../lib/dates'
 
 const WorkoutCompleteView = defineAsyncComponent(() => import('./WorkoutCompleteView.vue'))
@@ -1061,7 +1061,14 @@ import { platesToWeight, weightToPlates, defaultBarWeight, LBS_PLATES, KG_PLATES
 import { generateIntensityTable, DEFAULT_INTENSITY_MAX_REPS, type IntensityRow } from '../lib/intensityTable'
 import { applyStreakMultiplier, isExerciseEstablished, XP_CONFIG } from '../lib/xp'
 import { epley } from '../lib/epley'
-import { allowsZeroWeight, formatSetLoad, isLoggableWeight } from '../lib/bodyweightLoad'
+import {
+  allowsZeroWeight,
+  formatSetLoad,
+  isBodyweightOnlyLoad,
+  isLoggableWeight,
+  setLoadParts,
+  type SetLoadFormat,
+} from '../lib/bodyweightLoad'
 import { scoreSet } from '../lib/setScoring'
 import { computeWeeklyGoal } from '../lib/weeklyGoal'
 import ExerciseDetailModal from '../views/ExerciseDetailModal.vue'
@@ -1313,6 +1320,22 @@ function setLoadLabel(
   exercise?: Pick<Exercise, 'bodyweightLoaded'> | null,
 ): string {
   return formatSetLoad(set, exercise, { displayWeight, unit: weightUnit.value })
+}
+
+/**
+ * The session-plan row's headline — the heaviest set of the day being repeated
+ * (#1256). It is a READ-BACK of a logged set, not a suggestion, so it takes the
+ * bodyweight that set captured rather than today's (LIFT-1373's rule: the label
+ * describes what the number came from). `SessionPlanItem.topSet` is flattened
+ * away from its exercise, hence the lookup for the flag.
+ */
+function planTopSetLoad(item: SessionPlanItem): string {
+  const top = item.topSet
+  if (!top) return ''
+  return setLoadLabel(
+    { weight: top.weightLbs, bodyweight: top.bodyweight },
+    store.exercises.find(e => e.id === item.exerciseId),
+  )
 }
 
 interface ExerciseRowMeta {
@@ -1981,6 +2004,95 @@ const bodyweightFoldLbs = computed(() => {
  * `selectedExerciseId` is the edited set's exercise.
  */
 const selectedExercise = computed(() => store.exercises.find(e => e.id === selectedExerciseId.value))
+
+/* ── Words for a SUGGESTED load (LIFT-1486) ──────────────────────────────────
+ *
+ * The quick-fill surfaces in this sheet — the routine ladder's rungs, the
+ * last-session chips, the ghost-arm Save label and the overload nudge — each
+ * offer a weight, and on a bodyweight-loaded exercise that weight is the ADDED
+ * portion, exactly like the `set.weight` LIFT-1373 stopped printing bare. Left
+ * as numbers they read "0 × 12" for the ordinary pull-up: a row of chips, a
+ * Save button and a nudge ("Up from 0 lbs × 12") all saying the lifter moved
+ * nothing — directly above the to-beat card that already says "Bodyweight × 8".
+ *
+ * So they route through the same formatter, and a suggestion is worded exactly
+ * like the row it becomes. Two things differ from a stored set, deliberately:
+ *
+ * (1) The fold is the one in effect NOW, not one captured on a past set. A
+ *     suggestion describes the set it will BECOME — the tap fills the field and
+ *     `logSet` folds today's bodyweight in — so a last-session chip from before
+ *     the flag was enabled still reads "Bodyweight", because that is what
+ *     saving it would store. Reading a LOGGED set back is the opposite rule,
+ *     and `formatSetLoad` gets that right on its own: the set carries its own
+ *     capture, and the label always describes what the number came from.
+ *
+ * (2) The input is a DISPLAY-unit number, because that is the space these call
+ *     sites have already converted into (`displayWeight(rung.weightLbs)`, and
+ *     the nudge's pre-rounded `displayWeight` field). The formatter's own
+ *     conversion is therefore the identity — running it again would convert
+ *     twice (LIFT-1315) — and the fold is converted to match, so the pair in
+ *     one set-shaped value never mixes the two spaces.
+ */
+const suggestionLoadFormat = computed<SetLoadFormat>(() => ({
+  displayWeight: (v: number) => v,
+  unit: weightUnit.value,
+}))
+
+function suggestionLoadSet(displayValue: number): { weight: number; bodyweight: number } {
+  return { weight: displayValue, bodyweight: displayWeight(bodyweightFoldLbs.value) }
+}
+
+/** "Bodyweight" / "+25" / "135" — the chips and Save, which print no unit. */
+function addedLoadValue(displayValue: number): string {
+  return setLoadParts(
+    suggestionLoadSet(displayValue), selectedExercise.value, suggestionLoadFormat.value,
+  ).value
+}
+
+/** "Bodyweight" / "+25 lbs" / "135 lbs" — the overload card, which prints one. */
+function addedLoadLabel(displayValue: number): string {
+  return formatSetLoad(
+    suggestionLoadSet(displayValue), selectedExercise.value, suggestionLoadFormat.value,
+  )
+}
+
+/**
+ * A ladder rung's load and reps — ONE derivation for the chip's visible text
+ * and its `aria-label`. Those are separate strings at every call site and they
+ * drift (LIFT-1349 nearly split `WorkoutTimeline`'s pair), which is the same
+ * reason the words live in a formatter rather than a phrase per surface.
+ */
+function rungLoadText(rung: UsualLadderRung): string {
+  return `${addedLoadValue(displayWeight(rung.weightLbs))} × ${rung.reps}`
+}
+
+/**
+ * The ghost-arm Save label — what one tap commits, spelled out because the
+ * fields are deliberately left empty and only the placeholders hint at it.
+ *
+ * This is the one slot the word does not fit, and the constraint is real: the
+ * button's text IS its accessible name, and it sits at `flex: 1` beside Done in
+ * a full-bleed action bar — about 147px of text room on a 390px iPhone, where
+ * "Save Bodyweight × 12" measures ~149px at `--font-subhead` semibold. The word
+ * would wrap the button to two lines and shove the sticky bar up the sheet. A
+ * chip may be as wide as its contents (that row scrolls, and the gym/tag chip
+ * rows already carry whole names); a button in a two-up bar may not.
+ *
+ * So a bodyweight-only rung names the REPS — the whole of what the tap decides
+ * when there is no weight to add. Short, true, and needing no abbreviation the
+ * app uses nowhere else, which is what "BW × 12" would have been 100px from a
+ * card that spells the word out. The word is still on screen either way: the
+ * chip this label restates is highlighted as next and reads "Bodyweight × 12".
+ */
+const ghostSaveLabel = computed(() => {
+  const rung = nextRung.value
+  if (!rung) return 'Save'
+  const display = displayWeight(rung.weightLbs)
+  if (isBodyweightOnlyLoad(suggestionLoadSet(display), selectedExercise.value)) {
+    return `Save ${rung.reps} rep${rung.reps === 1 ? '' : 's'}`
+  }
+  return `Save ${addedLoadValue(display)} × ${rung.reps}`
+})
 
 /**
  * True when the weight field means ADDED weight, so 0 is a real value and the
