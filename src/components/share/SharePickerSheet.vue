@@ -11,8 +11,8 @@
 
       <header class="spHeader">
         <div class="spTitleBlock">
-          <h2 id="spTitle" class="spTitle">Pick a card</h2>
-          <p class="spSub">Same data, different vibe</p>
+          <h2 id="spTitle" class="spTitle">{{ headerTitle }}</h2>
+          <p class="spSub">{{ headerSub }}</p>
         </div>
         <span class="spCount">{{ activeIndex + 1 }} / {{ cards.length }}</span>
       </header>
@@ -39,7 +39,7 @@
         >
           <div class="spThumbCard" :class="{ spThumbCardStory: format === 'story' }">
             <div class="spThumbInner" :class="{ spThumbInnerStory: format === 'story' }">
-              <component :is="cardComponent(card.id)" :summary="summary" />
+              <component :is="cardComponent(card.id)" v-bind="cardProps" />
               <span v-if="showWatermark" class="spWatermark" aria-hidden="true">{{ WATERMARK_TEXT }}</span>
             </div>
           </div>
@@ -72,9 +72,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { SessionSummary } from '../../lib/sessionSummary'
 import { WATERMARK_TEXT, type CardFormat } from '../../lib/shareImage'
-import { cardComponent, eligibleSquareCards, eligibleStoryCards, loadCardComponent, resolveInitialCard } from './cardRegistry'
+import { cardComponent, eligibleSquareCards, eligibleStoryCards, loadCardComponent, recapCards, resolveInitialCard } from './cardRegistry'
+import { shareCardProps, type ShareCardSubject } from '../../lib/shareSubject'
 import { useWorkoutShare } from '../../composables/useWorkoutShare'
 import { useTheme } from '../../composables/useTheme'
 import { useModal } from '../../composables/useModal'
@@ -82,7 +82,12 @@ import { useSupporter } from '../../composables/useSupporter'
 import { useAnalytics } from '../../composables/useAnalytics'
 
 const props = defineProps<{
-  summary: SessionSummary
+  /**
+   * What the cards render — a finished session, or a year recap (#1018). The
+   * subject picks the card bucket AND the prop each card is mounted with, so
+   * a card can never be offered a subject it cannot draw.
+   */
+  subject: ShareCardSubject
   /**
    * Pre-select a specific card by id when opening (e.g. 'pr-focus' from the
    * "Share this PR" peak-moment entry point, #716). Falls back to the default
@@ -111,35 +116,58 @@ const FORMAT_OPTIONS: { value: CardFormat; label: string }[] = [
 // Resolve the optional pre-selected card up front so both the format toggle
 // and the active thumbnail open on it. `cards` is derived from `format`, so
 // initializing `format` correctly means the cards list is right from the
-// first render and the watch(cards) reset below never fires on mount.
-const initialSelection = props.initialCardId
-  ? resolveInitialCard(props.summary, props.initialCardId)
-  : null
+// first render and the reset watcher below never fires on mount.
+// Eligibility is a property of a session summary, so this only applies to the
+// session subject — the recap bucket holds one card per format.
+const initialSelection =
+  props.initialCardId && props.subject.kind === 'session'
+    ? resolveInitialCard(props.subject.summary, props.initialCardId)
+    : null
 const format = ref<CardFormat>(initialSelection?.format ?? 'square')
 
-const cards = computed(() =>
-  format.value === 'square'
-    ? eligibleSquareCards(props.summary)
-    : eligibleStoryCards(props.summary)
-)
+const cards = computed(() => {
+  if (props.subject.kind === 'recap') return recapCards(format.value)
+  return format.value === 'square'
+    ? eligibleSquareCards(props.subject.summary)
+    : eligibleStoryCards(props.subject.summary)
+})
 const activeIndex = ref(initialSelection?.index ?? 0)
 const activeCard = computed(() => cards.value[activeIndex.value] ?? null)
 const lastResult = ref<string | null>(null)
 
+/** The prop every thumbnail is bound with — the same one the rasterizer uses. */
+const cardProps = computed(() => shareCardProps(props.subject))
+
+const headerTitle = computed(() =>
+  props.subject.kind === 'recap' ? 'Year in review' : 'Pick a card',
+)
+const headerSub = computed(() =>
+  props.subject.kind === 'recap'
+    ? `Your ${props.subject.recap.year} in numbers`
+    : 'Same data, different vibe',
+)
+
 function setFormat(next: CardFormat) {
   if (next === format.value) return
   format.value = next
-  logEvent('share_card_selected', { format: next, card: cards.value[0]?.id ?? null })
+  logEvent('share_card_selected', { format: next, card: cards.value[0]?.id ?? null, subject: props.subject.kind })
 }
 
 function selectCard(i: number) {
   if (i === activeIndex.value) return
   activeIndex.value = i
-  logEvent('share_card_selected', { format: format.value, card: cards.value[i]?.id ?? null })
+  logEvent('share_card_selected', { format: format.value, card: cards.value[i]?.id ?? null, subject: props.subject.kind })
 }
 
-// Reset selection when the card list changes (e.g. format toggle).
-watch(cards, () => { activeIndex.value = 0 })
+// Reset selection when the card list changes (e.g. format toggle). Keyed on
+// the ids rather than the array identity: `cards` is derived from a prop
+// object, so a host that passes an inline `:subject="{ … }"` literal would
+// otherwise rebuild the list — and silently reset the user's pick — on every
+// one of its own re-renders.
+watch(
+  () => cards.value.map((c) => c.id).join('|'),
+  () => { activeIndex.value = 0 },
+)
 
 async function onShare() {
   const card = activeCard.value
@@ -150,7 +178,7 @@ async function onShare() {
   const res = await shareCard({
     component,
     format: card.format,
-    summary: props.summary,
+    subject: props.subject,
     theme: currentTheme.value,
     mode: resolvedMode.value,
     watermark: showWatermark.value,
@@ -169,7 +197,7 @@ async function onSave() {
   const res = await downloadCard({
     component,
     format: card.format,
-    summary: props.summary,
+    subject: props.subject,
     theme: currentTheme.value,
     mode: resolvedMode.value,
     watermark: showWatermark.value,
@@ -189,7 +217,10 @@ async function onSave() {
 // and re-enable background scroll while the parent is still up.
 onMounted(() => {
   activateTrap()
-  logEvent('share_opened', { format: format.value })
+  // `subject` rides along on every funnel event so a year-recap share can be
+  // told apart from a post-workout one — the recap exists as an organic-growth
+  // lever (#1018) and an unlabelled event could not measure it.
+  logEvent('share_opened', { format: format.value, subject: props.subject.kind })
 })
 onUnmounted(() => {
   deactivateTrap()

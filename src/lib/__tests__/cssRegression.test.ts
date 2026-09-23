@@ -674,6 +674,23 @@ describe('CSS regression tests', () => {
     })
   })
 
+  describe('year-in-review entry point (#1018)', () => {
+    // The year view's only call to action. It reuses .calLogBtn's accent-outline
+    // treatment, so it owes the same 44pt floor and the same theme tokens — a
+    // hardcoded accent here would be invisible on the themes that invert.
+    const lines = getRuleLines('.calRecapBtn')
+
+    it('has min-height: 44px for iOS HIG compliance', () => {
+      expect(lines.some(l => l.includes('min-height') && l.includes('44px'))).toBe(true)
+    })
+
+    it('draws its accent from theme custom properties, never a literal', () => {
+      expect(lines.some(l => l.startsWith('color:') && l.includes('var(--accent)'))).toBe(true)
+      expect(lines.some(l => l.startsWith('border:') && l.includes('var(--accent)'))).toBe(true)
+      expect(lines.some(l => /#[0-9a-f]{3,8}\b/i.test(l))).toBe(false)
+    })
+  })
+
   describe('.wtIntensitySlider touch target (#770)', () => {
     // The Intensity-lens slider is a draggable control; its hit area must meet
     // the project's 44pt iOS touch-target minimum.
