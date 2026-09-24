@@ -73,6 +73,111 @@ describe('usePreferencesStore', () => {
     })
   })
 
+  /**
+   * LIFT-1493 — `features`, `experience` and `filters` used to be spread onto
+   * state raw, so a blob whose TYPES were wrong hydrated unchecked. The blob is
+   * valid JSON in every case below; only its field types are corrupt, which is
+   * exactly what the top-level `isPlainObject` guard on the read cannot see.
+   *
+   * Both hydration paths are covered because they are separate copies of the
+   * same field list (`loadLocalSettings` in the state factory, and
+   * `_applyPreferences` for the cross-tab reload / init / remote adoption) —
+   * fixing one and not the other leaves the defect on whichever path the test
+   * didn't take. Consolidating those two copies is LIFT-1495.
+   */
+  describe('corrupt-blob field types (LIFT-1493)', () => {
+    const CORRUPT_BLOB = JSON.stringify({
+      features: 'abc',
+      experience: { prCelebrations: 'false', haptics: 'false' },
+      filters: { warmupThreshold: '0.75' },
+    })
+
+    it('hydrates defaults, not character-index keys, from a string features field', () => {
+      localStorageMock.setItem('user-preferences', CORRUPT_BLOB)
+      setActivePinia(createPinia())
+      const corrupted = usePreferencesStore()
+      expect(corrupted.features).toEqual({ workouts: true, calendar: true, weight: true })
+      // The consequence that made this more than a typing nit: enabledCount is
+      // Object.values(features).filter(Boolean).length, and toggleFeature uses
+      // it as the "you can't disable your last tab" floor. Spread, 'abc' added
+      // three truthy keys, so all three real tabs could be switched off and
+      // App.vue's visibleTabs would render an empty tab bar.
+      expect(corrupted.enabledCount).toBe(3)
+      corrupted.toggleFeature('calendar')
+      corrupted.toggleFeature('weight')
+      corrupted.toggleFeature('workouts')
+      expect(corrupted.features.workouts).toBe(true)
+      expect(corrupted.enabledCount).toBe(1)
+    })
+
+    it('reads a stringified experience opt-out as the default instead of truthy', () => {
+      localStorageMock.setItem('user-preferences', CORRUPT_BLOB)
+      setActivePinia(createPinia())
+      const corrupted = usePreferencesStore()
+      expect(corrupted.experience.prCelebrations).toBe(true)
+      expect(corrupted.experience.haptics).toBe(true)
+      expect(typeof corrupted.experience.prCelebrations).toBe('boolean')
+    })
+
+    it('keeps warmupThreshold a finite number so the ratio comparison still fires', () => {
+      localStorageMock.setItem('user-preferences', CORRUPT_BLOB)
+      setActivePinia(createPinia())
+      const corrupted = usePreferencesStore()
+      expect(corrupted.filters.warmupThreshold).toBe(0.75)
+      expect(Number.isFinite(corrupted.filters.warmupThreshold)).toBe(true)
+      // Settings renders Math.round(t * 100) — "NaN%" is what a string produced.
+      expect(Math.round(corrupted.filters.warmupThreshold * 100)).toBe(75)
+    })
+
+    it('does not launder the corruption back into the persisted blob', () => {
+      // The blob is last-write-wins with no reconciliation pass, so anything
+      // that reaches state is written straight back out by _persist.
+      localStorageMock.setItem('user-preferences', CORRUPT_BLOB)
+      setActivePinia(createPinia())
+      const corrupted = usePreferencesStore()
+      corrupted.setTheme('fire')
+      const stored = JSON.parse(localStorageMock.getItem('user-preferences')!)
+      expect(stored.features).toEqual({ workouts: true, calendar: true, weight: true })
+      expect(stored.experience).toEqual({
+        prCelebrations: true, haptics: true, screenWakeLock: true, restTimerNotification: true,
+      })
+      expect(stored.filters).toEqual({ warmupThreshold: 0.75 })
+    })
+
+    it('_applyPreferences guards the same three fields as the state factory', () => {
+      store.setWarmupThreshold(0.6)
+      store.setExperienceFlag('haptics', false)
+      store._applyPreferences(JSON.parse(CORRUPT_BLOB))
+      expect(store.features).toEqual({ workouts: true, calendar: true, weight: true })
+      expect(store.experience).toEqual({
+        prCelebrations: true, haptics: true, screenWakeLock: true, restTimerNotification: true,
+      })
+      expect(store.filters).toEqual({ warmupThreshold: 0.75 })
+    })
+
+    it('still accepts a well-formed partial blob through both paths', () => {
+      // The guards rebuild from defaults, so prove they don't flatten a real
+      // user's settings on the way through.
+      const good = JSON.stringify({
+        features: { workouts: true, calendar: false, weight: true },
+        experience: { prCelebrations: false, haptics: false, screenWakeLock: true, restTimerNotification: false },
+        filters: { warmupThreshold: 0.85 },
+      })
+      localStorageMock.setItem('user-preferences', good)
+      setActivePinia(createPinia())
+      const hydrated = usePreferencesStore()
+      expect(hydrated.features.calendar).toBe(false)
+      expect(hydrated.experience.prCelebrations).toBe(false)
+      expect(hydrated.experience.restTimerNotification).toBe(false)
+      expect(hydrated.filters.warmupThreshold).toBe(0.85)
+
+      hydrated._applyPreferences(JSON.parse(good))
+      expect(hydrated.features.calendar).toBe(false)
+      expect(hydrated.experience.haptics).toBe(false)
+      expect(hydrated.filters.warmupThreshold).toBe(0.85)
+    })
+  })
+
   describe('toggleFeature', () => {
     it('disables a feature when toggled off', () => {
       store.toggleFeature('calendar')
