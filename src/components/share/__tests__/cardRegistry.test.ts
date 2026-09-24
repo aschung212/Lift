@@ -25,7 +25,7 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
     exercises: 5,
     prs: 0,
     repPRs: 0,
-    bestSet: { exerciseId: 'ex1', name: 'Bench', weight: 225, reps: 5, e1RM: 263, isPR: false },
+    bestSet: { exerciseId: 'ex1', name: 'Bench', load: { value: '225', unit: 'lbs' }, reps: 5, e1RM: 263, isPR: false },
     highlights: [],
     weekVolume: [0, 24850, 0, 0, 0, 0, 0],
     priorWeekVolume: 18200,

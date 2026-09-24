@@ -151,13 +151,27 @@ export function setLoadParts(
   return { value: `${set.weight > 0 ? '+' : ''}${displayWeight(set.weight)}`, unit }
 }
 
+/**
+ * The one way {@link SetLoadParts} becomes a single string.
+ *
+ * Exported so a surface handed already-decided parts joins them exactly as
+ * {@link formatSetLoad} does — the session summary decides the load where the
+ * exercise is still in scope and carries the parts to presentational cards
+ * (#1385), which then have the same two-branch decision to make and no
+ * exercise to re-derive it from. A null unit means the value is already a
+ * phrase ("Bodyweight"); appending a unit to it re-asserts the very thing the
+ * word exists to deny.
+ */
+export function joinLoadParts({ value, unit }: SetLoadParts): string {
+  return unit ? `${value} ${unit}` : value
+}
+
 export function formatSetLoad(
   set: Pick<WorkoutSet, 'weight'> & { bodyweight?: number },
   exercise: Pick<Exercise, 'bodyweightLoaded'> | null | undefined,
   format: SetLoadFormat,
 ): string {
-  const { value, unit } = setLoadParts(set, exercise, format)
-  return unit ? `${value} ${unit}` : value
+  return joinLoadParts(setLoadParts(set, exercise, format))
 }
 
 /** The load (in lbs) used for volume + e1RM math on a set. ADDED → EFFECTIVE. */

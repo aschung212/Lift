@@ -102,7 +102,7 @@ describe('#1291 session summary day bucketing', () => {
 
       const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
       expect(summary.setsCompleted).toBe(1)
-      expect(summary.bestSet?.weight).toBe(225)
+      expect(summary.bestSet?.load).toEqual({ value: '225', unit: 'lbs' })
     })
   })
 

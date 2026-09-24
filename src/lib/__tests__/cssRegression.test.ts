@@ -1676,3 +1676,79 @@ describe('iOS focus-zoom floor: text controls are at least 16px (LIFT-1376)', ()
     ).toEqual([])
   })
 })
+
+/**
+ * A worded load gets word-sized type on the fixed share canvas (#1385).
+ *
+ * `SessionBestSet.load.value` is "225" on most days and the ten-letter word
+ * "Bodyweight" on a plain-pull-up day. The three hero cards give that slot
+ * 68–110px because it normally holds three digits, and they are 360px-wide
+ * surfaces rasterised offscreen — there is no viewport to reflow against and
+ * no user to see the overflow before the PNG is posted, so the word has to be
+ * sized down deliberately. `BestSetStory` additionally sets `white-space:
+ * nowrap`, which turns an overflow into text running clean off the card.
+ *
+ * Neither half is visible to a render test: happy-dom has no layout engine, so
+ * `cardRender.test.ts` can prove a card says "Bodyweight" while it sits
+ * entirely outside the frame. The pairs are DERIVED from the templates' own
+ * `loadIsWord` bindings, so a fourth card that adopts the pattern is covered
+ * by adopting it.
+ */
+describe('worded loads are sized for the fixed share canvas (#1385)', () => {
+  const CARDS_DIR = resolve(__dirname, '../../components/share/cards')
+
+  /** `class="bsWeight" :class="{ bsWeightWord: loadIsWord }"` → the pair. */
+  const WORD_BINDING = /class="(\w+)"\s+:class="\{\s*(\w+):\s*loadIsWord\s*\}"/g
+
+  const withoutComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '')
+
+  const pairs = readdirSync(CARDS_DIR)
+    .filter((f) => f.endsWith('.vue'))
+    .flatMap((file) => {
+      const content = readFileSync(resolve(CARDS_DIR, file), 'utf-8')
+      return [...content.matchAll(WORD_BINDING)].map((m) => ({
+        file,
+        content,
+        base: m[1],
+        word: m[2],
+      }))
+    })
+
+  /** The px `font-size` a scoped rule declares, or null. */
+  function fontSizePx(content: string, selector: string): number | null {
+    const rule = withoutComments(content).match(
+      new RegExp(`\\.${selector}\\s*\\{[^}]*?font-size:\\s*([\\d.]+)px`),
+    )
+    return rule ? Number(rule[1]) : null
+  }
+
+  it('finds the hero cards that word their load', () => {
+    // Non-vacuity: a binding rename would otherwise leave this suite scanning
+    // nothing while the assertion below passes over an empty list.
+    expect(pairs.map((p) => p.file).sort()).toEqual([
+      'BestSetCard.vue',
+      'BestSetStory.vue',
+      'PrFocusCard.vue',
+    ])
+  })
+
+  it('gives every one of them a materially smaller word size', () => {
+    const offenders: string[] = []
+    for (const { file, content, base, word } of pairs) {
+      const basePx = fontSizePx(content, base)
+      const wordPx = fontSizePx(content, word)
+      if (basePx === null) offenders.push(`${file} — .${base} declares no px font-size`)
+      else if (wordPx === null) offenders.push(`${file} — .${word} is bound but declares no px font-size`)
+      // "Bodyweight" runs ~5x its font size wide in the display face, and the
+      // roomiest of these canvases gives the slot 296px against a numeral tier
+      // sized for three digits — so at most HALF that tier keeps the word on
+      // the card with margin, and is the floor this pins.
+      else if (wordPx > basePx / 2) {
+        offenders.push(
+          `${file} — .${word} is ${wordPx}px against .${base}'s ${basePx}px; "Bodyweight" overflows the 360px canvas`,
+        )
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([])
+  })
+})

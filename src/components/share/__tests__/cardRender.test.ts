@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { loadCardComponent } from '../cardRegistry'
+import { loadCardComponent, SQUARE_CARDS, STORY_CARDS } from '../cardRegistry'
 import type { SessionSummary, SessionHighlight } from '../../../lib/sessionSummary'
 
 /**
@@ -24,7 +24,7 @@ function makeHighlight(overrides: Partial<SessionHighlight> = {}): SessionHighli
   return {
     exerciseId: 'ex1',
     name: 'Bench Press',
-    weight: 225,
+    load: { value: '225', unit: 'lbs' },
     reps: 5,
     e1RM: 263,
     badge: 'PR',
@@ -43,7 +43,7 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
     exercises: 5,
     prs: 2,
     repPRs: 1,
-    bestSet: { exerciseId: 'ex1', name: 'Bench Press', weight: 225, reps: 5, e1RM: 263, isPR: true },
+    bestSet: { exerciseId: 'ex1', name: 'Bench Press', load: { value: '225', unit: 'lbs' }, reps: 5, e1RM: 263, isPR: true },
     highlights: [makeHighlight()],
     weekVolume: [0, 24850, 0, 0, 0, 0, 0],
     priorWeekVolume: 18200, // (24850-18200)/18200 ≈ +37%
@@ -129,7 +129,7 @@ describe('share-card render smoke tests (issue #1188)', () => {
 
     it('labels a non-PR best set "Top set"', async () => {
       const summary = makeSummary({
-        bestSet: { exerciseId: 'ex1', name: 'Bench Press', weight: 225, reps: 5, e1RM: 263, isPR: false },
+        bestSet: { exerciseId: 'ex1', name: 'Bench Press', load: { value: '225', unit: 'lbs' }, reps: 5, e1RM: 263, isPR: false },
       })
       const wrapper = await mountCard('best-set', summary)
       expect(wrapper.text()).toContain('Top set')
@@ -178,7 +178,10 @@ describe('share-card render smoke tests (issue #1188)', () => {
       expect(text).toContain('APR 21') // date uppercased
       expect(text).toContain('1h 14m') // duration
       expect(text).toContain('Bench Press') // headliner
-      expect(text).toContain('225×5 lbs') // headliner stat
+      // The unit belongs to the load, not to the reps — it is now placed like
+      // every other set the app renders ("225 lbs × 5"), because the load is
+      // the thing that may have no unit at all (#1385).
+      expect(text).toContain('225 lbs × 5') // headliner stat
       expect(text).toContain('24,850') // volume stub
     })
 
@@ -228,7 +231,7 @@ describe('share-card render smoke tests (issue #1188)', () => {
 
     it('labels a non-PR best set "Best set"', async () => {
       const summary = makeSummary({
-        bestSet: { exerciseId: 'ex1', name: 'Bench Press', weight: 225, reps: 5, e1RM: 263, isPR: false },
+        bestSet: { exerciseId: 'ex1', name: 'Bench Press', load: { value: '225', unit: 'lbs' }, reps: 5, e1RM: 263, isPR: false },
       })
       const wrapper = await mountCard('best-set-story', summary)
       expect(wrapper.text()).toContain('Best set')
@@ -249,5 +252,69 @@ describe('share-card render smoke tests (issue #1188)', () => {
       const wrapper = await mountCard('week-chart-story', makeSummary({ priorWeekVolume: 0 }))
       expect(wrapper.text()).toContain('NEW')
     })
+  })
+})
+
+/**
+ * A pure-bodyweight session, swept across EVERY registered card (#1385).
+ *
+ * `set.weight` is the ADDED portion on a `bodyweightLoaded` exercise, so the
+ * summary used to hand these cards a bare `0` and they rendered it as the
+ * load — "0×12" beside a ~224 lb e1RM derived from the same set, rasterized
+ * into an image the user posts. `SessionBestSet`/`SessionHighlight` now carry
+ * `SetLoadParts` instead of that number, which makes the old rendering a
+ * compile error; what a type cannot catch is a card appending `unitLabel` to
+ * a load whose unit is deliberately absent, giving "Bodyweight lbs".
+ *
+ * The sweep is DERIVED from the registry rather than enumerated, so a twelfth
+ * card is covered by being registered — the same reason LIFT-1373's guard
+ * derives its surfaces. Enumerating is how the Receipt, Stat Grid and Ticket
+ * Stub cards came to be missing from the issue's own list of three.
+ */
+describe('share cards name a pure-bodyweight load (#1385)', () => {
+  const ALL_CARDS = [...SQUARE_CARDS, ...STORY_CARDS]
+
+  const BODYWEIGHT_LOAD = { value: 'Bodyweight', unit: null } as const
+
+  function bodyweightSummary(unitLabel = 'lbs'): SessionSummary {
+    return makeSummary({
+      unitLabel,
+      progress: null, // the Progress card is in the sweep and reads this
+      bestSet: { exerciseId: 'ex1', name: 'Pull-up', load: { ...BODYWEIGHT_LOAD }, reps: 12, e1RM: 224, isPR: true },
+      highlights: [makeHighlight({ name: 'Pull-up', load: { ...BODYWEIGHT_LOAD }, reps: 12, e1RM: 224, volume: 2040 })],
+    })
+  }
+
+  it('covers every registered card', () => {
+    // Non-vacuity: a sweep over an empty list would pass while rendering
+    // nothing at all.
+    expect(ALL_CARDS.length).toBeGreaterThanOrEqual(12)
+  })
+
+  for (const unitLabel of ['lbs', 'kg']) {
+    it(`never prints the added 0 as a load, or a unit on the word (${unitLabel})`, async () => {
+      for (const card of ALL_CARDS) {
+        const wrapper = await mountCard(card.id, bodyweightSummary(unitLabel))
+        const text = wrapper.text()
+        expect(text, `${card.id} appended a unit to the word`)
+          .not.toContain(`Bodyweight ${unitLabel}`)
+        expect(text, `${card.id} appended a unit to the word`)
+          .not.toContain(`Bodyweight ${unitLabel.toUpperCase()}`)
+        // The reps are 12 and the e1RM 224, so the only "0" a load could
+        // produce is the added portion this issue exists to stop printing.
+        expect(text, `${card.id} printed the bare added weight`).not.toMatch(/0\s*[×x]/)
+      }
+    })
+  }
+
+  it('says the word on every card that shows a load at all', async () => {
+    // The four cards whose whole subject IS the best set or the per-exercise
+    // top set. The rest legitimately show only volume / streak / ring numbers,
+    // which is why the negative sweep above is the one that runs over all of
+    // them.
+    for (const id of ['best-set', 'best-set-story', 'pr-focus', 'receipt', 'stat-grid', 'ticket-stub']) {
+      const wrapper = await mountCard(id, bodyweightSummary())
+      expect(wrapper.text(), `${id} dropped the load entirely`).toContain('Bodyweight')
+    }
   })
 })
