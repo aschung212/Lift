@@ -11,9 +11,9 @@
     <div v-if="summary.bestSet" class="bsHero">
       <div class="bsName">{{ summary.bestSet.name }}</div>
       <div class="bsNumberRow">
-        <div class="bsWeight">{{ summary.bestSet.weight }}</div>
+        <div class="bsWeight" :class="{ bsWeightWord: loadIsWord }">{{ summary.bestSet.load.value }}</div>
         <div class="bsRepsBlock">
-          <div class="bsRepsLabel">{{ summary.unitLabel.toUpperCase() }} &times;</div>
+          <div class="bsRepsLabel">{{ repsLabel }}</div>
           <div class="bsReps">{{ summary.bestSet.reps }}</div>
         </div>
       </div>
@@ -37,6 +37,20 @@ import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 const props = defineProps<{ summary: SessionSummary }>()
 
 const prLabel = computed(() => (props.summary.bestSet?.isPR ? 'New personal record' : 'Top set'))
+
+const bestLoad = computed(() => props.summary.bestSet?.load ?? null)
+
+/**
+ * A null unit means the load is already a phrase — "Bodyweight", the ordinary
+ * pull-up (#1385). Two consequences for this card, and they are the same fact
+ * twice: the unit must not be appended (`Bodyweight LBS`), and the value is a
+ * ten-letter word sitting in a 68px numeral slot that has to shrink for it.
+ */
+const loadIsWord = computed(() => bestLoad.value !== null && bestLoad.value.unit === null)
+
+const repsLabel = computed(() =>
+  bestLoad.value?.unit ? `${bestLoad.value.unit.toUpperCase()} ×` : '×',
+)
 </script>
 
 <style scoped>
@@ -117,6 +131,16 @@ const prLabel = computed(() => (props.summary.bestSet?.isPR ? 'New personal reco
   letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
+}
+
+/* The slot holds a NUMBER at 68px; "Bodyweight" is ten letters and overruns
+   the 296px card at that size, so a worded load gets word-sized type (#1385).
+   The card is a fixed 360x360 canvas rasterized offscreen, so there is no
+   viewport to reflow against and no user to notice an overflow before the PNG
+   is posted — the size has to be decided here. */
+.bsWeightWord {
+  font-size: 34px;
+  letter-spacing: -0.02em;
 }
 
 .bsRepsBlock {

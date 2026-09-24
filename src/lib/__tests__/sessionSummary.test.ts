@@ -47,6 +47,23 @@ function loggedSet(
   }
 }
 
+/**
+ * A `bodyweightLoaded` exercise (LIFT-834): `weight` is the ADDED portion and
+ * `bodyweight` is what was captured at log time. Shared by the volume-folding
+ * block and the load-naming block (#1385) — the two halves of the same fact.
+ */
+function bwExercise(
+  sets: { id: string; weight: number; reps: number; date: string; bodyweight?: number }[],
+): Exercise {
+  return {
+    id: 'bw',
+    name: 'Weighted Pull-up',
+    tags: [],
+    bodyweightLoaded: true,
+    sets: sets.map((s) => ({ ...s, estimated1RM: 0 })),
+  }
+}
+
 function makeXPEntry(overrides: Partial<SetXPEntry> = {}): SetXPEntry {
   return { xp: 72, theme: 'fire', epoch: 1, zone: 'working', isPR: false, isRepPR: false, ...overrides }
 }
@@ -215,7 +232,7 @@ describe('buildSessionSummary', () => {
       ]),
     ]
     const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
-    expect(summary.bestSet?.weight).toBe(245)
+    expect(summary.bestSet?.load).toEqual({ value: '245', unit: 'lbs' })
     expect(summary.bestSet?.reps).toBe(3)
   })
 
@@ -371,7 +388,7 @@ describe('buildSessionSummary', () => {
     const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
     expect(summary.unitLabel).toBe('lbs')
     expect(summary.totalVolume).toBe(225 * 5)
-    expect(summary.bestSet?.weight).toBe(225)
+    expect(summary.bestSet?.load).toEqual({ value: '225', unit: 'lbs' })
   })
 
   it('aggregates priorWeekVolume from the previous Mon→Sun week', () => {
@@ -401,22 +418,14 @@ describe('buildSessionSummary', () => {
       toDisplayUnits: (lb) => +(lb * 0.453592).toFixed(1),
     })
     expect(summary.unitLabel).toBe('kg')
-    expect(summary.bestSet?.weight).toBeCloseTo(102.1, 1)
+    // The load carries the converter's own rounding, so it reads exactly as the
+    // bare number used to — and its unit is the summary's, not a hardcoded lbs.
+    expect(summary.bestSet?.load).toEqual({ value: '102.1', unit: 'kg' })
     expect(summary.totalVolume).toBeCloseTo(510.3, 1)
   })
 
   // ── Bodyweight-loaded volume folding (LIFT-834) ──────────────────
   describe('bodyweight-loaded volume', () => {
-    function bwExercise(sets: { id: string; weight: number; reps: number; date: string; bodyweight?: number }[]): Exercise {
-      return {
-        id: 'bw',
-        name: 'Weighted Pull-up',
-        tags: [],
-        bodyweightLoaded: true,
-        sets: sets.map((s) => ({ ...s, estimated1RM: 0 })),
-      }
-    }
-
     it('folds captured bodyweight into total + week volume', () => {
       const exercises = [
         bwExercise([{ id: 's1', weight: 25, reps: 8, date: '2026-04-21T15:00:00Z', bodyweight: 160 }]),
@@ -443,6 +452,75 @@ describe('buildSessionSummary', () => {
       ]
       const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
       expect(summary.totalVolume).toBe(25 * 8)
+    })
+  })
+
+  /**
+   * The summary NAMES the top set's load (#1385).
+   *
+   * LIFT-834 folded bodyweight into this file's volume math and LIFT-1373 gave
+   * every set-history row one formatter for the words, but the summary sat
+   * between the two carrying `weight: number` — the bare ADDED portion. So a
+   * session of plain pull-ups celebrated "0 × 12" under a "🏆 Best set"
+   * heading, directly above `e1RM`, which this same function copies from the
+   * stored (bodyweight-FOLDED) value — one card saying the lifter moved
+   * nothing and estimating a 224 lb max, and offering to render it into an
+   * image they post.
+   *
+   * The decision belongs here because this is the last place holding the
+   * exercise: `WorkoutCompleteView` and the eleven share cards get the summary
+   * and nothing else.
+   */
+  describe('bodyweight-loaded load naming (#1385)', () => {
+    it('names a pure-bodyweight top set instead of printing its added 0', () => {
+      const exercises = [
+        bwExercise([{ id: 's1', weight: 0, reps: 12, date: '2026-04-21T15:00:00Z', bodyweight: 170 }]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      // Null unit, not 'lbs': "Bodyweight lbs" would re-assert the very thing
+      // the word denies, so the absence is part of the decision.
+      expect(summary.bestSet?.load).toEqual({ value: 'Bodyweight', unit: null })
+      expect(summary.highlights[0].load).toEqual({ value: 'Bodyweight', unit: null })
+    })
+
+    it('marks an added load with a "+" so it does not read as the whole load', () => {
+      const exercises = [
+        bwExercise([{ id: 's1', weight: 25, reps: 8, date: '2026-04-21T15:00:00Z', bodyweight: 160 }]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.bestSet?.load).toEqual({ value: '+25', unit: 'lbs' })
+    })
+
+    it('keeps saying "0" when the flag is on but nothing was ever folded', () => {
+      // No captured bodyweight → `estimated1RM` was computed off the bare
+      // weight, so the label must keep describing what the neighbouring e1RM
+      // came from rather than claim a bodyweight the set never recorded.
+      const exercises = [
+        bwExercise([{ id: 's1', weight: 0, reps: 12, date: '2026-04-21T15:00:00Z' }]),
+      ]
+      const summary = buildSessionSummary({ rawDate: '2026-04-21', exercises })
+      expect(summary.bestSet?.load).toEqual({ value: '0', unit: 'lbs' })
+    })
+
+    it('never leaks a unit onto the word, and converts the added portion, in kg', () => {
+      // Both halves are unit-sensitive and neither is visible in lbs: the kg
+      // converter is the identity there, and `unitLabel` defaults to 'lbs'.
+      const toKg = (lb: number) => +(lb * 0.453592).toFixed(1)
+      const bodyweightOnly = buildSessionSummary({
+        rawDate: '2026-04-21',
+        exercises: [bwExercise([{ id: 's1', weight: 0, reps: 12, date: '2026-04-21T15:00:00Z', bodyweight: 170 }])],
+        unitLabel: 'kg',
+        toDisplayUnits: toKg,
+      })
+      expect(bodyweightOnly.bestSet?.load).toEqual({ value: 'Bodyweight', unit: null })
+
+      const added = buildSessionSummary({
+        rawDate: '2026-04-21',
+        exercises: [bwExercise([{ id: 's2', weight: 20, reps: 8, date: '2026-04-21T15:00:00Z', bodyweight: 160 }])],
+        unitLabel: 'kg',
+        toDisplayUnits: toKg,
+      })
+      expect(added.bestSet?.load).toEqual({ value: '+9.1', unit: 'kg' })
     })
   })
 })

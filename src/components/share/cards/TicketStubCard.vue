@@ -11,9 +11,7 @@
         <div v-if="summary.bestSet">
           <div class="tsKey">Headliner</div>
           <div class="tsHead">{{ summary.bestSet.name }}</div>
-          <div class="tsHeadStat">
-            {{ summary.bestSet.weight }}×{{ summary.bestSet.reps }} {{ summary.unitLabel }}
-          </div>
+          <div class="tsHeadStat">{{ headlinerStat }}</div>
         </div>
       </div>
 
@@ -35,10 +33,22 @@
 import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
 import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
+import { joinLoadParts } from '../../../lib/bodyweightLoad'
 
 const props = defineProps<{ summary: SessionSummary }>()
 
 const formattedVolume = computed(() => Math.round(props.summary.totalVolume).toLocaleString('en-US'))
+
+/**
+ * The one card that shows the load's unit inline, so it is the one that has to
+ * KNOW the unit can be absent (#1385): "Bodyweight lbs" re-asserts exactly the
+ * thing the word exists to deny. `joinLoadParts` owns that branch — the same
+ * one `formatSetLoad` makes for every set-history row.
+ */
+const headlinerStat = computed(() => {
+  const best = props.summary.bestSet
+  return best ? `${joinLoadParts(best.load)} × ${best.reps}` : ''
+})
 </script>
 
 <style scoped>

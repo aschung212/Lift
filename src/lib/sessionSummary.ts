@@ -10,16 +10,46 @@
 import type { Exercise, WorkoutSet } from '../stores/workout'
 import type { SetXPEntry } from '../stores/progression'
 import { setDayKey, localDateKey, daysBetweenISO } from './dates'
-import { effectiveSetWeight } from './bodyweightLoad'
+import { effectiveSetWeight, setLoadParts, type SetLoadParts } from './bodyweightLoad'
 import {
   sanitizeStrengthBaselineMode,
   type StrengthBaselineMode,
 } from './strengthBaseline'
 
+/**
+ * A top set's load, already named (#1385) — `{ value: '225', unit: 'lbs' }`,
+ * `{ value: '+25', unit: 'lbs' }`, or `{ value: 'Bodyweight', unit: null }`.
+ *
+ * The decision has to be made HERE, because `set.weight` is the ADDED portion
+ * on a `bodyweightLoaded` exercise (LIFT-834) and only this function still has
+ * the exercise in scope: `WorkoutCompleteView` and the eleven share cards are
+ * presentational and receive nothing but the summary (LIFT-916). Carrying the
+ * decision rather than the number is the same move `trainingReport`'s
+ * `SetWithExercise` and `themeStats`' `setLookup` made for `effectiveWeight`
+ * in #1333.
+ *
+ * It replaces the bare `weight: number` these two interfaces used to carry,
+ * rather than sitting beside it. That number printed a pure-bodyweight best
+ * set as "0 × 12" under a "🏆 Best set" heading — beside `e1RM`, which is the
+ * stored, bodyweight-FOLDED value, so one card said the lifter moved nothing
+ * and estimated a 224 lb max two lines apart — and offered to render it into
+ * an image the user posts. Deleting the field is what stops a twelfth card
+ * reaching for it: a regex guard can only catch the surfaces it thinks to look
+ * at (LIFT-1373's keys on a rendered `estimated1RM`, which the Receipt, Stat
+ * Grid and Ticket Stub cards do not have), whereas the missing field is a
+ * `vue-tsc` error in every `src/` file that reads it — templates included, and
+ * before any of them has a test. What the type cannot decide is whether a
+ * caller appends `unitLabel` to a load whose unit is deliberately absent;
+ * `cardRender.test.ts` sweeps that across the whole card registry.
+ *
+ * Parts rather than a string because `BestSetCard` styles the unit separately
+ * from the number. Join them with `joinLoadParts` — never `${value} ${unit}`,
+ * which prints "Bodyweight lbs".
+ */
 export interface SessionHighlight {
   exerciseId: string
   name: string
-  weight: number
+  load: SetLoadParts
   reps: number
   e1RM: number
   badge: 'PR' | 'rep PR' | ''
@@ -29,7 +59,7 @@ export interface SessionHighlight {
 export interface SessionBestSet {
   exerciseId: string
   name: string
-  weight: number
+  load: SetLoadParts
   reps: number
   e1RM: number
   isPR: boolean
@@ -229,6 +259,9 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
     const v = toDisplay(lb)
     return Number.isInteger(v) ? v : Math.round(v * 10) / 10
   }
+  // Same conversion + rounding the numbers above get, so a load reads exactly
+  // as it used to wherever it is still a plain number.
+  const loadFormat = { displayWeight: cv, unit: unitLabel }
 
   // `rawDate` arrives as a LOCAL day key (`todayISO()` / the log sheet's date),
   // so every `set.date` compared against it must go through `setDayKey` — the
@@ -299,7 +332,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
       highlights.push({
         exerciseId: ex.id,
         name: ex.name,
-        weight: cv(topSet.weight),
+        load: setLoadParts(topSet, ex, loadFormat),
         reps: topSet.reps,
         e1RM: cv(topSet.estimated1RM),
         badge,
@@ -309,7 +342,7 @@ export function buildSessionSummary(input: SessionSummaryInput): SessionSummary 
         bestSet = {
           exerciseId: ex.id,
           name: ex.name,
-          weight: cv(topSet.weight),
+          load: setLoadParts(topSet, ex, loadFormat),
           reps: topSet.reps,
           e1RM: cv(topSet.estimated1RM),
           isPR: exerciseHasPR,
