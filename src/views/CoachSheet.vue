@@ -51,14 +51,14 @@
 
           <div class="coachToggleRow">
             <div class="coachToggleLabel">
-              <span class="coachToggleTitle">Include bodyweight</span>
+              <span id="coach-include-bodyweight-label" class="coachToggleTitle">Include bodyweight</span>
               <span class="coachToggleHint">Your logged bodyweight is the most personal field.</span>
             </div>
             <button
               :class="['glassToggle', { on: includeBodyweight }]"
               role="switch"
               :aria-checked="includeBodyweight"
-              :aria-label="includeBodyweight ? 'Exclude bodyweight from the export' : 'Include bodyweight in the export'"
+              aria-labelledby="coach-include-bodyweight-label"
               @click="includeBodyweight = !includeBodyweight"
             >
               <span class="glassToggleThumb"></span>
