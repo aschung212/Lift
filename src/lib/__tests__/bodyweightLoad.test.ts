@@ -5,6 +5,7 @@ import {
   bodyweightFold,
   effectiveSetWeight,
   formatSetLoad,
+  isBodyweightOnlyLoad,
   isLoggableWeight,
   setLoadParts,
 } from '../bodyweightLoad'
@@ -200,5 +201,36 @@ describe('formatSetLoad (LIFT-1373)', () => {
     }
     expect(setLoadParts(bw, { bodyweightLoaded: true }, lbs)).toEqual({ value: 'Bodyweight', unit: null })
     expect(setLoadParts(plain, null, lbs)).toEqual({ value: '135', unit: 'lbs' })
+  })
+})
+
+describe('isBodyweightOnlyLoad (LIFT-1486)', () => {
+  const lbs = { displayWeight: (v: number) => +v.toFixed(1), unit: 'lbs' }
+
+  it('is true only when a fold applies and nothing was added', () => {
+    expect(isBodyweightOnlyLoad(set({ weight: 0, bodyweight: 170 }), { bodyweightLoaded: true })).toBe(true)
+    expect(isBodyweightOnlyLoad(set({ weight: 25, bodyweight: 170 }), { bodyweightLoaded: true })).toBe(false)
+    // No fold applied — the 0 is a bare weight, not "the lifter" (LIFT-1373).
+    expect(isBodyweightOnlyLoad(set({ weight: 0, bodyweight: undefined }), { bodyweightLoaded: true })).toBe(false)
+    expect(isBodyweightOnlyLoad(set({ weight: 0 }), { bodyweightLoaded: false })).toBe(false)
+    expect(isBodyweightOnlyLoad(set({ weight: 0 }), null)).toBe(false)
+  })
+
+  it('names exactly the loads the formatter renders as the word', () => {
+    // The predicate exists for the slots too narrow to print "Bodyweight" —
+    // the ghost-arm Save button. It has to agree with the formatter set for
+    // set, or one surface would call a load bodyweight-only and its neighbour
+    // would not.
+    const cases = [
+      [set({ weight: 0, bodyweight: 170 }), { bodyweightLoaded: true }],
+      [set({ weight: 25, bodyweight: 170 }), { bodyweightLoaded: true }],
+      [set({ weight: 0, bodyweight: undefined }), { bodyweightLoaded: true }],
+      [set({ weight: 0 }), { bodyweightLoaded: false }],
+      [set({ weight: -5, bodyweight: 170 }), { bodyweightLoaded: true }],
+      [set({ weight: 135 }), null],
+    ] as const
+    for (const [s, ex] of cases) {
+      expect(isBodyweightOnlyLoad(s, ex)).toBe(formatSetLoad(s, ex, lbs) === 'Bodyweight')
+    }
   })
 })

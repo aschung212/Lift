@@ -2525,6 +2525,60 @@ describe('Invariant: a stored-set surface renders its load via formatSetLoad (LI
   })
 })
 
+// The same rule one step earlier in the flow: the log sheet's quick-fill
+// surfaces don't render a STORED set, they OFFER one — a usual-ladder rung, a
+// last-session chip, the overload nudge's target. Every weight they carry is
+// an ADDED weight all the same, so printed bare they say "0 × 12" for the
+// ordinary pull-up (LIFT-1486) — the contradiction above, re-asserted by the
+// suggestion sitting directly over the to-beat card that spells the word out.
+//
+// The scan above cannot see any of these: it keys on a template interpolating
+// `estimated1RM`, and a suggestion has none to render. So this one keys on the
+// suggestion SOURCES instead — the fields those surfaces read a load out of —
+// and derives the call sites, which is the half that drifts. A hardcoded list
+// of template lines would only pin the four that exist today, which is exactly
+// how the chips came to disagree with the card beneath them.
+describe('Invariant: the log sheet words a SUGGESTED load through the formatter (LIFT-1486)', () => {
+  /**
+   * A load offered by a suggestion, as named in WorkoutTracker's template:
+   * `…weightLbs` covers the usual-ladder rung and the session plan's top set,
+   * and the overload nudge has its own two fields (`displayWeight` is already
+   * display-space, `fromWeightLbs` is raw lbs). `s.weight` is the last-session
+   * chip's set.
+   */
+  const SUGGESTION_LOAD = /\b\w+\.weightLbs\b|\boverloadNudge\.(?:displayWeight|fromWeightLbs)\b|\bs\.weight\b/g
+  /** The sanctioned wrappers, optionally around the unit conversion. */
+  const WORDED = /(?:addedLoadValue|addedLoadLabel|planTopSetLoad|rungLoadText)\(\s*(?:displayWeight\(\s*)?$/
+
+  const tracker = getSourceFiles()
+    .find(f => f.path === join('components', 'WorkoutTracker.vue'))!
+  const start = tracker.content.indexOf('<template>')
+  const template = tracker.content.slice(start, tracker.content.lastIndexOf('</template>'))
+  const loads = [...template.matchAll(SUGGESTION_LOAD)]
+
+  it('finds the sheet\'s suggestion loads', () => {
+    // Non-vacuity: a regex that matched nothing would pass the rule below while
+    // scanning no code at all — the failure LIFT-1412 documents. The floor is
+    // the last-session chip plus the nudge's three reads.
+    expect(start).toBeGreaterThanOrEqual(0)
+    expect(loads.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('renders every one of them through the shared formatter', () => {
+    const violations = loads
+      .filter(m => !WORDED.test(template.slice(0, m.index)))
+      .map(m => m[0])
+
+    expect(violations, violations.length === 0 ? '' :
+      `WorkoutTracker.vue renders ${violations.join(', ')} directly. That is a ` +
+      'suggested ADDED weight, so on a bodyweightLoaded exercise it prints ' +
+      '"0 × 12" for a plain bodyweight set. Route it through addedLoadValue / ' +
+      'addedLoadLabel (a suggestion, worded with the fold in effect now) or ' +
+      'planTopSetLoad (a read-back, worded with the set\'s own capture).',
+    ).toEqual([])
+  })
+})
+
 /**
  * `ExercisePickerModal` owns the "Choose Exercise" sheet. CalendarView shipped a
  * hand-rolled copy of its markup, and the copy drifted the way copies do: it
