@@ -5,10 +5,26 @@
  * it must match index.html's meta tags and the production hostname. Never
  * fabricate or guess it — this module is the in-code source of truth so callers
  * don't hardcode a URL each time and risk drift.
+ *
+ * That claim was aspirational until LIFT-1453: four other modules across `src/`
+ * and `api/` restated the same literal beside it, and three of them have to
+ * agree or the NATIVE AI Coach call is refused by CORS on iOS and nowhere else.
+ * They now all read {@link APP_HOSTNAME} / {@link APP_URL}, so they agree by
+ * construction, and `deploymentDomain.test.ts` pins both this literal and the
+ * sites no import can reach (index.html, vercel.json's CSP, robots/sitemap, the
+ * App Store docs) to CLAUDE.md's `**Live:**` line — the same derivation CI's
+ * `smoke-test-production` performs.
  */
 
+/**
+ * Bare production hostname. THE deployment-domain literal: everything else here
+ * and in `coachClient`/`shareImage`/`supabase`/`api/coach.ts` is derived from
+ * it, so there is exactly one place a domain change edits in code.
+ */
+export const APP_HOSTNAME = 'spa-rho-sandy.vercel.app'
+
 /** Canonical production URL. Mirrors index.html canonical/og:url and the prod hostname. */
-export const APP_URL = 'https://spa-rho-sandy.vercel.app'
+export const APP_URL = `https://${APP_HOSTNAME}`
 
 /** Display name. */
 export const APP_NAME = 'Logbook'

@@ -43,6 +43,7 @@ import {
   supportsAdaptiveThinking,
   type CoachPayload,
 } from '../src/lib/aiCoach'
+import { APP_URL } from '../src/lib/appMeta'
 
 // Headroom for a large per-set payload + adaptive thinking on Opus (single-shot).
 export const config = { maxDuration: 60 }
@@ -56,11 +57,13 @@ const ANTHROPIC_VERSION = '2023-06-01'
 // earlier version of this comment cited, is the Xcode BUILD scheme and never
 // produced a URL scheme). So that origin must be allow-listed explicitly here AND
 // in the CSP connect-src (see vercel.json) before the native build ships.
-const ALLOWED_ORIGINS = new Set([
-  'https://spa-rho-sandy.vercel.app',
-  'capacitor://localhost',
-  'http://localhost:5173',
-])
+//
+// The deployment origin is READ from appMeta, never restated (LIFT-1453). It is
+// the same constant `COACH_PROD_ORIGIN` reads, so the origin the native client
+// sends and the origin this function admits cannot drift apart — a disagreement
+// costs the response its `Access-Control-Allow-Origin` header, which breaks the
+// coach on iOS only and is invisible to every web test.
+const ALLOWED_ORIGINS = new Set([APP_URL, 'capacitor://localhost', 'http://localhost:5173'])
 
 function corsHeaders(origin: string | null): Record<string, string> {
   const headers: Record<string, string> = { 'content-type': 'application/json' }

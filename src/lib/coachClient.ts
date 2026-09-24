@@ -22,17 +22,23 @@
  */
 
 import type { CoachPayload, CoachReview } from './aiCoach'
+import { APP_URL } from './appMeta'
 
 /** Same-origin path on web/PWA. */
 export const COACH_PATH = '/api/coach'
 
 /**
  * The native Capacitor build is cross-origin (`capacitor://localhost`, #1442), so it must call
- * the absolute production origin. This is the authoritative deployment domain
- * (CLAUDE.md SEV1 rule — never fabricate); it matches `PROD_HOSTNAME` in supabase.ts
- * and the function's CORS allowlist in api/coach.ts.
+ * the absolute production origin.
+ *
+ * Read from `appMeta`, never restated (LIFT-1453): this origin, the function's
+ * `ALLOWED_ORIGINS` in api/coach.ts and the CSP `connect-src` in vercel.json
+ * have to agree or the native call is answered with no `Access-Control-Allow-Origin`
+ * and refused — on iOS only, invisible to every web test and to this module's own
+ * suite, which asserts `coachEndpoint(true)` against this very constant. The first
+ * two now share one literal; `deploymentDomain.test.ts` pins the CSP to it.
  */
-export const COACH_PROD_ORIGIN = 'https://spa-rho-sandy.vercel.app'
+export const COACH_PROD_ORIGIN = APP_URL
 
 /** Client abort just past the function's `maxDuration` (60s) is overkill; 28s keeps the UI honest. */
 export const COACH_TIMEOUT_MS = 28_000

@@ -138,8 +138,15 @@ describe('vercel.json security headers', () => {
      * (already covered by `'self'`), but the native Capacitor build is
      * cross-origin and calls the absolute origin — pin it explicitly so the
      * coach endpoint stays reachable and the intent is documented at the
-     * launch gate. This origin must match `COACH_PROD_ORIGIN` in coachClient.ts
-     * and the function CORS allowlist in api/coach.ts.
+     * launch gate.
+     *
+     * This origin must match `COACH_PROD_ORIGIN` in coachClient.ts and the
+     * function CORS allowlist in api/coach.ts. That constraint used to be
+     * stated here in prose and asserted nowhere (LIFT-1453); the three-way
+     * agreement now lives in `deploymentDomain.test.ts`, which reads all three
+     * and resolves them against CLAUDE.md's `**Live:**` line. The literal below
+     * deliberately stays a literal: it is the tripwire for CLAUDE.md itself
+     * being edited to a fabricated host, which a derived guard cannot see.
      */
     it('allows the AI Coach proxy origin on connect-src (LIFT-850)', () => {
       expect(csp).toContain('https://spa-rho-sandy.vercel.app')

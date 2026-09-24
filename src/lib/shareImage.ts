@@ -8,6 +8,8 @@
  * the pixelRatio multiplier produces the resolution platforms expect.
  */
 
+import { APP_HOSTNAME } from './appMeta'
+
 export type CardFormat = 'square' | 'story'
 
 export interface ExportOptions {
@@ -84,10 +86,11 @@ export const WATERMARK_TEXT = 'Made with Logbook'
  * establishes attribution, this handle is the actual conversion mechanism, so
  * unlike the watermark it appears on every card regardless of entitlement.
  *
- * Single source of truth — the real deployment domain per CLAUDE.md. Never
- * fabricate or guess this value; the metaRegression suite pins it.
+ * Read from `appMeta`, never restated (LIFT-1453): this one is burnt into the
+ * pixels of every exported card, so a stale copy brands the app's most public
+ * artifact with a dead domain and there is no fixing the images already shared.
  */
-export const SHARE_CARD_HANDLE = 'spa-rho-sandy.vercel.app'
+export const SHARE_CARD_HANDLE = APP_HOSTNAME
 
 /**
  * Build the watermark element used by the offscreen export pipeline.

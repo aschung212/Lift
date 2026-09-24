@@ -1,11 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ref } from 'vue'
 import type { Database } from './database.types'
+import { APP_HOSTNAME } from './appMeta'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
-const PROD_HOSTNAME = 'spa-rho-sandy.vercel.app'
+/**
+ * Read from `appMeta`, never restated (LIFT-1453). This copy decides whether
+ * the running deployment is a PREVIEW, and it fails in the dangerous direction:
+ * a stale hostname makes production itself look like a preview, so every write
+ * is blocked for every user on the live site.
+ */
+const PROD_HOSTNAME = APP_HOSTNAME
 
 /** True when running on a Vercel preview deployment (not prod, not localhost). */
 export const isPreviewDeploy: boolean =
