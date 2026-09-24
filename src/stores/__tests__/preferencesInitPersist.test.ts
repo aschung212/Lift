@@ -192,6 +192,54 @@ describe('LIFT-1243 preferences init() persists through the single write path', 
     )
   })
 
+  /**
+   * LIFT-1493 — the remote round trip is where an unguarded field stops being a
+   * local problem. `user_preferences.preferences` is a jsonb column with no
+   * schema and no reconciliation pass, so anything `_applyPreferences` accepts
+   * is re-persisted locally by `_persistLocal` and pushed back by the next
+   * `_persist`, reaching every device the account signs into.
+   */
+  it('does not launder a corrupt remote blob into state, localStorage or the next upsert', async () => {
+    mockRemotePreferences = {
+      // `features` is also init()'s adoption gate, and a string passes it.
+      features: 'abc',
+      experience: { prCelebrations: 'false' },
+      filters: { warmupThreshold: '0.75' },
+      theme: 'water',
+    }
+
+    const store = usePreferencesStore()
+    await store.init('test-user')
+
+    // 1. It does not reach state.
+    expect(store.features).toEqual({ workouts: true, calendar: true, weight: true })
+    expect(store.enabledCount).toBe(3)
+    expect(store.experience.prCelebrations).toBe(true)
+    expect(store.filters.warmupThreshold).toBe(0.75)
+    // The rest of the row is still adopted — the guard rejects fields, not rows.
+    expect(store.theme).toBe('water')
+
+    // 2. It does not reach this device's localStorage.
+    expect(storedBlob().features).toEqual({ workouts: true, calendar: true, weight: true })
+    expect(storedBlob().filters).toEqual({ warmupThreshold: 0.75 })
+
+    // 3. And it is not written back to the server on the next real change,
+    //    which is the hop that would have spread it to every other device.
+    store.setTheme('fire')
+    expect(syncQueue.enqueue).toHaveBeenCalledWith(
+      'preferences:test-user',
+      expect.any(Function),
+      expect.objectContaining({
+        row: expect.objectContaining({
+          preferences: expect.objectContaining({
+            features: { workouts: true, calendar: true, weight: true },
+            filters: { warmupThreshold: 0.75 },
+          }),
+        }),
+      }),
+    )
+  })
+
   it('leaves local state and storage untouched when there is no remote row', async () => {
     localStorageMock.setItem('user-preferences', JSON.stringify({
       features: { workouts: true, calendar: true, weight: true },

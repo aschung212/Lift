@@ -3202,3 +3202,55 @@ describe('Invariant: one owner fires a save-ceremony haptic (LIFT-1448)', () => 
     expect(violations).toEqual([])
   })
 })
+
+/**
+ * The `as unknown as Json` double cast lives in ONE module (LIFT-1493).
+ *
+ * A jsonb column accepts anything, so its cast is the last place a shape is
+ * checked before the value leaves the device. `as unknown as Json` checks
+ * nothing: it exists only because `Json`'s `{ [key: string]: Json | undefined }`
+ * arm rejects `interface` types (no implicit index signature) however JSON-safe
+ * their contents are, so the cast was the shortest way past a complaint that was
+ * never about serializability. It also waves through the values that genuinely
+ * are NOT serializable — a `Date` that reads back as a string, a `Map` that
+ * reads back as `{}` — and `user_preferences` is the last-write-wins blob with
+ * no reconciliation pass, so whatever it accepts propagates to every device.
+ *
+ * `toJsonColumn` keeps the one cast behind a structural constraint
+ * (`jsonColumns.typecheck.ts` pins that the constraint still rejects). The ban
+ * is on the DOUBLE cast only: `progression.ts`'s single `stored.xpPerSet as Json`
+ * widens an untrusted value on its way INTO a parse guard, which is the safe
+ * direction and the opposite of this.
+ */
+describe('Invariant: the Json double cast lives in jsonColumns (LIFT-1493)', () => {
+  const OWNER = join('lib', 'jsonColumns.ts')
+  const DOUBLE_CAST = /\bas\s+unknown\s+as\s+Json\b/
+
+  it('finds the owner still holding the cast (non-vacuity)', () => {
+    const owner = getSourceFiles().find(f => f.path === OWNER)
+    expect(owner, OWNER + ' owns the one sanctioned cast').toBeDefined()
+    expect(DOUBLE_CAST.test(stripComments(owner!.content))).toBe(true)
+  })
+
+  it('routes the preferences blob through toJsonColumn', () => {
+    // The call site the rule was written for. If it stopped calling the helper,
+    // the scan below would pass while the blob went back to an unchecked cast.
+    const store = getSourceFiles().find(f => f.path === join('stores', 'preferences.ts'))
+    expect(store).toBeDefined()
+    expect(stripComments(store!.content)).toMatch(/toJsonColumn\s*\(/)
+  })
+
+  it('has no other file casting its way into a Json column', () => {
+    const offenders = getSourceFiles()
+      .filter(f => f.path !== OWNER && DOUBLE_CAST.test(stripComments(f.content)))
+      .map(f => f.path)
+
+    expect(offenders, offenders.length === 0 ? '' :
+      offenders.join(', ') + ' cast to Json with `as unknown as Json`, which ' +
+      'proves nothing about the value being written to a jsonb column — a Date ' +
+      'reads back as a string on the next device and a Map reads back as `{}`. ' +
+      'Call `toJsonColumn` from lib/jsonColumns.ts instead: same result, but the ' +
+      'payload has to be structurally JSON-safe to compile.',
+    ).toEqual([])
+  })
+})

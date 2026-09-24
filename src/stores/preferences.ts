@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabase } from '../lib/supabase'
-import type { Json } from '../lib/database.types'
+import { toJsonColumn } from '../lib/jsonColumns'
 import { syncQueue } from '../lib/syncQueue'
 import { logError } from '../lib/logger'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
@@ -17,18 +17,29 @@ import {
 } from '../lib/strengthBaseline'
 import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
+import {
+  sanitizeFeatureFlags,
+  sanitizeExperienceFlags,
+  sanitizeFilterSettings,
+  clampWarmupThreshold,
+  DEFAULT_FEATURES,
+  DEFAULT_EXPERIENCE,
+  DEFAULT_FILTERS,
+  type FeatureFlags,
+  type ExperienceFlags,
+  type FilterSettings,
+} from '../lib/preferenceGuards'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import { useWorkoutStore } from './workout'
 
 const STORAGE_KEY = 'user-preferences'
 
-export interface FeatureFlags {
-  workouts: boolean
-  calendar: boolean
-  weight: boolean
-  [key: string]: boolean
-}
+// Shape + defaults + guard live together in `preferenceGuards.ts` (LIFT-1493),
+// the way the blob's other fields already do (`coachProfile.ts`,
+// `strengthBaseline.ts`, `gyms.ts`). Re-exported so the store's public type
+// surface is unchanged.
+export type { FeatureFlags, ExperienceFlags, FilterSettings }
 
 export type WeightGoalDirection = 'lose' | 'gain' | 'maintain'
 
@@ -40,48 +51,12 @@ export interface WeightGoalConfig {
   maintainMax: number | null    // optional ceiling for maintain
 }
 
-export interface ExperienceFlags {
-  /**
-   * Master switch for celebration moments: the full-screen PR burst when a set
-   * beats the user's e1RM, and the lighter weekly-goal / streak-milestone banner.
-   */
-  prCelebrations: boolean
-  /** Allow haptic feedback on taps, PRs, and timer end. */
-  haptics: boolean
-  /** Keep the screen awake during rest timer and set logging. */
-  screenWakeLock: boolean
-  /** Show a browser notification when the rest timer completes while the app is backgrounded. */
-  restTimerNotification: boolean
-}
-
 const DEFAULT_WEIGHT_GOAL: WeightGoalConfig = {
   direction: 'lose',
   loseTarget: null,
   gainTarget: null,
   maintainMin: null,
   maintainMax: null,
-}
-
-const DEFAULTS: FeatureFlags = {
-  workouts: true,
-  calendar: true,
-  weight: true,
-}
-
-const DEFAULT_EXPERIENCE: ExperienceFlags = {
-  prCelebrations: true,
-  haptics: true,
-  screenWakeLock: true,
-  restTimerNotification: true,
-}
-
-export interface FilterSettings {
-  /** e1RM ratio threshold (0–1) below which a pre-top set is classified as warmup. Default 0.75 */
-  warmupThreshold: number
-}
-
-const DEFAULT_FILTERS: FilterSettings = {
-  warmupThreshold: 0.75,
 }
 
 const VALID_DIRECTIONS: ReadonlySet<string> = new Set(['lose', 'gain', 'maintain'])
@@ -139,7 +114,7 @@ export function _migrateWeightGoal(raw: unknown): WeightGoalConfig {
  */
 function initialPreferencesState() {
   return {
-    features: { ...DEFAULTS } as FeatureFlags,
+    features: { ...DEFAULT_FEATURES } as FeatureFlags,
     weightGoal: { ...DEFAULT_WEIGHT_GOAL } as WeightGoalConfig,
     experience: { ...DEFAULT_EXPERIENCE } as ExperienceFlags,
     filters: { ...DEFAULT_FILTERS } as FilterSettings,
@@ -192,10 +167,10 @@ function loadLocalSettings(): Partial<PreferencesState> {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (parsed.features) out.features = { ...DEFAULTS, ...parsed.features }
+      if (parsed.features) out.features = sanitizeFeatureFlags(parsed.features)
       if (parsed.weightGoal) out.weightGoal = _migrateWeightGoal(parsed.weightGoal)
-      if (parsed.experience) out.experience = { ...DEFAULT_EXPERIENCE, ...parsed.experience }
-      if (parsed.filters) out.filters = { ...DEFAULT_FILTERS, ...parsed.filters }
+      if (parsed.experience) out.experience = sanitizeExperienceFlags(parsed.experience)
+      if (parsed.filters) out.filters = sanitizeFilterSettings(parsed.filters)
       if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) out.prBaselineDate = parsed.prBaselineDate
       if (parsed.strengthBaselineMode !== undefined) out.strengthBaselineMode = sanitizeStrengthBaselineMode(parsed.strengthBaselineMode)
       if (parsed.recentBaselineWeeks !== undefined) out.recentBaselineWeeks = sanitizeRecentBaselineWeeks(parsed.recentBaselineWeeks)
@@ -319,9 +294,12 @@ export const usePreferencesStore = defineStore('preferences', {
         // in-memory-only behavior discarded outright.
         const row = {
           user_id: userId,
-          // The payload is a closed object of app-owned settings; `Json` is the
-          // generated column type and can't express that shape structurally.
-          preferences: { ...payload } as unknown as Json,
+          // `toJsonColumn` replaces the old `as unknown as Json` double cast
+          // (LIFT-1493): it proves structurally that the payload holds nothing
+          // JSON can't represent, so a future synced preference typed as a
+          // `Date`/`Map` fails to compile instead of reading back as `{}` on
+          // the next device.
+          preferences: toJsonColumn(payload),
           updated_at: new Date().toISOString(),
         }
         syncQueue.enqueue(
@@ -346,10 +324,10 @@ export const usePreferencesStore = defineStore('preferences', {
      * the others.
      */
     _applyPreferences(parsed: Record<string, unknown>) {
-      if (parsed.features) this.features = { ...DEFAULTS, ...(parsed.features as Record<string, boolean>) }
+      if (parsed.features) this.features = sanitizeFeatureFlags(parsed.features)
       if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
-      if (parsed.experience) this.experience = { ...DEFAULT_EXPERIENCE, ...(parsed.experience as Partial<ExperienceFlags>) }
-      if (parsed.filters) this.filters = { ...DEFAULT_FILTERS, ...(parsed.filters as Partial<FilterSettings>) }
+      if (parsed.experience) this.experience = sanitizeExperienceFlags(parsed.experience)
+      if (parsed.filters) this.filters = sanitizeFilterSettings(parsed.filters)
       if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
         this.prBaselineDate = parsed.prBaselineDate
       } else if ('prBaselineDate' in parsed && parsed.prBaselineDate === null) {
@@ -519,7 +497,7 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     setWarmupThreshold(threshold: number) {
-      this.filters.warmupThreshold = Math.max(0.5, Math.min(0.95, threshold))
+      this.filters.warmupThreshold = clampWarmupThreshold(threshold)
       this._persist()
     },
 
