@@ -31,9 +31,9 @@
     "cap:sync": "npx cap sync",
     "cap:open:ios": "npx cap open ios",
     "cap:run:ios": "npx cap run ios",
-    "cap:build": "CAPACITOR_BUILD=true npm run build && CAPACITOR_BUILD=true npx cap sync && npm run guard:native-config",
+    "cap:build": "CAPACITOR_BUILD=true npm run build && CAPACITOR_BUILD=true npx cap sync && npm run guard:dev-surface -- --native && npm run guard:native-config",
     "cap:configure:ios": "node scripts/configure-ios.mjs",
-    "capacitor:sync:after": "node scripts/configure-ios.mjs && node scripts/check-native-release-config.mjs --warn"
+    "capacitor:sync:after": "node scripts/configure-ios.mjs && node scripts/check-native-release-config.mjs --warn && node scripts/check-no-dev-surface.js --native --warn"
   },
   "dependencies": {
     "@capacitor/core": "^8.5.2",
