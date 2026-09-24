@@ -1809,9 +1809,10 @@ describe('Invariant: client RPC names exist in the migrations (#1299)', () => {
 })
 
 
-// ── Invariant: every role="switch" has an accessible name (LIFT-1308) ──
+// ── Invariant: every role="switch" has a STATIC accessible name ────────
+//                                              (LIFT-1308 / LIFT-1497)
 
-describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)', () => {
+describe('Invariant: every role="switch" carries a static accessible name (LIFT-1308 / LIFT-1497)', () => {
   /**
    * A `role="switch"` built from a `<button>` plus a decorative knob `<span>`
    * has NO accessible name — `aria-checked` supplies the state and the role
@@ -1830,6 +1831,20 @@ describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)'
    * A name may come from the author (`aria-label` / `aria-labelledby`, static
    * or bound) or from the element's contents, which the `switch` role permits
    * — the `.wtWarmupToggle` switches render a visible text span.
+   *
+   * The name must also be STATIC (LIFT-1497). `aria-checked` already carries
+   * the state, so a name that flips with it states the same fact twice and in
+   * opposite directions — `aria-checked="true"` beside the name "Disable
+   * haptics" — and rewriting the NAME is announced as a different control
+   * rather than a state change, so every tap reads back as if focus had moved.
+   * LIFT-1308 converted the three `.iosToggle` switches and left every
+   * `.glassToggle` row on the old shape, so the file that establishes the rule
+   * also broke it nine times; fourteen switches shipped that way in all.
+   *
+   * axe cannot see this — a switch with a well-formed name is valid markup
+   * whatever that name says — and the behavioural tests were part of the
+   * problem, since three of them located a toggle BY its state-dependent
+   * label, i.e. pinned the defect as the expected shape.
    */
   // Both quote styles: a guard that silently misses a switch is worse than no
   // guard, since it reports green over the exact gap it exists to close.
@@ -1861,6 +1876,61 @@ describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)'
 
   const named = (el: { tag: string; inner: string }) =>
     NAME_ATTR.test(el.tag) || hasTextContent(el.inner)
+
+  /** One attribute off an opening tag, as { value, bound }. Covers the `:x`
+   *  shorthand, the `v-bind:x` longform and the plain attribute, in both quote
+   *  styles — `bound` is what separates an expression from a literal string. */
+  function attrValue(tag: string, attr: string): { value: string; bound: boolean } | null {
+    const m = new RegExp(`\\s(:|v-bind:)?${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag)
+    if (!m) return null
+    return { value: m[2] ?? m[3] ?? '', bound: Boolean(m[1]) }
+  }
+
+  /** `{{ … }}` bodies only. A literal `?` in static copy ("Delete this set?")
+   *  is not a conditional, so the text signal must read expressions, not text. */
+  const interpolations = (inner: string) =>
+    [...inner.matchAll(/\{\{([\s\S]*?)\}\}/g)].map(m => m[1])
+
+  /** Whitespace-stripped, leading `!` dropped: `:aria-checked="!disabled(s)"`
+   *  and a label reading `disabled(s)` express the same dependency. */
+  const normalize = (expr: string) => expr.replace(/\s+/g, '').replace(/^!+/, '')
+
+  /** A ternary. String literals are blanked first so a `?` inside copy
+   *  ("Notify me?") is not read as one, and `??`/`?.` are excluded on both
+   *  sides — a legitimate fallback must not read as a violation. */
+  const hasConditional = (expr: string) =>
+    /(?<!\?)\?(?![?.])/.test(expr.replace(/'[^']*'|"[^"]*"|`[^`]*`/g, "''").replace(/\s+/g, ''))
+
+  /** The expressions that decide the accessible name. `aria-labelledby` wins
+   *  over `aria-label`, and both win over the contents; a STATIC attribute
+   *  contributes no expression, which is the whole point of the fix. */
+  function nameExpressions(el: { tag: string; inner: string }): string[] {
+    const by = attrValue(el.tag, 'aria-labelledby')
+    if (by) return by.bound ? [by.value] : []
+    const label = attrValue(el.tag, 'aria-label')
+    if (label) return label.bound ? [label.value] : []
+    return interpolations(el.inner)
+  }
+
+  /** Why this switch's name varies, or null. Two signals, because a name can
+   *  vary in two ways: it reads the `aria-checked` expression (the shape all
+   *  fourteen had), or it is a conditional at all — including the element's
+   *  own text when nothing overrides it, which is how `.wtWarmupToggle`
+   *  flipped between "Hide warmups" and "Warmups hidden" with no aria-label
+   *  anywhere in sight. */
+  function varyingName(el: { tag: string; inner: string }): string | null {
+    const checked = attrValue(el.tag, 'aria-checked')
+    const state = checked?.bound ? normalize(checked.value) : ''
+    for (const expr of nameExpressions(el)) {
+      if (state && normalize(expr).includes(state)) {
+        return `its name reads the aria-checked expression \`${checked!.value}\``
+      }
+      if (hasConditional(expr)) {
+        return `its name is a conditional (\`${expr.trim().slice(0, 60)}\`)`
+      }
+    }
+    return null
+  }
 
   const vueFiles = () => getSourceFiles().filter(f => f.path.endsWith('.vue'))
 
@@ -1916,6 +1986,109 @@ describe('Invariant: every role="switch" carries an accessible name (LIFT-1308)'
           'and no text content announces as "switch, off", with nothing saying ' +
           'what it toggles (WCAG 4.1.2, LIFT-1308). Point aria-labelledby at ' +
           'the visible row label: ' + el.tag.replace(/\s+/g, ' ').slice(0, 90),
+        )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  it('the scan flags each way a name can vary, and clears the static routes (self-test)', () => {
+    const el = (markup: string) => switchElements(markup)[0]
+
+    // (1) The shape all fourteen had: a bound label reading the same value as
+    // aria-checked. Both directions of the ternary, and the `!`-negated form
+    // RestTimerContent used, are the same dependency.
+    const boundLabel = el(
+      '<button role="switch" :aria-checked="prefs.experience.haptics"\n' +
+      '  :aria-label="prefs.experience.haptics ? \'Disable haptics\' : \'Enable haptics\'">\n' +
+      '  <span class="glassToggleThumb"></span>\n</button>',
+    )
+    expect(varyingName(boundLabel)).toMatch(/reads the aria-checked expression/)
+
+    const negated = el(
+      '<button role="switch" :aria-checked="!ctrl.disabledPresets.value.includes(s)"\n' +
+      '  :aria-label="ctrl.disabledPresets.value.includes(s) ? \'Enable \' + s : \'Disable \' + s">\n' +
+      '  <span class="glassToggleThumb"></span>\n</button>',
+    )
+    expect(varyingName(negated)).toMatch(/reads the aria-checked expression/)
+
+    // (2) `.wtWarmupToggle`'s shape: no aria-label at all, the name flipping in
+    // the element's own text. A signal that only read attributes would miss it.
+    const flippingText = el(
+      '<button role="switch" :aria-checked="hideWarmups">\n' +
+      '  <span>{{ hideWarmups ? \'Warmups hidden\' : \'Hide warmups\' }}</span>\n</button>',
+    )
+    expect(varyingName(flippingText)).not.toBeNull()
+
+    // A conditional name that happens not to mention the checked expression is
+    // still a name that changes.
+    const indirect = el(
+      '<button role="switch" :aria-checked="isOn" :aria-label="on ? \'a\' : \'b\'">' +
+      '<span class="knob"></span></button>',
+    )
+    expect(varyingName(indirect)).toMatch(/is a conditional/)
+
+    // The three static routes, all of which ship today.
+    const byLabelledby = el(
+      '<button role="switch" :aria-checked="on" aria-labelledby="settings-haptics-label">' +
+      '<span class="glassToggleThumb"></span></button>',
+    )
+    expect(varyingName(byLabelledby)).toBeNull()
+
+    const byStaticLabel = el(
+      '<button role="switch" :aria-checked="draft.competing" aria-label="Toggle competing">' +
+      '<span class="glassToggleThumb"></span></button>',
+    )
+    expect(varyingName(byStaticLabel)).toBeNull()
+
+    const byStaticText = el(
+      '<button role="switch" :aria-checked="hideWarmups"><span>Hide warmups</span></button>',
+    )
+    expect(varyingName(byStaticText)).toBeNull()
+
+    // A per-item id built by concatenation varies by ROW, not by state — the
+    // v-for shape SettingsSheet and RestTimerContent both use. Failing it
+    // would leave no correct way to label a repeated switch.
+    const perRowId = el(
+      '<button role="switch" :aria-checked="prefs.features[tab.id]"\n' +
+      '  :aria-labelledby="\'settings-feature-\' + tab.id + \'-label\'">' +
+      '<span class="glassToggleThumb"></span></button>',
+    )
+    expect(varyingName(perRowId)).toBeNull()
+
+    // `??` and `?.` are not conditionals over state.
+    const nullish = el(
+      '<button role="switch" :aria-checked="on" :aria-label="label ?? gym?.name">' +
+      '<span class="knob"></span></button>',
+    )
+    expect(varyingName(nullish)).toBeNull()
+
+    // A literal `?` in static copy is text, not an expression.
+    const questionCopy = el('<button role="switch" :aria-checked="on"><span>Notify me?</span></button>')
+    expect(varyingName(questionCopy)).toBeNull()
+
+    // aria-labelledby wins the accessible name, so a stale bound aria-label
+    // beside it does not make the announced name vary.
+    const labelledbyWins = el(
+      '<button role="switch" :aria-checked="on" aria-labelledby="row-label"\n' +
+      '  :aria-label="on ? \'Disable x\' : \'Enable x\'"><span class="knob"></span></button>',
+    )
+    expect(varyingName(labelledbyWins)).toBeNull()
+  })
+
+  it('no component renders a switch whose accessible name changes with its state', () => {
+    const violations: string[] = []
+    for (const file of vueFiles()) {
+      for (const el of switchElements(stripComments(file.content))) {
+        const why = varyingName(el)
+        if (!why) continue
+        violations.push(
+          `${file.path} — ${why}. A switch's name says what it toggles and ` +
+          '`aria-checked` says whether it is on; a name that flips is ' +
+          'announced as a different control on every tap (LIFT-1497). Point ' +
+          'aria-labelledby at the visible row label: ' +
+          el.tag.replace(/\s+/g, ' ').slice(0, 90),
         )
       }
     }

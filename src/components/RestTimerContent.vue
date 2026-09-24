@@ -16,13 +16,13 @@
     <div class="wtTimerEditListScroll">
       <template v-if="ctrl.editTab.value === 'rest'">
         <div v-for="s in ctrl.restPresets.value" :key="s" class="wtTimerEditRow wtTimerEditListItem">
-          <span class="wtTimerEditItemLabel">{{ ctrl.formatDuration(s) }}</span>
+          <span :id="'rest-preset-' + s + '-label'" class="wtTimerEditItemLabel">{{ ctrl.formatDuration(s) }}</span>
           <button
             :class="['glassToggle', { on: !ctrl.disabledPresets.value.includes(s) }]"
             @click="ctrl.togglePresetEnabled(s)"
             role="switch"
             :aria-checked="!ctrl.disabledPresets.value.includes(s)"
-            :aria-label="ctrl.disabledPresets.value.includes(s) ? 'Enable ' + s : 'Disable ' + s"
+            :aria-labelledby="'rest-preset-' + s + '-label'"
           ><span class="glassToggleThumb"></span></button>
           <button
             class="wtTimerEditDeleteBtn"
@@ -34,13 +34,13 @@
       </template>
       <template v-else>
         <div v-for="s in ctrl.warningOptions.value" :key="s" class="wtTimerEditRow wtTimerEditListItem">
-          <span class="wtTimerEditItemLabel">{{ s }}s before</span>
+          <span :id="'rest-alert-' + s + '-label'" class="wtTimerEditItemLabel">{{ s }}s before</span>
           <button
             :class="['glassToggle', { on: ctrl.warningTimes.value.includes(s) }]"
             @click="ctrl.toggleWarningTime(s)"
             role="switch"
             :aria-checked="ctrl.warningTimes.value.includes(s)"
-            :aria-label="ctrl.warningTimes.value.includes(s) ? 'Disable ' + s + 's alert' : 'Enable ' + s + 's alert'"
+            :aria-labelledby="'rest-alert-' + s + '-label'"
           ><span class="glassToggleThumb"></span></button>
           <button
             class="wtTimerEditDeleteBtn"

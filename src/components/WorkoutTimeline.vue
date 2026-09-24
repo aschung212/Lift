@@ -10,15 +10,18 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       <span>Log a set</span>
     </button>
+    <!-- A switch names what it toggles and nothing else (LIFT-1497): the state
+         is `aria-checked` plus the accent fill of `.wtWarmupToggleActive`. The
+         span IS the accessible name — with no aria-label beside it the two
+         cannot drift (WCAG 2.5.3). -->
     <button
       :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
       @click="hideWarmups = !hideWarmups"
       role="switch"
       :aria-checked="hideWarmups"
-      :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
-      <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
+      <span>Hide warmups</span>
     </button>
   </div>
   <div v-if="timelineSets.length === 0" class="wtEmpty">
