@@ -669,12 +669,17 @@
   --font-display:    2.25rem;    /* 36px */
   --font-display-lg: 3rem;       /* 48px */
 
-  /* Spacing scale (4pt grid) */
+  /* Spacing scale (4pt grid). These declarations ARE the rule: cssRegression's
+     spacing guard derives its accepted set from them rather than restating it,
+     so adding a token here widens what the guard will pass anywhere in the app.
+     A `--space-5: 20px;` lived here unreferenced and off CLAUDE.md's documented
+     4/8/12/16/24/32 scale until LIFT-1482 — the guard's own literal omitted 20,
+     and the two had simply never been made to agree. (The guard strips comments
+     before reading, so quoting that declaration here does not re-add it.) */
   --space-1:  4px;
   --space-2:  8px;
   --space-3:  12px;
   --space-4:  16px;
-  --space-5:  20px;
   --space-6:  24px;
   --space-8:  32px;
 
