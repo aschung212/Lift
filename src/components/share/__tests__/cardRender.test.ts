@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { loadCardComponent } from '../cardRegistry'
 import type { SessionSummary, SessionHighlight } from '../../../lib/sessionSummary'
+import type { YearRecap } from '../../../lib/yearRecap'
 
 /**
  * Render smoke tests for the 11 share-card components (issue #1188).
@@ -53,10 +54,33 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
   }
 }
 
+function makeRecap(overrides: Partial<YearRecap> = {}): YearRecap {
+  return {
+    year: 2026,
+    workouts: 148,
+    sets: 1820,
+    reps: 14960,
+    totalVolume: 1284500,
+    exercises: 22,
+    prs: 31,
+    longestStreakWeeks: 19,
+    topLift: { exerciseId: 'ex1', name: 'Deadlift', load: '405 lbs', reps: 3, e1RM: 446 },
+    mostTrained: { kind: 'tag', name: 'Push', sets: 540 },
+    unitLabel: 'lbs',
+    ...overrides,
+  }
+}
+
 /** Resolve + mount a card by registry id with the given summary. */
 async function mountCard(id: string, summary: SessionSummary) {
   const component = (await loadCardComponent(id))!
   return mount(component, { props: { summary } })
+}
+
+/** Resolve + mount a year-recap card by registry id (#1018). */
+async function mountRecapCard(id: string, recap: YearRecap) {
+  const component = (await loadCardComponent(id))!
+  return mount(component, { props: { recap } })
 }
 
 describe('share-card render smoke tests (issue #1188)', () => {
@@ -248,6 +272,66 @@ describe('share-card render smoke tests (issue #1188)', () => {
     it('renders "NEW" when there is no prior-week baseline', async () => {
       const wrapper = await mountCard('week-chart-story', makeSummary({ priorWeekVolume: 0 }))
       expect(wrapper.text()).toContain('NEW')
+    })
+  })
+
+  // ── Year-in-review cards (#1018) ──────────────────────────────────────
+  //
+  // These bind `YearRecap`, not `SessionSummary`, so they get their own
+  // fixture. The load string is pre-worded by `buildYearRecap` through
+  // `formatSetLoad` (LIFT-1373) — the card renders it verbatim, which is what
+  // keeps "Bodyweight × 12" from reading "0 lbs × 12" beside a folded e1RM.
+
+  describe('year-recap (YearRecapCard / YearRecapStory)', () => {
+    it('surfaces the year, volume and the headline stats on the square card', async () => {
+      const wrapper = await mountRecapCard('year-recap', makeRecap())
+      const text = wrapper.text()
+      expect(text).toContain('2026')
+      expect(text).toContain('1,284,500') // formatted totalVolume
+      expect(text).toContain('Pounds moved')
+      expect(text).toContain('148') // workouts
+      expect(text).toContain('31') // PRs
+      expect(text).toContain('19') // longest week streak
+      expect(text).toContain('Deadlift')
+      expect(text).toContain('405 lbs × 3')
+      expect(text).toContain('Push')
+    })
+
+    it('labels the unit "Kilograms moved" for a metric recap', async () => {
+      const wrapper = await mountRecapCard('year-recap', makeRecap({ unitLabel: 'kg' }))
+      expect(wrapper.text()).toContain('Kilograms moved')
+    })
+
+    it('renders the fuller stat set plus the top-lift e1RM on the story card', async () => {
+      const wrapper = await mountRecapCard('year-recap-story', makeRecap())
+      const text = wrapper.text()
+      expect(text).toContain('Total volume')
+      expect(text).toContain('1,820') // sets
+      expect(text).toContain('14,960') // reps
+      expect(text).toContain('22') // exercises
+      expect(text).toContain('~446 lbs e1RM')
+      expect(text).toContain('540 sets')
+    })
+
+    it('words a pure-bodyweight top lift as the recap built it, not as a weight', async () => {
+      const recap = makeRecap({
+        topLift: { exerciseId: 'ex1', name: 'Pull-up', load: 'Bodyweight', reps: 12, e1RM: 252 },
+      })
+      for (const id of ['year-recap', 'year-recap-story']) {
+        const wrapper = await mountRecapCard(id, recap)
+        expect(wrapper.text()).toContain('Bodyweight × 12')
+        expect(wrapper.text()).not.toContain('0 lbs')
+      }
+    })
+
+    it('drops the top-lift and most-trained rows rather than rendering empties', async () => {
+      for (const id of ['year-recap', 'year-recap-story']) {
+        const wrapper = await mountRecapCard(id, makeRecap({ topLift: null, mostTrained: null }))
+        const text = wrapper.text()
+        expect(text).not.toContain('Top lift')
+        expect(text).not.toContain('Most trained')
+        expect(text).toContain('1,284,500') // the rest of the card still renders
+      }
     })
   })
 })

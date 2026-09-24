@@ -1,7 +1,9 @@
+/* eslint-disable vue/one-component-per-file -- throwaway card stubs, one per subject shape */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { defineComponent } from 'vue'
+import { defineComponent, h, type PropType } from 'vue'
 import type { ShareCardRequest } from '../useWorkoutShare'
 import type { SessionSummary } from '../../lib/sessionSummary'
+import type { YearRecap } from '../../lib/yearRecap'
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -54,11 +56,28 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
   }
 }
 
+function makeRecap(overrides: Partial<YearRecap> = {}): YearRecap {
+  return {
+    year: 2026,
+    workouts: 148,
+    sets: 1820,
+    reps: 14960,
+    totalVolume: 1284500,
+    exercises: 22,
+    prs: 31,
+    longestStreakWeeks: 19,
+    topLift: { exerciseId: 'ex1', name: 'Deadlift', load: '405 lbs', reps: 3, e1RM: 446 },
+    mostTrained: { kind: 'tag', name: 'Push', sets: 540 },
+    unitLabel: 'lbs',
+    ...overrides,
+  }
+}
+
 function makeRequest(overrides: Partial<ShareCardRequest> = {}): ShareCardRequest {
   return {
     component: DummyCard,
     format: 'square',
-    summary: makeSummary(),
+    subject: { kind: 'session', summary: makeSummary() },
     theme: 'eternal',
     mode: 'dark',
     ...overrides,
@@ -436,6 +455,88 @@ describe('useWorkoutShare', () => {
     })
   })
 
+  // ── Year-recap subject (#1018) ─────────────────────────────────────
+  //
+  // Three things are decided from the subject and every one of them used to
+  // read `req.summary` unconditionally: the prop the card is mounted with, the
+  // download filename, and the title the OS share sheet shows. A recap request
+  // carries no `summary` at all, so each was a crash or a wrong string.
+
+  describe('year-recap subject', () => {
+    // A render function rather than a `template` string: the offscreen
+    // rasterizer mounts into a detached app built from the runtime-only Vue
+    // build, which silently ignores a runtime template.
+    const RecapCard = defineComponent({
+      name: 'RecapCard',
+      props: { recap: { type: Object as PropType<YearRecap>, required: true } },
+      setup: (props) => () =>
+        h('div', { class: 'probeRecap' }, `${props.recap.year} · ${props.recap.workouts}`),
+    })
+
+    function recapRequest(overrides: Partial<ShareCardRequest> = {}): ShareCardRequest {
+      return makeRequest({
+        component: RecapCard,
+        subject: { kind: 'recap', recap: makeRecap() },
+        ...overrides,
+      })
+    }
+
+    it('mounts the card with the recap prop, not a summary', async () => {
+      // Read the markup DURING the rasterize call: `renderCardOffscreen`
+      // unmounts the app in its `finally`, so the captured host node is empty
+      // by the time the promise settles.
+      let rendered = ''
+      mockRenderNodeToBlob.mockImplementationOnce(async (node) => {
+        rendered = node.innerHTML
+        return fakeBlob
+      })
+
+      const { shareCard } = await getComposable()
+      await shareCard(recapRequest())
+
+      // A card handed the wrong prop renders blank — and the blank only shows
+      // up in the exported PNG, i.e. after the share has already happened.
+      expect(rendered).toContain('2026 · 148')
+    })
+
+    it('names the download after the year rather than a session date', async () => {
+      const { downloadCard } = await getComposable()
+      const result = await downloadCard(recapRequest())
+
+      expect(result).toEqual({ kind: 'downloaded', filename: 'logbook-year-2026.png' })
+    })
+
+    it('carries the story suffix on the story format', async () => {
+      const { downloadCard } = await getComposable()
+      const result = await downloadCard(recapRequest({ format: 'story' }))
+
+      expect(result).toEqual({ kind: 'downloaded', filename: 'logbook-year-2026-story.png' })
+    })
+
+    it('titles the share sheet with the year, not "Logbook workout"', async () => {
+      const shareFn = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'share', { value: shareFn, writable: true, configurable: true })
+      Object.defineProperty(navigator, 'canShare', { value: vi.fn().mockReturnValue(true), writable: true, configurable: true })
+
+      const { shareCard } = await getComposable()
+      await shareCard(recapRequest())
+
+      expect(shareFn.mock.calls[0][0]).toMatchObject({ title: 'Logbook 2026 year in review' })
+    })
+
+    it('labels the funnel events so a recap share can be told from a session one', async () => {
+      const { downloadCard } = await getComposable()
+      await downloadCard(recapRequest())
+
+      expect(mockLogEvent).toHaveBeenCalledWith('share_completed', {
+        format: 'square',
+        method: 'save',
+        subject: 'recap',
+        outcome: 'downloaded',
+      })
+    })
+  })
+
   // ── Watermark (#601) ───────────────────────────────────────────────
 
   describe('watermark', () => {
@@ -487,6 +588,7 @@ describe('useWorkoutShare', () => {
       expect(mockLogEvent).toHaveBeenCalledWith('share_completed', {
         format: 'story',
         method: 'share',
+        subject: 'session',
         outcome: 'shared',
       })
     })
@@ -498,6 +600,7 @@ describe('useWorkoutShare', () => {
       expect(mockLogEvent).toHaveBeenCalledWith('share_completed', {
         format: 'square',
         method: 'share',
+        subject: 'session',
         outcome: 'downloaded',
       })
     })
@@ -520,7 +623,7 @@ describe('useWorkoutShare', () => {
       const { shareCard } = await getComposable()
       await shareCard(makeRequest({ format: 'story' }))
 
-      expect(mockLogEvent).toHaveBeenCalledWith('share_failed', { format: 'story', method: 'share' })
+      expect(mockLogEvent).toHaveBeenCalledWith('share_failed', { format: 'story', method: 'share', subject: 'session' })
     })
 
     it('logs share_completed with method "save" on the download path', async () => {
@@ -530,6 +633,7 @@ describe('useWorkoutShare', () => {
       expect(mockLogEvent).toHaveBeenCalledWith('share_completed', {
         format: 'square',
         method: 'save',
+        subject: 'session',
         outcome: 'downloaded',
       })
     })
@@ -540,7 +644,7 @@ describe('useWorkoutShare', () => {
       const { downloadCard } = await getComposable()
       await downloadCard(makeRequest())
 
-      expect(mockLogEvent).toHaveBeenCalledWith('share_failed', { format: 'square', method: 'save' })
+      expect(mockLogEvent).toHaveBeenCalledWith('share_failed', { format: 'square', method: 'save', subject: 'session' })
     })
   })
 })

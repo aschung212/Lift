@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { getLocalStorageMock, mockAnalytics, mockWeightUnit } from '../../__tests__/helpers'
 import { bodyweightFold } from '../../lib/bodyweightLoad'
 import { epley } from '../../lib/epley'
@@ -14,6 +14,27 @@ vi.mock('../../composables/usePRBaseline', () => ({
     prBaselineDate: { value: null },
   })
 }))
+
+// The year-in-review share sheet (#1018). Stubbed so the assertions can read the
+// SUBJECT the calendar hands over — which is the whole contract here — without
+// dragging the real sheet's theme/supporter/share-flow dependencies into this
+// file. The stub declares `subject` so a calendar that went back to passing
+// `summary` would render nothing and fail.
+vi.mock('../../components/share/SharePickerSheet.vue', async () => {
+  const { defineComponent, h } = await import('vue')
+  return {
+    // `defineAsyncComponent` only unwraps `.default` from something it
+    // recognises as a module; without this it hands Vue the namespace object
+    // itself and Vue Test Utils' stub transformer probes it for `__isTeleport`.
+    __esModule: true,
+    default: defineComponent({
+      name: 'SharePickerSheetStub',
+      props: { subject: { type: Object, required: true } },
+      emits: ['close'],
+      setup: (props) => () => h('div', { class: 'spStub' }, JSON.stringify(props.subject)),
+    }),
+  }
+})
 
 // Build reactive mock store
 interface MockSet {
@@ -745,6 +766,112 @@ describe('CalendarView', () => {
 
       await wrapper.findAll('.calToggleBtn')[0].trigger('click')
       expect(wrapper.find('.wtTagFilterBar').exists()).toBe(false)
+    })
+  })
+
+  /**
+   * Year in Review (#1018) — the aggregate counterpart of the post-workout
+   * share card. It hangs off the year view because `heatmapYear` is already the
+   * year the user picked, so the button and the card must both follow that nav
+   * rather than assuming today.
+   */
+  describe('year in review (#1018)', () => {
+    const thisYear = new Date().getFullYear()
+
+    /** Mount, switch to the year view, and let the async children resolve. */
+    async function openYearView() {
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.calToggleBtn')[0].trigger('click')
+      await flushPromises()
+      return wrapper
+    }
+
+    it('offers the recap for a year that holds logged sets', async () => {
+      exercises = makeExercises([`${thisYear}-03-31`])
+      const wrapper = await openYearView()
+
+      const btn = wrapper.get('.calRecapBtn')
+      expect(btn.text()).toContain(`${thisYear} Year in Review`)
+      expect(wrapper.find('.calRecapEmpty').exists()).toBe(false)
+    })
+
+    it('offers no recap — and says why — for a year with nothing logged', async () => {
+      // `buildYearRecap` returning null is the single source of truth for "is
+      // this year shareable": a button that opened a card full of zeroes, or a
+      // threshold here that disagreed with the card, would both be worse.
+      exercises = []
+      const wrapper = await openYearView()
+
+      expect(wrapper.find('.calRecapBtn').exists()).toBe(false)
+      expect(wrapper.get('.calRecapEmpty').text()).toContain(String(thisYear))
+    })
+
+    it('follows the heatmap year rather than always recapping today', async () => {
+      exercises = makeExercises([`${thisYear - 1}-06-10`])
+      const wrapper = await openYearView()
+
+      // Nothing logged in the year the heatmap opens on.
+      expect(wrapper.find('.calRecapBtn').exists()).toBe(false)
+
+      await wrapper.get('[aria-label="Previous year"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.get('.calRecapBtn').text()).toContain(`${thisYear - 1} Year in Review`)
+    })
+
+    it('hands the share sheet the recap for the year on screen', async () => {
+      exercises = makeExercises([`${thisYear}-03-31`, `${thisYear}-04-07`])
+      const wrapper = await openYearView()
+
+      expect(wrapper.find('.spStub').exists()).toBe(false)
+      await wrapper.get('.calRecapBtn').trigger('click')
+      await flushPromises()
+
+      const subject = JSON.parse(wrapper.get('.spStub').text())
+      expect(subject.kind).toBe('recap')
+      expect(subject.recap.year).toBe(thisYear)
+      expect(subject.recap.workouts).toBe(2)
+      expect(subject.recap.sets).toBe(2)
+      // Volume rides the mocked `displayWeight`, so the sheet shows the same
+      // numbers the rest of the app does.
+      expect(subject.recap.totalVolume).toBe((185 + 195) * 5)
+      expect(subject.recap.unitLabel).toBe('lbs')
+    })
+
+    it('recaps every exercise, ignoring the tag filter the month view holds', async () => {
+      // The recap sits beside a heatmap that is itself year-wide and unfiltered.
+      // Silently dropping the tags a user happened to have filtered out on
+      // another tab would understate their year.
+      exercises = [
+        ...makeExercises([`${thisYear}-03-31`]),
+        {
+          id: 'ex-2',
+          name: 'Squat',
+          tags: ['Legs'],
+          sets: [{ id: 's-legs', date: `${thisYear}-04-02T12:00:00`, weight: 315, reps: 5, estimated1RM: 368 }],
+        },
+      ]
+      const wrapper = mountCalendar()
+      await wrapper.findAll('.wtTagChip')[0].trigger('click') // filter to 'Chest'
+      await wrapper.findAll('.calToggleBtn')[0].trigger('click')
+      await flushPromises()
+      await wrapper.get('.calRecapBtn').trigger('click')
+      await flushPromises()
+
+      const subject = JSON.parse(wrapper.get('.spStub').text())
+      expect(subject.recap.exercises).toBe(2)
+      expect(subject.recap.sets).toBe(2)
+    })
+
+    it('keeps the recap out of the month and week views', async () => {
+      exercises = makeExercises([`${thisYear}-03-31`])
+      const wrapper = mountCalendar()
+
+      expect(wrapper.find('.calRecapBtn').exists()).toBe(false)
+      expect(wrapper.find('.calRecapEmpty').exists()).toBe(false)
+
+      await wrapper.findAll('.calToggleBtn')[2].trigger('click') // Week
+      expect(wrapper.find('.calRecapBtn').exists()).toBe(false)
     })
   })
 
