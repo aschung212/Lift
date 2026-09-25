@@ -58,6 +58,20 @@ export function getAppIcon(id: string): AppIconOption {
   return APP_ICONS.find(icon => icon.id === id) ?? APP_ICONS[0]
 }
 
+/**
+ * Coerce a stored/remote icon id into the union (LIFT-1494).
+ *
+ * Entitlement-free twin of {@link resolveAppIconId}: it only asks whether the id
+ * names an icon that EXISTS, so the preferences store can type `appIcon` as
+ * `AppIconId` at the persistence boundary without needing the unlocked-theme
+ * list (which lives in the Settings sheet, not the store). The unlock check
+ * still runs where it belongs — `resolveAppIconId`'s reconcile watcher.
+ */
+export function sanitizeAppIconId(value: unknown): AppIconId {
+  if (typeof value !== 'string') return DEFAULT_APP_ICON_ID
+  return APP_ICONS.find(icon => icon.id === value)?.id ?? DEFAULT_APP_ICON_ID
+}
+
 /** Whether an icon is unlocked given the set of unlocked theme ids. */
 export function isAppIconUnlocked(icon: AppIconOption, unlockedThemeIds: readonly ThemeId[]): boolean {
   return icon.requiresTheme === null || unlockedThemeIds.includes(icon.requiresTheme)

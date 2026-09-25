@@ -2,7 +2,8 @@ import { computed, watch, type Ref, type ComputedRef } from 'vue'
 import { loadThemeCSS, preloadThemeCSS } from '../lib/themeLoader'
 import { usePreferencesStore } from '../stores/preferences'
 import {
-  THEMES, THEME_PREVIEWS, THEME_META_COLORS, THEME_MIGRATION,
+  THEMES, THEME_PREVIEWS, THEME_META_COLORS,
+  sanitizeThemeId, sanitizeColorMode,
   type ThemeId, type ColorMode, type ThemeOption,
 } from '../lib/themes'
 // Re-export types and constants so existing `import { … } from 'useTheme'` still works.
@@ -17,7 +18,7 @@ const isBrowser = typeof document !== 'undefined'
 /** Track whether we're in a preview (non-persisted) state */
 let previewing = false
 
-function applyTheme(id: string): void {
+function applyTheme(id: ThemeId): void {
   if (!isBrowser) return
   document.documentElement.setAttribute('data-theme', id)
   loadThemeCSS(id)
@@ -26,7 +27,7 @@ function applyTheme(id: string): void {
 }
 
 /** Apply theme visually without persisting to localStorage. */
-function applyPreview(id: string): void {
+function applyPreview(id: ThemeId): void {
   if (!isBrowser) return
   document.documentElement.setAttribute('data-theme', id)
   loadThemeCSS(id)
@@ -38,13 +39,13 @@ function getSystemMode(): 'dark' | 'light' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function applyResolvedMode(resolved: string): void {
+function applyResolvedMode(resolved: 'dark' | 'light'): void {
   if (!isBrowser) return
   document.documentElement.setAttribute('data-mode', resolved)
   updateMetaColor()
 }
 
-function applyMode(preference: string): void {
+function applyMode(preference: ColorMode): void {
   if (!isBrowser) return
   localStorage.setItem('app-mode', preference)
   applyResolvedMode(preference === 'auto' ? getSystemMode() : preference)
@@ -54,10 +55,13 @@ function updateMetaColor(): void {
   if (!isBrowser) return
   const meta = document.querySelector('meta[name="theme-color"]')
   if (!meta) return
-  const themeId = (document.documentElement.getAttribute('data-theme') || 'eternal') as ThemeId
-  const mode = (document.documentElement.getAttribute('data-mode') || 'dark') as 'dark' | 'light'
-  const colors = THEME_META_COLORS[themeId] ?? THEME_META_COLORS.fire
-  meta.setAttribute('content', colors[mode] ?? colors.dark)
+  // The attributes are read back off the DOM, where anything could have written
+  // them, so narrow rather than assert (LIFT-1494). An unknown theme id used to
+  // fall back to FIRE's meta colour — a theme the user may never have picked —
+  // where `sanitizeThemeId` lands on the actual default.
+  const themeId = sanitizeThemeId(document.documentElement.getAttribute('data-theme'))
+  const mode = document.documentElement.getAttribute('data-mode') === 'light' ? 'light' : 'dark'
+  meta.setAttribute('content', THEME_META_COLORS[themeId][mode])
 }
 
 /** Whether initTheme() has been called. Prevents double-init. */
@@ -77,17 +81,15 @@ export function initTheme(): void {
   if (_initialized || !isBrowser) return
   _initialized = true
 
-  // Read and migrate persisted theme
-  let storedId = localStorage.getItem('app-theme') || 'eternal'
-  if (storedId in THEME_MIGRATION) {
-    storedId = THEME_MIGRATION[storedId]
-    localStorage.setItem('app-theme', storedId)
-  }
-  const validId = THEMES.find(t => t.id === storedId)?.id ?? 'eternal'
-
-  // Read persisted color mode
-  const storedMode = localStorage.getItem('app-mode') || 'dark'
-  const validMode: ColorMode = (['light', 'dark', 'auto'] as const).includes(storedMode as ColorMode) ? storedMode as ColorMode : 'auto'
+  // Read and migrate the persisted theme + color mode through the SAME
+  // sanitizers the preferences store applies to the blob (LIFT-1494), so the
+  // pre-Pinia paint and the store that takes over from it can never disagree
+  // about what a corrupt or legacy value resolves to — a disagreement shows up
+  // as a theme flash on every cold start and nowhere else. `applyTheme` below
+  // writes the resolved id straight back to `app-theme`, which is what commits
+  // the legacy migration; this used to do it a second time, inline.
+  const validId = sanitizeThemeId(localStorage.getItem('app-theme'))
+  const validMode: ColorMode = sanitizeColorMode(localStorage.getItem('app-mode'))
 
   // Apply immediately to prevent flash
   applyTheme(validId)
@@ -176,7 +178,7 @@ function isThemeUnlocked(id: ThemeId): boolean {
 }
 
 export interface UseThemeReturn {
-  currentTheme: Ref<string>
+  currentTheme: Ref<ThemeId>
   THEMES: typeof THEMES
   THEME_PREVIEWS: typeof THEME_PREVIEWS
   colorMode: Ref<ColorMode>
@@ -195,12 +197,15 @@ export function useTheme(): UseThemeReturn {
   // writable computeds bound to it — reads reflect the store (so cross-tab and
   // Supabase updates are visible), writes flow through the store actions (which
   // persist the blob + legacy FOUC keys + Supabase). No module-scope refs.
-  const currentTheme = computed<string>({
+  // No `as ThemeId` / `as ColorMode` here: the store's state carries the unions
+  // (LIFT-1494), so the narrowing is the store's job and every accessor inherits
+  // it instead of re-asserting it unchecked.
+  const currentTheme = computed<ThemeId>({
     get: () => prefs.theme,
     set: (id) => prefs.setTheme(id),
   })
   const colorMode = computed<ColorMode>({
-    get: () => prefs.colorMode as ColorMode,
+    get: () => prefs.colorMode,
     set: (mode) => prefs.setColorMode(mode),
   })
   const resolvedMode: ComputedRef<'dark' | 'light'> = computed(() =>

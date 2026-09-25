@@ -131,6 +131,32 @@ describe('useTheme', () => {
     })
   })
 
+  // LIFT-1494: these accessors used to re-narrow a bare-`string` store field
+  // with `as ColorMode` / `as ThemeId`, so a corrupt or future-version stored
+  // value reached `applyTheme`/`applyMode` and landed on `data-theme` with no
+  // matching palette. The store now carries the unions, so the accessors can
+  // only ever hand out something the app can render.
+  describe('corrupt stored appearance settings (LIFT-1494)', () => {
+    it('reports a renderable theme, mode and resolved mode', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({
+        theme: 'future-theme', colorMode: 'sepia',
+      }))
+      setActivePinia(createPinia())
+      const corrupt = useTheme()
+      expect(THEMES.some(t => t.id === corrupt.currentTheme.value)).toBe(true)
+      expect(['light', 'dark', 'auto']).toContain(corrupt.colorMode.value)
+      // resolvedMode selects the light/dark half of every theme palette.
+      expect(['light', 'dark']).toContain(corrupt.resolvedMode.value)
+      expect(THEME_PREVIEWS[corrupt.currentTheme.value]).toBeDefined()
+    })
+
+    it('migrates a legacy theme id rather than handing it to the DOM', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({ theme: 'graphite' }))
+      setActivePinia(createPinia())
+      expect(useTheme().currentTheme.value).toBe('amethyst')
+    })
+  })
+
   // connectThemeStore() makes the DOM a pure function of the store: any store
   // change (from any code path) is applied. The old one-shot ref bridge dropped
   // these, so cross-tab / Supabase updates silently diverged from the DOM.

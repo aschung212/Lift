@@ -69,7 +69,12 @@ const REMOTE_ROW = {
   weightUnit: 'kg',
   restTimerEnabled: false,
   restTimerAutoStart: false,
-  appIcon: 'mono',
+  // A REAL icon id: the four appearance fields are union-typed and coerced at
+  // every persistence boundary (LIFT-1494), so the invented `'mono'` this
+  // fixture used to carry now sanitizes to `'default'` on adopt and would
+  // assert the wrong round trip. Keep fixtures on values the app can render —
+  // corrupt input has its own suite (preferencesAppearanceSanitizing).
+  appIcon: 'water',
   gyms: ['Remote Gym'],
   intensityPresets: [60, 80],
   prBaselineDate: '2026-01-15',

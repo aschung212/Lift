@@ -741,6 +741,82 @@ describe('Invariant: usePRBaseline is the only reader of the raw PR-baseline anc
   })
 })
 
+// ── Invariant: union-typed preferences are sanitized, never assigned raw ──
+// Guard: LIFT-1494. `theme`, `colorMode`, `weightUnit` and `appIcon` were typed
+// as bare `string` in the store and re-narrowed by unchecked cast at every
+// accessor (`prefs.weightUnit as WeightUnit`), so a corrupt or future-version
+// value from the blob flowed through the whole pipeline: an unknown unit
+// rendered as the visible unit LABEL while displayWeight quietly did lbs math,
+// and an unknown theme id reached `data-theme` with no matching palette.
+//
+// The narrowing now lives on the state, which means the STORE is the only thing
+// standing between a parsed blob and a value the app cannot render. The blob is
+// read back at four independent boundaries (state factory, _applyPreferences,
+// init()'s legacy standalone keys, the Supabase row) plus the setters, and a
+// fifth is exactly what LIFT-1495 says will be added — so the rule is that every
+// write to one of these fields goes through its sanitizer. TypeScript alone
+// does not enforce it: `parsed` is `Record<string, unknown>`, so a future
+// `as ThemeId` would compile, and the two `Partial<PreferencesState>` overlay
+// paths take any assignable value.
+
+describe('Invariant: union-typed preferences are assigned through a sanitizer (LIFT-1494)', () => {
+  const SOURCE = readFileSync(join(STORES_DIR, 'preferences.ts'), 'utf-8')
+  const BODY = stripComments(SOURCE)
+
+  /**
+   * The appearance fields, DERIVED from the state factory's declarations rather
+   * than listed here: a fifth union-typed setting joins this rule by being
+   * declared like its four siblings, which is the whole point — a hardcoded list
+   * would only ever pin the fields that existed when it was written.
+   */
+  const UNION_FIELDS = [...BODY.matchAll(/^\s*(\w+):\s*DEFAULT_[A-Z_]+ as (ThemeId|ColorMode|WeightUnit|AppIconId),/gm)]
+    .map(m => ({ field: m[1], union: m[2] }))
+
+  it('found the union-typed appearance fields in the state factory', () => {
+    // Non-vacuity: a regex that matched nothing would make every assertion
+    // below pass on an empty list.
+    expect(UNION_FIELDS.map(f => f.field).sort())
+      .toEqual(['appIcon', 'colorMode', 'theme', 'weightUnit'])
+    // Each union must have a sanitizer imported to assign through.
+    for (const { union } of UNION_FIELDS) {
+      expect(BODY).toMatch(new RegExp(`\\bsanitize${union === 'ThemeId' ? 'ThemeId' : union}\\b`))
+    }
+  })
+
+  it.each(UNION_FIELDS)('$field is only ever assigned a sanitize…() result', ({ field }) => {
+    // Every assignment to the field on either an overlay object (`out.x = …`,
+    // loadLocalSettings) or the store instance (`this.x = …`), EXCEPT the state
+    // factory's own literal default — which is the sanitizer's fallback and so
+    // legal by construction.
+    // `(?<![=!<>])=(?!=)` keeps the comparisons out: `this.theme === DEFAULT_…`
+    // guards the legacy-key fallback in init() and is not a write.
+    const assignments = [...BODY.matchAll(new RegExp(`(?:this|out)\\.${field}\\s*(?<![=!<>])=(?!=)\\s*([^\\n]+)`, 'g'))]
+
+    // Non-vacuity: the field is written on at least the three read boundaries
+    // (factory overlay, _applyPreferences, init's legacy key) plus its setter.
+    expect(assignments.length).toBeGreaterThanOrEqual(3)
+
+    const raw = assignments
+      .map(m => m[1].trim())
+      .filter(rhs => !/^sanitize[A-Za-z]+\(/.test(rhs))
+    expect(raw).toEqual([])
+  })
+
+  it('no consumer re-narrows the store field with a cast', () => {
+    // The casts these sanitizers replaced. `useTheme`/`useWeightUnit` were the
+    // two that shipped; the rule is that a NEW accessor reads the store's typed
+    // field instead of inventing a third copy of the narrowing.
+    const violations = getSourceFiles()
+      .filter(f => /\bprefs\s*\.\s*(theme|colorMode|weightUnit|appIcon)\s+as\s+\w/.test(stripComments(f.content)))
+      .map(f => `${f.path} — casts a preferences appearance field; the store state already carries the union.`)
+    expect(violations).toEqual([])
+
+    // Non-vacuity for the matcher: it must fire on the shape being banned.
+    expect(/\bprefs\s*\.\s*(theme|colorMode|weightUnit|appIcon)\s+as\s+\w/.test('prefs.weightUnit as WeightUnit'))
+      .toBe(true)
+  })
+})
+
 // ── Invariant: Row-Level Security on every table (LIFT-1130) ─────────
 // Guard: tenant isolation depends ENTIRELY on RLS. The anon key ships in
 // the client bundle, so anyone can hit PostgREST directly; the client-side

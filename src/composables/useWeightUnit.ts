@@ -18,8 +18,12 @@ export interface UseWeightUnitReturn {
 export function useWeightUnit(): UseWeightUnitReturn {
   const prefs = usePreferencesStore()
 
+  // No `as WeightUnit` here: the store's state carries the union (LIFT-1494), so
+  // a corrupt/future-version stored unit is coerced to lbs at the persistence
+  // boundary instead of reaching this computed and rendering as the visible unit
+  // LABEL while `displayWeight` below quietly did lbs math against it.
   const weightUnit = computed<WeightUnit>({
-    get: () => prefs.weightUnit as WeightUnit,
+    get: () => prefs.weightUnit,
     set: (v) => prefs.setWeightUnit(v),
   })
 
