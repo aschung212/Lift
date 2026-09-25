@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { syncQueue } from '../lib/syncQueue'
 import type { Tables, Json } from '../lib/database.types'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
-import type { ThemeId } from '../lib/themes'
+import { resolveThemeId, type ThemeId } from '../lib/themes'
 import type { StreakHistoryEntry } from '../lib/xp'
 import { XP_CONFIG } from '../lib/xp'
 import { isPlainObject } from '../lib/storage'
@@ -219,8 +219,9 @@ function recalcTotalXP(xpPerSet: Record<string, SetXPEntry | number>, bodyweight
  * Delegates element-level validation to `parseUnlockedThemes` (the same guard
  * the Supabase-JSON path uses) so the localStorage boundary doesn't invent a
  * weaker second check — it validates every entry's id/unlockedAt, not just the
- * first, and still handles the legacy string[] format. Falls back to the default
- * starter (pearl) when the value is absent, empty, or fully malformed.
+ * first, resolves each id against the current theme list (LIFT-1503), and still
+ * handles the legacy string[] format. Falls back to the default starter (pearl)
+ * when the value is absent, empty, or fully malformed.
  */
 function migrateUnlockedThemes(themes: unknown): ThemeUnlock[] {
   return parseUnlockedThemes(themes as Json) ?? [{ id: 'pearl', unlockedAt: new Date().toISOString() }]
@@ -243,6 +244,12 @@ function load(): ProgressionState {
   parsed.xpPerSet = parseXpPerSet(stored.xpPerSet as Json, {})
   parsed.streakHistory = parseStreakHistory(stored.streakHistory as Json, defaultState().streakHistory)
   parsed.bodyweightXPDates = parseBodyweightDates(stored.bodyweightXPDates as Json, [])
+  // `starterTheme` is the other persisted ThemeId, and it is worse than inert
+  // when unreadable: `checkUnlocks` feeds it straight to `addTheme` at tier 1,
+  // minting — and then syncing — a permanent unlock for a theme that does not
+  // exist (LIFT-1503). Resolving to null puts the store back in its real
+  // "not picked yet" state, which the starter picker can recover from.
+  parsed.starterTheme = resolveThemeId(parsed.starterTheme)
   if (!parsed.epoch) parsed.epoch = 1
   // Defensive: if starter was picked and XP earned, the trial is over.
   // Only infer starterConfirmed — do NOT force progressionEnabled, as the
@@ -355,7 +362,11 @@ export const useProgressionStore = defineStore('progression', {
       this.pendingTargetChange = data.pending_target_change ?? this.pendingTargetChange
       this.showProgression = data.show_progression ?? this.showProgression
       this.progressionEnabled = data.progression_enabled ?? this.progressionEnabled
-      this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
+      // `starter_theme` is a plain text column with no CHECK constraint, so a
+      // value that names no theme must be treated exactly like an absent one
+      // (LIFT-1503) — keep whatever is already in memory rather than adopting a
+      // string `checkUnlocks` would turn into a bogus, syncing unlock entry.
+      this.starterTheme = resolveThemeId(data.starter_theme) ?? this.starterTheme
       this.starterConfirmed = (data.starter_confirmed as boolean) ?? this.starterConfirmed
       this.epoch = (data.epoch as number) ?? this.epoch
 
