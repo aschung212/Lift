@@ -167,6 +167,50 @@ describe('jsonColumns', () => {
       const corrupt: Json = [{ unlockedAt: '2026-01-01T00:00:00Z' }]
       expect(parseUnlockedThemes(corrupt)).toBeNull()
     })
+
+    // LIFT-1503 — the `id` is a bare string out of user-writable JSONB, and
+    // every fixture above happens to use a renderable one, which is why the
+    // unchecked `as ThemeId` cast read as correct for a year.
+    it('drops an entry whose id names no known theme', () => {
+      const withUnknown: Json = [
+        { id: 'pearl', unlockedAt: '2026-01-01T00:00:00Z' },
+        { id: 'not-a-theme', unlockedAt: '2026-02-01T00:00:00Z' },
+      ]
+      expect(parseUnlockedThemes(withUnknown)).toEqual([
+        { id: 'pearl', unlockedAt: '2026-01-01T00:00:00Z' },
+      ])
+    })
+
+    it('returns null when every id is unknown', () => {
+      expect(parseUnlockedThemes([{ id: 'nope', unlockedAt: '2026-01-01T00:00:00Z' }])).toBeNull()
+      expect(parseUnlockedThemes(['nope'])).toBeNull()
+    })
+
+    it('migrates a legacy id onto its current theme', () => {
+      const legacy: Json = [{ id: 'graphite', unlockedAt: '2026-01-01T00:00:00Z', totalXPAtUnlock: 40000 }]
+      expect(parseUnlockedThemes(legacy)).toEqual([
+        { id: 'amethyst', unlockedAt: '2026-01-01T00:00:00Z', totalXPAtUnlock: 40000 },
+      ])
+      expect(parseUnlockedThemes(['forge'])![0].id).toBe('pearl')
+    })
+
+    it('dedupes ids that collapse onto one theme, keeping the earliest unlock', () => {
+      // Both 'tina' and 'bloom' are Love — without this the migration would
+      // inflate the very count (themesUnlocked / unlockedCount) it exists to fix.
+      const collapsing: Json = [
+        { id: 'bloom', unlockedAt: '2026-05-01T00:00:00Z' },
+        { id: 'tina', unlockedAt: '2026-03-01T00:00:00Z' },
+      ]
+      expect(parseUnlockedThemes(collapsing)).toEqual([
+        { id: 'love', unlockedAt: '2026-03-01T00:00:00Z' },
+      ])
+    })
+
+    it('skips non-string entries in the legacy string[] shape', () => {
+      // The old branch only ever type-checked value[0], then cast the whole
+      // array, so a stray number became `{ id: 42 }`.
+      expect(parseUnlockedThemes(['pearl', 42, null])!.map(t => t.id)).toEqual(['pearl'])
+    })
   })
 
   describe('parseXpPerSet validation', () => {
