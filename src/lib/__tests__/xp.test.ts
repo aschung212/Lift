@@ -5,6 +5,11 @@ import {
   applyStreakMultiplier,
   checkRepPR,
   XP_CONFIG,
+  MIN_WEEKLY_TARGET,
+  MAX_WEEKLY_TARGET,
+  DEFAULT_WEEKLY_TARGET,
+  sanitizeWeeklyTarget,
+  sanitizePendingTargetChange,
   type StreakHistoryEntry,
 } from '../xp'
 import type { WorkoutSet } from '../../stores/workout'
@@ -514,5 +519,72 @@ describe('checkRepPR', () => {
     expect(checkRepPR(140, 5, prior)).toBe(true)
     // 135 x 8 — prior at 135 is 10 reps → not a rep PR
     expect(checkRepPR(135, 8, prior)).toBe(false)
+  })
+})
+
+// --- sanitizeWeeklyTarget / sanitizePendingTargetChange (LIFT-1505) ---
+
+describe('sanitizeWeeklyTarget', () => {
+  it('passes every legal target through unchanged', () => {
+    for (let days = MIN_WEEKLY_TARGET; days <= MAX_WEEKLY_TARGET; days++) {
+      expect(sanitizeWeeklyTarget(days)).toBe(days)
+    }
+  })
+
+  it('clamps out-of-range numbers to the bounds', () => {
+    // High froze every streak: `daysTrained >= 99` is false no matter what.
+    expect(sanitizeWeeklyTarget(99)).toBe(MAX_WEEKLY_TARGET)
+    expect(sanitizeWeeklyTarget(8)).toBe(MAX_WEEKLY_TARGET)
+    // Zero/negative made every week count, including untrained ones.
+    expect(sanitizeWeeklyTarget(0)).toBe(MIN_WEEKLY_TARGET)
+    expect(sanitizeWeeklyTarget(-4)).toBe(MIN_WEEKLY_TARGET)
+  })
+
+  it('rounds a fractional target, preserving setWeeklyTarget behaviour', () => {
+    expect(sanitizeWeeklyTarget(3.4)).toBe(3)
+    expect(sanitizeWeeklyTarget(3.6)).toBe(4)
+  })
+
+  it('falls back to the DEFAULT — never the minimum — for a non-number', () => {
+    // The `sanitizeRecentBaselineWeeks` trap: `Number(null)` and `Number([])`
+    // are both 0, so a coerce-then-clamp guard would answer 1 here — the
+    // every-week-counts floor, silently applied to a corrupt field.
+    for (const bad of [null, undefined, '5', [], {}, NaN, Infinity, -Infinity]) {
+      expect(sanitizeWeeklyTarget(bad)).toBe(DEFAULT_WEEKLY_TARGET)
+    }
+    expect(DEFAULT_WEEKLY_TARGET).not.toBe(MIN_WEEKLY_TARGET)
+  })
+
+  it('agrees with the tier table it feeds', () => {
+    // Both bounds must price: a target the clamp can produce but
+    // `streakTargetTiers` has no rung for would silently earn the 1.0 floor.
+    const lowest = XP_CONFIG.streakTargetTiers[XP_CONFIG.streakTargetTiers.length - 1][0]
+    expect(MIN_WEEKLY_TARGET).toBeGreaterThanOrEqual(lowest)
+    expect(MAX_WEEKLY_TARGET).toBeGreaterThanOrEqual(XP_CONFIG.streakTargetTiers[0][0])
+  })
+})
+
+describe('sanitizePendingTargetChange', () => {
+  it('keeps null as the real "nothing staged" state', () => {
+    expect(sanitizePendingTargetChange(null)).toBeNull()
+    expect(sanitizePendingTargetChange(undefined)).toBeNull()
+  })
+
+  it('drops a corrupt value rather than inventing a staged change', () => {
+    // Falling back to the default here would stage a change to 3 days the user
+    // never made, and `evaluateWeek` would apply it next Monday — resetting the
+    // streak outright if the active target was higher.
+    for (const bad of ['4', [], {}, NaN]) {
+      expect(sanitizePendingTargetChange(bad)).toBeNull()
+    }
+  })
+
+  it('clamps a real out-of-range number instead of dropping it', () => {
+    // The user staged something; clamping is what setWeeklyTarget would have
+    // done. `evaluateWeek` takes max(active, pending), so clamping high only
+    // ever makes the week harder.
+    expect(sanitizePendingTargetChange(99)).toBe(MAX_WEEKLY_TARGET)
+    expect(sanitizePendingTargetChange(0)).toBe(MIN_WEEKLY_TARGET)
+    expect(sanitizePendingTargetChange(5)).toBe(5)
   })
 })
