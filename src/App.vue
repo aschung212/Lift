@@ -329,7 +329,6 @@ const SyncStatusSheet = defineAsyncComponent(() => import('./components/SyncStat
 import { coachReviewEligibility } from './lib/coachDigest'
 import { COACH_MODE } from './lib/coachExport'
 import { useTheme, connectProgressionStore, connectThemeStore } from './composables/useTheme'
-import type { ThemeId } from './lib/themes'
 import { useProgressionStore } from './stores/progression'
 import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './composables/xpCeremonyUI'
 import { useXPCeremony } from './composables/useXPCeremony'
@@ -887,7 +886,7 @@ onMounted(async () => {
     }
     markMigrated()
   }
-  if (!isThemeUnlocked(currentTheme.value as ThemeId)) {
+  if (!isThemeUnlocked(currentTheme.value)) {
     currentTheme.value = 'pearl'
   }
 
