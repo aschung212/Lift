@@ -44,7 +44,7 @@
     "@capacitor/share": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
     "@capgo/capacitor-health": "^8.11.4",
-    "@sentry/vue": "^10.75.0",
+    "@sentry/vue": "^11.0.0",
     "@supabase/supabase-js": "^2.117.2",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
