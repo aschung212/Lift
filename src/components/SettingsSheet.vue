@@ -286,9 +286,9 @@
               <span class="settingsHint">{{ weeklyGoalBonusLabel }}</span>
             </div>
             <div class="iosStepper">
-              <button class="iosStepperBtn" @click="adjustWeeklyTarget(-1)" :disabled="effectiveWeeklyTarget <= 1" aria-label="Decrease weekly goal">−</button>
+              <button class="iosStepperBtn" @click="adjustWeeklyTarget(-1)" :disabled="effectiveWeeklyTarget <= MIN_WEEKLY_TARGET" aria-label="Decrease weekly goal">−</button>
               <span class="iosStepperValue">{{ effectiveWeeklyTarget }} day{{ effectiveWeeklyTarget !== 1 ? 's' : '' }}</span>
-              <button class="iosStepperBtn" @click="adjustWeeklyTarget(1)" :disabled="effectiveWeeklyTarget >= 7" aria-label="Increase weekly goal">+</button>
+              <button class="iosStepperBtn" @click="adjustWeeklyTarget(1)" :disabled="effectiveWeeklyTarget >= MAX_WEEKLY_TARGET" aria-label="Increase weekly goal">+</button>
             </div>
           </div>
           <div v-show="progressionActive && progressionStore.pendingTargetChange !== null" class="settingsRow">
@@ -845,6 +845,7 @@ import type { ThemeId } from '../lib/themes'
 import { usePRBaseline } from '../composables/usePRBaseline'
 import { todayISO, formatShortDate } from '../lib/dates'
 import { useProgressionStore, UNLOCK_TIERS } from '../stores/progression'
+import { MIN_WEEKLY_TARGET, MAX_WEEKLY_TARGET, sanitizeWeeklyTarget } from '../lib/xp'
 import { showXPToast } from '../composables/xpCeremonyUI'
 import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
 import { setNativeAppIcon, isAppIconPluginAvailable } from '../lib/nativeAppIcon'
@@ -1625,8 +1626,9 @@ const effectiveWeeklyTarget = computed(() =>
 )
 
 function adjustWeeklyTarget(delta: number) {
-  const next = Math.max(1, Math.min(7, effectiveWeeklyTarget.value + delta))
-  progressionStore.setWeeklyTarget(next)
+  // Clamped through the field's own guard rather than a local copy of the
+  // range, so the stepper's bounds and the store's can't drift (LIFT-1505).
+  progressionStore.setWeeklyTarget(sanitizeWeeklyTarget(effectiveWeeklyTarget.value + delta))
 }
 
 const weeklyGoalBonusLabel = computed(() => {

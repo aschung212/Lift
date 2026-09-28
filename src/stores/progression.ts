@@ -5,7 +5,7 @@ import type { Tables, Json } from '../lib/database.types'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import type { ThemeId } from '../lib/themes'
 import type { StreakHistoryEntry } from '../lib/xp'
-import { XP_CONFIG } from '../lib/xp'
+import { XP_CONFIG, DEFAULT_WEEKLY_TARGET, sanitizeWeeklyTarget, sanitizePendingTargetChange } from '../lib/xp'
 import { isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
@@ -50,7 +50,7 @@ export interface SetXPEntry {
 export interface ProgressionState {
   totalXP: number
   streakWeeks: number
-  weeklyTarget: number                // 1-7, user-set
+  weeklyTarget: number                // 1-7, user-set (range owned by sanitizeWeeklyTarget)
   pendingTargetChange: number | null   // staged change, takes effect next Monday
   showProgression: boolean             // verbose vs quiet mode
   progressionEnabled: boolean          // explicit flag: has user activated progression?
@@ -89,7 +89,7 @@ function defaultState(): ProgressionState {
   return {
     totalXP: 0,
     streakWeeks: 0,
-    weeklyTarget: 3,
+    weeklyTarget: DEFAULT_WEEKLY_TARGET,
     pendingTargetChange: null,
     showProgression: true,
     progressionEnabled: false,
@@ -243,6 +243,13 @@ function load(): ProgressionState {
   parsed.xpPerSet = parseXpPerSet(stored.xpPerSet as Json, {})
   parsed.streakHistory = parseStreakHistory(stored.streakHistory as Json, defaultState().streakHistory)
   parsed.bodyweightXPDates = parseBodyweightDates(stored.bodyweightXPDates as Json, [])
+  // The streak threshold and its staged change arrive raw out of the same blob
+  // (LIFT-1505). `setWeeklyTarget` clamps, but a value that never came from the
+  // setter — a hand-edited blob, a row written by another client — reached
+  // `evaluateWeek` unchecked, where high silently freezes every streak forever
+  // and zero counts every week including untrained ones.
+  parsed.weeklyTarget = sanitizeWeeklyTarget(parsed.weeklyTarget)
+  parsed.pendingTargetChange = sanitizePendingTargetChange(parsed.pendingTargetChange)
   if (!parsed.epoch) parsed.epoch = 1
   // Defensive: if starter was picked and XP earned, the trial is over.
   // Only infer starterConfirmed — do NOT force progressionEnabled, as the
@@ -350,9 +357,12 @@ export const useProgressionStore = defineStore('progression', {
       if (!data) return
       this.lastSyncError = null
 
-      // Merge remote state — remote wins for simple scalar fields
-      this.weeklyTarget = data.weekly_target ?? this.weeklyTarget
-      this.pendingTargetChange = data.pending_target_change ?? this.pendingTargetChange
+      // Merge remote state — remote wins for simple scalar fields.
+      // `weekly_target` / `pending_target_change` are plain integer columns with
+      // no CHECK constraint, so the server stores and returns whatever any
+      // client ever sent; re-narrow on the way in (LIFT-1505).
+      this.weeklyTarget = sanitizeWeeklyTarget(data.weekly_target ?? this.weeklyTarget)
+      this.pendingTargetChange = sanitizePendingTargetChange(data.pending_target_change ?? this.pendingTargetChange)
       this.showProgression = data.show_progression ?? this.showProgression
       this.progressionEnabled = data.progression_enabled ?? this.progressionEnabled
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
@@ -498,7 +508,9 @@ export const useProgressionStore = defineStore('progression', {
     // --- Streak & Target Actions ---
 
     setWeeklyTarget(days: number) {
-      const clamped = Math.max(1, Math.min(7, Math.round(days)))
+      // Delegates rather than hand-rolling the clamp, so the range has one
+      // definition shared with both hydration paths (LIFT-1505).
+      const clamped = sanitizeWeeklyTarget(days)
 
       // If setting back to the current active target, clear the pending change
       if (clamped === this.weeklyTarget) {
@@ -688,7 +700,10 @@ export const useProgressionStore = defineStore('progression', {
       this.starterTheme = themeId
       this.progressionEnabled = true
       if (weeklyTarget !== undefined) {
-        this.weeklyTarget = weeklyTarget
+        // The onboarding / re-pick flow is the one writer that sets the target
+        // outright rather than staging it, so it owes the same range check
+        // (LIFT-1505).
+        this.weeklyTarget = sanitizeWeeklyTarget(weeklyTarget)
       }
       if (!hasTheme(this.unlockedThemes, themeId)) {
         addTheme(this.unlockedThemes, themeId)

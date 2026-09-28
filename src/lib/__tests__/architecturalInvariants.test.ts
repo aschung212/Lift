@@ -21,6 +21,7 @@ import { join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { notNullColumns } from '../../__tests__/migrationSchema'
+import { MIN_WEEKLY_TARGET, MAX_WEEKLY_TARGET } from '../xp'
 
 // ── Shared helpers ──────────────────────────────────────────────────
 
@@ -3253,6 +3254,95 @@ describe('Invariant: one owner fires a save-ceremony haptic (LIFT-1448)', () => 
         )
       }
     }
+    expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant: the weekly target's range belongs to the field (LIFT-1505) ──
+//
+// `setWeeklyTarget` clamped to [1, 7] and was the ONLY writer that did. Both
+// hydration boundaries adopted the value raw — `load()` spread it out of the
+// `user-progression` blob, `_fetchFromSupabase` took `data.weekly_target` from
+// a column the migration declares with no CHECK constraint — so the clamp was a
+// property of one code path rather than of the field. `evaluateWeek` compares
+// the value bare (`daysTrainedThisWeek >= effectiveTarget`), so a high value
+// froze every streak forever and a zero counted every week including untrained
+// ones, in both cases silently and permanently, and `_syncToSupabase` pushed
+// the corruption back out to every other device.
+//
+// The scan is derived rather than a list of the boundaries that exist today:
+// `setStarterTheme` turned out to be a fourth writer nobody had counted, and an
+// enumeration would only ever pin the call sites it was written against.
+
+describe('Invariant: every weekly-target write goes through the range guard (LIFT-1505)', () => {
+  /**
+   * `<receiver>.weeklyTarget = <rhs>` — an assignment, never a comparison. The
+   * `(?!=)` is what separates `x.weeklyTarget =` from `x.weeklyTarget ===`, and
+   * `<=` / `>=` never reach it because a non-space character precedes the `=`.
+   */
+  const ASSIGNMENT = /\.(weeklyTarget|pendingTargetChange)\s*=(?!=)([^\n]*)/g
+
+  /** Locals bound straight from a guard, e.g. `const clamped = sanitizeWeeklyTarget(days)`. */
+  function sanitizedLocals(source: string): Set<string> {
+    const re = /(?:const|let)\s+(\w+)\s*=\s*sanitize(?:WeeklyTarget|PendingTargetChange)\s*\(/g
+    return new Set([...source.matchAll(re)].map(m => m[1]))
+  }
+
+  /**
+   * A right-hand side that cannot put an out-of-range value in the field: the
+   * guard itself, a local bound from it, `null` (clearing a staged change), a
+   * read of the already-guarded `pendingTargetChange` (the Monday promotion),
+   * or an integer literal inside the range — bounds imported from `xp.ts`, so a
+   * literal can't outlive a narrowing of the range it was written against.
+   */
+  function isGuarded(rhs: string, locals: Set<string>): boolean {
+    const expr = rhs.trim().replace(/[;,]\s*$/, '')
+    if (/\bsanitize(?:WeeklyTarget|PendingTargetChange)\s*\(/.test(expr)) return true
+    if (expr === 'null') return true
+    if (/\.pendingTargetChange\b/.test(expr)) return true
+    if (locals.has(expr)) return true
+    const literal = Number(expr)
+    return Number.isInteger(literal)
+      && literal >= MIN_WEEKLY_TARGET
+      && literal <= MAX_WEEKLY_TARGET
+  }
+
+  /** Every `.weeklyTarget` / `.pendingTargetChange` assignment across src/. */
+  function assignments(): { path: string; field: string; rhs: string; guarded: boolean }[] {
+    const out: { path: string; field: string; rhs: string; guarded: boolean }[] = []
+    for (const { path, content } of getSourceFiles()) {
+      const stripped = stripComments(content)
+      const locals = sanitizedLocals(stripped)
+      for (const m of stripped.matchAll(ASSIGNMENT)) {
+        out.push({ path, field: m[1], rhs: m[2].trim(), guarded: isGuarded(m[2], locals) })
+      }
+    }
+    return out
+  }
+
+  it('finds the writers in every file that has one (non-vacuity)', () => {
+    const found = assignments()
+    // A regex that matched nothing would make the rule below pass for a store
+    // with no guard at all — the exact failure this invariant exists to catch.
+    expect(found.length).toBeGreaterThanOrEqual(10)
+    const files = [...new Set(found.map(a => a.path))].sort()
+    expect(files).toContain(join('stores', 'progression.ts'))
+    expect(files).toContain('App.vue')
+    // Both fields are in scope: the staged change is what `evaluateWeek` reads
+    // as the anti-gaming target and then promotes into `weeklyTarget`.
+    expect([...new Set(found.map(a => a.field))].sort())
+      .toEqual(['pendingTargetChange', 'weeklyTarget'])
+  })
+
+  it('no write can land an out-of-range value in the field', () => {
+    const violations = assignments()
+      .filter(a => !a.guarded)
+      .map(a =>
+        `${a.path}: \`.${a.field} = ${a.rhs}\` bypasses sanitizeWeeklyTarget. ` +
+          "The range is the field's, not one setter's — an unguarded write " +
+          'freezes every streak (high) or counts every untrained week (zero), ' +
+          'silently, and _syncToSupabase pushes it to every other device.',
+      )
     expect(violations).toEqual([])
   })
 })
