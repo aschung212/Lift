@@ -1507,7 +1507,7 @@ function confirmDisableProgression() {
 }
 
 function enforceThemeLock() {
-  if (!isThemeUnlocked(currentTheme.value as ThemeId)) {
+  if (!isThemeUnlocked(currentTheme.value)) {
     currentTheme.value = 'pearl'
   }
 }

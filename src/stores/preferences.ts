@@ -16,6 +16,12 @@ import {
   type StrengthBaselineMode,
 } from '../lib/strengthBaseline'
 import { sanitizeCoachProfile, DEFAULT_COACH_PROFILE, type CoachProfile } from '../lib/coachProfile'
+import {
+  sanitizeThemeId, sanitizeColorMode, sanitizeWeightUnit,
+  DEFAULT_THEME_ID, DEFAULT_COLOR_MODE, DEFAULT_WEIGHT_UNIT,
+  type ThemeId, type ColorMode, type WeightUnit,
+} from '../lib/themes'
+import { sanitizeAppIconId, DEFAULT_APP_ICON_ID, type AppIconId } from '../lib/appIcons'
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
@@ -152,13 +158,22 @@ function initialPreferencesState() {
     strengthBaselineMode: DEFAULT_STRENGTH_BASELINE_MODE as StrengthBaselineMode,
     /** Length of the recent-mode trailing window, in weeks. */
     recentBaselineWeeks: DEFAULT_RECENT_BASELINE_WEEKS,
-    /** Synced appearance/behavior settings (previously standalone localStorage keys). */
-    theme: 'eternal' as string,
-    colorMode: 'dark' as string,
-    weightUnit: 'lbs' as string,
+    /**
+     * Synced appearance/behavior settings (previously standalone localStorage keys).
+     *
+     * Typed with their real unions (LIFT-1494), not widened to `string`: these
+     * four are the only state fields a corrupt or future-version blob can turn
+     * into a value the app has no rendering for, and every persistence boundary
+     * below coerces through the sanitizer that owns each union. The narrowing
+     * lives here so `useWeightUnit`/`useTheme` read the store directly instead of
+     * re-asserting the union with an unchecked cast apiece.
+     */
+    theme: DEFAULT_THEME_ID as ThemeId,
+    colorMode: DEFAULT_COLOR_MODE as ColorMode,
+    weightUnit: DEFAULT_WEIGHT_UNIT as WeightUnit,
     restTimerEnabled: true,
     restTimerAutoStart: true,
-    appIcon: 'default' as string,
+    appIcon: DEFAULT_APP_ICON_ID as AppIconId,
     /** Tappable intensity presets (% of max) in the log-set Intensity lens (#776). */
     intensityPresets: [...DEFAULT_INTENSITY_PRESETS] as number[],
     /** AI Coach athlete profile — individualizes the export (#931). Synced in the blob. */
@@ -199,12 +214,12 @@ function loadLocalSettings(): Partial<PreferencesState> {
       if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) out.prBaselineDate = parsed.prBaselineDate
       if (parsed.strengthBaselineMode !== undefined) out.strengthBaselineMode = sanitizeStrengthBaselineMode(parsed.strengthBaselineMode)
       if (parsed.recentBaselineWeeks !== undefined) out.recentBaselineWeeks = sanitizeRecentBaselineWeeks(parsed.recentBaselineWeeks)
-      if (typeof parsed.theme === 'string') out.theme = parsed.theme
-      if (typeof parsed.colorMode === 'string') out.colorMode = parsed.colorMode
-      if (typeof parsed.weightUnit === 'string') out.weightUnit = parsed.weightUnit
+      if (parsed.theme !== undefined) out.theme = sanitizeThemeId(parsed.theme)
+      if (parsed.colorMode !== undefined) out.colorMode = sanitizeColorMode(parsed.colorMode)
+      if (parsed.weightUnit !== undefined) out.weightUnit = sanitizeWeightUnit(parsed.weightUnit)
       if (typeof parsed.restTimerEnabled === 'boolean') out.restTimerEnabled = parsed.restTimerEnabled
       if (typeof parsed.restTimerAutoStart === 'boolean') out.restTimerAutoStart = parsed.restTimerAutoStart
-      if (typeof parsed.appIcon === 'string') out.appIcon = parsed.appIcon
+      if (parsed.appIcon !== undefined) out.appIcon = sanitizeAppIconId(parsed.appIcon)
       if (parsed.intensityPresets) out.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
       if (parsed.coachProfile) out.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
       if (parsed.gyms) out.gyms = sanitizeGymList(parsed.gyms)
@@ -215,15 +230,15 @@ function loadLocalSettings(): Partial<PreferencesState> {
     // here we only read (no migration side effects in the state factory).
     if (out.theme === undefined) {
       const legacy = localStorage.getItem('app-theme')
-      if (legacy && legacy !== 'eternal') out.theme = legacy
+      if (legacy) out.theme = sanitizeThemeId(legacy)
     }
     if (out.colorMode === undefined) {
       const legacy = localStorage.getItem('app-mode')
-      if (legacy && legacy !== 'dark') out.colorMode = legacy
+      if (legacy) out.colorMode = sanitizeColorMode(legacy)
     }
     if (out.weightUnit === undefined) {
       const legacy = localStorage.getItem('weight-unit')
-      if (legacy && legacy !== 'lbs') out.weightUnit = legacy
+      if (legacy) out.weightUnit = sanitizeWeightUnit(legacy)
     }
     if (out.restTimerEnabled === undefined && localStorage.getItem('rest-timer') === 'off') out.restTimerEnabled = false
     if (out.restTimerAutoStart === undefined && localStorage.getItem('rest-timer-autostart') === 'off') out.restTimerAutoStart = false
@@ -357,12 +372,12 @@ export const usePreferencesStore = defineStore('preferences', {
       }
       if (parsed.strengthBaselineMode !== undefined) this.strengthBaselineMode = sanitizeStrengthBaselineMode(parsed.strengthBaselineMode)
       if (parsed.recentBaselineWeeks !== undefined) this.recentBaselineWeeks = sanitizeRecentBaselineWeeks(parsed.recentBaselineWeeks)
-      if (typeof parsed.theme === 'string') this.theme = parsed.theme
-      if (typeof parsed.colorMode === 'string') this.colorMode = parsed.colorMode
-      if (typeof parsed.weightUnit === 'string') this.weightUnit = parsed.weightUnit
+      if (parsed.theme !== undefined) this.theme = sanitizeThemeId(parsed.theme)
+      if (parsed.colorMode !== undefined) this.colorMode = sanitizeColorMode(parsed.colorMode)
+      if (parsed.weightUnit !== undefined) this.weightUnit = sanitizeWeightUnit(parsed.weightUnit)
       if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
       if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
-      if (typeof parsed.appIcon === 'string') this.appIcon = parsed.appIcon
+      if (parsed.appIcon !== undefined) this.appIcon = sanitizeAppIconId(parsed.appIcon)
       if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
       if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
       if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
@@ -409,17 +424,17 @@ export const usePreferencesStore = defineStore('preferences', {
       // These keys predate the preferences store — read them as fallbacks
       // when the JSON blob doesn't contain them yet.
       try {
-        if (this.theme === 'eternal') {
+        if (this.theme === DEFAULT_THEME_ID) {
           const legacy = localStorage.getItem('app-theme')
-          if (legacy && legacy !== 'eternal') this.theme = legacy
+          if (legacy) this.theme = sanitizeThemeId(legacy)
         }
-        if (this.colorMode === 'dark') {
+        if (this.colorMode === DEFAULT_COLOR_MODE) {
           const legacy = localStorage.getItem('app-mode')
-          if (legacy && legacy !== 'dark') this.colorMode = legacy
+          if (legacy) this.colorMode = sanitizeColorMode(legacy)
         }
-        if (this.weightUnit === 'lbs') {
+        if (this.weightUnit === DEFAULT_WEIGHT_UNIT) {
           const legacy = localStorage.getItem('weight-unit')
-          if (legacy && legacy !== 'lbs') this.weightUnit = legacy
+          if (legacy) this.weightUnit = sanitizeWeightUnit(legacy)
         }
         const legacyTimer = localStorage.getItem('rest-timer')
         if (legacyTimer === 'off') this.restTimerEnabled = false
@@ -580,29 +595,27 @@ export const usePreferencesStore = defineStore('preferences', {
       this._persist()
     },
 
-    setTheme(id: string) {
-      this.theme = id
+    setTheme(id: ThemeId) {
+      this.theme = sanitizeThemeId(id)
       this._persist()
     },
 
-    setColorMode(mode: string) {
-      this.colorMode = mode
+    setColorMode(mode: ColorMode) {
+      this.colorMode = sanitizeColorMode(mode)
       this._persist()
     },
 
-    setWeightUnit(unit: string) {
+    setWeightUnit(unit: WeightUnit) {
       const previous = this.weightUnit
-      this.weightUnit = unit
+      this.weightUnit = sanitizeWeightUnit(unit)
       this._persist()
       // Stored per-exercise bar weights are kept in the display unit (LIFT-1223),
       // so a real unit toggle must convert them or the raw number is silently
       // reinterpreted (a 20 kg bar becomes 20 lbs) and corrupts the plate math.
-      if (
-        previous !== unit &&
-        (previous === 'lbs' || previous === 'kg') &&
-        (unit === 'lbs' || unit === 'kg')
-      ) {
-        useWorkoutStore().convertBarWeightsForUnitChange(previous, unit)
+      // Both sides are union-typed now (LIFT-1494), so "is this a real unit?"
+      // is answered by `sanitizeWeightUnit` above rather than re-tested here.
+      if (previous !== this.weightUnit) {
+        useWorkoutStore().convertBarWeightsForUnitChange(previous, this.weightUnit)
       }
     },
 
@@ -616,8 +629,8 @@ export const usePreferencesStore = defineStore('preferences', {
       this._persist()
     },
 
-    setAppIcon(id: string) {
-      this.appIcon = id
+    setAppIcon(id: AppIconId) {
+      this.appIcon = sanitizeAppIconId(id)
       this._persist()
     },
 
