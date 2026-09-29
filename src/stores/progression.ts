@@ -320,10 +320,18 @@ export const useProgressionStore = defineStore('progression', {
         // the awaited call must be guarded — an unguarded throw here would
         // propagate through init() and reject the whole Promise.allSettled in
         // initStores, leaving the app half-hydrated (LIFT-820).
+        //
+        // Not retried, for the reason given at the matching read in the
+        // preferences store (LIFT-1510). The service worker never answers this
+        // read from a cache — the scalars below are adopted remote-wins and
+        // pushed straight back by `_syncToSupabase`, so a cached row must never
+        // stand in for the server's — and without that fallback a retry would
+        // only hold the splash through postgrest-js's backoff.
         const result = await supabase
           .from('user_progression')
           .select('*')
           .eq('user_id', this._userId)
+          .retry(false)
           .single()
         const error = result.error
         if (error) {

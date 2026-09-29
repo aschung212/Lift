@@ -42,9 +42,13 @@ vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        eq: () => ({
-          single: () => Promise.resolve({ data: remote.row, error: null }),
-        }),
+        eq: () => {
+          const query = {
+            retry: () => query,
+            single: () => Promise.resolve({ data: remote.row, error: null }),
+          }
+          return query
+        },
       }),
       upsert: () => Promise.resolve({ data: null, error: null }),
     }),

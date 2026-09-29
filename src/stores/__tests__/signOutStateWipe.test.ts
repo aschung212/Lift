@@ -46,7 +46,7 @@ const { mockEnqueue, mockEnqueueDelete } = vi.hoisted(() => ({
 }))
 vi.mock('../../lib/supabase', () => {
   const query: Record<string, unknown> = {}
-  for (const m of ['select', 'eq', 'is', 'order', 'range', 'update', 'upsert', 'insert', 'delete']) {
+  for (const m of ['select', 'eq', 'is', 'order', 'range', 'retry', 'update', 'upsert', 'insert', 'delete']) {
     query[m] = vi.fn(() => query)
   }
   query.single = vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116' } })

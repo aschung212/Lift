@@ -29,6 +29,7 @@ vi.mock('../../lib/supabase', () => {
   const chain = {
     select: () => chain,
     eq: () => chain,
+    retry: () => chain,
     single: () =>
       Promise.resolve(
         mockRemotePreferences

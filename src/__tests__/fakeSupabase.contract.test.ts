@@ -59,7 +59,7 @@ function chainMethodsUsedIn(source: string): Set<string> {
   }
   // Only consider lines that touch the supabase client chain, to avoid picking
   // up Array.prototype.filter/map/etc. We look for the query verbs by name.
-  const verbPattern = /\.(select|upsert|update|delete|insert|eq|is|order|single|maybeSingle|limit|in|neq|gte|lte|match|not|filter|range|contains|overlaps|textSearch)\(/g
+  const verbPattern = /\.(select|upsert|update|delete|insert|eq|is|order|single|maybeSingle|limit|in|neq|gte|lte|match|not|filter|range|retry|contains|overlaps|textSearch)\(/g
   for (const line of lines) {
     if (!/supabase|\bclient\b|\bq\b|\.from\(/.test(line)) continue
     let m: RegExpExecArray | null

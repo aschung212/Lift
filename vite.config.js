@@ -216,36 +216,21 @@ export default defineConfig({
             },
           },
           {
-            // Progression/XP data — small payload, short TTL
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/(user_progression|xp_events|progression_snapshots)\b/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-progression',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 6, // 6 hours
-              },
-              networkTimeoutSeconds: 3,
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            // Catch-all for any other Supabase REST endpoints
+            // Every other REST read goes to the network and never to a cache
+            // (LIFT-1510). A cached response reaches the store as
+            // `{ data, error: null }`, indistinguishable from a fresh row, and a
+            // write is a POST this cache never sees — so a cached copy is only
+            // ever as new as the last READ, and older than every change made
+            // since. The three tables above tolerate that because their merges
+            // let the newer updated_at win. user_preferences and
+            // user_progression do not: both are adopted remote-wins, so an
+            // offline or slow launch used to revert the lifter's settings to
+            // the cached row — and progression then pushed the revert back to
+            // the server. They land here on purpose, as does any table added
+            // later: caching is opt-in, per table, justified by its merge
+            // (workboxCacheRegression.test.ts holds the verdicts).
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-api',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24, // 24 hours
-              },
-              networkTimeoutSeconds: 3,
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
+            handler: 'NetworkOnly',
           },
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/auth\/v1\/.*/i,

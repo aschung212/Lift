@@ -69,6 +69,7 @@ export const FAKE_SUPABASE_CHAIN_METHODS = [
   'is',
   'order',
   'range',
+  'retry',
   'single',
   'then',
 ] as const
@@ -341,6 +342,10 @@ class FakeBuilder implements PromiseLike<FakeSupabaseResult> {
   is(col: string, val: null | boolean) { this._filters[col] = { __is: val }; return this }
   order(_col: string) { return this }
   range(from: number, to: number) { this._range = { from, to }; return this }
+  // postgrest-js's retry of a failed GET is a transport concern, and this fake
+  // resolves envelopes rather than fetches — every mode already answers as the
+  // real client does once its retries are spent — so there is nothing to model.
+  retry(_enabled: boolean) { return this }
   single() { this._single = true; return this }
 
   then<TResult1 = FakeSupabaseResult, TResult2 = never>(
