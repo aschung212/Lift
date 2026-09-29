@@ -3493,6 +3493,24 @@ describe('Invariant: a one-row-per-user table is pushed only after its row is re
     return [...source.matchAll(re)].map(m => ({ name: m[1] ?? m[2], index: m.index! }))
   }
 
+  /**
+   * Index of the `}` closing the method that starts at `start`, or -1. The
+   * push must lie inside it: a signature the regex above cannot read (a
+   * callback-typed parameter, say) would otherwise hand its push to the method
+   * before it — and let it borrow THAT method's guard.
+   */
+  function methodEnd(source: string, start: number): number {
+    const lineEnd = source.indexOf('\n', start)
+    const open = source.lastIndexOf('{', lineEnd === -1 ? source.length : lineEnd)
+    if (open < start) return -1
+    let depth = 0
+    for (let i = open; i < source.length; i++) {
+      if (source[i] === '{') depth++
+      else if (source[i] === '}' && --depth === 0) return i
+    }
+    return -1
+  }
+
   /** The return-guard both stores use: nothing is enqueued until the row is read. */
   const GATE = /if\s*\(\s*!\s*this\._accountRowRead\s*\)\s*return\b/
 
@@ -3513,11 +3531,12 @@ describe('Invariant: a one-row-per-user table is pushed only after its row is re
         )
         if (!table) continue
         const method = starts.filter(s => s.index < m.index!).pop()
+        const inside = method !== undefined && m.index! < methodEnd(source, method.index)
         out.push({
           file: name,
-          method: method?.name ?? '(top level)',
+          method: inside ? method.name : '(unattributed)',
           table,
-          gated: method !== undefined && GATE.test(source.slice(method.index, m.index)),
+          gated: inside && GATE.test(source.slice(method.index, m.index)),
         })
       }
     }
@@ -3550,11 +3569,18 @@ describe('Invariant: a one-row-per-user table is pushed only after its row is re
       name: 'z.ts',
       content: `  actions: {\n    check() {\n      if (!this._accountRowRead) return\n    },\n    push() {\n${push}\n    },\n  },`,
     }
-    const result = wholeRowPushes([ungated, gated, elsewhere], ['user_progression'])
+    // A signature the scan can't read must not borrow the guard of the method
+    // before it: the push is reported unattributed, and so ungated.
+    const unreadable = {
+      name: 'w.ts',
+      content: `  actions: {\n    guarded() {\n      if (!this._accountRowRead) return\n    },\n    push(done: () => void) {\n${push}\n      done()\n    },\n  },`,
+    }
+    const result = wholeRowPushes([ungated, gated, elsewhere, unreadable], ['user_progression'])
     expect(result.map(r => [r.file, r.method, r.gated])).toEqual([
       ['x.ts', 'push', false],
       ['y.ts', 'push', true],
       ['z.ts', 'push', false],
+      ['w.ts', '(unattributed)', false],
     ])
   })
 
