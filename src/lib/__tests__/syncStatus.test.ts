@@ -5,8 +5,24 @@
  * UI sees one typed contract — auth failures (re-sign-in needed) must be told
  * apart from ordinary offline/network failures (transient, will recover).
  */
-import { describe, it, expect } from 'vitest'
-import { classifySyncError, combineSyncStatus, isRetryableSyncFailure } from '../syncStatus'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { classifySyncError, combineSyncStatus, isKnownOffline, isRetryableSyncFailure } from '../syncStatus'
+
+describe('isKnownOffline (LIFT-1510)', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('is true only when the browser reports no network', () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    expect(isKnownOffline()).toBe(true)
+  })
+
+  it('is false whenever the browser reports a connection, working or not', () => {
+    // `true` is what a dead uplink reports too, so "not known offline" is all
+    // it can mean — the caller keeps its ordinary retry and failure paths.
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    expect(isKnownOffline()).toBe(false)
+  })
+})
 
 describe('classifySyncError', () => {
   it('classifies a 401 status as auth', () => {

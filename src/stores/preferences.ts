@@ -24,7 +24,7 @@ import {
 import { sanitizeAppIconId, DEFAULT_APP_ICON_ID, type AppIconId } from '../lib/appIcons'
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
 import { localDateKey } from '../lib/dates'
-import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { classifySyncError, isKnownOffline, type SyncErrorKind } from '../lib/syncStatus'
 import { useWorkoutStore } from './workout'
 
 const STORAGE_KEY = 'user-preferences'
@@ -472,19 +472,19 @@ export const usePreferencesStore = defineStore('preferences', {
         const userId = this._userId
         this.syncing = true
         try {
-          // Not retried (LIFT-1510). The service worker never answers this read
-          // from a cache (vite.config.js): the row is adopted remote-wins below,
-          // so a cached copy would revert every setting changed since it was
-          // stored. With no cached copy to fall back on, a failed attempt is the
-          // whole answer — retrying it would only hold the splash (initStores
-          // waits on this read) through postgrest-js's 1s/2s/4s backoff, and
-          // failing costs nothing: local state stands, and useSyncRecovery
-          // re-reads on reconnect.
+          // The service worker never answers this read from a cache
+          // (vite.config.js, LIFT-1510): the row is adopted remote-wins below, so
+          // a cached copy would revert every setting changed since it was
+          // stored. Without that fallback an offline attempt simply fails, and
+          // retrying it would only hold the splash (initStores waits on this
+          // read) through postgrest-js's 1s/2s/4s backoff — so skip the retry
+          // when the device knows it is offline, and keep it otherwise
+          // (isKnownOffline says why a blip must still be retried).
           const { data, error } = await supabase
             .from('user_preferences')
             .select('preferences')
             .eq('user_id', userId)
-            .retry(false)
+            .retry(!isKnownOffline())
             .single()
           // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
           // A real error (network/auth/RLS) is classified for the per-store sync

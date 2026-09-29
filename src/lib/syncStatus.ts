@@ -87,6 +87,27 @@ export function classifySyncError(err: unknown): SyncErrorKind {
 }
 
 /**
+ * Does the browser KNOW there is no network right now? (LIFT-1510)
+ *
+ * `navigator.onLine === false` is decisive in one direction only — the note in
+ * syncQueue — since `true` on a dead uplink (a captive portal, gym wifi with no
+ * route out) is common. So `false` may skip work that cannot succeed, and
+ * `true` may never be read as permission.
+ *
+ * The stores' single-row reads (user_preferences, user_progression) ask it to
+ * decide whether postgrest-js may retry a failed attempt. The service worker
+ * never answers those from a cache, so offline the retry backoff (1s/2s/4s) is
+ * all a cold start would wait on — and the splash waits on these reads. But a
+ * retry is also what absorbs a blip right after a fresh sign-in, where a failed
+ * read leaves the store on defaults that its next write pushes over the
+ * account's copy. Hence: no retry when the device knows it is offline, the
+ * ordinary retry otherwise.
+ */
+export function isKnownOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+/**
  * Is a failed WRITE worth attempting again in this session? (LIFT-1321)
  *
  * The write queue retries with exponential backoff, which only ever helps when

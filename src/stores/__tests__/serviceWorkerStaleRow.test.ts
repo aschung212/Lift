@@ -18,7 +18,7 @@
  * drives the REAL stores through a real supabase-js client whose `fetch` is
  * the config's own routing (serviceWorkerRoutes.ts), across two "launches".
  */
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi, type MockInstance } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getLocalStorageMock } from '../../__tests__/helpers'
@@ -65,12 +65,19 @@ const USER_ID = 'u1'
 /** The account's rows as PostgREST holds them, keyed by table. */
 const server: Record<string, Record<string, unknown> | null> = {}
 
+/** Requests to drop before the network recovers — a blip, not an outage. */
+let droppedRequests = 0
+
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
 /** Just enough PostgREST: a `.single()` read of the row, or PGRST116 when there is none. */
 async function postgrest(request: Request): Promise<Response> {
+  if (droppedRequests > 0) {
+    droppedRequests--
+    throw new TypeError('Failed to fetch')
+  }
   if (request.method !== 'GET') return new Response(null, { status: 201 })
   const table = new URL(request.url).pathname.replace(/^\/rest\/v1\//, '')
   const row = server[table]
@@ -116,6 +123,7 @@ function progressionPushes(): Record<string, unknown>[] {
 
 let rules: RuntimeCachingRule[]
 let sw: EmulatedServiceWorker
+let onLine: MockInstance<() => boolean>
 
 beforeAll(async () => {
   rules = (await loadWorkboxOptions()).runtimeCaching ?? []
@@ -133,14 +141,26 @@ beforeEach(() => {
   sw = emulateServiceWorker(rules, postgrest)
   server.user_preferences = null
   server.user_progression = null
+  droppedRequests = 0
+  onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
   localStorageMock.clear()
   enqueue.mockClear()
   setActivePinia(createPinia())
 })
 
+afterEach(() => {
+  onLine.mockRestore()
+})
+
 /** A cold start: new Pinia, so every store re-hydrates from localStorage. */
 function relaunch() {
   setActivePinia(createPinia())
+}
+
+/** No network, and the browser knows it — airplane mode, no signal. */
+function goOffline() {
+  sw.online = false
+  onLine.mockReturnValue(false)
 }
 
 describe('LIFT-1510 an offline launch never adopts a cached copy of a remote-wins row', () => {
@@ -158,7 +178,7 @@ describe('LIFT-1510 an offline launch never adopts a cached copy of a remote-win
     server.user_preferences = { preferences: { ...PREFERENCES_BLOB, theme: 'water' } }
 
     // Launch 2, with no network.
-    sw.online = false
+    goOffline()
     relaunch()
     const second = usePreferencesStore()
     await second.init(USER_ID)
@@ -182,7 +202,7 @@ describe('LIFT-1510 an offline launch never adopts a cached copy of a remote-win
     server.user_progression = progressionRow({ show_progression: false })
     enqueue.mockClear()
 
-    sw.online = false
+    goOffline()
     relaunch()
     const second = useProgressionStore()
     await second.init(USER_ID)
@@ -214,26 +234,40 @@ describe('LIFT-1510 an offline launch never adopts a cached copy of a remote-win
   })
 })
 
-describe('LIFT-1510 an offline read fails in one attempt, not after seconds of backoff', () => {
-  // The splash screen stays up until every store's init() settles (useAuth's
-  // initStores), and the service worker's cached copy used to answer these two
-  // reads instantly offline. Answered by the network instead, postgrest-js
-  // would retry a failed GET three times at 1s/2s/4s — seven seconds added to
-  // every offline cold start for a read whose failure costs nothing, since the
-  // store keeps its local state and useSyncRecovery re-reads on reconnect.
-  // (A regression here fails on the attempt count after ~7s, hence the timeout.)
+describe('LIFT-1510 when a network-only read is retried', () => {
   const readsOf = (table: string) =>
     sw.networkRequests.filter(r => r.startsWith('GET ') && r.includes(`/rest/v1/${table}?`))
 
-  it('preferences', async () => {
-    sw.online = false
-    await usePreferencesStore().init(USER_ID)
-    expect(readsOf('user_preferences')).toHaveLength(1)
+  const STORES = [
+    { table: 'user_preferences', init: () => usePreferencesStore().init(USER_ID) },
+    { table: 'user_progression', init: () => useProgressionStore().init(USER_ID) },
+  ]
+
+  // The splash stays up until every store's init() settles (useAuth's
+  // initStores), and the service worker's cached copy used to answer these two
+  // reads instantly offline. Answered by the network instead, postgrest-js
+  // would retry a failed GET at 1s/2s/4s — seven seconds added to every
+  // offline cold start, for an attempt the device already knew would fail.
+  // (A regression fails on the attempt count after ~7s, hence the timeout.)
+  it.each(STORES)('fails a $table read in one attempt when the device knows it is offline', async ({ table, init }) => {
+    goOffline()
+    await init()
+    expect(readsOf(table)).toHaveLength(1)
   }, 15_000)
 
-  it('progression', async () => {
-    sw.online = false
-    await useProgressionStore().init(USER_ID)
-    expect(readsOf('user_progression')).toHaveLength(1)
-  }, 15_000)
+  // A blip is not an outage. Right after a fresh sign-in a failed read leaves
+  // the store on defaults, and its next write pushes them over the account's
+  // copy — so while the browser reports a connection, the ordinary retry must
+  // still absorb one dropped request.
+  it.each(STORES)('retries a dropped $table read while the browser reports a connection', async ({ table, init }) => {
+    server.user_preferences = { preferences: { ...PREFERENCES_BLOB, theme: 'water' } }
+    server.user_progression = progressionRow({ weekly_target: 5 })
+    droppedRequests = 1
+
+    await init()
+
+    expect(readsOf(table)).toHaveLength(2)
+    if (table === 'user_preferences') expect(usePreferencesStore().theme).toBe('water')
+    else expect(useProgressionStore().weeklyTarget).toBe(5)
+  })
 })
