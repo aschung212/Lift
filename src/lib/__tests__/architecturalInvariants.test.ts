@@ -3422,3 +3422,151 @@ describe('Invariant: every weekly-target write goes through the range guard (LIF
     expect(violations).toEqual([])
   })
 })
+
+// ── Invariant: a one-row-per-user table is pushed only after its row is read (LIFT-1515) ──
+// Guard: `user_preferences` and `user_progression` hold ONE row per user, and
+// each store upserts it whole — so a push carries every field, including the
+// ones the user did not just change. On a device that had never read the
+// account's row (fresh install, new sign-in, the first sign-in after the
+// sign-out wipe) those fields were defaults, and nothing waited for the read:
+// a failed first read let the next settings change overwrite the account's
+// gyms / coach profile / weight unit, and a committed set delete's
+// `removeSetXP` replace its XP history, streaks and unlocks — with every other
+// device then adopting the defaults remote-wins.
+//
+// Both stores now return early from their push until `_accountRowRead` is set
+// by a successful read. The rule is DERIVED in both directions that can drift:
+// which tables are one-row-per-user comes from the migrations (a `user_id`
+// primary key or `unique(user_id)`), and which code pushes them comes from the
+// stores' own enqueue calls — so a third such table, or a new push path in one
+// of these two stores, is covered by being written rather than by being listed.
+// The guard must sit in the SAME method as the enqueue: a check in one caller
+// leaves every other path to the push open.
+
+describe('Invariant: a one-row-per-user table is pushed only after its row is read (LIFT-1515)', () => {
+  const sql = stripSqlComments(
+    readdirSync(MIGRATIONS_DIR)
+      .filter(f => f.endsWith('.sql'))
+      .sort()
+      .map(f => readFileSync(join(MIGRATIONS_DIR, f), 'utf-8'))
+      .join('\n'),
+  )
+
+  /** Tables keyed by `user_id` alone — a column or table primary key, or `unique(user_id)`. */
+  function oneRowPerUserTables(source: string): string[] {
+    const keyed = createdTables(source).filter((table) => {
+      const body = tableBody(source, table)
+      return /\buser_id\s+uuid\b[^,]*\b(?:primary\s+key|unique)\b/i.test(body)
+        || /\b(?:primary\s+key|unique)\s*\(\s*user_id\s*\)/i.test(body)
+    })
+    const altered = [...source.matchAll(new RegExp(
+      `alter\\s+table\\s+(?:only\\s+)?["']?${SCHEMA}(\\w+)["']?\\s+add\\s+(?:constraint\\s+\\w+\\s+)?(?:primary\\s+key|unique)\\s*\\(\\s*user_id\\s*\\)`,
+      'gi',
+    ))].map(m => m[1].toLowerCase())
+    return [...new Set([...keyed, ...altered])].sort()
+  }
+
+  /** Index of the `)` closing the call whose `(` is at `open`, skipping string literals. */
+  function callEnd(source: string, open: number): number {
+    let depth = 0
+    let quote: string | null = null
+    for (let i = open; i < source.length; i++) {
+      const ch = source[i]
+      if (quote) {
+        if (ch === '\\') i++
+        else if (ch === quote) quote = null
+        continue
+      }
+      if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+      if (ch === '(' || ch === '{' || ch === '[') depth++
+      else if (ch === ')' || ch === '}' || ch === ']') {
+        depth--
+        if (depth === 0) return i
+      }
+    }
+    throw new Error('Unbalanced syncQueue call while scanning for whole-row pushes')
+  }
+
+  /** Where each store action / setup-store function starts, with its name. */
+  function methodStarts(source: string): { name: string; index: number }[] {
+    const re = /^(?: {4}(?:async\s+)?(\w+)\s*(?:<[^>\n]*>)?\s*\([^)]*\)\s*(?::[^{\n]*)?\{\s*$| {2}(?:async\s+)?function\s+(\w+)\s*\()/gm
+    return [...source.matchAll(re)].map(m => ({ name: m[1] ?? m[2], index: m.index! }))
+  }
+
+  /** The return-guard both stores use: nothing is enqueued until the row is read. */
+  const GATE = /if\s*\(\s*!\s*this\._accountRowRead\s*\)\s*return\b/
+
+  /** Every store enqueue that writes one of `tables`, and whether its method is gated. */
+  function wholeRowPushes(
+    files: { name: string; content: string }[],
+    tables: string[],
+  ): { file: string; method: string; table: string; gated: boolean }[] {
+    const out: { file: string; method: string; table: string; gated: boolean }[] = []
+    for (const { name, content } of files) {
+      const source = stripComments(content)
+      const starts = methodStarts(source)
+      for (const m of source.matchAll(/syncQueue\s*\.\s*(?:enqueue|enqueueDelete)\s*\(/g)) {
+        const open = m.index! + m[0].length - 1
+        const call = source.slice(open, callEnd(source, open) + 1)
+        const table = tables.find(t =>
+          new RegExp(`\\.from\\(\\s*['"\`]${t}['"\`]\\s*\\)|\\btable:\\s*['"\`]${t}['"\`]`).test(call),
+        )
+        if (!table) continue
+        const method = starts.filter(s => s.index < m.index!).pop()
+        out.push({
+          file: name,
+          method: method?.name ?? '(top level)',
+          table,
+          gated: method !== undefined && GATE.test(source.slice(method.index, m.index)),
+        })
+      }
+    }
+    return out
+  }
+
+  it('derives the one-row-per-user tables from the migrations (non-vacuity)', () => {
+    const tables = oneRowPerUserTables(sql)
+    // A pattern that matched nothing would leave the rule below with no subject.
+    expect(tables).toEqual(expect.arrayContaining(['user_preferences', 'user_progression']))
+    // Many-rows-per-user tables must not be swept in: they upsert row by row.
+    expect(tables).not.toContain('sets')
+    expect(tables).not.toContain('exercises')
+    expect(tables).not.toContain('bodyweight_entries')
+  })
+
+  it('finds the push in each store that writes such a table (non-vacuity)', () => {
+    const pushes = wholeRowPushes(getStoreFiles(), oneRowPerUserTables(sql))
+    expect(pushes.map(p => `${p.file}:${p.table}`).sort()).toEqual(
+      expect.arrayContaining(['preferences.ts:user_preferences', 'progression.ts:user_progression']),
+    )
+  })
+
+  it('flags an ungated push and accepts a gated one (self-test)', () => {
+    const push = "      syncQueue.enqueue('k', () => supabase!.from('user_progression').upsert(row), { op: 'upsert', table: 'user_progression', row })"
+    const ungated = { name: 'x.ts', content: `  actions: {\n    push() {\n      if (!supabase) return\n${push}\n    },\n  },` }
+    const gated = { name: 'y.ts', content: `  actions: {\n    push() {\n      if (!this._accountRowRead) return\n${push}\n    },\n  },` }
+    // A check in a DIFFERENT method does not gate this one.
+    const elsewhere = {
+      name: 'z.ts',
+      content: `  actions: {\n    check() {\n      if (!this._accountRowRead) return\n    },\n    push() {\n${push}\n    },\n  },`,
+    }
+    const result = wholeRowPushes([ungated, gated, elsewhere], ['user_progression'])
+    expect(result.map(r => [r.file, r.method, r.gated])).toEqual([
+      ['x.ts', 'push', false],
+      ['y.ts', 'push', true],
+      ['z.ts', 'push', false],
+    ])
+  })
+
+  it('every push of a one-row-per-user table waits until the row has been read', () => {
+    const violations = wholeRowPushes(getStoreFiles(), oneRowPerUserTables(sql))
+      .filter(p => !p.gated)
+      .map(p =>
+        `${p.file}: ${p.method}() enqueues a whole-row write to ${p.table} with no ` +
+          '`if (!this._accountRowRead) return` before it. The upsert replaces the ' +
+          "account's entire row, so on a device that has not read it yet it " +
+          'overwrites everything the user did not just change with defaults.',
+      )
+    expect(violations).toEqual([])
+  })
+})
