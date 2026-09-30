@@ -372,7 +372,7 @@ onUnmounted(() => deactivateModal())
 .cpField {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   flex: 1 1 0;
   min-width: 0;
 }
@@ -381,7 +381,7 @@ onUnmounted(() => deactivateModal())
 .cpTextarea {
   width: 100%;
   min-height: 44px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
   background: var(--bg-elevated);
