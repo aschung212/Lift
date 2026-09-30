@@ -13,6 +13,42 @@ import { logWarn } from './logger'
 
 // ── Write helpers (domain → Json) ─────────────────────────────────
 
+/**
+ * Structural proof that a type holds nothing but JSON data: primitives, arrays
+ * and plain objects, all the way down. A function, or a class instance whose
+ * state lives behind methods (`Date`, `Map`, `Set`), maps to `never` at the
+ * offending field and fails to match.
+ *
+ * `Json` itself can't be used as the constraint: an `interface` gets no
+ * implicit index signature, so `FeatureFlags`/`CoachProfile` and friends are
+ * not assignable to `{ [key: string]: Json | undefined }` no matter how
+ * JSON-safe their contents are. That mismatch is *why* call sites reached for
+ * `as unknown as Json`, and the double cast silently accepts a genuinely
+ * unserializable value along with the safe ones.
+ */
+export type JsonSafe<T> =
+  T extends string | number | boolean | null | undefined ? T
+    : T extends (...args: never[]) => unknown ? never
+      : T extends readonly (infer U)[] ? readonly JsonSafe<U>[]
+        : T extends object ? { readonly [K in keyof T]: JsonSafe<T[K]> }
+          : never
+
+/**
+ * Hand a domain object to a `json`/`jsonb` column without an unchecked cast at
+ * the call site (LIFT-1493).
+ *
+ * The one remaining `as unknown as Json` lives here, behind a signature that
+ * rejects anything JSON can't represent — so adding a `Date` or a `Map` to a
+ * synced payload is a compile error rather than a column that reads back as
+ * `{}` on the next device. Deliberately structural rather than a per-payload
+ * literal like `themeUnlocksToJson`: the preferences payload is defined exactly
+ * once in `_buildPayload` (LIFT-1243), and a second enumeration of its fields
+ * here would re-arm precisely the drift that consolidation closed.
+ */
+export function toJsonColumn<T>(value: T & JsonSafe<T>): Json {
+  return value as unknown as Json
+}
+
 /** Convert ThemeUnlock[] to a Json-compatible value. */
 export function themeUnlocksToJson(themes: ThemeUnlock[]): Json {
   return themes.map(t => ({
