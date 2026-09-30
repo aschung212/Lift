@@ -302,7 +302,7 @@ is why a fresh clone must sync once before Xcode can build:
 
 ```bash
 # Build the web bundle and sync it into the native project (also stamps the version)
-npm run cap:build        # = build + cap sync (+ configure-ios.mjs) + guard:native-config
+npm run cap:build        # = build + cap sync (+ configure-ios.mjs) + guard:dev-surface --native + guard:native-config
 
 # Open the project in Xcode, then build & run on a Simulator or your iPhone
 npm run cap:open:ios
@@ -326,6 +326,24 @@ one until it is installed. Run it by hand any time you are unsure what state the
 project is in; the same script also runs (in `--warn` mode) at the end of **every** sync,
 including the live-reload one that creates that state. It is not a CI step — the file it
 reads is generated and gitignored, so CI never has one to check.
+
+The step before it, `npm run guard:dev-surface -- --native`, is the same guard CI runs
+against `dist/`, pointed at `ios/App/App/public` — the copied bundle the `.ipa` embeds
+(LIFT-1454). Every other run of that guard inspects a bundle some automated environment
+produced; `cap:build` builds its own locally, so until this step existed the App Store
+build was the one bundle nothing had ever checked. `import.meta.env.DEV` is false under
+`vite build`, so the way a dev surface gets in is `VITE_E2E` being true in the archiving
+shell — and Vite reads `.env.local` / `.env.*` for every build, so a stray line in an
+untracked file is enough to ship the "Continue as Dev" auth bypass and the Settings dev
+tools to the App Store. It scans the copy rather than the `dist/` it came from for the
+same reason `guard:native-config` reads the emitted config rather than the TypeScript, and
+it resolves its directories from the platform table in
+`scripts/check-native-release-config.mjs`, so a second platform is covered by being
+declared once. Like its sibling it is not a CI step (that tree is generated and
+gitignored), and like its sibling it also runs in `--warn` mode from the
+`capacitor:sync:after` hook — because `cap:build` is not the only thing that writes the
+tree: a plain `VITE_E2E=true npm run build && npx cap sync` copies the leak in and leaves a
+`capacitor.config.json` that `guard:native-config` finds perfectly clean.
 
 Every `npx cap sync` also runs `scripts/configure-ios.mjs` (first in the
 `capacitor:sync:after` hook in `package.json`). On the committed project the only thing it changes is the

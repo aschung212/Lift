@@ -69,19 +69,32 @@ export const DEV_ONLY_SERVER_KEYS = Object.freeze(['url', 'cleartext', 'allowNav
  * keyed by the directory whose presence means the platform has been added at all.
  * `android/` is gitignored and currently unused, but the same failure applies
  * there the day it is added, and enumerating it costs one line.
+ *
+ * `webAssets` is the copied bundle's ROOT — the tree the `.ipa` embeds, and the
+ * only build of the app no automated environment ever inspects, since `cap copy`
+ * produces it locally and Capacitor's own platform `.gitignore` keeps it out of
+ * git. `scripts/check-no-dev-surface.js --native` reads it from here rather than
+ * restating the path, so a second platform is covered by being declared once
+ * (LIFT-1454). `assets` is that tree's entry point, whose absence means the
+ * bundle was never copied at all.
  */
+const IOS_WEB_ASSETS = join('ios', 'App', 'App', 'public')
+const ANDROID_WEB_ASSETS = join('android', 'app', 'src', 'main', 'assets', 'public')
+
 export const NATIVE_PLATFORMS = Object.freeze([
   Object.freeze({
     name: 'ios',
     dir: 'ios',
     config: join('ios', 'App', 'App', 'capacitor.config.json'),
-    assets: join('ios', 'App', 'App', 'public', 'index.html'),
+    webAssets: IOS_WEB_ASSETS,
+    assets: join(IOS_WEB_ASSETS, 'index.html'),
   }),
   Object.freeze({
     name: 'android',
     dir: 'android',
     config: join('android', 'app', 'src', 'main', 'assets', 'capacitor.config.json'),
-    assets: join('android', 'app', 'src', 'main', 'assets', 'public', 'index.html'),
+    webAssets: ANDROID_WEB_ASSETS,
+    assets: join(ANDROID_WEB_ASSETS, 'index.html'),
   }),
 ])
 

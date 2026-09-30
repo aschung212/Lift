@@ -4,7 +4,8 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { readFileSync, readdirSync, existsSync } from 'fs'
-import { resolve, join } from 'path'
+import { resolve, join, dirname } from 'path'
+import { NATIVE_PLATFORMS } from '../../../scripts/check-native-release-config.mjs'
 
 /**
  * Guard: dev-only UI must never ship to production.
@@ -34,6 +35,15 @@ import { resolve, join } from 'path'
  * build-output check — grep the real production dist/ — runs in CI via
  * `npm run guard:dev-surface` (scripts/check-no-dev-surface.js), and is
  * mirrored below whenever a build exists locally.
+ *
+ * The App Store build is the one bundle no automated environment ever sees
+ * (LIFT-1454): `npm run cap:build` runs `vite build` LOCALLY and `cap copy`
+ * wipes and replaces `ios/App/App/public` with the result — a tree Capacitor's
+ * own `ios/.gitignore` keeps out of git, so it is never diffed and never
+ * reviewed. `import.meta.env.DEV` is false under `vite build`, so the leak path
+ * is `VITE_E2E` being true in the archiving shell, and Vite reads `.env.local` /
+ * `.env.*` for every build. Hence the `--native` half of the script, exercised
+ * below against a fixture project.
  */
 
 const root = resolve(__dirname, '../../..')
@@ -201,5 +211,206 @@ describe('scripts/check-no-dev-surface.js scans the directory it is given', () =
     const explicit = runGuard('dist')
     expect(bare.status).toBe(explicit.status)
     expect(bare.stderr + bare.stdout).toBe(explicit.stderr + explicit.stdout)
+  })
+
+  it('refuses an unrecognised flag instead of silently scanning dist/', () => {
+    // A mistyped `--natve` inside cap:build would otherwise scan the production
+    // bundle and print a green line while standing in for the native check —
+    // a guard answering confidently about a tree it never opened.
+    const result = runGuard('--natve')
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('--natve')
+  })
+
+  it.runIf(existsSync(resolve(root, 'dist')))('passes against a real build, reporting what it opened', () => {
+    // The case above compares two runs of the same code, so it holds just as
+    // well if both are broken. This one pins the default path end to end — and
+    // the file count with it, since "scanned 0" would mean the guard reported a
+    // bundle clean having read nothing.
+    const result = runGuard()
+    expect(result.status, result.stderr + result.stdout).toBe(0)
+    expect(result.stdout).toMatch(/scanned [1-9]\d* JS files/)
+  })
+})
+
+/**
+ * LIFT-1454 — the same guard, pointed at the bundle an archive really carries.
+ *
+ * Every other run of this script inspects a bundle some automated environment
+ * produced: build-and-test's `dist/`, deploy-production's `.vercel/output/static`.
+ * `cap:build`'s bundle is built locally and copied into a gitignored native tree,
+ * so until this existed the `.ipa` was the one build nothing had ever looked at.
+ *
+ * The scanned directories come from NATIVE_PLATFORMS rather than a literal in
+ * package.json: a second platform is then covered by being declared once, which
+ * is the same reason `guard:native-config` reads its config paths from there.
+ */
+describe('scripts/check-no-dev-surface.js --native scans the bundle the native app ships', () => {
+  const script = resolve(root, 'scripts/check-no-dev-surface.js')
+
+  function runNativeGuard(rootDir: string, ...extraArgs: string[]) {
+    return spawnSync(process.execPath, [script, '--native', ...extraArgs], {
+      encoding: 'utf-8',
+      // The convention check-native-release-config.mjs and configure-ios.mjs
+      // already use — it is what the Capacitor CLI sets for its own hooks.
+      env: { ...process.env, CAPACITOR_ROOT_DIR: rootDir },
+    })
+  }
+
+  /**
+   * A fixture native project. `copiedJs` of `null` models a platform that was
+   * added but never `cap copy`-ed, which is the state a sync that silently did
+   * nothing leaves behind.
+   */
+  function withNativeFixture(
+    platforms: { platform: (typeof NATIVE_PLATFORMS)[number]; copiedJs: string | null }[],
+    run: (rootDir: string) => void,
+  ) {
+    const dir = mkdtempSync(join(tmpdir(), 'lift-native-guard-'))
+    try {
+      for (const { platform, copiedJs } of platforms) {
+        mkdirSync(join(dir, platform.dir), { recursive: true })
+        if (copiedJs === null) continue
+        const assets = join(dir, platform.webAssets, 'assets')
+        mkdirSync(assets, { recursive: true })
+        writeFileSync(join(dir, platform.assets), '<!doctype html><div id="app"></div>')
+        writeFileSync(join(assets, 'index-abc123.js'), copiedJs)
+      }
+      run(dir)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  const IOS = NATIVE_PLATFORMS.find((p) => p.name === 'ios')!
+
+  it('passes on a clean copied bundle', () => {
+    withNativeFixture([{ platform: IOS, copiedJs: 'export const a=1;\n' }], (dir) => {
+      const result = runNativeGuard(dir)
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toContain('ios')
+    })
+  })
+
+  // Driven off both lists so a third dev-only surface, or a second native
+  // platform, is covered here by being declared rather than by someone
+  // remembering to extend a third list.
+  it.each(
+    NATIVE_PLATFORMS.flatMap((platform) => SURFACES.map((surface) => ({ platform, surface }))),
+  )('fails when $platform.name ships $surface.id (non-vacuity)', ({ platform, surface }) => {
+    withNativeFixture([{ platform, copiedJs: `const c="${surface.markers[0]}";\n` }], (dir) => {
+      const result = runNativeGuard(dir)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain(surface.markers[0])
+      // Reported relative to the project, i.e. naming the tree that ships.
+      expect(result.stderr).toContain(join(platform.webAssets, 'assets', 'index-abc123.js'))
+    })
+  })
+
+  it('fails when the platform exists but the bundle was never copied in', () => {
+    // `cap copy` skips the copy outright when `server.url` is set and webDir is
+    // missing, so "synced" does not imply "carries a bundle". Passing here would
+    // vouch for a tree that does not exist.
+    withNativeFixture([{ platform: IOS, copiedJs: null }], (dir) => {
+      const result = runNativeGuard(dir)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain(IOS.webAssets)
+      expect(result.stderr).toContain('cap:build')
+    })
+  })
+
+  it('fails when the copied bundle carries no JS at all', () => {
+    withNativeFixture([{ platform: IOS, copiedJs: null }], (dir) => {
+      mkdirSync(join(dir, IOS.webAssets), { recursive: true })
+      writeFileSync(join(dir, IOS.assets), '<!doctype html>')
+      const result = runNativeGuard(dir)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain('no .js files found')
+    })
+  })
+
+  it('reports "nothing to check" rather than failing when no platform is added', () => {
+    withNativeFixture([], (dir) => {
+      const result = runNativeGuard(dir)
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toContain('no native platform added')
+    })
+  })
+
+  // `cap:build` is not the only thing that writes this tree: a bare
+  // `npx cap sync` after a VITE_E2E build copies the leak in and leaves a config
+  // guard:native-config finds perfectly clean. The hook names it at the moment
+  // the sync creates that state — which is gitignored and outlives the session.
+  describe('--warn (the capacitor:sync:after hook)', () => {
+    it('names a leaked surface without failing the sync', () => {
+      const [surface] = SURFACES
+      withNativeFixture([{ platform: IOS, copiedJs: `const c="${surface.markers[0]}";\n` }], (dir) => {
+        const result = runNativeGuard(dir, '--warn')
+        // Live reload and a bare sync are both supported workflows; failing
+        // here would break them. cap:build's strict run is the gate.
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stderr).toContain(IOS.webAssets)
+        expect(result.stderr).toContain('cap:build')
+      })
+    })
+
+    it('says nothing about a clean bundle', () => {
+      withNativeFixture([{ platform: IOS, copiedJs: 'export const a=1;\n' }], (dir) => {
+        const result = runNativeGuard(dir, '--warn')
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stderr.trim()).toBe('')
+      })
+    })
+
+    it('says nothing when the copy legitimately did not run', () => {
+      // `cap copy` skips the copy outright when `server.url` is set and webDir
+      // is missing — the live-reload case, which must not produce a warning.
+      withNativeFixture([{ platform: IOS, copiedJs: null }], (dir) => {
+        const result = runNativeGuard(dir, '--warn')
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stderr.trim()).toBe('')
+      })
+    })
+  })
+})
+
+describe('cap:build verifies the bundle it just copied (LIFT-1454)', () => {
+  const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf-8'))
+  const steps: string[] = pkg.scripts['cap:build'].split('&&').map((step: string) => step.trim())
+  const guardStep = steps.find((step) => step.includes('guard:dev-surface'))
+
+  it('runs the dev-surface guard at all', () => {
+    // It did not, for the entire life of the native build: CI ran it against a
+    // dist/ built in CI, and cap:build built its own and shipped it unchecked.
+    expect(guardStep).toBeDefined()
+  })
+
+  it('runs it AFTER the sync, so it reads the copy rather than the copy’s source', () => {
+    // Scanning dist/ before the sync verifies the input to the copy and then
+    // trusts the copy; the .ipa embeds the copy. Same reason guard:native-config
+    // re-reads the EMITTED capacitor.config.json rather than the TypeScript it
+    // came from (LIFT-1435).
+    const syncIndex = steps.findIndex((step) => /\bcap\s+(sync|copy)\b/.test(step))
+    expect(syncIndex).toBeGreaterThanOrEqual(0)
+    expect(steps.findIndex((step) => step.includes('guard:dev-surface'))).toBeGreaterThan(syncIndex)
+  })
+
+  it('names --native rather than restating a platform path', () => {
+    expect(guardStep).toContain('--native')
+    // A literal here is a second copy of something NATIVE_PLATFORMS owns, and
+    // it would not reach a platform added later.
+    for (const platform of NATIVE_PLATFORMS) {
+      expect(guardStep).not.toContain(platform.webAssets)
+      expect(guardStep).not.toContain(dirname(platform.assets))
+    }
+  })
+
+  it('also warns from the sync hook, which is the only step a bare cap sync runs', () => {
+    // A `VITE_E2E=true npm run build && npx cap sync` never reaches cap:build's
+    // strict step, and leaves a copied bundle carrying the surface behind a
+    // capacitor.config.json guard:native-config finds clean.
+    expect(pkg.scripts['capacitor:sync:after']).toContain(
+      'node scripts/check-no-dev-surface.js --native --warn',
+    )
   })
 })

@@ -31,6 +31,13 @@ from a LAN address and looks perfectly normal until it is installed (LIFT-1435).
 `cap:build` sets `CAPACITOR_BUILD=true`, so it ignores that variable, and its last step
 (`npm run guard:native-config`) re-checks the file that was actually emitted.
 
+Its second-to-last step (`npm run guard:dev-surface -- --native`) greps the copied bundle
+in `ios/App/App/public` for the "Continue as Dev" auth bypass and the Settings dev tools
+(LIFT-1454). CI runs that guard against a `dist/` **it** built; `cap:build` builds its own,
+so this is the only check that ever sees the bundle an archive embeds. The way those
+surfaces get in is `VITE_E2E=true` in the shell you archive from — and Vite reads
+`.env.local` / `.env.*` for every build, so it does not have to be exported by hand.
+
 In Xcode: destination **Any iOS Device (arm64)** → Product → **Archive** → Organizer →
 **Distribute App** → App Store Connect → Upload (keep the defaults: upload symbols, manage
 version and build number OFF — the hook already stamped them). The export-compliance
@@ -58,6 +65,10 @@ so re-upload at least quarterly while in beta.
 
 - `guard:native-config` fails with "points the app at a dev server": the sync came from a
   live-reload session. `unset CAPACITOR_DEV_URL` and re-run `npm run cap:build`.
+- `guard:dev-surface` fails with "leaked into the production bundle": `VITE_E2E` is set in
+  this shell or in a `.env.local` / `.env.*` file. Unset it (or delete the line) and re-run
+  `npm run cap:build` — the bundle already copied into `ios/App/App/public` carries the
+  surface, so re-syncing is required, not optional.
 - The installed build shows a blank screen or a "cannot connect" error: same cause, reached
   by archiving before the guard existed. Check `ios/App/App/capacitor.config.json` for
   `server.url`.
