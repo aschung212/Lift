@@ -25,6 +25,10 @@ import { sanitizeAppIconId, DEFAULT_APP_ICON_ID, type AppIconId } from '../lib/a
 import { sanitizeGymList, sanitizeGymName, MAX_GYMS } from '../lib/gyms'
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import {
+  bindAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow,
+  heldEditsSince, replayHeldEdits,
+} from '../lib/accountRowRead'
 import { useWorkoutStore } from './workout'
 
 const STORAGE_KEY = 'user-preferences'
@@ -181,6 +185,18 @@ function initialPreferencesState() {
     /** Gym names for per-gym exercise filtering (#961). Synced in the blob. */
     gyms: [] as string[],
     _userId: null as string | null,
+    /**
+     * Tab-local: has this device read `_userId`'s row (LIFT-1515)? The blob is
+     * upserted whole, so until it has, a push would replace the account's
+     * settings with this device's defaults — `_persist()` holds it instead.
+     */
+    _accountRowRead: false,
+    /**
+     * Tab-local: the payload (JSON) the edits made while holding are measured
+     * against, replayed over the account's copy when the read lands. Null once
+     * the row has been read.
+     */
+    _heldBase: null as string | null,
     // Uniform sync-status contract (LIFT-820): observable by the UI.
     syncing: false,
     lastSyncError: null as SyncErrorKind | null,
@@ -314,7 +330,24 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     _persist() {
-      const payload = this._persistLocal()
+      this._pushToAccount(this._persistLocal())
+    },
+
+    /**
+     * Upsert `payload` as this account's row — but only once this device has
+     * read that row (LIFT-1515).
+     *
+     * The upsert replaces the WHOLE blob. On a device whose local copy was
+     * never reconciled with the account's — a fresh install, a new sign-in,
+     * the first sign-in after the sign-out wipe — every field the user did not
+     * just change is a default, so pushing before the read would overwrite the
+     * account's gyms, coach profile, weight unit, presets and PR baseline with
+     * them, and every other device would adopt that remote-wins. The change is
+     * not dropped: it stays in local state, and `_fetchFromSupabase` replays it
+     * over the account's copy and pushes the result when the read lands.
+     */
+    _pushToAccount(payload: Record<string, unknown>) {
+      if (!this._accountRowRead) return
       if (supabase && this._userId) {
         const userId = this._userId
         // Journaled to IndexedDB alongside the closure (LIFT-1239) so a settings
@@ -389,6 +422,14 @@ export const usePreferencesStore = defineStore('preferences', {
         'preferences', STORAGE_KEY, () => null, isPlainObject,
       )
       if (parsed) this._applyPreferences(parsed)
+      // Another tab may have read the account's row (LIFT-1515). The payload
+      // just reloaded is what that tab adopted, with every held edit replayed —
+      // this tab's included, since both tabs persist to the same storage — so
+      // this tab's copy is the account's now too, and it may push again.
+      if (!this._accountRowRead && this._userId && hasReadAccountRow('preferences', this._userId)) {
+        this._accountRowRead = true
+        this._heldBase = null
+      }
     },
 
     /**
@@ -402,8 +443,13 @@ export const usePreferencesStore = defineStore('preferences', {
      * before _persist runs, so no upsert is enqueued against the just-ended
      * session (the FOUC mirror keys are rewritten to defaults by the same
      * _persist call).
+     *
+     * It also forgets which account this device's copy was read from, FIRST
+     * (LIFT-1515): the defaults written below are nobody's row, so the next
+     * sign-in — the same user's included — must read before it may push.
      */
     $reset() {
+      forgetAccountRow('preferences')
       this.$patch(($state) => {
         Object.assign($state, initialPreferencesState())
       })
@@ -419,6 +465,17 @@ export const usePreferencesStore = defineStore('preferences', {
         'preferences', STORAGE_KEY, () => null, isPlainObject,
       )
       if (local) this._applyPreferences(local)
+
+      // Bind to the account before anything below can persist (LIFT-1515). A
+      // device that has read this account's row before pushes exactly as it
+      // always has; one that never has holds every push until
+      // `_fetchFromSupabase` reads it, measuring the edits it will replay then
+      // against the payload as it stands right now — or against the one an
+      // earlier launch started holding from, so an edit made on a launch whose
+      // read never succeeded is not mistaken for part of the base.
+      const binding = bindAccountRow('preferences', userId, () => JSON.stringify(this._buildPayload()))
+      this._accountRowRead = binding.read
+      this._heldBase = binding.read ? null : binding.heldBase
 
       // Migrate standalone localStorage keys into the synced payload.
       // These keys predate the preferences store — read them as fallbacks
@@ -477,6 +534,12 @@ export const usePreferencesStore = defineStore('preferences', {
             .select('preferences')
             .eq('user_id', userId)
             .single()
+          // Signed out (or switched account) while the read was in flight: the
+          // answer belongs to a session that no longer exists. Applying it
+          // would hand the signed-out user's settings back to the wiped store,
+          // and recording it as read would let the next sign-in push unread
+          // defaults (LIFT-1515).
+          if (this._userId !== userId) return
           // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
           // A real error (network/auth/RLS) is classified for the per-store sync
           // indicator (LIFT-820) and routed through reportFetchError so an RLS or
@@ -493,9 +556,19 @@ export const usePreferencesStore = defineStore('preferences', {
             return
           }
           this.lastSyncError = null
-          const prefs = data?.preferences as Record<string, unknown> | null
+          // The read landed: the account's row, or PGRST116 confirming it has
+          // none. Edits made while this device was holding its pushes
+          // (LIFT-1515) are measured now, before the row is applied over them —
+          // none once the row has been read, which is every read after the first.
+          const prefs = error ? null : data?.preferences as Record<string, unknown> | null
+          const local = JSON.parse(JSON.stringify(this._buildPayload())) as Record<string, unknown>
+          const heldEdits = heldEditsSince(this._heldBase, local)
           if (prefs?.features) {
-            this._applyPreferences(prefs)
+            // Remote wins, except where the user changed something while held:
+            // those changes are newer than the row and are laid over it, one
+            // field at a time, so a weight-unit switch made on a fresh device
+            // arrives WITH the account's gyms rather than instead of them.
+            this._applyPreferences(heldEdits.length > 0 ? replayHeldEdits(prefs, local, heldEdits) : prefs)
             // Route the local write through the single persist path (LIFT-1243)
             // rather than hand-building a second copy of the payload. Besides
             // removing the drift hazard this restores three side effects the
@@ -506,6 +579,17 @@ export const usePreferencesStore = defineStore('preferences', {
             // localStorage write — an unguarded quota failure here would have
             // been caught below and misreported as a preferences FETCH error.
             this._persistLocal()
+          }
+          if (!this._accountRowRead) {
+            // This device's first read of the account's row: every edit from
+            // here on is pushed. The held ones go now — laid over the
+            // account's copy above, or, where the account had no row yet, as
+            // the row that creates it. With nothing held there is nothing to
+            // echo back, same as any other launch-time read (LIFT-1243).
+            this._accountRowRead = true
+            this._heldBase = null
+            markAccountRowRead('preferences', userId)
+            if (heldEdits.length > 0) this._pushToAccount(this._buildPayload())
           }
         } catch (err) {
           // Thrown (vs returned) error — typically a network failure. Route
