@@ -275,7 +275,7 @@ describe('ExerciseDetailModal', () => {
       expect(wrapper.find('.wtWarmupToggle').exists()).toBe(false)
     })
 
-    it('toggles the hide-warmups state, flipping its label and aria-checked', async () => {
+    it('toggles the hide-warmups state on aria-checked, keeping one static name', async () => {
       setExercises([prRichExercise()])
       const wrapper = mountModal()
       const toggle = wrapper.find('.wtWarmupToggle')
@@ -284,7 +284,12 @@ describe('ExerciseDetailModal', () => {
 
       await toggle.trigger('click')
       expect(wrapper.find('.wtWarmupToggle').attributes('aria-checked')).toBe('true')
-      expect(wrapper.find('.wtWarmupToggle').text()).toBe('Warmups hidden')
+      expect(wrapper.find('.wtWarmupToggle').classes()).toContain('wtWarmupToggleActive')
+      // LIFT-1497: the name says what the switch toggles, the state says
+      // whether it is on. Flipping the text re-announced the control as a new
+      // one on every tap, and no aria-label may re-introduce that.
+      expect(wrapper.find('.wtWarmupToggle').text()).toBe('Hide warmups')
+      expect(wrapper.find('.wtWarmupToggle').attributes('aria-label')).toBeUndefined()
     })
   })
 

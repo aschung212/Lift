@@ -62,6 +62,25 @@ export const STORY_CARDS: CardEntry[] = [
 ]
 
 /**
+ * Year-in-review cards (#1018) — a third bucket rather than more entries in the
+ * two above, because they render a different SUBJECT: one calendar year
+ * (`YearRecap`), not one session's `SessionSummary`.
+ *
+ * Keeping them separate is what makes the split safe. `eligible` is typed
+ * against the summary, so a recap entry has nothing it could say there; and a
+ * recap card sitting in `SQUARE_CARDS` would be offered by the post-workout
+ * picker, which can only hand it a summary — a card mounted without the prop it
+ * needs renders blank, and the failure is a blank *exported image*, i.e. it is
+ * only ever seen after the share. `recapCards(format)` is the one accessor the
+ * recap surface uses; `findCard` searches all three so the shared lookup,
+ * thumbnail and rasterizer paths need no branch at all.
+ */
+export const RECAP_CARDS: CardEntry[] = [
+  { id: 'year-recap', label: 'Year', format: 'square', loader: () => import('./cards/YearRecapCard.vue') },
+  { id: 'year-recap-story', label: 'Year', format: 'story', loader: () => import('./cards/YearRecapStory.vue') },
+]
+
+/**
  * Returns the eligible square cards in display order, with PR Focus
  * promoted to the front when there's a real PR — the moment is the
  * moment, per the handoff spec.
@@ -81,9 +100,24 @@ export function eligibleStoryCards(summary: SessionSummary): CardEntry[] {
   return STORY_CARDS.filter((c) => !c.eligible || c.eligible(summary))
 }
 
+/**
+ * Year-recap cards for one format, in display order. There is no `eligible`
+ * predicate here — whether a year is shareable is decided by `buildYearRecap`
+ * returning non-null, which is also what gates the entry point, so a second
+ * threshold in the registry could only ever disagree with it.
+ */
+export function recapCards(format: CardFormat): CardEntry[] {
+  return RECAP_CARDS.filter((c) => c.format === format)
+}
+
 /** Look up a card by id, regardless of format bucket. */
 export function findCard(id: string): CardEntry | null {
-  return SQUARE_CARDS.find((c) => c.id === id) || STORY_CARDS.find((c) => c.id === id) || null
+  return (
+    SQUARE_CARDS.find((c) => c.id === id) ||
+    STORY_CARDS.find((c) => c.id === id) ||
+    RECAP_CARDS.find((c) => c.id === id) ||
+    null
+  )
 }
 
 /**

@@ -16,7 +16,7 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
     bestSet: {
       exerciseId: 'ex-1',
       name: 'Bench Press',
-      weight: 225,
+      load: { value: '225', unit: 'lbs' },
       reps: 5,
       e1RM: 262,
       isPR: true,
@@ -101,6 +101,45 @@ describe('WorkoutCompleteView', () => {
       expect(wrapper.find('.wcBestSet').exists()).toBe(false)
     })
 
+    // #1385: the summary used to hand this screen the bare ADDED weight, so a
+    // session of plain pull-ups celebrated "0 × 12" one line above an e1RM the
+    // store computed off the FOLDED load — the contradiction LIFT-1373 fixed
+    // for every set-history row, restated on the screen that congratulates you.
+    it('names a pure-bodyweight best set instead of celebrating "0 × 12"', () => {
+      const wrapper = mountView(makeSummary({
+        bestSet: {
+          exerciseId: 'ex-1',
+          name: 'Pull-up',
+          load: { value: 'Bodyweight', unit: null },
+          reps: 12,
+          e1RM: 224,
+          isPR: true,
+        },
+      }))
+      expect(wrapper.find('.wcBestSetWeight').text()).toBe('Bodyweight × 12')
+      expect(wrapper.find('.wcBestSetE1RM').text()).toBe('~224 lbs e1RM')
+    })
+
+    it('marks an added load with a "+" in the breakdown and the hero', () => {
+      const wrapper = mountView(makeSummary({
+        bestSet: {
+          exerciseId: 'ex-1',
+          name: 'Weighted Pull-up',
+          load: { value: '+25', unit: 'lbs' },
+          reps: 8,
+          e1RM: 234,
+          isPR: false,
+        },
+        highlights: [
+          { exerciseId: 'ex-1', name: 'Weighted Pull-up', load: { value: '+25', unit: 'lbs' }, reps: 8, e1RM: 234, badge: '' as const, volume: 1480 },
+          { exerciseId: 'ex-2', name: 'Dip', load: { value: 'Bodyweight', unit: null }, reps: 15, e1RM: 255, badge: '' as const, volume: 2550 },
+        ],
+      }))
+      expect(wrapper.find('.wcBestSetWeight').text()).toBe('+25 × 8')
+      expect(wrapper.findAll('.wcBreakdownTop').map((n) => n.text()))
+        .toEqual(['+25 × 8', 'Bodyweight × 15'])
+    })
+
     it('drops the TIME tile when the session span is unknowable', () => {
       // Regression: sessionSummary reports an em dash when the span is
       // unknowable, and the TIME tile rendered that as a permanently empty stat
@@ -134,9 +173,9 @@ describe('WorkoutCompleteView', () => {
     // the emptiness itself isn't assertable; what IS assertable is that the data
     // the screen was missing now reaches the DOM.
     const HIGHLIGHTS = [
-      { exerciseId: 'ex-1', name: 'Bench Press', weight: 225, reps: 5, e1RM: 262, badge: 'PR' as const, volume: 7825.4 },
-      { exerciseId: 'ex-2', name: 'Cable Fly', weight: 60, reps: 15, e1RM: 90, badge: '' as const, volume: 3360 },
-      { exerciseId: 'ex-3', name: 'Overhead Press', weight: 135, reps: 8, e1RM: 171, badge: 'rep PR' as const, volume: 3105 },
+      { exerciseId: 'ex-1', name: 'Bench Press', load: { value: '225', unit: 'lbs' }, reps: 5, e1RM: 262, badge: 'PR' as const, volume: 7825.4 },
+      { exerciseId: 'ex-2', name: 'Cable Fly', load: { value: '60', unit: 'lbs' }, reps: 15, e1RM: 90, badge: '' as const, volume: 3360 },
+      { exerciseId: 'ex-3', name: 'Overhead Press', load: { value: '135', unit: 'lbs' }, reps: 8, e1RM: 171, badge: 'rep PR' as const, volume: 3105 },
     ]
 
     it('lists every exercise with its top set and volume', () => {

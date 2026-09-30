@@ -7,7 +7,7 @@
 
     <div v-if="summary.bestSet" class="prBody">
       <div class="prName">{{ summary.bestSet.name }}</div>
-      <div class="prWeight">{{ summary.bestSet.weight }}</div>
+      <div class="prWeight" :class="{ prWeightWord: loadIsWord }">{{ summary.bestSet.load.value }}</div>
       <div class="prReps">×&thinsp;{{ summary.bestSet.reps }} reps</div>
       <div class="prChip">
         <span class="prChipKey">e1RM</span>
@@ -23,10 +23,14 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
 import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
-defineProps<{ summary: SessionSummary }>()
+const props = defineProps<{ summary: SessionSummary }>()
+
+/** A null unit means the load is the word "Bodyweight" — see `.prWeightWord`. */
+const loadIsWord = computed(() => props.summary.bestSet?.load.unit === null)
 </script>
 
 <style scoped>
@@ -98,6 +102,15 @@ defineProps<{ summary: SessionSummary }>()
   font-variant-numeric: tabular-nums;
   color: var(--accent);
   text-shadow: 0 0 60px var(--accent-subtle);
+}
+
+/* "Bodyweight" is ten letters in a slot sized for three digits, on a fixed
+   288px-wide canvas with nothing to reflow against (#1385). A worded load
+   gets word-sized type — still the hero, and still on the card. */
+.prWeightWord {
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
 
 .prReps {

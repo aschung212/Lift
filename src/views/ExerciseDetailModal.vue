@@ -32,15 +32,16 @@
           <!-- All Sets view -->
           <template v-if="detailTab === 'sets'">
             <div v-if="exercise.sets.length > 1" class="wtTimelineControls">
+              <!-- Static name, state on `aria-checked` + the accent fill —
+                   see the twin in WorkoutTimeline.vue (LIFT-1497). -->
               <button
                 :class="['wtWarmupToggle', { wtWarmupToggleActive: hideWarmups }]"
                 @click="hideWarmups = !hideWarmups"
                 role="switch"
                 :aria-checked="hideWarmups"
-                :aria-label="hideWarmups ? 'Show warmup sets' : 'Hide warmup sets'"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
-                <span>{{ hideWarmups ? 'Warmups hidden' : 'Hide warmups' }}</span>
+                <span>Hide warmups</span>
               </button>
             </div>
             <div class="wtSetList">

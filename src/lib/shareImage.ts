@@ -125,10 +125,15 @@ export function createWatermarkElement(): HTMLDivElement {
 }
 
 /**
- * Build a default `share-summary-YYYY-MM-DD.png` filename.
+ * Build a default `logbook-<stem>[-story].png` filename.
  * Used for the download fallback path on browsers without `navigator.share`.
+ *
+ * `stem` identifies the card's subject: a session's `rawDate` (`2026-04-21`),
+ * or a year recap's `year-2026` (#1018). It is the caller's job to produce it
+ * from the subject it is sharing — this helper only owns the app prefix and the
+ * story suffix, so both surfaces name their downloads the same way.
  */
-export function defaultShareFilename(rawDate: string, format: CardFormat = 'square'): string {
+export function defaultShareFilename(stem: string, format: CardFormat = 'square'): string {
   const suffix = format === 'story' ? '-story' : ''
-  return `logbook-${rawDate}${suffix}.png`
+  return `logbook-${stem}${suffix}.png`
 }

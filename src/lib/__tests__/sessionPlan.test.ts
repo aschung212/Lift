@@ -62,6 +62,25 @@ describe('buildSessionPlan', () => {
     expect(plan.items[0].topSet).toEqual({ weightLbs: 185, reps: 5 })
   })
 
+  it("carries the top set's captured bodyweight so the row can word the load (LIFT-1486)", () => {
+    // `topSet` is flattened away from its exercise, so `weightLbs` alone is the
+    // ADDED portion on a bodyweight-loaded lift. Without the capture the plan
+    // row prints "top 0 lbs × 12" for a day of plain pull-ups — the LIFT-1373
+    // contradiction, reached through the plan card instead of the timeline.
+    const pullup = makeExercise('a', 'Pull-Up', [
+      { ...makeSet('2026-08-25T12:00:00', 0, 12), bodyweight: 170 },
+      { ...makeSet('2026-08-25T12:00:00', 25, 5), bodyweight: 170 },
+    ])
+    expect(buildSessionPlan([pullup], TODAY)!.items[0].topSet)
+      .toEqual({ weightLbs: 25, reps: 5, bodyweight: 170 })
+
+    const bodyweightOnly = makeExercise('a', 'Pull-Up', [
+      { ...makeSet('2026-08-25T12:00:00', 0, 12), bodyweight: 170 },
+    ])
+    expect(buildSessionPlan([bodyweightOnly], TODAY)!.items[0].topSet)
+      .toEqual({ weightLbs: 0, reps: 12, bodyweight: 170 })
+  })
+
   it("counts today's sets as progress, capping the total per item at planned", () => {
     const bench = makeExercise('a', 'Bench', [
       makeSet('2026-08-25T12:00:00', 135, 10),

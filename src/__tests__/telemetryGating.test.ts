@@ -5,7 +5,7 @@
  * - Vercel Analytics + Speed Insights must NOT fire on the native iOS Capacitor
  *   build (keeps the App Store privacy story simple — no analytics network calls
  *   on device). They stay enabled on the web build.
- * - Sentry must scrub PII consistently: sendDefaultPii disabled, IP address
+ * - Sentry must scrub PII consistently: SDK data collection off, IP address
  *   stripped in beforeSend, and releases tagged so web crashes are
  *   distinguishable from iOS crashes.
  *
@@ -15,6 +15,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { SENTRY_DATA_COLLECTION } from '../lib/sentryDataCollection'
 
 const mainSrc = readFileSync(resolve(__dirname, '../main.ts'), 'utf-8')
 
@@ -32,8 +33,19 @@ describe('telemetry gating + PII scrubbing (LIFT-533)', () => {
     expect(gateBlock![1]).toContain('injectSpeedInsights()')
   })
 
-  it('disables Sentry default PII collection', () => {
-    expect(mainSrc).toMatch(/sendDefaultPii:\s*false/)
+  // Sentry 11 replaced `sendDefaultPii` with `dataCollection`, whose defaults
+  // ALL collect — so removing the old option alone would have turned IP
+  // inference, cookies and headers back on. Assert the values, not a name.
+  it('turns off every kind of SDK data collection that can carry PII', () => {
+    expect(SENTRY_DATA_COLLECTION.userInfo).toBe(false)
+    expect(SENTRY_DATA_COLLECTION.cookies).toBe(false)
+    expect(SENTRY_DATA_COLLECTION.httpHeaders).toBe(false)
+    expect(SENTRY_DATA_COLLECTION.httpBodies).toEqual([])
+    expect(SENTRY_DATA_COLLECTION.urlQueryParams).toBe(false)
+  })
+
+  it('passes that configuration to Sentry.init', () => {
+    expect(mainSrc).toMatch(/dataCollection:\s*SENTRY_DATA_COLLECTION/)
   })
 
   it('scrubs the IP address in Sentry beforeSend', () => {
