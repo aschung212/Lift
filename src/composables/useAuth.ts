@@ -148,10 +148,10 @@ async function doInitStores(userId: string): Promise<void> {
   const progressionStore = useProgressionStore()
   const generation = _sessionGeneration
   await migrateLocalStorageToSupabase(userId)
-  // Each await below is a point where the user can sign out. Past one, stop
-  // rather than initialize the stores for a session that has already been torn
-  // down (see `_sessionGeneration`). The stores guard their OWN reads the same
-  // way once `init()` has run; this covers the window before it.
+  // The user can sign out during either await in this function, so after each
+  // one, stop rather than initialize the stores for a session that has already
+  // been torn down (see `_sessionGeneration`). The stores guard their OWN reads
+  // the same way once `init()` has run; this covers the window before it.
   if (generation !== _sessionGeneration) return
   // Replay any writes that were journaled to IndexedDB but never reached the
   // server before the app last closed (LIFT-706). Safe + idempotent; runs
