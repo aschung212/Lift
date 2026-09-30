@@ -1,7 +1,8 @@
 /**
  * Orchestrates the share flow for issue #305 share cards:
  *   1. Mount a card component offscreen (detached Vue app, no Pinia needed —
- *      cards are pure presentational components that take a typed summary prop).
+ *      cards are pure presentational components that take one typed subject
+ *      prop: a session summary, or a year recap (#1018)).
  *   2. Wait for the next tick so the DOM and CSS are settled, then rasterize
  *      the card to a PNG Blob via `modern-screenshot`.
  *   3. Share via the native iOS share sheet (Capacitor), the Web Share API
@@ -20,24 +21,27 @@ import {
   EXPORT_PIXEL_RATIO,
   type CardFormat,
 } from '../lib/shareImage'
-import type { SessionSummary } from '../lib/sessionSummary'
 import { downloadBlob } from '../lib/dataExport'
 import { useAnalytics } from './useAnalytics'
 import { useShareFlow, isShareCancellation, type ShareResult } from './useShareFlow'
 import { APP_URL, APP_TAGLINE } from '../lib/appMeta'
+import {
+  shareCardFilenameStem,
+  shareCardProps,
+  shareCardTitle,
+  type ShareCardSubject,
+} from '../lib/shareSubject'
 
 export type { ShareResult }
-
-/** Title shown in the share sheet for a rasterized workout card. */
-const SHARE_TITLE = 'Logbook workout'
+export type { ShareCardSubject }
 
 export interface ShareCardRequest {
   /** The Vue component that renders the card. */
   component: Component
   /** Format determines preview size and pixel-ratio'd output. */
   format: CardFormat
-  /** The summary the card needs to render. */
-  summary: SessionSummary
+  /** The session or year the card needs to render. */
+  subject: ShareCardSubject
   /** Used to scope the offscreen container's data-theme/data-mode. */
   theme: string
   mode: 'dark' | 'light'
@@ -60,10 +64,10 @@ export interface ShareCardRequest {
  *
  * iOS Safari 16.4+ and Android Chrome both report `canShare({ files })` as true.
  */
-function pickWebSharePayload(file: File): ShareData | null {
+function pickWebSharePayload(file: File, title: string): ShareData | null {
   if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return null
-  const withLink: ShareData = { files: [file], title: SHARE_TITLE, text: APP_TAGLINE, url: APP_URL }
-  const imageOnly: ShareData = { files: [file], title: SHARE_TITLE }
+  const withLink: ShareData = { files: [file], title, text: APP_TAGLINE, url: APP_URL }
+  const imageOnly: ShareData = { files: [file], title }
   try {
     if (navigator.canShare(withLink)) return withLink
     if (navigator.canShare(imageOnly)) return imageOnly
@@ -138,7 +142,7 @@ async function renderCardOffscreen(req: ShareCardRequest): Promise<Blob> {
 
   document.body.appendChild(host)
   const app = createApp({
-    render: () => h(req.component, { summary: req.summary }),
+    render: () => h(req.component, shareCardProps(req.subject)),
   })
 
   try {
@@ -174,13 +178,18 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
    * download both count as completions; a caught render/share failure is a
    * `share_failed`; a user cancel is deliberately silent.
    */
-  function logOutcome(result: ShareResult, format: CardFormat, method: 'share' | 'save'): void {
+  function logOutcome(result: ShareResult, req: ShareCardRequest, method: 'share' | 'save'): void {
+    const { format } = req
+    // `subject` rides along so a year-recap share can be told apart from a
+    // post-workout one — the recap exists as an organic-growth lever (#1018)
+    // and an unlabelled event could not measure it.
+    const subject = req.subject.kind
     if (result.kind === 'shared') {
-      logEvent('share_completed', { format, method, outcome: 'shared' })
+      logEvent('share_completed', { format, method, subject, outcome: 'shared' })
     } else if (result.kind === 'downloaded') {
-      logEvent('share_completed', { format, method, outcome: 'downloaded' })
+      logEvent('share_completed', { format, method, subject, outcome: 'downloaded' })
     } else if (result.kind === 'error') {
-      logEvent('share_failed', { format, method })
+      logEvent('share_failed', { format, method, subject })
     }
   }
 
@@ -193,7 +202,7 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
     const result = await run([
       async () => {
         const blob = await renderCardOffscreen(req)
-        const filename = defaultShareFilename(req.summary.rawDate, req.format)
+        const filename = defaultShareFilename(shareCardFilenameStem(req.subject), req.format)
         const file = new File([blob], filename, { type: 'image/png' })
 
         // Capacitor native path needs `@capacitor/filesystem` to write the
@@ -205,7 +214,7 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
         // alone would silently drop the rendered image, which is worse than
         // surfacing the download. `pickWebSharePayload` prefers a payload that
         // also carries a tappable app link (#794) and degrades to image-only.
-        const sharePayload = pickWebSharePayload(file)
+        const sharePayload = pickWebSharePayload(file, shareCardTitle(req.subject))
         if (sharePayload) {
           try {
             await navigator.share(sharePayload)
@@ -220,7 +229,7 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
         return { kind: 'downloaded', filename }
       },
     ])
-    logOutcome(result, req.format, 'share')
+    logOutcome(result, req, 'share')
     return result
   }
 
@@ -229,12 +238,12 @@ export function useWorkoutShare(): UseWorkoutShareReturn {
     const result = await run([
       async () => {
         const blob = await renderCardOffscreen(req)
-        const filename = defaultShareFilename(req.summary.rawDate, req.format)
+        const filename = defaultShareFilename(shareCardFilenameStem(req.subject), req.format)
         downloadBlob(blob, filename)
         return { kind: 'downloaded', filename }
       },
     ])
-    logOutcome(result, req.format, 'save')
+    logOutcome(result, req, 'save')
     return result
   }
 

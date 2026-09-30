@@ -24,8 +24,16 @@ export interface SessionPlanItem {
   plannedSets: number
   /** Sets logged today (uncapped — can exceed plannedSets). */
   doneSets: number
-  /** Heaviest set of the reference day (raw lbs; caller converts/formats). */
-  topSet: { weightLbs: number; reps: number } | null
+  /**
+   * Heaviest set of the reference day (raw lbs; caller converts/formats).
+   *
+   * Carries the set's captured `bodyweight` because this row is FLATTENED away
+   * from its exercise, and on a bodyweight-loaded lift `weightLbs` is the ADDED
+   * portion alone — so a pure-bodyweight top set would read "top 0 lbs × 12"
+   * without it (LIFT-1373's contradiction, LIFT-1486). The caller pairs it with
+   * the exercise's flag and words it through `formatSetLoad`.
+   */
+  topSet: { weightLbs: number; reps: number; bodyweight?: number } | null
 }
 
 export interface SessionPlan {
@@ -63,12 +71,14 @@ export function buildSessionPlan(exercises: readonly Exercise[], todayKey: strin
   for (const ex of exercises) {
     let planned = 0
     let done = 0
-    let top: { weightLbs: number; reps: number } | null = null
+    let top: SessionPlanItem['topSet'] = null
     for (const s of ex.sets) {
       const day = setDayKey(s.date)
       if (day === refDay) {
         planned++
-        if (!top || s.weight > top.weightLbs) top = { weightLbs: s.weight, reps: s.reps }
+        if (!top || s.weight > top.weightLbs) {
+          top = { weightLbs: s.weight, reps: s.reps, bodyweight: s.bodyweight }
+        }
       } else if (day === todayKey) {
         done++
       }

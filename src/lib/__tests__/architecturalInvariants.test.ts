@@ -21,6 +21,7 @@ import { join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { notNullColumns } from '../../__tests__/migrationSchema'
+import { MIN_WEEKLY_TARGET, MAX_WEEKLY_TARGET } from '../xp'
 
 // ── Shared helpers ──────────────────────────────────────────────────
 
@@ -738,6 +739,82 @@ describe('Invariant: usePRBaseline is the only reader of the raw PR-baseline anc
     expect(owner).toMatch(/resolveStrengthBaseline\(/)
     // The raw anchor stays reachable, but only under a name that says so.
     expect(owner).toMatch(/prBaselineAnchor/)
+  })
+})
+
+// ── Invariant: union-typed preferences are sanitized, never assigned raw ──
+// Guard: LIFT-1494. `theme`, `colorMode`, `weightUnit` and `appIcon` were typed
+// as bare `string` in the store and re-narrowed by unchecked cast at every
+// accessor (`prefs.weightUnit as WeightUnit`), so a corrupt or future-version
+// value from the blob flowed through the whole pipeline: an unknown unit
+// rendered as the visible unit LABEL while displayWeight quietly did lbs math,
+// and an unknown theme id reached `data-theme` with no matching palette.
+//
+// The narrowing now lives on the state, which means the STORE is the only thing
+// standing between a parsed blob and a value the app cannot render. The blob is
+// read back at four independent boundaries (state factory, _applyPreferences,
+// init()'s legacy standalone keys, the Supabase row) plus the setters, and a
+// fifth is exactly what LIFT-1495 says will be added — so the rule is that every
+// write to one of these fields goes through its sanitizer. TypeScript alone
+// does not enforce it: `parsed` is `Record<string, unknown>`, so a future
+// `as ThemeId` would compile, and the two `Partial<PreferencesState>` overlay
+// paths take any assignable value.
+
+describe('Invariant: union-typed preferences are assigned through a sanitizer (LIFT-1494)', () => {
+  const SOURCE = readFileSync(join(STORES_DIR, 'preferences.ts'), 'utf-8')
+  const BODY = stripComments(SOURCE)
+
+  /**
+   * The appearance fields, DERIVED from the state factory's declarations rather
+   * than listed here: a fifth union-typed setting joins this rule by being
+   * declared like its four siblings, which is the whole point — a hardcoded list
+   * would only ever pin the fields that existed when it was written.
+   */
+  const UNION_FIELDS = [...BODY.matchAll(/^\s*(\w+):\s*DEFAULT_[A-Z_]+ as (ThemeId|ColorMode|WeightUnit|AppIconId),/gm)]
+    .map(m => ({ field: m[1], union: m[2] }))
+
+  it('found the union-typed appearance fields in the state factory', () => {
+    // Non-vacuity: a regex that matched nothing would make every assertion
+    // below pass on an empty list.
+    expect(UNION_FIELDS.map(f => f.field).sort())
+      .toEqual(['appIcon', 'colorMode', 'theme', 'weightUnit'])
+    // Each union must have a sanitizer imported to assign through.
+    for (const { union } of UNION_FIELDS) {
+      expect(BODY).toMatch(new RegExp(`\\bsanitize${union === 'ThemeId' ? 'ThemeId' : union}\\b`))
+    }
+  })
+
+  it.each(UNION_FIELDS)('$field is only ever assigned a sanitize…() result', ({ field }) => {
+    // Every assignment to the field on either an overlay object (`out.x = …`,
+    // loadLocalSettings) or the store instance (`this.x = …`), EXCEPT the state
+    // factory's own literal default — which is the sanitizer's fallback and so
+    // legal by construction.
+    // `(?<![=!<>])=(?!=)` keeps the comparisons out: `this.theme === DEFAULT_…`
+    // guards the legacy-key fallback in init() and is not a write.
+    const assignments = [...BODY.matchAll(new RegExp(`(?:this|out)\\.${field}\\s*(?<![=!<>])=(?!=)\\s*([^\\n]+)`, 'g'))]
+
+    // Non-vacuity: the field is written on at least the three read boundaries
+    // (factory overlay, _applyPreferences, init's legacy key) plus its setter.
+    expect(assignments.length).toBeGreaterThanOrEqual(3)
+
+    const raw = assignments
+      .map(m => m[1].trim())
+      .filter(rhs => !/^sanitize[A-Za-z]+\(/.test(rhs))
+    expect(raw).toEqual([])
+  })
+
+  it('no consumer re-narrows the store field with a cast', () => {
+    // The casts these sanitizers replaced. `useTheme`/`useWeightUnit` were the
+    // two that shipped; the rule is that a NEW accessor reads the store's typed
+    // field instead of inventing a third copy of the narrowing.
+    const violations = getSourceFiles()
+      .filter(f => /\bprefs\s*\.\s*(theme|colorMode|weightUnit|appIcon)\s+as\s+\w/.test(stripComments(f.content)))
+      .map(f => `${f.path} — casts a preferences appearance field; the store state already carries the union.`)
+    expect(violations).toEqual([])
+
+    // Non-vacuity for the matcher: it must fire on the shape being banned.
+    expect(/\bprefs\s*\.\s*(theme|colorMode|weightUnit|appIcon)\s+as\s+\w/.test('prefs.weightUnit as WeightUnit'))
+      .toBe(true)
   })
 })
 
@@ -2698,6 +2775,60 @@ describe('Invariant: a stored-set surface renders its load via formatSetLoad (LI
   })
 })
 
+// The same rule one step earlier in the flow: the log sheet's quick-fill
+// surfaces don't render a STORED set, they OFFER one — a usual-ladder rung, a
+// last-session chip, the overload nudge's target. Every weight they carry is
+// an ADDED weight all the same, so printed bare they say "0 × 12" for the
+// ordinary pull-up (LIFT-1486) — the contradiction above, re-asserted by the
+// suggestion sitting directly over the to-beat card that spells the word out.
+//
+// The scan above cannot see any of these: it keys on a template interpolating
+// `estimated1RM`, and a suggestion has none to render. So this one keys on the
+// suggestion SOURCES instead — the fields those surfaces read a load out of —
+// and derives the call sites, which is the half that drifts. A hardcoded list
+// of template lines would only pin the four that exist today, which is exactly
+// how the chips came to disagree with the card beneath them.
+describe('Invariant: the log sheet words a SUGGESTED load through the formatter (LIFT-1486)', () => {
+  /**
+   * A load offered by a suggestion, as named in WorkoutTracker's template:
+   * `…weightLbs` covers the usual-ladder rung and the session plan's top set,
+   * and the overload nudge has its own two fields (`displayWeight` is already
+   * display-space, `fromWeightLbs` is raw lbs). `s.weight` is the last-session
+   * chip's set.
+   */
+  const SUGGESTION_LOAD = /\b\w+\.weightLbs\b|\boverloadNudge\.(?:displayWeight|fromWeightLbs)\b|\bs\.weight\b/g
+  /** The sanctioned wrappers, optionally around the unit conversion. */
+  const WORDED = /(?:addedLoadValue|addedLoadLabel|planTopSetLoad|rungLoadText)\(\s*(?:displayWeight\(\s*)?$/
+
+  const tracker = getSourceFiles()
+    .find(f => f.path === join('components', 'WorkoutTracker.vue'))!
+  const start = tracker.content.indexOf('<template>')
+  const template = tracker.content.slice(start, tracker.content.lastIndexOf('</template>'))
+  const loads = [...template.matchAll(SUGGESTION_LOAD)]
+
+  it('finds the sheet\'s suggestion loads', () => {
+    // Non-vacuity: a regex that matched nothing would pass the rule below while
+    // scanning no code at all — the failure LIFT-1412 documents. The floor is
+    // the last-session chip plus the nudge's three reads.
+    expect(start).toBeGreaterThanOrEqual(0)
+    expect(loads.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('renders every one of them through the shared formatter', () => {
+    const violations = loads
+      .filter(m => !WORDED.test(template.slice(0, m.index)))
+      .map(m => m[0])
+
+    expect(violations, violations.length === 0 ? '' :
+      `WorkoutTracker.vue renders ${violations.join(', ')} directly. That is a ` +
+      'suggested ADDED weight, so on a bodyweightLoaded exercise it prints ' +
+      '"0 × 12" for a plain bodyweight set. Route it through addedLoadValue / ' +
+      'addedLoadLabel (a suggestion, worded with the fold in effect now) or ' +
+      'planTopSetLoad (a read-back, worded with the set\'s own capture).',
+    ).toEqual([])
+  })
+})
+
 /**
  * `ExercisePickerModal` owns the "Choose Exercise" sheet. CalendarView shipped a
  * hand-rolled copy of its markup, and the copy drifted the way copies do: it
@@ -3372,6 +3503,269 @@ describe('Invariant: one owner fires a save-ceremony haptic (LIFT-1448)', () => 
         )
       }
     }
+    expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant: the weekly target's range belongs to the field (LIFT-1505) ──
+//
+// `setWeeklyTarget` clamped to [1, 7] and was the ONLY writer that did. Both
+// hydration boundaries adopted the value raw — `load()` spread it out of the
+// `user-progression` blob, `_fetchFromSupabase` took `data.weekly_target` from
+// a column the migration declares with no CHECK constraint — so the clamp was a
+// property of one code path rather than of the field. `evaluateWeek` compares
+// the value bare (`daysTrainedThisWeek >= effectiveTarget`), so a high value
+// froze every streak forever and a zero counted every week including untrained
+// ones, in both cases silently and permanently, and `_syncToSupabase` pushed
+// the corruption back out to every other device.
+//
+// The scan is derived rather than a list of the boundaries that exist today:
+// `setStarterTheme` turned out to be a fourth writer nobody had counted, and an
+// enumeration would only ever pin the call sites it was written against.
+
+describe('Invariant: every weekly-target write goes through the range guard (LIFT-1505)', () => {
+  /**
+   * `<receiver>.weeklyTarget = <rhs>` — an assignment, never a comparison. The
+   * `(?!=)` is what separates `x.weeklyTarget =` from `x.weeklyTarget ===`, and
+   * `<=` / `>=` never reach it because a non-space character precedes the `=`.
+   */
+  const ASSIGNMENT = /\.(weeklyTarget|pendingTargetChange)\s*=(?!=)([^\n]*)/g
+
+  /** Locals bound straight from a guard, e.g. `const clamped = sanitizeWeeklyTarget(days)`. */
+  function sanitizedLocals(source: string): Set<string> {
+    const re = /(?:const|let)\s+(\w+)\s*=\s*sanitize(?:WeeklyTarget|PendingTargetChange)\s*\(/g
+    return new Set([...source.matchAll(re)].map(m => m[1]))
+  }
+
+  /**
+   * A right-hand side that cannot put an out-of-range value in the field: the
+   * guard itself, a local bound from it, `null` (clearing a staged change), a
+   * read of the already-guarded `pendingTargetChange` (the Monday promotion),
+   * or an integer literal inside the range — bounds imported from `xp.ts`, so a
+   * literal can't outlive a narrowing of the range it was written against.
+   */
+  function isGuarded(rhs: string, locals: Set<string>): boolean {
+    const expr = rhs.trim().replace(/[;,]\s*$/, '')
+    if (/\bsanitize(?:WeeklyTarget|PendingTargetChange)\s*\(/.test(expr)) return true
+    if (expr === 'null') return true
+    if (/\.pendingTargetChange\b/.test(expr)) return true
+    if (locals.has(expr)) return true
+    const literal = Number(expr)
+    return Number.isInteger(literal)
+      && literal >= MIN_WEEKLY_TARGET
+      && literal <= MAX_WEEKLY_TARGET
+  }
+
+  /** Every `.weeklyTarget` / `.pendingTargetChange` assignment across src/. */
+  function assignments(): { path: string; field: string; rhs: string; guarded: boolean }[] {
+    const out: { path: string; field: string; rhs: string; guarded: boolean }[] = []
+    for (const { path, content } of getSourceFiles()) {
+      const stripped = stripComments(content)
+      const locals = sanitizedLocals(stripped)
+      for (const m of stripped.matchAll(ASSIGNMENT)) {
+        out.push({ path, field: m[1], rhs: m[2].trim(), guarded: isGuarded(m[2], locals) })
+      }
+    }
+    return out
+  }
+
+  it('finds the writers in every file that has one (non-vacuity)', () => {
+    const found = assignments()
+    // A regex that matched nothing would make the rule below pass for a store
+    // with no guard at all — the exact failure this invariant exists to catch.
+    expect(found.length).toBeGreaterThanOrEqual(10)
+    const files = [...new Set(found.map(a => a.path))].sort()
+    expect(files).toContain(join('stores', 'progression.ts'))
+    expect(files).toContain('App.vue')
+    // Both fields are in scope: the staged change is what `evaluateWeek` reads
+    // as the anti-gaming target and then promotes into `weeklyTarget`.
+    expect([...new Set(found.map(a => a.field))].sort())
+      .toEqual(['pendingTargetChange', 'weeklyTarget'])
+  })
+
+  it('no write can land an out-of-range value in the field', () => {
+    const violations = assignments()
+      .filter(a => !a.guarded)
+      .map(a =>
+        `${a.path}: \`.${a.field} = ${a.rhs}\` bypasses sanitizeWeeklyTarget. ` +
+          "The range is the field's, not one setter's — an unguarded write " +
+          'freezes every streak (high) or counts every untrained week (zero), ' +
+          'silently, and _syncToSupabase pushes it to every other device.',
+      )
+    expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant: a one-row-per-user table is pushed only after its row is read (LIFT-1515) ──
+// Guard: `user_preferences` and `user_progression` hold ONE row per user, and
+// each store upserts it whole — so a push carries every field, including the
+// ones the user did not just change. On a device that had never read the
+// account's row (fresh install, new sign-in, the first sign-in after the
+// sign-out wipe) those fields were defaults, and nothing waited for the read:
+// a failed first read let the next settings change overwrite the account's
+// gyms / coach profile / weight unit, and a committed set delete's
+// `removeSetXP` replace its XP history, streaks and unlocks — with every other
+// device then adopting the defaults remote-wins.
+//
+// Both stores now return early from their push until `_accountRowRead` is set
+// by a successful read. The rule is DERIVED in both directions that can drift:
+// which tables are one-row-per-user comes from the migrations (a `user_id`
+// primary key or `unique(user_id)`), and which code pushes them comes from the
+// stores' own enqueue calls — so a third such table, or a new push path in one
+// of these two stores, is covered by being written rather than by being listed.
+// The guard must sit in the SAME method as the enqueue: a check in one caller
+// leaves every other path to the push open.
+
+describe('Invariant: a one-row-per-user table is pushed only after its row is read (LIFT-1515)', () => {
+  const sql = stripSqlComments(
+    readdirSync(MIGRATIONS_DIR)
+      .filter(f => f.endsWith('.sql'))
+      .sort()
+      .map(f => readFileSync(join(MIGRATIONS_DIR, f), 'utf-8'))
+      .join('\n'),
+  )
+
+  /** Tables keyed by `user_id` alone — a column or table primary key, or `unique(user_id)`. */
+  function oneRowPerUserTables(source: string): string[] {
+    const keyed = createdTables(source).filter((table) => {
+      const body = tableBody(source, table)
+      return /\buser_id\s+uuid\b[^,]*\b(?:primary\s+key|unique)\b/i.test(body)
+        || /\b(?:primary\s+key|unique)\s*\(\s*user_id\s*\)/i.test(body)
+    })
+    const altered = [...source.matchAll(new RegExp(
+      `alter\\s+table\\s+(?:only\\s+)?["']?${SCHEMA}(\\w+)["']?\\s+add\\s+(?:constraint\\s+\\w+\\s+)?(?:primary\\s+key|unique)\\s*\\(\\s*user_id\\s*\\)`,
+      'gi',
+    ))].map(m => m[1].toLowerCase())
+    return [...new Set([...keyed, ...altered])].sort()
+  }
+
+  /** Index of the `)` closing the call whose `(` is at `open`, skipping string literals. */
+  function callEnd(source: string, open: number): number {
+    let depth = 0
+    let quote: string | null = null
+    for (let i = open; i < source.length; i++) {
+      const ch = source[i]
+      if (quote) {
+        if (ch === '\\') i++
+        else if (ch === quote) quote = null
+        continue
+      }
+      if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+      if (ch === '(' || ch === '{' || ch === '[') depth++
+      else if (ch === ')' || ch === '}' || ch === ']') {
+        depth--
+        if (depth === 0) return i
+      }
+    }
+    throw new Error('Unbalanced syncQueue call while scanning for whole-row pushes')
+  }
+
+  /** Where each store action / setup-store function starts, with its name. */
+  function methodStarts(source: string): { name: string; index: number }[] {
+    const re = /^(?: {4}(?:async\s+)?(\w+)\s*(?:<[^>\n]*>)?\s*\([^)]*\)\s*(?::[^{\n]*)?\{\s*$| {2}(?:async\s+)?function\s+(\w+)\s*\()/gm
+    return [...source.matchAll(re)].map(m => ({ name: m[1] ?? m[2], index: m.index! }))
+  }
+
+  /**
+   * Index of the `}` closing the method that starts at `start`, or -1. The
+   * push must lie inside it: a signature the regex above cannot read (a
+   * callback-typed parameter, say) would otherwise hand its push to the method
+   * before it — and let it borrow THAT method's guard.
+   */
+  function methodEnd(source: string, start: number): number {
+    const lineEnd = source.indexOf('\n', start)
+    const open = source.lastIndexOf('{', lineEnd === -1 ? source.length : lineEnd)
+    if (open < start) return -1
+    let depth = 0
+    for (let i = open; i < source.length; i++) {
+      if (source[i] === '{') depth++
+      else if (source[i] === '}' && --depth === 0) return i
+    }
+    return -1
+  }
+
+  /** The return-guard both stores use: nothing is enqueued until the row is read. */
+  const GATE = /if\s*\(\s*!\s*this\._accountRowRead\s*\)\s*return\b/
+
+  /** Every store enqueue that writes one of `tables`, and whether its method is gated. */
+  function wholeRowPushes(
+    files: { name: string; content: string }[],
+    tables: string[],
+  ): { file: string; method: string; table: string; gated: boolean }[] {
+    const out: { file: string; method: string; table: string; gated: boolean }[] = []
+    for (const { name, content } of files) {
+      const source = stripComments(content)
+      const starts = methodStarts(source)
+      for (const m of source.matchAll(/syncQueue\s*\.\s*(?:enqueue|enqueueDelete)\s*\(/g)) {
+        const open = m.index! + m[0].length - 1
+        const call = source.slice(open, callEnd(source, open) + 1)
+        const table = tables.find(t =>
+          new RegExp(`\\.from\\(\\s*['"\`]${t}['"\`]\\s*\\)|\\btable:\\s*['"\`]${t}['"\`]`).test(call),
+        )
+        if (!table) continue
+        const method = starts.filter(s => s.index < m.index!).pop()
+        const inside = method !== undefined && m.index! < methodEnd(source, method.index)
+        out.push({
+          file: name,
+          method: inside ? method.name : '(unattributed)',
+          table,
+          gated: inside && GATE.test(source.slice(method.index, m.index)),
+        })
+      }
+    }
+    return out
+  }
+
+  it('derives the one-row-per-user tables from the migrations (non-vacuity)', () => {
+    const tables = oneRowPerUserTables(sql)
+    // A pattern that matched nothing would leave the rule below with no subject.
+    expect(tables).toEqual(expect.arrayContaining(['user_preferences', 'user_progression']))
+    // Many-rows-per-user tables must not be swept in: they upsert row by row.
+    expect(tables).not.toContain('sets')
+    expect(tables).not.toContain('exercises')
+    expect(tables).not.toContain('bodyweight_entries')
+  })
+
+  it('finds the push in each store that writes such a table (non-vacuity)', () => {
+    const pushes = wholeRowPushes(getStoreFiles(), oneRowPerUserTables(sql))
+    expect(pushes.map(p => `${p.file}:${p.table}`).sort()).toEqual(
+      expect.arrayContaining(['preferences.ts:user_preferences', 'progression.ts:user_progression']),
+    )
+  })
+
+  it('flags an ungated push and accepts a gated one (self-test)', () => {
+    const push = "      syncQueue.enqueue('k', () => supabase!.from('user_progression').upsert(row), { op: 'upsert', table: 'user_progression', row })"
+    const ungated = { name: 'x.ts', content: `  actions: {\n    push() {\n      if (!supabase) return\n${push}\n    },\n  },` }
+    const gated = { name: 'y.ts', content: `  actions: {\n    push() {\n      if (!this._accountRowRead) return\n${push}\n    },\n  },` }
+    // A check in a DIFFERENT method does not gate this one.
+    const elsewhere = {
+      name: 'z.ts',
+      content: `  actions: {\n    check() {\n      if (!this._accountRowRead) return\n    },\n    push() {\n${push}\n    },\n  },`,
+    }
+    // A signature the scan can't read must not borrow the guard of the method
+    // before it: the push is reported unattributed, and so ungated.
+    const unreadable = {
+      name: 'w.ts',
+      content: `  actions: {\n    guarded() {\n      if (!this._accountRowRead) return\n    },\n    push(done: () => void) {\n${push}\n      done()\n    },\n  },`,
+    }
+    const result = wholeRowPushes([ungated, gated, elsewhere, unreadable], ['user_progression'])
+    expect(result.map(r => [r.file, r.method, r.gated])).toEqual([
+      ['x.ts', 'push', false],
+      ['y.ts', 'push', true],
+      ['z.ts', 'push', false],
+      ['w.ts', '(unattributed)', false],
+    ])
+  })
+
+  it('every push of a one-row-per-user table waits until the row has been read', () => {
+    const violations = wholeRowPushes(getStoreFiles(), oneRowPerUserTables(sql))
+      .filter(p => !p.gated)
+      .map(p =>
+        `${p.file}: ${p.method}() enqueues a whole-row write to ${p.table} with no ` +
+          '`if (!this._accountRowRead) return` before it. The upsert replaces the ' +
+          "account's entire row, so on a device that has not read it yet it " +
+          'overwrites everything the user did not just change with defaults.',
+      )
     expect(violations).toEqual([])
   })
 })

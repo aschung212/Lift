@@ -130,6 +130,25 @@ export interface SetLoadParts {
 }
 
 /**
+ * Is this load the lifter alone — a fold in effect and nothing added?
+ *
+ * The one case where the ADDED number is not a load at all, so it has to be
+ * NAMED rather than printed. {@link setLoadParts} reads this to decide on the
+ * word, and it is exported for the slots too narrow to hold that word — the
+ * log sheet's ghost-arm Save button, whose text is also its accessible name
+ * and which sits at `flex: 1` beside Done (LIFT-1486). Such a slot needs the
+ * same decision in order to say something else that is true, rather than fall
+ * back to the "0" this module exists to deny. Sharing the predicate is what
+ * keeps the word and its stand-ins naming the same set of loads.
+ */
+export function isBodyweightOnlyLoad(
+  set: Pick<WorkoutSet, 'weight'> & { bodyweight?: number },
+  exercise?: Pick<Exercise, 'bodyweightLoaded'> | null,
+): boolean {
+  return bodyweightFold(exercise, set.bodyweight) > 0 && set.weight === 0
+}
+
+/**
  * {@link formatSetLoad} split into its parts, for the one surface that styles
  * the unit separately from the number (the PR card's smaller, dimmer `lbs`).
  * Both shapes come from this single decision so a card and a row can never
@@ -140,13 +159,13 @@ export function setLoadParts(
   exercise: Pick<Exercise, 'bodyweightLoaded'> | null | undefined,
   { displayWeight, unit }: SetLoadFormat,
 ): SetLoadParts {
-  const fold = bodyweightFold(exercise, set.bodyweight)
-  // No fold applied: the stored weight IS the whole load, so say it plainly.
-  if (fold <= 0) return { value: String(displayWeight(set.weight)), unit }
   // Added nothing — the load is the lifter. Matches the log sheet's own
   // "Bodyweight × N" to-beat card, so the suggestion and the row it becomes
   // are worded the same.
-  if (set.weight === 0) return { value: 'Bodyweight', unit: null }
+  if (isBodyweightOnlyLoad(set, exercise)) return { value: 'Bodyweight', unit: null }
+  const fold = bodyweightFold(exercise, set.bodyweight)
+  // No fold applied: the stored weight IS the whole load, so say it plainly.
+  if (fold <= 0) return { value: String(displayWeight(set.weight)), unit }
   // A "+" marks the number as the added portion rather than the load.
   return { value: `${set.weight > 0 ? '+' : ''}${displayWeight(set.weight)}`, unit }
 }
