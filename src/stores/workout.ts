@@ -619,6 +619,19 @@ export const useWorkoutStore = defineStore('workout', () => {
           client.from('sets').select('*').eq('user_id', userId)
             .is('deleted_at', null).order('created_at').order('id')),
       ])
+      // Drop the response if the session it was read for has ended (LIFT-1517).
+      // Nothing cancels this request on sign-out: `$reset()` nulls `_userId`
+      // and persists an empty store while it is still in flight. Carried on, the
+      // merge below would read that empty store as this device's local state
+      // and commit the previous user's history back into it, in memory and in
+      // localStorage — and the next account to sign in here would upload it as
+      // its own: `migrateLocalStorageToSupabase` into an empty account, the
+      // `localOnly` push below into any other. If that account signed in before
+      // the response arrived, `_userId` names IT, and the same comparison
+      // catches it. The failure branches and the `finally` check too: a stale
+      // failure must not light the new session's sync indicator or refresh its
+      // token, and `syncing` belongs to whichever session owns the store now.
+      if (_userId !== userId) return
       if (exResult.error || setsResult.error) {
         reportFetchError('workout', exResult.error ?? setsResult.error, {
           exerciseError: String(exResult.error),
@@ -634,6 +647,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       remoteExData = exResult.data
       sets = setsResult.data
     } catch (err) {
+      if (_userId !== userId) return
       reportFetchError('workout', err)
       lastSyncError.value = classifySyncError(err)
       // Same auth branch as the resolved-error path above. postgrest-js usually
@@ -643,7 +657,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (isAuthError(err)) void ensureFreshSession()
       return
     } finally {
-      syncing.value = false
+      if (_userId === userId) syncing.value = false
     }
 
     if (!remoteExData || !sets) return

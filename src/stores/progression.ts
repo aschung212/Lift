@@ -384,7 +384,10 @@ export const useProgressionStore = defineStore('progression', {
         // Signed out (or switched account) mid-read: the answer belongs to a
         // session that no longer exists. Merging it would hand the signed-out
         // user's XP back to the wiped store, and recording it as read would let
-        // the next sign-in push unread defaults (LIFT-1515).
+        // the next sign-in push unread defaults (LIFT-1515). The `catch` and
+        // `finally` below make the same check (LIFT-1517): a stale failure must
+        // not light the next session's sync indicator or refresh its token, and
+        // `syncing` belongs to whichever session owns the store now.
         if (this._userId !== userId) return
         const error = result.error
         if (error) {
@@ -410,12 +413,13 @@ export const useProgressionStore = defineStore('progression', {
         }
         data = result.data
       } catch (err) {
+        if (this._userId !== userId) return
         reportFetchError('progression', err)
         this.lastSyncError = classifySyncError(err)
         if (isAuthError(err)) void ensureFreshSession()
         return
       } finally {
-        this.syncing = false
+        if (this._userId === userId) this.syncing = false
       }
 
       if (!data) return

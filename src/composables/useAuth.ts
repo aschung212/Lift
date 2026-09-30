@@ -107,6 +107,18 @@ function setupSessionRefreshLifecycle(): void {
 let _storesInitUserId: string | null = null
 let _storesInitPromise: Promise<void> | null = null
 
+/**
+ * Bumped by every session teardown, so an async step can tell whether the
+ * session it started in is still the current one (LIFT-1517). `initStores`
+ * cannot be cancelled once it is past its guard: a sign-out while it awaits the
+ * migration or the journal rehydrate would otherwise be followed by
+ * `store.init(userId)` for the user who just left — re-arming every store's
+ * `_userId` for that account and re-hydrating its history into the stores the
+ * teardown had just wiped, where the next account to sign in on the device
+ * would upload it as its own.
+ */
+let _sessionGeneration = 0
+
 function resetInitStoresGuard(): void {
   _storesInitUserId = null
   _storesInitPromise = null
@@ -134,11 +146,18 @@ async function doInitStores(userId: string): Promise<void> {
   const bodyweightStore = useBodyweightStore()
   const preferencesStore = usePreferencesStore()
   const progressionStore = useProgressionStore()
+  const generation = _sessionGeneration
   await migrateLocalStorageToSupabase(userId)
+  // Each await below is a point where the user can sign out. Past one, stop
+  // rather than initialize the stores for a session that has already been torn
+  // down (see `_sessionGeneration`). The stores guard their OWN reads the same
+  // way once `init()` has run; this covers the window before it.
+  if (generation !== _sessionGeneration) return
   // Replay any writes that were journaled to IndexedDB but never reached the
   // server before the app last closed (LIFT-706). Safe + idempotent; runs
   // before store fetches so recovered writes are in flight during sync.
   await syncQueue.rehydrate()
+  if (generation !== _sessionGeneration) return
   // allSettled (not all): each store's init already swallows its own fetch
   // failures, but allSettled is defense-in-depth so a future regression that
   // lets one store's init reject can never abort the others' hydration and
@@ -383,6 +402,8 @@ function resetStores(): void {
  * event that lands in the same teardown.
  */
 function teardownSession(): void {
+  // Ends the session for any `initStores` still suspended at an await (LIFT-1517).
+  _sessionGeneration++
   syncQueue.clear()
   resetStores()
   user.value = null

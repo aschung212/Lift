@@ -453,27 +453,33 @@ describe('Invariant: _fetchFromSupabase READ path is read-only (SEV1 2026-04-12 
 // list only ever pins the stores that existed when it was written, which is how
 // three of the four drifted past a suite that already covered this function.
 
-describe('Invariant: every store read handles failure identically (LIFT-1179)', () => {
-  /**
-   * The `_fetchFromSupabase` body from a store source, whichever syntax it uses
-   * — `async function _fetchFromSupabase()` in a setup store, `async
-   * _fetchFromSupabase()` in an options store. Null when the store has no
-   * remote read. Comments are stripped first: several of these bodies *quote*
-   * the calls below while explaining them, and a guard that passes off its own
-   * documentation proves nothing.
-   */
-  function extractFetchBody(source: string): string | null {
-    const stripped = stripComments(source)
-    const signature = /(?:async function|async)\s+_fetchFromSupabase\s*\(\s*\)/.exec(stripped)
-    if (!signature) return null
-    return extractFunctionBody(stripped, signature[0])
-  }
+/**
+ * The `_fetchFromSupabase` body from a store source, whichever syntax it uses
+ * — `async function _fetchFromSupabase()` in a setup store, `async
+ * _fetchFromSupabase()` in an options store. Null when the store has no remote
+ * read. Comments are stripped first: several of these bodies *quote* the calls
+ * the invariants below look for while explaining them, and a guard that passes
+ * off its own documentation proves nothing. Shared by the LIFT-1179 and
+ * LIFT-1517 invariants.
+ */
+function extractFetchBody(source: string): string | null {
+  const stripped = stripComments(source)
+  const signature = /(?:async function|async)\s+_fetchFromSupabase\s*\(\s*\)/.exec(stripped)
+  if (!signature) return null
+  return extractFunctionBody(stripped, signature[0])
+}
 
-  const count = (body: string, pattern: RegExp): number => (body.match(pattern) ?? []).length
-
-  const stores = getStoreFiles()
+/** Every store with a remote read, paired with that read's body. */
+function getStoreFetchBodies(): { name: string; body: string }[] {
+  return getStoreFiles()
     .map(({ name, content }) => ({ name, body: extractFetchBody(content) }))
     .filter((s): s is { name: string; body: string } => s.body !== null)
+}
+
+describe('Invariant: every store read handles failure identically (LIFT-1179)', () => {
+  const count = (body: string, pattern: RegExp): number => (body.match(pattern) ?? []).length
+
+  const stores = getStoreFetchBodies()
 
   it('found every store that reads from Supabase', () => {
     // Non-vacuity: the scan must actually see all four stores. A regex that
@@ -583,6 +589,103 @@ describe('Invariant: Supabase collection reads are paged (#1152)', () => {
     }
 
     expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant 3c: a store read applies only to the session it was read for (LIFT-1517) ──
+// Guard: nothing cancels a Supabase request on sign-out. The teardown runs every
+// store's `$reset()` — `_userId` nulled, an empty payload persisted — while a
+// `_fetchFromSupabase` issued just before is still in flight, and the workout
+// and bodyweight reads never looked at `_userId` again once the response
+// arrived. So the read merged the previous user's history into the wiped store
+// and persisted it, where the next account to sign in on the device uploaded it
+// as its own (`migrateLocalStorageToSupabase` into an empty account, the
+// fetch's `localOnly` push into any other) — or, if that account had already
+// signed in, merged it straight into the live store.
+//
+// The rule is positional, and every position matters: the account is pinned
+// before the await, and each branch that runs after it — the statement that
+// follows the await, the `catch`, the `finally` — compares the store's
+// `_userId` against the pin before touching anything. A check on the success
+// path alone — which is what LIFT-1515 gave preferences and progression — still
+// lets a stale 401 light the next session's indicator, and an unconditional
+// `finally` reports the next session's in-flight read as finished. Derived from
+// the store sources like 3a, so a fifth store — or a second await in an
+// existing read — joins the rule without anyone listing it;
+// `staleSessionRead.test.ts` proves the behaviour the positions stand for.
+
+describe('Invariant: a store read applies only to the session it was issued for (LIFT-1517)', () => {
+  const STALE_EXIT = /^\s*if\s*\(\s*(?:this\.)?_userId\s*!==\s*userId\s*\)\s*\{?\s*return\b/
+  const OWNED_SYNCING_RESET =
+    /^\s*if\s*\(\s*(?:this\.)?_userId\s*===\s*userId\s*\)\s*\{?\s*(?:this\.)?syncing(?:\.value)?\s*=\s*false/
+
+  /**
+   * Index just past the statement that starts at `from`: the first `;`, or
+   * newline, at bracket depth 0 — unless the next line continues a method chain
+   * (`\n  .eq(...)`), which is how the `.single()` reads are written. Quoted
+   * strings are skipped so a bracket inside one can't unbalance the count.
+   */
+  function statementEnd(source: string, from: number): number {
+    let depth = 0
+    let quote: string | null = null
+    for (let i = from; i < source.length; i++) {
+      const ch = source[i]
+      if (quote) {
+        if (ch === '\\') i++
+        else if (ch === quote) quote = null
+        continue
+      }
+      if (ch === "'" || ch === '"' || ch === '`') quote = ch
+      else if ('([{'.includes(ch)) depth++
+      else if (')]}'.includes(ch)) depth--
+      else if (depth === 0 && ch === ';') return i + 1
+      else if (depth === 0 && ch === '\n' && !/^\s*\./.test(source.slice(i + 1))) return i + 1
+    }
+    return source.length
+  }
+
+  const stores = getStoreFetchBodies()
+
+  it('found every store that reads from Supabase', () => {
+    expect(stores.map(s => s.name).sort()).toEqual(
+      ['bodyweight.ts', 'preferences.ts', 'progression.ts', 'workout.ts'],
+    )
+  })
+
+  it.each(stores)('$name: the account is pinned before the read is awaited', ({ body }) => {
+    const firstAwait = body.search(/\bawait\b/)
+    expect(firstAwait).toBeGreaterThan(-1)
+    const pin = /\bconst\s+userId\s*=\s*(?:this\.)?_userId\b/.exec(body)
+    expect(pin, 'pin `const userId = _userId` before the await').not.toBeNull()
+    expect(pin!.index).toBeLessThan(firstAwait)
+  })
+
+  it.each(stores)('$name: the statement after every await drops a stale read', ({ body }) => {
+    const awaits = [...body.matchAll(/\bawait\b/g)]
+    expect(awaits.length).toBeGreaterThan(0)
+    for (const match of awaits) {
+      const next = body.slice(statementEnd(body, match.index!))
+      expect(next.slice(0, 120), 'the next statement must be `if (_userId !== userId) return`')
+        .toMatch(STALE_EXIT)
+    }
+  })
+
+  it.each(stores)('$name: every catch drops a stale failure before reporting it', ({ body }) => {
+    const catches = [...body.matchAll(/\bcatch\s*(?:\(\s*\w+\s*\))?\s*\{/g)]
+    expect(catches.length).toBeGreaterThan(0)
+    for (const match of catches) {
+      const next = body.slice(match.index! + match[0].length)
+      expect(next.slice(0, 120)).toMatch(STALE_EXIT)
+    }
+  })
+
+  it.each(stores)('$name: every finally clears syncing only for its own session', ({ body }) => {
+    const finallies = [...body.matchAll(/\bfinally\s*\{/g)]
+    expect(finallies.length).toBeGreaterThan(0)
+    for (const match of finallies) {
+      const next = body.slice(match.index! + match[0].length)
+      expect(next.slice(0, 160)).toMatch(OWNED_SYNCING_RESET)
+    }
   })
 })
 

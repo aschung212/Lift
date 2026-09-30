@@ -15,17 +15,21 @@ const mockWorkoutReset = vi.fn()
 const mockBodyweightReset = vi.fn()
 const mockPreferencesReset = vi.fn()
 const mockProgressionReset = vi.fn()
+const mockWorkoutInit = vi.fn()
+const mockBodyweightInit = vi.fn()
+const mockPreferencesInit = vi.fn()
+const mockProgressionInit = vi.fn()
 vi.mock('../../stores/workout', () => ({
-  useWorkoutStore: () => ({ init: vi.fn(), $reset: mockWorkoutReset })
+  useWorkoutStore: () => ({ init: mockWorkoutInit, $reset: mockWorkoutReset })
 }))
 vi.mock('../../stores/bodyweight', () => ({
-  useBodyweightStore: () => ({ init: vi.fn(), $reset: mockBodyweightReset })
+  useBodyweightStore: () => ({ init: mockBodyweightInit, $reset: mockBodyweightReset })
 }))
 vi.mock('../../stores/preferences', () => ({
-  usePreferencesStore: () => ({ init: vi.fn(), $reset: mockPreferencesReset })
+  usePreferencesStore: () => ({ init: mockPreferencesInit, $reset: mockPreferencesReset })
 }))
 vi.mock('../../stores/progression', () => ({
-  useProgressionStore: () => ({ init: vi.fn(), $reset: mockProgressionReset })
+  useProgressionStore: () => ({ init: mockProgressionInit, $reset: mockProgressionReset })
 }))
 vi.mock('../../lib/migrate', () => ({
   migrateLocalStorageToSupabase: vi.fn()
@@ -1017,6 +1021,62 @@ describe('useAuth', () => {
       } finally {
         process.off('unhandledRejection', onUnhandled)
       }
+    })
+  })
+
+  // Regression LIFT-1517: initStores awaits the local→Supabase migration and
+  // the journal rehydrate BEFORE it initializes the stores, and a sign-out can
+  // land in either wait. The teardown wipes the stores; carrying on would call
+  // `store.init()` for the user who just left — re-arming every store's
+  // `_userId` for that account and hydrating its history into the stores the
+  // teardown had just emptied, for the next account to sign in to upload. The
+  // store-side half (a read already in flight) is `staleSessionRead.test.ts`.
+  describe('a session that ends while initStores is waiting (LIFT-1517)', () => {
+    const storeInits = [mockWorkoutInit, mockBodyweightInit, mockPreferencesInit, mockProgressionInit]
+
+    beforeEach(() => {
+      for (const init of storeInits) init.mockClear()
+      mockSyncQueueRehydrate.mockClear()
+    })
+
+    it('initializes no store when sign-out lands during the migration', async () => {
+      const { migrateLocalStorageToSupabase } = await import('../../lib/migrate')
+      let finishMigration!: () => void
+      vi.mocked(migrateLocalStorageToSupabase)
+        .mockReturnValueOnce(new Promise<void>((resolve) => { finishMigration = resolve }))
+      const { devSignIn, signOut } = useAuth()
+
+      const signingIn = devSignIn()
+      await signOut()
+      finishMigration()
+      await signingIn
+
+      // The journal was wiped by the teardown; replaying it now would be
+      // replaying nothing, and the next step would be the store inits.
+      expect(mockSyncQueueRehydrate).not.toHaveBeenCalled()
+      for (const init of storeInits) expect(init).not.toHaveBeenCalled()
+    })
+
+    it('initializes no store when sign-out lands during the journal rehydrate', async () => {
+      let finishRehydrate!: () => void
+      mockSyncQueueRehydrate.mockReturnValueOnce(new Promise<void>((resolve) => { finishRehydrate = resolve }))
+      const { devSignIn, signOut } = useAuth()
+
+      const signingIn = devSignIn()
+      await vi.waitFor(() => expect(mockSyncQueueRehydrate).toHaveBeenCalled())
+      await signOut()
+      finishRehydrate()
+      await signingIn
+
+      for (const init of storeInits) expect(init).not.toHaveBeenCalled()
+    })
+
+    it('initializes every store for a session that is still signed in', async () => {
+      // Control: the guard stops an ENDED session, not a slow one.
+      const { devSignIn } = useAuth()
+      await devSignIn()
+
+      for (const init of storeInits) expect(init).toHaveBeenCalledWith('local-dev')
     })
   })
 })

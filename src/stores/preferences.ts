@@ -519,7 +519,10 @@ export const usePreferencesStore = defineStore('preferences', {
           // answer belongs to a session that no longer exists. Applying it
           // would hand the signed-out user's settings back to the wiped store,
           // and recording it as read would let the next sign-in push unread
-          // defaults (LIFT-1515).
+          // defaults (LIFT-1515). The `catch` and `finally` below make the same
+          // check (LIFT-1517): a stale failure must not light the next
+          // session's sync indicator or refresh its token, and `syncing`
+          // belongs to whichever session owns the store now.
           if (this._userId !== userId) return
           // PGRST116 = no row yet (new user / table empty): expected, stay quiet.
           // A real error (network/auth/RLS) is classified for the per-store sync
@@ -573,6 +576,7 @@ export const usePreferencesStore = defineStore('preferences', {
             if (heldEdits.length > 0) this._pushToAccount(this._buildPayload())
           }
         } catch (err) {
+          if (this._userId !== userId) return
           // Thrown (vs returned) error — typically a network failure. Route
           // through reportFetchError so offline stays quiet but auth/server
           // failures are observable (LIFT-786), and record the per-store sync
@@ -581,7 +585,7 @@ export const usePreferencesStore = defineStore('preferences', {
           this.lastSyncError = classifySyncError(err)
           if (isAuthError(err)) void ensureFreshSession()
         } finally {
-          this.syncing = false
+          if (this._userId === userId) this.syncing = false
         }
       }
     },

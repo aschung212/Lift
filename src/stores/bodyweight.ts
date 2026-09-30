@@ -150,6 +150,13 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .is('deleted_at', null)
           .order('created_at')
           .order('id'))
+        // Drop a read whose session ended while it was in flight (LIFT-1517) —
+        // see the workout store's fetch. Merged into the store `$reset()` just
+        // emptied, the previous user's weigh-ins would be persisted back and then
+        // uploaded into the next account to sign in on this device, as
+        // `localOnly` rows by that account's own first fetch or by
+        // `migrateLocalStorageToSupabase` when the account is empty.
+        if (this._userId !== userId) return
         if (result.error) {
           reportFetchError('bodyweight', result.error)
           this.lastSyncError = classifySyncError(result.error)
@@ -160,6 +167,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         }
         data = result.data
       } catch (err) {
+        if (this._userId !== userId) return
         reportFetchError('bodyweight', err)
         this.lastSyncError = classifySyncError(err)
         // Same auth branch as the resolved-error path above — a thrown 401 is
@@ -167,7 +175,7 @@ export const useBodyweightStore = defineStore('bodyweight', {
         if (isAuthError(err)) void ensureFreshSession()
         return
       } finally {
-        this.syncing = false
+        if (this._userId === userId) this.syncing = false
       }
 
       if (!data) return
