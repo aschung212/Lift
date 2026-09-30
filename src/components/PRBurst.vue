@@ -63,8 +63,8 @@
 
   <Teleport to="body">
     <SharePickerSheet
-      v-if="pickerOpen && shareSummary"
-      :summary="shareSummary"
+      v-if="pickerOpen && shareSubject"
+      :subject="shareSubject"
       initial-card-id="pr-focus"
       @close="closePicker"
     />
@@ -78,6 +78,7 @@ import { useModal } from '../composables/useModal'
 import { useWeightUnit } from '../composables/useWeightUnit'
 import { useAnalytics } from '../composables/useAnalytics'
 import type { SessionSummary } from '../lib/sessionSummary'
+import type { ShareCardSubject } from '../lib/shareSubject'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
@@ -87,6 +88,15 @@ const { logEvent } = useAnalytics()
 
 // ── "Share this PR" peak-moment flow (#716) ───────────────────────────────
 const shareSummary = ref<SessionSummary | null>(null)
+
+/**
+ * The share sheet's subject (#1018). A computed rather than an inline literal
+ * so its identity only changes when the summary does — the sheet derives its
+ * card list from it.
+ */
+const shareSubject = computed<ShareCardSubject | null>(() =>
+  shareSummary.value ? { kind: 'session', summary: shareSummary.value } : null,
+)
 
 // The burst is dismissed before the picker opens, so there's no parent modal
 // to own the share sheet's scroll-lock / Escape (SharePickerSheet uses

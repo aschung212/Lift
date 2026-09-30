@@ -93,7 +93,7 @@
 
     <SharePickerSheet
       v-if="pickerOpen"
-      :summary="summary"
+      :subject="shareSubject"
       @close="pickerOpen = false"
     />
   </div>
@@ -104,6 +104,7 @@ import { computed, onMounted, onUnmounted, ref, defineAsyncComponent } from 'vue
 import { useModal } from '../composables/useModal'
 import InfoPopover from './InfoPopover.vue'
 import type { SessionSummary } from '../lib/sessionSummary'
+import type { ShareCardSubject } from '../lib/shareSubject'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
@@ -131,6 +132,13 @@ const { open: activateTrap, close: deactivateTrap } = useModal({
 })
 
 const summary = computed(() => props.summary)
+
+/**
+ * The share sheet's subject (#1018). A computed rather than an inline literal
+ * so the object identity only changes when the summary does — the sheet
+ * derives its card list from it.
+ */
+const shareSubject = computed<ShareCardSubject>(() => ({ kind: 'session', summary: summary.value }))
 
 const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))

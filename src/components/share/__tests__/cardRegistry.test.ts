@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { eligibleSquareCards, eligibleStoryCards, findCard, resolveInitialCard, SQUARE_CARDS, STORY_CARDS } from '../cardRegistry'
+import { eligibleSquareCards, eligibleStoryCards, findCard, recapCards, resolveInitialCard, RECAP_CARDS, SQUARE_CARDS, STORY_CARDS } from '../cardRegistry'
 import type { SessionSummary, SessionProgress } from '../../../lib/sessionSummary'
 
 function makeProgress(overrides: Partial<SessionProgress> = {}): SessionProgress {
@@ -94,10 +94,42 @@ describe('cardRegistry', () => {
     expect(eligibleStoryCards(makeSummary({ prs: 5 }))).toHaveLength(3)
   })
 
-  it('findCard locates entries by id from either bucket', () => {
+  it('findCard locates entries by id from any bucket', () => {
     expect(findCard('bold-flood')?.format).toBe('square')
     expect(findCard('best-set-story')?.format).toBe('story')
+    expect(findCard('year-recap')?.format).toBe('square')
     expect(findCard('does-not-exist')).toBeNull()
+  })
+
+  // ── Year-recap bucket (#1018) ────────────────────────────────────────
+  describe('recap cards', () => {
+    it('exposes one recap card per format', () => {
+      expect(RECAP_CARDS).toHaveLength(2)
+      expect(recapCards('square').map((c) => c.id)).toEqual(['year-recap'])
+      expect(recapCards('story').map((c) => c.id)).toEqual(['year-recap-story'])
+    })
+
+    it('keeps recap cards out of the session picker', () => {
+      // A recap card offered by the post-workout picker would be mounted with a
+      // `summary` prop it does not declare and rasterize to a blank PNG — a
+      // failure nobody sees until after the share.
+      const ids = [
+        ...eligibleSquareCards(makeSummary({ prs: 1, progress: makeProgress() })).map((c) => c.id),
+        ...eligibleStoryCards(makeSummary()).map((c) => c.id),
+      ]
+      for (const recap of RECAP_CARDS) expect(ids).not.toContain(recap.id)
+    })
+
+    it('carries no summary-typed eligibility predicate', () => {
+      // Whether a year is shareable is `buildYearRecap` returning non-null,
+      // which is also what gates the entry point. A second threshold here could
+      // only ever disagree with it.
+      for (const card of RECAP_CARDS) expect(card.eligible).toBeUndefined()
+    })
+
+    it('resolveInitialCard refuses a recap id against a session summary', () => {
+      expect(resolveInitialCard(makeSummary({ prs: 1 }), 'year-recap')).toBeNull()
+    })
   })
 
   describe('resolveInitialCard (#716)', () => {

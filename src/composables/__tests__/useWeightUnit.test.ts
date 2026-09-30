@@ -78,4 +78,22 @@ describe('useWeightUnit', () => {
       expect(unit.weightUnit.value).toBe('kg')
     })
   })
+
+  // LIFT-1494: `weightUnit` is BOTH the visible unit label across the app and
+  // the branch `displayWeight`/`toLbs` switch on. The store used to type it as
+  // a bare `string` and this composable re-narrowed it with `as WeightUnit`, so
+  // a corrupt or future-version stored value rendered as the label while both
+  // conversions fell through to their lbs branches — the number and the word
+  // beside it describing different quantities, with nothing to indicate it.
+  describe('corrupt stored unit (LIFT-1494)', () => {
+    it('reports lbs — the unit the conversions actually use', () => {
+      localStorageMock.setItem('user-preferences', JSON.stringify({ weightUnit: 'pounds' }))
+      setActivePinia(createPinia())
+      const corrupt = useWeightUnit()
+      expect(corrupt.weightUnit.value).toBe('lbs')
+      // Label and math agree: no conversion applied, and the label says so.
+      expect(corrupt.displayWeight(225)).toBe(225)
+      expect(corrupt.toLbs(225)).toBe(225)
+    })
+  })
 })
