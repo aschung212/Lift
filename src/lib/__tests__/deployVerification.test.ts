@@ -1,5 +1,5 @@
-import { describe, it, expect, afterAll } from 'vitest'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { describe, it, expect, afterAll, beforeAll } from 'vitest'
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parse } from 'yaml'
@@ -8,9 +8,35 @@ import { parse } from 'yaml'
 // tests below pin READER_PATH against the script the workflow invokes, and
 // that script against this module.
 import { main as readLiveDomainCli, parseLiveDomain } from '../../../scripts/live-domain.mjs'
+// The deployed-commit classifier the same job runs, on the same terms.
+import {
+  BEHIND,
+  DEPLOY_VERDICTS,
+  ERROR,
+  MATCH,
+  SUPERSEDED,
+  UNKNOWN,
+  UNRELATED,
+  classifyDeployedCommit,
+  gitIn,
+  isLive,
+  main as checkDeployedCommitCli,
+  runGit,
+} from '../../../scripts/deployed-commit.mjs'
 
 const READER_PATH = 'scripts/read-live-domain.mjs'
 const READER_LIB = 'live-domain.mjs'
+const CHECKER_PATH = 'scripts/check-deployed-commit.mjs'
+const CHECKER_LIB = 'deployed-commit.mjs'
+
+type GitRunner = (args: string[]) => { status: number; stdout: string; stderr: string }
+
+/** A git that must not be consulted — the call itself is the failure. */
+function neverCalled(): GitRunner {
+  return (args) => {
+    throw new Error(`git should not have been called: git ${args.join(' ')}`)
+  }
+}
 
 // LIFT-1167: the "✅ Deployed to production" Slack message must not fire off
 // green CI alone — CI passing does not prove Vercel promoted the commit (a
@@ -380,7 +406,16 @@ describe('production deploy verification (LIFT-1167)', () => {
       // …and the skipped branch still says SOMETHING (silence reads as a
       // broken workflow) without claiming a deploy or a verification. The
       // exact wording is deliberately not pinned; the lie is.
-      const skippedBranch = run.slice(run.indexOf(`$${envName}`), run.indexOf('else'))
+      //
+      // Bounded at the next branch KEYWORD rather than at `else`: LIFT-1414
+      // added an `elif` between this branch and the final one, and an
+      // `indexOf('else')` would have swallowed it whole — quietly asserting
+      // this rule over a branch it was never about, and failing on a message
+      // that is allowed to say "verified live" because it really was.
+      const fromSkipped = run.slice(run.indexOf(`$${envName}`))
+      const nextBranch = fromSkipped.search(/\n\s*(elif|else)\b/)
+      expect(nextBranch, 'the skipped branch must be followed by another branch').toBeGreaterThan(0)
+      const skippedBranch = fromSkipped.slice(0, nextBranch)
       expect(skippedBranch).toMatch(/MSG=".+"/)
       expect(skippedBranch).not.toMatch(/deployed to production/i)
       expect(skippedBranch).not.toMatch(/verified live/i)
@@ -786,6 +821,391 @@ describe('the production domain is read out of CLAUDE.md (LIFT-1412)', () => {
 
     expect(parseLiveDomain(backticked)).toEqual({ ok: true, domain: 'newdomain.app' })
     expect(parseLiveDomain(schemed)).toEqual({ ok: true, domain: 'newdomain.app' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LIFT-1414: what counts as "production is serving this commit".
+//
+// The production alias only ever points at the LATEST ready deployment, so the
+// exact-SHA comparison this job shipped with is only sound while at most one
+// master push can promote inside the job's own polling window. It cannot be:
+// since LIFT-1169 the deploy itself waits on build-and-test + e2e + migrate-db
+// before it starts, and merging a backlog puts pushes 90 seconds apart. Three
+// PRs merged in a row on 2026-09-13, all three deployed, and the middle one
+// polled the full 300s for a SHA the alias had already moved past — then fired
+// 🔴 for a deploy that had succeeded.
+//
+// These tests EXECUTE the real classifier against REAL git repositories, for
+// the reason every guard in this file exists: the defect was a comparison that
+// answered the wrong question, and no string assertion over that comparison
+// can see it. A hand-rolled model of ancestry would be a second implementation
+// of the thing under test, and would agree with whatever it copied.
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic git: identity supplied inline so an unconfigured runner works,
+ * signing off so a machine with `commit.gpgsign` set globally does not block,
+ * and `--no-verify` so a global `core.hooksPath` (this repo configures one for
+ * husky) cannot run the project's own hooks inside a throwaway fixture.
+ */
+function commitIn(git: GitRunner, message: string, file: string, contents: string, dir: string) {
+  writeFileSync(join(dir, file), contents)
+  expect(git(['add', file]).status).toBe(0)
+  const result = git([
+    '-c',
+    'user.email=ci@example.com',
+    '-c',
+    'user.name=CI',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '--no-verify',
+    '-q',
+    '-m',
+    message,
+  ])
+  expect(result.stderr === '' || result.status === 0, result.stderr).toBe(true)
+  return git(['rev-parse', 'HEAD']).stdout
+}
+
+describe('a DESCENDANT of the pushed commit counts as deployed (LIFT-1414)', () => {
+  const WORK = mkdtempSync(join(tmpdir(), 'lift-deployed-commit-'))
+  afterAll(() => rmSync(WORK, { recursive: true, force: true }))
+
+  const UPSTREAM = join(WORK, 'upstream')
+  const PRISTINE = join(WORK, 'checkout')
+  /** The history this job's own push produced: A, then B = `github.sha`. */
+  let shaA = ''
+  let shaB = ''
+  /** A commit on an unrelated root — production pointed somewhere it shouldn't. */
+  let shaSide = ''
+  /** The NEXT master push, landing while this job was still in `e2e`. */
+  let shaC = ''
+  let cloneSeq = 0
+
+  beforeAll(() => {
+    expect(runGit(['init', '--quiet', '--initial-branch=master', UPSTREAM], { cwd: WORK }).status)
+      .toBe(0)
+    const up = gitIn(UPSTREAM)
+    shaA = commitIn(up, 'A', 'f.txt', 'a\n', UPSTREAM)
+    shaB = commitIn(up, 'B', 'f.txt', 'b\n', UPSTREAM)
+
+    expect(up(['checkout', '--quiet', '--orphan', 'side']).status).toBe(0)
+    shaSide = commitIn(up, 'S', 'other.txt', 's\n', UPSTREAM)
+    expect(up(['checkout', '--quiet', 'master']).status).toBe(0)
+
+    // The checkout `smoke-test-production` makes: master at B, C not yet
+    // pushed. Copied per test so the FETCH path is exercised every time rather
+    // than only by whichever test happens to run first.
+    expect(runGit(['clone', '--quiet', UPSTREAM, PRISTINE], { cwd: WORK }).status).toBe(0)
+
+    shaC = commitIn(up, 'C', 'f.txt', 'c\n', UPSTREAM)
+  })
+
+  /** A fresh copy of that checkout, plus a record of every git call made. */
+  function checkout() {
+    const dir = join(WORK, `run-${(cloneSeq += 1)}`)
+    cpSync(PRISTINE, dir, { recursive: true })
+    const real = gitIn(dir)
+    const calls: string[][] = []
+    const git: GitRunner = (args) => {
+      calls.push(args)
+      return real(args)
+    }
+    return { dir, git, calls }
+  }
+
+  it('accepts the commit itself without needing a repository at all', () => {
+    // The common path. Identical strings are answered before git is consulted,
+    // so a broken checkout can never turn a good deploy red.
+    const result = classifyDeployedCommit({ expected: shaB, deployed: shaB, git: neverCalled() })
+    expect(result.verdict).toBe(MATCH)
+  })
+
+  it('accepts a later master commit that superseded it — the reported bug', () => {
+    const { git, calls } = checkout()
+    // Precondition: C really was pushed after this checkout, so the verdict
+    // below cannot come from a clone that already had it.
+    expect(git(['rev-parse', '--verify', '--quiet', `${shaC}^{commit}`]).status).not.toBe(0)
+
+    const result = classifyDeployedCommit({ expected: shaB, deployed: shaC, git })
+
+    expect(result.verdict).toBe(SUPERSEDED)
+    expect(isLive(result.verdict)).toBe(true)
+    // …and it got there by fetching the branch production deploys from, since
+    // the commit could not have been in this clone.
+    expect(calls.some((args) => args[0] === 'fetch' && args.includes('master'))).toBe(true)
+  })
+
+  it('would have failed under the comparison that shipped (self-test)', () => {
+    // Proves the fixture above is not vacuous: this is the exact `=` the
+    // workflow used, over the same two SHAs, on a deploy that had succeeded.
+    expect(shaC).not.toBe(shaB)
+    expect(shaC === shaB).toBe(false)
+  })
+
+  it('rejects an ancestor — production has not caught up yet', () => {
+    const { git } = checkout()
+    const result = classifyDeployedCommit({ expected: shaB, deployed: shaA, git })
+    expect(result.verdict).toBe(BEHIND)
+    expect(isLive(result.verdict)).toBe(false)
+  })
+
+  it('rejects a commit from an unrelated history', () => {
+    const { git } = checkout()
+    const result = classifyDeployedCommit({ expected: shaB, deployed: shaSide, git })
+    expect(result.verdict).toBe(UNRELATED)
+    expect(isLive(result.verdict)).toBe(false)
+  })
+
+  it('reports a commit it cannot resolve as unknown, not as a stalled deploy', () => {
+    const { git, calls } = checkout()
+    const absent = '0'.repeat(40)
+    const result = classifyDeployedCommit({ expected: shaB, deployed: absent, git })
+    expect(result.verdict).toBe(UNKNOWN)
+    // It tried: an unresolvable commit is the NORMAL first reading of a push
+    // that landed after this checkout, so the fetch must happen before the
+    // verdict — otherwise the case above could never succeed.
+    expect(calls.some((args) => args[0] === 'fetch')).toBe(true)
+    expect(result.reason).toContain(absent)
+  })
+
+  it('says so when the fetch that would resolve it failed', () => {
+    const { dir, git } = checkout()
+    expect(git(['remote', 'set-url', 'origin', join(WORK, 'no-such-repo')]).status).toBe(0)
+    expect(dir).toContain(WORK)
+
+    const result = classifyDeployedCommit({ expected: shaB, deployed: shaC, git })
+    expect(result.verdict).toBe(UNKNOWN)
+    // The diagnostic names the fetch, not the deploy — the misattribution this
+    // whole family of issues exists to remove.
+    expect(result.reason).toMatch(/fetch/i)
+  })
+
+  it('keeps waiting when production reports something that is not a SHA', () => {
+    // Production's problem, not ours: one malformed response mid-deploy must
+    // not fail the job outright.
+    for (const junk of ['', 'not-a-sha', '<html>', 'HEAD', 'ABCDEF1234567890']) {
+      const result = classifyDeployedCommit({ expected: shaB, deployed: junk, git: neverCalled() })
+      expect(result.verdict, junk).toBe(UNKNOWN)
+    }
+  })
+
+  it('refuses option-shaped values instead of handing them to git', () => {
+    // The deployed SHA arrives over the public network and reaches an argv.
+    // execFileSync runs no shell, but git still reads a leading `-` as an
+    // OPTION — `--upload-pack=…` on the fetch is the obvious one.
+    expect(
+      classifyDeployedCommit({
+        expected: shaB,
+        deployed: '--upload-pack=touch /tmp/pwned',
+        git: neverCalled(),
+      }).verdict,
+    ).toBe(UNKNOWN)
+    expect(
+      classifyDeployedCommit({
+        expected: '--version',
+        deployed: shaB,
+        git: neverCalled(),
+      }).verdict,
+    ).toBe(ERROR)
+    expect(
+      classifyDeployedCommit({
+        expected: shaB,
+        deployed: shaC,
+        branch: '--upload-pack=touch /tmp/pwned',
+        git: neverCalled(),
+      }).verdict,
+    ).toBe(ERROR)
+  })
+
+  it('fails closed, rather than waiting, when it cannot ask the question', () => {
+    // A checkout that does not contain its own HEAD, or no git at all. Polling
+    // on would end 300s later with the deploy error message, for a problem
+    // that is entirely on this side.
+    const result = classifyDeployedCommit({
+      expected: shaB,
+      deployed: shaC,
+      git: () => ({ status: 128, stdout: '', stderr: 'not a git repository' }),
+    })
+    expect(result.verdict).toBe(ERROR)
+    expect(isLive(result.verdict)).toBe(false)
+  })
+
+  describe('the CLI the workflow runs', () => {
+    function runCli(argv: string[], git?: GitRunner) {
+      const out: string[] = []
+      const err: string[] = []
+      const status = checkDeployedCommitCli(
+        argv,
+        (l) => out.push(l),
+        (l) => err.push(l),
+        git,
+      )
+      return { status, stdout: out.join('\n'), stderr: err.join('\n') }
+    }
+
+    it('prints the verdict alone on stdout, and its reasoning on stderr', () => {
+      const { git } = checkout()
+      const result = runCli([shaB, shaC, 'master'], git)
+      expect(result.status).toBe(0)
+      expect(result.stdout).toBe(SUPERSEDED)
+      expect(result.stderr).toContain(shaC)
+    })
+
+    it('exits non-zero ONLY for the verdict this side owns', () => {
+      const { git } = checkout()
+      // A fact about production keeps the caller's poll loop running…
+      expect(runCli([shaB, shaA], git).status).toBe(0)
+      // …while a question that could not be asked stops the job at once.
+      const broken = runCli([shaB, shaC], () => ({ status: 128, stdout: '', stderr: 'no git' }))
+      expect(broken.status).not.toBe(0)
+      expect(broken.stdout).toBe('')
+      // Missing arguments are a wiring bug, not a deploy problem.
+      expect(runCli([shaB], git).status).not.toBe(0)
+      expect(runCli([], git).status).not.toBe(0)
+    })
+  })
+})
+
+describe('the workflow consumes the classifier (LIFT-1414)', () => {
+  const jobs = loadJobs()
+  const smoke = jobs['smoke-test-production']
+  const run = verifyStepOf(jobs)?.run ?? ''
+
+  it('the verification step runs the checker these tests import', () => {
+    // Derived from the workflow, not restated: renaming the script fails this
+    // until the import at the top of this file follows, which is what keeps
+    // these tests exercising the code CI executes.
+    const invoked = run.match(/node (scripts\/check-[\w.-]+\.mjs)/)?.[1]
+    expect(invoked, 'the step must classify via `node scripts/check-deployed-commit.mjs`').toBe(
+      CHECKER_PATH,
+    )
+    const cli = readFileSync(resolve(ROOT, CHECKER_PATH), 'utf8')
+    expect(cli).toContain(`from './${CHECKER_LIB}'`)
+
+    // Both SHAs reach it, and the branch it should fetch from comes from
+    // GitHub's own env var rather than a hardcoded 'master' or a `${{ }}`
+    // interpolation into the shell body.
+    const invocation = run.split('\n').find((l) => l.includes(CHECKER_PATH)) ?? ''
+    expect(invocation).toContain('"$EXPECTED_SHA"')
+    expect(invocation).toContain('"$DEPLOYED_SHA"')
+    expect(invocation).toContain('"$GITHUB_REF_NAME"')
+    // Same rule as the domain reader beside it: a classifier that fails must
+    // stop the job, never be swallowed into 300s of polling.
+    expect(invocation).not.toMatch(/\|\|\s*true/)
+  })
+
+  it('checks out enough history for ancestry to be decidable', () => {
+    // The default shallow clone grafts this commit as parentless and a plain
+    // fetch does not deepen past that boundary, so `merge-base --is-ancestor`
+    // can answer "no" for a descendant that really is one — re-creating this
+    // issue's false alarm from the other side.
+    const checkout = (smoke?.steps ?? []).find((s) => (s.uses ?? '').startsWith('actions/checkout'))
+    expect(checkout, 'smoke-test-production must check out the repository').toBeDefined()
+    expect((checkout as { with?: Record<string, unknown> }).with?.['fetch-depth']).toBe(0)
+  })
+
+  it('handles every verdict the classifier can return', () => {
+    // Derived from the module rather than enumerated here: a verdict added
+    // there and not handled here would fall through to the catch-all and fail
+    // a deploy that was fine. `error` is deliberately absent — it exits
+    // non-zero and is handled by the `if !` above the case.
+    const body = run.slice(run.indexOf('case "$VERDICT" in'), run.indexOf('esac'))
+    expect(body, 'expected a case over the verdict').toContain('case "$VERDICT" in')
+    const handled = new Set(
+      [...body.matchAll(/^\s{0,20}([a-z|]+)\)/gm)].flatMap((m) => m[1].split('|')),
+    )
+    expect([...handled].sort()).toEqual(
+      DEPLOY_VERDICTS.filter((v) => v !== ERROR)
+        .slice()
+        .sort(),
+    )
+    // …plus a catch-all, so an unrecognised verdict stops the job rather than
+    // silently reading as "keep waiting" until the window runs out.
+    expect(body).toMatch(/^\s*\*\)/m)
+  })
+
+  it('names which failure it saw instead of blaming the deploy for all of them', () => {
+    // LIFT-1367's rule: the one message whose job is to name the broken system
+    // must not name the wrong one. "The deployment never landed" is true of a
+    // production that is BEHIND and a misattribution for every other way the
+    // window can run out — which is how a markdown edit (LIFT-1412) and a
+    // superseded alias (this issue) both came to be reported as outages.
+    const timeout = run.slice(run.lastIndexOf('case "$LAST_VERDICT" in'))
+    expect(timeout, 'expected a timeout diagnostic that branches').toContain('LAST_VERDICT')
+
+    // arm token -> the annotation it emits, read off the real case block.
+    const arms = new Map<string, string>()
+    let arm: string | null = null
+    for (const line of timeout.split('\n')) {
+      const opened = line.match(/^\s*([a-z|*]+)\)\s*$/)
+      if (opened) arm = opened[1]
+      const annotation = line.match(/::error::([^"]*)/)
+      // Variable names are not prose: `$LAST_DEPLOYED` must not read as the
+      // message calling something a deploy.
+      if (arm && annotation) arms.set(arm, annotation[1].replace(/\$[A-Z_]+/g, ''))
+    }
+
+    // One per verdict the loop can end on, plus the never-reported-anything
+    // default — derived from the module, so a new verdict has to be given a
+    // diagnostic rather than silently inheriting someone else's. MATCH and
+    // SUPERSEDED are in there because the loop can end on them too: the app
+    // shell is checked AFTER the verdict, and "this commit is live and the
+    // page is broken" is its own thing to say.
+    const ended = DEPLOY_VERDICTS.filter((v) => v !== ERROR)
+    const armed = [...arms.keys()].flatMap((token) => token.split('|'))
+    expect(armed.sort()).toEqual([...ended, '*'].sort())
+    // Distinct, or the branch buys nothing.
+    expect(new Set(arms.values()).size).toBe(arms.size)
+    // And only the one that really means "the deployment did not land" says
+    // so: a subject (the build, the deploy job, the alias) followed by the
+    // claim that it failed. Every other arm has to name its own cause.
+    const blamesTheDeploy = [...arms.entries()].filter(([, msg]) =>
+      /(build|deploy|alias)[^.]*(fail|stall|never|did not|still serving)/i.test(msg),
+    )
+    expect(blamesTheDeploy.map(([token]) => token)).toEqual([BEHIND])
+  })
+
+  it('publishes a superseded verification so the Slack claim stays exact', () => {
+    const step = verifyStepOf(jobs)
+    expect(step?.id, 'the verification step needs an id to be referenced as an output').toBeTruthy()
+
+    // The step output name is derived from what the step actually writes.
+    const written = run.match(/echo "([a-z_]+)=\$DEPLOYED_SHA" >> "\$GITHUB_OUTPUT"/)?.[1]
+    expect(written, 'the superseded branch must write the deployed SHA to GITHUB_OUTPUT').toBeTruthy()
+
+    const jobOutput = Object.entries(smoke?.outputs ?? {}).find(([, v]) =>
+      v.includes(`steps.${step?.id}.outputs.${written}`),
+    )
+    expect(jobOutput, `smoke-test-production must expose steps.${step?.id}.outputs.${written}`)
+      .toBeDefined()
+
+    const notify = (jobs['notify-deploy']?.steps ?? []).find((s) => /notify slack/i.test(s.name ?? ''))
+    // Consumed via env, not inline `${{ }}` — same script-injection guard as
+    // the commit message beside it.
+    const envEntry = Object.entries(notify?.env ?? {}).find(
+      ([, v]) =>
+        v.includes('needs.smoke-test-production.outputs') && v.includes(jobOutput?.[0] as string),
+    )
+    expect(envEntry, 'notify-deploy must read the superseded output via env').toBeDefined()
+
+    // The message branches on it, and the branch is bounded at the next branch
+    // KEYWORD — `indexOf('else')` would read to the end of the file on a body
+    // whose `else` is dedented to column 0, making the assertions below pass
+    // over text they were never about.
+    const notifyRun = notify?.run ?? ''
+    const opensAt = notifyRun.indexOf(`-n "$${envEntry?.[0]}"`)
+    expect(opensAt, 'the message must branch on it').toBeGreaterThan(-1)
+    const branch = notifyRun.slice(opensAt)
+    const nextBranch = branch.search(/\n\s*(elif|else)\b/)
+    expect(nextBranch, 'the superseded branch must be followed by another branch').toBeGreaterThan(0)
+    const message = branch.slice(0, nextBranch)
+    // It is still a real deploy — the claim is qualified, not withdrawn — and
+    // it names the commit that carried it, which a bare "verified live" cannot.
+    expect(message).toMatch(/verified live/i)
+    expect(message).toContain(`$${envEntry?.[0]}`)
   })
 })
 

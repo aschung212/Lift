@@ -952,6 +952,8 @@ jobs:
   # (which needs this job) fire; a mismatch/timeout fails this job and routes to
   # notify-failure instead of a falsely-green "Deployed" message.
   #
+  # "Matches" is ANCESTRY, not `=` (LIFT-1414) — see the verification step.
+  #
   # Deliberately does NOT depend on ratchet-baseline: that job pushes a
   # `[skip ci]` coverage-bookkeeping commit to master, and while nothing deploys
   # it (the ignoreCommand gate skips commits touching only
@@ -962,10 +964,31 @@ jobs:
     timeout-minutes: 10
     needs: [build-and-test, e2e, migrate-db, deploy-production]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # Published so notify-deploy can say HOW this commit was verified
+    # (LIFT-1414). A commit verified through a LATER master commit that already
+    # took the production alias is genuinely live, and qualifying the claim
+    # keeps it exactly as strong as the check that backs it — LIFT-1354's rule
+    # ("the message may not assert more than was verified") one case further
+    # along. Empty on the ordinary path, which is what notify-deploy branches
+    # on. The STEP output is spelled with an underscore because it is written
+    # by shell into $GITHUB_OUTPUT beside `$DEPLOYED_SHA`; the JOB output is
+    # kebab-case like every other multi-word name in this workflow.
+    outputs:
+      superseded-by: ${{ steps.verify.outputs.superseded_by }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Full history, because the verification step below asks how the
+          # commit production is serving RELATES to this one (LIFT-1414), and
+          # ancestry is only decidable over real history. The default shallow
+          # clone grafts this commit as parentless, and a plain `git fetch`
+          # does not deepen past a graft boundary — so everything BEHIND the
+          # checkout stays absent from the repository, and `merge-base
+          # --is-ancestor` answers "no" for any path that crosses it. Both
+          # mistakes land on the side this issue is about: a real relationship
+          # reported as none.
+          fetch-depth: 0
 
       # The domain reader below is a dependency-free Node script (no `npm ci`,
       # so no cache). Pinned rather than inherited from whatever the runner
@@ -1000,7 +1023,25 @@ jobs:
       # and deployVerification.test.ts executes it against several `**Live:**`
       # line shapes — the defect was an expression that matched nothing, which
       # no string assertion over that expression can see.
+      #
+      # What counts as "production is serving this commit" is decided by
+      # scripts/check-deployed-commit.mjs, not by `=` (LIFT-1414). The
+      # production alias only ever points at the LATEST ready deployment, so an
+      # exact-SHA comparison is only sound while at most one master push can
+      # promote inside this job's own polling window — and it cannot be: since
+      # LIFT-1169 the deploy waits on build-and-test + e2e + migrate-db before
+      # it starts, so two pushes 90 seconds apart put run B's promotion
+      # squarely inside run A's 300 seconds of polling. On 2026-09-13 three PRs
+      # merged in a row, all three deployed, and the middle one polled the full
+      # window for a SHA the alias had already moved past, then fired
+      # "🔴 Post-merge CI failed on master" for a deploy that had succeeded.
+      # Production serving a DESCENDANT of this commit means this commit is
+      # live inside it — that is as much as "this push reached production" can
+      # mean once a newer push exists. Only something OLDER or unrelated is a
+      # real failure, and the timeout message below names which of those it saw
+      # rather than blaming the deploy for all of them (LIFT-1367).
       - name: Verify production is serving this commit
+        id: verify
         if: needs.deploy-production.outputs.deployed == 'true'
         env:
           EXPECTED_SHA: ${{ github.sha }}
@@ -1017,21 +1058,38 @@ jobs:
             exit 1
           fi
           URL="https://$DOMAIN"
-          echo "Waiting for $URL to report commit $EXPECTED_SHA"
+          echo "Waiting for $URL to report commit $EXPECTED_SHA, or a commit that contains it"
 
           ATTEMPTS=30
           SLEEP=10
+          LAST_VERDICT=none
+          LAST_DEPLOYED=
           for i in $(seq 1 "$ATTEMPTS"); do
             # Cache-bust so an edge-cached version.json can't mask a fresh deploy.
             BODY=$(curl -fsS --max-time 15 "$URL/version.json?ci=$RUN_ID-$i" || true)
             DEPLOYED_SHA=$(printf '%s' "$BODY" | jq -r '.commit // empty' 2>/dev/null || true)
-            if [ -n "$DEPLOYED_SHA" ] && [ "$DEPLOYED_SHA" = "$EXPECTED_SHA" ]; then
-              # -D - dumps the response headers; the body goes to /dev/null and
-              # is fetched separately below, so the header check can never be
-              # satisfied by markup that merely mentions the policy.
-              HEADERS=$(curl -fsS -D - -o /dev/null --max-time 15 "$URL/?ci=$RUN_ID-h" || true)
-              HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID" || true)
-              if printf '%s' "$HTML" | grep -q '<div id="app">'; then
+            if [ -z "$DEPLOYED_SHA" ]; then
+              echo "Attempt $i/$ATTEMPTS: production reported no commit — waiting ${SLEEP}s"
+              sleep "$SLEEP"
+              continue
+            fi
+            # Fails CLOSED, and deliberately not `|| true`: a classifier that
+            # cannot answer must stop the job with its own diagnostic in one
+            # second, never be swallowed into 300s of polling that ends by
+            # blaming the deploy — the LIFT-1412 rule, on the check next to it.
+            if ! VERDICT=$(node scripts/check-deployed-commit.mjs "$EXPECTED_SHA" "$DEPLOYED_SHA" "$GITHUB_REF_NAME"); then
+              echo "::error::Could not decide whether production's commit $DEPLOYED_SHA contains $EXPECTED_SHA"
+              exit 1
+            fi
+            LAST_VERDICT="$VERDICT"
+            LAST_DEPLOYED="$DEPLOYED_SHA"
+            case "$VERDICT" in
+              match|superseded)
+                # -D - dumps the response headers; the body goes to /dev/null and
+                # is fetched separately below, so the header check can never be
+                # satisfied by markup that merely mentions the policy.
+                HEADERS=$(curl -fsS -D - -o /dev/null --max-time 15 "$URL/?ci=$RUN_ID-h" || true)
+                HTML=$(curl -fsS --max-time 15 "$URL/?ci=$RUN_ID" || true)
                 # vercel.json's headers reach production by being compiled into
                 # the deployment's routing config, and LIFT-1169 moved the build
                 # that does that compiling into CI. Nothing else checks they
@@ -1048,28 +1106,58 @@ jobs:
                 # never happened, on the one job whose whole purpose is to say
                 # accurately what broke, and would do it terminally inside a
                 # loop built to absorb exactly this blip.
-                if [ -z "$HEADERS" ]; then
-                  echo "::warning::version.json matched but the header probe came back empty; retrying"
+                if ! printf '%s' "$HTML" | grep -q '<div id="app">'; then
+                  echo "::warning::the deployed commit checks out ($VERDICT) but the app-shell marker is missing; retrying"
+                elif [ -z "$HEADERS" ]; then
+                  echo "::warning::the deployed commit checks out ($VERDICT) but the header probe came back empty; retrying"
                 elif ! printf '%s' "$HEADERS" | grep -qi '^content-security-policy:'; then
-                  echo "::error::Production is serving commit $EXPECTED_SHA but sent no Content-Security-Policy header — vercel.json's headers did not reach the deployment"
+                  echo "::error::Production is serving $DEPLOYED_SHA but sent no Content-Security-Policy header — vercel.json's headers did not reach the deployment"
                   exit 1
+                elif [ "$VERDICT" = superseded ]; then
+                  # Read by notify-deploy so the Slack line says how this was
+                  # verified, instead of implying the alias points here.
+                  echo "superseded_by=$DEPLOYED_SHA" >> "$GITHUB_OUTPUT"
+                  echo "Production has advanced to $DEPLOYED_SHA, which contains $EXPECTED_SHA; the app shell renders and the security headers are present (attempt $i)."
+                  exit 0
                 else
                   echo "Production is serving commit $EXPECTED_SHA, the app shell renders, and the security headers are present (attempt $i)."
                   exit 0
                 fi
-              else
-                echo "::warning::version.json matched but the app-shell marker is missing; retrying"
-              fi
-            else
-              echo "Attempt $i/$ATTEMPTS: deployed=${DEPLOYED_SHA:-<none>} expected=$EXPECTED_SHA — waiting ${SLEEP}s"
-            fi
+                ;;
+              behind|unrelated|unknown)
+                echo "Attempt $i/$ATTEMPTS: deployed=$DEPLOYED_SHA ($VERDICT) expected=$EXPECTED_SHA — waiting ${SLEEP}s"
+                ;;
+              *)
+                echo "::error::Unrecognised verdict '$VERDICT' from scripts/check-deployed-commit.mjs"
+                exit 1
+                ;;
+            esac
             sleep "$SLEEP"
           done
-          # deploy-production already succeeded to get here, so this is no
-          # longer "the build probably failed" — the upload reported success
-          # and the production alias never started answering off it. Naming the
-          # wrong system is the one failure this job cannot afford.
-          echo "::error::Production never reported commit $EXPECTED_SHA within $((ATTEMPTS * SLEEP))s — deploy-production uploaded it, so the production alias is still serving the previous deployment"
+
+          # Name what actually happened. deploy-production already succeeded to
+          # get here, so "the build failed" was never the only reading — and
+          # since LIFT-1414 it is not even the common one. Exactly one of these
+          # means the deployment did not land; saying that for the rest is the
+          # misattribution LIFT-1367 is about, on the one job whose whole
+          # purpose is to name the system that broke.
+          case "$LAST_VERDICT" in
+            match|superseded)
+              echo "::error::Production reported $LAST_DEPLOYED, which carries $EXPECTED_SHA, but $URL never rendered the app shell — this commit is live and the page it serves is broken"
+              ;;
+            behind)
+              echo "::error::Production is still serving $LAST_DEPLOYED, an ancestor of $EXPECTED_SHA, after $((ATTEMPTS * SLEEP))s — deploy-production uploaded this commit, so the production alias never started answering off it"
+              ;;
+            unrelated)
+              echo "::error::Production is serving $LAST_DEPLOYED, which is neither $EXPECTED_SHA nor a descendant of it — check which branch the Vercel project promotes"
+              ;;
+            unknown)
+              echo "::error::Production is serving $LAST_DEPLOYED, which could not be resolved in this checkout — it may not be on $GITHUB_REF_NAME, or the fetch that would have brought it in did not succeed"
+              ;;
+            *)
+              echo "::error::Production never reported a commit within $((ATTEMPTS * SLEEP))s — $URL/version.json was unreachable or carried no commit"
+              ;;
+          esac
           exit 1
 
   # Notify Slack on post-merge success (push to master only).
@@ -1128,10 +1216,21 @@ jobs:
           # "nothing was deployed", which is the safe direction for a message
           # that would otherwise assert one.
           DEPLOY_SKIPPED: ${{ needs.deploy-production.outputs.deployed != 'true' }}
+          # Non-empty only when the verification succeeded through a LATER
+          # master commit that had already taken the production alias
+          # (LIFT-1414).
+          SUPERSEDED_BY: ${{ needs.smoke-test-production.outputs.superseded-by }}
         run: |
           COMMIT_MSG=$(printf '%s' "$COMMIT_MSG_RAW" | head -1)
           if [ "$DEPLOY_SKIPPED" = "true" ]; then
             MSG="⏭️ *CI passed — no production deploy* (this commit touches no deployable path, so production still serves the previous commit)\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
+          elif [ -n "$SUPERSEDED_BY" ]; then
+            # Still a real deploy, so the claim is qualified rather than
+            # withdrawn: this commit IS live, inside the one named here. Saying
+            # which keeps the message exactly as strong as the check behind it,
+            # and a bare "verified live" would imply the alias points at this
+            # commit when it no longer does.
+            MSG="✅ *Deployed to production* (verified live inside \`${SUPERSEDED_BY:0:7}\`, a later master commit that superseded this one)\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
           else
             MSG="✅ *Deployed to production* (verified live)\nCommit: <${COMMIT_URL}|${COMMIT_MSG}>"
           fi
