@@ -8,6 +8,7 @@ import { setSentryCaptureException, logError } from './lib/logger'
 import { createCspReporter, violationSummary } from './lib/cspReporting'
 import { createGlobalErrorHandler } from './lib/globalErrorHandlers'
 import { isNative } from './lib/platform'
+import { SENTRY_DATA_COLLECTION } from './lib/sentryDataCollection'
 import App from './App.vue'
 import './index.css'
 
@@ -55,7 +56,7 @@ if (sentryDsn && import.meta.env.PROD) {
       tracesSampleRate: 0.1,
       enabled: true,
       // Never attach default PII (IP, headers, cookies) on web or native (LIFT-533).
-      sendDefaultPii: false,
+      dataCollection: SENTRY_DATA_COLLECTION,
       denyUrls: [
         // Bot probes for CMS/REST endpoints that don't exist in this SPA
         /\/js\/rest\//,
@@ -64,7 +65,7 @@ if (sentryDsn && import.meta.env.PROD) {
       ],
       beforeSend(event) {
         if (event.request?.cookies) delete event.request.cookies
-        // Scrub IP address — defensive even with sendDefaultPii:false (LIFT-533).
+        // Scrub IP address — defensive even with userInfo collection off (LIFT-533).
         if (event.user) delete event.user.ip_address
         return event
       },
