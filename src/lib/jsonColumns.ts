@@ -7,7 +7,7 @@
  * instead of silently accepting corrupt data.
  */
 import type { Json } from './database.types'
-import type { ThemeId } from './themes'
+import { resolveThemeId } from './themes'
 import type { StreakWeekEntry, SetXPEntry, ThemeUnlock } from '../stores/progression'
 import { logWarn } from './logger'
 
@@ -86,7 +86,22 @@ export function parseStreakHistory(value: Json | undefined, fallback: StreakWeek
   return result.length > 0 ? result : fallback
 }
 
-/** Parse a Json value as ThemeUnlock[] (handles legacy string[] format). */
+/**
+ * Parse a Json value as ThemeUnlock[] (handles legacy string[] format).
+ *
+ * Every `id` goes through `resolveThemeId` (LIFT-1503) rather than an `as
+ * ThemeId` cast: this column is user-writable JSONB, and an entry naming no
+ * current theme is unspendable — `isThemeUnlocked` answers by equality, so it
+ * reads as locked — while still counting toward `unlockedThemes.length`. It is
+ * dropped with a `logWarn`, the same treatment an entry with a non-string id
+ * already got; a legacy id is migrated onto its current theme instead, so an
+ * earned entitlement survives a rename.
+ *
+ * The result is deduplicated by id, keeping the EARLIEST unlock — the rule
+ * `mergeUnlockedThemes` already applies, and now load-bearing here too, since
+ * migration can collapse two legacy ids onto one theme (`tina` and `bloom` are
+ * both `love`) and a duplicate would inflate the same count.
+ */
 export function parseUnlockedThemes(value: Json | undefined): ThemeUnlock[] | null {
   if (!Array.isArray(value)) return null
   if (value.length === 0) return null
@@ -104,22 +119,34 @@ export function parseUnlockedThemes(value: Json | undefined): ThemeUnlock[] | nu
         logWarn('Invalid theme unlock entry, skipping', { item })
         continue
       }
+      const id = resolveThemeId(obj.id)
+      if (id === null) {
+        logWarn('Theme unlock entry names no known theme, skipping', { item })
+        continue
+      }
       result.push({
-        id: obj.id as ThemeId,
+        id,
         unlockedAt: obj.unlockedAt,
         ...(typeof obj.totalXPAtUnlock === 'number' ? { totalXPAtUnlock: obj.totalXPAtUnlock } : {}),
         ...(typeof obj.totalSetsAtUnlock === 'number' ? { totalSetsAtUnlock: obj.totalSetsAtUnlock } : {}),
       })
     }
-    return result.length > 0 ? result : null
+    return dedupeUnlocks(result)
   }
 
   // Legacy string[] format
   if (typeof value[0] === 'string') {
-    return (value as string[]).map(id => ({
-      id: id as ThemeId,
-      unlockedAt: new Date().toISOString(),
-    }))
+    const unlockedAt = new Date().toISOString()
+    const result: ThemeUnlock[] = []
+    for (const item of value) {
+      const id = resolveThemeId(item)
+      if (id === null) {
+        logWarn('Legacy theme unlock entry names no known theme, skipping', { item })
+        continue
+      }
+      result.push({ id, unlockedAt })
+    }
+    return dedupeUnlocks(result)
   }
 
   return null
@@ -174,6 +201,21 @@ export function parseBodyweightDates(value: Json | undefined, fallback: string[]
 }
 
 // ── Internal ──────────────────────────────────────────────────────
+
+/**
+ * Collapse repeated theme ids, keeping the earliest unlock (and its stat
+ * snapshot) — the same rule `mergeUnlockedThemes` applies across devices.
+ * Returns null for an empty list so the caller's "nothing usable here" branch
+ * still fires.
+ */
+function dedupeUnlocks(unlocks: ThemeUnlock[]): ThemeUnlock[] | null {
+  const byId = new Map<string, ThemeUnlock>()
+  for (const unlock of unlocks) {
+    const existing = byId.get(unlock.id)
+    if (!existing || unlock.unlockedAt < existing.unlockedAt) byId.set(unlock.id, unlock)
+  }
+  return byId.size > 0 ? Array.from(byId.values()) : null
+}
 
 function isPlainObject(v: unknown): v is { [key: string]: Json | undefined } {
   return typeof v === 'object' && v !== null && !Array.isArray(v)

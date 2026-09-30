@@ -77,6 +77,38 @@ export const THEME_MIGRATION: Record<string, ThemeId> = {
 }
 
 /**
+ * Resolve a persisted theme id to a CURRENT one, or `null` when it names no
+ * theme this build can render (LIFT-1503).
+ *
+ * Every `ThemeId` the app holds was read back out of storage the user can
+ * write — the `user-progression` localStorage blob, the `unlocked_themes`
+ * JSONB column, the `starter_theme` text column (no CHECK constraint) — and
+ * each of those sites used to `as ThemeId` a bare string. That cast is not
+ * inert, because the two things the app does with a theme id disagree about an
+ * unrecognised one: `isThemeUnlocked` answers by EQUALITY against a current id,
+ * so an unknown entry matches nothing and reads as locked, while
+ * `unlockedThemes.length` (analytics, unlock-celebration copy) counts it — the
+ * app reporting a theme as unlocked and refusing to apply it at the same time.
+ *
+ * Returning `null` rather than a default is what lets each caller make its own
+ * decision: an unlock entry naming no theme is dropped (an invented
+ * entitlement is not worth preserving), while `starterTheme` falls back to the
+ * value already in memory, since it has a real "not picked yet" state.
+ *
+ * A LEGACY id is migrated rather than rejected — the same table `initTheme`
+ * has always applied to the standalone `app-theme` key. Note no shipped
+ * release can have written one into the progression blob (the rename landed
+ * 2026-04-02, `unlockedThemes` two days later), so that branch is
+ * forward-looking: it means a future rename only has to extend
+ * `THEME_MIGRATION` for earned unlocks to survive it.
+ */
+export function resolveThemeId(value: unknown): ThemeId | null {
+  if (typeof value !== 'string') return null
+  const migrated = THEME_MIGRATION[value] ?? value
+  return THEMES.find(t => t.id === migrated)?.id ?? null
+}
+
+/**
  * Coerce a stored/remote appearance value into its union (LIFT-1494).
  *
  * The three appearance settings are persisted in FOUR places that are read back
@@ -96,11 +128,9 @@ export const THEME_MIGRATION: Record<string, ThemeId> = {
  * conversion quietly did lbs math.
  */
 export function sanitizeThemeId(value: unknown): ThemeId {
-  if (typeof value !== 'string') return DEFAULT_THEME_ID
   // A legacy id is migrated rather than rejected — same table `initTheme` has
   // always applied to `app-theme`, now applied to the blob copies too.
-  const migrated = THEME_MIGRATION[value] ?? value
-  return THEMES.find(t => t.id === migrated)?.id ?? DEFAULT_THEME_ID
+  return resolveThemeId(value) ?? DEFAULT_THEME_ID
 }
 
 export function sanitizeColorMode(value: unknown): ColorMode {
