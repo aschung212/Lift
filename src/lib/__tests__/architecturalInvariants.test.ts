@@ -21,7 +21,9 @@ import { join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { notNullColumns } from '../../__tests__/migrationSchema'
+import { resolveWorkboxRoute } from '../../__tests__/serviceWorkerModel'
 import { MIN_WEEKLY_TARGET, MAX_WEEKLY_TARGET } from '../xp'
+import { RUNTIME_CACHING } from '../swRuntimeCaching'
 
 // ── Shared helpers ──────────────────────────────────────────────────
 
@@ -3668,6 +3670,25 @@ describe('Invariant: every weekly-target write goes through the range guard (LIF
 // The guard must sit in the SAME method as the enqueue: a check in one caller
 // leaves every other path to the push open.
 
+/**
+ * Tables keyed by `user_id` alone — a column or table primary key, or
+ * `unique(user_id)`. Shared by the LIFT-1515 push gate and the LIFT-1510
+ * service-worker route rule below: both are about what goes wrong when a
+ * whole-row store works from a copy of its row that is not the account's.
+ */
+function oneRowPerUserTables(source: string): string[] {
+  const keyed = createdTables(source).filter((table) => {
+    const body = tableBody(source, table)
+    return /\buser_id\s+uuid\b[^,]*\b(?:primary\s+key|unique)\b/i.test(body)
+      || /\b(?:primary\s+key|unique)\s*\(\s*user_id\s*\)/i.test(body)
+  })
+  const altered = [...source.matchAll(new RegExp(
+    `alter\\s+table\\s+(?:only\\s+)?["']?${SCHEMA}(\\w+)["']?\\s+add\\s+(?:constraint\\s+\\w+\\s+)?(?:primary\\s+key|unique)\\s*\\(\\s*user_id\\s*\\)`,
+    'gi',
+  ))].map(m => m[1].toLowerCase())
+  return [...new Set([...keyed, ...altered])].sort()
+}
+
 describe('Invariant: a one-row-per-user table is pushed only after its row is read (LIFT-1515)', () => {
   const sql = stripSqlComments(
     readdirSync(MIGRATIONS_DIR)
@@ -3676,20 +3697,6 @@ describe('Invariant: a one-row-per-user table is pushed only after its row is re
       .map(f => readFileSync(join(MIGRATIONS_DIR, f), 'utf-8'))
       .join('\n'),
   )
-
-  /** Tables keyed by `user_id` alone — a column or table primary key, or `unique(user_id)`. */
-  function oneRowPerUserTables(source: string): string[] {
-    const keyed = createdTables(source).filter((table) => {
-      const body = tableBody(source, table)
-      return /\buser_id\s+uuid\b[^,]*\b(?:primary\s+key|unique)\b/i.test(body)
-        || /\b(?:primary\s+key|unique)\s*\(\s*user_id\s*\)/i.test(body)
-    })
-    const altered = [...source.matchAll(new RegExp(
-      `alter\\s+table\\s+(?:only\\s+)?["']?${SCHEMA}(\\w+)["']?\\s+add\\s+(?:constraint\\s+\\w+\\s+)?(?:primary\\s+key|unique)\\s*\\(\\s*user_id\\s*\\)`,
-      'gi',
-    ))].map(m => m[1].toLowerCase())
-    return [...new Set([...keyed, ...altered])].sort()
-  }
 
   /** Index of the `)` closing the call whose `(` is at `open`, skipping string literals. */
   function callEnd(source: string, open: number): number {
@@ -3817,6 +3824,61 @@ describe('Invariant: a one-row-per-user table is pushed only after its row is re
           '`if (!this._accountRowRead) return` before it. The upsert replaces the ' +
           "account's entire row, so on a device that has not read it yet it " +
           'overwrites everything the user did not just change with defaults.',
+      )
+    expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant: a one-row-per-user table is never read from the SW cache (LIFT-1510) ──
+// Guard: the service worker sits between every Supabase read and the network,
+// and a cached answer resolves `{ data, error: null }` exactly like a fresh
+// one. The two whole-row stores adopt their row remote-wins, so a cached row is
+// not merely stale: preferences reverted every setting changed since the row
+// was cached (and the next settings change pushed the revert over the
+// account's blob), and progression pushed the stale scalars back at once. The
+// catch-all route served `user_preferences` NetworkFirst without anyone having
+// chosen it, and `user_progression` had a NetworkFirst rule of its own.
+//
+// DERIVED on both sides: the tables from the migrations (the same derivation
+// as LIFT-1515's gate), the routes by resolving each table's read URL against
+// the `RUNTIME_CACHING` array the build ships, first match wins. A third
+// one-row-per-user table, or a new rule that happens to match one of these,
+// is covered by being written. Behaviourally pinned (a real client through a
+// model of the SW, against the real stores) in serviceWorkerStaleRead.test.ts.
+
+describe('Invariant: a one-row-per-user table is never read from the service worker cache (LIFT-1510)', () => {
+  const sql = stripSqlComments(
+    readdirSync(MIGRATIONS_DIR)
+      .filter(f => f.endsWith('.sql'))
+      .sort()
+      .map(f => readFileSync(join(MIGRATIONS_DIR, f), 'utf-8'))
+      .join('\n'),
+  )
+
+  /** The strategy the SW would answer a read of `table` with; 'unrouted' = the browser fetches it directly. */
+  function readStrategy(table: string): string {
+    const url = `https://abcdefghijklmnopqrst.supabase.co/rest/v1/${table}?select=*&user_id=eq.00000000-0000-4000-8000-000000000000`
+    const rule = resolveWorkboxRoute(RUNTIME_CACHING, url, 'GET')
+    return rule ? String(rule.handler) : 'unrouted'
+  }
+
+  it('resolves a cached strategy for the collections that keep one (non-vacuity)', () => {
+    // If route resolution silently matched nothing, every table would read as
+    // uncached and the rule below would pass without looking.
+    expect(readStrategy('sets')).toBe('StaleWhileRevalidate')
+    expect(readStrategy('exercises')).toBe('NetworkFirst')
+  })
+
+  it('reads every one-row-per-user table from the network and nowhere else', () => {
+    const tables = oneRowPerUserTables(sql)
+    expect(tables).toEqual(expect.arrayContaining(['user_preferences', 'user_progression']))
+    const violations = tables
+      .map(table => ({ table, strategy: readStrategy(table) }))
+      .filter(({ strategy }) => strategy !== 'NetworkOnly' && strategy !== 'unrouted')
+      .map(({ table, strategy }) =>
+        `${table} is read through a ${strategy} route. Its store adopts the row ` +
+          'remote-wins and upserts it whole, so a cached answer reverts every ' +
+          'change made since the row was cached and pushes the revert back.',
       )
     expect(violations).toEqual([])
   })

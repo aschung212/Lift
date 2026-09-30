@@ -1,0 +1,173 @@
+/**
+ * A model of what the generated service worker does with a request, driven by
+ * the route table the build ships (LIFT-1510).
+ *
+ * Every store test hands the store a Supabase double directly, so nothing in the
+ * suite ever stood where the service worker stands in production: between a
+ * store's read and the network. A route that answered a read from Cache Storage
+ * was invisible to every test, which is how a stale `user_preferences` row came
+ * to be adopted as the account's current settings with the whole suite green.
+ * `resolveWorkboxRoute` answers "which rule handles this request", and
+ * `createServiceWorkerFetch` answers "what does the page get back", so a test
+ * can route real client traffic through the SAME `RUNTIME_CACHING` array that
+ * `vite.config.js` hands to `generateSW`.
+ *
+ * Modelled on workbox-routing / workbox-strategies 7:
+ *  - Routing: rules are tried in array order (generateSW registers them in that
+ *    order) and the first match wins. A rule only sees its own `method`
+ *    (default GET), so an upsert never reaches a caching strategy. A RegExp runs
+ *    against the full URL and, for a cross-origin request (every Supabase
+ *    request is one), only counts when it matches at index 0.
+ *  - NetworkOnly: the network's answer, or a network error.
+ *  - NetworkFirst: the network's answer, written to the cache when its status is
+ *    in `cacheableResponse.statuses` (default: 200 only). The cached answer
+ *    instead when the request fails, or when `networkTimeoutSeconds` elapses
+ *    first and an answer is cached; with nothing cached it keeps waiting.
+ *  - StaleWhileRevalidate: the cached answer when there is one, with the
+ *    network refreshing the cache behind it; otherwise the network's.
+ * When a strategy has nothing to give, the page sees what it sees in a browser:
+ * a rejected fetch (`TypeError: Failed to fetch`).
+ *
+ * Not modelled: `expiration` (a test that needs an entry gone calls `clear`),
+ * `Vary`, and any `urlPattern` that is not a RegExp. That last one THROWS, so a
+ * rule the model cannot read fails the test instead of silently never matching.
+ */
+
+/** The fields of a Workbox `runtimeCaching` entry this model reads. */
+export interface RouteRule {
+  urlPattern: unknown
+  handler: unknown
+  method?: string
+  options?: {
+    cacheName?: string
+    networkTimeoutSeconds?: number
+    cacheableResponse?: { statuses?: number[] }
+  }
+}
+
+/**
+ * The rule the service worker would hand this request to, or `undefined` when
+ * none matches (the browser then fetches it directly, untouched).
+ */
+export function resolveWorkboxRoute<R extends RouteRule>(
+  rules: readonly R[],
+  url: string,
+  method = 'GET',
+): R | undefined {
+  const target = new URL(url)
+  const crossOrigin = target.origin !== globalThis.location?.origin
+  for (const rule of rules) {
+    if ((rule.method ?? 'GET').toUpperCase() !== method.toUpperCase()) continue
+    if (!(rule.urlPattern instanceof RegExp)) {
+      throw new Error(
+        `serviceWorkerModel: cannot evaluate urlPattern ${String(rule.urlPattern)}; only RegExp routes are modelled`,
+      )
+    }
+    const match = rule.urlPattern.exec(target.href)
+    if (match && (!crossOrigin || match.index === 0)) return rule
+  }
+  return undefined
+}
+
+interface StoredResponse {
+  status: number
+  statusText: string
+  headers: [string, string][]
+  body: string
+}
+
+async function snapshot(response: Response): Promise<StoredResponse> {
+  const headers: [string, string][] = []
+  response.headers.forEach((value, key) => { headers.push([key, value]) })
+  return { status: response.status, statusText: response.statusText, headers, body: await response.text() }
+}
+
+function revive(stored: StoredResponse): Response {
+  return new Response(stored.body, { status: stored.status, statusText: stored.statusText, headers: stored.headers })
+}
+
+function networkError(): TypeError {
+  return new TypeError('Failed to fetch')
+}
+
+export interface ServiceWorkerModel {
+  /** Drop-in `fetch` for a client: every request goes through the routes. */
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  /** URLs holding an entry in any runtime cache. */
+  cachedUrls: () => string[]
+  /** Empty every runtime cache (a fresh install). */
+  clear: () => void
+}
+
+export function createServiceWorkerFetch(options: {
+  /** Read on every request, so a test can swap the table (e.g. a pre-fix control). */
+  rules: () => readonly RouteRule[]
+  /** What the SW's own `fetch` reaches. Reject to model a failed request. */
+  network: (url: string, init: RequestInit) => Promise<Response>
+}): ServiceWorkerModel {
+  const caches = new Map<string, Map<string, StoredResponse>>()
+  const cacheFor = (name: string) => {
+    if (!caches.has(name)) caches.set(name, new Map())
+    return caches.get(name)!
+  }
+
+  async function handle(rule: RouteRule, url: string, init: RequestInit): Promise<Response> {
+    const cache = cacheFor(rule.options?.cacheName ?? 'workbox-runtime')
+    const statuses = rule.options?.cacheableResponse?.statuses ?? [200]
+    const cached = () => {
+      const hit = cache.get(url)
+      return hit ? revive(hit) : undefined
+    }
+    const fetchAndCache = async () => {
+      const response = await options.network(url, init)
+      // A status-0 (opaque) response cannot be rebuilt with `new Response`, and
+      // no Supabase read is opaque, so it is simply not stored here.
+      if (response.status !== 0 && statuses.includes(response.status)) {
+        cache.set(url, await snapshot(response.clone()))
+      }
+      return response
+    }
+
+    switch (rule.handler) {
+      case 'NetworkOnly':
+        return options.network(url, init)
+
+      case 'NetworkFirst': {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const fromNetwork = fetchAndCache().then(
+          (response) => response,
+          () => cached(),
+        ).finally(() => clearTimeout(timer))
+        const seconds = rule.options?.networkTimeoutSeconds
+        const racers: Promise<Response | undefined>[] = [fromNetwork]
+        if (seconds) racers.push(new Promise((resolve) => { timer = setTimeout(() => resolve(cached()), seconds * 1000) }))
+        const response = (await Promise.race(racers)) ?? (await fromNetwork)
+        if (!response) throw networkError()
+        return response
+      }
+
+      case 'StaleWhileRevalidate': {
+        const refresh = fetchAndCache()
+        refresh.catch(() => { /* a failed refresh leaves the cached answer in place */ })
+        const hit = cached()
+        if (hit) return hit
+        const response = await refresh.catch(() => undefined)
+        if (!response) throw networkError()
+        return response
+      }
+
+      default:
+        throw new Error(`serviceWorkerModel: handler ${String(rule.handler)} is not modelled`)
+    }
+  }
+
+  return {
+    async fetch(input, init = {}) {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      const rule = resolveWorkboxRoute(options.rules(), url, init.method ?? 'GET')
+      return rule ? handle(rule, url, init) : options.network(url, init)
+    },
+    cachedUrls: () => [...caches.values()].flatMap((cache) => [...cache.keys()]),
+    clear: () => caches.clear(),
+  }
+}
