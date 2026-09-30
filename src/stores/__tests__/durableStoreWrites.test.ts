@@ -136,6 +136,17 @@ async function relaunchAndReplay(): Promise<void> {
 }
 
 /**
+ * Sign a whole-row store in as a device that has ALREADY read u1's row — the
+ * steady state these recovery tests model, where an offline edit is pushed (and
+ * journaled) the moment it is made. A device that has never read the row holds
+ * its pushes until it does (LIFT-1515); that path is `accountRowReadGate.test.ts`.
+ */
+function signedInHavingReadRow(store: { _userId: string | null; _accountRowRead: boolean }): void {
+  store._userId = 'u1'
+  store._accountRowRead = true
+}
+
+/**
  * Reconnect WITHOUT relaunching (LIFT-1322): the same live queue re-arms its
  * stranded journal entries, exactly as `useSyncRecovery.run()` does on an
  * `online` / foreground / session-recovered signal.
@@ -206,7 +217,7 @@ describe('durable journal coverage for bodyweight / preferences / progression (L
 
   it('recovers a settings change made while offline on the next launch', async () => {
     const store = usePreferencesStore()
-    store._userId = 'u1'
+    signedInHavingReadRow(store)
     store.weightUnit = 'kg'
     store._persist()
 
@@ -226,7 +237,7 @@ describe('durable journal coverage for bodyweight / preferences / progression (L
 
   it('recovers an XP credit made while offline on the next launch', async () => {
     const store = useProgressionStore()
-    store._userId = 'u1'
+    signedInHavingReadRow(store)
     store.creditSetXP('s1', 50)
 
     expect(journaledDescriptors()).toEqual([{ table: 'user_progression', op: 'upsert' }])
@@ -257,7 +268,7 @@ describe('durable journal coverage for bodyweight / preferences / progression (L
     // Preferences is the store with the most to lose: a remote-wins JSONB blob
     // with no reconciliation pass, so a write counted as a success is gone.
     const store = usePreferencesStore()
-    store._userId = 'u1'
+    signedInHavingReadRow(store)
     store.weightUnit = 'kg'
     store._persist()
 
@@ -282,7 +293,7 @@ describe('durable journal coverage for bodyweight / preferences / progression (L
     // with no reconciliation pass. Until the replay lands, every re-fetch paints
     // the stale server settings back over the user's change.
     const store = usePreferencesStore()
-    store._userId = 'u1'
+    signedInHavingReadRow(store)
     store.weightUnit = 'kg'
     store._persist()
 
@@ -316,7 +327,7 @@ describe('durable journal coverage for bodyweight / preferences / progression (L
 
   it('recovers an XP credit on reconnect', async () => {
     const store = useProgressionStore()
-    store._userId = 'u1'
+    signedInHavingReadRow(store)
     store.creditSetXP('s1', 50)
 
     await exhaustRetriesOffline()
