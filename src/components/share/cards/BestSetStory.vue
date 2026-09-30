@@ -7,7 +7,7 @@
 
     <div v-if="summary.bestSet" class="bsHero">
       <div class="bsName">{{ summary.bestSet.name }}</div>
-      <div class="bsWeight">{{ summary.bestSet.weight }}</div>
+      <div class="bsWeight" :class="{ bsWeightWord: loadIsWord }">{{ summary.bestSet.load.value }}</div>
       <div class="bsReps">×&thinsp;{{ summary.bestSet.reps }} reps</div>
       <div class="bsE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM</div>
     </div>
@@ -20,10 +20,14 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { SessionSummary } from '../../../lib/sessionSummary'
 import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 
-defineProps<{ summary: SessionSummary }>()
+const props = defineProps<{ summary: SessionSummary }>()
+
+/** A null unit means the load is the word "Bodyweight" — see `.bsWeightWord`. */
+const loadIsWord = computed(() => props.summary.bestSet?.load.unit === null)
 </script>
 
 <style scoped>
@@ -94,6 +98,14 @@ defineProps<{ summary: SessionSummary }>()
   color: var(--accent);
   text-shadow: 0 0 80px var(--accent-subtle);
   white-space: nowrap;
+}
+
+/* 110px holds a three-digit number; it does not hold the ten letters of
+   "Bodyweight", and `nowrap` above would push them straight off the 296px
+   card rather than wrap (#1385). A worded load gets word-sized type. */
+.bsWeightWord {
+  font-size: 48px;
+  letter-spacing: -0.02em;
 }
 
 .bsReps {

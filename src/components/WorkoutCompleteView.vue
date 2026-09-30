@@ -45,7 +45,11 @@
                 <span v-if="summary.bestSet.isPR" class="wcBestSetBadge">NEW PR</span>
               </div>
               <div class="wcBestSetName">{{ summary.bestSet.name }}</div>
-              <div class="wcBestSetWeight">{{ summary.bestSet.weight }} × {{ summary.bestSet.reps }}</div>
+              <!-- `load.value` carries the whole load, not just a number:
+                   "225", "+25", or the word "Bodyweight" (#1385). The unit is
+                   deliberately dropped here, as it always has been — the e1RM
+                   line directly below carries it for the pair. -->
+              <div class="wcBestSetWeight">{{ summary.bestSet.load.value }} × {{ summary.bestSet.reps }}</div>
               <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM<InfoPopover
                 label="e1RM"
                 title="Estimated 1-rep max"
@@ -63,7 +67,7 @@
                     <span v-if="h.badge" class="wcBreakdownBadge">{{ h.badge.toUpperCase() }}</span>
                   </div>
                   <div class="wcBreakdownMeta">
-                    <span class="wcBreakdownTop">{{ h.weight }} × {{ h.reps }}</span>
+                    <span class="wcBreakdownTop">{{ h.load.value }} × {{ h.reps }}</span>
                     <span class="wcBreakdownVolume">{{ formatVolume(h.volume) }} {{ summary.unitLabel }}</span>
                   </div>
                 </li>

@@ -35,12 +35,19 @@ interface Cell {
   v: string
   unit: string
   accent?: boolean
-  size: 'sm' | 'md' | 'lg'
+  size: 'xs' | 'sm' | 'md' | 'lg'
 }
 
 const cells = computed<Cell[]>(() => {
   const best = props.summary.bestSet
   const total = props.summary.prs + props.summary.repPRs
+  // `load.value` is "225", "+25", or the whole word "Bodyweight" (#1385), so
+  // this cell can hold 13 characters where it used to hold 5. `.sgVal` is
+  // nowrap + overflow:hidden inside a 148px half-cell, which on a fixed
+  // canvas rasterized offscreen means a long value is silently CLIPPED into
+  // the exported PNG — so the tier is derived from the value, the same way
+  // the VOLUME cell above already handles its five-digit days.
+  const bestSetValue = best ? `${best.load.value}×${best.reps}` : '—'
   return [
     {
       k: 'VOLUME',
@@ -50,10 +57,10 @@ const cells = computed<Cell[]>(() => {
     },
     {
       k: 'BEST SET',
-      v: best ? `${best.weight}×${best.reps}` : '—',
+      v: bestSetValue,
       unit: best ? best.name.toUpperCase() : '—',
       accent: true,
-      size: 'sm',
+      size: bestSetValue.length > 8 ? 'xs' : 'sm',
     },
     {
       k: 'SETS',
@@ -172,6 +179,7 @@ const cells = computed<Cell[]>(() => {
   overflow: hidden;
 }
 
+.sgVal--xs { font-size: 20px; line-height: 1; }
 .sgVal--sm { font-size: 32px; line-height: 1; }
 .sgVal--md { font-size: 48px; line-height: 1; }
 .sgVal--lg { font-size: 56px; line-height: 1; }
