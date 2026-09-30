@@ -503,7 +503,7 @@ describe('SettingsSheet', () => {
   describe('experience toggles', () => {
     it('flips a haptics toggle through the preferences store', async () => {
       const wrapper = mountSheet()
-      const toggle = wrapper.find('button[aria-label="Disable haptics"]')
+      const toggle = wrapper.find('button[aria-labelledby="settings-haptics-label"]')
       expect(toggle.attributes('role')).toBe('switch')
       expect(toggle.attributes('aria-checked')).toBe('true')
       await toggle.trigger('click')
@@ -513,13 +513,13 @@ describe('SettingsSheet', () => {
 
     it('flips PR celebrations off through the store', async () => {
       const wrapper = mountSheet()
-      await wrapper.find('button[aria-label="Disable PR celebrations"]').trigger('click')
+      await wrapper.find('button[aria-labelledby="settings-celebrations-label"]').trigger('click')
       expect(mockSetExperienceFlag).toHaveBeenCalledWith('prCelebrations', false)
     })
 
     it('enables the rest timer via the composable ref', async () => {
       const wrapper = mountSheet()
-      await wrapper.find('button[aria-label="Enable rest timer"]').trigger('click')
+      await wrapper.find('button[aria-labelledby="settings-rest-timer-label"]').trigger('click')
       expect(mockRestTimerEnabled.value).toBe(true)
     })
   })
@@ -527,7 +527,7 @@ describe('SettingsSheet', () => {
   describe('feature toggles', () => {
     it('toggles a feature tab through the preferences store', async () => {
       const wrapper = mountSheet()
-      await wrapper.find('button[aria-label="Disable Calendar"]').trigger('click')
+      await wrapper.find('button[aria-labelledby="settings-feature-calendar-label"]').trigger('click')
       expect(mockToggleFeature).toHaveBeenCalledWith('calendar')
     })
 
@@ -535,7 +535,7 @@ describe('SettingsSheet', () => {
       mockPrefs.features = { workouts: true, calendar: false, weight: false }
       mockPrefs.enabledCount = 1
       const wrapper = mountSheet()
-      const workoutsToggle = wrapper.find('button[aria-label="Disable Workouts"]')
+      const workoutsToggle = wrapper.find('button[aria-labelledby="settings-feature-workouts-label"]')
       expect(workoutsToggle.attributes('disabled')).toBeDefined()
     })
   })

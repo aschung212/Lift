@@ -150,7 +150,7 @@
           <div class="settingsHeader">Experience</div>
           <div class="settingsRow">
             <div class="settingsLabelGroup">
-              <span class="settingsLabel">Haptics</span>
+              <span id="settings-haptics-label" class="settingsLabel">Haptics</span>
               <span class="settingsHint">Taps, PRs, timer end</span>
             </div>
             <button
@@ -158,14 +158,14 @@
               @click="toggleExperience('haptics')"
               role="switch"
               :aria-checked="prefs.experience.haptics"
-              :aria-label="prefs.experience.haptics ? 'Disable haptics' : 'Enable haptics'"
+              aria-labelledby="settings-haptics-label"
             >
               <span class="glassToggleThumb"></span>
             </button>
           </div>
           <div class="settingsRow">
             <div class="settingsLabelGroup">
-              <span class="settingsLabel">Celebrations</span>
+              <span id="settings-celebrations-label" class="settingsLabel">Celebrations</span>
               <span class="settingsHint">PR bursts & weekly goal hits</span>
             </div>
             <button
@@ -173,14 +173,14 @@
               @click="toggleExperience('prCelebrations')"
               role="switch"
               :aria-checked="prefs.experience.prCelebrations"
-              :aria-label="prefs.experience.prCelebrations ? 'Disable PR celebrations' : 'Enable PR celebrations'"
+              aria-labelledby="settings-celebrations-label"
             >
               <span class="glassToggleThumb"></span>
             </button>
           </div>
           <div class="settingsRow">
             <div class="settingsLabelGroup">
-              <span class="settingsLabel">Keep screen on</span>
+              <span id="settings-wake-lock-label" class="settingsLabel">Keep screen on</span>
               <span class="settingsHint">During rest timer and logging</span>
             </div>
             <button
@@ -188,14 +188,14 @@
               @click="toggleExperience('screenWakeLock')"
               role="switch"
               :aria-checked="prefs.experience.screenWakeLock"
-              :aria-label="prefs.experience.screenWakeLock ? 'Disable screen wake lock' : 'Enable screen wake lock'"
+              aria-labelledby="settings-wake-lock-label"
             >
               <span class="glassToggleThumb"></span>
             </button>
           </div>
           <div class="settingsRow">
             <div class="settingsLabelGroup">
-              <span class="settingsLabel">Rest Timer</span>
+              <span id="settings-rest-timer-label" class="settingsLabel">Rest Timer</span>
               <span v-if="restTimerEnabled && restTimerAutoStart" class="settingsHint">Auto-start after save</span>
             </div>
             <button
@@ -203,26 +203,26 @@
               @click="restTimerEnabled = !restTimerEnabled"
               role="switch"
               :aria-checked="restTimerEnabled"
-              :aria-label="restTimerEnabled ? 'Disable rest timer' : 'Enable rest timer'"
+              aria-labelledby="settings-rest-timer-label"
             >
               <span class="glassToggleThumb"></span>
             </button>
           </div>
           <div v-show="restTimerEnabled" class="settingsRow">
-            <span class="settingsLabel settingsLabelIndented">Auto-start after logging</span>
+            <span id="settings-rest-autostart-label" class="settingsLabel settingsLabelIndented">Auto-start after logging</span>
             <button
               :class="['glassToggle', { on: restTimerAutoStart }]"
               @click="restTimerAutoStart = !restTimerAutoStart"
               role="switch"
               :aria-checked="restTimerAutoStart"
-              :aria-label="restTimerAutoStart ? 'Disable auto-start' : 'Enable auto-start'"
+              aria-labelledby="settings-rest-autostart-label"
             >
               <span class="glassToggleThumb"></span>
             </button>
           </div>
           <div v-show="restTimerEnabled" class="settingsRow">
             <div class="settingsLabelGroup">
-              <span class="settingsLabel settingsLabelIndented">Notify when done</span>
+              <span id="settings-rest-notification-label" class="settingsLabel settingsLabelIndented">Notify when done</span>
               <span class="settingsHint">When app is in background</span>
             </div>
             <button
@@ -230,7 +230,7 @@
               @click="toggleExperience('restTimerNotification')"
               role="switch"
               :aria-checked="prefs.experience.restTimerNotification"
-              :aria-label="prefs.experience.restTimerNotification ? 'Disable rest timer notification' : 'Enable rest timer notification'"
+              aria-labelledby="settings-rest-notification-label"
             >
               <span class="glassToggleThumb"></span>
             </button>
@@ -244,38 +244,38 @@
             :key="tab.id"
             class="settingsRow"
           >
-            <span class="settingsLabel">{{ tab.label }}</span>
+            <span :id="'settings-feature-' + tab.id + '-label'" class="settingsLabel">{{ tab.label }}</span>
             <button
               :class="['glassToggle', { on: prefs.features[tab.id] }]"
               @click="toggleFeature(tab.id)"
               :disabled="prefs.features[tab.id] && prefs.enabledCount <= 1"
               role="switch"
               :aria-checked="prefs.features[tab.id]"
-              :aria-label="(prefs.features[tab.id] ? 'Disable ' : 'Enable ') + tab.label"
+              :aria-labelledby="'settings-feature-' + tab.id + '-label'"
             >
               <span class="glassToggleThumb"></span>
             </button>
           </div>
           <div ref="progressionToggleEl" class="settingsRow">
-            <span class="settingsLabel">Progression</span>
+            <span id="settings-progression-label" class="settingsLabel">Progression</span>
             <button
               :class="['glassToggle', { on: progressionActive }]"
               @click="toggleProgression"
               role="switch"
               :aria-checked="progressionActive"
-              :aria-label="progressionActive ? 'Disable progression' : 'Enable progression'"
+              aria-labelledby="settings-progression-label"
             >
               <span class="glassToggleThumb"></span>
             </button>
           </div>
           <div v-show="progressionActive" class="settingsRow">
-            <span class="settingsLabel settingsLabelIndented">Show XP &amp; streaks</span>
+            <span id="settings-show-progression-label" class="settingsLabel settingsLabelIndented">Show XP &amp; streaks</span>
             <button
               :class="['glassToggle', { on: progressionStore.showProgression }]"
               @click="progressionStore.setShowProgression(!progressionStore.showProgression)"
               role="switch"
               :aria-checked="progressionStore.showProgression"
-              :aria-label="progressionStore.showProgression ? 'Hide progression info' : 'Show progression info'"
+              aria-labelledby="settings-show-progression-label"
             >
               <span class="glassToggleThumb"></span>
             </button>
