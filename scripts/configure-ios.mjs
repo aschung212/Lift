@@ -94,7 +94,7 @@ export const PRIVACY_MANIFEST_RELATIVE_PATH = 'App/PrivacyInfo.xcprivacy'
  * Apple privacy manifest (#538). Data types mirror what the App Privacy
  * questionnaire in App Store Connect must say (docs/app-store/); keep the two
  * in step. Everything is collected for app functionality only, nothing is used
- * for tracking, and crash/performance data (Sentry, `sendDefaultPii: false`,
+ * for tracking, and crash/performance data (Sentry, user-info collection off,
  * IP scrubbed — LIFT-533) is not linked to the user.
  */
 export const PRIVACY_MANIFEST_XML = `<?xml version="1.0" encoding="UTF-8"?>
