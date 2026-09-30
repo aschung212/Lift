@@ -48,6 +48,18 @@
         @prev-year="heatmapYear--"
         @next-year="heatmapYear++"
       />
+
+      <!-- Year in Review (#1018). Lives here because the year is ALREADY the
+           thing this view navigates — the heatmap's own ‹ › nav picks it, so
+           the recap needs no date picker of its own and reads as a summary of
+           what is on screen. -->
+      <button v-if="recapSubject" class="calRecapBtn" @click="openRecap">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+        {{ heatmapYear }} Year in Review
+      </button>
+      <p v-else class="wtEmpty calRecapEmpty">
+        Log a workout in {{ heatmapYear }} to unlock its Year in Review.
+      </p>
     </template>
 
     <!-- Monthly view -->
@@ -268,6 +280,17 @@
     @create-new="createExerciseFromPicker"
   />
 
+  <!-- Year in Review share sheet (#1018). Teleported like the log modal below:
+       the sheet is a fixed full-screen overlay and `.calCard` clips its
+       children (`overflow: hidden`). -->
+  <Teleport to="body">
+    <SharePickerSheet
+      v-if="recapOpen && recapSubject"
+      :subject="recapSubject"
+      @close="closeRecap"
+    />
+  </Teleport>
+
   <!-- Log Set Modal -->
   <Teleport to="body">
     <div v-if="logModalOpen" class="repMaxOverlay" @click.self="closeLogModal" @keydown.escape="closeLogModal">
@@ -340,6 +363,8 @@ import { useCalendarData, type CalendarSet } from '../composables/useCalendarDat
 import ExercisePickerModal from '../components/ExercisePickerModal.vue'
 import { allowsZeroWeight, formatSetLoad, isLoggableWeight } from '../lib/bodyweightLoad'
 import { epley } from '../lib/epley'
+import { buildYearRecap } from '../lib/yearRecap'
+import type { ShareCardSubject } from '../lib/shareSubject'
 import type { HeatmapDay } from '../components/ConsistencyHeatmap.vue'
 
 const MuscleGroupChart = defineAsyncComponent(() => import('../components/MuscleGroupChart.vue'))
@@ -347,6 +372,7 @@ const MuscleGroupRecovery = defineAsyncComponent(() => import('../components/Mus
 const VolumeTrendChart = defineAsyncComponent(() => import('../components/VolumeTrendChart.vue'))
 const RepRangeChart = defineAsyncComponent(() => import('../components/RepRangeChart.vue'))
 const ConsistencyHeatmap = defineAsyncComponent(() => import('../components/ConsistencyHeatmap.vue'))
+const SharePickerSheet = defineAsyncComponent(() => import('../components/share/SharePickerSheet.vue'))
 
 const emit = defineEmits<{
   /** The backfill picker's "+ New exercise" row — routed to the Workouts tab. */
@@ -712,6 +738,42 @@ const longestWeekStreak = computed(() => {
     }
   }
   return longest
+})
+
+// ── Year in Review (#1018) ────────────────────────────────────────
+//
+// The year-in-review share card is the aggregate counterpart of the
+// post-workout card: one calendar year instead of one session. It hangs off
+// the year view because `heatmapYear` is already the year the user chose —
+// a recap with its own date picker would be a second way to say the same
+// thing, and this way the card always recaps what is on screen.
+//
+// Scope matches the heatmap deliberately: every exercise, tag filters
+// ignored. A recap that silently omitted the tags the user happened to have
+// filtered out on the Month tab would understate their year.
+const yearRecap = computed(() =>
+  buildYearRecap({
+    year: heatmapYear.value,
+    exercises: store.exercises,
+    toDisplayUnits: displayWeight,
+    unitLabel: weightUnit.value,
+  }),
+)
+
+/**
+ * `null` for a year with nothing logged in it, which is also what hides the
+ * button — one source of truth for "is this year shareable", rather than a
+ * threshold here that could disagree with what the card would render.
+ */
+const recapSubject = computed<ShareCardSubject | null>(() =>
+  yearRecap.value ? { kind: 'recap', recap: yearRecap.value } : null,
+)
+
+// Nothing above this sheet owns a modal, so this instance owns the
+// background-scroll lock and Escape — the PRBurst shape (LIFT-878). No focus
+// trap selector: SharePickerSheet traps its own '.spOverlay'.
+const { isOpen: recapOpen, open: openRecap, close: closeRecap } = useModal({
+  onEscape: () => closeRecap(),
 })
 
 function formatSelectedDay(dateStr: string) {

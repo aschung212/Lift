@@ -76,6 +76,77 @@ export const XP_CONFIG = {
   ] as [number, number][],
 }
 
+// --- Weekly Target Range (LIFT-1505) ---
+
+/**
+ * The weekly training goal is a whole number of days in
+ * [{@link MIN_WEEKLY_TARGET}, {@link MAX_WEEKLY_TARGET}] — the range
+ * `StreakHistoryEntry.weeklyTarget` has always documented, and that
+ * `progression.setWeeklyTarget` used to be the only thing enforcing.
+ *
+ * It lives here, beside `streakTargetTiers`, because the target is only ever
+ * read as a streak threshold: `evaluateWeek` compares it to the days trained
+ * that week, and `lookupTier(XP_CONFIG.streakTargetTiers, …)` prices it.
+ */
+export const MIN_WEEKLY_TARGET = 1
+export const MAX_WEEKLY_TARGET = 7
+/** What a new user starts on, and what `user_progression.weekly_target` defaults to. */
+export const DEFAULT_WEEKLY_TARGET = 3
+
+/**
+ * Coerce a stored or remote weekly target into the legal range (LIFT-1505).
+ *
+ * The clamp used to be a property of ONE code path — `setWeeklyTarget` — rather
+ * than of the field, and neither hydration boundary applied it: `load()` spread
+ * `weekly_target` straight out of the `user-progression` blob, and
+ * `_fetchFromSupabase` adopted `data.weekly_target` from a column the migration
+ * declares with no CHECK constraint. Out of range is silent and permanent in
+ * both directions, and both are worse than a visible error:
+ *
+ *  - **High** (say 99): `daysTrainedThisWeek >= effectiveTarget` is false no
+ *    matter how the user trains, so the streak never advances again, the
+ *    duration multiplier never tiers up, `GoalCelebration` never fires, and the
+ *    weekly-goal pill reads "0 of 99 days" with nothing saying the goal is
+ *    unreachable.
+ *  - **Zero or negative**: every week counts, including ones with no training at
+ *    all, so a dormant account accrues streak weeks and inflates the multiplier
+ *    on the first set logged after a layoff.
+ *
+ * It also propagates: `_syncToSupabase` pushes `weekly_target` back verbatim, so
+ * a value corrupted on one device reaches every other device on its next fetch
+ * and survives a reinstall.
+ *
+ * Only a real finite number is accepted — the trap `sanitizeRecentBaselineWeeks`
+ * documents. `Number(null)` and `Number([])` are both 0, so a coerce-then-clamp
+ * guard would turn a missing or corrupt field into the every-week-counts
+ * MINIMUM rather than falling back to the default a new user gets.
+ *
+ * Rounds rather than floors, preserving `setWeeklyTarget`'s own behaviour — that
+ * setter now delegates here, so the range has exactly one definition.
+ */
+export function sanitizeWeeklyTarget(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_WEEKLY_TARGET
+  return Math.max(MIN_WEEKLY_TARGET, Math.min(MAX_WEEKLY_TARGET, Math.round(value)))
+}
+
+/**
+ * The same range for the staged next-Monday change, where `null` is a real
+ * state meaning "nothing staged" — so a corrupt value falls back to `null`
+ * rather than to the default, which would INVENT a target change the user never
+ * made and let `evaluateWeek` apply it (resetting the streak if it reads as a
+ * decrease).
+ *
+ * A real but out-of-range number is clamped rather than dropped: the user staged
+ * something, and clamping is exactly what `setWeeklyTarget` would have done with
+ * it. `evaluateWeek` takes `Math.max(weeklyTarget, pendingTargetChange)` as the
+ * anti-gaming target, so a clamped-high value makes the week harder, never
+ * easier.
+ */
+export function sanitizePendingTargetChange(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return sanitizeWeeklyTarget(value)
+}
+
 // --- Core Functions ---
 
 /**

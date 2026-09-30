@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { SQUARE_CARDS, STORY_CARDS, loadCardComponent } from '../cardRegistry'
+import { RECAP_CARDS, SQUARE_CARDS, STORY_CARDS, loadCardComponent } from '../cardRegistry'
 import { SHARE_CARD_HANDLE } from '../../../lib/shareImage'
 import type { SessionSummary } from '../../../lib/sessionSummary'
+import type { YearRecap } from '../../../lib/yearRecap'
 
 /**
  * Regression guard for the share-card acquisition loop (issue #714).
@@ -27,14 +28,31 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
     exercises: 5,
     prs: 1,
     repPRs: 1,
-    bestSet: { exerciseId: 'ex1', name: 'Bench', weight: 225, reps: 5, e1RM: 263, isPR: true },
+    bestSet: { exerciseId: 'ex1', name: 'Bench', load: { value: '225', unit: 'lbs' }, reps: 5, e1RM: 263, isPR: true },
     highlights: [
-      { exerciseId: 'ex1', name: 'Bench', weight: 225, reps: 5, e1RM: 263, badge: 'PR', volume: 1125 },
+      { exerciseId: 'ex1', name: 'Bench', load: { value: '225', unit: 'lbs' }, reps: 5, e1RM: 263, badge: 'PR', volume: 1125 },
     ],
     weekVolume: [0, 24850, 0, 0, 0, 0, 0],
     priorWeekVolume: 18200,
     streak: 4,
     progress: null,
+    unitLabel: 'lbs',
+    ...overrides,
+  }
+}
+
+function makeRecap(overrides: Partial<YearRecap> = {}): YearRecap {
+  return {
+    year: 2026,
+    workouts: 148,
+    sets: 1820,
+    reps: 14960,
+    totalVolume: 1284500,
+    exercises: 22,
+    prs: 31,
+    longestStreakWeeks: 19,
+    topLift: { exerciseId: 'ex1', name: 'Deadlift', load: '405 lbs', reps: 3, e1RM: 446 },
+    mostTrained: { kind: 'tag', name: 'Push', sets: 540 },
     unitLabel: 'lbs',
     ...overrides,
   }
@@ -71,6 +89,26 @@ describe('share-card handle (issue #714)', () => {
       const component = (await loadCardComponent(id))!
       const wrapper = mount(component, {
         props: { summary: makeSummary({ bestSet: null, prs: 0, repPRs: 0, highlights: [] }) },
+      })
+      expect(wrapper.text()).toContain(SHARE_CARD_HANDLE)
+    }
+  })
+
+  // The recap cards (#1018) take a different prop, so they cannot ride the
+  // loop above — but the acquisition loop is exactly the same one, and a
+  // year-in-review card is the card most likely to be posted publicly.
+  it.each(RECAP_CARDS.map((c) => c.id))('renders the app handle on the %s card', async (id) => {
+    const component = (await loadCardComponent(id))!
+    const wrapper = mount(component, { props: { recap: makeRecap() } })
+    expect(wrapper.text()).toContain(SHARE_CARD_HANDLE)
+  })
+
+  it('still renders the handle on a recap with no top lift and nothing trained', async () => {
+    // Both blocks are v-if'd; the handle lives outside them.
+    for (const { id } of RECAP_CARDS) {
+      const component = (await loadCardComponent(id))!
+      const wrapper = mount(component, {
+        props: { recap: makeRecap({ topLift: null, mostTrained: null }) },
       })
       expect(wrapper.text()).toContain(SHARE_CARD_HANDLE)
     }

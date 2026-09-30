@@ -45,7 +45,11 @@
                 <span v-if="summary.bestSet.isPR" class="wcBestSetBadge">NEW PR</span>
               </div>
               <div class="wcBestSetName">{{ summary.bestSet.name }}</div>
-              <div class="wcBestSetWeight">{{ summary.bestSet.weight }} × {{ summary.bestSet.reps }}</div>
+              <!-- `load.value` carries the whole load, not just a number:
+                   "225", "+25", or the word "Bodyweight" (#1385). The unit is
+                   deliberately dropped here, as it always has been — the e1RM
+                   line directly below carries it for the pair. -->
+              <div class="wcBestSetWeight">{{ summary.bestSet.load.value }} × {{ summary.bestSet.reps }}</div>
               <div class="wcBestSetE1RM">~{{ summary.bestSet.e1RM }} {{ summary.unitLabel }} e1RM<InfoPopover
                 label="e1RM"
                 title="Estimated 1-rep max"
@@ -63,7 +67,7 @@
                     <span v-if="h.badge" class="wcBreakdownBadge">{{ h.badge.toUpperCase() }}</span>
                   </div>
                   <div class="wcBreakdownMeta">
-                    <span class="wcBreakdownTop">{{ h.weight }} × {{ h.reps }}</span>
+                    <span class="wcBreakdownTop">{{ h.load.value }} × {{ h.reps }}</span>
                     <span class="wcBreakdownVolume">{{ formatVolume(h.volume) }} {{ summary.unitLabel }}</span>
                   </div>
                 </li>
@@ -89,7 +93,7 @@
 
     <SharePickerSheet
       v-if="pickerOpen"
-      :summary="summary"
+      :subject="shareSubject"
       @close="pickerOpen = false"
     />
   </div>
@@ -100,6 +104,7 @@ import { computed, onMounted, onUnmounted, ref, defineAsyncComponent } from 'vue
 import { useModal } from '../composables/useModal'
 import InfoPopover from './InfoPopover.vue'
 import type { SessionSummary } from '../lib/sessionSummary'
+import type { ShareCardSubject } from '../lib/shareSubject'
 
 const SharePickerSheet = defineAsyncComponent(() => import('./share/SharePickerSheet.vue'))
 
@@ -127,6 +132,13 @@ const { open: activateTrap, close: deactivateTrap } = useModal({
 })
 
 const summary = computed(() => props.summary)
+
+/**
+ * The share sheet's subject (#1018). A computed rather than an inline literal
+ * so the object identity only changes when the summary does — the sheet
+ * derives its card list from it.
+ */
+const shareSubject = computed<ShareCardSubject>(() => ({ kind: 'session', summary: summary.value }))
 
 const hasSets = computed(() => summary.value.setsCompleted > 0)
 const formattedVolume = computed(() => summary.value.totalVolume.toLocaleString('en-US'))

@@ -11,7 +11,7 @@
       <div v-for="(h, i) in displayedHighlights" :key="h.exerciseId + i" class="rcLine">
         <span class="rcName">{{ h.name }}</span>
         <span class="rcWeight">
-          {{ h.weight }}×{{ h.reps }}<template v-if="h.badge">&nbsp;★</template>
+          {{ h.load.value }}×{{ h.reps }}<template v-if="h.badge">&nbsp;★</template>
         </span>
       </div>
       <div v-if="hiddenCount > 0" class="rcLineMore">+{{ hiddenCount }} more</div>

@@ -2,6 +2,13 @@ export type ThemeId = 'fire' | 'water' | 'luck' | 'air' | 'eternal' | 'amethyst'
 export type ColorMode = 'light' | 'dark' | 'auto'
 export type WeightUnit = 'lbs' | 'kg'
 
+/** Eternal (black + gold) — the app's default theme. */
+export const DEFAULT_THEME_ID: ThemeId = 'eternal'
+export const DEFAULT_COLOR_MODE: ColorMode = 'dark'
+export const DEFAULT_WEIGHT_UNIT: WeightUnit = 'lbs'
+export const COLOR_MODES: readonly ColorMode[] = ['light', 'dark', 'auto']
+export const WEIGHT_UNITS: readonly WeightUnit[] = ['lbs', 'kg']
+
 export interface ThemeOption {
   id: ThemeId
   label: string
@@ -67,4 +74,39 @@ export const THEME_MIGRATION: Record<string, ThemeId> = {
   sun:      'pearl',
   moon:     'midnight',
   oak:      'earth',
+}
+
+/**
+ * Coerce a stored/remote appearance value into its union (LIFT-1494).
+ *
+ * The three appearance settings are persisted in FOUR places that are read back
+ * independently — the `user-preferences` blob, the Supabase copy of that blob,
+ * the standalone FOUC mirror keys (`app-theme`/`app-mode`/`weight-unit`) that
+ * `initTheme` reads before Pinia exists, and the pre-store legacy keys — so
+ * "what counts as a legal value" has to be answered in exactly one place or the
+ * bootstrap and the store can disagree about the same corrupt string. Every one
+ * of those boundaries routes through the sanitizers below; the preferences store
+ * then types its state with the unions, so a consumer never has to re-narrow
+ * with an unchecked cast.
+ *
+ * Unknown input resolves to the documented default rather than being passed
+ * through: an unrecognised theme id used to reach `data-theme` (no matching
+ * palette, so the page silently rendered the `:root` fallback) and an
+ * unrecognised weight unit used to render as the visible unit LABEL while every
+ * conversion quietly did lbs math.
+ */
+export function sanitizeThemeId(value: unknown): ThemeId {
+  if (typeof value !== 'string') return DEFAULT_THEME_ID
+  // A legacy id is migrated rather than rejected — same table `initTheme` has
+  // always applied to `app-theme`, now applied to the blob copies too.
+  const migrated = THEME_MIGRATION[value] ?? value
+  return THEMES.find(t => t.id === migrated)?.id ?? DEFAULT_THEME_ID
+}
+
+export function sanitizeColorMode(value: unknown): ColorMode {
+  return COLOR_MODES.find(m => m === value) ?? DEFAULT_COLOR_MODE
+}
+
+export function sanitizeWeightUnit(value: unknown): WeightUnit {
+  return WEIGHT_UNITS.find(u => u === value) ?? DEFAULT_WEIGHT_UNIT
 }

@@ -5,13 +5,14 @@ import type { Tables, Json } from '../lib/database.types'
 import { logWeeklySnapshot } from '../lib/xpInstrumentation'
 import type { ThemeId } from '../lib/themes'
 import type { StreakHistoryEntry } from '../lib/xp'
-import { XP_CONFIG } from '../lib/xp'
+import { XP_CONFIG, DEFAULT_WEEKLY_TARGET, sanitizeWeeklyTarget, sanitizePendingTargetChange } from '../lib/xp'
 import { isPlainObject } from '../lib/storage'
 import { persistStoreData, loadStoreData } from '../lib/storePersistence'
 import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { setDayKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
+import { bindAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow } from '../lib/accountRowRead'
 import {
   themeUnlocksToJson,
   streakHistoryToJson,
@@ -50,7 +51,7 @@ export interface SetXPEntry {
 export interface ProgressionState {
   totalXP: number
   streakWeeks: number
-  weeklyTarget: number                // 1-7, user-set
+  weeklyTarget: number                // 1-7, user-set (range owned by sanitizeWeeklyTarget)
   pendingTargetChange: number | null   // staged change, takes effect next Monday
   showProgression: boolean             // verbose vs quiet mode
   progressionEnabled: boolean          // explicit flag: has user activated progression?
@@ -89,7 +90,7 @@ function defaultState(): ProgressionState {
   return {
     totalXP: 0,
     streakWeeks: 0,
-    weeklyTarget: 3,
+    weeklyTarget: DEFAULT_WEEKLY_TARGET,
     pendingTargetChange: null,
     showProgression: true,
     progressionEnabled: false,
@@ -243,6 +244,13 @@ function load(): ProgressionState {
   parsed.xpPerSet = parseXpPerSet(stored.xpPerSet as Json, {})
   parsed.streakHistory = parseStreakHistory(stored.streakHistory as Json, defaultState().streakHistory)
   parsed.bodyweightXPDates = parseBodyweightDates(stored.bodyweightXPDates as Json, [])
+  // The streak threshold and its staged change arrive raw out of the same blob
+  // (LIFT-1505). `setWeeklyTarget` clamps, but a value that never came from the
+  // setter — a hand-edited blob, a row written by another client — reached
+  // `evaluateWeek` unchecked, where high silently freezes every streak forever
+  // and zero counts every week including untrained ones.
+  parsed.weeklyTarget = sanitizeWeeklyTarget(parsed.weeklyTarget)
+  parsed.pendingTargetChange = sanitizePendingTargetChange(parsed.pendingTargetChange)
   if (!parsed.epoch) parsed.epoch = 1
   // Defensive: if starter was picked and XP earned, the trial is over.
   // Only infer starterConfirmed — do NOT force progressionEnabled, as the
@@ -255,21 +263,44 @@ function load(): ProgressionState {
 
 // --- Store ---
 
+/** Tab-local fields: never persisted, never synced, reset by the sign-out wipe. */
+interface ProgressionSessionState {
+  _userId: string | null
+  /**
+   * Has this device read `_userId`'s row (LIFT-1515)? The row is upserted
+   * whole on its `user_id` primary key, so until it has, a push would replace
+   * the account's XP history, streak history and unlocks with this device's
+   * copy — `_syncToSupabase` holds it instead.
+   */
+  _accountRowRead: boolean
+  /**
+   * Set ids whose XP was removed while holding. The read that ends the hold
+   * MERGES xpPerSet as a union, which would hand these straight back, so they
+   * are re-removed after it.
+   */
+  _heldRemovals: string[]
+  // Uniform sync-status contract (LIFT-820): observable by the UI.
+  syncing: boolean
+  lastSyncError: SyncErrorKind | null
+}
+
+function initialSessionState(): ProgressionSessionState {
+  return { _userId: null, _accountRowRead: false, _heldRemovals: [], syncing: false, lastSyncError: null }
+}
+
 export const useProgressionStore = defineStore('progression', {
-  state: (): ProgressionState & { _userId: string | null; syncing: boolean; lastSyncError: SyncErrorKind | null } => ({
+  state: (): ProgressionState & ProgressionSessionState => ({
     ...load(),
-    _userId: null,
-    // Uniform sync-status contract (LIFT-820): observable by the UI.
-    syncing: false,
-    lastSyncError: null,
+    ...initialSessionState(),
   }),
 
   actions: {
     _persist() {
-      // Strip tab-local / transient fields — `_userId` is per-tab and the
-      // sync-status fields (LIFT-820) must never be persisted or synced.
+      // Strip the tab-local fields — `_userId` and the account-row hold are
+      // per-tab, and the sync-status fields (LIFT-820) must never be persisted
+      // or synced.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { _userId: _omit, syncing: _s, lastSyncError: _e, ...state } = this.$state
+      const { _userId: _omit, _accountRowRead: _r, _heldRemovals: _h, syncing: _s, lastSyncError: _e, ...state } = this.$state
       persistStoreData('progression', STORAGE_KEY, JSON.stringify(state))
     },
 
@@ -278,6 +309,12 @@ export const useProgressionStore = defineStore('progression', {
       const fresh = load()
       // Preserve _userId — it's tab-local, not persisted
       this.$patch({ ...fresh })
+      // Another tab may have read the account's row and merged it into the
+      // state just reloaded (LIFT-1515) — this tab's copy is the account's now.
+      if (!this._accountRowRead && this._userId && hasReadAccountRow('progression', this._userId)) {
+        this._accountRowRead = true
+        this._heldRemovals = []
+      }
     },
 
     /**
@@ -290,21 +327,40 @@ export const useProgressionStore = defineStore('progression', {
      * payload. Object.assign inside $patch replaces each top-level key
      * wholesale (a plain object-form $patch would deep-merge maps like
      * xpPerSet, keeping the old user's keys).
+     *
+     * It also forgets which account this device's copy was read from, first
+     * (LIFT-1515), so the next sign-in reads before it may push.
      */
     $reset() {
+      forgetAccountRow('progression')
       this.$patch(($state) => {
-        Object.assign($state, defaultState(), { _userId: null, syncing: false, lastSyncError: null })
+        Object.assign($state, defaultState(), initialSessionState())
       })
       this._persist()
     },
 
     async init(userId: string) {
       this._userId = userId
+      // A device that has read this account's row before pushes exactly as it
+      // always has; one that never has holds until the read below lands
+      // (LIFT-1515). No base is kept: the merge that read runs already folds
+      // this device's additions into the account's copy — only a removal needs
+      // remembering (`_heldRemovals`).
+      this._accountRowRead = bindAccountRow('progression', userId).read
       await this._fetchFromSupabase()
+    },
+
+    /** This device's first read of the account's row: from here on every write is pushed. */
+    _markAccountRowRead(userId: string) {
+      if (this._accountRowRead) return
+      this._accountRowRead = true
+      this._heldRemovals = []
+      markAccountRowRead('progression', userId)
     },
 
     async _fetchFromSupabase() {
       if (!supabase || !this._userId) return
+      const userId = this._userId
 
       this.syncing = true
       let data: Tables<'user_progression'> | null
@@ -316,14 +372,22 @@ export const useProgressionStore = defineStore('progression', {
         const result = await supabase
           .from('user_progression')
           .select('*')
-          .eq('user_id', this._userId)
+          .eq('user_id', userId)
           .single()
+        // Signed out (or switched account) mid-read: the answer belongs to a
+        // session that no longer exists. Merging it would hand the signed-out
+        // user's XP back to the wiped store, and recording it as read would let
+        // the next sign-in push unread defaults (LIFT-1515).
+        if (this._userId !== userId) return
         const error = result.error
         if (error) {
           if (error.code === 'PGRST116') {
             // Row genuinely doesn't exist — push local state to create it.
-            // This is not a sync failure; clear any prior error.
+            // This is not a sync failure; clear any prior error. It IS a
+            // successful read (LIFT-1515): there is no account row for the
+            // push to overwrite.
             this.lastSyncError = null
+            this._markAccountRowRead(userId)
             this._syncToSupabase()
           } else {
             // Network/auth/RLS error — route through reportFetchError so an
@@ -350,9 +414,12 @@ export const useProgressionStore = defineStore('progression', {
       if (!data) return
       this.lastSyncError = null
 
-      // Merge remote state — remote wins for simple scalar fields
-      this.weeklyTarget = data.weekly_target ?? this.weeklyTarget
-      this.pendingTargetChange = data.pending_target_change ?? this.pendingTargetChange
+      // Merge remote state — remote wins for simple scalar fields.
+      // `weekly_target` / `pending_target_change` are plain integer columns with
+      // no CHECK constraint, so the server stores and returns whatever any
+      // client ever sent; re-narrow on the way in (LIFT-1505).
+      this.weeklyTarget = sanitizeWeeklyTarget(data.weekly_target ?? this.weeklyTarget)
+      this.pendingTargetChange = sanitizePendingTargetChange(data.pending_target_change ?? this.pendingTargetChange)
       this.showProgression = data.show_progression ?? this.showProgression
       this.progressionEnabled = data.progression_enabled ?? this.progressionEnabled
       this.starterTheme = (data.starter_theme as ThemeId | null) ?? this.starterTheme
@@ -376,7 +443,13 @@ export const useProgressionStore = defineStore('progression', {
       this.unlockedThemes = mergeUnlockedThemes(this.unlockedThemes, remoteThemes)
 
       const remoteXpPerSet = parseXpPerSet(data.xp_per_set, {})
-      this.xpPerSet = mergeXpPerSet(this.xpPerSet, remoteXpPerSet)
+      const mergedXpPerSet = mergeXpPerSet(this.xpPerSet, remoteXpPerSet)
+      // A set deleted while this device was holding (LIFT-1515) had its XP
+      // removed locally but never pushed, so the account's copy still carries
+      // it and the union above just handed it back. The deletion is newer than
+      // the row; honour it.
+      for (const setId of this._heldRemovals) delete mergedXpPerSet[setId]
+      this.xpPerSet = mergedXpPerSet
 
       const remoteBodyweightDates = parseBodyweightDates(data.bodyweight_xp_dates, [])
       this.bodyweightXPDates = mergeBodyweightDates(this.bodyweightXPDates, remoteBodyweightDates)
@@ -389,6 +462,9 @@ export const useProgressionStore = defineStore('progression', {
       if (this.starterTheme && this.totalXP > 0) {
         this.starterConfirmed = true
       }
+      // The account's row is merged in, so this device's copy now carries it:
+      // from here on every write is pushed, starting with the merge (LIFT-1515).
+      this._markAccountRowRead(userId)
       // Ensure theme unlocks are consistent with merged XP
       this.checkUnlocks()
       this._persist()
@@ -397,6 +473,14 @@ export const useProgressionStore = defineStore('progression', {
 
     _syncToSupabase() {
       if (!supabase || !this._userId) return
+      // Held until this device has read the account's row (LIFT-1515). The
+      // upsert below replaces EVERY column on the `user_id` primary key, so
+      // before that read it would overwrite the account's XP history, streak
+      // history and unlocks with this device's copy — defaults on a fresh
+      // install or after the sign-out wipe. Nothing is lost by waiting: the
+      // read's merge folds this device's additions into the account's copy
+      // (and `_heldRemovals` its removals) and then pushes the result.
+      if (!this._accountRowRead) return
       const userId = this._userId
       const payload = {
         user_id: userId,
@@ -467,6 +551,9 @@ export const useProgressionStore = defineStore('progression', {
         this.totalXP = Math.max(0, this.totalXP - xp)
       }
       delete this.xpPerSet[setId]
+      // Not pushed until the account's row is read (LIFT-1515), and that
+      // read's union merge would restore the entry — remember to re-remove it.
+      if (!this._accountRowRead && !this._heldRemovals.includes(setId)) this._heldRemovals.push(setId)
       this._persist()
       this._syncToSupabase()
     },
@@ -498,7 +585,9 @@ export const useProgressionStore = defineStore('progression', {
     // --- Streak & Target Actions ---
 
     setWeeklyTarget(days: number) {
-      const clamped = Math.max(1, Math.min(7, Math.round(days)))
+      // Delegates rather than hand-rolling the clamp, so the range has one
+      // definition shared with both hydration paths (LIFT-1505).
+      const clamped = sanitizeWeeklyTarget(days)
 
       // If setting back to the current active target, clear the pending change
       if (clamped === this.weeklyTarget) {
@@ -688,7 +777,10 @@ export const useProgressionStore = defineStore('progression', {
       this.starterTheme = themeId
       this.progressionEnabled = true
       if (weeklyTarget !== undefined) {
-        this.weeklyTarget = weeklyTarget
+        // The onboarding / re-pick flow is the one writer that sets the target
+        // outright rather than staging it, so it owes the same range check
+        // (LIFT-1505).
+        this.weeklyTarget = sanitizeWeeklyTarget(weeklyTarget)
       }
       if (!hasTheme(this.unlockedThemes, themeId)) {
         addTheme(this.unlockedThemes, themeId)

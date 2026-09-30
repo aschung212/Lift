@@ -12,7 +12,7 @@ build ships (`PRIVACY_MANIFEST_XML` in `scripts/configure-ios.mjs`) and the Priv
 | Identifiers → User ID | Yes | Yes | No | App Functionality | The Supabase account id that scopes synced rows |
 | Health & Fitness → Fitness | Yes | Yes | No | App Functionality | Sets, reps, weights, PRs, tags, gyms |
 | Health & Fitness → Health | Yes | Yes | No | App Functionality | Bodyweight entries. (HealthKit itself is written on-device; Logbook stores only the entries the user typed into Logbook) |
-| Diagnostics → Crash Data | Yes | No | No | App Functionality | Sentry, `sendDefaultPii: false`, IP scrubbed |
+| Diagnostics → Crash Data | Yes | No | No | App Functionality | Sentry, `dataCollection.userInfo: false` (no IP inference), IP scrubbed |
 | Diagnostics → Performance Data | Yes | No | No | App Functionality | Sentry traces at 10% sample |
 
 Everything else: **Not collected** — no location, contacts, photos, browsing history, search
