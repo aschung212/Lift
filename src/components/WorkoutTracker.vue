@@ -1126,6 +1126,7 @@ import { useWakeLock } from '../composables/useWakeLock'
 import { usePreferencesStore } from '../stores/preferences'
 import { searchExerciseDatabase } from '../lib/exerciseDatabase'
 import type { ExerciseEntry } from '../lib/exerciseDatabase'
+import { isExploringSampleData } from '../lib/sampleData'
 const _prefs = usePreferencesStore()
 const wakeLockEnabled = computed(() => _prefs.experience.screenWakeLock !== false)
 
@@ -1891,8 +1892,8 @@ function openSettingsFromHint() {
 // at them. So the tip also needs a sample exercise to still be in the list.
 const CHART_TIP_KEY = 'explore-chart-tip-dismissed'
 const chartTipDismissed = ref(!!localStorage.getItem(CHART_TIP_KEY))
-const exploredSampleData = localStorage.getItem('sample-data') === 'true'
-const hasSampleData = computed(() => exploredSampleData && store.exercises.some(e => e.sample))
+const exploringSampleData = isExploringSampleData()
+const hasSampleData = computed(() => exploringSampleData && store.exercises.some(e => e.sample))
 
 const showChartTip = computed(() =>
   hasSampleData.value &&

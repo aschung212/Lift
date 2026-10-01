@@ -350,4 +350,70 @@ describe('migrateLocalStorageToSupabase', () => {
     expect(errorSpy).toHaveBeenCalled()
     errorSpy.mockRestore()
   })
+
+  // This migration runs on every launch until the account has an exercise on
+  // the server. A signed-in explorer who had only looked around therefore had
+  // the whole "Explore first" demo inserted as real history on their next
+  // launch, and the following fetch adopted it, which hid the banner that
+  // could clear it. The old sample-data clear masked this by soft-deleting
+  // everything on the server; once that clear was scoped to sample rows
+  // (LIFT-1527), the leak had to close here.
+  describe('the "Explore first" demo (LIFT-1527)', () => {
+    const demoBench = {
+      name: 'Bench Press', sample: true,
+      sets: [{ date: '2026-08-01T23:59:30.000Z', weight: 135, reps: 5, estimated1RM: 157 }],
+    }
+    // A demo exercise the user's real set adopted: no longer flagged.
+    const adoptedSquat = {
+      name: 'Squat',
+      sets: [{ date: '2026-09-29T18:00:00.000Z', weight: 185, reps: 5, estimated1RM: 216 }],
+    }
+    const demoWeighIn = { date: '2026-08-01T23:59:30.000Z', weight: 178, sample: true }
+    const realWeighIn = { date: '2026-09-29T23:59:30.000Z', weight: 181 }
+
+    it('never uploads demo rows while the user is exploring them', async () => {
+      localStorageMock['sample-data'] = 'true'
+      localStorageMock['workout-exercises'] = JSON.stringify([demoBench, adoptedSquat])
+      localStorageMock['bodyweight-entries'] = JSON.stringify([demoWeighIn, realWeighIn])
+
+      await migrateLocalStorageToSupabase('user-1')
+
+      expect(mockInsert).toHaveBeenCalledWith('exercises', [
+        { id: 'test-uuid-1', user_id: 'user-1', name: 'Squat' },
+      ])
+      expect(mockInsert).toHaveBeenCalledWith('sets', [
+        expect.objectContaining({ exercise_id: 'test-uuid-1', weight: 185 }),
+      ])
+      expect(mockInsert).toHaveBeenCalledWith('bodyweight_entries', [
+        expect.objectContaining({ weight: 181 }),
+      ])
+    })
+
+    it('uploads nothing for an explorer who has only looked around', async () => {
+      localStorageMock['sample-data'] = 'true'
+      localStorageMock['workout-exercises'] = JSON.stringify([demoBench])
+      localStorageMock['bodyweight-entries'] = JSON.stringify([demoWeighIn])
+
+      await migrateLocalStorageToSupabase('user-1')
+
+      expect(mockInsert).not.toHaveBeenCalled()
+    })
+
+    it('still uploads sample-flagged rows when the user is not exploring: a CSV import (LIFT-1526)', async () => {
+      // An import is created `sync: false` too. For an import into an empty
+      // account this migration is the path that gets it uploaded, so the skip
+      // must not reach it.
+      localStorageMock['workout-exercises'] = JSON.stringify([demoBench])
+      localStorageMock['bodyweight-entries'] = JSON.stringify([demoWeighIn])
+
+      await migrateLocalStorageToSupabase('user-1')
+
+      expect(mockInsert).toHaveBeenCalledWith('exercises', [
+        { id: 'test-uuid-1', user_id: 'user-1', name: 'Bench Press' },
+      ])
+      expect(mockInsert).toHaveBeenCalledWith('bodyweight_entries', [
+        expect.objectContaining({ weight: 178 }),
+      ])
+    })
+  })
 })

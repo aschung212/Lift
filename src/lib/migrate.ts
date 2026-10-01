@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { uuid } from './uuid'
 import { epley } from './epley'
 import { logError, logWarn } from './logger'
+import { isExploringSampleData } from './sampleData'
 
 const WORKOUT_KEY = 'workout-exercises'
 const BODYWEIGHT_KEY = 'bodyweight-entries'
@@ -50,6 +51,7 @@ function isFiniteNumber(v: unknown): v is number {
 function buildExerciseAndSetRows(
   raw: unknown,
   userId: string,
+  skipSample: boolean,
 ): { exerciseRows: ValidExerciseRow[]; setRows: ValidSetRow[] } {
   const exerciseRows: ValidExerciseRow[] = []
   const setRows: ValidSetRow[] = []
@@ -63,6 +65,14 @@ function buildExerciseAndSetRows(
       logWarn('Migration: skipping malformed exercise', { ex })
       continue
     }
+    // The "Explore first" demo never leaves the device (LIFT-1527). This runs
+    // on EVERY launch until the account has an exercise on the server, so
+    // without the skip a signed-in explorer who merely relaunched had the
+    // whole demo inserted as their real history. The next fetch's name dedup
+    // then adopted the local copies, so no row stayed flagged `sample` and
+    // the banner offering to clear the demo was gone with nothing left to
+    // remove it. Rows a real action adopted are not flagged and still go.
+    if (skipSample && (ex as { sample?: unknown }).sample === true) continue
     const exercise = ex as { name: string; sets?: unknown }
     const exerciseId = uuid()
     exerciseRows.push({ id: exerciseId, user_id: userId, name: exercise.name })
@@ -101,8 +111,11 @@ function buildExerciseAndSetRows(
   return { exerciseRows, setRows }
 }
 
-/** Validate the localStorage bodyweight blob element-by-element. (LIFT-947) */
-function buildBodyweightRows(raw: unknown, userId: string): ValidBodyweightRow[] {
+/**
+ * Validate the localStorage bodyweight blob element-by-element. (LIFT-947)
+ * Skips demo entries for the same reason as `buildExerciseAndSetRows`.
+ */
+function buildBodyweightRows(raw: unknown, userId: string, skipSample: boolean): ValidBodyweightRow[] {
   const rows: ValidBodyweightRow[] = []
   if (!Array.isArray(raw)) {
     if (raw !== undefined) logWarn('Migration: bodyweight blob is not an array, skipping', { raw })
@@ -113,7 +126,8 @@ function buildBodyweightRows(raw: unknown, userId: string): ValidBodyweightRow[]
       logWarn('Migration: skipping malformed bodyweight entry', { entry: e })
       continue
     }
-    const entry = e as { date?: unknown; weight?: unknown }
+    const entry = e as { date?: unknown; weight?: unknown; sample?: unknown }
+    if (skipSample && entry.sample === true) continue
     if (!isNonEmptyString(entry.date) || !isFiniteNumber(entry.weight)) {
       logWarn('Migration: skipping bodyweight entry with missing/invalid field', { entry: e })
       continue
@@ -155,8 +169,12 @@ export async function migrateLocalStorageToSupabase(userId: string): Promise<voi
     if (rawEntries) rawEntriesParsed = JSON.parse(rawEntries)
   } catch { /* empty */ }
 
-  const { exerciseRows, setRows } = buildExerciseAndSetRows(rawExercisesParsed, userId)
-  const bwRows = buildBodyweightRows(rawEntriesParsed, userId)
+  // Rows flagged `sample` are the demo only while the user is exploring it: a
+  // CSV import is flagged too (LIFT-1526), and for an import into an empty
+  // account this migration is currently the one path that gets it uploaded.
+  const skipSample = isExploringSampleData()
+  const { exerciseRows, setRows } = buildExerciseAndSetRows(rawExercisesParsed, userId, skipSample)
+  const bwRows = buildBodyweightRows(rawEntriesParsed, userId, skipSample)
 
   if (exerciseRows.length === 0 && bwRows.length === 0) return
 

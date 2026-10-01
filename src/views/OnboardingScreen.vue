@@ -96,6 +96,7 @@ import { useBodyweightStore } from '../stores/bodyweight'
 import { useProgressionStore } from '../stores/progression'
 import { useTheme } from '../composables/useTheme'
 import type { ThemeId } from '../lib/themes'
+import { SAMPLE_DATA_KEY } from '../lib/sampleData'
 import { useAnalytics } from '../composables/useAnalytics'
 import StarterPickerFlow from '../components/StarterPickerFlow.vue'
 
@@ -442,7 +443,7 @@ function finish() {
 
   localStorage.setItem('onboarding-complete', 'true')
   if (chosenPath === 'explore') {
-    localStorage.setItem('sample-data', 'true')
+    localStorage.setItem(SAMPLE_DATA_KEY, 'true')
   }
   emit('complete')
 }

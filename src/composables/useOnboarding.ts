@@ -1,10 +1,10 @@
 import { ref, computed, watch, type ComputedRef, type Ref } from 'vue'
 import type { Exercise, RemovedExercise } from '../stores/workout'
 import type { BodyweightEntry } from '../stores/bodyweight'
+import { SAMPLE_DATA_KEY, isExploringSampleData } from '../lib/sampleData'
 import { useUndoToast } from './useUndoToast'
 
 const ONBOARDING_KEY = 'onboarding-complete'
-const SAMPLE_DATA_KEY = 'sample-data'
 const FRESH_START_KEY = 'fresh-start'
 
 /**
@@ -88,7 +88,7 @@ export function useOnboarding(stores: OnboardingStores): Onboarding {
   // enough either, because a Strong/Hevy CSV import also creates rows flagged
   // `sample` (LIFT-1526), and they must not grow a "clear" button for a user
   // who never explored.
-  const sampleDataChosen = ref(localStorage.getItem(SAMPLE_DATA_KEY) === 'true')
+  const sampleDataChosen = ref(isExploringSampleData())
   const sampleDataPresent = computed(() =>
     workoutStore.exercises.some(e => e.sample) ||
     bodyweightStore.entries.some(e => e.sample),
@@ -112,7 +112,7 @@ export function useOnboarding(stores: OnboardingStores): Onboarding {
   function completeOnboarding() {
     onboardingInProgress.value = false
     onboardingComplete.value = true
-    sampleDataChosen.value = localStorage.getItem(SAMPLE_DATA_KEY) === 'true'
+    sampleDataChosen.value = isExploringSampleData()
   }
 
   /**
