@@ -180,6 +180,30 @@ describe('createFakeSupabase modes (LIFT-1009)', () => {
     expect(fake.selectsFor('exercises')).toHaveLength(1)
   })
 
+  it("'ok' mode answers a { count, head } select with the matching-row count and no data (LIFT-1534)", async () => {
+    // The account migration's emptiness guard reads `count`. Left undefined,
+    // `count && count > 0` is false, so every account looked empty and the
+    // guard could not be tested against server state.
+    const fake = createFakeSupabase({ mode: 'ok', maxRows: 2 })
+    fake.seed('exercises', [
+      { id: 'ex-1', user_id: 'u1' },
+      { id: 'ex-2', user_id: 'u1' },
+      { id: 'ex-3', user_id: 'u1' },
+      { id: 'ex-4', user_id: 'u2' },
+    ])
+
+    const head = await fake.from('exercises').select('*', { count: 'exact', head: true }).eq('user_id', 'u1')
+    expect(head).toEqual({ data: null, error: null, count: 3 })
+
+    // Past the row cap: the page is capped, the count is not.
+    const paged = await fake.from('exercises').select('*', { count: 'exact' }).eq('user_id', 'u1')
+    expect((paged.data as unknown[]).length).toBe(2)
+    expect(paged.count).toBe(3)
+
+    // No count asked for, none reported.
+    expect(await fake.from('exercises').select('*').eq('user_id', 'u2')).not.toHaveProperty('count')
+  })
+
   it('reset() clears seeded tables and recorded calls', async () => {
     const fake = createFakeSupabase({ mode: 'ok' })
     fake.seed('sets', [{ id: 's-1', user_id: 'u1' }])
