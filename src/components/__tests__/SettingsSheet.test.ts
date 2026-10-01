@@ -224,6 +224,7 @@ const mockWorkoutStore = reactive({
   workoutDates: [],
   addExercise: vi.fn(),
   logSet: vi.fn(),
+  importHistory: vi.fn(),
   toggleExerciseTag: mockToggleExerciseTag,
   renameGymOnExercises: vi.fn(),
   removeGymFromExercises: vi.fn(() => []),
@@ -692,6 +693,34 @@ describe('SettingsSheet', () => {
       await wrapper.find('button[aria-label="year training report"]').trigger('click')
       // Re-query after the re-render — the held wrapper node goes stale.
       expect(wrapper.find('button[aria-label="year training report"]').attributes('aria-pressed')).toBe('true')
+    })
+
+    // LIFT-1526: the handler used to build the import itself with
+    // `addExercise(…, { sync: false })`, which stamps onboarding `sample` on
+    // every exercise it creates, so no imported history ever reached the
+    // server. It must hand the whole file to the store's import action instead.
+    it('hands an imported CSV to the store as synced history, not sample data (LIFT-1526)', async () => {
+      const csv = [
+        'Date,Workout Name,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE',
+        '2026-03-02,Push,Bench Press (Barbell),1,185,5,,,,,8',
+        '2026-03-02,Push,Bench Press (Barbell),2,185,5,,,,,',
+        '2026-03-04,Legs,Squat (Barbell),1,225,5,,,,,',
+      ].join('\n')
+      const wrapper = mountSheet()
+      const input = wrapper.find('input[type="file"]')
+      Object.defineProperty(input.element, 'files', {
+        value: [new File([csv], 'strong.csv', { type: 'text/csv' })],
+        configurable: true,
+      })
+      await input.trigger('change')
+      await vi.waitFor(() => expect(mockWorkoutStore.importHistory).toHaveBeenCalledTimes(1))
+
+      const [imported] = mockWorkoutStore.importHistory.mock.calls[0] as [{ name: string; sets: unknown[] }[]]
+      expect(imported.map(e => [e.name, e.sets.length])).toEqual([['Bench Press (Barbell)', 2], ['Squat (Barbell)', 1]])
+      expect(mockWorkoutStore.addExercise).not.toHaveBeenCalled()
+      expect(mockWorkoutStore.logSet).not.toHaveBeenCalled()
+      await nextTick()
+      expect(wrapper.find('.settingsImportSuccess').text()).toBe('Imported 2 exercises with 3 sets (strong)')
     })
   })
 

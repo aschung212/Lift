@@ -49,6 +49,7 @@ vi.mock('../../lib/uuid', async (importOriginal) => {
 })
 
 import { getLocalStorageMock } from '../../__tests__/helpers'
+import { DEMO_EXERCISE_NAMES } from '../../lib/strandedImports'
 const localStorageMock = getLocalStorageMock()
 
 describe('OnboardingScreen', () => {
@@ -279,6 +280,19 @@ describe('OnboardingScreen', () => {
       for (const call of exploreCalls) {
         expect(call[2]).toEqual({ sync: false })
       }
+    })
+
+    it('seeds only demo exercises the stranded-import repair recognises (LIFT-1526)', async () => {
+      // `releaseStrandedImports` un-flags any sample row whose name is not one
+      // the demo seeds, so it can upload CSV imports an older build stranded
+      // as sample data. A demo exercise missing from that list would be
+      // mistaken for an import and uploaded as the user's real history.
+      await completeVia(EXPLORE)
+      const seeded = mockAddExercise.mock.calls
+        .filter(call => (call[2] as { sync?: boolean } | undefined)?.sync === false)
+        .map(call => call[0] as string)
+      expect(seeded.length).toBeGreaterThanOrEqual(6)
+      expect(seeded.filter(name => !DEMO_EXERCISE_NAMES.has(name))).toEqual([])
     })
 
     it('the starter path does NOT pass sync:false (starter data should sync)', async () => {

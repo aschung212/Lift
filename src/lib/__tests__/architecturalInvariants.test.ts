@@ -322,11 +322,15 @@ function countCallArgs(source: string, start: number): number {
 describe('Invariant: store writes carry a durable descriptor (LIFT-1239)', () => {
   /**
    * An enqueue may opt out of the journal only with this marker plus a written
-   * justification. The one current exemption is bodyweight's `clearAll`: its
+   * justification. There are two exemptions. Bodyweight's `clearAll`: its
    * match is unbounded ("every live row for this user"), a descriptor can only
    * express `eq` filters so the `.is('deleted_at', null)` guard would be lost
    * on replay, and re-applying a wipe on the next launch would destroy entries
-   * logged on another device in the meantime.
+   * logged on another device in the meantime. And the workout store's bulk
+   * upload (LIFT-1526): it builds its rows from the store when it runs, so a
+   * journaled snapshot replayed after a relaunch could put back a value edited
+   * since, while every row it carries is one the next fetch finds missing from
+   * the server and pushes again anyway.
    */
   const EXEMPT_MARKER = 'durable-journal-exempt'
 
@@ -386,6 +390,77 @@ describe('Invariant: store writes carry a durable descriptor (LIFT-1239)', () =>
       )
 
     expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant 2c: only the onboarding demo mints sample rows (LIFT-1526) ──
+// Guard: `addExercise` and bodyweight's `addEntry` stamp `sample: true` when
+// passed `{ sync: false }`, and every push filters a sample row out: it is the
+// "onboarding demo, never upload" flag. The CSV import passed `sync: false` to
+// defer its writes, one day before #232 gave the option that meaning, and from
+// then on every imported history stayed on the importing device with the suite
+// green. The parser was tested; the handler never was. A behavioural test only
+// covers the caller it drives, so this covers every caller there will ever be.
+
+describe('Invariant: only the onboarding demo mints sample rows (LIFT-1526)', () => {
+  const SEEDER = 'views/OnboardingScreen.vue'
+  const MINTING_CALL = /\b(addExercise|addEntry)\s*\(/g
+  const NO_SYNC = /\bsync\s*:\s*false\b|\bnoSync\b/
+
+  /** The argument text of the call whose `(` is at `open`, nested calls included. */
+  function callArguments(source: string, open: number): string {
+    let depth = 0
+    let quote: string | null = null
+    for (let i = open; i < source.length; i++) {
+      const ch = source[i]
+      if (quote) {
+        if (ch === '\\') i++
+        else if (ch === quote) quote = null
+        continue
+      }
+      if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+      if (ch === '(' || ch === '{' || ch === '[') depth++
+      else if ((ch === ')' || ch === '}' || ch === ']') && --depth === 0) return source.slice(open + 1, i)
+    }
+    return ''
+  }
+
+  /** Every `addExercise(…)` / `addEntry(…)` call whose arguments ask for no sync. */
+  function sampleMintingCalls(files: { path: string; content: string }[]): string[] {
+    const calls: string[] = []
+    for (const { path, content } of files) {
+      const source = stripComments(content)
+      for (const m of source.matchAll(MINTING_CALL)) {
+        const args = callArguments(source, (m.index ?? 0) + m[0].length - 1)
+        if (NO_SYNC.test(args)) calls.push(`${path}: ${m[1]}(${args.replace(/\s+/g, ' ').trim()})`)
+      }
+    }
+    return calls
+  }
+
+  it('finds the demo seeder’s calls and reads past nested calls (non-vacuity)', () => {
+    const seeder = getSourceFiles().filter(f => f.path === SEEDER)
+    expect(seeder).toHaveLength(1)
+    // Two exercise seeds and the bodyweight seed, all through `noSync`.
+    expect(sampleMintingCalls(seeder).length).toBeGreaterThanOrEqual(3)
+    // The shape the import shipped: a nested call ahead of the option, which a
+    // `[^)]*` match would stop inside of and miss.
+    const shipped = "store.addExercise(ex.name, ex.tags.slice(0, 2), { sync: false })"
+    expect(sampleMintingCalls([{ path: 'x.vue', content: shipped }])).toHaveLength(1)
+    // A definition's defaults are not a call that asks for no sync.
+    const definition = 'function addExercise(name: string, { sync = true }: { sync?: boolean } = {}) {}'
+    expect(sampleMintingCalls([{ path: 'y.ts', content: definition }])).toEqual([])
+  })
+
+  it('no other caller passes sync: false to addExercise or addEntry', () => {
+    const offenders = sampleMintingCalls(getSourceFiles().filter(f => f.path !== SEEDER))
+    expect(
+      offenders,
+      'Only the "Explore first" demo may create sample rows. `sync: false` on these ' +
+        'calls does not mean "upload later": it flags the row as demo data that no ' +
+        'push will ever send. Create the rows normally (or through a store action ' +
+        'that uploads them, like importHistory).',
+    ).toEqual([])
   })
 })
 
@@ -1492,7 +1567,7 @@ describe('Invariant: REPLAYABLE_COLUMNS stays in lockstep with its producers (LI
 
   const PRODUCERS = [
     { table: 'exercises', marker: 'function _buildExerciseUpsert', source: WORKOUT_STORE },
-    { table: 'sets', marker: 'function _enqueueSetUpsert', source: WORKOUT_STORE },
+    { table: 'sets', marker: 'function _buildSetUpsert', source: WORKOUT_STORE },
   ] as const
 
   it('the extractors find real columns and a real allowlist (non-vacuity)', () => {
@@ -1561,7 +1636,7 @@ describe('Invariant: every always-send NULL column is nullable in the migrations
    * The first balanced `{`…`}` block following `marker` ('' if absent).
    *
    * `at` re-anchors the search inside the marker's region, which is required
-   * rather than decorative: `_enqueueSetUpsert` destructures a typed parameter,
+   * rather than decorative: `_buildSetUpsert` destructures a typed parameter,
    * so the first `{` after its name opens the PARAMETER TYPE, not the row
    * literal — a scan that took it would quietly cover the wrong block and
    * report clean.
@@ -1602,7 +1677,7 @@ describe('Invariant: every always-send NULL column is nullable in the migrations
   /** Every table→producer pair whose upsert payload the client owns. */
   const PRODUCERS = [
     { table: 'exercises', marker: 'function _buildExerciseUpsert', at: 'return {' },
-    { table: 'sets', marker: 'function _enqueueSetUpsert', at: 'const row = {' },
+    { table: 'sets', marker: 'function _buildSetUpsert', at: 'return {' },
   ] as const
 
   it('the scan reaches each producer’s real row literal (non-vacuity)', () => {
@@ -1613,11 +1688,11 @@ describe('Invariant: every always-send NULL column is nullable in the migrations
     const lines = (marker: string, at: string) =>
       stripComments(bodyAfter(WORKOUT_STORE_SRC, marker, at))
     expect(lines('function _buildExerciseUpsert', 'return {')).toContain('plate_count_mode')
-    expect(lines('function _enqueueSetUpsert', 'const row = {')).toContain('estimated_1rm')
+    expect(lines('function _buildSetUpsert', 'return {')).toContain('estimated_1rm')
     // …and specifically NOT the destructured parameter type the naive anchor
     // would have hit, whose declarations are the only `id: string` in scope.
-    expect(lines('function _enqueueSetUpsert', 'const row = {')).not.toContain('id: string')
-    expect(bodyAfter(WORKOUT_STORE_SRC, 'function _enqueueSetUpsert')).toContain('id: string')
+    expect(lines('function _buildSetUpsert', 'return {')).not.toContain('id: string')
+    expect(bodyAfter(WORKOUT_STORE_SRC, 'function _buildSetUpsert')).toContain('id: string')
   })
 
   it('the scan finds the exercise upsert’s NULL-sending columns (non-vacuity)', () => {
@@ -3242,7 +3317,7 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
    */
   const PRODUCERS: Record<string, { file: string; marker: string; at: string }> = {
     exercises: { file: 'workout.ts', marker: 'function _buildExerciseUpsert', at: 'return {' },
-    sets: { file: 'workout.ts', marker: 'function _enqueueSetUpsert', at: 'const row = {' },
+    sets: { file: 'workout.ts', marker: 'function _buildSetUpsert', at: 'return {' },
     bodyweight_entries: { file: 'bodyweight.ts', marker: '_enqueueEntryUpsert(', at: 'const row = {' },
     user_preferences: { file: 'preferences.ts', marker: '_persist() {', at: 'const row = {' },
   }

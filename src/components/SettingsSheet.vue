@@ -1849,13 +1849,7 @@ function handleImportFile(event: Event) {
       importResult.value = { exercises: 0, sets: 0, format: 'unknown', error: 'Unrecognized format. Supported: Strong, Hevy, Logbook CSV.' }
       return
     }
-    for (const ex of result.exercises) {
-      const existingId = workoutStore.addExercise(ex.name, ex.tags, { sync: false })
-      if (!existingId) continue
-      for (const set of ex.sets) {
-        workoutStore.logSet(existingId, set.weight, set.reps, set.date.slice(0, 10), { sync: false })
-      }
-    }
+    workoutStore.importHistory(result.exercises)
     importResult.value = { exercises: result.exercises.length, sets: result.totalSets, format: result.format }
     logEvent('data_import', { format: result.format, exercises: result.exercises.length, sets: result.totalSets })
   }
