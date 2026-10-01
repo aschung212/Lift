@@ -158,6 +158,32 @@ function isIsFilter(v: unknown): v is IsFilter {
   return v !== null && typeof v === 'object' && '__is' in (v as object)
 }
 
+/**
+ * The rows of a MULTI-row upsert as PostgREST writes them (LIFT-1526).
+ *
+ * postgrest-js sends the union of the rows' keys as the `columns` parameter,
+ * and with its default `defaultToNull: true` a row that lacks one of those
+ * columns gets NULL there: on an insert it does not fall back to the column's
+ * DEFAULT, and on a conflict it overwrites the stored value. (A key present
+ * with `undefined` counts as lacking, because `JSON.stringify` drops it while
+ * `Object.keys` still lists it.) A single-row upsert sends no `columns`, so an
+ * omitted column there keeps its DEFAULT, which is what `_withDefaults` models.
+ *
+ * Without this, a batch that mixed a row carrying `created_at` (or
+ * `input_mode`) with a row omitting it would look fine here, while in
+ * production both columns are NOT NULL and the whole request fails.
+ */
+function asMultiRowUpsert(rows: Row[]): Row[] {
+  const columns = new Set(rows.flatMap(row => Object.keys(row)))
+  return rows.map(row => {
+    const out: Row = { ...row }
+    for (const column of columns) {
+      if (out[column] === undefined) out[column] = null
+    }
+    return out
+  })
+}
+
 const DEFAULT_API_ERROR: FakeSupabaseError = {
   message: 'permission denied for table exercises',
   code: '42501',
@@ -304,7 +330,7 @@ export class FakeSupabase {
       return matches
     }
     if (op === 'upsert') {
-      const records = Array.isArray(data) ? (data as Row[]) : [data as Row]
+      const records = Array.isArray(data) ? asMultiRowUpsert(data as Row[]) : [data as Row]
       for (const rec of records) {
         const idx = rows.findIndex(r => r.id === rec.id)
         // ON CONFLICT DO UPDATE only assigns the columns the payload carries, so

@@ -191,6 +191,46 @@ describe('createFakeSupabase modes (LIFT-1009)', () => {
 })
 
 /**
+ * A multi-row upsert is not a loop of single-row ones (LIFT-1526). postgrest-js
+ * sends the union of the rows' keys as `columns`, and a row lacking one of them
+ * is written with NULL, not the column's DEFAULT. The bulk upload groups rows by
+ * key set (`chunkUniformRows`) for exactly this reason; these pin the fake's
+ * half, so the regression in `workoutCsvImport.test.ts` can see a mixed batch.
+ */
+describe('createFakeSupabase models multi-row upserts the way PostgREST writes them (LIFT-1526)', () => {
+  it('writes NULL for a column another row in the same request sends', async () => {
+    const fake = createFakeSupabase({ mode: 'ok' })
+    await fake.from('exercises').upsert([
+      { id: 'ex-1', user_id: 'u1', name: 'Bench', input_mode: 'plates' },
+      { id: 'ex-2', user_id: 'u1', name: 'Curl' },
+    ])
+    // Not 'numpad': inside a batch the omitted column is NULL, which the NOT
+    // NULL column refuses in production, failing the whole request.
+    expect(fake.tables.exercises[1].input_mode).toBeNull()
+  })
+
+  it('treats a key present as undefined like a missing one', async () => {
+    const fake = createFakeSupabase({ mode: 'ok' })
+    await fake.from('sets').upsert([
+      { id: 's-1', user_id: 'u1', created_at: '2026-09-30T18:00:00.000Z' },
+      { id: 's-2', user_id: 'u1', created_at: undefined },
+    ])
+    expect(fake.tables.sets[1].created_at).toBeNull()
+  })
+
+  it('keeps the DEFAULT for a column no row in the batch sends, as a single-row upsert does', async () => {
+    const fake = createFakeSupabase({ mode: 'ok' })
+    await fake.from('exercises').upsert([
+      { id: 'ex-1', user_id: 'u1', name: 'Bench' },
+      { id: 'ex-2', user_id: 'u1', name: 'Curl' },
+    ])
+    expect(fake.tables.exercises.map(r => r.input_mode)).toEqual(['numpad', 'numpad'])
+    await fake.from('exercises').upsert({ id: 'ex-3', user_id: 'u1', name: 'Row' })
+    expect(fake.tables.exercises[2].input_mode).toBe('numpad')
+  })
+})
+
+/**
  * The fake stores what the payload contains — but Postgres does not. A column
  * the client omits is filled from its DEFAULT, and the next fetch reads that
  * invented value back as though the user had chosen it. `bar_weight real NOT

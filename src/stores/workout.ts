@@ -27,6 +27,8 @@ import { mapRemoteExercise, mapRemoteSet } from '../lib/remoteRows'
 import { captureLocalOnlySetFields, restoreLocalOnlySetFields } from '../lib/localOnlySetFields'
 import { mergeExerciseMetadata } from '../lib/exerciseMerge'
 import { fetchAllRows } from '../lib/supabasePagination'
+import { chunkUniformRows } from '../lib/bulkUpsert'
+import { releaseStrandedImports } from '../lib/strandedImports'
 import { bodyweightFold, effectiveSetWeight } from '../lib/bodyweightLoad'
 import { attemptedNextRep, pickTopSet } from '../lib/setEffort'
 import { useBodyweightStore } from './bodyweight'
@@ -290,6 +292,11 @@ function load(): Exercise[] {
   // a side effect, so it costs the state factory nothing; the flag is burned
   // only once a fetch has repaired the server's copy too (see `_fetchFromSupabase`).
   if (!isBarWeightRepairDone()) repairMaterializedBarWeights(parsed)
+  // Un-strand the CSV imports an older build flagged as onboarding sample data
+  // (LIFT-1526), so the next sync uploads them like any other local-only
+  // exercise. Runs on every load rather than once: it is a pure transform that
+  // matches nothing after the first pass, and nothing mints such rows any more.
+  releaseStrandedImports(parsed)
   return parsed
 }
 
@@ -320,7 +327,32 @@ export const useWorkoutStore = defineStore('workout', () => {
   const lastSyncError = shallowRef<SyncErrorKind | null>(null)
 
   // ── Persistence ────────────────────────────────────────────────────
+  // Depth of `_batchPersist` calls in progress, and whether a write was asked
+  // for during one. Every action persists the whole store, so a bulk action
+  // that reuses them (an import calls `logSet` once per set) would otherwise
+  // re-serialize every exercise once per row.
+  let _persistBatchDepth = 0
+  let _persistDeferred = false
+
+  /** Run `fn` with `_persist` deferred to a single write when it returns. */
+  function _batchPersist<T>(fn: () => T): T {
+    _persistBatchDepth++
+    try {
+      return fn()
+    } finally {
+      _persistBatchDepth--
+      if (_persistBatchDepth === 0 && _persistDeferred) {
+        _persistDeferred = false
+        _persist()
+      }
+    }
+  }
+
   function _persist() {
+    if (_persistBatchDepth > 0) {
+      _persistDeferred = true
+      return
+    }
     // Secondary tag keys are workout-specific and not mirrored to the IndexedDB
     // backup, so they're written here; the primary exercises payload goes
     // through the shared helper (localStorage + IDB backup + cross-tab broadcast).
@@ -506,8 +538,12 @@ export const useWorkoutStore = defineStore('workout', () => {
     )
   }
 
-  /** Durable set upsert with a journaled descriptor (LIFT-706). */
-  function _enqueueSetUpsert(
+  /**
+   * The `sets` row for one set, shared by the single-row write below and the
+   * bulk upload (`_enqueueBulkUpload`), so the two can never send different
+   * columns for the same set.
+   */
+  function _buildSetUpsert(
     set: {
       id: string; date: string; weight: number; reps: number; estimated1RM: number
       createdAt?: string; attemptedNextRep?: boolean
@@ -515,7 +551,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     exerciseId: string,
     userId: string,
   ) {
-    const row = {
+    return {
       id: set.id, user_id: userId, exercise_id: exerciseId,
       date: set.date, weight: set.weight, reps: set.reps,
       estimated_1rm: set.estimated1RM,
@@ -528,11 +564,103 @@ export const useWorkoutStore = defineStore('workout', () => {
       // createdAt) leaves the server's created_at untouched on upsert.
       ...(set.createdAt ? { created_at: set.createdAt } : {}),
     }
+  }
+
+  /** Durable set upsert with a journaled descriptor (LIFT-706). */
+  function _enqueueSetUpsert(
+    set: Parameters<typeof _buildSetUpsert>[0],
+    exerciseId: string,
+    userId: string,
+  ) {
+    const row = _buildSetUpsert(set, exerciseId, userId)
     syncQueue.enqueue(
       `set:${set.id}`,
       () => supabase!.from('sets').upsert(row),
       { op: 'upsert', table: 'sets', row },
     )
+  }
+
+  /**
+   * Upload exercises and their sets as a few multi-row upserts instead of one
+   * queued write per row (LIFT-1526). For the CSV import, and for the fetch's
+   * push of exercises the server has never seen, which is also how an import
+   * that did not finish uploading is recovered on the next sync.
+   *
+   * Three properties carry it:
+   *
+   * 1. **Exercise rows land before their sets.** Every op in a flush runs
+   *    concurrently, so a set queued beside its exercise's upsert can reach
+   *    Postgres first and fail the `exercise_id` foreign key, a refusal the
+   *    queue does not retry. Here the exercise rows go out first, in the same
+   *    op, and the sets follow once they have landed.
+   *
+   * 2. **Rows are built when the op runs, from the store as it is then.** An
+   *    import is queued in one tick and may wait out a debounce, an offline
+   *    stretch, or retries. A set edited in the meantime goes out with its edit;
+   *    a set or exercise deleted in the meantime is skipped rather than
+   *    resurrected; a sample row is never sent. So this op can never write a
+   *    stale value over a newer `set:<id>` write in the same flush, because both
+   *    carry the store's current value.
+   *
+   * 3. **It is deliberately not journaled.** A journal entry is a snapshot, and
+   *    replaying a snapshot after a relaunch is exactly how a value edited since
+   *    would come back. Nothing is lost by leaving it out: every row it carries
+   *    is one the next `_fetchFromSupabase` finds missing from the server and
+   *    pushes again, from the store's current state.
+   *
+   * Progress is kept across retries, so a retry resends only rows that have not
+   * landed. `includeRow` is false for an exercise the server already holds: its
+   * sets are uploaded alone, just as `logSet` uploads a set without rewriting
+   * the exercise row.
+   */
+  function _enqueueBulkUpload(
+    targets: readonly { exerciseId: string; includeRow: boolean; setIds: readonly string[] }[],
+  ) {
+    if (!supabase || isPreviewMode.value || !_userId) return
+    if (!targets.some(t => t.includeRow || t.setIds.length > 0)) return
+    const client = supabase
+    const userId = _userId
+    const landedExercises = new Set<string>()
+    const landedSets = new Set<string>()
+    const sessionEnded = () => _userId !== userId
+
+    async function upload() {
+      // Signed out (or into another account) since this was queued: the rows
+      // belonged to a session whose local state has been wiped.
+      if (sessionEnded()) return { error: null }
+      const byId = new Map(exercises.value.map(e => [e.id, e]))
+      const exerciseRows: ReturnType<typeof _buildExerciseUpsert>[] = []
+      const setRows: ReturnType<typeof _buildSetUpsert>[] = []
+      for (const { exerciseId, includeRow, setIds } of targets) {
+        const exercise = byId.get(exerciseId)
+        if (!exercise || exercise.sample) continue
+        if (includeRow && !landedExercises.has(exercise.id)) {
+          exerciseRows.push(_buildExerciseUpsert(exercise, userId))
+        }
+        const wanted = new Set(setIds)
+        for (const set of exercise.sets) {
+          if (wanted.has(set.id) && !landedSets.has(set.id)) {
+            setRows.push(_buildSetUpsert(set, exercise.id, userId))
+          }
+        }
+      }
+      for (const chunk of chunkUniformRows(exerciseRows)) {
+        if (sessionEnded()) return { error: null }
+        const result = await client.from('exercises').upsert(chunk)
+        if (result.error) return result
+        for (const row of chunk) landedExercises.add(row.id)
+      }
+      for (const chunk of chunkUniformRows(setRows)) {
+        if (sessionEnded()) return { error: null }
+        const result = await client.from('sets').upsert(chunk)
+        if (result.error) return result
+        for (const row of chunk) landedSets.add(row.id)
+      }
+      return { error: null }
+    }
+
+    // durable-journal-exempt (LIFT-1526): see (3) above
+    syncQueue.enqueue(`bulk-upload:${uuid()}`, upload)
   }
 
   /**
@@ -801,16 +929,18 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Push local-only exercises to remote
     // (#3 fix: filter localOnly to exclude exercises removed by dedup)
     // (#232 fix: skip sample exercises — they were created with sync:false during onboarding)
+    // Uploaded in bulk (LIFT-1526): an exercise the server has never seen can
+    // carry thousands of sets (a CSV import whose own upload was interrupted
+    // lands here), and one queued write per set re-serialized the whole journal
+    // on every enqueue and drained at the rate limiter's 200 writes a minute.
     const survivingIds = new Set(deduped.exercises.map(e => e.id))
     const filteredLocalOnly = localOnly.filter(e => survivingIds.has(e.id) && !e.sample)
     if (filteredLocalOnly.length > 0) {
-      const userId = _userId
-      for (const ex of filteredLocalOnly) {
-        _enqueueExerciseUpsert(ex, userId)
-        for (const set of ex.sets) {
-          _enqueueSetUpsert(set, ex.id, userId)
-        }
-      }
+      _enqueueBulkUpload(filteredLocalOnly.map(ex => ({
+        exerciseId: ex.id,
+        includeRow: true,
+        setIds: ex.sets.map(s => s.id),
+      })))
     }
 
     // Push local-wins back to Supabase (offline edits that beat remote timestamps)
@@ -1122,15 +1252,16 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /** Log a set; returns its id, or `undefined` when the exercise doesn't exist. */
   function logSet(
     exerciseId: string,
     weight: number,
     reps: number,
     dateStr?: string,
     { sync = true, rpe, attemptedNextRep }: { sync?: boolean; rpe?: number; attemptedNextRep?: boolean } = {},
-  ) {
+  ): string | undefined {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
-    if (!exercise) return
+    if (!exercise) return undefined
     // Real user action on a sample exercise adopts it (makes it syncable).
     // _adoptExercise pushes via syncQueue, so we must also use syncQueue for
     // the new set to avoid FK violations from the set arriving before the exercise.
@@ -1166,6 +1297,72 @@ export const useWorkoutStore = defineStore('workout', () => {
     if (sync && supabase && !isPreviewMode.value && _userId) {
       _enqueueSetUpsert(newSet, exerciseId, _userId)
     }
+    return id
+  }
+
+  /**
+   * Merge a parsed CSV import (Strong / Hevy / Logbook) into the store as the
+   * user's own history, and upload it (LIFT-1526).
+   *
+   * The import used to call `addExercise(…, { sync: false })`, which since #232
+   * has meant "onboarding sample data": every exercise it created was flagged
+   * `sample`, every push in `_fetchFromSupabase` skipped it, and the imported
+   * history never left the device. A second device never saw it and a
+   * reinstall lost it. Nothing here passes `sync: false` to `addExercise`.
+   *
+   * - A name matching an existing exercise (case-insensitively, the
+   *   `addExercise` rule) appends to it rather than creating a duplicate. If
+   *   that exercise is still an onboarding demo row, the import adopts it,
+   *   like any other real action on demo data.
+   * - Every set goes through `logSet`, so it is built exactly as a logged set
+   *   is (e1RM, bodyweight fold, `createdAt`), keeps the RPE and "went for the
+   *   next rep" the file carried, and is filed under the local day `setDayKey`
+   *   gives its date (never `slice(0, 10)`, #746).
+   * - `logSet` is called with `sync: false`, which only skips its own
+   *   per-set write: the whole import is uploaded by one `_enqueueBulkUpload`,
+   *   with the exercise rows first. The store is persisted once.
+   */
+  function importHistory(
+    imported: readonly {
+      name: string
+      tags: readonly string[]
+      sets: readonly Pick<WorkoutSet, 'date' | 'weight' | 'reps' | 'rpe' | 'attemptedNextRep'>[]
+    }[],
+  ) {
+    const byName = new Map(exercises.value.map(e => [e.name.toLowerCase(), e]))
+    const uploads: { exerciseId: string; includeRow: boolean; setIds: string[] }[] = []
+    _batchPersist(() => {
+      for (const entry of imported) {
+        const name = entry.name.trim()
+        if (!name) continue
+        let exercise = byName.get(name.toLowerCase())
+        // Whether the server can already hold this exercise's row. A row
+        // created or adopted here cannot, so the upload must send it first.
+        let includeRow = false
+        if (!exercise) {
+          exercise = { id: uuid(), name, tags: [...entry.tags], sets: [], updated_at: new Date().toISOString() }
+          exercises.value.push(exercise)
+          byName.set(name.toLowerCase(), exercise)
+          includeRow = true
+        } else if (exercise.sample) {
+          _adoptExercise(exercise)
+          includeRow = true
+        }
+        const setIds: string[] = []
+        for (const set of entry.sets) {
+          const id = logSet(exercise.id, set.weight, set.reps, setDayKey(set.date), {
+            sync: false,
+            rpe: set.rpe,
+            attemptedNextRep: set.attemptedNextRep,
+          })
+          if (id) setIds.push(id)
+        }
+        uploads.push({ exerciseId: exercise.id, includeRow, setIds })
+      }
+      triggerRef(exercises)
+      _persist()
+    })
+    _enqueueBulkUpload(uploads)
   }
 
   /**
@@ -2048,6 +2245,7 @@ export const useWorkoutStore = defineStore('workout', () => {
     setExerciseGyms,
     setExerciseNotes,
     logSet,
+    importHistory,
     updateSet,
     deleteSet,
     restoreSet,
