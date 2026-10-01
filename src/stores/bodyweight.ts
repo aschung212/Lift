@@ -332,29 +332,37 @@ export const useBodyweightStore = defineStore('bodyweight', {
       }
     },
 
-    clearAll() {
-      this.entries = []
+    /**
+     * Remove the onboarding sample entries — exactly the ones still flagged
+     * `sample` — and return them for an undo (LIFT-1527).
+     *
+     * Local-only: `sample` means the entry was never pushed (`addEntry` with
+     * `sync: false`; `updateEntry` and the fetch's date dedup clear the flag
+     * before the entry is ever upserted), so there is no server row to
+     * soft-delete. The sample-data banner used to call a `clearAll` here that
+     * soft-deleted EVERY live bodyweight row the user had on the server,
+     * weigh-ins logged on other devices included. That action had no other
+     * caller and is gone.
+     */
+    removeSampleEntries(): BodyweightEntry[] {
+      const removed = this.entries.filter((e: BodyweightEntry) => e.sample)
+      if (removed.length === 0) return removed
+      this.entries = this.entries.filter((e: BodyweightEntry) => !e.sample)
       this._persist()
+      return removed
+    },
 
-      if (supabase && this._userId) {
-        const userId = this._userId
-        const deletedAt = new Date().toISOString()
-        // Every other write in this store is scoped to one entry id, so
-        // replaying it is idempotent. This one is unbounded — "soft-delete
-        // every live row for this user" — and a descriptor can only express
-        // `eq` matches, so the `.is('deleted_at', null)` guard would be lost on
-        // replay. Worse, replaying it on the next launch would wipe entries
-        // logged on ANOTHER device in the meantime. A wipe the user just
-        // performed is better lost than re-applied to data they since created.
-        // durable-journal-exempt (LIFT-1239)
-        syncQueue.enqueueDelete('bodyweight:clear-all', () =>
-          supabase!.from('bodyweight_entries')
-            .update({ deleted_at: deletedAt })
-            .eq('user_id', userId)
-            .is('deleted_at', null)
-        )
-      }
-    }
+    /**
+     * Undo `removeSampleEntries`. Local-only for the same reason; an id that is
+     * already present is skipped, so a second undo cannot duplicate an entry.
+     */
+    restoreSampleEntries(removed: readonly BodyweightEntry[]) {
+      const present = new Set(this.entries.map((e: BodyweightEntry) => e.id))
+      const missing = removed.filter(e => !present.has(e.id))
+      if (missing.length === 0) return
+      this.entries = [...this.entries, ...missing]
+      this._persist()
+    },
   },
 
   getters: {

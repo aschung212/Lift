@@ -1885,10 +1885,14 @@ function openSettingsFromHint() {
 // only cue a new user sees frames the data as something to delete. Nudge them
 // to open an exercise and view its progress chart — the demonstrative payoff.
 // Gated on the sample-data flag so it never appears for real users, and shown
-// once (dismissed on the first exercise open or via the × button).
+// once (dismissed on the first exercise open or via the × button). The flag
+// alone is not enough: clearing the sample data keeps the user's own exercises
+// now (LIFT-1527), and a flag read once at setup would leave the tip pointing
+// at them. So the tip also needs a sample exercise to still be in the list.
 const CHART_TIP_KEY = 'explore-chart-tip-dismissed'
 const chartTipDismissed = ref(!!localStorage.getItem(CHART_TIP_KEY))
-const hasSampleData = ref(localStorage.getItem('sample-data') === 'true')
+const exploredSampleData = localStorage.getItem('sample-data') === 'true'
+const hasSampleData = computed(() => exploredSampleData && store.exercises.some(e => e.sample))
 
 const showChartTip = computed(() =>
   hasSampleData.value &&

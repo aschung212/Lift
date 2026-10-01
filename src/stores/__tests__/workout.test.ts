@@ -13,6 +13,7 @@ vi.mock('../../lib/conflictResolver', () => ({
 
 import { useWorkoutStore, deduplicateSets, deduplicateByName } from '../workout'
 import type { Exercise, WorkoutSet } from '../workout'
+import { isTombstoned } from '../../lib/tombstones'
 
 describe('workout store', () => {
   beforeEach(() => {
@@ -383,6 +384,69 @@ describe('workout store', () => {
       store.deleteExercise(bench.id)
       store.restoreExercise(bench)
       expect(store.exercises[0].name).toBe('Bench')
+    })
+  })
+
+  // ── removeSampleExercises / restoreSampleExercises (LIFT-1527) ──
+  // Server-side behaviour (nothing is sent) is pinned against the fake Supabase
+  // in composables/__tests__/sampleDataClear.test.ts.
+  describe('removeSampleExercises / restoreSampleExercises (LIFT-1527)', () => {
+    function seed() {
+      const store = useWorkoutStore()
+      const bench = store.addExercise('Bench', [], { sync: false })!
+      store.logSet(bench, 135, 5, '2026-08-01', { sync: false })
+      const own = store.addExercise('Curl')!
+      const squat = store.addExercise('Squat', [], { sync: false })!
+      // A real set adopts a sample exercise; it is the user's data from then on.
+      store.logSet(squat, 185, 5)
+      const deadlift = store.addExercise('Deadlift', [], { sync: false })!
+      return { store, bench, own, squat, deadlift }
+    }
+
+    it('removes only the exercises still flagged sample, with their positions', () => {
+      const { store, bench, own, squat, deadlift } = seed()
+
+      const removed = store.removeSampleExercises()
+
+      expect(removed.map(r => [r.exercise.id, r.index])).toEqual([[bench, 0], [deadlift, 3]])
+      expect(store.exercises.map(e => e.id)).toEqual([own, squat])
+      const stored = JSON.parse(localStorageMock.getItem('workout-exercises')!) as { id: string }[]
+      expect(stored.map(e => e.id)).toEqual([own, squat])
+    })
+
+    it('leaves no tombstone: a sample row has no server copy to hold back', () => {
+      const { store, bench } = seed()
+      store.removeSampleExercises()
+      expect(isTombstoned('exercises', bench)).toBe(false)
+    })
+
+    it('keeps the per-day set count in step with what was removed', () => {
+      const { store } = seed()
+      expect(store.setsLoggedOn('2026-08-01')).toBe(1)
+      store.removeSampleExercises()
+      expect(store.setsLoggedOn('2026-08-01')).toBe(0)
+    })
+
+    it('restores every removed exercise to its old slot, once', () => {
+      const { store } = seed()
+      const order = store.exercises.map(e => e.id)
+      const removed = store.removeSampleExercises()
+
+      store.restoreSampleExercises(removed)
+      store.restoreSampleExercises(removed)
+
+      expect(store.exercises.map(e => e.id)).toEqual(order)
+      expect(store.exercises[0].sample).toBe(true)
+      expect(store.exercises[0].sets).toHaveLength(1)
+      const stored = JSON.parse(localStorageMock.getItem('workout-exercises')!) as { id: string }[]
+      expect(stored.map(e => e.id)).toEqual(order)
+    })
+
+    it('is a no-op when nothing is flagged sample', () => {
+      const store = useWorkoutStore()
+      store.addExercise('Curl')
+      expect(store.removeSampleExercises()).toEqual([])
+      expect(store.exercises).toHaveLength(1)
     })
   })
 

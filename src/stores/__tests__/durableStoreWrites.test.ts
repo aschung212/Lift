@@ -338,19 +338,25 @@ describe('durable journal coverage for bodyweight / preferences / progression (L
     expect(upserts[0].data).toMatchObject({ user_id: 'u1', total_xp: 50 })
   })
 
-  it('does not journal the unbounded clear-all wipe', async () => {
-    // Deliberate exemption: the descriptor format can only express `eq`
-    // matches, so the `.is('deleted_at', null)` guard would be lost, and
-    // replaying "delete everything" on the next launch would wipe entries
-    // logged on another device in the meantime.
+  it('clearing the sample entries enqueues and journals nothing (LIFT-1527)', async () => {
+    // This test used to pin the one journal exemption, the unbounded
+    // `clearAll` wipe. Its only caller was the sample-data banner, which
+    // soft-deleted every live bodyweight row on the account with it; the
+    // banner now removes just the sample entries, which were never pushed, so
+    // there is nothing to send and nothing to replay.
     const store = useBodyweightStore()
     store._userId = 'u1'
     store.addEntry(180, '2026-08-26')
     await vi.runAllTimersAsync()
     idb.delete(JOURNAL_KEY)
+    const callsBefore = fakeSupabase.calls.length
+    store.addEntry(178, '2026-08-01', { sync: false })
 
-    store.clearAll()
+    expect(store.removeSampleEntries()).toHaveLength(1)
+    await vi.runAllTimersAsync()
 
+    expect(syncQueue.pending).toBe(0)
     expect(journaledDescriptors()).toEqual([])
+    expect(fakeSupabase.calls.length).toBe(callsBefore)
   })
 })
