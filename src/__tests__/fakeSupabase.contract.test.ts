@@ -28,7 +28,9 @@ const libDir = resolve(here, '../lib')
  * Every file that builds a query against the real client. The stores own their
  * filters; `supabasePagination.ts` owns the `.range()` windowing every
  * collection read now goes through (#1152), so it belongs to the same contract
- * — the fake must speak whatever the helper speaks.
+ * — the fake must speak whatever the helper speaks. `migrate.ts` writes the
+ * rows the stores then sync, and `guestAccountMigration.test.ts` runs it and
+ * the stores against one fake (LIFT-1534), so it belongs here too.
  */
 const QUERY_SOURCE_FILES = [
   resolve(storesDir, 'workout.ts'),
@@ -36,6 +38,7 @@ const QUERY_SOURCE_FILES = [
   resolve(storesDir, 'progression.ts'),
   resolve(storesDir, 'preferences.ts'),
   resolve(libDir, 'supabasePagination.ts'),
+  resolve(libDir, 'migrate.ts'),
 ]
 
 /**
