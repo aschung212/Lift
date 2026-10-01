@@ -28,7 +28,9 @@ const libDir = resolve(here, '../lib')
  * Every file that builds a query against the real client. The stores own their
  * filters; `supabasePagination.ts` owns the `.range()` windowing every
  * collection read now goes through (#1152), so it belongs to the same contract
- * — the fake must speak whatever the helper speaks.
+ * — the fake must speak whatever the helper speaks. `migrate.ts` writes the
+ * rows the stores then sync, and `guestAccountMigration.test.ts` runs it and
+ * the stores against one fake (LIFT-1534), so it belongs here too.
  */
 const QUERY_SOURCE_FILES = [
   resolve(storesDir, 'workout.ts'),
@@ -36,6 +38,7 @@ const QUERY_SOURCE_FILES = [
   resolve(storesDir, 'progression.ts'),
   resolve(storesDir, 'preferences.ts'),
   resolve(libDir, 'supabasePagination.ts'),
+  resolve(libDir, 'migrate.ts'),
 ]
 
 /**
@@ -178,6 +181,30 @@ describe('createFakeSupabase modes (LIFT-1009)', () => {
     expect(res.error).toMatchObject({ code: '42501' })
     // The call is still recorded even in error mode.
     expect(fake.selectsFor('exercises')).toHaveLength(1)
+  })
+
+  it("'ok' mode answers a { count, head } select with the matching-row count and no data (LIFT-1534)", async () => {
+    // The account migration's emptiness guard reads `count`. Left undefined,
+    // `count && count > 0` is false, so every account looked empty and the
+    // guard could not be tested against server state.
+    const fake = createFakeSupabase({ mode: 'ok', maxRows: 2 })
+    fake.seed('exercises', [
+      { id: 'ex-1', user_id: 'u1' },
+      { id: 'ex-2', user_id: 'u1' },
+      { id: 'ex-3', user_id: 'u1' },
+      { id: 'ex-4', user_id: 'u2' },
+    ])
+
+    const head = await fake.from('exercises').select('*', { count: 'exact', head: true }).eq('user_id', 'u1')
+    expect(head).toEqual({ data: null, error: null, count: 3 })
+
+    // Past the row cap: the page is capped, the count is not.
+    const paged = await fake.from('exercises').select('*', { count: 'exact' }).eq('user_id', 'u1')
+    expect((paged.data as unknown[]).length).toBe(2)
+    expect(paged.count).toBe(3)
+
+    // No count asked for, none reported.
+    expect(await fake.from('exercises').select('*').eq('user_id', 'u2')).not.toHaveProperty('count')
   })
 
   it('reset() clears seeded tables and recorded calls', async () => {

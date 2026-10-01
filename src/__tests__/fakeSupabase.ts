@@ -149,6 +149,15 @@ interface RecordedCall {
   range?: { from: number; to: number }
 }
 
+/**
+ * The options postgrest-js's `select(columns, options)` takes. `count` asks for
+ * the number of matching rows beside the data, and `head` drops the data.
+ */
+interface SelectOptions {
+  count?: 'exact' | 'planned' | 'estimated'
+  head?: boolean
+}
+
 /** Sentinel wrapping a `.is(col, val)` filter so it can match NULL-or-missing. */
 interface IsFilter {
   __is: unknown
@@ -236,6 +245,7 @@ export class FakeSupabase {
     data: unknown,
     single: boolean,
     range?: { from: number; to: number },
+    selectOptions?: SelectOptions,
   ): FakeSupabaseResult {
     this.calls.push({ op, table, filters: { ...filters }, data, range })
 
@@ -253,13 +263,20 @@ export class FakeSupabase {
     const rows = this._query(op, table, filters, data)
     if (op !== 'select') return { data: single ? (rows[0] ?? null) : rows, error: null }
 
+    // A requested count is every row the filters match, not the page returned:
+    // neither `.range()` nor `max_rows` limits it. Without this the count came
+    // back undefined, which an emptiness guard such as the account migration's
+    // (`count && count > 0`) reads as "no rows", whatever the table held.
+    const counted = selectOptions?.count ? { count: rows.length } : {}
+    if (selectOptions?.head) return { data: null, error: null, ...counted }
+
     // PostgREST applies the `.range()` window FIRST, then truncates the result
     // to `max_rows` — so `.range(0, 4999)` still yields at most 1000 rows, and
     // an unranged select yields the first 1000. Emulating that order is what
     // makes an unpaged read fail here the way it fails in production (#1152).
     const windowed = range ? rows.slice(range.from, range.to + 1) : rows
     const capped = windowed.slice(0, this.maxRows)
-    return { data: single ? (capped[0] ?? null) : capped, error: null }
+    return { data: single ? (capped[0] ?? null) : capped, error: null, ...counted }
   }
 
   /** @internal — the throwing branch for `'reject'` mode. */
@@ -330,10 +347,15 @@ class FakeBuilder implements PromiseLike<FakeSupabaseResult> {
   private _data: unknown = null
   private _single = false
   private _range: { from: number; to: number } | undefined
+  private _selectOptions: SelectOptions | undefined
 
   constructor(private _parent: FakeSupabase, private _table: string) {}
 
-  select(_cols?: string) { this._op = 'select'; return this }
+  select(_cols?: string, options?: SelectOptions) {
+    this._op = 'select'
+    this._selectOptions = options
+    return this
+  }
   delete() { this._op = 'delete'; return this }
   upsert(data: unknown) { this._op = 'upsert'; this._data = data; return this }
   update(data: unknown) { this._op = 'update'; this._data = data; return this }
@@ -351,7 +373,7 @@ class FakeBuilder implements PromiseLike<FakeSupabaseResult> {
       return Promise.reject(this._parent._rejection).then(onfulfilled, onrejected)
     }
     const result = this._parent._resolve(
-      this._op, this._table, this._filters, this._data, this._single, this._range,
+      this._op, this._table, this._filters, this._data, this._single, this._range, this._selectOptions,
     )
     return Promise.resolve(result).then(onfulfilled, onrejected)
   }
