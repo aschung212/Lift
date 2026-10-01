@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { createFakeSupabase, FAKE_SUPABASE_CHAIN_METHODS, FAKE_NETWORK_ERROR_RESULT } from './fakeSupabase'
-import { columnDefaults } from './migrationSchema'
+import { columnDefaults, hasUpdatedAtTrigger } from './migrationSchema'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const storesDir = resolve(here, '../stores')
@@ -252,5 +252,61 @@ describe('createFakeSupabase applies migration column defaults on insert (LIFT-1
     const fake = createFakeSupabase({ mode: 'ok' })
     fake.seed('exercises', [{ id: 'ex-3', user_id: 'u1', name: 'Row' }])
     expect(fake.tables.exercises[0]).toEqual({ id: 'ex-3', user_id: 'u1', name: 'Row' })
+  })
+})
+
+/**
+ * The opt-in server clock (LIFT-1523). A test about an edit made on ANOTHER
+ * device needs the server's `updated_at` to move the way the trigger moves it —
+ * without that, a remote edit looks exactly like the copy the device already
+ * holds, which is how a set edited on one device came to be reverted by the
+ * next sync of another with the suite green. These pin the mechanism, so the
+ * regressions built on it can't pass for the wrong reason.
+ */
+describe('createFakeSupabase serverClock models the updated_at trigger (LIFT-1523)', () => {
+  it('derives the trigger-stamped tables from the migrations', () => {
+    expect(hasUpdatedAtTrigger('exercises')).toBe(true)
+    expect(hasUpdatedAtTrigger('sets')).toBe(true)
+    expect(hasUpdatedAtTrigger('bodyweight_entries')).toBe(true)
+    // Client-stamped (whole-row upserts carry their own) — no trigger.
+    expect(hasUpdatedAtTrigger('user_preferences')).toBe(false)
+    expect(hasUpdatedAtTrigger('user_progression')).toBe(false)
+  })
+
+  it('stamps an INSERT that omits updated_at, and an upsert that lands on an existing row', async () => {
+    let now = '2026-09-01T10:00:00.000Z'
+    const fake = createFakeSupabase({ mode: 'ok', serverClock: () => now })
+
+    await fake.from('sets').upsert({ id: 's1', user_id: 'u1', weight: 100 })
+    expect(fake.tables.sets[0].updated_at).toBe('2026-09-01T10:00:00.000Z')
+
+    now = '2026-09-02T10:00:00.000Z'
+    // The trigger overrides whatever the payload carried.
+    await fake.from('sets').upsert({ id: 's1', user_id: 'u1', weight: 105, updated_at: '2000-01-01T00:00:00.000Z' })
+    expect(fake.tables.sets[0]).toMatchObject({ weight: 105, updated_at: '2026-09-02T10:00:00.000Z' })
+  })
+
+  it('stamps an UPDATE, soft-deletes included', async () => {
+    const fake = createFakeSupabase({ mode: 'ok', serverClock: () => '2026-09-03T10:00:00.000Z' })
+    fake.seed('sets', [{ id: 's1', user_id: 'u1', updated_at: '2026-09-01T10:00:00.000Z' }])
+
+    await fake.from('sets').update({ deleted_at: '2026-09-03T09:59:59.000Z' }).eq('id', 's1')
+
+    expect(fake.tables.sets[0].updated_at).toBe('2026-09-03T10:00:00.000Z')
+  })
+
+  it('leaves tables without the trigger, and seeds, alone', async () => {
+    const fake = createFakeSupabase({ mode: 'ok', serverClock: () => '2026-09-03T10:00:00.000Z' })
+    fake.seed('sets', [{ id: 's1', user_id: 'u1' }])
+    expect(fake.tables.sets[0]).not.toHaveProperty('updated_at')
+
+    await fake.from('user_preferences').upsert({ id: 'p1', user_id: 'u1', updated_at: '2026-09-01T00:00:00.000Z' })
+    expect(fake.tables.user_preferences[0].updated_at).toBe('2026-09-01T00:00:00.000Z')
+  })
+
+  it('is off by default: without a clock nothing invents a timestamp', async () => {
+    const fake = createFakeSupabase({ mode: 'ok' })
+    await fake.from('sets').upsert({ id: 's1', user_id: 'u1', weight: 100 })
+    expect(fake.tables.sets[0]).not.toHaveProperty('updated_at')
   })
 })

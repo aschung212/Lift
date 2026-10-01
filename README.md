@@ -191,7 +191,7 @@ A `prMap` computed property (`YYYY-MM-DD → Set<exerciseName>`) is derived from
 Each theme defines `--glass-fill`, `--glass-edge`, `--glass-shine`, `--glass-bar`, `--glass-overlay`, and `--mesh` tokens. When `data-glass="on"` (default), cards and chrome use `backdrop-filter: blur()` with translucent fills. `data-glass="off"` overrides fall back to solid `--bg-secondary` / `--bg-elevated` values. The tab bar indicator only renders in glass mode.
 
 ### Sync infrastructure
-A debounced sync queue (`lib/syncQueue.ts`) batches rapid Pinia mutations into coalesced Supabase writes. A conflict resolver (`lib/conflictResolver.ts`) implements last-write-wins with `updated_at` timestamp comparison when merging remote and local state.
+A debounced sync queue (`lib/syncQueue.ts`) batches rapid Pinia mutations into coalesced Supabase writes. A conflict resolver (`lib/conflictResolver.ts`) implements last-write-wins with `updated_at` timestamp comparison when merging remote and local state. Sets are resolved one at a time by their own stamp (`lib/setConflict.ts`), because editing a set never moves its exercise's stamp on the server.
 
 ### Legal pages
 The Privacy Policy and Terms of Service have one source, `src/lib/legalCopy.ts`. The in-app Legal sheet renders it, and `vite-plugin-legal-pages.ts` emits it at build as `/legal/privacy.html` and `/legal/terms.html` — the public URLs App Store Connect and App Review need — so the two cannot drift. `vercel.json` excludes `legal/` from the SPA fallback so a wrong path 404s.
@@ -411,6 +411,7 @@ shell.
 │   │   ├── migrate.ts           # One-time localStorage → Supabase migration
 │   │   ├── syncQueue.ts         # Debounced sync queue for batching Supabase writes
 │   │   ├── conflictResolver.ts  # Last-write-wins conflict resolution for multi-device sync
+│   │   ├── setConflict.ts       # Per-set last-write-wins: each set resolved by its own stamp
 │   │   ├── tagColors.ts         # Theme-aware tag color mapping
 │   │   ├── uuid.ts              # UUID generation utility
 │   │   └── __tests__/           # Library tests (21 tests)

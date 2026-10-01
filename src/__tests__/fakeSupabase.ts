@@ -54,10 +54,23 @@
  * because the fake stored only what the payload contained. The defaults are
  * parsed out of `supabase/migrations` (see `migrationSchema.ts`), so a new
  * `ADD COLUMN ... DEFAULT` starts being modelled here the day it lands.
+ *
+ * It does NOT move `updated_at` unless asked to. Pass `serverClock` and the
+ * fake models the server's last-write-wins clock (LIFT-1523): for every table a
+ * migration attaches `update_updated_at_column()` to, a write that lands on an
+ * existing row stamps `updated_at` from the clock (the `before update`
+ * trigger, which overrides whatever the payload carried), and an INSERT that
+ * omits it gets the clock too (its `default now()`). It is opt-in because the
+ * default fake never invents a timestamp — doing that globally would rewrite
+ * the merge outcome of every sync test written against the old behaviour. A
+ * test about a write made on ANOTHER device needs it: without a stamp that
+ * moves, a remote edit is indistinguishable from the copy this device already
+ * holds, which is exactly how a set edited on one device came to be reverted by
+ * the next sync of another with the suite green.
  */
 
 import { SUPABASE_MAX_ROWS } from '../lib/supabasePagination'
-import { columnDefaults } from './migrationSchema'
+import { columnDefaults, hasUpdatedAtTrigger } from './migrationSchema'
 
 /** The method names a store may invoke on a `supabase.from(...)` query chain. */
 export const FAKE_SUPABASE_CHAIN_METHODS = [
@@ -131,6 +144,13 @@ export interface FakeSupabaseOptions {
    * complete under test and lost a month of a real user's history in prod.
    */
   maxRows?: number
+  /**
+   * The server's `now()`, as an ISO string. When given, writes to a table with
+   * an `update_updated_at_column()` trigger stamp `updated_at` from it the way
+   * Postgres would (see the module header). Omit it to keep `updated_at`
+   * exactly as payloads and seeds leave it.
+   */
+  serverClock?: () => string
 }
 
 interface Row {
@@ -169,6 +189,7 @@ export class FakeSupabase {
   readonly maxRows: number
   private readonly _apiError: FakeSupabaseError
   private readonly _rejectionError: Error
+  private readonly _serverClock: (() => string) | undefined
 
   /** In-memory rows keyed by table name (populated via `seed()`; `'ok'` mode). */
   tables: Record<string, Row[]> = {
@@ -187,6 +208,7 @@ export class FakeSupabase {
     this.maxRows = options.maxRows ?? SUPABASE_MAX_ROWS
     this._apiError = options.error ?? DEFAULT_API_ERROR
     this._rejectionError = options.rejectionError ?? new Error('Network request failed')
+    this._serverClock = options.serverClock
   }
 
   reset() {
@@ -281,7 +303,22 @@ export class FakeSupabase {
     for (const [column, value] of columnDefaults(table)) {
       if (row[column] === undefined) row[column] = value
     }
+    // `updated_at timestamptz not null default now()` — only when the test
+    // supplied a clock to read `now()` from (LIFT-1523).
+    if (this._stampsUpdatedAt(table) && row.updated_at === undefined) {
+      row.updated_at = this._serverClock!()
+    }
     return row
+  }
+
+  /** Whether writes to `table` move `updated_at` (a clock was given AND the table has the trigger). */
+  private _stampsUpdatedAt(table: string): boolean {
+    return this._serverClock !== undefined && hasUpdatedAtTrigger(table)
+  }
+
+  /** The `before update` trigger: an UPDATE always ends with the server's `now()`. */
+  private _triggerStamp(table: string): Partial<Row> {
+    return this._stampsUpdatedAt(table) ? { updated_at: this._serverClock!() } : {}
   }
 
   private _query(op: Op, table: string, filters: Record<string, unknown>, data: unknown): Row[] {
@@ -310,14 +347,14 @@ export class FakeSupabase {
         // ON CONFLICT DO UPDATE only assigns the columns the payload carries, so
         // an omitted column keeps its existing value on an update — but takes
         // its DEFAULT on a fresh insert, which is the half that mattered
-        // (LIFT-1387).
-        if (idx >= 0) rows[idx] = { ...rows[idx], ...rec }
+        // (LIFT-1387). The conflict path IS an update, so the trigger fires.
+        if (idx >= 0) rows[idx] = { ...rows[idx], ...rec, ...this._triggerStamp(table) }
         else rows.push(this._withDefaults(table, rec))
       }
       return records
     }
     if (op === 'update') {
-      for (const m of matches) Object.assign(m, data as Row)
+      for (const m of matches) Object.assign(m, data as Row, this._triggerStamp(table))
       return matches
     }
     return []

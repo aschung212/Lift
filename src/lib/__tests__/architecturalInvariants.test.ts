@@ -3054,10 +3054,12 @@ describe('Invariant: the foreground-resume signal set is defined once (LIFT-1392
 // that builds an `updated_at` is by construction feeding the LWW merge, so a
 // future merged table is covered the day its mapper is written. Listing tables
 // would pin only the ones that existed today — the enumeration-drift class of
-// LIFT-1039 and #1357. `sets` is deliberately NOT in scope: `mapRemoteSet`
-// produces no `updated_at` (sets ride along inside their exercise's array, per
-// #1357), so its trigger is restored to match the declared history rather than
-// because a merge depends on it. `user_progression` is likewise out of scope —
+// LIFT-1039 and #1357. `sets` joined the scope by exactly that route: it was
+// out while sets rode along inside their exercise's array, and came in the day
+// `mapRemoteSet` started building an `updated_at` for per-set last-write-wins
+// (LIFT-1523) — at which point `trg_sets_updated_at` stopped being parity with
+// the declared history and became what decides whose copy of a set survives.
+// `user_progression` is out of scope —
 // its `updated_at` column is written by nobody and read by nobody (its merge is
 // a field-wise union, not LWW), so requiring a stamp for it would be a false
 // positive, and the derivation excludes it without needing an exemption.
@@ -3254,13 +3256,18 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
   }
 
   it('the scans find real mappers, triggers and row literals (non-vacuity)', () => {
-    // Every mapper that feeds the merge, and specifically not the one that
-    // doesn't — if this ever returned everything (or nothing) the invariant
+    // Every mapper that feeds the merge — `sets` since per-set last-write-wins
+    // (LIFT-1523). If this ever returned nothing (or everything) the invariant
     // below would pass for the wrong reason.
     const merged = mergeTimestampedTables(REMOTE_ROWS)
     expect(merged).toContain('exercises')
     expect(merged).toContain('bodyweight_entries')
-    expect(merged).not.toContain('sets')
+    expect(merged).toContain('sets')
+    // Every real mapper builds a stamp now, so prove the derivation still
+    // discriminates on a mapper that does not.
+    expect(mergeTimestampedTables(
+      "export function mapRemoteWidget(row: Tables<'widgets'>) {\n  return { id: row.id }\n}\n",
+    )).toEqual([])
 
     // The trigger scan must discriminate between tables, not answer "yes" for
     // every table in the corpus.
@@ -3336,7 +3343,7 @@ describe('Invariant: every merge timestamp has an authority that moves it (LIFT-
     const mappers = mapperBodies(REMOTE_ROWS)
     expect(mappers.map(m => m.table)).toEqual(expect.arrayContaining(['exercises', 'bodyweight_entries', 'sets']))
     for (const m of mappers) expect(m.param).toBe('row')
-    for (const table of ['exercises', 'bodyweight_entries']) {
+    for (const table of ['exercises', 'bodyweight_entries', 'sets']) {
       const exprs = stampExpressions(mappers.find(m => m.table === table)!)
       expect(exprs).toHaveLength(1)
       expect(exprs[0]).toContain('row.updated_at')
