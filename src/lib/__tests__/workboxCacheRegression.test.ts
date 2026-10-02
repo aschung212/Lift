@@ -2,75 +2,97 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { RUNTIME_CACHING, SUPABASE_ORIGIN_PATTERN } from '../swRuntimeCaching'
+import { resolveWorkboxRoute, answersFromCache, type RouteRule } from '../../__tests__/serviceWorkerModel'
 
 /**
- * Regression tests for Workbox runtime cache configuration.
+ * Regression tests for the service worker's runtime routes (LIFT-1524).
  *
- * Validates that endpoint-specific caches are defined with appropriate
- * strategies and capacities. Prevents regression to a single catch-all
- * cache that would evict entries for power users with large datasets.
+ * This file used to slice vite.config.js as TEXT and assert that a
+ * StaleWhileRevalidate `supabase-sets` cache, NetworkFirst `supabase-exercises`
+ * / `supabase-bodyweight` / `supabase-progression` caches and a `supabase-api`
+ * catch-all all existed, in that order. Every one of those caches answered a
+ * store's read with a past state of the server, which the stores cannot tell
+ * from the present one, so the file pinned the defect as the feature. It now
+ * resolves real request URLs against the array the build ships, the way Workbox
+ * resolves them (see `serviceWorkerModel.ts`).
  */
 
 const viteConfig = readFileSync(resolve(__dirname, '../../../vite.config.js'), 'utf-8')
 
-describe('Workbox runtime cache configuration', () => {
-  describe('endpoint-specific caches exist', () => {
-    it('has a dedicated sets cache with StaleWhileRevalidate strategy', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-sets'")
-      // StaleWhileRevalidate: fast offline load + background refresh for new sets
-      const setsSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-sets'") - 200,
-        viteConfig.indexOf("cacheName: 'supabase-sets'") + 100
-      )
-      expect(setsSection).toContain("handler: 'StaleWhileRevalidate'")
+const PROJECT = 'https://project.supabase.co'
+const USER = '00000000-0000-4000-8000-000000000001'
+
+/** Requests the app actually sends to the Supabase project, by the client that sends them. */
+const SUPABASE_REQUESTS = [
+  `${PROJECT}/rest/v1/sets?select=*&user_id=eq.${USER}&deleted_at=is.null&order=created_at.asc,id.asc&offset=0&limit=1000`,
+  `${PROJECT}/rest/v1/exercises?select=*&user_id=eq.${USER}&deleted_at=is.null&order=created_at.asc,id.asc&offset=1000&limit=1000`,
+  `${PROJECT}/rest/v1/bodyweight_entries?select=*&user_id=eq.${USER}&deleted_at=is.null&order=created_at.asc,id.asc&offset=0&limit=1000`,
+  `${PROJECT}/rest/v1/user_preferences?select=preferences&user_id=eq.${USER}`,
+  `${PROJECT}/rest/v1/user_progression?select=*&user_id=eq.${USER}`,
+  `${PROJECT}/auth/v1/user`,
+]
+
+describe('Workbox runtime routes', () => {
+  describe('the Supabase project is never answered from Cache Storage (LIFT-1524)', () => {
+    it.each(SUPABASE_REQUESTS)('%s goes to the network', (url) => {
+      expect(resolveWorkboxRoute(RUNTIME_CACHING, url)?.handler).toBe('NetworkOnly')
     })
 
-    it('has a dedicated exercises cache with NetworkFirst strategy', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-exercises'")
-      const exercisesSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-exercises'") - 200,
-        viteConfig.indexOf("cacheName: 'supabase-exercises'") + 100
-      )
-      expect(exercisesSection).toContain("handler: 'NetworkFirst'")
+    it('claims the whole Supabase origin in the FIRST route, so no later rule can capture it', () => {
+      expect(RUNTIME_CACHING[0]).toEqual({ urlPattern: SUPABASE_ORIGIN_PATTERN, handler: 'NetworkOnly' })
     })
 
-    it('has a dedicated bodyweight cache', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-bodyweight'")
+    it('no route that can answer from a cache matches any Supabase request, whatever its position', () => {
+      const caching = RUNTIME_CACHING.filter(answersFromCache)
+      for (const url of SUPABASE_REQUESTS) expect(resolveWorkboxRoute(caching, url), url).toBeUndefined()
     })
 
-    it('has a dedicated progression cache', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-progression'")
-    })
-
-    it('has a catch-all supabase-api cache for unknown endpoints', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-api'")
-    })
-
-    it('keeps auth as NetworkOnly (never cache tokens)', () => {
-      expect(viteConfig).toContain("cacheName: 'supabase-auth'")
-      const authSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-auth'") - 200,
-        viteConfig.indexOf("cacheName: 'supabase-auth'") + 100
-      )
-      expect(authSection).toContain("handler: 'NetworkOnly'")
+    it('the origin pattern does not reach past the Supabase host into another origin', () => {
+      expect(SUPABASE_ORIGIN_PATTERN.test(`${PROJECT}/rest/v1/sets`)).toBe(true)
+      expect(SUPABASE_ORIGIN_PATTERN.test('https://example.com/project.supabase.co/rest/v1/sets')).toBe(false)
     })
   })
 
-  describe('cache capacities are tuned for power users', () => {
-    it('sets cache allows 500 entries (100+ exercises × multiple pages)', () => {
-      const setsSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-sets'"),
-        viteConfig.indexOf("cacheName: 'supabase-sets'") + 300
-      )
-      expect(setsSection).toContain('maxEntries: 500')
+  describe('vite.config.js ships exactly this table', () => {
+    it('hands RUNTIME_CACHING to generateSW', () => {
+      expect(viteConfig).toContain("import { RUNTIME_CACHING } from './src/lib/swRuntimeCaching'")
+      expect(viteConfig).toContain('runtimeCaching: RUNTIME_CACHING')
     })
 
-    it('exercises cache allows 200 entries', () => {
-      const exercisesSection = viteConfig.slice(
-        viteConfig.indexOf("cacheName: 'supabase-exercises'"),
-        viteConfig.indexOf("cacheName: 'supabase-exercises'") + 300
-      )
-      expect(exercisesSection).toContain('maxEntries: 200')
+    it('defines no route of its own', () => {
+      // A route declared inline would ship without ever reaching the tests above.
+      expect(viteConfig).not.toMatch(/urlPattern\s*:/)
+      expect(viteConfig).not.toMatch(/\bhandler\s*:\s*['"]/)
+    })
+  })
+
+  describe('the route model these tests resolve with (serviceWorkerModel.ts)', () => {
+    const rule = (urlPattern: RegExp, handler: string, method?: string): RouteRule => ({ urlPattern, handler, method })
+
+    it('takes the first matching rule, as workbox-routing does', () => {
+      const first = rule(/^https:\/\/project\.supabase\.co\//, 'NetworkOnly')
+      const second = rule(/^https:\/\/project\.supabase\.co\/rest\//, 'NetworkFirst')
+      expect(resolveWorkboxRoute([first, second], `${PROJECT}/rest/v1/sets`)).toBe(first)
+      expect(resolveWorkboxRoute([second, first], `${PROJECT}/rest/v1/sets`)).toBe(second)
+    })
+
+    it('only offers a rule the method it was registered for (GET by default)', () => {
+      const any = rule(/^https:\/\/project\.supabase\.co\//, 'NetworkFirst')
+      expect(resolveWorkboxRoute([any], `${PROJECT}/rest/v1/sets`, 'POST')).toBeUndefined()
+      expect(resolveWorkboxRoute([any], `${PROJECT}/rest/v1/sets`, 'HEAD')).toBeUndefined()
+    })
+
+    it('matches a cross-origin URL only when the pattern matches at index 0', () => {
+      // Workbox ignores a mid-URL match on another origin, so an unanchored
+      // pattern silently never sees a Supabase request at all.
+      const unanchored = rule(/supabase\.co\/rest\//, 'NetworkFirst')
+      expect(resolveWorkboxRoute([unanchored], `${PROJECT}/rest/v1/sets`)).toBeUndefined()
+    })
+
+    it('throws on a pattern it cannot evaluate instead of reporting no match', () => {
+      expect(() => resolveWorkboxRoute([{ urlPattern: 'supabase', handler: 'NetworkFirst' }], `${PROJECT}/rest/v1/sets`))
+        .toThrow(/only RegExp routes are modelled/)
     })
   })
 
@@ -89,17 +111,6 @@ describe('Workbox runtime cache configuration', () => {
       expect(handler).toContain('notificationclick')
       expect(handler).toContain('rest-again')
       expect(handler).toContain('lift-rest-timer')
-    })
-  })
-
-  describe('cache ordering is specific-first', () => {
-    it('specific endpoint caches appear before the catch-all', () => {
-      const setsPos = viteConfig.indexOf("cacheName: 'supabase-sets'")
-      const exercisesPos = viteConfig.indexOf("cacheName: 'supabase-exercises'")
-      const catchAllPos = viteConfig.indexOf("cacheName: 'supabase-api'")
-      // Specific caches must come before catch-all so Workbox matches them first
-      expect(setsPos).toBeLessThan(catchAllPos)
-      expect(exercisesPos).toBeLessThan(catchAllPos)
     })
   })
 })
