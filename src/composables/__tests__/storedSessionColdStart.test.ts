@@ -35,7 +35,17 @@ vi.stubGlobal('matchMedia', vi.fn(() => ({
 })))
 
 const { stores, migrate, queue, net } = vi.hoisted(() => {
-  const storeSpies = () => ({ init: vi.fn(async () => {}), $reset: vi.fn(), holdUntilRead: vi.fn() })
+  const storeSpies = () => ({
+    init: vi.fn(async () => {}),
+    // Sign-in may attach a store first and read it after, rather than through
+    // init(); `boundTo` counts either as binding.
+    bindUser: vi.fn(),
+    _fetchFromSupabase: vi.fn(async () => {}),
+    $reset: vi.fn(),
+    holdUntilRead: vi.fn(),
+    exercises: [],
+    entries: [],
+  })
   return {
     stores: {
       workout: storeSpies(),
@@ -44,7 +54,7 @@ const { stores, migrate, queue, net } = vi.hoisted(() => {
       progression: storeSpies(),
     },
     migrate: vi.fn(async () => {}),
-    queue: { clear: vi.fn(), rehydrate: vi.fn(async () => {}) },
+    queue: { clear: vi.fn(), rehydrate: vi.fn(async () => {}), flush: vi.fn(async () => {}) },
     /** What the auth server does with a refresh: nothing reaches it, it answers, or it refuses the token. */
     net: { mode: 'offline' as 'offline' | 'online' | 'revoked', delayMs: 0 },
   }
@@ -136,6 +146,11 @@ async function boot(beforeInit?: (client: SupabaseClient) => void) {
 
 const userId = (): string | undefined => (booted?.auth.user.value as { id?: string } | null)?.id
 
+/** Every account a store was attached to, through whichever entry point sign-in used. */
+function boundTo(store: (typeof stores)['workout']): unknown[] {
+  return [...store.init.mock.calls, ...store.bindUser.mock.calls].map(([id]) => id)
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ now: NOW })
   vi.stubEnv('DEV', false)
@@ -184,7 +199,7 @@ describe('an offline cold start with an expired access token (LIFT-1545)', () =>
     // With no usable token every request would go out under the anon key,
     // and RLS answers an anon read with empty rows, not an error.
     expect(migrate).not.toHaveBeenCalled()
-    for (const store of Object.values(stores)) expect(store.init).not.toHaveBeenCalled()
+    for (const store of Object.values(stores)) expect(boundTo(store)).toEqual([])
     // Edits made meanwhile are held for the read that follows the refresh.
     expect(stores.preferences.holdUntilRead).toHaveBeenCalledWith('user-1')
     expect(stores.progression.holdUntilRead).toHaveBeenCalledWith('user-1')
@@ -203,7 +218,7 @@ describe('an offline cold start with an expired access token (LIFT-1545)', () =>
     expect(sessionAwaitingRefresh.value).toBe(false)
     expect(userId()).toBe('user-1')
     expect(migrate).toHaveBeenCalledWith('user-1')
-    for (const store of Object.values(stores)) expect(store.init).toHaveBeenCalledWith('user-1')
+    for (const store of Object.values(stores)) expect(boundTo(store)).toContain('user-1')
   })
 
   it('shows the app at once when the browser knows it is offline', async () => {
@@ -256,7 +271,7 @@ describe('an offline cold start with an expired access token (LIFT-1545)', () =>
 
     expect(sessionAwaitingRefresh.value).toBe(false)
     expect(stores.preferences.holdUntilRead).not.toHaveBeenCalled()
-    expect(stores.workout.init).toHaveBeenCalledWith('user-1')
+    expect(boundTo(stores.workout)).toContain('user-1')
     expect(auth.loading.value).toBe(false)
   })
 })
