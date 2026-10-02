@@ -67,6 +67,16 @@
  * moves, a remote edit is indistinguishable from the copy this device already
  * holds, which is exactly how a set edited on one device came to be reverted by
  * the next sync of another with the suite green.
+ *
+ * And a read can be kept IN FLIGHT (LIFT-1517). Every query here used to settle
+ * on the next microtask, so a store's read always finished before a test could
+ * do anything else, and no test ever signed out while one was pending. Real
+ * reads take seconds on a phone, and a sign-out does not wait for them. The
+ * workout and bodyweight reads merged a response that landed after the
+ * sign-out wipe back into the wiped stores, re-persisting the previous user's
+ * history for the next account's launch migration to upload. `holdReads()`
+ * answers each read from the server's state at the moment it is made, as a
+ * slow response does, and delivers it only when `releaseReads()` says so.
  */
 
 import { SUPABASE_MAX_ROWS } from '../lib/supabasePagination'
@@ -169,6 +179,28 @@ interface RecordedCall {
   range?: { from: number; to: number }
 }
 
+/** A read issued under `holdReads()` whose response has not been delivered yet. */
+export interface HeldRead {
+  table: string
+  filters: Record<string, unknown>
+}
+
+/** Which held reads `releaseReads()` delivers, and what arrives in place of their answers. */
+export interface ReleaseReadsOptions {
+  /** Deliver only the held reads this accepts; the rest stay in flight. Default: all of them. */
+  match?: (read: HeldRead) => boolean
+  /**
+   * What arrives instead of the server's answer: a result envelope to resolve
+   * (a 401, the offline envelope) or an `Error` to reject with.
+   */
+  outcome?: FakeSupabaseResult | Error
+}
+
+interface PendingRead {
+  read: HeldRead
+  deliver: (outcome?: FakeSupabaseResult | Error) => void
+}
+
 /** Sentinel wrapping a `.is(col, val)` filter so it can match NULL-or-missing. */
 interface IsFilter {
   __is: unknown
@@ -203,6 +235,10 @@ export class FakeSupabase {
   /** Every query recorded in call order, across all modes. */
   calls: RecordedCall[] = []
 
+  /** Whether reads made now are kept in flight — see `holdReads()` (LIFT-1517). */
+  private _holdingReads = false
+  private _pendingReads: PendingRead[] = []
+
   constructor(options: FakeSupabaseOptions = {}) {
     this.mode = options.mode ?? 'ok'
     this.maxRows = options.maxRows ?? SUPABASE_MAX_ROWS
@@ -220,6 +256,8 @@ export class FakeSupabase {
       user_preferences: [],
     }
     this.calls = []
+    this._holdingReads = false
+    this._pendingReads = []
   }
 
   seed(table: string, rows: Row[]) {
@@ -248,6 +286,59 @@ export class FakeSupabase {
 
   updatesFor(table: string) {
     return this.callsFor('update', table)
+  }
+
+  /**
+   * Keep every read made from now on in flight until `releaseReads()`
+   * (LIFT-1517). Its answer is taken from the tables when the read is MADE, as
+   * a slow response's is, so the test can sign out, or change the server,
+   * while it is in flight without changing what eventually arrives. Writes are
+   * never held.
+   */
+  holdReads(): void {
+    this._holdingReads = true
+  }
+
+  /** The reads currently in flight, oldest first. */
+  get heldReads(): HeldRead[] {
+    return this._pendingReads.map(p => p.read)
+  }
+
+  /**
+   * Deliver held reads, oldest first. Without a `match`, every read is
+   * delivered and the hold ends, so later reads answer at once. With one, only
+   * the matching reads arrive and the hold stays on.
+   */
+  releaseReads({ match, outcome }: ReleaseReadsOptions = {}): void {
+    if (!match) this._holdingReads = false
+    const due = this._pendingReads.filter(p => !match || match(p.read))
+    this._pendingReads = this._pendingReads.filter(p => !due.includes(p))
+    for (const p of due) p.deliver(outcome)
+  }
+
+  /**
+   * @internal — settle a query with `answer` (a result to resolve, an `Error`
+   * to reject with): now, or for a held read, once it is released.
+   */
+  _deliver(
+    op: Op,
+    table: string,
+    filters: Record<string, unknown>,
+    answer: FakeSupabaseResult | Error,
+  ): Promise<FakeSupabaseResult> {
+    const settle = (a: FakeSupabaseResult | Error): Promise<FakeSupabaseResult> =>
+      a instanceof Error ? Promise.reject(a) : Promise.resolve(a)
+    if (op !== 'select' || !this._holdingReads) return settle(answer)
+    // Serialized NOW, as a real response is: the rows `_query` returns are the
+    // tables' own objects, so a write made while the read is in flight would
+    // otherwise reach into the answer that eventually arrives.
+    const sent = answer instanceof Error ? answer : JSON.parse(JSON.stringify(answer)) as FakeSupabaseResult
+    return new Promise((resolve, reject) => {
+      this._pendingReads.push({
+        read: { table, filters: { ...filters } },
+        deliver: outcome => { settle(outcome ?? sent).then(resolve, reject) },
+      })
+    })
   }
 
   /** @internal — records the call and, in `'ok'` mode, mutates/reads the store. */
@@ -385,12 +476,13 @@ class FakeBuilder implements PromiseLike<FakeSupabaseResult> {
     onrejected?: (reason: unknown) => TResult2 | PromiseLike<TResult2>,
   ): PromiseLike<TResult1 | TResult2> {
     if (this._parent.mode === 'reject') {
-      return Promise.reject(this._parent._rejection).then(onfulfilled, onrejected)
+      return this._parent._deliver(this._op, this._table, this._filters, this._parent._rejection)
+        .then(onfulfilled, onrejected)
     }
     const result = this._parent._resolve(
       this._op, this._table, this._filters, this._data, this._single, this._range,
     )
-    return Promise.resolve(result).then(onfulfilled, onrejected)
+    return this._parent._deliver(this._op, this._table, this._filters, result).then(onfulfilled, onrejected)
   }
 }
 

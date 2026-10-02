@@ -573,6 +573,10 @@ export const usePreferencesStore = defineStore('preferences', {
             if (heldEdits.length > 0) this._pushToAccount(this._buildPayload())
           }
         } catch (err) {
+          // A rejected read outlives its session the same way a resolved one
+          // does (LIFT-1517): reporting it would light the next account's sync
+          // indicator and refresh a session that no longer exists.
+          if (this._userId !== userId) return
           // Thrown (vs returned) error — typically a network failure. Route
           // through reportFetchError so offline stays quiet but auth/server
           // failures are observable (LIFT-786), and record the per-store sync
@@ -581,7 +585,8 @@ export const usePreferencesStore = defineStore('preferences', {
           this.lastSyncError = classifySyncError(err)
           if (isAuthError(err)) void ensureFreshSession()
         } finally {
-          this.syncing = false
+          // Only the session that raised the flag lowers it (LIFT-1517).
+          if (this._userId === userId) this.syncing = false
         }
       }
     },

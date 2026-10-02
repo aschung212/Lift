@@ -150,6 +150,13 @@ export const useBodyweightStore = defineStore('bodyweight', {
           .is('deleted_at', null)
           .order('created_at')
           .order('id'))
+        // Signed out (or switched account) while the read was in flight: the
+        // answer belongs to a session that has ended (LIFT-1517). `$reset` has
+        // already wiped this store, so merging it would put the signed-out
+        // user's weigh-ins back, `_persist()` would write them to localStorage,
+        // the IndexedDB backup and every open tab, and the next empty account
+        // to sign in here would have them uploaded by the launch migration.
+        if (this._userId !== userId) return
         if (result.error) {
           reportFetchError('bodyweight', result.error)
           this.lastSyncError = classifySyncError(result.error)
@@ -160,6 +167,9 @@ export const useBodyweightStore = defineStore('bodyweight', {
         }
         data = result.data
       } catch (err) {
+        // Not this session's failure to report once the session has ended
+        // (LIFT-1517) — see the workout store's read.
+        if (this._userId !== userId) return
         reportFetchError('bodyweight', err)
         this.lastSyncError = classifySyncError(err)
         // Same auth branch as the resolved-error path above — a thrown 401 is
@@ -167,7 +177,8 @@ export const useBodyweightStore = defineStore('bodyweight', {
         if (isAuthError(err)) void ensureFreshSession()
         return
       } finally {
-        this.syncing = false
+        // Only the session that raised the flag lowers it (LIFT-1517).
+        if (this._userId === userId) this.syncing = false
       }
 
       if (!data) return
