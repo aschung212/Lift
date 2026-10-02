@@ -95,6 +95,22 @@ function setupSessionRefreshLifecycle(): void {
   ))
 }
 
+/**
+ * One sign-in's store initialisation, split where the network starts
+ * (LIFT-1516). The splash used to wait for all of it, a migration count query
+ * and then four store reads, even though every store had already hydrated
+ * from localStorage. A dead uplink therefore held a lifter whose data was all
+ * on the device behind postgrest-js's 1s/2s/4s GET retries plus the browser's
+ * own network timeout on every attempt.
+ */
+interface StoresInit {
+  userId: string
+  /** Every store is attached to the account. Local work only, so the splash can wait for it. */
+  bound: Promise<void>
+  /** The migration and every store's first read have settled. Nothing on screen waits for it. */
+  synced: Promise<void>
+}
+
 // LIFT-1212: on a signed-in cold start BOTH the getSession() resolution and
 // the INITIAL_SESSION/SIGNED_IN auth event fire, and each called initStores
 // unguarded (the event path's `wasUnauthenticated` check only helps when
@@ -104,50 +120,90 @@ function setupSessionRefreshLifecycle(): void {
 // user: concurrent and repeat calls for the same user share one run. The
 // cache clears on teardown (sign-out) so the same user re-inits on their next
 // sign-in, and on failure so a transient error doesn't poison future inits.
-let _storesInitUserId: string | null = null
-let _storesInitPromise: Promise<void> | null = null
+let _storesInit: StoresInit | null = null
+// Bumped by every registration and every reset, so a run can tell after each
+// of its awaits whether it has been superseded: by a sign-out, or by the next
+// sign-in.
+let _storesInitGeneration = 0
 
 function resetInitStoresGuard(): void {
-  _storesInitUserId = null
-  _storesInitPromise = null
+  _storesInit = null
+  _storesInitGeneration++
 }
 
-function initStores(userId: string): Promise<void> {
-  if (_storesInitUserId === userId && _storesInitPromise) return _storesInitPromise
-  _storesInitUserId = userId
-  const p: Promise<void> = doInitStores(userId).catch((err) => {
-    // Clear only OUR OWN registration (promise identity, not userId): after a
-    // sign-out + fast re-sign-in of the same user, a NEWER init generation
-    // owns the guard, and a stale rejection from this superseded run must not
-    // wipe it — that would let a later call start a third, duplicate init.
-    // (Same identity discipline as the LIFT-1213 journal guard; flagged by
-    // the 2026-08-26 adversarial review.)
-    if (_storesInitPromise === p) resetInitStoresGuard()
-    throw err
+function initStores(userId: string): StoresInit {
+  if (_storesInit?.userId === userId) return _storesInit
+  const generation = ++_storesInitGeneration
+  const isCurrent = (): boolean => _storesInitGeneration === generation
+  const bound = bindStores(userId, isCurrent)
+  const synced = bound.then(() => syncStores(userId, isCurrent))
+  synced.catch((err: unknown) => {
+    // Every caller starts a run and moves on, so its failure is reported here,
+    // once, instead of leaking to the global floor (LIFT-1227). Then clear only
+    // OUR OWN registration: after a sign-out + fast re-sign-in of the same
+    // user, a NEWER generation owns the guard, and a stale rejection from this
+    // superseded run must not wipe it — that would let a later call start a
+    // third, duplicate init. (Same identity discipline as the LIFT-1213
+    // journal guard; flagged by the 2026-08-26 adversarial review.)
+    logError(err, { source: 'useAuth', action: 'initStores' })
+    if (isCurrent()) resetInitStoresGuard()
   })
-  _storesInitPromise = p
-  return p
+  _storesInit = { userId, bound, synced }
+  return _storesInit
 }
 
-async function doInitStores(userId: string): Promise<void> {
-  const workoutStore = useWorkoutStore()
-  const bodyweightStore = useBodyweightStore()
-  const preferencesStore = usePreferencesStore()
-  const progressionStore = useProgressionStore()
-  await migrateLocalStorageToSupabase(userId)
+/**
+ * The half of sign-in the splash waits for. It is local work only.
+ *
+ * The durable journal is replayed FIRST, and that order is load-bearing.
+ * Binding is what lets a store enqueue a write, and the first journaled write
+ * persists the in-memory journal over the copy in IndexedDB. A write enqueued
+ * before `rehydrate()` has read that copy would erase every write the last
+ * session left unsent, and the user can act the moment the stores are bound.
+ */
+async function bindStores(userId: string, isCurrent: () => boolean): Promise<void> {
   // Replay any writes that were journaled to IndexedDB but never reached the
-  // server before the app last closed (LIFT-706). Safe + idempotent; runs
-  // before store fetches so recovered writes are in flight during sync.
+  // server before the app last closed (LIFT-706). Safe + idempotent.
   await syncQueue.rehydrate()
-  // allSettled (not all): each store's init already swallows its own fetch
-  // failures, but allSettled is defense-in-depth so a future regression that
-  // lets one store's init reject can never abort the others' hydration and
-  // leave the app half-initialized (LIFT-820).
+  // Signed out while the journal was being read: binding now would attach the
+  // stores to a session that has already ended.
+  if (!isCurrent()) return
+  // One store at a time, so a store that throws cannot leave the other three
+  // unbound: the LIFT-820 rule the reads below keep with allSettled.
+  const stores = [useWorkoutStore(), useBodyweightStore(), usePreferencesStore(), useProgressionStore()]
+  for (const store of stores) {
+    try {
+      store.bindUser(userId)
+    } catch (err) {
+      logError(err, { source: 'useAuth', action: 'initStores:bind' })
+    }
+  }
+}
+
+/**
+ * The half of sign-in nothing on screen waits for: the network. It runs with
+ * the app up and the stores bound, the same state a foreground-resume re-fetch
+ * runs in, so it keeps that path's writes-before-reads rule.
+ */
+async function syncStores(userId: string, isCurrent: () => boolean): Promise<void> {
+  if (!isCurrent()) return
+  await migrateLocalStorageToSupabase(userId)
+  if (!isCurrent()) return
+  // Writes before reads, as useSyncRecovery's run() does. The user can act
+  // while the migration is out, and rehydrate() has just re-queued what the
+  // last session left unsent. A read that lands ahead of those writes merges
+  // the server's older copy over them: a settings change flips back, and
+  // progression's union merge re-adds a deleted set's XP, then pushes it.
+  await syncQueue.flush()
+  if (!isCurrent()) return
+  // allSettled (not all): each store's read already swallows its own failures,
+  // but allSettled is defense-in-depth so a future regression that lets one
+  // reject can never abort the other three (LIFT-820).
   const results = await Promise.allSettled([
-    workoutStore.init(userId),
-    bodyweightStore.init(userId),
-    preferencesStore.init(userId),
-    progressionStore.init(userId),
+    useWorkoutStore()._fetchFromSupabase(),
+    useBodyweightStore()._fetchFromSupabase(),
+    usePreferencesStore()._fetchFromSupabase(),
+    useProgressionStore()._fetchFromSupabase(),
   ])
   for (const r of results) {
     if (r.status === 'rejected') {
@@ -157,6 +213,54 @@ async function doInitStores(userId: string): Promise<void> {
   // Theme/colorMode are read directly from the preferences store via computeds
   // now (LIFT-1177); connectThemeStore() (App.vue) keeps the DOM in sync, so no
   // one-shot bridge is needed here.
+}
+
+/**
+ * How long a signed-in cold start with NOTHING of the user's on the device
+ * waits for the account's first read before rendering anyway (LIFT-1516).
+ */
+export const FIRST_READ_GRACE_MS = 5000
+
+/** Whether the stores hold any of the user's data, i.e. anything to show. */
+function storesHoldLocalData(): boolean {
+  return useWorkoutStore().exercises.length > 0 || useBodyweightStore().entries.length > 0
+}
+
+/** Resolves when `promise` settles or `ms` elapses, whichever comes first. */
+function settledOrElapsed(promise: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    const done = (): void => {
+      clearTimeout(timer)
+      resolve()
+    }
+    promise.then(done, done)
+  })
+}
+
+/**
+ * Lift the splash for a signed-in cold start once the stores are bound, not
+ * once they have read the server (LIFT-1516). Every store hydrated from
+ * localStorage when it was created, so binding is all the app needs to be
+ * correct on screen. The reads run behind it and land the way a resume's do.
+ *
+ * The one wait left is for a device that holds nothing of this user's: a new
+ * browser, a reinstall, or an OAuth redirect landing on either. There only the
+ * first read can tell a returning lifter from a new one, and rendering without
+ * it would put a returning lifter into onboarding. The wait is capped, so a
+ * dead uplink costs FIRST_READ_GRACE_MS rather than every retry.
+ */
+async function liftSplashWhenBound(run: StoresInit): Promise<void> {
+  try {
+    await run.bound
+    if (!storesHoldLocalData()) await settledOrElapsed(run.synced, FIRST_READ_GRACE_MS)
+  } catch {
+    // Already reported: a failed bind fails `synced`, which initStores logs.
+    // The splash comes down regardless, because the app is local-first and
+    // renders from localStorage either way (LIFT-1324).
+  } finally {
+    loading.value = false
+  }
 }
 
 /** Clear guest mode (a real session supersedes it). */
@@ -195,7 +299,7 @@ function init(): void {
       user.value = session.user
       // A real session supersedes any prior guest mode.
       clearGuestFlag()
-      initStores(session.user.id).then(() => { loading.value = false })
+      void liftSplashWhenBound(initStores(session.user.id))
     } else {
       user.value = null
       restoreGuestIfFlagged()
@@ -222,14 +326,9 @@ function init(): void {
       user.value = session.user
       if (wasUnauthenticated) {
         clearGuestFlag()
-        // Fire-and-forget re-auth init: `initStores` rethrows on failure, so
-        // catch at the source rather than leaking an unhandled rejection to the
-        // global floor (LIFT-1227). The stores each swallow their own fetch
-        // errors; a rejection here means the guard/migration wrapper itself
-        // failed and is worth logging.
-        initStores(session.user.id).catch((err) => {
-          logError(err, { source: 'useAuth', action: 'onAuthStateChange:initStores' })
-        })
+        // Fire-and-forget re-auth init. The run reports its own failure
+        // (initStores), so nothing leaks to the global floor (LIFT-1227).
+        initStores(session.user.id)
       }
     } else if (event === 'SIGNED_OUT') {
       passwordRecoveryPending.value = false
@@ -357,7 +456,7 @@ function clearPasswordRecovery(): void {
 
 async function devSignIn(): Promise<void> {
   user.value = { id: 'local-dev', email: 'dev@localhost' }
-  await initStores('local-dev')
+  await initStores('local-dev').synced
 }
 
 function resetStores(): void {

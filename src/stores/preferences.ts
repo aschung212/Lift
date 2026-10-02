@@ -437,7 +437,13 @@ export const usePreferencesStore = defineStore('preferences', {
       this._persist()
     },
 
-    async init(userId: string) {
+    /**
+     * Attach the store to a signed-in account without touching the network:
+     * everything `init()` does before its read. Split out so sign-in can bind
+     * every store before the splash comes down and run the reads behind it
+     * (LIFT-1516).
+     */
+    bindUser(userId: string) {
       this._userId = userId
 
       // Load from localStorage first (instant), through the same guarded read
@@ -491,7 +497,10 @@ export const usePreferencesStore = defineStore('preferences', {
           }
         } catch { /* ignore */ }
       }
+    },
 
+    async init(userId: string) {
+      this.bindUser(userId)
       // Then try Supabase (overrides local if exists)
       await this._fetchFromSupabase()
     },

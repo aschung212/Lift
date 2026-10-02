@@ -42,6 +42,7 @@ vi.mock('../../lib/syncQueue', () => ({
     enqueueDelete: vi.fn(),
     clear: vi.fn(),
     rehydrate: vi.fn().mockResolvedValue(undefined),
+    flush: vi.fn().mockResolvedValue(undefined),
   },
 }))
 vi.mock('../../lib/durableStorage', () => ({

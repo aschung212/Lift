@@ -346,14 +346,24 @@ export const useProgressionStore = defineStore('progression', {
       this._persist()
     },
 
-    async init(userId: string) {
+    /**
+     * Attach the store to a signed-in account without touching the network:
+     * everything `init()` does before its read. Split out so sign-in can bind
+     * every store before the splash comes down and run the reads behind it
+     * (LIFT-1516).
+     */
+    bindUser(userId: string) {
       this._userId = userId
       // A device that has read this account's row before pushes exactly as it
-      // always has; one that never has holds until the read below lands
+      // always has; one that never has holds until `_fetchFromSupabase` lands
       // (LIFT-1515). No base is kept: the merge that read runs already folds
       // this device's additions into the account's copy — only a removal needs
       // remembering (`_heldRemovals`).
       this._accountRowRead = bindAccountRow('progression', userId).read
+    },
+
+    async init(userId: string) {
+      this.bindUser(userId)
       await this._fetchFromSupabase()
     },
 
