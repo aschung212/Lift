@@ -10,10 +10,11 @@ import { syncQueue } from '../lib/syncQueue'
 import { deleteAllIDB } from '../lib/durableStorage'
 import { onForegroundResume } from '../lib/foregroundResume'
 import { logError } from '../lib/logger'
-import { clearReauthFlag } from '../lib/sessionHealth'
+import { clearReauthFlag, sessionAwaitingRefresh } from '../lib/sessionHealth'
+import { readStoredSession, clearStoredSession, type StoredSession } from '../lib/storedSession'
 import { isNative } from '../lib/platform'
 import { APP_URL } from '../lib/appMeta'
-import type { User, Provider } from '@supabase/supabase-js'
+import type { AuthChangeEvent, Session, User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
   message: string
@@ -179,6 +180,115 @@ function restoreGuestIfFlagged(): boolean {
   return false
 }
 
+// ── A stored session auth-js cannot refresh yet (LIFT-1545) ─────────
+// More than an hour after the last session the access token has expired, and
+// getSession() will not answer until auth-js has refreshed it. Offline, that
+// refresh retries for about 25 s (one browser timeout on a dead uplink), keeps
+// the session in storage because the failure is retryable, and then answers
+// `session: null`. Read as "signed out", that held the splash for the retries
+// and then showed the sign-in screen to a lifter whose data was all on the
+// device; the auto-refresh signed them back in only once the network returned.
+//
+// Instead the user of the stored session stays signed in, locally, until a
+// refresh confirms it. No store is bound meanwhile: a request with no usable
+// token goes out under the anon key, and RLS answers a read like that with
+// empty rows rather than an error, so reading would merge every store against
+// an "empty" account. Edits stay on the device like a guest's and reach the
+// account through the read that follows the refresh. That read already pushes
+// any set, exercise, weigh-in or delete the server lacks, and the two
+// whole-row stores are held so it replays their edits too.
+
+/**
+ * How long a cold start waits for auth-js to confirm the session stored on
+ * this device before showing the app from it anyway (LIFT-1545). Long enough
+ * for a token refresh on a slow but working connection, where a revoked
+ * session would otherwise flash the app before the sign-in screen.
+ */
+export const STORED_SESSION_GRACE_MS = 2000
+
+/**
+ * auth-js refreshes an access token this close to expiry before getSession()
+ * answers for it (its EXPIRY_MARGIN_MS). Any other stored session is answered
+ * from storage at once, so only these can be waiting on the network.
+ */
+const REFRESH_MARGIN_MS = 90_000
+
+let _restoreTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelRestoreTimer(): void {
+  if (_restoreTimer !== null) clearTimeout(_restoreTimer)
+  _restoreTimer = null
+}
+
+/**
+ * auth-js's AuthRetryableFetchError (a network failure or a 5xx), matched the
+ * way auth-js's own `isAuthRetryableFetchError` matches it. The class can't be
+ * imported here: supabase-js is loaded lazily (initSupabase), and a value
+ * import would pull the SDK into the startup bundle.
+ */
+function isRetryableAuthFetchError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && '__isAuthError' in err &&
+    (err as { name?: unknown }).name === 'AuthRetryableFetchError'
+}
+
+/**
+ * Sign in the user of the stored session, locally, without binding any store.
+ * Returns false, changing nothing, when no session auth-js could refresh is
+ * stored.
+ */
+function restoreStoredSession(stored: StoredSession | null = readStoredSession()): boolean {
+  if (sessionAwaitingRefresh.value) return true
+  if (!stored) return false
+  user.value = stored.user
+  sessionAwaitingRefresh.value = true
+  usePreferencesStore().holdUntilRead(stored.user.id)
+  useProgressionStore().holdUntilRead(stored.user.id)
+  loading.value = false
+  return true
+}
+
+/**
+ * Settle the stored session against getSession()'s answer. Returns true when
+ * the user stays signed in from it: auth-js kept the session but could not
+ * refresh it for a network reason. Any other answer is final, a session to bind
+ * or none at all, and is left to the caller's own branch.
+ */
+function keepStoredSession(session: Session | null, error: unknown): boolean {
+  cancelRestoreTimer()
+  if (!session && isRetryableAuthFetchError(error)) return restoreStoredSession()
+  sessionAwaitingRefresh.value = false
+  return false
+}
+
+/** getSession() failed outright: a restored session was never confirmed, so drop it. */
+function dropStoredSession(): void {
+  cancelRestoreTimer()
+  if (!sessionAwaitingRefresh.value) return
+  sessionAwaitingRefresh.value = false
+  user.value = null
+}
+
+/**
+ * Settle a restored session against an auth event. A session means a refresh
+ * went through: returns true so the caller binds it. SIGNED_OUT means the
+ * refresh token was rejected: the user goes back to the sign-in screen
+ * WITHOUT the sign-out teardown, because no store was ever bound to this
+ * session, and its data stays on the device as an offline cold start always
+ * left it.
+ */
+function settleRestoredSession(event: AuthChangeEvent, session: Session | null): boolean {
+  if (!sessionAwaitingRefresh.value) return false
+  if (session?.user) {
+    sessionAwaitingRefresh.value = false
+    return true
+  }
+  if (event === 'SIGNED_OUT') {
+    sessionAwaitingRefresh.value = false
+    user.value = null
+  }
+  return false
+}
+
 function init(): void {
   if (_initialized) return
   _initialized = true
@@ -190,7 +300,19 @@ function init(): void {
     return
   }
 
-  supabase.auth.getSession().then(({ data: { session } }) => {
+  // Show the app from the stored session if auth-js is still refreshing it
+  // when the grace period ends (LIFT-1545). A browser that knows it is offline
+  // gets no grace: that refresh cannot succeed.
+  _restoreTimer = setTimeout(() => {
+    _restoreTimer = null
+    const stored = readStoredSession()
+    if (user.value === null && stored && stored.expiresAt - Date.now() < REFRESH_MARGIN_MS) {
+      restoreStoredSession(stored)
+    }
+  }, typeof navigator !== 'undefined' && navigator.onLine === false ? 0 : STORED_SESSION_GRACE_MS)
+
+  supabase.auth.getSession().then(({ data: { session }, error }) => {
+    if (keepStoredSession(session, error)) return
     if (session?.user) {
       user.value = session.user
       // A real session supersedes any prior guest mode.
@@ -202,18 +324,23 @@ function init(): void {
       loading.value = false
     }
   }).catch((err) => {
+    dropStoredSession()
     logError(err, { source: 'useAuth', action: 'getSession' })
     restoreGuestIfFlagged()
     loading.value = false
   })
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    // Runs first so a SIGNED_OUT for a restored session finds no prior user
+    // below, and so nothing is torn down for it (LIFT-1545).
+    const confirmsRestored = settleRestoredSession(event, session)
     const prev = user.value
     // A guest converting to a real account has a truthy `prev` (the guest
     // identity), so `!prev` alone would skip initStores — and with it the
     // local→Supabase migration. Init when the previous state had no real
-    // account: either signed out (`!prev`) or a guest (LIFT-1083).
-    const wasUnauthenticated = !prev || isGuest.value
+    // account: either signed out (`!prev`), a guest (LIFT-1083), or a session
+    // restored from storage that no store was bound to (LIFT-1545).
+    const wasUnauthenticated = !prev || isGuest.value || confirmsRestored
     // A successful (re)auth means the token is healthy again — clear any
     // pending "re-sign-in needed" prompt (LIFT-784).
     if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') clearReauthFlag()
@@ -391,11 +518,23 @@ function teardownSession(): void {
 }
 
 async function signOut(): Promise<void> {
+  // A session restored from storage has no access token auth-js could revoke,
+  // and its signOut() would first retry the refresh it is already failing (a
+  // browser timeout on a dead uplink) before giving up (LIFT-1545).
+  const restored = sessionAwaitingRefresh.value
   try {
-    await supabase?.auth.signOut()
+    if (!restored) await supabase?.auth.signOut()
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
+    // auth-js's signOut() refreshes an expired access token first, and when
+    // that fails retryably (offline, a dead uplink, an auth outage) it returns
+    // without removing the session. Left in storage, the next refresh that
+    // succeeds (the auto-refresh ticker once the network is back, or the next
+    // launch) signs this user straight back in. A no-op after a sign-out that
+    // did remove it.
+    clearStoredSession()
+    sessionAwaitingRefresh.value = false
     teardownSession()
   }
 }
@@ -588,6 +727,8 @@ function destroy(): void {
   _authUnsubscribe = null
   for (const cleanup of _lifecycleCleanups) cleanup()
   _lifecycleCleanups = []
+  cancelRestoreTimer()
+  sessionAwaitingRefresh.value = false
   _initialized = false
   resetInitStoresGuard()
 }

@@ -12,7 +12,7 @@ import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { setDayKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
-import { bindAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow } from '../lib/accountRowRead'
+import { bindAccountRow, holdAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow } from '../lib/accountRowRead'
 import {
   themeUnlocksToJson,
   streakHistoryToJson,
@@ -363,6 +363,19 @@ export const useProgressionStore = defineStore('progression', {
       this._accountRowRead = true
       this._heldRemovals = []
       markAccountRowRead('progression', userId)
+    },
+
+    /**
+     * Hold pushes for `userId` until the next successful read (LIFT-1545). For
+     * a session restored from this device that auth could not refresh yet:
+     * nothing is bound to it, so XP changes made meanwhile are not queued. Held,
+     * the read that follows the refresh merges them into the account's row,
+     * re-applies a deleted set's removal through `_heldRemovals`, and only then
+     * pushes, rather than pushing a copy that has not seen the account's.
+     */
+    holdUntilRead(userId: string) {
+      holdAccountRow('progression', userId)
+      this._accountRowRead = false
     },
 
     async _fetchFromSupabase() {

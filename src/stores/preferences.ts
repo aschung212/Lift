@@ -38,7 +38,7 @@ import {
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import {
-  bindAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow,
+  bindAccountRow, holdAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow,
   heldEditsSince, replayHeldEdits,
 } from '../lib/accountRowRead'
 import { useWorkoutStore } from './workout'
@@ -411,6 +411,19 @@ export const usePreferencesStore = defineStore('preferences', {
         this._accountRowRead = true
         this._heldBase = null
       }
+    },
+
+    /**
+     * Hold pushes for `userId` until the next successful read, measuring held
+     * edits from the payload as it stands now (LIFT-1545). For a session
+     * restored from this device that auth could not refresh yet: nothing is
+     * bound to it, so a settings change made meanwhile is not queued, and
+     * without the hold the read that follows the refresh would adopt the
+     * account's blob over it. Held, the read replays it instead.
+     */
+    holdUntilRead(userId: string) {
+      this._heldBase = holdAccountRow('preferences', userId, () => JSON.stringify(this._buildPayload()))
+      this._accountRowRead = false
     },
 
     /**

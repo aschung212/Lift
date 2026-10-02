@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   bindAccountRow,
+  holdAccountRow,
   hasReadAccountRow,
   markAccountRowRead,
   forgetAccountRow,
@@ -88,6 +89,46 @@ describe('bindAccountRow', () => {
     } finally {
       vi.stubGlobal('localStorage', original)
     }
+  })
+})
+
+// A session restored from storage that auth could not refresh (LIFT-1545)
+// binds no store, so its edits are neither queued nor journaled. The device has
+// read the row before, so `bindAccountRow` alone would let the confirming read
+// win over them; holding is what keeps them.
+describe('holdAccountRow', () => {
+  it('turns a device that has read the row back into one that holds, from a base captured now', () => {
+    markAccountRowRead('preferences', 'u1')
+
+    expect(holdAccountRow('preferences', 'u1', () => '{"theme":"water"}')).toBe('{"theme":"water"}')
+
+    expect(hasReadAccountRow('preferences', 'u1')).toBe(false)
+    // The next bind (the confirming init) holds, measuring edits from that base.
+    expect(bindAccountRow('preferences', 'u1', () => '{"theme":"fire"}'))
+      .toEqual({ read: false, heldBase: '{"theme":"water"}' })
+  })
+
+  it('keeps the base an earlier launch is still holding from', () => {
+    bindAccountRow('preferences', 'u1', () => '{"theme":"eternal"}')
+    const capture = vi.fn(() => '{"theme":"water"}')
+
+    expect(holdAccountRow('preferences', 'u1', capture)).toBe('{"theme":"eternal"}')
+    expect(capture).not.toHaveBeenCalled()
+  })
+
+  it('replaces another account\'s record', () => {
+    markAccountRowRead('preferences', 'u2')
+
+    expect(holdAccountRow('preferences', 'u1', () => '{"theme":"water"}')).toBe('{"theme":"water"}')
+    expect(hasReadAccountRow('preferences', 'u2')).toBe(false)
+    expect(bindAccountRow('preferences', 'u1')).toEqual({ read: false, heldBase: '{"theme":"water"}' })
+  })
+
+  it('holds without a base for a store that keeps none', () => {
+    markAccountRowRead('progression', 'u1')
+
+    expect(holdAccountRow('progression', 'u1')).toBeNull()
+    expect(bindAccountRow('progression', 'u1')).toEqual({ read: false, heldBase: null })
   })
 })
 
