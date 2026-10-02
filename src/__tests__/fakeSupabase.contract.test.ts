@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { createFakeSupabase, FAKE_SUPABASE_CHAIN_METHODS, FAKE_NETWORK_ERROR_RESULT } from './fakeSupabase'
+import { createFakeSupabase, FAKE_SUPABASE_CHAIN_METHODS, FAKE_NETWORK_ERROR_RESULT, type FakeSupabaseResult } from './fakeSupabase'
 import { columnDefaults, hasUpdatedAtTrigger } from './migrationSchema'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -308,5 +308,88 @@ describe('createFakeSupabase serverClock models the updated_at trigger (LIFT-152
     const fake = createFakeSupabase({ mode: 'ok' })
     await fake.from('sets').upsert({ id: 's1', user_id: 'u1', weight: 100 })
     expect(fake.tables.sets[0]).not.toHaveProperty('updated_at')
+  })
+})
+
+/**
+ * Reads kept in flight (LIFT-1517). Every query here used to settle on the next
+ * microtask, so no test could sign out while a store's read was pending: the
+ * window in which the workout and bodyweight reads put the previous user's
+ * history back into the wiped stores. These pin the mechanism
+ * `staleReadAfterSignOut.test.ts` is built on.
+ */
+describe('createFakeSupabase holdReads keeps a read in flight (LIFT-1517)', () => {
+  /** Let every promise chain the fake has queued run. */
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  /** Make a read and record what arrives, without waiting for it. */
+  function issue(query: PromiseLike<FakeSupabaseResult>) {
+    const read: { result?: FakeSupabaseResult; error?: unknown } = {}
+    query.then(r => { read.result = r }, e => { read.error = e })
+    return read
+  }
+
+  it('delivers the answer the server gave when the read was made, once released', async () => {
+    const fake = createFakeSupabase({ mode: 'ok' })
+    fake.seed('sets', [{ id: 's1', user_id: 'u1', weight: 100 }])
+    fake.holdReads()
+
+    const read = issue(fake.from('sets').select('*').eq('user_id', 'u1'))
+    await settle()
+    expect(read.result).toBeUndefined()
+    expect(fake.heldReads).toEqual([{ table: 'sets', filters: { user_id: 'u1' } }])
+
+    // The server moves on while the response is in flight. Writes are never held.
+    await fake.from('sets').update({ weight: 105 }).eq('id', 's1')
+    await fake.from('sets').upsert({ id: 's2', user_id: 'u1', weight: 60 })
+    expect(fake.tables.sets.map(r => r.weight)).toEqual([105, 60])
+
+    fake.releaseReads()
+    await settle()
+    expect(read.result).toEqual({ data: [{ id: 's1', user_id: 'u1', weight: 100 }], error: null })
+    expect(fake.heldReads).toEqual([])
+  })
+
+  it('releases a chosen subset, or a failure in place of the answer', async () => {
+    const fake = createFakeSupabase({ mode: 'ok' })
+    fake.seed('sets', [{ id: 'a1', user_id: 'a' }, { id: 'b1', user_id: 'b' }])
+    fake.holdReads()
+    const a = issue(fake.from('sets').select('*').eq('user_id', 'a'))
+    const b = issue(fake.from('sets').select('*').eq('user_id', 'b'))
+
+    fake.releaseReads({ match: read => read.filters.user_id === 'b' })
+    await settle()
+    expect(b.result?.data).toEqual([{ id: 'b1', user_id: 'b' }])
+    expect(a.result).toBeUndefined()
+    expect(fake.heldReads.map(r => r.filters.user_id)).toEqual(['a'])
+
+    // A partial release leaves the hold on for reads made after it.
+    const c = issue(fake.from('sets').select('*').eq('user_id', 'b'))
+    await settle()
+    expect(c.result).toBeUndefined()
+
+    const dropped = new Error('Failed to fetch')
+    fake.releaseReads({ match: read => read.filters.user_id === 'a', outcome: dropped })
+    fake.releaseReads({ outcome: FAKE_NETWORK_ERROR_RESULT })
+    await settle()
+    expect(a.error).toBe(dropped)
+    expect(c.result).toEqual(FAKE_NETWORK_ERROR_RESULT)
+
+    // A full release ends the hold: the next read answers at once.
+    const d = issue(fake.from('sets').select('*').eq('user_id', 'a'))
+    await settle()
+    expect(d.result?.data).toEqual([{ id: 'a1', user_id: 'a' }])
+  })
+
+  it('reset() ends the hold and forgets every read in flight', async () => {
+    const fake = createFakeSupabase({ mode: 'ok' })
+    fake.holdReads()
+    issue(fake.from('sets').select('*'))
+    fake.reset()
+    expect(fake.heldReads).toEqual([])
+
+    const read = issue(fake.from('sets').select('*'))
+    await settle()
+    expect(read.result).toEqual({ data: [], error: null })
   })
 })

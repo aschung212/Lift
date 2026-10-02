@@ -641,6 +641,15 @@ export const useWorkoutStore = defineStore('workout', () => {
           client.from('sets').select('*').eq('user_id', userId)
             .is('deleted_at', null).order('created_at').order('id')),
       ])
+      // Signed out (or switched account) while the read was in flight: the
+      // answer belongs to a session that has ended (LIFT-1517). `$reset` has
+      // already wiped this store, so merging it would put the signed-out
+      // user's history straight back, and `_persist()` would write it to
+      // localStorage, the IndexedDB backup and every open tab, where
+      // `migrateLocalStorageToSupabase` uploads it into the next empty account
+      // to sign in on this device. A resolved failure is dropped here too, a
+      // rejected one in the `catch` below.
+      if (_userId !== userId) return
       if (exResult.error || setsResult.error) {
         reportFetchError('workout', exResult.error ?? setsResult.error, {
           exerciseError: String(exResult.error),
@@ -656,6 +665,10 @@ export const useWorkoutStore = defineStore('workout', () => {
       remoteExData = exResult.data
       sets = setsResult.data
     } catch (err) {
+      // A failure that lands after its session ended is not this session's to
+      // report: it would light the next account's sync indicator and refresh a
+      // session that no longer exists (LIFT-1517).
+      if (_userId !== userId) return
       reportFetchError('workout', err)
       lastSyncError.value = classifySyncError(err)
       // Same auth branch as the resolved-error path above. postgrest-js usually
@@ -665,7 +678,9 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (isAuthError(err)) void ensureFreshSession()
       return
     } finally {
-      syncing.value = false
+      // Only the session that raised the flag lowers it: a stale read must not
+      // clear it while the next account's own read is still in flight.
+      if (_userId === userId) syncing.value = false
     }
 
     if (!remoteExData || !sets) return

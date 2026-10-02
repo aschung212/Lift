@@ -511,6 +511,236 @@ describe('Invariant: every store read handles failure identically (LIFT-1179)', 
   })
 })
 
+// ── Invariant 3a′: a read that outlives its session changes nothing (LIFT-1517) ──
+// Guard: an `await` in a store yields, and a sign-out does not wait for it.
+// `signOut()` wipes every store (`$reset`) and persists the wiped payloads, so
+// a read that lands afterwards and is merged anyway puts the signed-out user's
+// data straight back. The workout and bodyweight reads did exactly that (an
+// empty local copy merged with the server's is the server's), and
+// `migrateLocalStorageToSupabase` then uploaded the re-persisted history into
+// the next empty account to sign in on the device. Preferences and progression
+// already dropped a late answer (LIFT-1515), but only on the resolved path:
+// four hand-written copies of one contract had drifted, the LIFT-1179 shape.
+//
+// So a store method that awaits must re-check the session the moment it
+// resumes, on every path out of the await: the statement after it, the first
+// statement of the `catch` a rejection lands in, and a `finally` that lowers
+// `syncing` (which would otherwise lower it under the next account's read,
+// still in flight). DERIVED from the store sources: every `await` in every
+// store is a subject, so a new async action, or a fifth store, is covered by
+// being written. An await that ends its method, like `init()`'s
+// `await this._fetchFromSupabase()`, resumes into nothing and is exempt. No
+// behavioural test could see the original: the shared fake settled every read
+// on the next microtask, so none ever signed out with one in flight.
+
+describe('Invariant: a store read that outlives its session changes nothing (LIFT-1517)', () => {
+  /** The re-check: the user this method pinned before awaiting is still the one signed in. */
+  const SESSION_CHECK = /^if\s*\(\s*(?:this\.)?_userId\s*!==\s*userId\s*\)\s*return\b/
+  /** What must immediately precede a `syncing = false` in such a method's `finally`. */
+  const SYNCING_GUARD = /if\s*\(\s*(?:this\.)?_userId\s*===\s*userId\s*\)\s*$/
+  /** The pin that check compares against, taken before the await. */
+  const PINNED_USER = /\bconst\s+userId\s*=\s*(?:this\.)?_userId\b/
+
+  /**
+   * Index just past the statement whose `await` is at `from`: the first newline
+   * at bracket depth 0 that the next line does not continue (a wrapped chain's
+   * `.single()`), or the `}` closing the enclosing block. Strings are skipped
+   * so a bracket inside one cannot unbalance the count.
+   */
+  function statementEnd(source: string, from: number): number {
+    let depth = 0
+    let quote: string | null = null
+    for (let i = from; i < source.length; i++) {
+      const ch = source[i]
+      if (quote) {
+        if (ch === '\\') i++
+        else if (ch === quote) quote = null
+        continue
+      }
+      if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue }
+      if (ch === '(' || ch === '[' || ch === '{') depth++
+      else if (ch === ')' || ch === ']' || ch === '}') {
+        if (depth === 0) return i
+        depth--
+      } else if (ch === '\n' && depth === 0 && !/^\s*(?:[.?:]|&&|\|\|)/.test(source.slice(i + 1, i + 120))) {
+        return i
+      }
+    }
+    return source.length
+  }
+
+  /** Indices of the `{` enclosing `index`, innermost first. */
+  function enclosingBraces(source: string, index: number): number[] {
+    const out: number[] = []
+    let depth = 0
+    for (let i = index - 1; i >= 0; i--) {
+      if (source[i] === '}') depth++
+      else if (source[i] === '{') {
+        if (depth === 0) out.push(i)
+        else depth--
+      }
+    }
+    return out
+  }
+
+  /** Index of the `}` closing the block opened at `open`. */
+  function blockEnd(source: string, open: number): number {
+    let depth = 0
+    for (let i = open; i < source.length; i++) {
+      if (source[i] === '{') depth++
+      else if (source[i] === '}' && --depth === 0) return i
+    }
+    return source.length
+  }
+
+  /** The line `index` sits on, up to and including it. */
+  const lineUpTo = (source: string, index: number) => source.slice(source.lastIndexOf('\n', index) + 1, index + 1)
+
+  interface Resumption { file: string; statement: string; problems: string[] }
+
+  /** Every `await` in `files` that resumes into more of its method, with each re-check it lacks. */
+  function resumptions(files: { name: string; content: string }[]): Resumption[] {
+    const out: Resumption[] = []
+    for (const { name, content } of files) {
+      const source = stripComments(content)
+      for (const m of source.matchAll(/\bawait\b/g)) {
+        const at = m.index!
+        const statement = source.slice(source.lastIndexOf('\n', at) + 1, source.indexOf('\n', at)).trim()
+        const braces = enclosingBraces(source, at)
+        // The async function's own body: the innermost enclosing block opened on an `async` line.
+        const fnOpen = braces.findIndex(b => /\basync\b/.test(lineUpTo(source, b)))
+        if (fnOpen === -1) {
+          // Fail closed: a signature this scan cannot read must not exempt its awaits.
+          out.push({ file: name, statement, problems: ['sits in no `async` block this scan can find'] })
+          continue
+        }
+        const after = source.slice(statementEnd(source, at)).trimStart()
+        if (fnOpen === 0 && after.startsWith('}')) continue
+        const problems: string[] = []
+        if (!PINNED_USER.test(source.slice(braces[fnOpen], at))) {
+          problems.push('pins no `const userId = _userId` before awaiting')
+        }
+        if (!SESSION_CHECK.test(after)) {
+          problems.push('does not re-check the session on the statement after the await')
+        }
+        // The innermost `try` around the await, within its own method.
+        const tryOpen = braces.slice(0, fnOpen).find(b => /\btry\s*\{$/.test(lineUpTo(source, b)))
+        if (tryOpen !== undefined) {
+          let cursor = blockEnd(source, tryOpen) + 1
+          const handler = /^\s*catch\b[^{]*\{/.exec(source.slice(cursor))
+          if (handler) {
+            const open = cursor + handler[0].length - 1
+            if (!SESSION_CHECK.test(source.slice(open + 1).trimStart())) {
+              problems.push('does not re-check the session first thing in its `catch`')
+            }
+            cursor = blockEnd(source, open) + 1
+          }
+          const cleanup = /^\s*finally\s*\{/.exec(source.slice(cursor))
+          if (cleanup) {
+            const open = cursor + cleanup[0].length - 1
+            const body = source.slice(open + 1, blockEnd(source, open))
+            for (const lowered of body.matchAll(/(?:this\.)?syncing(?:\.value)?\s*=\s*false/g)) {
+              if (!SYNCING_GUARD.test(body.slice(0, lowered.index))) {
+                problems.push('lowers `syncing` in its `finally` without re-checking the session')
+              }
+            }
+          }
+        }
+        out.push({ file: name, statement, problems })
+      }
+    }
+    return out
+  }
+
+  it('finds an await to check in every store that reads from Supabase (non-vacuity)', () => {
+    const files = getStoreFiles()
+    const readers = files
+      .filter(f => /(?:async function|async)\s+_fetchFromSupabase\s*\(\s*\)/.test(stripComments(f.content)))
+      .map(f => f.name)
+    // The LIFT-1179 invariant pins this list; here it only has to be non-empty.
+    expect(readers.length).toBeGreaterThan(0)
+    const checked = resumptions(files).map(r => r.file)
+    for (const reader of readers) expect(checked, `no await found in ${reader}`).toContain(reader)
+  })
+
+  it('flags every unguarded way out of an await and accepts the guarded shape (self-test)', () => {
+    const guarded = [
+      '  actions: {',
+      '    async read() {',
+      '      const userId = this._userId',
+      '      try {',
+      '        const result = await supabase',
+      "          .from('t')",
+      '          .single()',
+      '        if (this._userId !== userId) return',
+      '        this.rows = result.data',
+      '      } catch (err) {',
+      '        if (this._userId !== userId) return',
+      '        this.lastSyncError = err',
+      '      } finally {',
+      '        if (this._userId === userId) this.syncing = false',
+      '      }',
+      '    },',
+      '    async init(userId) {',
+      '      this._userId = userId',
+      '      await this.read()',
+      '    },',
+      '  },',
+    ].join('\n')
+    const unguarded = [
+      '  async function read() {',
+      '    const userId = _userId',
+      '    try {',
+      '      const [a, b] = await Promise.all([',
+      "        rows(() => client.from('a')),",
+      "        rows(() => client.from('b')),",
+      '      ])',
+      '      exercises.value = a',
+      '    } catch (err) {',
+      '      lastSyncError.value = err',
+      '    } finally {',
+      '      syncing.value = false',
+      '    }',
+      '  }',
+    ].join('\n')
+    const unpinned = [
+      '  async function read() {',
+      '    const rows = await fetchRows()',
+      '    if (_userId !== userId) return',
+      '    exercises.value = rows',
+      '  }',
+    ].join('\n')
+
+    const result = resumptions([
+      { name: 'guarded.ts', content: guarded },
+      { name: 'unguarded.ts', content: unguarded },
+      { name: 'unpinned.ts', content: unpinned },
+    ])
+    // `init()`'s await ends its method, so it is not a subject at all.
+    expect(result.map(r => [r.file, r.problems])).toEqual([
+      ['guarded.ts', []],
+      ['unguarded.ts', [
+        'does not re-check the session on the statement after the await',
+        'does not re-check the session first thing in its `catch`',
+        'lowers `syncing` in its `finally` without re-checking the session',
+      ]],
+      ['unpinned.ts', ['pins no `const userId = _userId` before awaiting']],
+    ])
+  })
+
+  it('every store method re-checks the session on every path out of an await', () => {
+    const violations = resumptions(getStoreFiles())
+      .filter(r => r.problems.length > 0)
+      .map(r =>
+        `${r.file}: \`${r.statement}\` ${r.problems.join('; ')}. A sign-out does not wait ` +
+          'for an await, and $reset has wiped the store by the time it resumes: re-check ' +
+          '`if (_userId !== userId) return` before touching state, in the catch too, and ' +
+          'lower `syncing` only under `if (_userId === userId)`.',
+      )
+    expect(violations).toEqual([])
+  })
+})
+
 // ── Invariant 3b: collection reads must page (#1152) ────────────────
 // Guard: PostgREST truncates every response at max_rows (1000) and reports it
 // nowhere. An unpaged `.select()` on a collection therefore returns the first

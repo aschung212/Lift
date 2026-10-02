@@ -410,12 +410,17 @@ export const useProgressionStore = defineStore('progression', {
         }
         data = result.data
       } catch (err) {
+        // A rejected read outlives its session the same way a resolved one does
+        // (LIFT-1517): reporting it would light the next account's sync
+        // indicator and refresh a session that no longer exists.
+        if (this._userId !== userId) return
         reportFetchError('progression', err)
         this.lastSyncError = classifySyncError(err)
         if (isAuthError(err)) void ensureFreshSession()
         return
       } finally {
-        this.syncing = false
+        // Only the session that raised the flag lowers it (LIFT-1517).
+        if (this._userId === userId) this.syncing = false
       }
 
       if (!data) return
