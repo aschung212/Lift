@@ -322,11 +322,12 @@ function countCallArgs(source: string, start: number): number {
 describe('Invariant: store writes carry a durable descriptor (LIFT-1239)', () => {
   /**
    * An enqueue may opt out of the journal only with this marker plus a written
-   * justification. The one current exemption is bodyweight's `clearAll`: its
-   * match is unbounded ("every live row for this user"), a descriptor can only
-   * express `eq` filters so the `.is('deleted_at', null)` guard would be lost
-   * on replay, and re-applying a wipe on the next launch would destroy entries
-   * logged on another device in the meantime.
+   * justification. No call site carries it today. The last one was
+   * bodyweight's `clearAll`, an unbounded "soft-delete every live row for this
+   * user" whose `.is('deleted_at', null)` guard a descriptor of `eq` filters
+   * could not express, and which would have re-wiped another device's entries
+   * if replayed. It was removed with its only caller, the sample-data banner
+   * (LIFT-1527). An unbounded match is the shape to be suspicious of here.
    */
   const EXEMPT_MARKER = 'durable-journal-exempt'
 

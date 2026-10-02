@@ -143,6 +143,15 @@ export function exerciseServerIds(exercise: Pick<Exercise, 'id' | 'mergedFrom'>)
   return [...new Set([exercise.id, ...exercise.mergedFrom])]
 }
 
+/**
+ * An exercise `removeSampleExercises` took out, with the index it held, so the
+ * sample-data undo can put it back where it was (LIFT-1527).
+ */
+export interface RemovedExercise {
+  exercise: Exercise
+  index: number
+}
+
 export interface OverloadSuggestion {
   type: 'increase_weight' | 'increase_reps'
   weight: number
@@ -1418,6 +1427,56 @@ export const useWorkoutStore = defineStore('workout', () => {
     }
   }
 
+  /**
+   * Remove the onboarding sample exercises — exactly the ones still flagged
+   * `sample` — and return them with their positions for an undo (LIFT-1527).
+   *
+   * Local-only, and that follows from what the flag means. `sample` is set only
+   * by `addExercise(…, { sync: false })`, and `_adoptExercise` clears it before
+   * any write for the row reaches the server; every bulk push filters it out
+   * too. So a row still carrying it has no server copy: there is nothing to
+   * soft-delete and no fetch that could bring it back, so there is no tombstone
+   * and no enqueue. The sample-data banner used to call `deleteExercise` on
+   * EVERY exercise instead, which soft-deleted the user's real ones on the
+   * server, including a sample exercise a real set had already adopted, along
+   * with that set. Anything adopted is real now and is left alone.
+   */
+  function removeSampleExercises(): RemovedExercise[] {
+    const removed: RemovedExercise[] = []
+    const kept: Exercise[] = []
+    exercises.value.forEach((exercise, index) => {
+      if (exercise.sample) removed.push({ exercise, index })
+      else kept.push(exercise)
+    })
+    if (removed.length === 0) return removed
+    exercises.value = kept
+    _invalidateDayCounts()
+    _persist()
+    return removed
+  }
+
+  /**
+   * Undo `removeSampleExercises`, putting each exercise back at the index it
+   * held. Local-only for the same reason the removal is. An id that is already
+   * present is skipped, so a second undo cannot duplicate a row.
+   */
+  function restoreSampleExercises(removed: readonly RemovedExercise[]) {
+    const present = new Set(exercises.value.map(e => e.id))
+    const next = [...exercises.value]
+    // Re-inserting in ascending index order rebuilds the original order exactly
+    // when nothing else changed in between; if something did, the clamp keeps
+    // every row, just not necessarily in its old slot.
+    for (const { exercise, index } of [...removed].sort((a, b) => a.index - b.index)) {
+      if (present.has(exercise.id)) continue
+      next.splice(Math.min(index, next.length), 0, exercise)
+      present.add(exercise.id)
+    }
+    if (next.length === exercises.value.length) return
+    exercises.value = next
+    _invalidateDayCounts()
+    _persist()
+  }
+
   function archiveExercise(exerciseId: string) {
     const exercise = exercises.value.find((e: Exercise) => e.id === exerciseId)
     if (!exercise) return
@@ -2109,6 +2168,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     toggleExerciseTag,
     deleteExercise,
     restoreExercise,
+    removeSampleExercises,
+    restoreSampleExercises,
     archiveExercise,
     unarchiveExercise,
     syncDeleteSet,

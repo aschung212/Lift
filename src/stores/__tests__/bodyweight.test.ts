@@ -158,12 +158,40 @@ describe('useBodyweightStore', () => {
     })
   })
 
-  describe('clearAll', () => {
-    it('removes all entries', () => {
+  describe('removeSampleEntries / restoreSampleEntries (LIFT-1527)', () => {
+    it('removes only the entries still flagged sample and returns them', () => {
+      const real = store.addEntry(180, '2024-01-01')
+      const sample = store.addEntry(175, '2024-01-02', { sync: false })
+      // A sample entry the user corrected is real now: updateEntry adopts it.
+      const adopted = store.addEntry(176, '2024-01-03', { sync: false })
+      store.updateEntry(adopted, 176.5)
+
+      const removed = store.removeSampleEntries()
+
+      expect(removed.map(e => e.id)).toEqual([sample])
+      expect(store.entries.map(e => e.id)).toEqual([real, adopted])
+      const stored = JSON.parse(localStorage.getItem('bodyweight-entries')!) as { id: string }[]
+      expect(stored.map(e => e.id)).toEqual([real, adopted])
+    })
+
+    it('is a no-op when no sample entry is left', () => {
       store.addEntry(180, '2024-01-01')
-      store.addEntry(175, '2024-01-02')
-      store.clearAll()
-      expect(store.entries).toHaveLength(0)
+      expect(store.removeSampleEntries()).toEqual([])
+      expect(store.entries).toHaveLength(1)
+    })
+
+    it('restores what it removed, once, and persists it', () => {
+      store.addEntry(180, '2024-01-01')
+      const sample = store.addEntry(175, '2024-01-02', { sync: false })
+      const removed = store.removeSampleEntries()
+
+      store.restoreSampleEntries(removed)
+      store.restoreSampleEntries(removed)
+
+      expect(store.entries.filter(e => e.id === sample)).toHaveLength(1)
+      expect(store.entries.find(e => e.id === sample)!.sample).toBe(true)
+      const stored = JSON.parse(localStorage.getItem('bodyweight-entries')!) as { id: string }[]
+      expect(stored.map(e => e.id)).toContain(sample)
     })
   })
 

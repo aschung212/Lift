@@ -1234,9 +1234,13 @@ describe('WorkoutTracker', () => {
     })
 
     // ── Explore-path chart-discovery tip (LIFT-1086) ────────────────
+    // The explore path's exercises carry `sample: true`, as seeded by
+    // OnboardingScreen; the tip needs one of them in the list (LIFT-1527).
+    const createSampleExercises = () => createExercises().map(e => ({ ...e, sample: true }))
+
     it('shows the chart tip when sample data is present (LIFT-1086)', () => {
       localStorageMock.setItem('sample-data', 'true')
-      mockState.exercises = createExercises()
+      mockState.exercises = createSampleExercises()
       const wrapper = mountTracker()
       expect(wrapper.find('.wtChartTip').exists()).toBe(true)
       expect(wrapper.find('.wtChartTipText').text()).toContain('progress chart')
@@ -1248,17 +1252,31 @@ describe('WorkoutTracker', () => {
       expect(wrapper.find('.wtChartTip').exists()).toBe(false)
     })
 
+    it('retires the chart tip once the sample exercises are cleared and only real ones remain (LIFT-1527)', async () => {
+      // Clearing the sample data keeps the user's own exercises now. The tip
+      // used to read the flag once at setup, so it stayed up over them.
+      localStorageMock.setItem('sample-data', 'true')
+      mockState.exercises = [...createSampleExercises(), { id: 'own', name: 'Curl', tags: [], sets: [] }]
+      const wrapper = mountTracker()
+      expect(wrapper.find('.wtChartTip').exists()).toBe(true)
+
+      mockState.exercises = mockState.exercises.filter(e => !e.sample)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.wtChartTip').exists()).toBe(false)
+    })
+
     it('does not show the chart tip once dismissed via localStorage (LIFT-1086)', () => {
       localStorageMock.setItem('sample-data', 'true')
       localStorageMock.setItem('explore-chart-tip-dismissed', 'true')
-      mockState.exercises = createExercises()
+      mockState.exercises = createSampleExercises()
       const wrapper = mountTracker()
       expect(wrapper.find('.wtChartTip').exists()).toBe(false)
     })
 
     it('chart tip dismiss button persists to localStorage (LIFT-1086)', async () => {
       localStorageMock.setItem('sample-data', 'true')
-      mockState.exercises = createExercises()
+      mockState.exercises = createSampleExercises()
       const wrapper = mountTracker()
       await wrapper.find('.wtChartTipDismiss').trigger('click')
       await wrapper.vm.$nextTick()
@@ -1268,7 +1286,7 @@ describe('WorkoutTracker', () => {
 
     it('retires the chart tip after opening an exercise detail (LIFT-1086)', async () => {
       localStorageMock.setItem('sample-data', 'true')
-      mockState.exercises = createExercises()
+      mockState.exercises = createSampleExercises()
       const wrapper = mountTracker()
       expect(wrapper.find('.wtChartTip').exists()).toBe(true)
       await wrapper.find('.wtExerciseRow').trigger('click')
