@@ -25,6 +25,7 @@ import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachA
 import { sanitizeExerciseGyms } from '../lib/gyms'
 import { mapRemoteExercise, mapRemoteSet } from '../lib/remoteRows'
 import { captureLocalOnlySetFields, restoreLocalOnlySetFields } from '../lib/localOnlySetFields'
+import { indexSetsById, resolveSetConflicts, type ServerSetCopy } from '../lib/setConflict'
 import { mergeExerciseMetadata } from '../lib/exerciseMerge'
 import { fetchAllRows } from '../lib/supabasePagination'
 import { bodyweightFold, effectiveSetWeight } from '../lib/bodyweightLoad'
@@ -72,6 +73,18 @@ export interface WorkoutSet {
    * NOT folded into `estimated1RM` — see the module header for why.
    */
   attemptedNextRep?: boolean
+  /**
+   * This set's own last-write-wins stamp (LIFT-1523), which is what decides a
+   * conflict over the set — never its exercise's `updated_at`, which a set
+   * write does not move on the server. Stamped by every local EDIT of a synced
+   * column (`updateSet`, `setExerciseBodyweightLoaded`), and replaced with the
+   * server's `sets.updated_at` whenever the merge adopts the server's copy.
+   * Absent on a set this device logged and has not edited since, and on every
+   * set persisted before this field existed: neither is an edit the server
+   * lacks, so an absent stamp loses any conflict (`pickSetCopy`). Not sent in
+   * the upsert — the `trg_sets_updated_at` trigger owns the server's copy.
+   */
+  updated_at?: string
 }
 
 export type ExerciseInputMode = 'numpad' | 'plates'
@@ -666,6 +679,9 @@ export const useWorkoutStore = defineStore('workout', () => {
     const remoteSetIds = new Set(sets.map(s => s.id))
     cleanupTombstones('sets', remoteSetIds)
     const remoteSetsMap = new Map<string, WorkoutSet[]>()
+    // The same copies keyed by set id, with the exercise the SERVER files each
+    // under — what per-set conflict resolution reads below (LIFT-1523).
+    const serverSets = new Map<string, ServerSetCopy>()
     for (const s of sets) {
       if (isTombstoned('sets', s.id)) {
         // Re-enqueue the soft-delete for tombstoned sets still visible on remote
@@ -684,6 +700,7 @@ export const useWorkoutStore = defineStore('workout', () => {
       const exerciseId = s.exercise_id
       if (!remoteSetsMap.has(exerciseId)) remoteSetsMap.set(exerciseId, [])
       remoteSetsMap.get(exerciseId)!.push(set)
+      serverSets.set(set.id, { set, exerciseId })
     }
     remoteExercises.forEach(ex => {
       ex.sets = remoteSetsMap.get(ex.id) || []
@@ -694,6 +711,10 @@ export const useWorkoutStore = defineStore('workout', () => {
     // id, so it survives however the merge and the two dedup passes below
     // reshuffle sets between exercises.
     const localOnlySetFields = captureLocalOnlySetFields(exercises.value)
+    // This device's copy of every set, taken now for the same reason: the
+    // union below pushes server copies into the local arrays in place, and the
+    // per-set resolution must compare against what this device actually held.
+    const localSets = indexSetsById(exercises.value)
 
     // Merge with local state using last-write-wins conflict resolution
     // (#1 fix: local exercises now carry updated_at from mutations)
@@ -708,7 +729,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Merge sets by ID for exercises that exist in both local and remote.
     // mergeEntities picks one exercise wholesale (last-write-wins), but
     // the losing side may have sets the winning side doesn't. Union them
-    // by set ID so no sets are lost during sync.
+    // by set ID so no sets are lost during sync. Which COPY of a set both
+    // sides hold survives is not decided here — see `resolveSetConflicts`.
     const localExMap = new Map(localWithTimestamps.map(e => [e.id, e]))
     const remoteExMap = new Map(remoteExercises.map(e => [e.id, e]))
     for (const ex of merged) {
@@ -752,6 +774,17 @@ export const useWorkoutStore = defineStore('workout', () => {
       const { unique } = deduplicateSets(ex.sets)
       ex.sets = unique
     }
+
+    // Resolve every set both sides hold by the SET's own stamp (LIFT-1523).
+    // The exercise merge above only decides the exercise's fields: a set edit
+    // never moves its exercise's server stamp, so letting that comparison pick
+    // the set too re-upserted a stale copy over another device's correction
+    // whenever the exercise tied or won locally, and dropped an unflushed local
+    // edit whenever it lost. The local copies that win are edits the server has
+    // not seen, and they are the only both-sides sets pushed below. Runs after
+    // both dedup passes, like the restore that follows, so it covers every set
+    // about to be committed.
+    const localSetWinners = resolveSetConflicts(deduped.exercises, localSets, serverSets)
 
     // Re-attach RPE and captured bodyweight to any set that arrived from the
     // server (#1357). Runs after BOTH dedup passes so it covers every set about
@@ -813,29 +846,32 @@ export const useWorkoutStore = defineStore('workout', () => {
       }
     }
 
-    // Push local-wins back to Supabase (offline edits that beat remote timestamps)
-    // Only push exercise metadata + sets that don't already exist in remote.
-    // Previously this pushed ALL sets for every localWins exercise, causing
-    // rate-limit storms (500+ operations on every sync).
+    // Push local-wins exercise ROWS back to Supabase (offline edits to the
+    // exercise's own fields that beat the remote timestamp). Their sets are
+    // deliberately not pushed from here (LIFT-1523): an exercise winning its
+    // merge says nothing about which copy of each of its sets is newer, and
+    // pushing every set that differed from the server's is exactly how another
+    // device's correction was reverted. Set conflicts were resolved one set at
+    // a time above; the winners go out just below, and sets the server lacks
+    // go out through the reconciliation pass.
     const filteredLocalWins = localWins.filter(e => survivingIds.has(e.id) && !e.sample)
     if (filteredLocalWins.length > 0) {
       const userId = _userId
       for (const ex of filteredLocalWins) {
         _enqueueExerciseUpsert(ex, userId)
-        // Only push sets that are new or have changed content (offline edits)
-        const remoteSets = new Map(
-          (remoteExMap.get(ex.id)?.sets || []).map(s => [s.id, s])
-        )
-        for (const set of ex.sets) {
-          const remote = remoteSets.get(set.id)
-          const needsPush = !remote
-            || remote.weight !== set.weight
-            || remote.reps !== set.reps
-            || remote.date !== set.date
-          if (needsPush) {
-            _enqueueSetUpsert(set, ex.id, userId)
-          }
-        }
+      }
+    }
+
+    // Local copies that beat a DIFFERENT server copy of the same set — edits
+    // this device made that the server has not seen (LIFT-1523). Each is
+    // pushed under the exercise the SERVER files it under, so a set this device
+    // shows inside a merged duplicate (LIFT-1335) is never re-parented by a
+    // sync. Only edits reach this list: a copy whose values match the server's
+    // resolves to the server's, so representation noise never costs a write.
+    if (localSetWinners.length > 0) {
+      const userId = _userId
+      for (const { set, exerciseId } of localSetWinners) {
+        _enqueueSetUpsert(set, exerciseId, userId)
       }
     }
 
@@ -849,23 +885,26 @@ export const useWorkoutStore = defineStore('workout', () => {
     // doesn't have (and isn't tombstoned). Idempotent upsert + key dedup makes
     // overlap with the pushes above harmless.
     //
-    // Known limitation (shared with the localOnly/localWins pushes above): the
-    // fetch filters out rows where deleted_at IS NOT NULL, so a set another
-    // device soft-deleted looks identical to a never-synced local set. Both get
+    // This is now also the ONLY path for a local-winning exercise's new sets
+    // (LIFT-1523). The loop above used to push them by asking whether the set
+    // was missing from that one exercise's server rows, which re-parented a
+    // merged duplicate's sets onto the survivor; `remoteSetIds` asks whether
+    // the server holds the set at all.
+    //
+    // Known limitation (shared with the localOnly push above): the fetch
+    // filters out rows where deleted_at IS NOT NULL, so a set another device
+    // soft-deleted looks identical to a never-synced local set. Both get
     // re-pushed. This favors "don't lose hard-won data" over silent removal, but
     // means cross-device deletes don't propagate through this path — that needs
     // the server to surface tombstones (a sync-protocol change, see LIFT-705).
     {
       const userId = _userId
-      const alreadyPushedIds = new Set([
-        ...filteredLocalOnly.map(e => e.id),
-        ...filteredLocalWins.map(e => e.id),
-      ])
+      const alreadyPushedIds = new Set(filteredLocalOnly.map(e => e.id))
       for (const ex of deduped.exercises) {
         if (ex.sample || alreadyPushedIds.has(ex.id)) continue
-        // Only both-sides exercises reach here; localOnly/localWins are handled
-        // above. Use the pre-merge `remoteSetIds` snapshot — the union step
-        // mutates remote exercises' `.sets` arrays in place, so checking
+        // Only both-sides exercises reach here; localOnly is handled above.
+        // Use the pre-merge `remoteSetIds` snapshot — the union step mutates
+        // remote exercises' `.sets` arrays in place, so checking
         // `remoteEx.sets` here would wrongly treat the just-unioned local set
         // as already present on the server.
         if (!remoteExMap.has(ex.id)) continue
@@ -1097,20 +1136,25 @@ export const useWorkoutStore = defineStore('workout', () => {
     const current = exercise.bodyweightLoaded ?? false
     if (current === loaded) return
     if (exercise.sample) _adoptExercise(exercise)
+    // Every set below is rewritten and re-upserted, so each is stamped like
+    // any other set edit (LIFT-1523) — the exercise stamp covers only the flag.
+    const now = new Date().toISOString()
     if (loaded) {
       exercise.bodyweightLoaded = true
       const bw = _currentBodyweight()
       for (const s of exercise.sets) {
         if (s.bodyweight === undefined && bw !== undefined) s.bodyweight = bw
         s.estimated1RM = epley(effectiveSetWeight(s, exercise), s.reps)
+        s.updated_at = now
       }
     } else {
       delete exercise.bodyweightLoaded
       for (const s of exercise.sets) {
         s.estimated1RM = epley(s.weight, s.reps)
+        s.updated_at = now
       }
     }
-    exercise.updated_at = new Date().toISOString()
+    exercise.updated_at = now
     triggerRef(exercises)
     _persist()
 
@@ -1157,9 +1201,12 @@ export const useWorkoutStore = defineStore('workout', () => {
     // Only the true case is stored — absent already means "re-racked" (#1271),
     // so writing `false` would bloat every set for no extra information.
     if (attemptedNextRep) newSet.attemptedNextRep = true
+    // No `updated_at` on the new set and no bump of the exercise's (LIFT-1523).
+    // The set is not an edit of anything the server holds, so it has no claim
+    // in a conflict; and a set write is not an exercise write — bumping the
+    // exercise made this device outrank another device's rename of it.
     exercise.sets.push(newSet)
     _adjustDayCount(date, 1)
-    exercise.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
 
@@ -1212,7 +1259,12 @@ export const useWorkoutStore = defineStore('workout', () => {
       if (attemptedNextRep) set.attemptedNextRep = true
       else delete set.attemptedNextRep
     }
-    exercise.updated_at = new Date().toISOString()
+    // Stamp the SET, never the exercise (LIFT-1523). The upsert below writes
+    // only the `sets` row, so the exercise's server stamp never moved for an
+    // edit — and a local bump of it let this device's stale exercise fields
+    // outrank another device's rename, while the set itself was resolved by a
+    // stamp that could not see the edit at all.
+    set.updated_at = new Date().toISOString()
     triggerRef(exercises)
     _persist()
 
@@ -1228,7 +1280,8 @@ export const useWorkoutStore = defineStore('workout', () => {
     const removed = exercise.sets.find((s: WorkoutSet) => s.id === setId)
     exercise.sets = exercise.sets.filter((s: WorkoutSet) => s.id !== setId)
     if (removed) _adjustDayCount(removed.date, -1)
-    exercise.updated_at = new Date().toISOString()
+    // The exercise's stamp is left alone, as in `logSet` (LIFT-1523): the
+    // tombstone, not the exercise merge, is what keeps the set from returning.
     triggerRef(exercises)
     _persist()
 

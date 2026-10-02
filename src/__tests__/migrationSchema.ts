@@ -38,6 +38,12 @@ export interface MigrationSchema {
   defaults: Map<string, Map<string, unknown>>
   /** table -> columns declared NOT NULL. */
   notNull: Map<string, Set<string>>
+  /**
+   * Tables a `before update` trigger stamps through `update_updated_at_column()`
+   * as of the latest migration — the server-side clock the last-write-wins merge
+   * reads (LIFT-1401). Only modelled by a fake built with `serverClock` (LIFT-1523).
+   */
+  updatedAtTriggerTables: Set<string>
 }
 
 /** Strip `--` line comments and `/* *\/` block comments. */
@@ -94,6 +100,9 @@ function parseColumnTail(tail: string): { defaultExpr?: string; notNull: boolean
 function parseMigrations(): MigrationSchema {
   const defaults = new Map<string, Map<string, unknown>>()
   const notNull = new Map<string, Set<string>>()
+  // table -> names of its live `update_updated_at_column()` triggers, so a
+  // `drop trigger` removes exactly the trigger it names.
+  const stampTriggers = new Map<string, Set<string>>()
   const defaultsFor = (t: string) => {
     const key = t.toLowerCase()
     if (!defaults.has(key)) defaults.set(key, new Map())
@@ -182,10 +191,33 @@ function parseMigrations(): MigrationSchema {
       })
     }
 
+    // CREATE TRIGGER <name> BEFORE UPDATE ON <t> ... EXECUTE FUNCTION
+    // update_updated_at_column(). `[^;]*?` keeps one statement's trigger from
+    // borrowing another statement's function.
+    for (const m of sql.matchAll(
+      /create\s+(?:or\s+replace\s+)?trigger\s+(\w+)\s+before\s+update\s+on\s+(?:\w+\.)?(\w+)[^;]*?execute\s+(?:function|procedure)\s+(?:\w+\.)?update_updated_at_column\s*\(/gi,
+    )) {
+      const [, trigger, table] = m
+      push(m.index!, () => {
+        const key = table.toLowerCase()
+        if (!stampTriggers.has(key)) stampTriggers.set(key, new Set())
+        stampTriggers.get(key)!.add(trigger.toLowerCase())
+      })
+    }
+
+    // DROP TRIGGER [IF EXISTS] <name> ON <t>
+    for (const m of sql.matchAll(/drop\s+trigger\s+(?:if\s+exists\s+)?(\w+)\s+on\s+(?:\w+\.)?(\w+)/gi)) {
+      const [, trigger, table] = m
+      push(m.index!, () => stampTriggers.get(table.toLowerCase())?.delete(trigger.toLowerCase()))
+    }
+
     for (const e of events.sort((a, b) => a.at - b.at)) e.run()
   }
 
-  return { defaults, notNull }
+  const updatedAtTriggerTables = new Set(
+    [...stampTriggers].filter(([, triggers]) => triggers.size > 0).map(([table]) => table),
+  )
+  return { defaults, notNull, updatedAtTriggerTables }
 }
 
 let cached: MigrationSchema | null = null
@@ -204,4 +236,9 @@ export function columnDefaults(table: string): Map<string, unknown> {
 /** Columns declared NOT NULL on `table` as of the latest migration. */
 export function notNullColumns(table: string): Set<string> {
   return migrationSchema().notNull.get(table.toLowerCase()) ?? new Set()
+}
+
+/** Whether a migration attaches the `update_updated_at_column()` trigger to `table`. */
+export function hasUpdatedAtTrigger(table: string): boolean {
+  return migrationSchema().updatedAtTriggerTables.has(table.toLowerCase())
 }

@@ -95,6 +95,22 @@ describe('parseWorkoutSet', () => {
     expect(set?.rpe).toBeUndefined()
   })
 
+  // LIFT-1523: the set's own last-write-wins stamp. The whitelist would drop it
+  // silently, and a reload would then forget which sets hold an edit the server
+  // has not seen — handing that edit's slot to the server's older copy.
+  it('preserves the set merge stamp through hydration', () => {
+    const set = parseWorkoutSet({
+      id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216,
+      updated_at: '2026-05-02T09:00:00.000Z',
+    })
+    expect(set?.updated_at).toBe('2026-05-02T09:00:00.000Z')
+  })
+
+  it('drops a non-string merge stamp', () => {
+    const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 185, reps: 5, estimated1RM: 216, updated_at: 1714640400000 })
+    expect(set).not.toHaveProperty('updated_at')
+  })
+
   it('repairs a missing estimated1RM from weight/reps via Epley', () => {
     const set = parseWorkoutSet({ id: 's-1', date: '2026-05-01', weight: 100, reps: 10 })
     // epley(100, 10) = round(100 * (1 + 10/30)) = 133

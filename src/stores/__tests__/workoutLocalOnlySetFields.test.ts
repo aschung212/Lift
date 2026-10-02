@@ -215,9 +215,11 @@ describe('remote-wins merge preserves local-only set fields (#1357)', () => {
     // afterwards, so the restore has nothing to re-attach — a merge must not
     // resurrect an annotation the user removed.
     //
-    // The clock is pinned before REMOTE_UPDATED because `updateSet` stamps
-    // `exercise.updated_at = now`: at wall-clock time the local edit would win
-    // the merge outright and the assertion would never reach the restore pass.
+    // The clock is pinned before the server's copy of set-1 (stamped from its
+    // `created_at`, 18:00 that day) because `updateSet` stamps the SET with now
+    // (LIFT-1523): at wall-clock time the local copy would win its per-set
+    // merge outright, the slot would keep the local object, and the assertion
+    // would never reach the restore pass.
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-01T10:30:00.000Z'))
     seedLocalExercise()

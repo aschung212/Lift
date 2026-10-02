@@ -48,6 +48,13 @@ export function mapRemoteSet(row: Tables<'sets'>): WorkoutSet | null {
     // keeps only a literal `true`, so the column's NULL default degrades to
     // "re-racked" exactly like a legacy local set.
     attemptedNextRep: row.attempted_next_rep,
+    // The set's own merge stamp (LIFT-1523): `trg_sets_updated_at` moves this
+    // column on every write, and nothing moves the EXERCISE's stamp for a set
+    // edit, so this is the only place another device's edit of the set shows.
+    // Same `updated_at || created_at` chain as the two mappers below (LIFT-1402),
+    // minus their `|| now` — a stamp invented as "now" would beat every local
+    // edit, where an absent one correctly loses to any of them.
+    updated_at: row.updated_at || row.created_at,
   })
 }
 

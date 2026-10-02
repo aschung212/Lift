@@ -96,6 +96,11 @@ export function parseWorkoutSet(value: unknown): WorkoutSet | null {
   // dropped rather than normalized, keeping the persisted shape to the one
   // form `logSet` writes.
   if (o.attemptedNextRep === true) set.attemptedNextRep = true
+  // The set's own last-write-wins stamp (LIFT-1523). Dropping it here would
+  // make every reload forget which sets hold an edit the server has not seen,
+  // and the next fetch would hand that edit's slot to the server's older copy.
+  // An unparseable string is harmless: `pickSetCopy` reads it as no stamp.
+  if (typeof o.updated_at === 'string') set.updated_at = o.updated_at
   return set
 }
 

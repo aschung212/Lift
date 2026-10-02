@@ -18,6 +18,11 @@ vi.mock('../logger', () => ({
   logError: vi.fn(),
 }))
 
+/**
+ * A set row that has been EDITED since it was inserted: `updated_at` is later
+ * than `created_at`, the shape that tells reading the right column apart from
+ * reading the wrong one (LIFT-1402, and per-set merges since LIFT-1523).
+ */
 function setRow(overrides: Partial<Tables<'sets'>> = {}): Tables<'sets'> {
   return {
     id: 'set-1',
@@ -27,7 +32,10 @@ function setRow(overrides: Partial<Tables<'sets'>> = {}): Tables<'sets'> {
     weight: 225,
     reps: 5,
     estimated_1rm: 253,
+    attempted_next_rep: false,
+    note: null,
     created_at: '2026-08-12T18:00:00Z',
+    updated_at: '2026-08-14T09:30:00Z',
     session_id: null,
     deleted_at: null,
     ...overrides,
@@ -88,7 +96,29 @@ describe('mapRemoteSet', () => {
       reps: 5,
       estimated1RM: 253,
       createdAt: '2026-08-12T18:00:00Z',
+      updated_at: '2026-08-14T09:30:00Z',
     })
+  })
+
+  it("reads the set's merge stamp from updated_at, not created_at (LIFT-1523)", () => {
+    // `trg_sets_updated_at` moves `updated_at` on every write; `created_at`
+    // never moves. Reading the latter would make another device's edit of the
+    // set invisible to the per-set merge — the LIFT-1402 defect, one table over.
+    const row = setRow()
+    expect(row.updated_at).not.toBe(row.created_at)
+    expect(mapRemoteSet(row)!.updated_at).toBe(row.updated_at)
+  })
+
+  it('falls back to created_at for a row with no updated_at, and never invents "now"', () => {
+    expect(mapRemoteSet(setRow({ updated_at: null as unknown as string }))!.updated_at)
+      .toBe('2026-08-12T18:00:00Z')
+    // With neither, the stamp stays absent — an invented "now" would beat
+    // every local edit, where an absent stamp loses to all of them.
+    const bare = mapRemoteSet(setRow({
+      updated_at: null as unknown as string,
+      created_at: null as unknown as string,
+    }))!
+    expect(bare).not.toHaveProperty('updated_at')
   })
 
   it('drops a set with a non-finite weight', () => {

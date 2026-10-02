@@ -1,12 +1,13 @@
 /**
  * Local-only per-set fields, and their survival across a sync merge (#1357).
  *
- * `_fetchFromSupabase` resolves exercises by last-write-wins (`mergeEntities`),
- * which picks ONE exercise object wholesale — sets and all. The set union that
- * runs after it only adds sets the winner is *missing*, so when the REMOTE row
- * wins (another device renamed or re-tagged the exercise, or a replayed journal
- * entry bumped `updated_at`), every set present on both sides is replaced by the
- * server's copy of itself.
+ * `_fetchFromSupabase` used to resolve each exercise by last-write-wins
+ * (`mergeEntities`) wholesale — sets and all — so when the REMOTE row won
+ * (another device renamed or re-tagged the exercise, or a replayed journal
+ * entry bumped `updated_at`), every set present on both sides was replaced by
+ * the server's copy of itself. Since LIFT-1523 each such set is resolved by its
+ * own stamp (`setConflict.ts`) instead, but every set whose SERVER copy wins
+ * still arrives as that copy, so the same two fields go missing on it.
  *
  * That is lossless for every column the `sets` table actually has, and silent
  * data loss for the two `WorkoutSet` fields it does not. `rpe` (#617) and
