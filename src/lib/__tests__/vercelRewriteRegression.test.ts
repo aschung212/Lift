@@ -16,7 +16,7 @@
  * either way — the rewrite only ever sees the misses.)
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 interface RewriteRule {
@@ -90,6 +90,19 @@ describe('vercel.json SPA fallback rewrite scoping (#1155)', () => {
     expect(matcher.test('/workbox-4723e66c.js')).toBe(false)
     expect(matcher.test('/sw-offline-handler.js')).toBe(false)
     expect(matcher.test('/sw-notification-handler.js')).toBe(false)
+    expect(matcher.test('/sw-disable-navigation-preload.js')).toBe(false)
+  })
+
+  it('misses every service-worker script public/ ships, so the next one cannot be forgotten', () => {
+    // The list above only names the scripts that existed when it was written.
+    // This one reads them off the directory, so a new `public/sw-*.js` (the
+    // way LIFT-1512 added one) fails here until the lookahead lists it.
+    const swScripts = readdirSync(resolve(__dirname, '../../../public'))
+      .filter(name => /^sw-.+\.js$/.test(name))
+    expect(swScripts.length).toBeGreaterThan(0)
+    for (const name of swScripts) {
+      expect(matcher.test(`/${name}`), `/${name} reaches the SPA fallback`).toBe(false)
+    }
   })
 
   it('misses the other static build prefixes', () => {
