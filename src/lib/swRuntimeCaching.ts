@@ -45,11 +45,13 @@ export const SUPABASE_ORIGIN_PATTERN = /^https:\/\/[^/]+\.supabase\.co\//i
  * read of every table the migrations create against this array.
  *
  * The price is an honest failure. An offline launch now waits for its reads to
- * fail (postgrest-js retries a GET three times, 1 s / 2 s / 4 s) where a fresh
- * cache used to answer at once; that is the wait an expired cache already
- * cost, and keeping the splash off network reads is LIFT-1516. The 3 s bound
- * cannot carry over, because workbox-build rejects `networkTimeoutSeconds` on
- * any handler but NetworkFirst.
+ * fail (postgrest-js retries a GET three times, 1 s / 2 s / 4 s, about 7 s
+ * while the splash waits on the reads) where a fresh cache used to answer at
+ * once. That is the wait any read with no cached entry already cost; taking
+ * the reads off the splash is LIFT-1516 (#1548). Do not bound the wait here
+ * instead. workbox-build rejects `networkTimeoutSeconds` on any handler but
+ * NetworkFirst, and a timeout on a network-only read would turn every slow
+ * read into a failed one, so a device on a slow link would never sync down.
  *
  * Existing installs keep the retired `supabase-*` caches' last entries on disk.
  * Nothing reads them any more; deleting them is LIFT-1525.
