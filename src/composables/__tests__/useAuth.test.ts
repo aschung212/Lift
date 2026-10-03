@@ -10,22 +10,24 @@ vi.stubGlobal('matchMedia', vi.fn(() => ({
   removeEventListener: vi.fn(),
 })))
 
-// Mock all stores that useAuth imports
+// Mock all stores that useAuth imports. Sign-in binds each store, then reads
+// it (LIFT-1516); the cold-start path also asks whether the two data stores
+// hold anything to show.
 const mockWorkoutReset = vi.fn()
 const mockBodyweightReset = vi.fn()
 const mockPreferencesReset = vi.fn()
 const mockProgressionReset = vi.fn()
 vi.mock('../../stores/workout', () => ({
-  useWorkoutStore: () => ({ init: vi.fn(), $reset: mockWorkoutReset })
+  useWorkoutStore: () => ({ bindUser: vi.fn(), _fetchFromSupabase: vi.fn(), exercises: [], $reset: mockWorkoutReset })
 }))
 vi.mock('../../stores/bodyweight', () => ({
-  useBodyweightStore: () => ({ init: vi.fn(), $reset: mockBodyweightReset })
+  useBodyweightStore: () => ({ bindUser: vi.fn(), _fetchFromSupabase: vi.fn(), entries: [], $reset: mockBodyweightReset })
 }))
 vi.mock('../../stores/preferences', () => ({
-  usePreferencesStore: () => ({ init: vi.fn(), $reset: mockPreferencesReset })
+  usePreferencesStore: () => ({ bindUser: vi.fn(), _fetchFromSupabase: vi.fn(), $reset: mockPreferencesReset })
 }))
 vi.mock('../../stores/progression', () => ({
-  useProgressionStore: () => ({ init: vi.fn(), $reset: mockProgressionReset })
+  useProgressionStore: () => ({ bindUser: vi.fn(), _fetchFromSupabase: vi.fn(), $reset: mockProgressionReset })
 }))
 vi.mock('../../lib/migrate', () => ({
   migrateLocalStorageToSupabase: vi.fn()
@@ -73,10 +75,12 @@ vi.mock('../../lib/supabase', () => ({
 // Mock syncQueue
 const mockSyncQueueClear = vi.fn()
 const mockSyncQueueRehydrate = vi.fn().mockResolvedValue(undefined)
+const mockSyncQueueFlush = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../lib/syncQueue', () => ({
   syncQueue: {
     clear: () => mockSyncQueueClear(),
     rehydrate: () => mockSyncQueueRehydrate(),
+    flush: () => mockSyncQueueFlush(),
   }
 }))
 
