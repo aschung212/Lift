@@ -10,10 +10,11 @@ import { syncQueue } from '../lib/syncQueue'
 import { deleteAllIDB } from '../lib/durableStorage'
 import { onForegroundResume } from '../lib/foregroundResume'
 import { logError } from '../lib/logger'
-import { clearReauthFlag } from '../lib/sessionHealth'
+import { clearReauthFlag, sessionAwaitingRefresh } from '../lib/sessionHealth'
+import { readStoredSession, clearStoredSession, type StoredSession } from '../lib/storedSession'
 import { isNative } from '../lib/platform'
 import { APP_URL } from '../lib/appMeta'
-import type { User, Provider } from '@supabase/supabase-js'
+import type { AuthChangeEvent, Session, User, Provider } from '@supabase/supabase-js'
 
 interface AuthError {
   message: string
@@ -95,6 +96,22 @@ function setupSessionRefreshLifecycle(): void {
   ))
 }
 
+/**
+ * One sign-in's store initialisation, split where the network starts
+ * (LIFT-1516). The splash used to wait for all of it, a migration count query
+ * and then four store reads, even though every store had already hydrated
+ * from localStorage. A dead uplink therefore held a lifter whose data was all
+ * on the device behind postgrest-js's 1s/2s/4s GET retries plus the browser's
+ * own network timeout on every attempt.
+ */
+interface StoresInit {
+  userId: string
+  /** Every store is attached to the account. Local work only, so the splash can wait for it. */
+  bound: Promise<void>
+  /** The migration and every store's first read have settled. Nothing on screen waits for it. */
+  synced: Promise<void>
+}
+
 // LIFT-1212: on a signed-in cold start BOTH the getSession() resolution and
 // the INITIAL_SESSION/SIGNED_IN auth event fire, and each called initStores
 // unguarded (the event path's `wasUnauthenticated` check only helps when
@@ -104,50 +121,90 @@ function setupSessionRefreshLifecycle(): void {
 // user: concurrent and repeat calls for the same user share one run. The
 // cache clears on teardown (sign-out) so the same user re-inits on their next
 // sign-in, and on failure so a transient error doesn't poison future inits.
-let _storesInitUserId: string | null = null
-let _storesInitPromise: Promise<void> | null = null
+let _storesInit: StoresInit | null = null
+// Bumped by every registration and every reset, so a run can tell after each
+// of its awaits whether it has been superseded: by a sign-out, or by the next
+// sign-in.
+let _storesInitGeneration = 0
 
 function resetInitStoresGuard(): void {
-  _storesInitUserId = null
-  _storesInitPromise = null
+  _storesInit = null
+  _storesInitGeneration++
 }
 
-function initStores(userId: string): Promise<void> {
-  if (_storesInitUserId === userId && _storesInitPromise) return _storesInitPromise
-  _storesInitUserId = userId
-  const p: Promise<void> = doInitStores(userId).catch((err) => {
-    // Clear only OUR OWN registration (promise identity, not userId): after a
-    // sign-out + fast re-sign-in of the same user, a NEWER init generation
-    // owns the guard, and a stale rejection from this superseded run must not
-    // wipe it — that would let a later call start a third, duplicate init.
-    // (Same identity discipline as the LIFT-1213 journal guard; flagged by
-    // the 2026-08-26 adversarial review.)
-    if (_storesInitPromise === p) resetInitStoresGuard()
-    throw err
+function initStores(userId: string): StoresInit {
+  if (_storesInit?.userId === userId) return _storesInit
+  const generation = ++_storesInitGeneration
+  const isCurrent = (): boolean => _storesInitGeneration === generation
+  const bound = bindStores(userId, isCurrent)
+  const synced = bound.then(() => syncStores(userId, isCurrent))
+  synced.catch((err: unknown) => {
+    // Every caller starts a run and moves on, so its failure is reported here,
+    // once, instead of leaking to the global floor (LIFT-1227). Then clear only
+    // OUR OWN registration: after a sign-out + fast re-sign-in of the same
+    // user, a NEWER generation owns the guard, and a stale rejection from this
+    // superseded run must not wipe it — that would let a later call start a
+    // third, duplicate init. (Same identity discipline as the LIFT-1213
+    // journal guard; flagged by the 2026-08-26 adversarial review.)
+    logError(err, { source: 'useAuth', action: 'initStores' })
+    if (isCurrent()) resetInitStoresGuard()
   })
-  _storesInitPromise = p
-  return p
+  _storesInit = { userId, bound, synced }
+  return _storesInit
 }
 
-async function doInitStores(userId: string): Promise<void> {
-  const workoutStore = useWorkoutStore()
-  const bodyweightStore = useBodyweightStore()
-  const preferencesStore = usePreferencesStore()
-  const progressionStore = useProgressionStore()
-  await migrateLocalStorageToSupabase(userId)
+/**
+ * The half of sign-in the splash waits for. It is local work only.
+ *
+ * The durable journal is replayed FIRST, and that order is load-bearing.
+ * Binding is what lets a store enqueue a write, and the first journaled write
+ * persists the in-memory journal over the copy in IndexedDB. A write enqueued
+ * before `rehydrate()` has read that copy would erase every write the last
+ * session left unsent, and the user can act the moment the stores are bound.
+ */
+async function bindStores(userId: string, isCurrent: () => boolean): Promise<void> {
   // Replay any writes that were journaled to IndexedDB but never reached the
-  // server before the app last closed (LIFT-706). Safe + idempotent; runs
-  // before store fetches so recovered writes are in flight during sync.
+  // server before the app last closed (LIFT-706). Safe + idempotent.
   await syncQueue.rehydrate()
-  // allSettled (not all): each store's init already swallows its own fetch
-  // failures, but allSettled is defense-in-depth so a future regression that
-  // lets one store's init reject can never abort the others' hydration and
-  // leave the app half-initialized (LIFT-820).
+  // Signed out while the journal was being read: binding now would attach the
+  // stores to a session that has already ended.
+  if (!isCurrent()) return
+  // One store at a time, so a store that throws cannot leave the other three
+  // unbound: the LIFT-820 rule the reads below keep with allSettled.
+  const stores = [useWorkoutStore(), useBodyweightStore(), usePreferencesStore(), useProgressionStore()]
+  for (const store of stores) {
+    try {
+      store.bindUser(userId)
+    } catch (err) {
+      logError(err, { source: 'useAuth', action: 'initStores:bind' })
+    }
+  }
+}
+
+/**
+ * The half of sign-in nothing on screen waits for: the network. It runs with
+ * the app up and the stores bound, the same state a foreground-resume re-fetch
+ * runs in, so it keeps that path's writes-before-reads rule.
+ */
+async function syncStores(userId: string, isCurrent: () => boolean): Promise<void> {
+  if (!isCurrent()) return
+  await migrateLocalStorageToSupabase(userId)
+  if (!isCurrent()) return
+  // Writes before reads, as useSyncRecovery's run() does. The user can act
+  // while the migration is out, and rehydrate() has just re-queued what the
+  // last session left unsent. A read that lands ahead of those writes merges
+  // the server's older copy over them: a settings change flips back, and
+  // progression's union merge re-adds a deleted set's XP, then pushes it.
+  await syncQueue.flush()
+  if (!isCurrent()) return
+  // allSettled (not all): each store's read already swallows its own failures,
+  // but allSettled is defense-in-depth so a future regression that lets one
+  // reject can never abort the other three (LIFT-820).
   const results = await Promise.allSettled([
-    workoutStore.init(userId),
-    bodyweightStore.init(userId),
-    preferencesStore.init(userId),
-    progressionStore.init(userId),
+    useWorkoutStore()._fetchFromSupabase(),
+    useBodyweightStore()._fetchFromSupabase(),
+    usePreferencesStore()._fetchFromSupabase(),
+    useProgressionStore()._fetchFromSupabase(),
   ])
   for (const r of results) {
     if (r.status === 'rejected') {
@@ -157,6 +214,54 @@ async function doInitStores(userId: string): Promise<void> {
   // Theme/colorMode are read directly from the preferences store via computeds
   // now (LIFT-1177); connectThemeStore() (App.vue) keeps the DOM in sync, so no
   // one-shot bridge is needed here.
+}
+
+/**
+ * How long a signed-in cold start with NOTHING of the user's on the device
+ * waits for the account's first read before rendering anyway (LIFT-1516).
+ */
+export const FIRST_READ_GRACE_MS = 5000
+
+/** Whether the stores hold any of the user's data, i.e. anything to show. */
+function storesHoldLocalData(): boolean {
+  return useWorkoutStore().exercises.length > 0 || useBodyweightStore().entries.length > 0
+}
+
+/** Resolves when `promise` settles or `ms` elapses, whichever comes first. */
+function settledOrElapsed(promise: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    const done = (): void => {
+      clearTimeout(timer)
+      resolve()
+    }
+    promise.then(done, done)
+  })
+}
+
+/**
+ * Lift the splash for a signed-in cold start once the stores are bound, not
+ * once they have read the server (LIFT-1516). Every store hydrated from
+ * localStorage when it was created, so binding is all the app needs to be
+ * correct on screen. The reads run behind it and land the way a resume's do.
+ *
+ * The one wait left is for a device that holds nothing of this user's: a new
+ * browser, a reinstall, or an OAuth redirect landing on either. There only the
+ * first read can tell a returning lifter from a new one, and rendering without
+ * it would put a returning lifter into onboarding. The wait is capped, so a
+ * dead uplink costs FIRST_READ_GRACE_MS rather than every retry.
+ */
+async function liftSplashWhenBound(run: StoresInit): Promise<void> {
+  try {
+    await run.bound
+    if (!storesHoldLocalData()) await settledOrElapsed(run.synced, FIRST_READ_GRACE_MS)
+  } catch {
+    // Already reported: a failed bind fails `synced`, which initStores logs.
+    // The splash comes down regardless, because the app is local-first and
+    // renders from localStorage either way (LIFT-1324).
+  } finally {
+    loading.value = false
+  }
 }
 
 /** Clear guest mode (a real session supersedes it). */
@@ -179,6 +284,115 @@ function restoreGuestIfFlagged(): boolean {
   return false
 }
 
+// ── A stored session auth-js cannot refresh yet (LIFT-1545) ─────────
+// More than an hour after the last session the access token has expired, and
+// getSession() will not answer until auth-js has refreshed it. Offline, that
+// refresh retries for about 25 s (one browser timeout on a dead uplink), keeps
+// the session in storage because the failure is retryable, and then answers
+// `session: null`. Read as "signed out", that held the splash for the retries
+// and then showed the sign-in screen to a lifter whose data was all on the
+// device; the auto-refresh signed them back in only once the network returned.
+//
+// Instead the user of the stored session stays signed in, locally, until a
+// refresh confirms it. No store is bound meanwhile: a request with no usable
+// token goes out under the anon key, and RLS answers a read like that with
+// empty rows rather than an error, so reading would merge every store against
+// an "empty" account. Edits stay on the device like a guest's and reach the
+// account through the read that follows the refresh. That read already pushes
+// any set, exercise, weigh-in or delete the server lacks, and the two
+// whole-row stores are held so it replays their edits too.
+
+/**
+ * How long a cold start waits for auth-js to confirm the session stored on
+ * this device before showing the app from it anyway (LIFT-1545). Long enough
+ * for a token refresh on a slow but working connection, where a revoked
+ * session would otherwise flash the app before the sign-in screen.
+ */
+export const STORED_SESSION_GRACE_MS = 2000
+
+/**
+ * auth-js refreshes an access token this close to expiry before getSession()
+ * answers for it (its EXPIRY_MARGIN_MS). Any other stored session is answered
+ * from storage at once, so only these can be waiting on the network.
+ */
+const REFRESH_MARGIN_MS = 90_000
+
+let _restoreTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelRestoreTimer(): void {
+  if (_restoreTimer !== null) clearTimeout(_restoreTimer)
+  _restoreTimer = null
+}
+
+/**
+ * auth-js's AuthRetryableFetchError (a network failure or a 5xx), matched the
+ * way auth-js's own `isAuthRetryableFetchError` matches it. The class can't be
+ * imported here: supabase-js is loaded lazily (initSupabase), and a value
+ * import would pull the SDK into the startup bundle.
+ */
+function isRetryableAuthFetchError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && '__isAuthError' in err &&
+    (err as { name?: unknown }).name === 'AuthRetryableFetchError'
+}
+
+/**
+ * Sign in the user of the stored session, locally, without binding any store.
+ * Returns false, changing nothing, when no session auth-js could refresh is
+ * stored.
+ */
+function restoreStoredSession(stored: StoredSession | null = readStoredSession()): boolean {
+  if (sessionAwaitingRefresh.value) return true
+  if (!stored) return false
+  user.value = stored.user
+  sessionAwaitingRefresh.value = true
+  usePreferencesStore().holdUntilRead(stored.user.id)
+  useProgressionStore().holdUntilRead(stored.user.id)
+  loading.value = false
+  return true
+}
+
+/**
+ * Settle the stored session against getSession()'s answer. Returns true when
+ * the user stays signed in from it: auth-js kept the session but could not
+ * refresh it for a network reason. Any other answer is final, a session to bind
+ * or none at all, and is left to the caller's own branch.
+ */
+function keepStoredSession(session: Session | null, error: unknown): boolean {
+  cancelRestoreTimer()
+  if (!session && isRetryableAuthFetchError(error)) return restoreStoredSession()
+  sessionAwaitingRefresh.value = false
+  return false
+}
+
+/** getSession() failed outright: a restored session was never confirmed, so drop it. */
+function dropStoredSession(): void {
+  cancelRestoreTimer()
+  if (!sessionAwaitingRefresh.value) return
+  sessionAwaitingRefresh.value = false
+  user.value = null
+}
+
+/**
+ * Settle a restored session against an auth event. A session means a refresh
+ * went through: returns true so the caller binds it. SIGNED_OUT means the
+ * refresh token was rejected: the user goes back to the sign-in screen
+ * WITHOUT the sign-out teardown, because no store was ever bound to this
+ * session, and its data stays on the device as an offline cold start always
+ * left it.
+ */
+function settleRestoredSession(event: AuthChangeEvent, session: Session | null): boolean {
+  if (!sessionAwaitingRefresh.value) return false
+  if (session?.user) {
+    sessionAwaitingRefresh.value = false
+    return true
+  }
+  if (event === 'SIGNED_OUT') {
+    sessionAwaitingRefresh.value = false
+    user.value = null
+  }
+  return false
+}
+
 function init(): void {
   if (_initialized) return
   _initialized = true
@@ -190,30 +404,47 @@ function init(): void {
     return
   }
 
-  supabase.auth.getSession().then(({ data: { session } }) => {
+  // Show the app from the stored session if auth-js is still refreshing it
+  // when the grace period ends (LIFT-1545). A browser that knows it is offline
+  // gets no grace: that refresh cannot succeed.
+  _restoreTimer = setTimeout(() => {
+    _restoreTimer = null
+    const stored = readStoredSession()
+    if (user.value === null && stored && stored.expiresAt - Date.now() < REFRESH_MARGIN_MS) {
+      restoreStoredSession(stored)
+    }
+  }, typeof navigator !== 'undefined' && navigator.onLine === false ? 0 : STORED_SESSION_GRACE_MS)
+
+  supabase.auth.getSession().then(({ data: { session }, error }) => {
+    if (keepStoredSession(session, error)) return
     if (session?.user) {
       user.value = session.user
       // A real session supersedes any prior guest mode.
       clearGuestFlag()
-      initStores(session.user.id).then(() => { loading.value = false })
+      void liftSplashWhenBound(initStores(session.user.id))
     } else {
       user.value = null
       restoreGuestIfFlagged()
       loading.value = false
     }
   }).catch((err) => {
+    dropStoredSession()
     logError(err, { source: 'useAuth', action: 'getSession' })
     restoreGuestIfFlagged()
     loading.value = false
   })
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    // Runs first so a SIGNED_OUT for a restored session finds no prior user
+    // below, and so nothing is torn down for it (LIFT-1545).
+    const confirmsRestored = settleRestoredSession(event, session)
     const prev = user.value
     // A guest converting to a real account has a truthy `prev` (the guest
     // identity), so `!prev` alone would skip initStores — and with it the
     // local→Supabase migration. Init when the previous state had no real
-    // account: either signed out (`!prev`) or a guest (LIFT-1083).
-    const wasUnauthenticated = !prev || isGuest.value
+    // account: either signed out (`!prev`), a guest (LIFT-1083), or a session
+    // restored from storage that no store was bound to (LIFT-1545).
+    const wasUnauthenticated = !prev || isGuest.value || confirmsRestored
     // A successful (re)auth means the token is healthy again — clear any
     // pending "re-sign-in needed" prompt (LIFT-784).
     if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') clearReauthFlag()
@@ -222,14 +453,9 @@ function init(): void {
       user.value = session.user
       if (wasUnauthenticated) {
         clearGuestFlag()
-        // Fire-and-forget re-auth init: `initStores` rethrows on failure, so
-        // catch at the source rather than leaking an unhandled rejection to the
-        // global floor (LIFT-1227). The stores each swallow their own fetch
-        // errors; a rejection here means the guard/migration wrapper itself
-        // failed and is worth logging.
-        initStores(session.user.id).catch((err) => {
-          logError(err, { source: 'useAuth', action: 'onAuthStateChange:initStores' })
-        })
+        // Fire-and-forget re-auth init. The run reports its own failure
+        // (initStores), so nothing leaks to the global floor (LIFT-1227).
+        initStores(session.user.id)
       }
     } else if (event === 'SIGNED_OUT') {
       passwordRecoveryPending.value = false
@@ -357,7 +583,7 @@ function clearPasswordRecovery(): void {
 
 async function devSignIn(): Promise<void> {
   user.value = { id: 'local-dev', email: 'dev@localhost' }
-  await initStores('local-dev')
+  await initStores('local-dev').synced
 }
 
 function resetStores(): void {
@@ -391,11 +617,23 @@ function teardownSession(): void {
 }
 
 async function signOut(): Promise<void> {
+  // A session restored from storage has no access token auth-js could revoke,
+  // and its signOut() would first retry the refresh it is already failing (a
+  // browser timeout on a dead uplink) before giving up (LIFT-1545).
+  const restored = sessionAwaitingRefresh.value
   try {
-    await supabase?.auth.signOut()
+    if (!restored) await supabase?.auth.signOut()
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
+    // auth-js's signOut() refreshes an expired access token first, and when
+    // that fails retryably (offline, a dead uplink, an auth outage) it returns
+    // without removing the session. Left in storage, the next refresh that
+    // succeeds (the auto-refresh ticker once the network is back, or the next
+    // launch) signs this user straight back in. A no-op after a sign-out that
+    // did remove it.
+    clearStoredSession()
+    sessionAwaitingRefresh.value = false
     teardownSession()
   }
 }
@@ -588,6 +826,8 @@ function destroy(): void {
   _authUnsubscribe = null
   for (const cleanup of _lifecycleCleanups) cleanup()
   _lifecycleCleanups = []
+  cancelRestoreTimer()
+  sessionAwaitingRefresh.value = false
   _initialized = false
   resetInitStoresGuard()
 }

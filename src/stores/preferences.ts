@@ -38,7 +38,7 @@ import {
 import { localDateKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 import {
-  bindAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow,
+  bindAccountRow, holdAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow,
   heldEditsSince, replayHeldEdits,
 } from '../lib/accountRowRead'
 import { useWorkoutStore } from './workout'
@@ -414,6 +414,19 @@ export const usePreferencesStore = defineStore('preferences', {
     },
 
     /**
+     * Hold pushes for `userId` until the next successful read, measuring held
+     * edits from the payload as it stands now (LIFT-1545). For a session
+     * restored from this device that auth could not refresh yet: nothing is
+     * bound to it, so a settings change made meanwhile is not queued, and
+     * without the hold the read that follows the refresh would adopt the
+     * account's blob over it. Held, the read replays it instead.
+     */
+    holdUntilRead(userId: string) {
+      this._heldBase = holdAccountRow('preferences', userId, () => JSON.stringify(this._buildPayload()))
+      this._accountRowRead = false
+    },
+
+    /**
      * Sign-out wipe (called by useAuth.resetStores). The state() factory is
      * already pure defaults, but Pinia's built-in $reset leaves the persisted
      * `user-preferences` payload behind — and init() "loads from localStorage
@@ -437,7 +450,13 @@ export const usePreferencesStore = defineStore('preferences', {
       this._persist()
     },
 
-    async init(userId: string) {
+    /**
+     * Attach the store to a signed-in account without touching the network:
+     * everything `init()` does before its read. Split out so sign-in can bind
+     * every store before the splash comes down and run the reads behind it
+     * (LIFT-1516).
+     */
+    bindUser(userId: string) {
       this._userId = userId
 
       // Load from localStorage first (instant), through the same guarded read
@@ -491,7 +510,10 @@ export const usePreferencesStore = defineStore('preferences', {
           }
         } catch { /* ignore */ }
       }
+    },
 
+    async init(userId: string) {
+      this.bindUser(userId)
       // Then try Supabase (overrides local if exists)
       await this._fetchFromSupabase()
     },

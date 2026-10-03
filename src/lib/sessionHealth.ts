@@ -41,6 +41,16 @@ export const authNeedsReauth = ref(false)
 export const sessionRecoveryTick = ref(0)
 
 /**
+ * True while the user is signed in from the session stored on this device,
+ * but auth-js has not yet been able to refresh its expired access token
+ * (LIFT-1545): an offline cold start, a dead uplink, or an auth outage. No
+ * store is bound to the account until the refresh succeeds, so nothing is
+ * read from it or written to it. The sync indicator reads this as offline,
+ * because every other signal it folds is quiet and would report "synced".
+ */
+export const sessionAwaitingRefresh = ref(false)
+
+/**
  * Heuristically detect an authentication / 401 error from a Supabase response.
  *
  * Supabase REST ops resolve `{ data, error }` rather than rejecting, and a JWT
@@ -118,4 +128,5 @@ export function _resetSessionHealth(): void {
   _refreshInFlight = null
   authNeedsReauth.value = false
   sessionRecoveryTick.value = 0
+  sessionAwaitingRefresh.value = false
 }

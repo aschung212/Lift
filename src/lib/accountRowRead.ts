@@ -102,15 +102,37 @@ export function bindAccountRow(
   captureBase?: () => string,
 ): AccountRowBinding {
   const record = readRecord(store)
-  if (record?.userId === userId) {
-    if (record.read) return { read: true }
-    if (record.heldBase !== undefined || !captureBase) {
-      return { read: false, heldBase: record.heldBase ?? null }
-    }
+  if (record?.userId === userId && record.read) return { read: true }
+  return { read: false, heldBase: holdAccountRow(store, userId, captureBase) }
+}
+
+/**
+ * Make a whole-row store hold its pushes for `userId` until its next
+ * successful read, even on a device that has read the row before. Returns the
+ * base the held edits are measured against.
+ *
+ * `bindAccountRow` holds only a device that has never read the row. A session
+ * restored from storage that auth could not refresh (LIFT-1545) needs the same
+ * treatment for a different reason: no store is bound to it, so an edit made
+ * meanwhile is neither queued nor journaled, and the remote-wins read that
+ * runs once the session is confirmed would paint the account's copy over it.
+ * Holding records which local values are edits newer than that copy. The base
+ * is captured now, before any such edit, unless the store already holds for
+ * this user: that earlier base must survive, because the edits made since it
+ * are still unsent.
+ */
+export function holdAccountRow(
+  store: WholeRowStore,
+  userId: string,
+  captureBase?: () => string,
+): string | null {
+  const record = readRecord(store)
+  if (record?.userId === userId && !record.read && (record.heldBase !== undefined || !captureBase)) {
+    return record.heldBase ?? null
   }
   const heldBase = captureBase ? captureBase() : null
   writeRecord(store, { userId, read: false, ...(heldBase !== null ? { heldBase } : {}) })
-  return { read: false, heldBase }
+  return heldBase
 }
 
 /** Has this device read `userId`'s row? Read-only — for a cross-tab reload. */

@@ -25,6 +25,7 @@ import { syncStatus } from '../lib/syncQueue'
 import { broadcastSyncStatus } from '../lib/crossTabSync'
 import { syncQueueStats, formatSyncAge } from '../lib/syncActivity'
 import { combineSyncStatus, type SyncErrorKind, type SyncStatus } from '../lib/syncStatus'
+import { sessionAwaitingRefresh } from '../lib/sessionHealth'
 import { refetchAllStores } from './useSyncRecovery'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
@@ -92,8 +93,14 @@ function create(): UseSyncStatusReturn {
   // unsent change exactly once.
   const unsentChanges = computed(() => syncQueueStats.value.pending + syncQueueStats.value.stranded)
 
-  const status = computed(() =>
-    combineSyncStatus(syncStatus.value, readError.value, strandedChanges.value),
+  // A session restored from storage that auth has not refreshed yet (LIFT-1545)
+  // binds no store, so the queue, the reads and the journal are all quiet and
+  // would fold to "synced" while nothing reaches the account at all. On a
+  // dead uplink `navigator.onLine` doesn't say so either, so this does.
+  const status = computed<SyncStatus>(() =>
+    sessionAwaitingRefresh.value
+      ? 'offline'
+      : combineSyncStatus(syncStatus.value, readError.value, strandedChanges.value),
   )
 
   const label = computed(() => {

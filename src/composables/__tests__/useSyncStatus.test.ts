@@ -44,6 +44,7 @@ vi.mock('../../lib/durableStorage', () => ({
 
 import { syncStatus } from '../../lib/syncQueue'
 import { publishSyncQueueStats, resetSyncQueueStats } from '../../lib/syncActivity'
+import { sessionAwaitingRefresh } from '../../lib/sessionHealth'
 import { useSyncStatus, _resetSyncStatus } from '../useSyncStatus'
 
 function setOnline(online: boolean) {
@@ -59,6 +60,7 @@ describe('useSyncStatus', () => {
     _resetSyncStatus()
     resetSyncQueueStats()
     syncStatus.value = 'synced'
+    sessionAwaitingRefresh.value = false
     setOnline(true)
     for (const key of ['workout', 'bodyweight', 'preferences', 'progression'] as const) {
       reactiveStores[key].lastSyncError = null
@@ -104,6 +106,29 @@ describe('useSyncStatus', () => {
       await nextTick()
 
       expect(sync.status.value).toBe('syncing')
+    })
+
+    // LIFT-1545: a session restored from storage that auth has not refreshed
+    // binds no store, so the queue, the reads and the journal are all quiet,
+    // and on a dead uplink `navigator.onLine` is true as well. Folded as
+    // usual that reads "Everything is synced / backed up to your account"
+    // while nothing has reached the account at all.
+    it('reports offline while the session restored from storage awaits its refresh', async () => {
+      const sync = useSyncStatus()
+      sessionAwaitingRefresh.value = true
+      await nextTick()
+
+      expect(syncStatus.value).toBe('synced')
+      expect(sync.status.value).toBe('offline')
+      expect(sync.headline.value).toBe('Offline')
+      expect(sync.detail.value).toContain('saved on this device')
+
+      // "Try again" can't do better until the refresh gets through, and says so.
+      await expect(sync.syncNow()).resolves.toBe('offline')
+
+      sessionAwaitingRefresh.value = false
+      await nextTick()
+      expect(sync.status.value).toBe('synced')
     })
   })
 

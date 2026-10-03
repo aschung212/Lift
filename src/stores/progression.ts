@@ -12,7 +12,7 @@ import { reportFetchError } from '../lib/fetchErrorClassifier'
 import { isAuthError, ensureFreshSession } from '../lib/sessionHealth'
 import { setDayKey } from '../lib/dates'
 import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
-import { bindAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow } from '../lib/accountRowRead'
+import { bindAccountRow, holdAccountRow, hasReadAccountRow, markAccountRowRead, forgetAccountRow } from '../lib/accountRowRead'
 import {
   themeUnlocksToJson,
   streakHistoryToJson,
@@ -346,14 +346,24 @@ export const useProgressionStore = defineStore('progression', {
       this._persist()
     },
 
-    async init(userId: string) {
+    /**
+     * Attach the store to a signed-in account without touching the network:
+     * everything `init()` does before its read. Split out so sign-in can bind
+     * every store before the splash comes down and run the reads behind it
+     * (LIFT-1516).
+     */
+    bindUser(userId: string) {
       this._userId = userId
       // A device that has read this account's row before pushes exactly as it
-      // always has; one that never has holds until the read below lands
+      // always has; one that never has holds until `_fetchFromSupabase` lands
       // (LIFT-1515). No base is kept: the merge that read runs already folds
       // this device's additions into the account's copy — only a removal needs
       // remembering (`_heldRemovals`).
       this._accountRowRead = bindAccountRow('progression', userId).read
+    },
+
+    async init(userId: string) {
+      this.bindUser(userId)
       await this._fetchFromSupabase()
     },
 
@@ -363,6 +373,19 @@ export const useProgressionStore = defineStore('progression', {
       this._accountRowRead = true
       this._heldRemovals = []
       markAccountRowRead('progression', userId)
+    },
+
+    /**
+     * Hold pushes for `userId` until the next successful read (LIFT-1545). For
+     * a session restored from this device that auth could not refresh yet:
+     * nothing is bound to it, so XP changes made meanwhile are not queued. Held,
+     * the read that follows the refresh merges them into the account's row,
+     * re-applies a deleted set's removal through `_heldRemovals`, and only then
+     * pushes, rather than pushing a copy that has not seen the account's.
+     */
+    holdUntilRead(userId: string) {
+      holdAccountRow('progression', userId)
+      this._accountRowRead = false
     },
 
     async _fetchFromSupabase() {

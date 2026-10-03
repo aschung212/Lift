@@ -122,8 +122,18 @@ export const useBodyweightStore = defineStore('bodyweight', {
       this._persist()
     },
 
-    async init(userId: string) {
+    /**
+     * Attach the store to a signed-in account without touching the network:
+     * from here on, writes are pushed under `userId`. Split out of `init()` so
+     * sign-in can bind every store before the splash comes down and run the
+     * reads behind it (LIFT-1516).
+     */
+    bindUser(userId: string) {
       this._userId = userId
+    },
+
+    async init(userId: string) {
+      this.bindUser(userId)
       await this._fetchFromSupabase()
     },
 

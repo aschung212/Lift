@@ -187,9 +187,13 @@ export function refetchAllStores(trigger: RefetchTrigger): Promise<boolean> {
  * triggers a single resume can deliver are absorbed by the cooldown.
  *
  * `pageshow` also fires once for the initial page load, which lands here at cold
- * start: that run is a no-op (every store's `_fetchFromSupabase` returns early
- * until `init()` sets its `_userId`) and costs only the cooldown window, during
- * which `initStores` is doing the very fetching a recovery would repeat.
+ * start. Usually that is before sign-in has bound the stores, so the run is a
+ * no-op (every store's `_fetchFromSupabase` returns early until its `_userId`
+ * is set) and costs only the cooldown window, during which `initStores` does
+ * the very fetching a recovery would repeat. Binding no longer waits for the
+ * network (LIFT-1516), so the run can also land after it. It is then one more
+ * read beside the boot's own: it flushes first like every run, and the merges
+ * it feeds are idempotent.
  */
 export function setupSyncRecovery(): () => void {
   const cleanups: Array<() => void> = []

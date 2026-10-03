@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ref } from 'vue'
 import type { Database } from './database.types'
+import { AUTH_STORAGE_KEY } from './storedSession'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -22,7 +23,8 @@ export let supabase: SupabaseClient<Database> | null = null
 
 /** Lazily load the Supabase SDK and create the client. */
 export async function initSupabase(): Promise<void> {
-  if (import.meta.env.DEV || !supabaseUrl || !supabaseAnonKey) return
+  // A URL that doesn't parse has no key, and createClient would reject it anyway.
+  if (import.meta.env.DEV || !supabaseUrl || !supabaseAnonKey || !AUTH_STORAGE_KEY) return
   const { createClient } = await import('@supabase/supabase-js')
   // Explicit auth lifecycle (LIFT-784). These match supabase-js defaults but are
   // stated outright so the token-refresh contract is unambiguous: the session is
@@ -45,6 +47,9 @@ export async function initSupabase(): Promise<void> {
       // and PKCE is also the flow Capacitor deep-link OAuth requires for the
       // App Store target.
       flowType: 'pkce',
+      // The key supabase-js would pick on its own, stated so the app can read
+      // the stored session back (LIFT-1545). See authStorageKey().
+      storageKey: AUTH_STORAGE_KEY,
     },
   })
 }
