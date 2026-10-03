@@ -4,8 +4,9 @@
  * A 401 on a background read is not just "sync failed": it is the one sync
  * failure with an action attached to it. `ensureFreshSession()` is what turns it
  * into that action — it refreshes the token (single-flight), raises
- * `authNeedsReauth` if the refresh fails (App.vue's "Session expired — sign in
- * again" banner), and bumps `sessionRecoveryTick` if it succeeds, which is what
+ * `authNeedsReauth` if auth-js refuses the refresh (App.vue's "Session expired —
+ * sign in again" banner; a refresh the network blocked keeps the session,
+ * LIFT-1549), and bumps `sessionRecoveryTick` if it succeeds, which is what
  * makes `useSyncRecovery` re-run the reads that just 401'd. A store that records
  * `lastSyncError = 'auth'` without calling it lights the generic red indicator
  * and offers the user nothing to do about it.

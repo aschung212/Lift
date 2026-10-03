@@ -14,8 +14,9 @@ import { isAuthError } from './sessionHealth'
 /**
  * Typed classification of a store sync failure.
  *
- * - `auth`    — an expired/invalid token (401 / PGRST301). Actionable: the user
- *               must re-sign-in (already surfaced via `authNeedsReauth`).
+ * - `auth`    — an expired/invalid token (401 / PGRST301). The read asks for a
+ *               token refresh; only a refresh auth-js refuses means the user
+ *               must re-sign-in (surfaced via `authNeedsReauth`, LIFT-1549).
  * - `network` — an offline / fetch-layer failure. Transient; the local-first
  *               store keeps working and the next sync recovers.
  * - `unknown` — anything else (a server-side error, malformed response, etc.).
@@ -40,8 +41,8 @@ export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline'
  * 'synced' — it is the freshest signal and already models 'syncing' and
  * 'offline' — so we only defer to the read error when the write queue is
  * otherwise idle. Any read error kind maps to 'error' (offline is owned by the
- * write/connectivity path); the actionable `auth` kind is additionally
- * surfaced by the re-auth banner.
+ * write/connectivity path); a session the `auth` kind's refresh could not save
+ * is additionally surfaced by the re-auth banner.
  *
  * `strandedWrites` closes the third hole, and it is the one that produced
  * PERMANENT silent divergence. `syncStatus` tracks the last *batch*, so a write
