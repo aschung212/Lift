@@ -78,7 +78,7 @@ describe('Workbox runtime cache configuration', () => {
     it('injects the custom notificationclick handler into the generated SW', () => {
       // Without this importScripts entry, the notification action buttons render
       // but clicking them does nothing (generateSW has no notification handling).
-      expect(viteConfig).toContain("importScripts: ['sw-notification-handler.js']")
+      expect(viteConfig).toMatch(/importScripts:\s*\[[^\]]*'sw-notification-handler\.js'/)
     })
 
     it('ships the handler script that routes the rest-again action', () => {
