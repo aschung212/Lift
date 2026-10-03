@@ -4,13 +4,19 @@
  *
  * Two boot-path flows legitimately end in a programmatic reload: the
  * IndexedDB-restore path in App.vue (localStorage wiped → restore backup →
- * reload so stores rehydrate) and useServiceWorker's `controllerchange`
- * handler (new SW took control → reload to pick up fresh chunk hashes). Each
- * is correct exactly ONCE. But if the condition that triggered the reload is
+ * reload so stores rehydrate) and useServiceWorker's new-worker reload (new SW
+ * took control → reload to pick up fresh chunk hashes). Each is correct
+ * exactly ONCE. But if the condition that triggered the reload is
  * still true after reloading — a restore that never sticks, an update that
  * re-fires every boot — the page reloads forever. On an installed iOS PWA
  * that presents as the "A problem repeatedly occurred" kill screen, with zero
  * telemetry, because the app never lives long enough to report anything.
+ *
+ * For the service worker, "once" is once per build: its reason names the
+ * build the page is running, so each deploy is a trigger of its own while a
+ * loop, which keeps booting the same build, is not. That flow also owns
+ * vite-plugin-pwa's own reload, which ran outside this guard until the app
+ * passed `onNeedReload` (LIFT-1511).
  *
  * `guardedReload` allows ONE automatic reload per trigger per browsing
  * session. sessionStorage is the right scope: it survives reloads in the same
