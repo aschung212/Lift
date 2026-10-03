@@ -740,8 +740,9 @@ export class SyncQueue {
       // An expired/stale token surfaces identically across every queued write.
       // Refresh the session ONCE (single-flight) so the scheduled retry runs
       // with a fresh token instead of burning all five retries on a dead one
-      // (LIFT-784). If the refresh fails, sessionHealth flips authNeedsReauth
-      // and the UI prompts a re-sign-in.
+      // (LIFT-784). If auth-js refuses the refresh, sessionHealth flips
+      // authNeedsReauth and the UI prompts a re-sign-in; a refresh that only
+      // failed for the network leaves the session alone (LIFT-1549).
       if (sawAuthError) void ensureFreshSession()
       if (journalChanged) this._persistJournal()
       if (this._retryQueue.size > 0) this._scheduleRetry()

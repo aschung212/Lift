@@ -19,6 +19,11 @@
  * anything was bound to the account. The network is a fake, so a test can take
  * it away, give it back, or revoke the session. auth-js's own behaviour is
  * pinned separately in `lib/__tests__/storedSession.test.ts`.
+ *
+ * The same harness covers LIFT-1549 at the bottom: a refresh that cannot get
+ * through mid-session, after the stores are bound, must not raise App.vue's
+ * "Session expired — sign in again" banner, and the TOKEN_REFRESHED that lands
+ * once the network returns must still drive the recovery re-read.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -361,5 +366,68 @@ describe('signing out while auth-js cannot refresh the session (LIFT-1545)', () 
 
     expect(auth.user.value).toBeNull()
     expect(migrate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a token refresh that cannot get through mid-session (LIFT-1549)', () => {
+  /** Boot a signed-in session with every store bound, and hand back the sessionHealth useAuth runs on. */
+  async function bootBound(expiresIn: number) {
+    net.mode = 'online'
+    storeSession(expiresIn)
+    await boot()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(boundTo(stores.workout)).toContain('user-1')
+    // boot() reset the module graph; this is the instance useAuth imported.
+    return import('../../lib/sessionHealth')
+  }
+
+  it('keeps the lifter signed in with no re-sign-in banner, and re-reads once a refresh lands', async () => {
+    const { ensureFreshSession, authNeedsReauth, sessionRecoveryTick } = await bootBound(240)
+
+    // The signal drops and the access token expires behind it. auth-js's
+    // auto-refresh fails, and for 60 s after each attempt it answers every
+    // refresh of that token with the cached failure. A write sent meanwhile
+    // goes out under the anon key and comes back 401, and its store asks for a
+    // refresh.
+    net.mode = 'offline'
+    await vi.advanceTimersByTimeAsync(300_000)
+    const refreshed = ensureFreshSession()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(await refreshed).toBe(false)
+
+    // Before LIFT-1549 this raised the banner, whose button signs out: the
+    // sync journal cleared and every store reset, unsynced writes with them.
+    expect(authNeedsReauth.value).toBe(false)
+    expect(userId()).toBe('user-1')
+    expect(queue.clear).not.toHaveBeenCalled()
+    for (const store of Object.values(stores)) expect(store.$reset).not.toHaveBeenCalled()
+    const tickBefore = sessionRecoveryTick.value
+
+    // The network returns, auth-js's auto-refresh gets a token through, and
+    // its TOKEN_REFRESHED is the recovery: useSyncRecovery re-runs the reads
+    // and writes that 401'd when this tick moves.
+    net.mode = 'online'
+    await vi.advanceTimersByTimeAsync(120_000)
+
+    expect(sessionRecoveryTick.value).toBe(tickBefore + 1)
+    expect(authNeedsReauth.value).toBe(false)
+    expect(userId()).toBe('user-1')
+  })
+
+  // What the banner is for, and the fix must keep: the access token still
+  // works, so auth-js keeps the session, but the server refused the refresh
+  // token, so the session ends when the access token does.
+  it('still asks the lifter to sign in again when the refresh token is refused', async () => {
+    const { ensureFreshSession, authNeedsReauth } = await bootBound(3000)
+
+    net.mode = 'revoked'
+    const refreshed = ensureFreshSession()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await refreshed).toBe(false)
+
+    expect(authNeedsReauth.value).toBe(true)
+    // Nothing is torn down until the lifter taps the banner.
+    expect(userId()).toBe('user-1')
+    expect(queue.clear).not.toHaveBeenCalled()
   })
 })
