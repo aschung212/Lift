@@ -130,6 +130,7 @@ Logbook lets you track any strength exercise over time. Log a set (weight + reps
 - Multi-device conflict resolution with last-write-wins strategy
 - One-time migration of existing localStorage data on first sign-in
 - Data persists in localStorage for offline use; Supabase for cross-device sync
+- Opening the app offline keeps you signed in, even once the access token has expired; changes made then sync when the session refreshes
 - Sample/onboarding data excluded from sync to keep remote store clean
 
 ### UI & Experience

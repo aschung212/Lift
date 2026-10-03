@@ -65,8 +65,28 @@ describe('initSupabase — client construction contract', () => {
       // access token in the URL fragment (browser-history exposure). Pinned
       // so a future options refactor cannot silently drop back to implicit.
       flowType: 'pkce',
+      // LIFT-1545: the slot storedSession.ts reads the session back from. It
+      // must be the one supabase-js would have picked anyway, or every user is
+      // signed out on update; storedSession.test.ts checks that against the
+      // real SDK.
+      storageKey: 'sb-project-auth-token',
     })
     expect(mod.supabase).not.toBeNull()
+  })
+
+  // supabase-js rejects a URL that doesn't parse, and with no key there is no
+  // slot to keep a session in, so this stays on the local-first path rather
+  // than handing createClient `storageKey: null`.
+  it('does not construct a client when the Supabase URL does not parse', async () => {
+    vi.stubEnv('DEV', false)
+    vi.stubEnv('VITE_SUPABASE_URL', 'not a url')
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key-123')
+
+    const mod = await loadFresh()
+    await mod.initSupabase()
+
+    expect(createClientSpy).not.toHaveBeenCalled()
+    expect(mod.supabase).toBeNull()
   })
 
   it('does not construct a client in dev mode (stays on the local-first path)', async () => {

@@ -531,3 +531,104 @@ describe('progression: the first push waits for the first read (LIFT-1515)', () 
     expect(persisted).not.toHaveProperty('_heldRemovals')
   })
 })
+
+// ── A session restored from storage (LIFT-1545) ─────────────────────
+
+/**
+ * An offline cold start with an expired access token: useAuth keeps the user
+ * signed in from the stored session, binds no store until a refresh gets
+ * through, and holds the two whole-row stores. Launch 1 here reads the
+ * account's rows, so this device's copy IS the account's; launch 2 is the
+ * restored one, and its edits stay local until useAuth runs `init()`.
+ */
+async function readRowsThenRestore(): Promise<void> {
+  await usePreferencesStore().init('u1')
+  await useProgressionStore().init('u1')
+  await flushWrites()
+  server.upserts = []
+  relaunch()
+  usePreferencesStore().holdUntilRead('u1')
+  useProgressionStore().holdUntilRead('u1')
+}
+
+describe('a session restored from storage holds its edits for the read that confirms it (LIFT-1545)', () => {
+  it('replays a settings change over the account\'s copy, beside another device\'s change', async () => {
+    seedAccountPreferences()
+    server.seed('user_progression', ACCOUNT_PROGRESSION)
+    await readRowsThenRestore()
+    // Another device adds a gym while this one is offline.
+    const gyms = ['Home Gym', 'Iron Works', 'Office Gym']
+    server.seed('user_preferences', {
+      user_id: 'u1',
+      preferences: { ...structuredClone(ACCOUNT_PREFERENCES), gyms },
+      updated_at: '2026-10-01T00:00:00.000Z',
+    })
+
+    const store = usePreferencesStore()
+    store.setTheme('fire')
+    await flushWrites()
+    // Nothing is bound yet, so nothing goes out.
+    expect(server.upserts).toEqual([])
+
+    // The refresh got through and useAuth binds the stores.
+    await store.init('u1')
+    await flushWrites()
+
+    const expected = { ...ACCOUNT_PREFERENCES, gyms, theme: 'fire' }
+    expect(accountPreferences()).toEqual(expected)
+    expect(store.theme).toBe('fire')
+    expect(store.gyms).toEqual(gyms)
+    expect(hasReadAccountRow('preferences', 'u1')).toBe(true)
+  })
+
+  // Why the hold is needed: this device HAS read the row, so without it the
+  // confirming read is a plain remote-wins adoption.
+  it('without the hold, the confirming read adopts the account\'s blob over the change', async () => {
+    seedAccountPreferences()
+    await usePreferencesStore().init('u1')
+    await flushWrites()
+    relaunch()
+
+    const store = usePreferencesStore()
+    store.setTheme('fire')
+    await store.init('u1')
+    await flushWrites()
+
+    expect(store.theme).toBe('water')
+    expect(accountPreferences()).toEqual(ACCOUNT_PREFERENCES)
+  })
+
+  it('pushes no XP until the confirming read has merged the account\'s row', async () => {
+    seedAccountPreferences()
+    server.seed('user_progression', ACCOUNT_PROGRESSION)
+    await readRowsThenRestore()
+    // Another device logs a set while this one is offline.
+    server.seed('user_progression', {
+      ...ACCOUNT_PROGRESSION,
+      total_xp: 9500,
+      xp_per_set: { ...ACCOUNT_PROGRESSION.xp_per_set, 'set-d': xpEntry(500) },
+    })
+
+    const store = useProgressionStore()
+    store.removeSetXP('set-b')
+    store.logSetXP('set-e', 250, xpEntry(250))
+
+    // The refresh got through, but this store's first read fails.
+    server.failReads = true
+    await store.init('u1')
+    store.logSetXP('set-f', 100, xpEntry(100))
+    await flushWrites()
+    // Held: a push now would carry a copy that has never seen set-d.
+    expect(server.upserts).toEqual([])
+
+    server.failReads = false
+    await store._fetchFromSupabase()
+    await flushWrites()
+
+    const row = server.row('user_progression')!
+    expect(Object.keys(row.xp_per_set as object).sort()).toEqual(['set-a', 'set-c', 'set-d', 'set-e', 'set-f'])
+    expect(row.total_xp).toBe(4000 + 2000 + 500 + 250 + 100)
+    expect(store._heldRemovals).toEqual([])
+    expect(hasReadAccountRow('progression', 'u1')).toBe(true)
+  })
+})
