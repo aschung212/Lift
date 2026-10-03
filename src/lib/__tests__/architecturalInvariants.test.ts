@@ -21,7 +21,9 @@ import { join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { notNullColumns } from '../../__tests__/migrationSchema'
+import { resolveWorkboxRoute } from '../../__tests__/serviceWorkerModel'
 import { MIN_WEEKLY_TARGET, MAX_WEEKLY_TARGET } from '../xp'
+import { RUNTIME_CACHING } from '../swRuntimeCaching'
 
 // ── Shared helpers ──────────────────────────────────────────────────
 
@@ -1002,6 +1004,62 @@ describe('Invariant: RLS enabled on every Supabase table (LIFT-1130)', () => {
     )
 
     expect(violations).toEqual([])
+  })
+})
+
+// ── Invariant: no Supabase read is answered from Cache Storage (LIFT-1524) ──
+// Guard: every store treats a read that resolves `{ data, error: null }` as the
+// server's CURRENT state, and a service-worker cache answers with a past one
+// that looks identical. Routes over `sets`, `exercises`, `bodyweight_entries`,
+// `user_progression` and a `/rest/v1` catch-all shipped exactly that, and the
+// merges pushed the past state back over other devices' edits. The subject is
+// derived, not enumerated: every table any migration creates, resolved the way
+// Workbox resolves a request (first matching GET route; a cross-origin URL only
+// matches at index 0) against the array vite.config.js hands to generateSW. A
+// table added tomorrow is covered the day its migration lands, and a caching
+// rule slipped in ahead of the network-only claim fails here whatever table it
+// names. `serviceWorkerStaleRead.test.ts` proves the behaviour this pins.
+describe('Invariant: no Supabase table read is answered from Cache Storage (LIFT-1524)', () => {
+  const sql = stripSqlComments(
+    readdirSync(MIGRATIONS_DIR)
+      .filter(f => f.endsWith('.sql'))
+      .sort()
+      .map(f => readFileSync(join(MIGRATIONS_DIR, f), 'utf-8'))
+      .join('\n'),
+  )
+  const tables = createdTables(sql)
+  /** A page of `table` as postgrest-js requests it for a signed-in user. */
+  const readUrl = (table: string) =>
+    `https://project.supabase.co/rest/v1/${table}?select=*&user_id=eq.00000000-0000-4000-8000-000000000001&offset=0&limit=1000`
+
+  /** Each table whose read does not resolve to NetworkOnly, with what it resolves to instead. */
+  const cachedReads = (rules: readonly { urlPattern: unknown; handler: unknown }[]) =>
+    tables.flatMap(table => {
+      const rule = resolveWorkboxRoute(rules, readUrl(table))
+      return rule?.handler === 'NetworkOnly' ? [] : [`${table} -> ${rule ? String(rule.handler) : 'no route'}`]
+    })
+
+  it('reads the real migrations (non-vacuity)', () => {
+    expect(tables).toEqual(expect.arrayContaining([
+      'exercises', 'sets', 'bodyweight_entries', 'user_preferences', 'user_progression',
+    ]))
+  })
+
+  it('resolves every table read to a NetworkOnly route', () => {
+    expect(
+      cachedReads(RUNTIME_CACHING),
+      'These reads could be answered from Cache Storage, which the stores cannot tell apart ' +
+      'from the server. Keep the NetworkOnly Supabase route FIRST in src/lib/swRuntimeCaching.ts:\n',
+    ).toEqual([])
+  })
+
+  it('flags a caching rule placed ahead of the network-only claim, and a table with no route (self-test)', () => {
+    const shadowed = [
+      { urlPattern: /^https:\/\/[^/]+\.supabase\.co\/rest\/v1\/sets\b/i, handler: 'StaleWhileRevalidate' },
+      ...RUNTIME_CACHING,
+    ]
+    expect(cachedReads(shadowed)).toEqual(['sets -> StaleWhileRevalidate'])
+    expect(cachedReads([])).toHaveLength(tables.length)
   })
 })
 
