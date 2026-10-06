@@ -183,6 +183,10 @@ describe('useAuth', () => {
     it('calls supabase signOut and clears user', async () => {
       const { signOut, user } = useAuth()
       await signOut()
+      // This device only (LIFT-1541): auth-js's default scope, 'global', signs
+      // the account out on every device. signOutOtherDevices.test.ts pins what
+      // reaches the server, against the real client.
+      expect(mockSignOut).toHaveBeenCalledWith({ scope: 'local' })
       expect(user.value).toBeNull()
     })
 
