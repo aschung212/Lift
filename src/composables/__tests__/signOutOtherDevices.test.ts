@@ -259,8 +259,7 @@ describe('Sign Out (LIFT-1541)', () => {
   })
 
   // What the fix must keep: the server still ends this device's session, so
-  // the refresh token it held is no use to anything holding a copy of it. A
-  // sign-out that only forgot the session locally would pass the test above.
+  // the refresh token it held is no use to anything holding a copy of it.
   it("ends this device's session on the server, not only on the device", async () => {
     const { auth, refreshToken } = await bootSignedIn()
 
@@ -274,8 +273,7 @@ describe('Sign Out (LIFT-1541)', () => {
 
 describe('Delete Account (LIFT-1541)', () => {
   // Why the sign-out it ends with can be local: the deletion itself ends every
-  // session the account has. By then the local wipe has emptied this device's
-  // storage, so that sign-out finds no session and sends nothing.
+  // session the account has.
   it('still signs the lifter out on every device', async () => {
     const { auth } = await bootSignedIn()
     const phone = await signInOnPhone()
