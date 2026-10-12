@@ -3829,3 +3829,47 @@ describe('Invariant: a one-row-per-user table is pushed only after its row is re
     expect(violations).toEqual([])
   })
 })
+
+// ── Invariant: every auth sign-out names its scope (LIFT-1541) ─────────
+// auth-js's `signOut()` defaults to `scope: 'global'`, which revokes every
+// refresh token the account holds. useAuth called it bare, so Sign Out on one
+// device signed out every other browser, PWA and iPhone the lifter had, and
+// one that was open then ran the SIGNED_OUT teardown over writes it had not
+// pushed. The default is the cross-device action and nothing at a call site
+// shows it, so every call must name its scope. The behavioural half is
+// `signOutOtherDevices.test.ts`, against the real client.
+
+describe('Invariant: every auth sign-out names its scope (LIFT-1541)', () => {
+  const SIGN_OUT_CALL = /\bauth\s*\??\.\s*signOut\s*\(([^)]*)\)/g
+
+  /** Every `auth.signOut(…)` call in `source` that passes no `scope`. */
+  function unscopedSignOuts(source: string): string[] {
+    return [...stripComments(source).matchAll(SIGN_OUT_CALL)]
+      .filter(m => !/\bscope\s*:/.test(m[1]))
+      .map(m => m[0])
+  }
+
+  it('finds the sign-out in useAuth.ts (non-vacuity)', () => {
+    const callers = getSourceFiles().filter(f => [...stripComments(f.content).matchAll(SIGN_OUT_CALL)].length > 0)
+    expect(callers.map(f => f.path)).toContain(join('composables', 'useAuth.ts'))
+  })
+
+  it('flags a sign-out with no scope and accepts one that names it (self-test)', () => {
+    expect(unscopedSignOuts('await supabase.auth.signOut()')).toHaveLength(1)
+    expect(unscopedSignOuts('await supabase?.auth.signOut({})')).toHaveLength(1)
+    expect(unscopedSignOuts("await supabase?.auth.signOut({ scope: 'local' })")).toEqual([])
+    expect(unscopedSignOuts('// supabase.auth.signOut() signs out every device')).toEqual([])
+  })
+
+  it('no source file signs out without naming a scope', () => {
+    const violations = getSourceFiles().flatMap(f =>
+      unscopedSignOuts(f.content).map(call =>
+        `${f.path}: \`${call}\` inherits auth-js's default scope, 'global', which ` +
+          'signs the account out on every device it is signed in on. Pass ' +
+          "`{ scope: 'local' }` to end this device's session only, or name " +
+          "'global' if ending every session is what this call is for.",
+      ),
+    )
+    expect(violations).toEqual([])
+  })
+})

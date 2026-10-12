@@ -622,7 +622,14 @@ async function signOut(): Promise<void> {
   // browser timeout on a dead uplink) before giving up (LIFT-1545).
   const restored = sessionAwaitingRefresh.value
   try {
-    if (!restored) await supabase?.auth.signOut()
+    // This device's session only (LIFT-1541). auth-js defaults to 'global',
+    // which revokes every refresh token on the account: each other signed-in
+    // browser, PWA and iPhone install is signed out at its next refresh, and
+    // one that is open then runs the SIGNED_OUT teardown over whatever it had
+    // not pushed yet. 'local' still revokes this session's refresh token on the
+    // server. Delete Account needs nothing wider: deleting the auth user ends
+    // every session it has.
+    if (!restored) await supabase?.auth.signOut({ scope: 'local' })
   } catch {
     // Network errors during sign-out should not block clearing the user
   } finally {
