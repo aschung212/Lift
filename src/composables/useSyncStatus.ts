@@ -25,7 +25,7 @@ import { syncStatus } from '../lib/syncQueue'
 import { broadcastSyncStatus } from '../lib/crossTabSync'
 import { syncQueueStats, formatSyncAge } from '../lib/syncActivity'
 import { combineSyncStatus, type SyncErrorKind, type SyncStatus } from '../lib/syncStatus'
-import { sessionAwaitingRefresh } from '../lib/sessionHealth'
+import { authNeedsReauth, sessionAwaitingRefresh } from '../lib/sessionHealth'
 import { refetchAllStores } from './useSyncRecovery'
 import { useWorkoutStore } from '../stores/workout'
 import { useBodyweightStore } from '../stores/bodyweight'
@@ -78,7 +78,7 @@ function create(): UseSyncStatusReturn {
   const preferences = usePreferencesStore()
   const progression = useProgressionStore()
 
-  // First non-null wins; only present/absent and the `auth` kind are used.
+  // First non-null wins; only present/absent is used.
   const readError = computed<SyncErrorKind | null>(() =>
     workout.lastSyncError
     ?? bodyweight.lastSyncError
@@ -110,7 +110,12 @@ function create(): UseSyncStatusReturn {
     return ''
   })
 
-  const isAuthFailure = computed(() => status.value === 'error' && readError.value === 'auth')
+  // "Sign-in expired" reads the same decision as App.vue's banner: auth-js
+  // refused the refresh (LIFT-1549). A read that came back 401 is not that. Its
+  // refresh usually heals it, and one the network blocked keeps the session.
+  // The only way to "sign in again" is Sign Out, which clears every change not
+  // yet synced, so this must not ask for it while the network is the problem.
+  const isAuthFailure = computed(() => status.value === 'error' && authNeedsReauth.value)
 
   const headline = computed(() => {
     if (status.value === 'syncing') return 'Syncing'

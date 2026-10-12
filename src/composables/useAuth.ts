@@ -10,7 +10,7 @@ import { syncQueue } from '../lib/syncQueue'
 import { deleteAllIDB } from '../lib/durableStorage'
 import { onForegroundResume } from '../lib/foregroundResume'
 import { logError } from '../lib/logger'
-import { clearReauthFlag, sessionAwaitingRefresh } from '../lib/sessionHealth'
+import { clearReauthFlag, isRetryableAuthFetchError, sessionAwaitingRefresh } from '../lib/sessionHealth'
 import { readStoredSession, clearStoredSession, type StoredSession } from '../lib/storedSession'
 import { isNative } from '../lib/platform'
 import { APP_URL } from '../lib/appMeta'
@@ -322,17 +322,6 @@ let _restoreTimer: ReturnType<typeof setTimeout> | null = null
 function cancelRestoreTimer(): void {
   if (_restoreTimer !== null) clearTimeout(_restoreTimer)
   _restoreTimer = null
-}
-
-/**
- * auth-js's AuthRetryableFetchError (a network failure or a 5xx), matched the
- * way auth-js's own `isAuthRetryableFetchError` matches it. The class can't be
- * imported here: supabase-js is loaded lazily (initSupabase), and a value
- * import would pull the SDK into the startup bundle.
- */
-function isRetryableAuthFetchError(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && '__isAuthError' in err &&
-    (err as { name?: unknown }).name === 'AuthRetryableFetchError'
 }
 
 /**

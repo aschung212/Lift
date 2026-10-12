@@ -44,7 +44,7 @@ vi.mock('../../lib/durableStorage', () => ({
 
 import { syncStatus } from '../../lib/syncQueue'
 import { publishSyncQueueStats, resetSyncQueueStats } from '../../lib/syncActivity'
-import { sessionAwaitingRefresh } from '../../lib/sessionHealth'
+import { authNeedsReauth, sessionAwaitingRefresh } from '../../lib/sessionHealth'
 import { useSyncStatus, _resetSyncStatus } from '../useSyncStatus'
 
 function setOnline(online: boolean) {
@@ -61,6 +61,7 @@ describe('useSyncStatus', () => {
     resetSyncQueueStats()
     syncStatus.value = 'synced'
     sessionAwaitingRefresh.value = false
+    authNeedsReauth.value = false
     setOnline(true)
     for (const key of ['workout', 'bodyweight', 'preferences', 'progression'] as const) {
       reactiveStores[key].lastSyncError = null
@@ -136,10 +137,37 @@ describe('useSyncStatus', () => {
     it('names an expired session rather than a generic failure', async () => {
       const sync = useSyncStatus()
       reactiveStores.preferences.lastSyncError = 'auth'
+      // auth-js refused the refresh that 401 asked for: the banner's decision.
+      authNeedsReauth.value = true
       await nextTick()
 
       expect(sync.headline.value).toBe('Sign-in expired')
       expect(sync.detail.value).toContain('Sign in again')
+    })
+
+    // LIFT-1549: a 401'd read whose refresh the network blocked. The session is
+    // fine, and the only way to "sign in again" is Sign Out, which clears every
+    // change not yet synced. Keyed on the read error alone, the sheet asked for
+    // exactly that while the banner (correctly) stayed down.
+    it('does not call a 401 an expired sign-in while the refresh only waits on the network', async () => {
+      const sync = useSyncStatus()
+      reactiveStores.preferences.lastSyncError = 'auth'
+      await nextTick()
+
+      expect(sync.status.value).toBe('error')
+      expect(sync.headline.value).toBe("Couldn't sync")
+      expect(sync.detail.value).not.toContain('Sign in again')
+      expect(sync.detail.value).toContain('saved on this device')
+    })
+
+    // The banner and the sheet read one decision, whichever path found it.
+    it('names an expired session that a write found, not only a read', async () => {
+      const sync = useSyncStatus()
+      setStranded(1)
+      authNeedsReauth.value = true
+      await nextTick()
+
+      expect(sync.headline.value).toBe('Sign-in expired')
     })
 
     // A lifter mid-session needs to know their sets are safe before they need
