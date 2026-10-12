@@ -10,7 +10,7 @@
   "ignoreCommand": "bash scripts/vercel-ignore-build.sh",
   "rewrites": [
     {
-      "source": "/((?!assets/|api/|launch/|legal/|sw\\.js$|workbox-|sw-offline-handler\\.js$|sw-notification-handler\\.js$|manifest\\.webmanifest$).*)",
+      "source": "/((?!assets/|api/|launch/|legal/|sw\\.js$|workbox-|sw-offline-handler\\.js$|sw-notification-handler\\.js$|sw-disable-navigation-preload\\.js$|manifest\\.webmanifest$).*)",
       "destination": "/index.html"
     }
   ],

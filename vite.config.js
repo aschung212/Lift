@@ -146,10 +146,12 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Inject the custom notificationclick handler (rest-timer action buttons, LIFT-751)
-        // into the Workbox-generated service worker. generateSW has no notification handling
-        // of its own, so without this the action buttons would render but do nothing.
-        importScripts: ['sw-notification-handler.js'],
+        // Classic scripts from public/ that the generated service worker runs first:
+        //  - sw-notification-handler.js: the notificationclick handler for the rest-timer
+        //    action buttons (LIFT-751). generateSW has no notification handling of its
+        //    own, so without it the action buttons would render but do nothing.
+        //  - sw-disable-navigation-preload.js: see `navigationPreload` below (LIFT-1512).
+        importScripts: ['sw-notification-handler.js', 'sw-disable-navigation-preload.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         globIgnores: [
           'screenshot-*.png',
@@ -162,7 +164,12 @@ export default defineConfig({
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
-        navigationPreload: true,
+        // Off (LIFT-1512). The navigateFallback route above answers every
+        // navigation the app makes from the precache and never reads a preloaded
+        // response, so a preload is a page request the worker throws away, made
+        // at cold launch. Older builds turned it on, and the setting persists on
+        // the registration; sw-disable-navigation-preload.js turns it off there.
+        navigationPreload: false,
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
