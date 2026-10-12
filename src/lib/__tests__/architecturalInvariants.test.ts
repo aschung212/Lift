@@ -1191,6 +1191,13 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
     // file, or this scan proves nothing.
     expect(files.map(f => f.path)).toContain(OWNER)
     expect(files.map(f => f.path)).toContain(join('views', 'DevToolsGroup.vue'))
+    // The walk covers src/ and deliberately not node_modules, which holds
+    // reload calls the app never reaches. That leaves one blind spot: a library
+    // that reloads on the app's behalf. vite-plugin-pwa's registerSW did, from
+    // node_modules, and only because the app OMITTED `onNeedReload` (LIFT-1511),
+    // which no text in src/ can show. The test below closes it where the app
+    // hands a library its reload; serviceWorkerPluginReload.test.ts runs the
+    // installed plugin to prove the callback replaces the bare reload.
 
     const violations = files
       .filter(f => f.path !== OWNER && !USER_INITIATED.has(f.path))
@@ -1211,6 +1218,67 @@ describe('Invariant: automatic reloads go through guardedReload (#1155)', () => 
     expect(RELOAD_CALL.test(stripComments('doRefresh()\nlocation.reload()'))).toBe(true)
     expect(RELOAD_CALL.test(stripComments('// window.location.reload()'))).toBe(false)
     expect(RELOAD_CALL.test(stripComments(' * `controllerchange → window.location.reload()`'))).toBe(false)
+  })
+
+  /**
+   * Each `registerSW(...)` call's argument text: brackets balanced, and
+   * brackets inside string literals skipped, as `countCallArgs` does.
+   */
+  function registerSWCallArguments(source: string): string[] {
+    const calls: string[] = []
+    for (const match of source.matchAll(/\bregisterSW\s*\(/g)) {
+      const open = (match.index ?? 0) + match[0].length - 1
+      let depth = 0
+      let quote: string | null = null
+      for (let i = open; i < source.length; i++) {
+        const ch = source[i]
+        if (quote) {
+          if (ch === '\\') i++
+          else if (ch === quote) quote = null
+          continue
+        }
+        if (ch === '"' || ch === "'" || ch === '`') quote = ch
+        else if ('({['.includes(ch)) depth++
+        else if (')}]'.includes(ch) && --depth === 0) {
+          calls.push(source.slice(open + 1, i))
+          break
+        }
+      }
+    }
+    return calls
+  }
+
+  it('every registerSW call passes onNeedReload, so the plugin never reloads on its own (LIFT-1511)', () => {
+    // Derived from imports, so a second caller joins the rule by existing.
+    const callers = getSourceFiles().filter(f =>
+      /from\s+['"]virtual:pwa-register['"]/.test(f.content),
+    )
+    expect(callers.map(f => f.path)).toContain(join('composables', 'useServiceWorker.ts'))
+
+    const violations = callers.flatMap(f => {
+      const calls = registerSWCallArguments(stripComments(f.content))
+      if (calls.length === 0) return [`${f.path} — imports registerSW but no call was found to check`]
+      return calls
+        .filter(args => !/\bonNeedReload\b/.test(args))
+        .map(() =>
+          `${f.path} — calls registerSW without onNeedReload. In autoUpdate mode ` +
+          `vite-plugin-pwa then runs its own bare window.location.reload() when a ` +
+          `new worker activates, outside guardedReload. Pass the callback and ` +
+          `route it through the guard.`,
+        )
+    })
+
+    expect(violations).toEqual([])
+  })
+
+  it('the registerSW check flags a call that omits the callback (self-test)', () => {
+    expect(registerSWCallArguments('registerSW({ onOfflineReady() {}, immediate: true })')).toEqual([
+      '{ onOfflineReady() {}, immediate: true }',
+    ])
+    const [withCallback] = registerSWCallArguments(
+      'registerSW({\n  onRegisterError(e) { log("no SW )", e) },\n  onNeedReload: reload,\n})',
+    )
+    expect(withCallback).toMatch(/\bonNeedReload\b/)
   })
 
   it('the exempt call sites are still the dev tools they were vetted as', () => {
