@@ -212,8 +212,11 @@ describe('an offline cold start with an expired access token (LIFT-1545)', () =>
 
   it('binds the stores once a refresh gets through', async () => {
     storeSession(-7200)
-    const { sessionAwaitingRefresh } = await boot()
+    const { auth, sessionAwaitingRefresh } = await boot()
     await vi.advanceTimersByTimeAsync(60_000)
+    const { watch } = await import('vue')
+    const signingIn: boolean[] = []
+    watch(auth.signingIn, (value) => { signingIn.push(value) }, { flush: 'sync' })
 
     net.mode = 'online'
     // The auto-refresh ticker runs every 30 s, after auth-js's 60 s cooldown
@@ -224,6 +227,10 @@ describe('an offline cold start with an expired access token (LIFT-1545)', () =>
     expect(userId()).toBe('user-1')
     expect(migrate).toHaveBeenCalledWith('user-1')
     for (const store of Object.values(stores)) expect(boundTo(store)).toContain('user-1')
+    // The app has been on screen since the restore. Confirming the session is
+    // not a sign-in from the auth screen, so it must not put that screen back
+    // up while the account's first read runs (LIFT-1546).
+    expect(signingIn).toEqual([])
   })
 
   it('shows the app at once when the browser knows it is offline', async () => {

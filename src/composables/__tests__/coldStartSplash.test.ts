@@ -23,6 +23,17 @@
  * postgrest-js. They assert on what the lifter can see and do (the splash,
  * the history on screen, whether a set they log goes out under their
  * account), not on which functions ran.
+ *
+ * The second half is the same wait on the path the splash has already left:
+ * a sign-in on the auth screen (LIFT-1546). There SIGNED_IN set `user` at once,
+ * and on a device holding nothing of the user's (a new browser, or any sign-in
+ * after Sign Out, which wipes the stores and the onboarding flag) App.vue took
+ * "no data, no flag" for a new user and showed the onboarding welcome until
+ * the reads landed. Nothing could see it: App.vue is impractical to mount, so
+ * its screen choice was asserted nowhere, and every test above starts with a
+ * session already stored. Those cases run the real onboarding state through
+ * `appScreen`, the decision App.vue now renders from, and record each screen
+ * the way a render would see it.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { getLocalStorageMock } from '../../__tests__/helpers'
@@ -119,6 +130,7 @@ vi.mock('../../lib/logger', () => ({ logError, logWarn: vi.fn(), logInfo: vi.fn(
 const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 
 let destroyAuth: (() => void) | null = null
+let stopScreens: (() => void) | null = null
 
 /**
  * The app as a cold start finds it: fresh module state (so `loading` starts
@@ -158,6 +170,45 @@ function seedServerHistory(): void {
   }])
 }
 
+/**
+ * A relaunch that also records what App.vue would show: the real onboarding
+ * state over the real stores, through `appScreen`, captured after each flush
+ * the way a render sees it. Onboarding is set up before `init()`, as in App.vue.
+ */
+async function relaunchWatchingScreens() {
+  const launched = await relaunch()
+  const { effectScope, computed, watch } = await import('vue')
+  const { useBodyweightStore } = await import('../../stores/bodyweight')
+  const { useOnboarding } = await import('../useOnboarding')
+  const { appScreen } = await import('../../lib/appScreen')
+  const scope = effectScope()
+  stopScreens = () => scope.stop()
+  const shown: string[] = []
+  scope.run(() => {
+    const { showOnboarding } = useOnboarding({ workoutStore: launched.workout, bodyweightStore: useBodyweightStore() })
+    const screen = computed(() => appScreen({
+      loading: launched.auth.loading.value,
+      signedIn: launched.auth.user.value !== null,
+      signingIn: launched.auth.signingIn.value,
+      onboarding: showOnboarding.value,
+    }))
+    watch(screen, (now) => { if (shown.at(-1) !== now) shown.push(now) }, { immediate: true, flush: 'post' })
+  })
+  return { ...launched, shown }
+}
+
+/** Launch with no session stored: the splash lifts onto the auth screen. */
+async function launchSignedOut() {
+  client.auth.getSession.mockResolvedValueOnce({ data: { session: null } } as never)
+  const launched = await relaunchWatchingScreens()
+  launched.auth.init()
+  await vi.waitFor(() => expect(launched.shown).toEqual(['splash', 'auth']))
+  return launched
+}
+
+/** What auth-js does once the password is accepted: SIGNED_IN, before signInWithPassword resolves. */
+const signIn = () => authListener.cb!('SIGNED_IN', { user: { id: USER, email: 'a@b.co' } })
+
 /** Every write the stores enqueued for a set. */
 function setWrites() {
   return queue.enqueue.mock.calls
@@ -169,25 +220,27 @@ function setWrites() {
 const setWriteFor = (userId: string, weight: number) =>
   expect.objectContaining({ table: 'sets', row: expect.objectContaining({ user_id: userId, weight }) })
 
+beforeEach(() => {
+  localStorageMock.clear()
+  fake.reset()
+  uplink.revive()
+  authListener.cb = null
+  vi.clearAllMocks()
+  // init() only wires Supabase outside DEV, which vitest runs in.
+  vi.stubEnv('DEV', false)
+})
+
+afterEach(() => {
+  stopScreens?.()
+  stopScreens = null
+  destroyAuth?.()
+  destroyAuth = null
+  uplink.revive()
+  vi.useRealTimers()
+  vi.unstubAllEnvs()
+})
+
 describe('a signed-in cold start lifts the splash once the stores are bound (LIFT-1516)', () => {
-  beforeEach(() => {
-    localStorageMock.clear()
-    fake.reset()
-    uplink.revive()
-    authListener.cb = null
-    vi.clearAllMocks()
-    // init() only wires Supabase outside DEV, which vitest runs in.
-    vi.stubEnv('DEV', false)
-  })
-
-  afterEach(() => {
-    destroyAuth?.()
-    destroyAuth = null
-    uplink.revive()
-    vi.useRealTimers()
-    vi.unstubAllEnvs()
-  })
-
   it('shows the history already on the device while every request hangs', async () => {
     await leaveLocalHistory()
     uplink.dead = true
@@ -287,6 +340,28 @@ describe('a signed-in cold start lifts the splash once the stores are bound (LIF
     expect(shownAtLift).toEqual([['Squat']])
   })
 
+  it('lifts the splash at the grace period when the journal read never answers, and leaves the stores unbound', async () => {
+    await leaveLocalHistory()
+    // Binding waits on the journal, an IndexedDB read. One that never settles
+    // (a WebKit open that hangs) used to hold the splash for good.
+    queue.rehydrate.mockImplementationOnce(() => new Promise<void>(() => {}))
+    const { auth, workout, graceMs } = await relaunch()
+    vi.useFakeTimers()
+
+    auth.init()
+    await vi.advanceTimersByTimeAsync(graceMs - 1)
+    expect(queue.rehydrate).toHaveBeenCalled()
+    expect(auth.loading.value).toBe(true)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(auth.loading.value).toBe(false)
+
+    // The history on the device is on screen, and nothing may write over a
+    // journal that was never read.
+    expect(workout.exercises.map(e => e.name)).toEqual(['Bench Press'])
+    workout.logSet(workout.exercises[0].id, 190, 5)
+    expect(queue.enqueue).not.toHaveBeenCalled()
+  })
+
   it('lifts the splash even when reading the journal throws, and leaves the stores unbound (LIFT-1324)', async () => {
     await leaveLocalHistory()
     queue.rehydrate.mockImplementationOnce(() => Promise.reject(new Error('IndexedDB unavailable')))
@@ -346,5 +421,112 @@ describe('a signed-in cold start lifts the splash once the stores are bound (LIF
     expect(queue.flush).toHaveBeenCalledTimes(1)
     expect(fake.selectsFor('user_progression')).toHaveLength(1)
     expect(fake.selectsFor('user_preferences').map(c => c.filters.user_id)).toEqual([OTHER_USER])
+  })
+})
+
+describe('a sign-in on the auth screen waits for the account the same way (LIFT-1546)', () => {
+  it('takes a returning lifter on an empty device from the auth screen straight to their history', async () => {
+    seedServerHistory()
+    const { shown, workout } = await launchSignedOut()
+
+    signIn()
+    await vi.waitFor(() => expect(shown.at(-1)).toBe('app'))
+
+    // Before the fix this read ['splash', 'auth', 'onboarding', 'app']: the
+    // welcome flow stood in for the history until the reads landed.
+    expect(shown).toEqual(['splash', 'auth', 'app'])
+    expect(workout.exercises.map(e => e.name)).toEqual(['Squat'])
+  })
+
+  it('still sends a new account to onboarding, as soon as its first read comes back empty', async () => {
+    const { auth, shown, graceMs } = await launchSignedOut()
+
+    signIn()
+    expect(auth.signingIn.value).toBe(true)
+    // Well inside the grace period: the empty read, not the cap, ended the wait.
+    await vi.waitFor(() => expect(shown.at(-1)).toBe('onboarding'), { timeout: graceMs / 5 })
+
+    expect(fake.selectsFor('user_progression')).toHaveLength(1)
+    expect(shown).toEqual(['splash', 'auth', 'onboarding'])
+  })
+
+  it('holds the auth screen for the grace period on a dead uplink, then lets the reads land behind onboarding', async () => {
+    seedServerHistory()
+    const { auth, shown, graceMs } = await launchSignedOut()
+    uplink.dead = true
+    vi.useFakeTimers()
+
+    signIn()
+    await vi.advanceTimersByTimeAsync(graceMs - 1)
+    expect(auth.signingIn.value).toBe(true)
+    expect(shown.at(-1)).toBe('auth')
+
+    // The cap, not every retry the reads make. Nothing has come back, so the
+    // app has to guess, and it guesses new as late as it can.
+    await vi.advanceTimersByTimeAsync(1)
+    expect(auth.signingIn.value).toBe(false)
+    expect(shown.at(-1)).toBe('onboarding')
+
+    // A lifter who has not started down a path is then taken to their history
+    // the moment it arrives.
+    uplink.revive()
+    await vi.waitFor(() => expect(shown.at(-1)).toBe('app'))
+    expect(shown).toEqual(['splash', 'auth', 'onboarding', 'app'])
+  })
+
+  it('releases the auth screen at the grace period when the journal read never answers', async () => {
+    const { auth, shown, graceMs } = await launchSignedOut()
+    queue.rehydrate.mockImplementationOnce(() => new Promise<void>(() => {}))
+    vi.useFakeTimers()
+
+    signIn()
+    await vi.advanceTimersByTimeAsync(graceMs - 1)
+    expect(auth.signingIn.value).toBe(true)
+
+    // Every control on the held screen is disabled, so an uncapped wait here
+    // would leave the lifter with no way forward short of killing the app.
+    await vi.advanceTimersByTimeAsync(1)
+    expect(auth.signingIn.value).toBe(false)
+    expect(shown).toEqual(['splash', 'auth', 'onboarding'])
+  })
+
+  it('does not wait on the network when the device already holds the user\'s data', async () => {
+    // A guest's history, kept by "Create account" for the account to adopt.
+    await leaveLocalHistory()
+    const { auth, shown, workout } = await launchSignedOut()
+    uplink.dead = true
+
+    signIn()
+    await vi.waitFor(() => expect(shown.at(-1)).toBe('app'))
+
+    expect(shown).toEqual(['splash', 'auth', 'app'])
+    expect(auth.signingIn.value).toBe(false)
+    expect(uplink.pending()).toBeGreaterThan(0)
+    // Shown only once bound: a set logged now goes out under the account.
+    workout.logSet(workout.exercises[0].id, 190, 5)
+    expect(setWrites()).toEqual([setWriteFor(USER, 190)])
+  })
+
+  it('a sign-out releases the auth screen, and the wait it abandoned cannot cut the next sign-in\'s short', async () => {
+    const { auth, shown, graceMs } = await launchSignedOut()
+    uplink.dead = true
+    vi.useFakeTimers()
+
+    signIn()
+    await vi.advanceTimersByTimeAsync(1000)
+    authListener.cb!('SIGNED_OUT', null)
+    expect(auth.signingIn.value).toBe(false)
+    expect(auth.user.value).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(1000)
+    signIn()
+    // The first sign-in's grace period runs out here, two seconds into the
+    // second's. Its wait was abandoned, so it must leave this one alone.
+    await vi.advanceTimersByTimeAsync(graceMs - 2000)
+    expect(auth.signingIn.value).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(auth.signingIn.value).toBe(false)
+    expect(shown).toEqual(['splash', 'auth', 'onboarding'])
   })
 })

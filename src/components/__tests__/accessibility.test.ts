@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { ref } from 'vue'
 import AuthScreen from '../../views/AuthScreen.vue'
 import BodyweightTracker from '../../views/BodyweightTracker.vue'
 import OnboardingScreen from '../../views/OnboardingScreen.vue'
@@ -10,6 +11,7 @@ vi.mock('../../composables/useAuth', () => ({
     signInWithProvider: vi.fn().mockResolvedValue({ error: null }),
     signInWithEmail: vi.fn().mockResolvedValue({ error: null }),
     signUp: vi.fn().mockResolvedValue({ error: null }),
+    signingIn: ref(false),
   })
 }))
 vi.mock('../../composables/useAnalytics', () => ({

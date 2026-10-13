@@ -30,8 +30,8 @@
           :aria-describedby="isError && !!message ? 'auth-error' : undefined"
           required
         />
-        <button class="authSubmitBtn" type="submit" :disabled="submitting">
-          {{ submitting ? '...' : (isSignUp ? 'Create Account' : 'Sign In') }}
+        <button class="authSubmitBtn" type="submit" :disabled="busy">
+          {{ busy ? '...' : (isSignUp ? 'Create Account' : 'Sign In') }}
         </button>
       </form>
 
@@ -61,17 +61,17 @@
           :aria-invalid="isError && !!message ? true : undefined"
           required
         />
-        <button class="authSubmitBtn" type="submit" :disabled="submitting">
-          {{ submitting ? '...' : 'Set new password' }}
+        <button class="authSubmitBtn" type="submit" :disabled="busy">
+          {{ busy ? '...' : 'Set new password' }}
         </button>
       </form>
 
       <div class="authLinks">
-        <button v-if="resetStep === 'none' && !isSignUp" class="authLinkBtn authForgotBtn" type="button" @click="handleForgotPassword">Forgot password?</button>
-        <button v-if="resetStep === 'none'" class="authLinkBtn authModeSwitch" type="button" @click="toggleMode">
+        <button v-if="resetStep === 'none' && !isSignUp" class="authLinkBtn authForgotBtn" type="button" :disabled="busy" @click="handleForgotPassword">Forgot password?</button>
+        <button v-if="resetStep === 'none'" class="authLinkBtn authModeSwitch" type="button" :disabled="busy" @click="toggleMode">
           {{ isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up" }}
         </button>
-        <button v-if="resetStep !== 'none'" class="authLinkBtn authResetBackBtn" type="button" @click="cancelReset">Back to sign in</button>
+        <button v-if="resetStep !== 'none'" class="authLinkBtn authResetBackBtn" type="button" :disabled="busy" @click="cancelReset">Back to sign in</button>
       </div>
 
       <!-- Third-party sign-in is web-only until #1426 (system-browser OAuth) and
@@ -85,7 +85,7 @@
       </div>
 
       <div class="authProviders">
-        <button class="authProviderBtn authGoogle" @click="handleOAuth('google')">
+        <button class="authProviderBtn authGoogle" :disabled="busy" @click="handleOAuth('google')">
           <svg class="authProviderIcon" viewBox="0 0 24 24" width="18" height="18">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -98,7 +98,7 @@
 
       </template>
 
-      <button class="authGuestBtn" @click="handleGuest">Continue without an account</button>
+      <button class="authGuestBtn" :disabled="busy" @click="handleGuest">Continue without an account</button>
       <p class="authGuestHint">Your workouts stay on this device. Create an account any time to back up &amp; sync.</p>
 
       <component :is="DevSignInButton" v-if="DevSignInButton" />
@@ -106,18 +106,23 @@
       <p class="authTrust">Free forever — no paywall. Your data syncs privately across your devices.</p>
 
       <p v-if="message" :class="['authMessage', { authError: isError, authSuccess: !isError }]" :id="isError ? 'auth-error' : undefined" role="status" aria-live="polite">{{ message }}</p>
+
+      <!-- The held screen's only visible cue is the busy '...' button, so say
+           what it is waiting for (LIFT-1546). Always rendered: a live region
+           added with its text already in it is often not announced. -->
+      <div class="srOnly" role="status" aria-live="polite" aria-atomic="true">{{ signingIn ? 'Signed in. Loading your account…' : '' }}</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import type { Provider } from '@supabase/supabase-js'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
 import { isNative } from '../lib/platform'
 
-const { signInWithProvider, signInWithEmail, signUp, continueAsGuest, requestPasswordReset, confirmPasswordReset } = useAuth()
+const { signInWithProvider, signInWithEmail, signUp, continueAsGuest, requestPasswordReset, confirmPasswordReset, signingIn } = useAuth()
 const { logEvent } = useAnalytics()
 // The dev sign-in bypass is loaded ONLY in local dev mode OR CI e2e builds.
 // import.meta.env values are inlined + folded at build time, so this ternary
@@ -136,6 +141,12 @@ const isSignUp = ref(false)
 const submitting = ref(false)
 const message = ref('')
 const isError = ref(false)
+// The request is out, or it has signed the user in and App.vue keeps this
+// screen up until their account can be shown (LIFT-1546). Every other action
+// here is disabled for both: the request can sign the user in at any moment,
+// and once it has, taking guest mode would put a guest's UI over stores bound
+// to the account.
+const busy = computed(() => submitting.value || signingIn.value)
 
 function toggleMode() {
   isSignUp.value = !isSignUp.value
@@ -143,6 +154,7 @@ function toggleMode() {
 }
 
 async function handleEmailSubmit() {
+  if (busy.value) return
   message.value = ''
   submitting.value = true
   const method = isSignUp.value ? 'sign_up' : 'sign_in'
@@ -222,6 +234,7 @@ async function handleForgotPassword() {
 }
 
 async function handleResetSubmit() {
+  if (busy.value) return
   message.value = ''
   submitting.value = true
   const { error } = await confirmPasswordReset(email.value, resetCode.value, newPassword.value)
@@ -357,7 +370,7 @@ function cancelReset() {
   transition: color 0.12s;
 }
 
-.authLinkBtn:hover {
+.authLinkBtn:hover:not(:disabled) {
   color: var(--accent);
 }
 
@@ -407,7 +420,7 @@ function cancelReset() {
   color: var(--text-primary);
 }
 
-.authProviderBtn:hover {
+.authProviderBtn:hover:not(:disabled) {
   background: var(--bg-elevated);
   border-color: var(--accent);
 }
@@ -436,13 +449,22 @@ function cancelReset() {
   transition: background-color 0.15s, border-color 0.15s;
 }
 
-.authGuestBtn:hover {
+.authGuestBtn:hover:not(:disabled) {
   background: var(--bg-elevated);
   border-color: var(--accent);
 }
 
 .authGuestBtn:active {
   opacity: 0.85;
+}
+
+/* Inert while a sign-in is out or waits for its account (LIFT-1546), dimmed
+   the way the busy submit button already is. */
+.authLinkBtn:disabled,
+.authProviderBtn:disabled,
+.authGuestBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .authGuestHint {

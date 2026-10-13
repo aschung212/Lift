@@ -1,14 +1,15 @@
 <template>
   <ErrorBoundary>
   <div id="appShell">
-    <!-- Nothing renders while loading — splash screen covers this -->
-    <template v-if="!loading">
+    <!-- Nothing renders while loading — splash screen covers this. Which
+         screen shows is decided once, in appScreen (LIFT-1546). -->
+    <template v-if="screen !== 'splash'">
 
-    <!-- Auth screen -->
-    <AuthScreen v-if="!user" />
+    <!-- Auth screen, kept up (busy) while a sign-in waits for its account -->
+    <AuthScreen v-if="screen === 'auth'" />
 
     <!-- Onboarding -->
-    <OnboardingScreen v-else-if="showOnboarding" @complete="completeOnboarding" @started="onboardingInProgress = true" />
+    <OnboardingScreen v-else-if="screen === 'onboarding'" @complete="completeOnboarding" @started="onboardingInProgress = true" />
 
     <!-- Authenticated app -->
     <template v-else>
@@ -355,6 +356,7 @@ import { setupHealthSync } from './composables/useHealthSync'
 import { useAppBadge } from './composables/useAppBadge'
 import { todayISO } from './lib/dates'
 import { useOnboarding } from './composables/useOnboarding'
+import { appScreen } from './lib/appScreen'
 import { useTabRouting } from './composables/useTabRouting'
 import { useRestTimer } from './composables/useRestTimer'
 import { takeRestTimerLaunchAction, useRestTimerIntent, REST_AGAIN_ACTION } from './composables/useRestTimerIntent'
@@ -372,7 +374,7 @@ const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 const { celebrateUnlocks } = useXPCeremony()
 
-const { user, loading, isGuest, init: initAuth, signOut, exitGuestMode, passwordRecoveryPending, clearPasswordRecovery } = useAuth()
+const { user, loading, signingIn, isGuest, init: initAuth, signOut, exitGuestMode, passwordRecoveryPending, clearPasswordRecovery } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
@@ -505,6 +507,17 @@ const {
   clearSampleData,
   resetOnboarding,
 } = useOnboarding({ workoutStore, bodyweightStore })
+
+// The one top-level screen decision (LIFT-1546). A sign-in on a device holding
+// none of the user's data stays on the auth screen until its first read lands
+// (`signingIn`), because until then "no data, no onboarding flag" says nothing
+// about whether this lifter is new.
+const screen = computed(() => appScreen({
+  loading: loading.value,
+  signedIn: user.value !== null,
+  signingIn: signingIn.value,
+  onboarding: showOnboarding.value,
+}))
 
 function closeSettings() {
   const sheet = settingsSheetRef.value
