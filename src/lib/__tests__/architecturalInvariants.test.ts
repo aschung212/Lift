@@ -527,48 +527,61 @@ describe('Invariant: every store read handles failure identically (LIFT-1179)', 
 // `lastSyncError`, which the rule above makes every failure branch record.
 //
 // Which writers belong is a judgement rather than something the sources can
-// answer, so this is an allowlist, and each entry carries its reason.
+// answer, so this is an allowlist, and each entry carries its reason. Outside
+// the queue itself, an entry is pinned to the writes it was vetted for: App.vue
+// is exactly where the next "light the indicator when X" would be written, and
+// a file-wide exemption would wave it through.
 
 describe('Invariant: only the write path writes the write-queue status (LIFT-1543)', () => {
-  const WRITERS = new Map<string, string>([
-    [join('lib', 'syncQueue.ts'), 'the queue itself: a flush, the offline park, the delete breaker'],
-    ['App.vue', "device connectivity, and the mirror of another tab's queue"],
-    [join('composables', 'useSyncStatus.ts'), 'a manual retry retiring a label it has just disproved'],
+  const OWNER = join('lib', 'syncQueue.ts')
+  const VETTED = new Map<string, { writes: number; why: string }>([
+    ['App.vue', {
+      writes: 3,
+      why: "device connectivity (offline, and back to 'synced' from 'offline'), and the mirror of another tab's queue",
+    }],
+    [join('composables', 'useSyncStatus.ts'), {
+      writes: 1,
+      why: 'a manual retry retiring a label it has just disproved',
+    }],
   ])
-  const STATUS_WRITE = /\bsyncStatus\.value\s*=(?!=)/
+  // `=`, `||=`, `&&=` and `??=`; never `==` / `===` / `!==`.
+  const STATUS_WRITE = /\bsyncStatus\.value\s*(?:\|\||&&|\?\?)?=(?!=)/
+  const writesIn = (source: string): number =>
+    (stripComments(source).match(new RegExp(STATUS_WRITE.source, 'g')) ?? []).length
 
   it('no other source file assigns syncStatus', () => {
     const files = getSourceFiles()
     // Non-vacuity: the walker must reach every sanctioned writer and the file
     // that shipped the defect, or this scan proves nothing.
-    for (const path of [...WRITERS.keys(), join('lib', 'fetchErrorClassifier.ts')]) {
+    for (const path of [OWNER, ...VETTED.keys(), join('lib', 'fetchErrorClassifier.ts')]) {
       expect(files.map(f => f.path)).toContain(path)
     }
 
     const violations = files
-      .filter(f => !WRITERS.has(f.path))
-      .filter(f => STATUS_WRITE.test(stripComments(f.content)))
+      .filter(f => f.path !== OWNER && !VETTED.has(f.path))
+      .filter(f => writesIn(f.content) > 0)
       .map(f =>
         `${f.path} — assigns the write queue's syncStatus. Only a successful ` +
         `flush sets it back to 'synced', so a label written from anywhere else ` +
         `outlives its cause (LIFT-1543). Record a read failure in the store's ` +
-        `lastSyncError; anything else needs an entry, with its reason, in WRITERS.`,
+        `lastSyncError; anything else needs an entry, with its reason, in VETTED.`,
       )
     expect(violations).toEqual([])
   })
 
-  it('every sanctioned writer still writes it (non-vacuity)', () => {
-    for (const path of WRITERS.keys()) {
-      const source = stripComments(readFileSync(join(SRC_DIR, path), 'utf-8'))
-      expect(STATUS_WRITE.test(source), path).toBe(true)
-    }
+  it.each([...VETTED])('%s writes it exactly as many times as it was vetted for', (path, { writes }) => {
+    expect(writesIn(readFileSync(join(SRC_DIR, path), 'utf-8'))).toBe(writes)
   })
 
-  it('the scan flags an assignment and skips comparisons and comments (self-test)', () => {
-    expect(STATUS_WRITE.test("syncStatus.value = 'error'")).toBe(true)
-    expect(STATUS_WRITE.test("if (syncStatus.value === 'offline') reset()")).toBe(false)
-    expect(STATUS_WRITE.test("if (syncStatus.value !== 'syncing') mark()")).toBe(false)
-    expect(STATUS_WRITE.test(stripComments("// syncStatus.value = 'error'"))).toBe(false)
+  it('the queue itself still writes it (non-vacuity)', () => {
+    expect(writesIn(readFileSync(join(SRC_DIR, OWNER), 'utf-8'))).toBeGreaterThan(0)
+  })
+
+  it('the scan counts assignments and skips comparisons and comments (self-test)', () => {
+    expect(writesIn("syncStatus.value = 'error'\nsyncStatus.value ??= 'error'")).toBe(2)
+    expect(writesIn("if (syncStatus.value === 'offline') reset()")).toBe(0)
+    expect(writesIn("if (syncStatus.value !== 'syncing') mark()")).toBe(0)
+    expect(writesIn("// syncStatus.value = 'error'")).toBe(0)
   })
 })
 
