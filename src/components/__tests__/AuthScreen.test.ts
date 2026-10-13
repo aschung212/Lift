@@ -318,6 +318,42 @@ describe('AuthScreen', () => {
 
       expect(mockSignInWithEmail).not.toHaveBeenCalled()
     })
+
+    it('disables the other actions while the request itself is out, since it may sign the user in', async () => {
+      let answer!: (result: { error: null }) => void
+      mockSignInWithEmail.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
+      await wrapper.find('input[type="email"]').setValue('user@example.com')
+      await wrapper.find('input[type="password"]').setValue('secret123')
+      await wrapper.find('form').trigger('submit')
+
+      // A guest tap here would land first, and the SIGNED_IN after it would
+      // bind the stores to the account under a guest's UI.
+      for (const button of actions()) {
+        expect(button.attributes('disabled'), button.text()).toBeDefined()
+      }
+      await wrapper.find('.authGuestBtn').trigger('click')
+      expect(mockContinueAsGuest).not.toHaveBeenCalled()
+
+      // Back, with nothing holding the screen: usable again.
+      answer({ error: null })
+      await flushPromises()
+      for (const button of actions()) {
+        expect(button.attributes('disabled'), button.text()).toBeUndefined()
+      }
+    })
+
+    it('tells assistive tech what the held screen is waiting for, and only while it waits', async () => {
+      const status = () => wrapper.find('.srOnly[role="status"]')
+      expect(status().text()).toBe('')
+
+      mockSigningIn.value = true
+      await flushPromises()
+      expect(status().text()).toBe('Signed in. Loading your account…')
+
+      mockSigningIn.value = false
+      await flushPromises()
+      expect(status().text()).toBe('')
+    })
   })
 
   describe('continue without an account (LIFT-1083)', () => {

@@ -340,6 +340,28 @@ describe('a signed-in cold start lifts the splash once the stores are bound (LIF
     expect(shownAtLift).toEqual([['Squat']])
   })
 
+  it('lifts the splash at the grace period when the journal read never answers, and leaves the stores unbound', async () => {
+    await leaveLocalHistory()
+    // Binding waits on the journal, an IndexedDB read. One that never settles
+    // (a WebKit open that hangs) used to hold the splash for good.
+    queue.rehydrate.mockImplementationOnce(() => new Promise<void>(() => {}))
+    const { auth, workout, graceMs } = await relaunch()
+    vi.useFakeTimers()
+
+    auth.init()
+    await vi.advanceTimersByTimeAsync(graceMs - 1)
+    expect(queue.rehydrate).toHaveBeenCalled()
+    expect(auth.loading.value).toBe(true)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(auth.loading.value).toBe(false)
+
+    // The history on the device is on screen, and nothing may write over a
+    // journal that was never read.
+    expect(workout.exercises.map(e => e.name)).toEqual(['Bench Press'])
+    workout.logSet(workout.exercises[0].id, 190, 5)
+    expect(queue.enqueue).not.toHaveBeenCalled()
+  })
+
   it('lifts the splash even when reading the journal throws, and leaves the stores unbound (LIFT-1324)', async () => {
     await leaveLocalHistory()
     queue.rehydrate.mockImplementationOnce(() => Promise.reject(new Error('IndexedDB unavailable')))
@@ -450,6 +472,22 @@ describe('a sign-in on the auth screen waits for the account the same way (LIFT-
     uplink.revive()
     await vi.waitFor(() => expect(shown.at(-1)).toBe('app'))
     expect(shown).toEqual(['splash', 'auth', 'onboarding', 'app'])
+  })
+
+  it('releases the auth screen at the grace period when the journal read never answers', async () => {
+    const { auth, shown, graceMs } = await launchSignedOut()
+    queue.rehydrate.mockImplementationOnce(() => new Promise<void>(() => {}))
+    vi.useFakeTimers()
+
+    signIn()
+    await vi.advanceTimersByTimeAsync(graceMs - 1)
+    expect(auth.signingIn.value).toBe(true)
+
+    // Every control on the held screen is disabled, so an uncapped wait here
+    // would leave the lifter with no way forward short of killing the app.
+    await vi.advanceTimersByTimeAsync(1)
+    expect(auth.signingIn.value).toBe(false)
+    expect(shown).toEqual(['splash', 'auth', 'onboarding'])
   })
 
   it('does not wait on the network when the device already holds the user\'s data', async () => {

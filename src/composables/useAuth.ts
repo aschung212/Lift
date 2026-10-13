@@ -225,9 +225,10 @@ async function syncStores(userId: string, isCurrent: () => boolean): Promise<voi
 }
 
 /**
- * How long a sign-in with NOTHING of the user's on the device waits for the
- * account's first read before rendering anyway: a cold start behind the splash
- * (LIFT-1516), or a sign-in behind the auth screen (LIFT-1546).
+ * The longest a sign-in holds its screen before rendering anyway: the splash
+ * for a cold start (LIFT-1516), the auth screen for a sign-in made on it
+ * (LIFT-1546). On a device with NOTHING of the user's, it is how long the
+ * account's first read gets.
  */
 export const FIRST_READ_GRACE_MS = 5000
 
@@ -258,27 +259,25 @@ function settledOrElapsed(promise: Promise<unknown>, ms: number): Promise<void> 
  * browser, a reinstall, an OAuth redirect landing on either, or any sign-in
  * after Sign Out, which wipes every store. There only the first read can tell
  * a returning lifter from a new one, and rendering without it would put a
- * returning lifter into onboarding. The wait is capped, so a dead uplink costs
- * FIRST_READ_GRACE_MS rather than every retry.
+ * returning lifter into onboarding.
  *
- * Rejects when the bind fails. initStores has already reported that, through
+ * The whole wait is capped, binding included, so a dead uplink costs
+ * FIRST_READ_GRACE_MS rather than every retry, and an IndexedDB read that
+ * never answers (binding waits on the journal) costs the same rather than
+ * holding the screen for good. It never rejects: a failed bind or read still
+ * shows the app, which is local-first and renders from localStorage either
+ * way (LIFT-1324). initStores has already reported the failure, through
  * `synced`.
  */
-async function untilShowable(run: StoresInit): Promise<void> {
-  await run.bound
-  if (!storesHoldLocalData()) await settledOrElapsed(run.synced, FIRST_READ_GRACE_MS)
+function untilShowable(run: StoresInit): Promise<void> {
+  const showable = run.bound.then(() => (storesHoldLocalData() ? undefined : run.synced))
+  return settledOrElapsed(showable, FIRST_READ_GRACE_MS)
 }
 
 /** Lift the splash for a signed-in cold start once it has something to show. */
 async function liftSplashWhenBound(run: StoresInit): Promise<void> {
-  try {
-    await untilShowable(run)
-  } catch {
-    // The splash comes down regardless, because the app is local-first and
-    // renders from localStorage either way (LIFT-1324).
-  } finally {
-    loading.value = false
-  }
+  await untilShowable(run)
+  loading.value = false
 }
 
 // The run `signingIn` is waiting on. A wait that a sign-out superseded must not
@@ -306,13 +305,8 @@ function releaseAuthScreen(): void {
 async function holdAuthScreen(run: StoresInit): Promise<void> {
   _authScreenHold = run
   signingIn.value = true
-  try {
-    await untilShowable(run)
-  } catch {
-    // Released regardless, as the splash is.
-  } finally {
-    if (_authScreenHold === run) releaseAuthScreen()
-  }
+  await untilShowable(run)
+  if (_authScreenHold === run) releaseAuthScreen()
 }
 
 /** Clear guest mode (a real session supersedes it). */
