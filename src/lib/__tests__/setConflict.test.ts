@@ -60,11 +60,28 @@ describe('sameSyncedSet', () => {
   })
 
   it('ignores fields that cannot carry a conflict', () => {
-    // createdAt is write-once; rpe / bodyweight have no column at all.
+    // createdAt is write-once; rpe has no column at all.
     expect(sameSyncedSet(
-      set({ createdAt: T0, rpe: 8, bodyweight: 170, updated_at: T2 }),
+      set({ createdAt: T0, rpe: 8, updated_at: T2 }),
       set({ createdAt: '2026-09-28T17:00:01+00:00', updated_at: T0 }),
     )).toBe(true)
+  })
+
+  it('reads a missing bodyweight capture as not yet learned, never as a different value (LIFT-1569)', () => {
+    // Every row written before `sets.bodyweight` existed reads back NULL while
+    // the device that logged it holds the capture. Counting that as a conflict
+    // would hand the slot to the server's NULL.
+    expect(sameSyncedSet(set({ bodyweight: 170 }), set())).toBe(true)
+    expect(sameSyncedSet(set(), set({ bodyweight: 170 }))).toBe(true)
+  })
+
+  it('compares two captures as real (float4) values', () => {
+    // A weigh-in stored to one decimal of a pound, and what the `real` column
+    // hands back for it.
+    const weighIn = 169.9
+    expect(Math.fround(weighIn)).not.toBe(weighIn)
+    expect(sameSyncedSet(set({ bodyweight: weighIn }), set({ bodyweight: Math.fround(weighIn) }))).toBe(true)
+    expect(sameSyncedSet(set({ bodyweight: 170 }), set({ bodyweight: 172 }))).toBe(false)
   })
 
   it('falls back to exact comparison for a date that does not parse', () => {
@@ -133,14 +150,15 @@ describe('resolveSetConflicts', () => {
       ['edited', { set: set({ id: 'edited', weight: 105, updated_at: T1 }), exerciseId: 'e-server' }],
     ])
 
-    const winners = resolveSetConflicts([ex], local, server)
+    const { localWinners, bodyweightFills } = resolveSetConflicts([ex], local, server)
 
     expect(ex.sets.map(s => s.weight)).toEqual([105, 110, 100])
     expect(ex.sets[0]).toBe(server.get('stale')!.set)
     expect(ex.sets[1]).toBe(edited)
     // A set only this device holds is not a conflict and is left alone.
     expect(ex.sets[2]).toBe(newOnly)
-    expect(winners).toEqual([{ set: edited, exerciseId: 'e-server' }])
+    expect(localWinners).toEqual([{ set: edited, exerciseId: 'e-server' }])
+    expect(bodyweightFills).toEqual([])
   })
 
   it('resolves a set by id even when the device shows it under a different exercise', () => {
@@ -151,7 +169,7 @@ describe('resolveSetConflicts', () => {
       ['b-0', { set: set({ id: 'b-0', weight: 140, updated_at: T1 }), exerciseId: 'uuid-b' }],
     ])
 
-    expect(resolveSetConflicts([ex], indexSetsById([ex]), server)).toEqual([])
+    expect(resolveSetConflicts([ex], indexSetsById([ex]), server).localWinners).toEqual([])
     expect(ex.sets[0].weight).toBe(140)
   })
 
@@ -162,7 +180,7 @@ describe('resolveSetConflicts', () => {
       ['twice', { set: set({ id: 'twice', weight: 105, updated_at: T1 }), exerciseId: 'e1' }],
     ])
 
-    expect(resolveSetConflicts(exercises, indexSetsById(exercises), server)).toHaveLength(1)
+    expect(resolveSetConflicts(exercises, indexSetsById(exercises), server).localWinners).toHaveLength(1)
   })
 
   it('compares against the copy the device held, not the one the merge left in the slot', () => {
@@ -173,9 +191,84 @@ describe('resolveSetConflicts', () => {
     const serverCopy = set({ id: 's', weight: 105, updated_at: T1 })
     const ex = exercise('e1', [serverCopy])
 
-    const winners = resolveSetConflicts([ex], local, new Map([['s', { set: serverCopy, exerciseId: 'e1' }]]))
+    const { localWinners } = resolveSetConflicts([ex], local, new Map([['s', { set: serverCopy, exerciseId: 'e1' }]]))
 
     expect(ex.sets[0]).toBe(edited)
-    expect(winners).toHaveLength(1)
+    expect(localWinners).toHaveLength(1)
+  })
+})
+
+describe('resolveSetConflicts — the captured bodyweight (LIFT-1569)', () => {
+  /** One set both sides hold, resolved. */
+  function resolve(mine: WorkoutSet, theirs: WorkoutSet) {
+    const ex = exercise('e1', [mine])
+    const result = resolveSetConflicts([ex], indexSetsById([ex]), new Map([[theirs.id, { set: theirs, exerciseId: 'e1' }]]))
+    return { slot: ex.sets[0], ...result }
+  }
+
+  it("keeps this device's capture when the server's copy stands without one, and asks for the column to be filled", () => {
+    const { slot, localWinners, bodyweightFills } = resolve(
+      set({ bodyweight: 170 }),
+      set({ updated_at: T1 }),
+    )
+
+    expect(slot).toMatchObject({ bodyweight: 170, updated_at: T1 })
+    // Not a local win: nothing else differs, so the row is not pushed whole.
+    expect(localWinners).toEqual([])
+    expect(bodyweightFills).toEqual([{ id: 's1', bodyweight: 170 }])
+  })
+
+  it("keeps it too when another device's newer edit of the set wins", () => {
+    // The other device edited the reps without ever learning the capture.
+    const { slot, localWinners, bodyweightFills } = resolve(
+      set({ bodyweight: 170, updated_at: T0 }),
+      set({ reps: 6, updated_at: T1 }),
+    )
+
+    expect(slot).toMatchObject({ reps: 6, bodyweight: 170 })
+    expect(localWinners).toEqual([])
+    expect(bodyweightFills).toEqual([{ id: 's1', bodyweight: 170 }])
+  })
+
+  it("takes the server's capture into a local winner that has none, and asks for nothing more", () => {
+    const { slot, localWinners, bodyweightFills } = resolve(
+      set({ reps: 6, updated_at: T2 }),
+      set({ bodyweight: 170, updated_at: T1 }),
+    )
+
+    expect(slot).toMatchObject({ reps: 6, bodyweight: 170 })
+    // The local edit goes out whole, now carrying the capture the server holds.
+    expect(localWinners).toEqual([{ set: slot, exerciseId: 'e1' }])
+    expect(bodyweightFills).toEqual([])
+  })
+
+  it("adopts the server's capture on a device that never had one, with nothing to send back", () => {
+    const { slot, localWinners, bodyweightFills } = resolve(set(), set({ bodyweight: 170, updated_at: T1 }))
+
+    expect(slot.bodyweight).toBe(170)
+    expect(localWinners).toEqual([])
+    expect(bodyweightFills).toEqual([])
+  })
+
+  it('decides two different captures by the set stamp, like any other column', () => {
+    expect(resolve(
+      set({ bodyweight: 170, updated_at: T0 }),
+      set({ bodyweight: 172, updated_at: T1 }),
+    ).slot.bodyweight).toBe(172)
+
+    const newer = resolve(set({ bodyweight: 170, updated_at: T2 }), set({ bodyweight: 172, updated_at: T1 }))
+    expect(newer.slot.bodyweight).toBe(170)
+    expect(newer.localWinners).toHaveLength(1)
+    expect(newer.bodyweightFills).toEqual([])
+  })
+
+  it('leaves a copy without a capture on either side exactly as the plain rule does', () => {
+    const theirs = set({ updated_at: T1 })
+    const { slot, localWinners, bodyweightFills } = resolve(set(), theirs)
+
+    expect(slot).toBe(theirs)
+    expect(slot).not.toHaveProperty('bodyweight')
+    expect(localWinners).toEqual([])
+    expect(bodyweightFills).toEqual([])
   })
 })

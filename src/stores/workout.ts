@@ -25,7 +25,12 @@ import { sanitizeExerciseEquipment, type ExerciseEquipment } from '../lib/coachA
 import { sanitizeExerciseGyms } from '../lib/gyms'
 import { mapRemoteExercise, mapRemoteSet } from '../lib/remoteRows'
 import { captureLocalOnlySetFields, restoreLocalOnlySetFields } from '../lib/localOnlySetFields'
-import { indexSetsById, resolveSetConflicts, type ServerSetCopy } from '../lib/setConflict'
+import {
+  indexSetsById,
+  resolveSetConflicts,
+  type BodyweightFill,
+  type ServerSetCopy,
+} from '../lib/setConflict'
 import { mergeExerciseMetadata } from '../lib/exerciseMerge'
 import { fetchAllRows } from '../lib/supabasePagination'
 import { bodyweightFold, effectiveSetWeight } from '../lib/bodyweightLoad'
@@ -37,6 +42,12 @@ import { classifySyncError, type SyncErrorKind } from '../lib/syncStatus'
 const TOMBSTONE_STORE = 'exercises'
 
 const STORAGE_KEY = 'workout-exercises'
+
+/**
+ * Set ids per request when filling `sets.bodyweight` (LIFT-1569). 100 uuids
+ * keep the `id=in.(…)` query string near 4 KB, well inside URL limits.
+ */
+const BODYWEIGHT_FILL_CHUNK = 100
 
 export interface WorkoutSet {
   id: string
@@ -59,9 +70,10 @@ export interface WorkoutSet {
   /**
    * Bodyweight (lbs) folded into this set's effective load for a
    * bodyweight-loaded exercise (LIFT-834). Captured at log time so history stays
-   * stable as the lifter's weight drifts; absent for normal exercises. Persisted
-   * locally only — the stored `estimated1RM` already carries the fold, so it does
-   * not round-trip through Supabase (see `effectiveSetWeight`).
+   * stable as the lifter's weight drifts; absent for normal exercises. Written
+   * once and never cleared (turning the flag off keeps it). Synced through the
+   * `sets.bodyweight` column (LIFT-1569), so every device folds the same load
+   * into volume and reads the set back in the same words.
    */
   bodyweight?: number
   /**
@@ -532,7 +544,7 @@ export const useWorkoutStore = defineStore('workout', () => {
   function _enqueueSetUpsert(
     set: {
       id: string; date: string; weight: number; reps: number; estimated1RM: number
-      createdAt?: string; attemptedNextRep?: boolean
+      createdAt?: string; attemptedNextRep?: boolean; bodyweight?: number
     },
     exerciseId: string,
     userId: string,
@@ -549,12 +561,63 @@ export const useWorkoutStore = defineStore('workout', () => {
       // default (#846). Omitted when absent so editing a legacy set (no local
       // createdAt) leaves the server's created_at untouched on upsert.
       ...(set.createdAt ? { created_at: set.createdAt } : {}),
+      // The bodyweight folded into `estimated_1rm` (LIFT-1569). Omitted when
+      // absent, like `created_at` and unlike the always-send columns: those are
+      // sent so a clear propagates, and a capture is never cleared. A device
+      // that has not yet learned another device's capture would otherwise erase
+      // it on the server with any edit of the set.
+      ...(set.bodyweight !== undefined ? { bodyweight: set.bodyweight } : {}),
     }
     syncQueue.enqueue(
       `set:${set.id}`,
       () => supabase!.from('sets').upsert(row),
       { op: 'upsert', table: 'sets', row },
     )
+  }
+
+  /**
+   * Write the bodyweights this device captured into server rows that have none
+   * (LIFT-1569): that one column, and only while it is still NULL.
+   *
+   * These are the rows written before `sets.bodyweight` existed (or by a build
+   * that predates it). The server holds the set and its folded e1RM, and only
+   * the device that logged the set knows the bodyweight it was folded from.
+   * Writing the column alone, guarded on NULL, means a fill can never revert an
+   * edit another device makes after this fetch, and never replaces a capture
+   * that reached the server first.
+   *
+   * One write per captured VALUE, not per set. A capture is read from the
+   * latest weigh-in (and turning the flag on stamps one value onto every
+   * earlier set of the exercise), so an account's captures share a handful of
+   * values. The first sync after this column shipped can owe a fill for every
+   * captured set at once, and one queued write per set would drain at the
+   * queue's 200 writes a minute with the lifter's own new sets waiting behind
+   * them. Each write sends its ids in chunks to keep the `id=in.(…)` filter
+   * well inside URL limits.
+   *
+   * Not journaled, deliberately. A descriptor can only express `eq` filters, so
+   * the NULL guard would be lost on replay. Nothing is lost without one either:
+   * the capture stays on this device, so the next fetch finds the same gap and
+   * enqueues the same fill until it lands.
+   */
+  function _enqueueBodyweightFills(fills: readonly BodyweightFill[], userId: string) {
+    const idsByValue = new Map<number, string[]>()
+    for (const { id, bodyweight } of fills) {
+      const ids = idsByValue.get(bodyweight)
+      if (ids) ids.push(id)
+      else idsByValue.set(bodyweight, [id])
+    }
+    for (const [bodyweight, ids] of idsByValue) {
+      // durable-journal-exempt (LIFT-1569): a NULL-guarded gap fill, re-derived by every fetch until it lands
+      syncQueue.enqueue(`set-bodyweight:${bodyweight}`, async () => {
+        for (let i = 0; i < ids.length; i += BODYWEIGHT_FILL_CHUNK) {
+          const result = await supabase!.from('sets').update({ bodyweight })
+            .eq('user_id', userId).in('id', ids.slice(i, i + BODYWEIGHT_FILL_CHUNK)).is('bodyweight', null)
+          if (result.error) return result
+        }
+        return { error: null }
+      })
+    }
   }
 
   /**
@@ -800,16 +863,21 @@ export const useWorkoutStore = defineStore('workout', () => {
     // the set too re-upserted a stale copy over another device's correction
     // whenever the exercise tied or won locally, and dropped an unflushed local
     // edit whenever it lost. The local copies that win are edits the server has
-    // not seen, and they are the only both-sides sets pushed below. Runs after
-    // both dedup passes, like the restore that follows, so it covers every set
-    // about to be committed.
-    const localSetWinners = resolveSetConflicts(deduped.exercises, localSets, serverSets)
+    // not seen, and they are the only both-sides sets pushed whole below. Runs
+    // after both dedup passes, like the restore that follows, so it covers every
+    // set about to be committed.
+    //
+    // It also keeps the bodyweight captured onto a set when the server's copy
+    // stands without one (LIFT-1569) — every row written before `sets.bodyweight`
+    // existed — and returns those captures so the column can be filled.
+    const { localWinners: localSetWinners, bodyweightFills } =
+      resolveSetConflicts(deduped.exercises, localSets, serverSets)
 
-    // Re-attach RPE and captured bodyweight to any set that arrived from the
-    // server (#1357). Runs after BOTH dedup passes so it covers every set about
-    // to be committed, not just the ones the last-write-wins union touched —
-    // the alternative, patching the union loop alone, would leave the same hole
-    // open for any future path that adopts a remote set.
+    // Re-attach RPE to any set that arrived from the server (#1357). Runs after
+    // BOTH dedup passes so it covers every set about to be committed, not just
+    // the ones the last-write-wins union touched — the alternative, patching the
+    // union loop alone, would leave the same hole open for any future path that
+    // adopts a remote set.
     restoreLocalOnlySetFields(deduped.exercises, localOnlySetFields)
 
     // Clear the bar weight the `bar_weight NOT NULL DEFAULT 45` column default
@@ -892,6 +960,13 @@ export const useWorkoutStore = defineStore('workout', () => {
       for (const { set, exerciseId } of localSetWinners) {
         _enqueueSetUpsert(set, exerciseId, userId)
       }
+    }
+
+    // Captures this device holds for sets whose server copy has none
+    // (LIFT-1569). Until one lands, every other device reads those sets as
+    // "0 lbs" beside their folded e1RM and counts them as zero volume.
+    if (bodyweightFills.length > 0) {
+      _enqueueBodyweightFills(bodyweightFills, _userId)
     }
 
     // Reconciliation gap (LIFT-706): when a DIFFERENT device updated an

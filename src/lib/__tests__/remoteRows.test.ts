@@ -33,6 +33,7 @@ function setRow(overrides: Partial<Tables<'sets'>> = {}): Tables<'sets'> {
     reps: 5,
     estimated_1rm: 253,
     attempted_next_rep: false,
+    bodyweight: null,
     note: null,
     created_at: '2026-08-12T18:00:00Z',
     updated_at: '2026-08-14T09:30:00Z',
@@ -145,6 +146,21 @@ describe('mapRemoteSet', () => {
     const set = mapRemoteSet(setRow({ estimated_1rm: NaN }))
     expect(set).not.toBeNull()
     expect(Number.isNaN(set!.estimated1RM)).toBe(false)
+  })
+
+  it('reads the bodyweight captured onto the set (LIFT-1569)', () => {
+    // A plain pull-up: nothing added, the e1RM folded from the lifter's 170.
+    const set = mapRemoteSet(setRow({ weight: 0, reps: 12, estimated_1rm: epley(170, 12), bodyweight: 170 }))
+    expect(set!.bodyweight).toBe(170)
+  })
+
+  it('leaves the bodyweight absent for a NULL column or a value no capture could hold', () => {
+    // NULL: nothing captured, or a row written before the column existed. It
+    // must stay absent, as on a local set, so the fold degrades to nothing.
+    expect(mapRemoteSet(setRow())).not.toHaveProperty('bodyweight')
+    expect(mapRemoteSet(setRow({ bodyweight: 0 }))).not.toHaveProperty('bodyweight')
+    expect(mapRemoteSet(setRow({ bodyweight: -170 }))).not.toHaveProperty('bodyweight')
+    expect(mapRemoteSet(setRow({ bodyweight: NaN }))).not.toHaveProperty('bodyweight')
   })
 })
 

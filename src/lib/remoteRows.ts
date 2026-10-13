@@ -32,8 +32,7 @@ function isFiniteNumber(v: unknown): v is number {
  * reps are non-finite (NaN/null from a bad migration or manual edit) — such a set
  * has no meaningful load and must never reach `Math.max(estimated1RM)`. A missing
  * or non-finite `estimated_1rm` is repaired from weight×reps (Epley) rather than
- * dropped, mirroring `parseWorkoutSet`. `bodyweight` is intentionally not read:
- * it is a local-only field that does not round-trip through Supabase (LIFT-834).
+ * dropped, mirroring `parseWorkoutSet`.
  */
 export function mapRemoteSet(row: Tables<'sets'>): WorkoutSet | null {
   return parseWorkoutSet({
@@ -48,6 +47,12 @@ export function mapRemoteSet(row: Tables<'sets'>): WorkoutSet | null {
     // keeps only a literal `true`, so the column's NULL default degrades to
     // "re-racked" exactly like a legacy local set.
     attemptedNextRep: row.attempted_next_rep,
+    // The bodyweight folded into this set's stored e1RM on a bodyweight-loaded
+    // exercise (LIFT-1569). Without it a device that did not log the set reads
+    // a plain pull-up as "0 lbs" beside its folded e1RM. The guard keeps only a
+    // finite positive number, so NULL (nothing captured, or a row written
+    // before the column existed) stays absent, as it is on a local set.
+    bodyweight: row.bodyweight,
     // The set's own merge stamp (LIFT-1523): `trg_sets_updated_at` moves this
     // column on every write, and nothing moves the EXERCISE's stamp for a set
     // edit, so this is the only place another device's edit of the set shows.

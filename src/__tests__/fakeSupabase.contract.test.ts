@@ -135,6 +135,21 @@ describe('createFakeSupabase modes (LIFT-1009)', () => {
     expect(fake.updatesFor('sets')[0].filters).toMatchObject({ id: 's-1', user_id: 'u1' })
   })
 
+  it("'ok' mode .in() matches any listed value, alongside the other filters (LIFT-1569)", async () => {
+    const fake = createFakeSupabase({ mode: 'ok' })
+    fake.seed('sets', [
+      { id: 's-1', user_id: 'u1', bodyweight: null },
+      { id: 's-2', user_id: 'u1', bodyweight: 172 },
+      { id: 's-3', user_id: 'u1', bodyweight: null },
+    ])
+
+    // The shape of a bodyweight fill: listed ids, and only where still NULL.
+    await fake.from('sets').update({ bodyweight: 170 })
+      .eq('user_id', 'u1').in('id', ['s-1', 's-2']).is('bodyweight', null)
+
+    expect(fake.tables.sets.map(r => r.bodyweight)).toEqual([170, 172, null])
+  })
+
   it("'ok' mode .single() returns the first match or null", async () => {
     const fake = createFakeSupabase({ mode: 'ok' })
     fake.seed('user_progression', [{ id: 'p1', user_id: 'u1', total_xp: 42 }])

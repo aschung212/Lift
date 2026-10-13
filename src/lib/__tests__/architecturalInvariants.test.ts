@@ -322,12 +322,17 @@ function countCallArgs(source: string, start: number): number {
 describe('Invariant: store writes carry a durable descriptor (LIFT-1239)', () => {
   /**
    * An enqueue may opt out of the journal only with this marker plus a written
-   * justification. No call site carries it today. The last one was
-   * bodyweight's `clearAll`, an unbounded "soft-delete every live row for this
-   * user" whose `.is('deleted_at', null)` guard a descriptor of `eq` filters
-   * could not express, and which would have re-wiped another device's entries
-   * if replayed. It was removed with its only caller, the sample-data banner
-   * (LIFT-1527). An unbounded match is the shape to be suspicious of here.
+   * justification. One call site carries it: workout's
+   * `_enqueueBodyweightFills` (LIFT-1569), which writes one column of rows named
+   * by id, for one user, and only while that column is NULL. The NULL guard is
+   * an `.is()` filter a descriptor of `eq` filters cannot express, and the fill
+   * needs no journal because every fetch re-derives it from the capture this
+   * device still holds. The one before it was bodyweight's `clearAll`, an
+   * unbounded "soft-delete every live row for this user" whose
+   * `.is('deleted_at', null)` guard hit the same limit, and which would have
+   * re-wiped another device's entries if replayed. It was removed with its only
+   * caller, the sample-data banner (LIFT-1527). An unbounded match is the shape
+   * to be suspicious of here.
    */
   const EXEMPT_MARKER = 'durable-journal-exempt'
 
@@ -2682,7 +2687,10 @@ describe('Invariant: every WorkoutSet field is synced or locally preserved (#135
     // `bodyweight` both carry multi-line blocks that name other fields.
     expect(fields.has('createdAt')).toBe(true)
     expect(mappedFields(REMOTE_ROWS, 'export function mapRemoteSet').has('estimated1RM')).toBe(true)
-    expect(preservedFields()).toEqual(new Set(['rpe', 'bodyweight']))
+    // `bodyweight` left the list when it gained a column (LIFT-1569); the
+    // mapper must now be what carries it.
+    expect(mappedFields(REMOTE_ROWS, 'export function mapRemoteSet').has('bodyweight')).toBe(true)
+    expect(preservedFields()).toEqual(new Set(['rpe']))
   })
 
   it('the derivation flags a field that is neither synced nor preserved (self-test)', () => {

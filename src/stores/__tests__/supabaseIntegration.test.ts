@@ -213,6 +213,65 @@ describeIntegration('Supabase integration: PostgREST query shape validation', ()
       })
     })
 
+    it("keeps a set's captured bodyweight through an upsert that omits it (LIFT-1569)", async () => {
+      const userId = await createTestUser()
+      const exerciseId = uuid()
+      const setId = uuid()
+      const ts = now()
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Pull-up', tags: [], bodyweight_loaded: true,
+      })
+
+      // A plain pull-up as _enqueueSetUpsert sends it: nothing added, the e1RM
+      // folded from the 170 lb captured onto it.
+      const { error } = await supabase.from('sets').upsert({
+        id: setId, user_id: userId, exercise_id: exerciseId, date: ts,
+        weight: 0, reps: 12, estimated_1rm: 238, attempted_next_rep: false, bodyweight: 170,
+      })
+      expect(error).toBeNull()
+
+      // An edit from a device that has not learned the capture omits the
+      // column. ON CONFLICT DO UPDATE assigns only the columns sent, so the
+      // capture must survive it.
+      const { error: editError } = await supabase.from('sets').upsert({
+        id: setId, user_id: userId, exercise_id: exerciseId, date: ts,
+        weight: 0, reps: 13, estimated_1rm: 243.67, attempted_next_rep: false,
+      })
+      expect(editError).toBeNull()
+
+      // A fill is guarded on NULL, so it cannot replace a capture already there.
+      const { error: fillError } = await supabase.from('sets').update({ bodyweight: 150 })
+        .eq('id', setId).eq('user_id', userId).is('bodyweight', null)
+      expect(fillError).toBeNull()
+
+      const { data } = await supabase.from('sets').select('*').eq('id', setId)
+      expect(data![0]).toMatchObject({ reps: 13, bodyweight: 170 })
+    })
+
+    it('fills the bodyweight of a set written without one (LIFT-1569)', async () => {
+      const userId = await createTestUser()
+      const exerciseId = uuid()
+      const setId = uuid()
+      await supabase.from('exercises').upsert({
+        id: exerciseId, user_id: userId, name: 'Pull-up', tags: [], bodyweight_loaded: true,
+      })
+      // The shape every set had before the column existed.
+      await supabase.from('sets').upsert({
+        id: setId, user_id: userId, exercise_id: exerciseId, date: now(),
+        weight: 0, reps: 12, estimated_1rm: 238,
+      })
+      const { data: before } = await supabase.from('sets').select('*').eq('id', setId)
+      expect(before![0].bodyweight).toBeNull()
+
+      // The exact query _enqueueBodyweightFill builds.
+      const { error } = await supabase.from('sets').update({ bodyweight: 170 })
+        .eq('id', setId).eq('user_id', userId).is('bodyweight', null)
+      expect(error).toBeNull()
+
+      const { data: after } = await supabase.from('sets').select('*').eq('id', setId)
+      expect(after![0].bodyweight).toBe(170)
+    })
+
     it('upsert updates existing exercise on conflict (last-write-wins)', async () => {
       const userId = await createTestUser()
       const exerciseId = uuid()

@@ -463,6 +463,18 @@ describe('replay allowlist (LIFT-785)', () => {
       })).toBe(true)
     })
 
+    it('accepts a set upsert carrying the captured bodyweight (LIFT-1569)', () => {
+      // A pull-up logged offline is journaled with its capture; without the
+      // allowlist entry the whole descriptor is dropped on rehydrate().
+      expect(isReplayableDescriptor({
+        op: 'upsert', table: 'sets',
+        row: {
+          id: 's1', user_id: 'u1', exercise_id: 'e1', date: '2026-10-12T23:59:30.000Z',
+          weight: 0, reps: 12, estimated_1rm: 238, attempted_next_rep: false, bodyweight: 170,
+        },
+      })).toBe(true)
+    })
+
     it('accepts a full-fidelity exercise upsert (every column _buildExerciseUpsert sends)', () => {
       // Regression for LIFT-1039: the allowlist had drifted behind the producer.
       // `_buildExerciseUpsert` always sends `equipment` (#931), `gyms` (#961),

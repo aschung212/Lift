@@ -80,6 +80,7 @@ export const FAKE_SUPABASE_CHAIN_METHODS = [
   'delete',
   'eq',
   'is',
+  'in',
   'order',
   'range',
   'single',
@@ -176,6 +177,15 @@ interface IsFilter {
 
 function isIsFilter(v: unknown): v is IsFilter {
   return v !== null && typeof v === 'object' && '__is' in (v as object)
+}
+
+/** Sentinel wrapping an `.in(col, values)` filter: the column holds one of the values. */
+interface InFilter {
+  __in: readonly unknown[]
+}
+
+function isInFilter(v: unknown): v is InFilter {
+  return v !== null && typeof v === 'object' && '__in' in (v as object)
 }
 
 const DEFAULT_API_ERROR: FakeSupabaseError = {
@@ -330,6 +340,7 @@ export class FakeSupabase {
           if (target === null) return r[k] == null
           return r[k] === target
         }
+        if (isInFilter(v)) return v.__in.includes(r[k])
         return r[k] === v
       }),
     )
@@ -376,6 +387,7 @@ class FakeBuilder implements PromiseLike<FakeSupabaseResult> {
   update(data: unknown) { this._op = 'update'; this._data = data; return this }
   eq(col: string, val: unknown) { this._filters[col] = val; return this }
   is(col: string, val: null | boolean) { this._filters[col] = { __is: val }; return this }
+  in(col: string, values: readonly unknown[]) { this._filters[col] = { __in: [...values] }; return this }
   order(_col: string) { return this }
   range(from: number, to: number) { this._range = { from, to }; return this }
   single() { this._single = true; return this }

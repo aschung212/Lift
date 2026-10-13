@@ -10,14 +10,18 @@
  * still arrives as that copy, so the same two fields go missing on it.
  *
  * That is lossless for every column the `sets` table actually has, and silent
- * data loss for the two `WorkoutSet` fields it does not. `rpe` (#617) and
- * `bodyweight` (LIFT-834) live on the device only — `_enqueueSetUpsert` never
- * sends them and `mapRemoteSet` cannot read them back — so the adopted remote
- * copy carries `undefined` where the user's annotation was. A rename on a second
- * phone therefore erased every RPE the lifter had typed, and dropped the
- * bodyweight captured onto a calisthenic set, collapsing `effectiveSetWeight`
- * back to the added weight alone: a pull-up day's volume and e1RM history
- * quietly rewritten by a sync that changed nothing about those sets.
+ * data loss for any `WorkoutSet` field it does not. `rpe` (#617) lives on the
+ * device only — `_enqueueSetUpsert` never sends it and `mapRemoteSet` cannot
+ * read it back — so the adopted remote copy carries `undefined` where the
+ * user's annotation was, and a rename on a second phone erased every RPE the
+ * lifter had typed.
+ *
+ * `bodyweight` (LIFT-834) was the second field here until it gained a column
+ * (LIFT-1569). A local-only capture could only ever be restored on the device
+ * that made it, so every other device read a pull-up as "0 lbs" beside its
+ * folded e1RM. Rows written before the column existed still read back NULL;
+ * `resolveSetConflicts` fills those from this device's capture and sends the
+ * server the value, which a restore here never could.
  *
  * Capture and restore live here, adjacent, for the same reason `bodyweightFold`
  * and `addedWeightFromEffective` do — they are inverses over one field list, and
@@ -37,7 +41,7 @@ import type { Exercise, WorkoutSet } from '../stores/workout'
  * localStorage (and the IDB mirror) like everything else, so they survive a
  * reload — only the remote round-trip cannot carry them.
  */
-export const LOCAL_ONLY_SET_FIELDS = ['rpe', 'bodyweight'] as const
+export const LOCAL_ONLY_SET_FIELDS = ['rpe'] as const
 
 export type LocalOnlySetField = (typeof LOCAL_ONLY_SET_FIELDS)[number]
 

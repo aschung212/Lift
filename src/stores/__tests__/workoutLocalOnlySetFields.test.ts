@@ -7,14 +7,18 @@
  * journal entry bumped `updated_at` — every set present on both sides is
  * replaced by the server's copy of itself.
  *
- * `rpe` (#617) and `bodyweight` (LIFT-834) have no `sets` column: the upsert
- * never sends them and `mapRemoteSet` cannot read them back. The adopted copy
+ * `rpe` (#617) and `bodyweight` (LIFT-834) had no `sets` column: the upsert
+ * never sent them and `mapRemoteSet` could not read them back. The adopted copy
  * therefore carried `undefined` where the annotation was, so a rename on a
  * second phone wiped every RPE the lifter had typed and dropped the bodyweight
  * captured onto each calisthenic set — collapsing `effectiveSetWeight` to the
  * added weight alone, which silently rewrites pull-up volume and e1RM history.
  * Nothing errored, and the result was committed to localStorage, so the next
  * cold start loaded the stripped copy: permanent from the user's side.
+ *
+ * `bodyweight` has a column now (LIFT-1569), but every row written before it
+ * reads back NULL, which is the shape seeded below, so the same guarantee holds
+ * for it through `resolveSetConflicts` rather than the restore.
  *
  * Why the suite missed it: every fetch-path test seeded local state through
  * plain `logSet`/fixtures with none of the optional fields set, so the two
@@ -95,8 +99,8 @@ function seedLocalExercise(overrides: Partial<Exercise> = {}) {
 
 /**
  * The server's view of the same exercise and sets. `updated_at` is newer (the
- * other device renamed it), and the set rows carry no rpe/bodyweight because
- * those columns do not exist.
+ * other device renamed it), and the set rows carry no rpe (there is no column)
+ * and no bodyweight (written before that column existed).
  */
 function seedRemote(
   { updatedAt = REMOTE_UPDATED, extraSets = [] }:

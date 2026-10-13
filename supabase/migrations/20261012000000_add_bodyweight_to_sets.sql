@@ -1,0 +1,23 @@
+-- Add bodyweight to sets (LIFT-1569)
+--
+-- On a bodyweight-loaded exercise (exercises.bodyweight_loaded, LIFT-834) the
+-- `weight` column holds only the ADDED plate/belt weight. The lifter's
+-- bodyweight is captured onto each set when it is logged and folded into the
+-- effective load, and `estimated_1rm` is stored already folded.
+--
+-- That capture never had a column. Every device that did not log the set
+-- itself (a second phone, a PWA reinstall, a new sign-in) received the folded
+-- e1RM without the bodyweight it was folded from, so a plain pull-up read
+-- "0 lbs x 12" beside a ~224 lb e1RM and counted as zero volume in the
+-- calendar, the trend charts, the training report and the AI coach payload.
+--
+-- Nullable with no default. NULL means "no bodyweight captured": a normal
+-- exercise, a lifter who had never logged a weigh-in, or a row written before
+-- this column existed. Existing rows are NOT backfilled here, because the
+-- server never held the value. The device that captured it fills the column
+-- on its next sync (see `resolveSetConflicts` in src/lib/setConflict.ts).
+--
+-- `real` matches `weight` and `bodyweight_entries.weight`, the column the
+-- captured value is read from.
+
+alter table sets add column if not exists bodyweight real;

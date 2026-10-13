@@ -39,6 +39,16 @@
  * local stamp is re-anchored to the server's clock on the first fetch after its
  * write lands — a device clock running ahead can only matter between an edit
  * and the next fetch, not for the life of the set.
+ *
+ * One column is not last-write-wins: the bodyweight captured onto a
+ * bodyweight-loaded set (LIFT-1569). It is written once, when the set is logged
+ * or the first time an edit or the flag toggle finds none, and nothing ever
+ * clears it. So a copy without one has not learned it yet; it has not removed
+ * it. The column also arrived long after the sets did, and every row written
+ * before it reads back NULL while the device that logged the set still holds
+ * the value. A missing capture is therefore never a conflict, the resolved copy
+ * keeps whichever capture either side holds, and a capture the server's copy
+ * lacks is handed back to be written into that one column.
  */
 import type { Exercise, WorkoutSet } from '../stores/workout'
 
@@ -67,6 +77,17 @@ function sameInstant(a: string, b: string): boolean {
 }
 
 /**
+ * Two copies disagree about the captured bodyweight only when both hold one and
+ * the values differ (as `real` columns). A copy with none has not learned the
+ * value yet (see the module header), so counting absence as a value would make
+ * every row written before the column existed a conflict, and the server's
+ * NULL would win it against the device that holds the capture.
+ */
+function sameCapture(a: number | undefined, b: number | undefined): boolean {
+  return a === undefined || b === undefined || sameReal(a, b)
+}
+
+/**
  * Whether two copies of one set agree on every `sets` column a write can change.
  *
  * Compared as column VALUES, never as JSON. The server renders `date` the way
@@ -80,7 +101,8 @@ function sameInstant(a: string, b: string): boolean {
  *
  * `createdAt` is deliberately left out: it is written on insert and never
  * edited, so it cannot carry a conflict. Neither are the local-only fields
- * (`LOCAL_ONLY_SET_FIELDS`), which the server has no column for at all.
+ * (`LOCAL_ONLY_SET_FIELDS`), which the server has no column for at all. The
+ * captured `bodyweight` is compared only when both copies hold one.
  */
 export function sameSyncedSet(a: WorkoutSet, b: WorkoutSet): boolean {
   return a.reps === b.reps
@@ -88,6 +110,7 @@ export function sameSyncedSet(a: WorkoutSet, b: WorkoutSet): boolean {
     && sameReal(a.estimated1RM, b.estimated1RM)
     && sameInstant(a.date, b.date)
     && !!a.attemptedNextRep === !!b.attemptedNextRep
+    && sameCapture(a.bodyweight, b.bodyweight)
 }
 
 /** A stamp as epoch ms; absent or unparseable reads as older than everything. */
@@ -134,12 +157,35 @@ export function indexSetsById(exercises: readonly Exercise[]): Map<string, Worko
   return byId
 }
 
+/** A bodyweight this device captured onto a set whose server copy has none. */
+export interface BodyweightFill {
+  /** The set's id; the row to write. */
+  id: string
+  bodyweight: number
+}
+
+/** What a fetch must send back after resolving the sets both sides hold. */
+export interface SetConflictResolution {
+  /**
+   * Local copies that beat a different server copy, each paired with the parent
+   * the server files it under. Each is a local edit the server has not seen, so
+   * the caller pushes exactly these, whole, and nothing else for sets the server
+   * already has.
+   */
+  localWinners: ServerSetCopy[]
+  /**
+   * Captures the server's copy lacks while the server's copy otherwise stood
+   * (LIFT-1569). The caller writes each into the `bodyweight` column alone:
+   * pushing the whole row would re-assert every other column from this fetch's
+   * snapshot over any edit that lands after it.
+   */
+  bodyweightFills: BodyweightFill[]
+}
+
 /**
  * Put the winning copy of every set both sides hold into its slot, in place,
- * and return the local copies that won, paired with the parent the server files
- * them under. Each returned copy is a local edit the server has not seen, so
- * the caller pushes exactly these and nothing else for sets the server already
- * has.
+ * and say what the server has not seen: the local copies that won, and the
+ * bodyweight captures its own copies lack.
  *
  * Keyed by set id across ALL exercises rather than exercise-by-exercise, so it
  * also reaches a set the device shows under a different exercise than the
@@ -152,17 +198,27 @@ export function resolveSetConflicts(
   exercises: readonly Exercise[],
   local: ReadonlyMap<string, WorkoutSet>,
   server: ReadonlyMap<string, ServerSetCopy>,
-): ServerSetCopy[] {
+): SetConflictResolution {
   const localWinners = new Map<string, ServerSetCopy>()
+  const bodyweightFills = new Map<string, BodyweightFill>()
   for (const exercise of exercises) {
     exercise.sets = exercise.sets.map(slot => {
       const mine = local.get(slot.id)
       const theirs = server.get(slot.id)
       if (!mine || !theirs) return slot
-      if (pickSetCopy(mine, theirs.set) === 'remote') return theirs.set
-      localWinners.set(slot.id, { set: mine, exerciseId: theirs.exerciseId })
-      return mine
+      const localWins = pickSetCopy(mine, theirs.set) === 'local'
+      const winner = localWins ? mine : theirs.set
+      // A capture is never cleared (module header), so the copy that stands
+      // keeps whichever capture either side holds.
+      const bodyweight = winner.bodyweight ?? (localWins ? theirs.set : mine).bodyweight
+      const resolved = bodyweight === winner.bodyweight ? winner : { ...winner, bodyweight }
+      if (localWins) {
+        localWinners.set(slot.id, { set: resolved, exerciseId: theirs.exerciseId })
+      } else if (bodyweight !== undefined && theirs.set.bodyweight === undefined) {
+        bodyweightFills.set(slot.id, { id: slot.id, bodyweight })
+      }
+      return resolved
     })
   }
-  return [...localWinners.values()]
+  return { localWinners: [...localWinners.values()], bodyweightFills: [...bodyweightFills.values()] }
 }

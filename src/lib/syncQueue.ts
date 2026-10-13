@@ -155,6 +155,10 @@ const REPLAYABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
     // _enqueueSetUpsert, so it must be allowlisted or every journaled set
     // upsert is discarded wholesale on rehydrate().
     'attempted_next_rep',
+    // The bodyweight captured onto a bodyweight-loaded set (LIFT-1569), sent
+    // by _enqueueSetUpsert whenever the set holds one. Every journaled pull-up
+    // would be dropped on rehydrate() without it.
+    'bodyweight',
   ]),
   // LIFT-1239: the three tables below journal too, so a bodyweight entry / XP
   // total / settings change made offline survives a close before the flush.
