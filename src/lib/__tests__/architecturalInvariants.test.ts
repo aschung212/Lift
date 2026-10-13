@@ -497,10 +497,14 @@ describe('Invariant: every store read handles failure identically (LIFT-1179)', 
   })
 
   it.each(stores)('$name: every reported failure records a typed lastSyncError', ({ body }) => {
-    // `lastSyncError` is what App.vue folds into the sync indicator via
-    // `combineSyncStatus`, so a failure branch that reports but doesn't classify
-    // is a failure the user is never shown.
-    expect(count(body, /\bclassifySyncError\s*\(/g)).toBe(count(body, /\breportFetchError\s*\(/g))
+    // `lastSyncError` is what `useSyncStatus` folds into the sync indicator via
+    // `combineSyncStatus`, and since LIFT-1543 it is a read failure's ONLY
+    // route there: `reportFetchError` no longer writes the write queue's
+    // status. So the assignment itself is counted, not merely a classify call
+    // whose result could be dropped, and a failure branch that reports without
+    // recording is a failure the user is never shown.
+    expect(count(body, /\blastSyncError(?:\.value)?\s*=\s*classifySyncError\s*\(/g))
+      .toBe(count(body, /\breportFetchError\s*\(/g))
   })
 
   it.each(stores)('$name: the syncing flag is raised and cleared in a finally', ({ body }) => {
@@ -508,6 +512,63 @@ describe('Invariant: every store read handles failure identically (LIFT-1179)', 
     // In a `finally`, not on the success path: every failure branch returns
     // early, so a trailing assignment would strand the flag true forever.
     expect(body).toMatch(/finally\s*\{[^}]*syncing(?:\.value)?\s*=\s*false/)
+  })
+})
+
+// ── Invariant 3a′: only the write path writes the write-queue status (LIFT-1543) ──
+// Guard: `syncStatus` (syncQueue.ts) describes the WRITE queue's last batch,
+// and only a successful flush moves it back to 'synced'. A writer outside the
+// write path therefore leaves a label nothing on its own path can retire.
+// `reportFetchError` was that writer: an auth or server READ failure set it to
+// 'error' and broadcast it to every open tab, the store's next successful read
+// cleared its own `lastSyncError` but not this, and "Sync failed" stayed up
+// until some unrelated write happened to flush (never, where writes are
+// blocked: a preview deploy). A read failure's place is the store's
+// `lastSyncError`, which the rule above makes every failure branch record.
+//
+// Which writers belong is a judgement rather than something the sources can
+// answer, so this is an allowlist, and each entry carries its reason.
+
+describe('Invariant: only the write path writes the write-queue status (LIFT-1543)', () => {
+  const WRITERS = new Map<string, string>([
+    [join('lib', 'syncQueue.ts'), 'the queue itself: a flush, the offline park, the delete breaker'],
+    ['App.vue', "device connectivity, and the mirror of another tab's queue"],
+    [join('composables', 'useSyncStatus.ts'), 'a manual retry retiring a label it has just disproved'],
+  ])
+  const STATUS_WRITE = /\bsyncStatus\.value\s*=(?!=)/
+
+  it('no other source file assigns syncStatus', () => {
+    const files = getSourceFiles()
+    // Non-vacuity: the walker must reach every sanctioned writer and the file
+    // that shipped the defect, or this scan proves nothing.
+    for (const path of [...WRITERS.keys(), join('lib', 'fetchErrorClassifier.ts')]) {
+      expect(files.map(f => f.path)).toContain(path)
+    }
+
+    const violations = files
+      .filter(f => !WRITERS.has(f.path))
+      .filter(f => STATUS_WRITE.test(stripComments(f.content)))
+      .map(f =>
+        `${f.path} — assigns the write queue's syncStatus. Only a successful ` +
+        `flush sets it back to 'synced', so a label written from anywhere else ` +
+        `outlives its cause (LIFT-1543). Record a read failure in the store's ` +
+        `lastSyncError; anything else needs an entry, with its reason, in WRITERS.`,
+      )
+    expect(violations).toEqual([])
+  })
+
+  it('every sanctioned writer still writes it (non-vacuity)', () => {
+    for (const path of WRITERS.keys()) {
+      const source = stripComments(readFileSync(join(SRC_DIR, path), 'utf-8'))
+      expect(STATUS_WRITE.test(source), path).toBe(true)
+    }
+  })
+
+  it('the scan flags an assignment and skips comparisons and comments (self-test)', () => {
+    expect(STATUS_WRITE.test("syncStatus.value = 'error'")).toBe(true)
+    expect(STATUS_WRITE.test("if (syncStatus.value === 'offline') reset()")).toBe(false)
+    expect(STATUS_WRITE.test("if (syncStatus.value !== 'syncing') mark()")).toBe(false)
+    expect(STATUS_WRITE.test(stripComments("// syncStatus.value = 'error'"))).toBe(false)
   })
 })
 

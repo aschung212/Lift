@@ -169,19 +169,18 @@ function create(): UseSyncStatusReturn {
   /**
    * Retire a stale label on the shared write-queue status ref.
    *
-   * `reportFetchError` writes a READ failure straight into `syncStatus`
-   * (LIFT-786, predating the `lastSyncError` fold in LIFT-1179), and the only
-   * thing that ever clears it is a successful FLUSH — which returns early on an
-   * empty queue. So a read that failed and then recovered leaves the indicator
-   * lit for a user who is only browsing history, with nothing able to reset it.
-   * A parked-offline flush leaves 'offline' behind the same way.
+   * `syncStatus` describes the write queue's last batch, and the only thing
+   * that moves it back to 'synced' is a successful FLUSH — which returns early
+   * on an empty queue. So a label can outlive its cause with nothing left to
+   * send: an 'error' mirrored from another tab's failed batch, say, or an
+   * 'offline' a parked flush left behind. A READ failure never lands here; it
+   * lives in its store's `lastSyncError`, which the next successful read clears
+   * on any trigger (LIFT-1543).
    *
    * The manual pass just re-read all four stores and drained the queue, so at
    * this point BOTH halves have been verified — clearing here is a conclusion
    * drawn from evidence, not optimism, and without it "Try again" would report
-   * a failure that no longer exists. Deliberately scoped to the user-initiated
-   * path: the ambient recovery triggers have the same gap, which is a
-   * pre-existing defect tracked on its own rather than widened here.
+   * a failure that no longer exists.
    */
   function clearStaleWriteStatus(): void {
     const stale = syncStatus.value === 'error' || syncStatus.value === 'offline'
