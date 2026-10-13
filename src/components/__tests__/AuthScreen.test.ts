@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
+import { ref } from 'vue'
 import AuthScreen from '../../views/AuthScreen.vue'
 
 // Mock auth composable
@@ -8,6 +9,7 @@ const mockSignInWithEmail = vi.fn().mockResolvedValue({ error: null })
 const mockSignUp = vi.fn().mockResolvedValue({ error: null, needsConfirmation: false })
 const mockContinueAsGuest = vi.fn()
 const mockDevSignIn = vi.fn()
+const mockSigningIn = ref(false)
 
 vi.mock('../../composables/useAuth', () => ({
   useAuth: () => ({
@@ -16,6 +18,7 @@ vi.mock('../../composables/useAuth', () => ({
     signUp: mockSignUp,
     continueAsGuest: mockContinueAsGuest,
     devSignIn: mockDevSignIn,
+    signingIn: mockSigningIn,
   })
 }))
 
@@ -24,6 +27,7 @@ describe('AuthScreen', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSigningIn.value = false
     wrapper = mount(AuthScreen)
   })
 
@@ -258,6 +262,61 @@ describe('AuthScreen', () => {
       await wrapper.find('form').trigger('submit')
       await flushPromises()
       expect(wrapper.findAll('.authInput')[0].attributes('aria-invalid')).toBeUndefined()
+    })
+  })
+
+  // App.vue keeps this screen up after SIGNED_IN until the account can be shown
+  // (LIFT-1546), so for that stretch the user is signed in behind a screen
+  // that still offers sign-in, guest mode and Google.
+  describe('while a sign-in waits for its account (LIFT-1546)', () => {
+    /** Every control on the screen itself. The dev shortcut only exists where nobody signs in for real. */
+    const actions = () => wrapper.findAll('button').filter(b => !b.classes('authDevBtn'))
+
+    it('stays busy after the request resolves, until the account can be shown', async () => {
+      // signInWithPassword emits SIGNED_IN before it resolves, and that is
+      // where useAuth raises `signingIn`.
+      mockSignInWithEmail.mockImplementationOnce(async () => {
+        mockSigningIn.value = true
+        return { error: null }
+      })
+      await wrapper.find('input[type="email"]').setValue('user@example.com')
+      await wrapper.find('input[type="password"]').setValue('secret123')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+
+      const submit = wrapper.find('.authSubmitBtn')
+      expect(submit.attributes('disabled')).toBeDefined()
+      expect(submit.text()).toBe('...')
+
+      mockSigningIn.value = false
+      await flushPromises()
+      expect(wrapper.find('.authSubmitBtn').attributes('disabled')).toBeUndefined()
+      expect(wrapper.find('.authSubmitBtn').text()).toBe('Sign In')
+    })
+
+    it('disables every action on the screen, so none can run under the signed-in account', async () => {
+      mockSigningIn.value = true
+      await flushPromises()
+
+      // Derived rather than listed, so a control added later is covered too.
+      expect(actions().length).toBeGreaterThanOrEqual(5)
+      for (const button of actions()) {
+        expect(button.attributes('disabled'), button.text()).toBeDefined()
+      }
+      await wrapper.find('.authGuestBtn').trigger('click')
+      await wrapper.find('.authGoogle').trigger('click')
+      expect(mockContinueAsGuest).not.toHaveBeenCalled()
+      expect(mockSignInWithProvider).not.toHaveBeenCalled()
+    })
+
+    it('ignores a form submit while busy, whatever sent it', async () => {
+      mockSigningIn.value = true
+      await wrapper.find('input[type="email"]').setValue('user@example.com')
+      await wrapper.find('input[type="password"]').setValue('secret123')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+
+      expect(mockSignInWithEmail).not.toHaveBeenCalled()
     })
   })
 

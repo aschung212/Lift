@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount, type VueWrapper } from '@vue/test-utils'
+import { ref } from 'vue'
 import { runComponentAxe } from '../../__tests__/axeHelper'
 
 /**
@@ -25,7 +26,9 @@ const auth = vi.hoisted(() => ({
   requestPasswordReset: vi.fn(async () => ({ error: null })),
   confirmPasswordReset: vi.fn(async () => ({ error: null })),
 }))
-vi.mock('../../composables/useAuth', () => ({ useAuth: () => auth }))
+// Kept out of `auth`, whose entries are all spies the suite clears in bulk.
+const mockSigningIn = ref(false)
+vi.mock('../../composables/useAuth', () => ({ useAuth: () => ({ ...auth, signingIn: mockSigningIn }) }))
 vi.mock('../../composables/useAnalytics', () => ({
   useAnalytics: () => ({ logEvent: vi.fn(), tabSwitch: vi.fn(), flushEngagement: vi.fn() }),
 }))
@@ -49,6 +52,7 @@ async function enterResetMode(w: VueWrapper, email = 'a@b.co') {
 describe('AuthScreen', () => {
   beforeEach(() => {
     platform.native = false
+    mockSigningIn.value = false
     for (const fn of Object.values(auth)) fn.mockClear()
     auth.requestPasswordReset.mockResolvedValue({ error: null })
     auth.confirmPasswordReset.mockResolvedValue({ error: null })
@@ -137,6 +141,26 @@ describe('AuthScreen', () => {
       expect(w.find('.authMessage').text()).toBe('Token has expired or is invalid')
       expect(w.find('input[autocomplete="one-time-code"]').exists()).toBe(true)
       expect(w.find('input[autocomplete="one-time-code"]').attributes('aria-describedby')).toBe('auth-error')
+    })
+
+    it('a verified code reports success and leaves the form inert while the account loads (LIFT-1546)', async () => {
+      // The recovery code signs the user in (PASSWORD_RECOVERY), and on a device
+      // holding none of their data App.vue keeps this screen up meanwhile.
+      auth.confirmPasswordReset.mockImplementationOnce(async () => {
+        mockSigningIn.value = true
+        return { error: null }
+      })
+      const w = mountScreen()
+      await enterResetMode(w)
+      await w.find('input[autocomplete="one-time-code"]').setValue('123456')
+      await w.find('input[autocomplete="new-password"]').setValue('hunter22')
+      await w.find('form').trigger('submit')
+      await flushPromises()
+
+      expect(w.find('.authMessage').text()).toBe('Password updated.')
+      const buttons = w.findAll('button').filter(b => !b.classes('authDevBtn'))
+      expect(buttons.map(b => b.text())).toEqual(expect.arrayContaining(['...', 'Back to sign in']))
+      for (const b of buttons) expect(b.attributes('disabled'), b.text()).toBeDefined()
     })
 
     it('Back to sign in returns to the sign-in form with the email kept', async () => {

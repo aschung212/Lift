@@ -23,6 +23,7 @@ interface AuthError {
 export interface UseAuthReturn {
   user: Ref<User | { id: string; email: string } | null>
   loading: Ref<boolean>
+  signingIn: Ref<boolean>
   isGuest: Ref<boolean>
   init: () => void
   signInWithProvider: (provider: Provider) => Promise<{ error: AuthError | null }>
@@ -56,6 +57,13 @@ export const GUEST_BACKUP_PROMPT_DISMISSED_KEY = 'guest-backup-prompt-dismissed'
 
 const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
+/**
+ * True while a sign-in made on the auth screen waits for its account before
+ * the app shows anything (LIFT-1546). App.vue keeps that screen up, busy,
+ * meanwhile. It is the cold start's splash wait (LIFT-1516) for the path the
+ * splash has already left: see `holdAuthScreen`.
+ */
+const signingIn: Ref<boolean> = ref(false)
 const isGuest: Ref<boolean> = ref(false)
 /**
  * Raised by a PASSWORD_RECOVERY auth event — the web landing of an emailed
@@ -217,8 +225,9 @@ async function syncStores(userId: string, isCurrent: () => boolean): Promise<voi
 }
 
 /**
- * How long a signed-in cold start with NOTHING of the user's on the device
- * waits for the account's first read before rendering anyway (LIFT-1516).
+ * How long a sign-in with NOTHING of the user's on the device waits for the
+ * account's first read before rendering anyway: a cold start behind the splash
+ * (LIFT-1516), or a sign-in behind the auth screen (LIFT-1546).
  */
 export const FIRST_READ_GRACE_MS = 5000
 
@@ -240,27 +249,69 @@ function settledOrElapsed(promise: Promise<unknown>, ms: number): Promise<void> 
 }
 
 /**
- * Lift the splash for a signed-in cold start once the stores are bound, not
- * once they have read the server (LIFT-1516). Every store hydrated from
+ * Resolves once a sign-in has something correct to show: its stores are bound,
+ * not once they have read the server (LIFT-1516). Every store hydrated from
  * localStorage when it was created, so binding is all the app needs to be
  * correct on screen. The reads run behind it and land the way a resume's do.
  *
  * The one wait left is for a device that holds nothing of this user's: a new
- * browser, a reinstall, or an OAuth redirect landing on either. There only the
- * first read can tell a returning lifter from a new one, and rendering without
- * it would put a returning lifter into onboarding. The wait is capped, so a
- * dead uplink costs FIRST_READ_GRACE_MS rather than every retry.
+ * browser, a reinstall, an OAuth redirect landing on either, or any sign-in
+ * after Sign Out, which wipes every store. There only the first read can tell
+ * a returning lifter from a new one, and rendering without it would put a
+ * returning lifter into onboarding. The wait is capped, so a dead uplink costs
+ * FIRST_READ_GRACE_MS rather than every retry.
+ *
+ * Rejects when the bind fails. initStores has already reported that, through
+ * `synced`.
  */
+async function untilShowable(run: StoresInit): Promise<void> {
+  await run.bound
+  if (!storesHoldLocalData()) await settledOrElapsed(run.synced, FIRST_READ_GRACE_MS)
+}
+
+/** Lift the splash for a signed-in cold start once it has something to show. */
 async function liftSplashWhenBound(run: StoresInit): Promise<void> {
   try {
-    await run.bound
-    if (!storesHoldLocalData()) await settledOrElapsed(run.synced, FIRST_READ_GRACE_MS)
+    await untilShowable(run)
   } catch {
-    // Already reported: a failed bind fails `synced`, which initStores logs.
     // The splash comes down regardless, because the app is local-first and
     // renders from localStorage either way (LIFT-1324).
   } finally {
     loading.value = false
+  }
+}
+
+// The run `signingIn` is waiting on. A wait that a sign-out superseded must not
+// end the next sign-in's.
+let _authScreenHold: StoresInit | null = null
+
+function releaseAuthScreen(): void {
+  _authScreenHold = null
+  signingIn.value = false
+}
+
+/**
+ * The same wait for a sign-in made while the auth screen is up (LIFT-1546),
+ * with that screen held instead of the splash, which is long gone by the time
+ * anyone can sign in.
+ *
+ * The cold start waited, but this path did not: SIGNED_IN set `user` at once,
+ * and App.vue showed whatever the device held. After Sign Out (which wipes the
+ * stores and the onboarding flag) or on a new browser that is nothing at all,
+ * so every returning lifter got the onboarding welcome until the reads landed.
+ * On a slow link they could tap a path, after which the reads could no longer
+ * auto-complete onboarding (onboardingInProgress) and the lifter was walked
+ * through it again on top of their real history.
+ */
+async function holdAuthScreen(run: StoresInit): Promise<void> {
+  _authScreenHold = run
+  signingIn.value = true
+  try {
+    await untilShowable(run)
+  } catch {
+    // Released regardless, as the splash is.
+  } finally {
+    if (_authScreenHold === run) releaseAuthScreen()
   }
 }
 
@@ -439,13 +490,19 @@ function init(): void {
     if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') clearReauthFlag()
     if (event === 'PASSWORD_RECOVERY' && !handlingCodeReset) passwordRecoveryPending.value = true
     if (session?.user) {
-      user.value = session.user
       if (wasUnauthenticated) {
         clearGuestFlag()
         // Fire-and-forget re-auth init. The run reports its own failure
         // (initStores), so nothing leaks to the global floor (LIFT-1227).
-        initStores(session.user.id)
+        const run = initStores(session.user.id)
+        // Signed in from the auth screen: nobody was, and the splash is down.
+        // Keep that screen up until the account can be shown (LIFT-1546).
+        // During a cold start the splash is still up, and getSession()'s
+        // branch above does this wait. The hold goes up before `user` is set,
+        // so nothing ever sees the user without it.
+        if (!prev && !loading.value) void holdAuthScreen(run)
       }
+      user.value = session.user
     } else if (event === 'SIGNED_OUT') {
       passwordRecoveryPending.value = false
       // A SIGNED_OUT event ends the session — either the user tapped sign-out,
@@ -603,6 +660,8 @@ function teardownSession(): void {
   user.value = null
   // The next sign-in (same user included) must re-hydrate from scratch.
   resetInitStoresGuard()
+  // A sign-in still waiting for its account has nothing left to wait for.
+  releaseAuthScreen()
 }
 
 async function signOut(): Promise<void> {
@@ -826,8 +885,9 @@ function destroy(): void {
   sessionAwaitingRefresh.value = false
   _initialized = false
   resetInitStoresGuard()
+  releaseAuthScreen()
 }
 
 export function useAuth(): UseAuthReturn {
-  return { user, loading, isGuest, init, signInWithProvider, signInWithEmail, signUp, requestPasswordReset, confirmPasswordReset, updatePassword, passwordRecoveryPending, clearPasswordRecovery, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, destroy }
+  return { user, loading, signingIn, isGuest, init, signInWithProvider, signInWithEmail, signUp, requestPasswordReset, confirmPasswordReset, updatePassword, passwordRecoveryPending, clearPasswordRecovery, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, destroy }
 }
