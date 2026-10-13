@@ -2789,44 +2789,154 @@ describe('Invariant: a stored-set surface renders its load via formatSetLoad (LI
 // and derives the call sites, which is the half that drifts. A hardcoded list
 // of template lines would only pin the four that exist today, which is exactly
 // how the chips came to disagree with the card beneath them.
-describe('Invariant: the log sheet words a SUGGESTED load through the formatter (LIFT-1486)', () => {
+//
+// LIFT-1566 found the gap one level up, in the list of sources. The to-beat
+// cards and the intensity rows read their loads out of four sources it never
+// named — the card's target, the best that target is measured against, the
+// typed field value, and an intensity row's weight — so six strings printed
+// an added weight bare ("0 lbs × 13", in the same card chain as "Bodyweight ×
+// 12") under a guard that passed. They are named below, and the last two cases
+// stop asking for the next one to be named.
+describe('Invariant: the log sheet words an ADDED load through the formatter (LIFT-1486, LIFT-1566)', () => {
   /**
-   * A load offered by a suggestion, as named in WorkoutTracker's template:
+   * A load in ADDED space, as named in WorkoutTracker's template:
    * `…weightLbs` covers the usual-ladder rung and the session plan's top set,
    * and the overload nudge has its own two fields (`displayWeight` is already
-   * display-space, `fromWeightLbs` is raw lbs). `s.weight` is the last-session
-   * chip's set.
+   * display-space, `fromWeightLbs` is raw lbs). `….weight` is a set or a
+   * set-shaped row: the last-session chip's `s`, an intensity `row`. The
+   * to-beat card's target and the best under it are `prTargetWeight` and
+   * `bestWeightAtReps`, and `weight!` is the typed field value, in the shape
+   * every template read of that nullable ref has needed.
    */
-  const SUGGESTION_LOAD = /\b\w+\.weightLbs\b|\boverloadNudge\.(?:displayWeight|fromWeightLbs)\b|\bs\.weight\b/g
+  const SUGGESTION_LOAD = /\b\w+\.weightLbs\b|\boverloadNudge\.(?:displayWeight|fromWeightLbs)\b|\b\w+\.weight\b|\bprTargetWeight\b|\bbestWeightAtReps\b|\bweight!/g
   /** The sanctioned wrappers, optionally around the unit conversion. */
-  const WORDED = /(?:addedLoadValue|addedLoadLabel|planTopSetLoad|rungLoadText)\(\s*(?:displayWeight\(\s*)?$/
+  const WORDED = /(?:addedLoadValue|addedLoadLabel|planTopSetLoad|rungLoadText)\(\s*(?:displayWeight\(\s*)?(?:toLbs\(\s*)?$/
+
+  /**
+   * A template with everything that is not a RENDER blanked out, length for
+   * length so the offsets the WORDED look-behind reads stay put: HTML comments,
+   * which name these sources while explaining them, and the values of the
+   * directives that TEST or BIND a load rather than print one. The card's
+   * `v-else-if="prTargetWeight"` decides whether it shows; it is not the card
+   * saying "30 lbs". Anything else stays in, so an unrecognised binding fails
+   * the rule rather than slipping past it.
+   */
+  function renderedTemplate(content: string): string {
+    const start = content.indexOf('<template>')
+    const end = content.lastIndexOf('</template>')
+    if (start === -1 || end <= start) return ''
+    const blank = (s: string) => s.replace(/[^\n]/g, ' ')
+    return content.slice(start, end)
+      .replace(/<!--[\s\S]*?-->/g, blank)
+      .replace(
+        /(\s(?:v-(?:if|else-if|show|for|memo)|v-model(?:\.\w+)*|:key|v-bind:key|@[\w.:-]+|v-on:[\w.:-]+)=")([^"]*)"/g,
+        (_, attr: string, value: string) => `${attr}${blank(value)}"`,
+      )
+  }
+
+  /** Every added load in `rendered` that is not inside a sanctioned wrapper. */
+  function unworded(rendered: string): string[] {
+    return [...rendered.matchAll(SUGGESTION_LOAD)]
+      .filter(m => !WORDED.test(rendered.slice(0, m.index)))
+      .map(m => m[0])
+  }
 
   const tracker = getSourceFiles()
     .find(f => f.path === join('components', 'WorkoutTracker.vue'))!
-  const start = tracker.content.indexOf('<template>')
-  const template = tracker.content.slice(start, tracker.content.lastIndexOf('</template>'))
-  const loads = [...template.matchAll(SUGGESTION_LOAD)]
+  const rendered = renderedTemplate(tracker.content)
+  const loads = [...rendered.matchAll(SUGGESTION_LOAD)].map(m => m[0])
 
-  it('finds the sheet\'s suggestion loads', () => {
-    // Non-vacuity: a regex that matched nothing would pass the rule below while
-    // scanning no code at all — the failure LIFT-1412 documents. The floor is
-    // the last-session chip plus the nudge's three reads.
-    expect(start).toBeGreaterThanOrEqual(0)
-    expect(loads.length).toBeGreaterThanOrEqual(4)
+  it('finds the sheet\'s added loads', () => {
+    // Non-vacuity, per source: a typo in one alternative would silently stop it
+    // matching, and the rule below would pass over code it never read — the
+    // failure LIFT-1412 documents. `weight!` matches nothing today (the typed
+    // value is worded in `typedLoadLabel`), so the self-test pins it instead.
+    expect(rendered.length).toBeGreaterThan(0)
+    for (const source of [
+      's.weight', 'row.weight', 'overloadNudge.displayWeight', 'overloadNudge.fromWeightLbs',
+      'prTargetWeight', 'bestWeightAtReps',
+    ]) {
+      expect(loads, `found no rendered ${source} in WorkoutTracker's template`).toContain(source)
+    }
+  })
+
+  it('flags a bare added load and passes a worded one (self-test)', () => {
+    // The shapes this issue shipped, plus the three things that must NOT count:
+    // a comment naming a source, a condition testing one, a handler filling one.
+    const sample = renderedTemplate([
+      '<template>',
+      '  <!-- prTargetWeight is the ADDED target -->',
+      '  <div v-else-if="prTargetWeight" @click="fill(row.weight)">',
+      '    <span>{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>',
+      '    <span>{{ addedLoadLabel(displayWeight(toLbs(weight!))) }}</span>',
+      '    <span>{{ prTargetWeight }} {{ weightUnit }}</span>',
+      '    <span :aria-label="`${row.weight} ${weightUnit}`">{{ addedLoadLabel(row.weight) }}</span>',
+      '  </div>',
+      '</template>',
+    ].join('\n'))
+    expect(unworded(sample)).toEqual(['weight!', 'prTargetWeight', 'row.weight'])
   })
 
   it('renders every one of them through the shared formatter', () => {
-    const violations = loads
-      .filter(m => !WORDED.test(template.slice(0, m.index)))
-      .map(m => m[0])
+    const violations = unworded(rendered)
 
     expect(violations, violations.length === 0 ? '' :
-      `WorkoutTracker.vue renders ${violations.join(', ')} directly. That is a ` +
-      'suggested ADDED weight, so on a bodyweightLoaded exercise it prints ' +
-      '"0 × 12" for a plain bodyweight set. Route it through addedLoadValue / ' +
-      'addedLoadLabel (a suggestion, worded with the fold in effect now) or ' +
-      'planTopSetLoad (a read-back, worded with the set\'s own capture).',
+      `WorkoutTracker.vue renders ${violations.join(', ')} directly. That is an ` +
+      'ADDED weight, so on a bodyweightLoaded exercise it prints "0 × 12" or ' +
+      '"0 lbs" for a plain bodyweight set. Route it through addedLoadValue / ' +
+      'addedLoadLabel (a suggestion, or a figure set against one, worded with ' +
+      'the fold in effect now) or planTopSetLoad (a read-back, worded with the ' +
+      'set\'s own capture).',
     ).toEqual([])
+  })
+
+  /**
+   * The source list is still a list, and LIFT-1566 is what a list costs. What
+   * the six strings it missed had in common was a SHAPE: a number printed
+   * beside the bare unit. On this sheet that shape is decidable. A weight worded
+   * through the formatter carries its own unit, so whatever is rendered as
+   * `{{ x }} {{ weightUnit }}` must be a load that is already WHOLE (an e1RM, or
+   * the max a percentage is taken of, both folded at the source per #1328) or
+   * equipment, which reads the same in either space (a bar, a plate). Anything
+   * else is an added weight printed bare. So every such expression needs a
+   * verdict here, the reconciliation LIFT-1438 uses for root directories: a new
+   * number beside the unit gets decided when it is written instead of
+   * inheriting whatever a list of names happens to say. It also catches the
+   * formatter's own trap: `{{ addedLoadValue(x) }} {{ weightUnit }}` renders
+   * "Bodyweight lbs" (#1385).
+   */
+  const BESIDE_UNIT = /\{\{\s*([^{}]+?)\s*\}\}\s*\{\{\s*weightUnit\s*\}\}|\$\{\s*([^{}]+?)\s*\}\s*\$\{\s*weightUnit\s*\}/g
+  const WHOLE_LOADS = new Map<string, string>([
+    ['liveEstimate', 'the live 1RM estimate: epley over the folded load (#1328)'],
+    ['displayWeight(intensityOneRM!)', 'the max an intensity percentage is taken of: the folded PR'],
+    ['row.e1rm', "an intensity row's e1RM: of the whole load, not the row's added weight"],
+    ['liveXPPreview.best1RM', 'the best e1RM a typed set is scored against'],
+    ['currentBarWeight', 'the bar'],
+    ['newExerciseBarWeight', 'the bar, on the new-exercise form'],
+    ['denom', 'a plate'],
+  ])
+  const besideUnit = [...rendered.matchAll(BESIDE_UNIT)].map(m => (m[1] ?? m[2]).trim())
+
+  it('prints nothing beside the bare unit but a whole load or equipment', () => {
+    // Non-vacuity: the sheet's e1RM readouts always render there.
+    expect(besideUnit).toContain('liveEstimate')
+    expect(besideUnit).toContain('row.e1rm')
+
+    const unclassified = [...new Set(besideUnit)].filter(x => !WHOLE_LOADS.has(x))
+    expect(unclassified, unclassified.length === 0 ? '' :
+      `WorkoutTracker.vue prints ${unclassified.join(', ')} beside a bare ` +
+      '{{ weightUnit }}. If it is an ADDED weight (the field, a suggestion, a ' +
+      'best read off set.weight), word it with addedLoadLabel, which carries ' +
+      'its own unit: on a bodyweightLoaded lift a bare one reads "0 lbs" for a ' +
+      'plain pull-up. If it is a whole load (an e1RM) or equipment, add it to ' +
+      'WHOLE_LOADS with the reason.',
+    ).toEqual([])
+  })
+
+  it('holds no verdict for a number the sheet no longer prints', () => {
+    // The other way the list rots: a stale entry pre-approves whatever later
+    // reuses its name.
+    expect([...WHOLE_LOADS.keys()].filter(k => !besideUnit.includes(k))).toEqual([])
   })
 })
 
