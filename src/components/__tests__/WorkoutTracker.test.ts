@@ -2306,8 +2306,9 @@ describe('WorkoutTracker', () => {
       const card = wrapper.find('.repMaxResultTarget')
       expect(card.exists()).toBe(true)
       // Was ~186 (the effective total offered as ADDED weight). 30 is the first
-      // 5 lb step past the 25.6 lb of belt weight actually required.
-      expect(card.text()).toContain('30 lbs × 5')
+      // 5 lb step past the 25.6 lb of belt weight actually required — and it
+      // reads as added weight, "+30" (LIFT-1566).
+      expect(card.text()).toContain('+30 lbs × 5')
 
       await wrapper.find(ADDED_FIELD).setValue('30')
       // The savable consequence: this must edge the PR, not land near 2x it.
@@ -2365,7 +2366,11 @@ describe('WorkoutTracker', () => {
         expect(rows.length).toBeGreaterThan(0)
 
         // A tapped row must fill the field with the number it advertises, in kg.
-        const labelled = rows[0].find('.wtPrTargetsWeight').text().replace(' kg', '')
+        // The row is ADDED weight, worded like the chips (LIFT-1566), so the
+        // number it fills is the one after the "+".
+        const advertised = rows[0].find('.wtPrTargetsWeight').text()
+        expect(advertised).toMatch(/^\+[\d.]+ kg$/)
+        const labelled = advertised.slice(1).replace(' kg', '')
         await rows[0].trigger('click')
         await wrapper.vm.$nextTick()
         expect(weightField(wrapper).value).toBe(labelled)
@@ -2390,7 +2395,7 @@ describe('WorkoutTracker', () => {
       await wrapper.find(ADDED_FIELD).setValue('25')
 
       const card = wrapper.find('.repMaxResultTarget')
-      expect(card.text()).toContain('25 lbs × 6')
+      expect(card.text()).toContain('+25 lbs × 6')
     })
 
     it('says bodyweight alone beats the best when no added weight is needed', async () => {
@@ -2555,7 +2560,10 @@ describe('WorkoutTracker', () => {
         await wrapper.find(ADDED_FIELD).setValue('0')
 
         const card = wrapper.find('.repMaxResultTarget')
-        expect(card.text()).toContain('Your best at 0 lbs: 10 reps')
+        // Named, not printed: this assertion used to pin "Your best at 0 lbs"
+        // as the expected copy (LIFT-1566).
+        expect(card.text()).toContain('Your best at Bodyweight: 10 reps')
+        expect(card.text()).not.toContain('0 lbs')
       })
 
       it('offers no rep target when there is no bodyweight to make 0 a load', async () => {
@@ -2656,6 +2664,169 @@ describe('WorkoutTracker', () => {
         const stat = bwOnly.find('.wtExerciseStat').text()
         expect(stat).toContain('Bodyweight')
         expect(stat).not.toContain('0 lbs')
+      })
+    })
+
+    /**
+     * LIFT-1566 — the to-beat cards and the intensity rows, the last surfaces
+     * in the sheet still printing an ADDED weight beside a bare unit. With 0
+     * typed on a plain pull-up the reps card read "0 lbs × 11" — and "New
+     * weight — first attempt at 0 lbs" — in the same v-else-if chain as the
+     * card that says "Bodyweight × 12", and a belt load read "30 lbs × 5" where
+     * every chip above it reads "+30".
+     *
+     * Why nothing caught it: LIFT-1486's guard keyed on the quick-fill sources
+     * and never named these four. The tests above that mount these cards with
+     * the flag set asserted with `toContain('30 lbs × 5')`, which "+30 lbs × 5"
+     * also contains, so they could not tell the bare number from the worded
+     * one, and LIFT-1330's pinned "Your best at 0 lbs" as the expected copy.
+     * These assert the whole value, so a dropped "+" fails.
+     */
+    describe('words the to-beat cards and intensity rows as ADDED weight (LIFT-1566)', () => {
+      const valueOf = (wrapper: VueWrapper) =>
+        wrapper.find('.repMaxResultTarget .repMaxResultValue').text()
+      const bestLineOf = (wrapper: VueWrapper) =>
+        wrapper.find('.repMaxResultTarget .repMaxPersonalBest').text()
+
+      it('marks the target as added, over a best in the same words', async () => {
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        await wrapper.find('input[aria-label="Reps"]').setValue('5')
+
+        expect(valueOf(wrapper)).toBe('+30 lbs × 5')
+        expect(bestLineOf(wrapper)).toBe('Your best at 5 reps: +25 lbs')
+      })
+
+      it('names an added 0 on the reps card instead of printing "0 lbs"', async () => {
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        // 160 lb alone needs 11 reps to edge the 216 PR.
+        await wrapper.find(ADDED_FIELD).setValue('0')
+
+        expect(valueOf(wrapper)).toBe('Bodyweight × 11')
+        expect(bestLineOf(wrapper)).toBe('New weight — first attempt at Bodyweight')
+        expect(wrapper.find('.repMaxResultTarget').text()).not.toContain('0 lbs')
+      })
+
+      it('words the typed weight the same way in the card and the best under it', async () => {
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        await wrapper.find(ADDED_FIELD).setValue('25')
+
+        expect(valueOf(wrapper)).toBe('+25 lbs × 6')
+        expect(bestLineOf(wrapper)).toBe('Your best at +25 lbs: 5 reps')
+      })
+
+      it('words the any-rep-beats-it card, added and bodyweight-only', async () => {
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        // +60 on a 160 lb lifter is a 220 lb single, past the 216 PR.
+        await wrapper.find(ADDED_FIELD).setValue('60')
+        expect(valueOf(wrapper)).toBe('+60 lbs × 1 🏆')
+
+        // A lifter who has put on 10 lb since their best single: bodyweight
+        // alone now beats it, and the card used to call that "0 lbs × 1".
+        mockState.exercises = [{
+          id: 'ex-1', name: 'Pull-Up', tags: ['Back'], bodyweightLoaded: true,
+          sets: [{ id: 's-1', date: '2026-01-15T12:00:00', weight: 0, reps: 1, bodyweight: 150, estimated1RM: epley(150, 1) }],
+        }]
+        const bwOnly = mountTracker()
+        await openPullupModal(bwOnly)
+        await bwOnly.find(ADDED_FIELD).setValue('0')
+        expect(valueOf(bwOnly)).toBe('Bodyweight × 1 🏆')
+      })
+
+      it('counts a bodyweight-only set as the best at its rep count, and names it', async () => {
+        // LIFT-1330's floor, which this line hand-rolled as `> 0` until the
+        // card had a word for the set it excluded.
+        mockState.exercises = [{
+          id: 'ex-1', name: 'Pull-Up', tags: ['Back'], bodyweightLoaded: true,
+          sets: [
+            { id: 's-1', date: '2026-01-15T12:00:00', weight: 0, reps: 8, bodyweight: BODYWEIGHT, estimated1RM: epley(BODYWEIGHT, 8) },
+            { id: 's-2', date: '2026-01-20T12:00:00', weight: 0, reps: 10, bodyweight: BODYWEIGHT, estimated1RM: epley(BODYWEIGHT, 10) },
+          ],
+        }]
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        await wrapper.find('input[aria-label="Reps"]').setValue('10')
+
+        // Ten at bodyweight IS the PR, so the target is the first belt step.
+        expect(valueOf(wrapper)).toBe('+5 lbs × 10')
+        expect(bestLineOf(wrapper)).toBe('Your best at 10 reps: Bodyweight')
+      })
+
+      it('still leaves a 0 lb set out of a normal exercise\'s best', async () => {
+        // A CSV import can carry one; on a barbell it says nothing.
+        mockState.exercises = [{
+          id: 'ex-1', name: 'Bench Press', tags: [], sets: [
+            { id: 's-1', date: '2026-01-15T12:00:00', weight: 185, reps: 5, estimated1RM: 216 },
+            { id: 's-2', date: '2026-01-16T12:00:00', weight: 0, reps: 8, estimated1RM: 0 },
+          ],
+        }]
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        const reps = wrapper.find('input[aria-label="Reps"]')
+
+        await reps.setValue('5')
+        // No fold, so a plain load: no "+".
+        expect(valueOf(wrapper)).toBe('190 lbs × 5')
+        expect(bestLineOf(wrapper)).toBe('Your best at 5 reps: 185 lbs')
+
+        await reps.setValue('8')
+        expect(valueOf(wrapper)).toBe('175 lbs × 8')
+        expect(wrapper.find('.repMaxResultTarget').text()).not.toContain('Your best')
+      })
+
+      it('words every intensity row, visible and announced, as added weight', async () => {
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        await wrapper.find('.wtPrTargetsHeader').trigger('click')
+        await wrapper.find('.wtIntensitySlider').setValue(100)
+
+        const rows = wrapper.findAll('.wtPrTargetsRow')
+        expect(rows.length).toBeGreaterThan(0)
+        for (const row of rows) {
+          const shown = row.find('.wtPrTargetsWeight').text()
+          expect(shown).toMatch(/^\+\d+ lbs$/)
+          // One wording for both strings, as the chips do it.
+          expect(row.attributes('aria-label')!.startsWith(`${shown} for `)).toBe(true)
+        }
+        // 100% at 1 rep: +60 on a 160 lb lifter, a 220 lb single. The
+        // announcement also stops saying "1 reps".
+        expect(rows[0].attributes('aria-label')).toBe('+60 lbs for 1 rep, 220 lbs estimated 1RM')
+      })
+
+      it('keeps the words unit-free in kg, and converts the added portion', async () => {
+        setMockUnit('kg')
+        try {
+          const wrapper = mountTracker()
+          await openPullupModal(wrapper)
+          const reps = wrapper.find('input[aria-label="Reps"]')
+
+          await reps.setValue('5')
+          // 25.6 lb of belt is 11.8 kg, onto the 2.5 kg grid; the +25 lb best
+          // converts to 11.3 kg.
+          expect(valueOf(wrapper)).toBe('+12.5 kg × 5')
+          expect(bestLineOf(wrapper)).toBe('Your best at 5 reps: +11.3 kg')
+
+          await reps.setValue('')
+          await wrapper.find(ADDED_FIELD).setValue('0')
+          expect(valueOf(wrapper)).toBe('Bodyweight × 11')
+        } finally {
+          setMockUnit('lbs')
+        }
+      })
+
+      it('prints plain numbers when there is no bodyweight to fold', async () => {
+        // The fold is what "+" describes, so a lifter who has never weighed in
+        // reads plain numbers here, as the chips above already do.
+        mockBodyweightState.lbs = null
+        const wrapper = mountTracker()
+        await openPullupModal(wrapper)
+        await wrapper.find('input[aria-label="Reps"]').setValue('5')
+
+        expect(valueOf(wrapper)).toBe('190 lbs × 5')
+        expect(bestLineOf(wrapper)).toBe('Your best at 5 reps: 25 lbs')
       })
     })
   })

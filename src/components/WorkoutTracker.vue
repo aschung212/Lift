@@ -629,14 +629,18 @@
                     v-for="(row, i) in intensityTable"
                     :key="row.reps"
                     :class="['wtPrTargetsRow', { wtPrTargetsRowActive: intensityUsed[i] }]"
-                    :aria-label="`${row.weight} ${weightUnit} for ${row.reps} reps, ${row.e1rm} ${weightUnit} estimated 1RM`"
+                    :aria-label="`${addedLoadLabel(row.weight)} for ${row.reps} rep${row.reps === 1 ? '' : 's'}, ${row.e1rm} ${weightUnit} estimated 1RM`"
                     @click="fillFromIntensity(row, i)"
                   >
                     <span class="wtPrTargetsReps">{{ row.reps }}</span>
                     <span class="wtPrTargetsRepsLabel">{{ row.reps === 1 ? 'rep' : 'reps' }}</span>
                     <!-- Rows are already in the display unit (LIFT-1315) — running
-                         them through displayWeight() again would convert twice. -->
-                    <span class="wtPrTargetsWeight">{{ row.weight }} {{ weightUnit }}</span>
+                         them through displayWeight() again would convert twice.
+                         On a bodyweight-loaded lift a row is the ADDED weight
+                         beside an e1RM of the whole load, so it is worded like
+                         the chips above it ("+25 lbs"), not as the load
+                         (LIFT-1566). -->
+                    <span class="wtPrTargetsWeight">{{ addedLoadLabel(row.weight) }}</span>
                     <span class="wtPrTargetsE1rm">~{{ row.e1rm }} {{ weightUnit }} e1RM</span>
                   </button>
                 </div>
@@ -675,8 +679,14 @@
             @keydown.space.prevent="plateMode && loadPRTarget()"
           >
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
-            <span class="repMaxResultValue">{{ prTargetWeight }} {{ weightUnit }} × {{ reps }}</span>
-            <span v-if="bestWeightAtReps" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ displayWeight(bestWeightAtReps) }} {{ weightUnit }}</span>
+            <!-- Every weight this card and the two reps cards below print is an
+                 ADDED weight on a bodyweight-loaded lift — the target, the typed
+                 value, the best each is measured against — so each is worded
+                 like the chips ("+30 lbs", "Bodyweight"), never set beside a
+                 bare unit (LIFT-1566). `!== null`, not truthiness: an added-0
+                 best is real, and it is the one the word exists to name. -->
+            <span class="repMaxResultValue">{{ addedLoadLabel(prTargetWeight) }} × {{ reps }}</span>
+            <span v-if="bestWeightAtReps !== null" class="repMaxPersonalBest">Your best at {{ reps }} rep{{ reps === 1 ? '' : 's' }}: {{ addedLoadLabel(displayWeight(bestWeightAtReps)) }}</span>
             <span v-if="plateMode" class="repMaxPersonalBest">Tap to load plates</span>
           </div>
           <!-- Bodyweight-loaded and the lifter's own bodyweight at this rep count
@@ -709,7 +719,7 @@
             @keydown.space.prevent="loadSinglePRTargetRep"
           >
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
-            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × 1 🏆</span>
+            <span class="repMaxResultValue">{{ typedLoadLabel }} × 1 🏆</span>
             <span class="repMaxPersonalBest">Any rep at this weight is a {{ isRecentBaseline ? 'new recent best' : 'new PR' }}</span>
             <span class="repMaxPersonalBest">Tap to set reps</span>
           </div>
@@ -723,9 +733,9 @@
             @keydown.space.prevent="loadPRTargetReps"
           >
             <span class="repMaxResultLabel">{{ prTargetLabel }}</span>
-            <span class="repMaxResultValue">{{ displayWeight(toLbs(weight!)) }} {{ weightUnit }} × {{ prTargetReps }}</span>
-            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
-            <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ displayWeight(toLbs(weight!)) }} {{ weightUnit }}</span>
+            <span class="repMaxResultValue">{{ typedLoadLabel }} × {{ prTargetReps }}</span>
+            <span v-if="bestRepsAtWeight" class="repMaxPersonalBest">Your best at {{ typedLoadLabel }}: {{ bestRepsAtWeight }} rep{{ bestRepsAtWeight === 1 ? '' : 's' }}</span>
+            <span v-else class="repMaxPersonalBest">New weight — first attempt at {{ typedLoadLabel }}</span>
             <span class="repMaxPersonalBest">Tap to set reps</span>
           </div>
           <div
@@ -2037,6 +2047,17 @@ const selectedExercise = computed(() => store.exercises.find(e => e.id === selec
  *     conversion is therefore the identity — running it again would convert
  *     twice (LIFT-1315) — and the fold is converted to match, so the pair in
  *     one set-shaped value never mixes the two spaces.
+ *
+ * (3) The to-beat cards and the intensity rows are the same kind of surface —
+ *     each sizes the set about to be logged — and LIFT-1566 brought them in,
+ *     including the "Your best …" line inside each card. That line reads
+ *     history, but as a statistic in ADDED space (the heaviest weight added at
+ *     N reps, matched across sets whatever bodyweight each captured) set
+ *     directly against the card's target, so it takes the target's fold.
+ *     Worded with its own set's capture, one card could read "+30 lbs" over
+ *     "25 lbs", since a set logged before any weigh-in captured nothing. A
+ *     read-back that stands alone — the session plan's top set — keeps its
+ *     set's own capture (`planTopSetLoad`).
  */
 const suggestionLoadFormat = computed<SetLoadFormat>(() => ({
   displayWeight: (v: number) => v,
@@ -2054,7 +2075,10 @@ function addedLoadValue(displayValue: number): string {
   ).value
 }
 
-/** "Bodyweight" / "+25 lbs" / "135 lbs" — the overload card, which prints one. */
+/**
+ * "Bodyweight" / "+25 lbs" / "135 lbs" — the surfaces that print a unit: the
+ * overload card, the to-beat cards and the intensity rows.
+ */
 function addedLoadLabel(displayValue: number): string {
   return formatSetLoad(
     suggestionLoadSet(displayValue), selectedExercise.value, suggestionLoadFormat.value,
@@ -2154,6 +2178,19 @@ const weightIsLoggable = computed(() => isLoggableWeight(weight.value, selectedE
  */
 const typedLoadLbs = computed(() =>
   weightIsLoggable.value ? toLbs(weight.value!) + bodyweightFoldLbs.value : 0,
+)
+
+/**
+ * The typed weight in the words the reps-to-beat cards print it — "+25 lbs",
+ * or "Bodyweight" for an added 0 (LIFT-1566). Those cards size the set about to
+ * be logged, so it is worded like any other suggestion: with the fold in effect
+ * now. It used to print `displayWeight(toLbs(weight))` beside a bare unit, so a
+ * plain pull-up read "0 lbs × 13" in the same card chain as "Bodyweight × 12".
+ * Through the same canonical-lbs round trip the save takes, so a kg value reads
+ * back as the number `logSet` will store.
+ */
+const typedLoadLabel = computed(() =>
+  weightIsLoggable.value ? addedLoadLabel(displayWeight(toLbs(weight.value!))) : '',
 )
 
 const activeDenominations = computed(() =>
@@ -2813,9 +2850,9 @@ const prTargetWeight = computed<number | null>(() => {
 
 // A bodyweight-loaded lifter whose own bodyweight at this rep count already
 // beats their best needs no added weight — a real state, not an error, and the
-// weight-axis twin of `prTargetReps === 0`. Informational rather than tappable:
-// the target is "add nothing", and the weight field cannot hold that (a set
-// needs a positive weight to save).
+// weight-axis twin of `prTargetReps === 0`. Its card offers exactly that —
+// added 0, which the field has held since LIFT-1330 (#1328 shipped it
+// informational-only, when it could not).
 const bodyweightBeatsPRTarget = computed(
   () => bodyweightFoldLbs.value > 0 && prTargetAddedLbs.value !== null && prTargetAddedLbs.value <= 0,
 )
@@ -2948,8 +2985,8 @@ const suggestionHeaderSub = computed(() => suggestionLenses.value.map(lensLabel)
 
 // ── Personal bests from actual history ──────────────────────────
 // Best reps at the entered weight (exact match in lbs). Added-0 matches the
-// exercise's own pure-bodyweight sets, so "your best at 0 lbs: 12 reps" is the
-// rep PR to chase on a plain pull-up (LIFT-1330).
+// exercise's own pure-bodyweight sets, so "Your best at Bodyweight: 12 reps" is
+// the rep PR to chase on a plain pull-up (LIFT-1330, worded per LIFT-1566).
 const bestRepsAtWeight = computed<number | null>(() => {
   if (!weightIsLoggable.value) return null
   const id = selectedExerciseId.value
@@ -2964,18 +3001,24 @@ const bestRepsAtWeight = computed<number | null>(() => {
   return best > 0 ? best : null
 })
 
-// Heaviest weight at the entered rep count (exact match)
+// Heaviest weight (lbs) at the entered rep count (exact match). The floor is
+// `isLoggableWeight`, the one LIFT-1330 put every weight gate behind: on a
+// bodyweight-loaded lift an added-0 set is a real best ("Your best at 12 reps:
+// Bodyweight" under a "+5 lbs × 12" target, LIFT-1566), which a hand-rolled
+// `> 0` hid. Elsewhere a 0 lb set says nothing, so it still never counts. Null
+// means no best at all, which is why the card tests `!== null`, not truthiness.
 const bestWeightAtReps = computed<number | null>(() => {
   if (!reps.value || reps.value < 1) return null
   const id = selectedExerciseId.value
   if (!id || id === '__new__') return null
   const exercise = store.exercises.find(e => e.id === id)
   if (!exercise) return null
-  let best = 0
+  let best: number | null = null
   for (const s of exercise.sets) {
-    if (s.reps === reps.value && s.weight > best) best = s.weight
+    if (s.reps !== reps.value || !isLoggableWeight(s.weight, exercise)) continue
+    if (best === null || s.weight > best) best = s.weight
   }
-  return best > 0 ? best : null
+  return best
 })
 
 const hasSetData = computed(() => weightIsLoggable.value && weight.value! <= MAX_WEIGHT && reps.value !== null && reps.value >= 1 && reps.value <= MAX_REPS)
