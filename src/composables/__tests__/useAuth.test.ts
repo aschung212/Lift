@@ -285,6 +285,59 @@ describe('useAuth', () => {
     })
   })
 
+  // #1582: the cold-start event names how the splash was lifted, recorded by
+  // the single helper every lift site in useAuth goes through.
+  describe('startupPath (#1582)', () => {
+    async function initFresh(session: unknown, dev = false) {
+      vi.stubEnv('DEV', dev)
+      mockGetSession.mockResolvedValue({ data: { session } })
+      vi.resetModules()
+      const mod = await import('../useAuth')
+      const auth = mod.useAuth()
+      expect(auth.startupPath.value).toBeNull()
+      auth.init()
+      await vi.waitFor(() => expect(auth.loading.value).toBe(false))
+      return auth
+    }
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('is null until the splash comes down, then names the sign-in screen', async () => {
+      const auth = await initFresh(null)
+      expect(auth.startupPath.value).toBe('signed-out')
+    })
+
+    it('names a restored guest', async () => {
+      localStorageMock.setItem('guest-mode', 'true')
+      const auth = await initFresh(null)
+      expect(auth.startupPath.value).toBe('guest')
+    })
+
+    it('names local-only mode in DEV', async () => {
+      const auth = await initFresh(null, true)
+      expect(auth.startupPath.value).toBe('local')
+    })
+
+    it('names a getSession() failure', async () => {
+      vi.stubEnv('DEV', false)
+      mockGetSession.mockRejectedValue(new Error('storage unavailable'))
+      vi.resetModules()
+      const mod = await import('../useAuth')
+      const auth = mod.useAuth()
+      auth.init()
+      await vi.waitFor(() => expect(auth.loading.value).toBe(false))
+      expect(auth.startupPath.value).toBe('error')
+    })
+
+    it('keeps the first attribution when a later action lifts loading again', async () => {
+      const auth = await initFresh(null)
+      auth.continueAsGuest()
+      expect(auth.startupPath.value).toBe('signed-out')
+    })
+  })
+
   // Regression LIFT-1133: an automatic server-side sign-out (expired/revoked
   // refresh token surfacing as a SIGNED_OUT event) must run the SAME teardown as
   // manual signOut, or the previous user's hydrated stores and durable sync
