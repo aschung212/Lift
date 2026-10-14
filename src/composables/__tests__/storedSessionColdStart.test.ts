@@ -293,6 +293,8 @@ describe('an offline cold start with an expired access token (LIFT-1545)', () =>
     expect(stores.preferences.holdUntilRead).not.toHaveBeenCalled()
     expect(boundTo(stores.workout)).toContain('user-1')
     expect(auth.loading.value).toBe(false)
+    // The cold-start event names the confirmed-and-bound path here (#1582).
+    expect(auth.startupPath.value).toBe('session')
   })
 })
 
@@ -309,6 +311,7 @@ describe('a cold start on a device that holds the lifter\'s data (#1580)', () =>
 
     // Synchronously inside init(): nothing waited for the network or the journal.
     expect(auth.loading.value).toBe(false)
+    expect(auth.startupPath.value).toBe('stored-session')
     expect(userId()).toBe('user-1')
     expect(auth.isGuest.value).toBe(false)
     expect(sessionAwaitingRefresh.value).toBe(true)

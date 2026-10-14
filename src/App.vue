@@ -291,6 +291,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { isPreviewDeploy, isPreviewMode, initSupabase } from './lib/supabase'
+import { isNative } from './lib/platform'
+import { COLD_START_EVENT, buildColdStartEvent, isStandaloneDisplay, recordSplashDown } from './lib/coldStart'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import AuthScreen from './views/AuthScreen.vue'
 import OnboardingScreen from './views/OnboardingScreen.vue'
@@ -372,7 +374,7 @@ const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
 const { celebrateUnlocks } = useXPCeremony()
 
-const { user, loading, isGuest, init: initAuth, signOut, exitGuestMode, passwordRecoveryPending, clearPasswordRecovery } = useAuth()
+const { user, loading, startupPath, isGuest, init: initAuth, signOut, exitGuestMode, passwordRecoveryPending, clearPasswordRecovery } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
 const prefs = usePreferencesStore()
 const { toast: undoToast, performUndo } = useUndoToast()
@@ -433,11 +435,27 @@ function onBadgeVisibilityChange() {
   }
 }
 
+// Cold-start measurement (#1582): once per page load, when the splash comes
+// down, report how long that took since navigation start and which path in
+// useAuth lifted it. The only signal before this was the lifter's own sense of
+// the morning open.
+let coldStartReported = false
+function reportColdStart(): void {
+  if (coldStartReported) return
+  coldStartReported = true
+  const elapsedMs = recordSplashDown()
+  if (elapsedMs === null) return
+  logEvent(COLD_START_EVENT, {
+    ...buildColdStartEvent({ path: startupPath.value, elapsedMs, standalone: isStandaloneDisplay(), native: isNative }),
+  })
+}
+
 // Dismiss the splash screen the moment auth lifts `loading` — synchronously
 // inside initAuth on a device that holds a stored session and the user's data
 // (#1580), otherwise once the session is confirmed and the stores are bound.
 watch(loading, (isLoading) => {
   if (!isLoading) {
+    reportColdStart()
     const splash = document.getElementById('splash')
     if (splash) {
       splash.classList.add('fade-out')

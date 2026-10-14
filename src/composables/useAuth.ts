@@ -13,6 +13,7 @@ import { logError } from '../lib/logger'
 import { clearReauthFlag, isRetryableAuthFetchError, sessionAwaitingRefresh } from '../lib/sessionHealth'
 import { readStoredSession, clearStoredSession, type StoredSession } from '../lib/storedSession'
 import { isNative } from '../lib/platform'
+import type { StartupPath } from '../lib/coldStart'
 import { APP_URL } from '../lib/appMeta'
 import type { AuthChangeEvent, Session, User, Provider } from '@supabase/supabase-js'
 
@@ -23,6 +24,8 @@ interface AuthError {
 export interface UseAuthReturn {
   user: Ref<User | { id: string; email: string } | null>
   loading: Ref<boolean>
+  /** How the splash was lifted, once it has been (#1582); null until then. */
+  startupPath: Readonly<Ref<StartupPath | null>>
   isGuest: Ref<boolean>
   init: (supabaseReady?: Promise<void>) => void
   signInWithProvider: (provider: Provider) => Promise<{ error: AuthError | null }>
@@ -56,7 +59,19 @@ export const GUEST_BACKUP_PROMPT_DISMISSED_KEY = 'guest-backup-prompt-dismissed'
 
 const user: Ref<User | { id: string; email: string } | null> = ref(null)
 const loading: Ref<boolean> = ref(true)
+const startupPath: Ref<StartupPath | null> = ref(null)
 const isGuest: Ref<boolean> = ref(false)
+
+/**
+ * The one way `loading` comes down (#1582). Records which path lifted the
+ * splash, on the first lift only, so App.vue's cold-start event can name it;
+ * every lift site goes through here, which is what keeps a new one from
+ * lifting the splash unattributed (pinned in coldStart.test.ts).
+ */
+function liftSplash(path: StartupPath): void {
+  if (loading.value) startupPath.value = path
+  loading.value = false
+}
 /**
  * Raised by a PASSWORD_RECOVERY auth event — the web landing of an emailed
  * reset link — so App.vue can offer PasswordResetSheet (#1430). The in-app
@@ -260,7 +275,7 @@ async function liftSplashWhenBound(run: StoresInit): Promise<void> {
     // The splash comes down regardless, because the app is local-first and
     // renders from localStorage either way (LIFT-1324).
   } finally {
-    loading.value = false
+    liftSplash('session')
   }
 }
 
@@ -352,7 +367,7 @@ function restoreStoredSession(stored: StoredSession | null = readStoredSession()
   sessionAwaitingRefresh.value = true
   usePreferencesStore().holdUntilRead(stored.user.id)
   useProgressionStore().holdUntilRead(stored.user.id)
-  loading.value = false
+  liftSplash('stored-session')
   return true
 }
 
@@ -431,8 +446,7 @@ function init(supabaseReady?: Promise<void>): void {
   // Dev mode: local-only. No session is ever stored here, because initSupabase
   // creates no client in DEV.
   if (import.meta.env.DEV) {
-    restoreGuestIfFlagged()
-    loading.value = false
+    liftSplash(restoreGuestIfFlagged() ? 'guest' : 'local')
     return
   }
 
@@ -456,7 +470,7 @@ function startAuth(): void {
   // only when nobody is showing.
   if (!supabase) {
     if (user.value === null) restoreGuestIfFlagged()
-    loading.value = false
+    liftSplash(isGuest.value ? 'guest' : 'local')
     return
   }
 
@@ -480,14 +494,12 @@ function startAuth(): void {
       void liftSplashWhenBound(initStores(session.user.id))
     } else {
       user.value = null
-      restoreGuestIfFlagged()
-      loading.value = false
+      liftSplash(restoreGuestIfFlagged() ? 'guest' : 'signed-out')
     }
   }).catch((err) => {
     dropStoredSession()
     logError(err, { source: 'useAuth', action: 'getSession' })
-    restoreGuestIfFlagged()
-    loading.value = false
+    liftSplash(restoreGuestIfFlagged() ? 'guest' : 'error')
   })
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -548,7 +560,7 @@ function continueAsGuest(): void {
   localStorage.setItem(GUEST_MODE_KEY, 'true')
   isGuest.value = true
   user.value = { id: GUEST_USER_ID, email: '' }
-  loading.value = false
+  liftSplash('guest')
 }
 
 /**
@@ -897,5 +909,5 @@ function destroy(): void {
 }
 
 export function useAuth(): UseAuthReturn {
-  return { user, loading, isGuest, init, signInWithProvider, signInWithEmail, signUp, requestPasswordReset, confirmPasswordReset, updatePassword, passwordRecoveryPending, clearPasswordRecovery, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, destroy }
+  return { user, loading, startupPath, isGuest, init, signInWithProvider, signInWithEmail, signUp, requestPasswordReset, confirmPasswordReset, updatePassword, passwordRecoveryPending, clearPasswordRecovery, signOut, devSignIn, continueAsGuest, exitGuestMode, deleteAccount, destroy }
 }
