@@ -24,7 +24,7 @@ export interface UseAuthReturn {
   user: Ref<User | { id: string; email: string } | null>
   loading: Ref<boolean>
   isGuest: Ref<boolean>
-  init: () => void
+  init: (supabaseReady?: Promise<void>) => void
   signInWithProvider: (provider: Provider) => Promise<{ error: AuthError | null }>
   signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signUp: (email: string, password: string) => Promise<{ error: AuthError | null; needsConfirmation?: boolean }>
@@ -301,12 +301,28 @@ function restoreGuestIfFlagged(): boolean {
 // account through the read that follows the refresh. That read already pushes
 // any set, exercise, weigh-in or delete the server lacks, and the two
 // whole-row stores are held so it replays their edits too.
+//
+// A device that holds the user's data does not wait for any of this (#1580).
+// Every signed-in cold start more than an hour after the last one carries an
+// expired token, so getSession() cost a network round trip on exactly the
+// launches that matter most, the morning weigh-in and the first set at the
+// gym, and the grace below only capped it at two seconds; then the splash
+// waited for the journal read as well. Such a device now shows the app from
+// the stored session the moment init() runs, before the SDK chunk is even
+// awaited, and the refresh, the journal read and the binding run behind the
+// live app the way they already ran behind the splash. The grace timer is
+// left for a device that holds nothing of the user's: there only the first
+// read tells a returning lifter from a new one (LIFT-1516), and rendering
+// first would put the returning one into onboarding.
 
 /**
- * How long a cold start waits for auth-js to confirm the session stored on
- * this device before showing the app from it anyway (LIFT-1545). Long enough
- * for a token refresh on a slow but working connection, where a revoked
- * session would otherwise flash the app before the sign-in screen.
+ * How long a cold start on a device that holds NOTHING of the user's waits for
+ * auth-js to confirm the session stored on it before showing the app from it
+ * anyway (LIFT-1545). Long enough for a token refresh on a slow but working
+ * connection, where a revoked session would otherwise flash the app before
+ * the sign-in screen. A device that holds the user's data does not wait at
+ * all (#1580, `showStoredSession`): there the flash is the price of a cold
+ * start that never waits on the network, and a revoked session is rare.
  */
 export const STORED_SESSION_GRACE_MS = 2000
 
@@ -382,13 +398,64 @@ function settleRestoredSession(event: AuthChangeEvent, session: Session | null):
   return false
 }
 
-function init(): void {
+/**
+ * Show the app from the session stored on this device, synchronously, before
+ * the SDK has loaded or anything has confirmed the session (#1580). Only on a
+ * device that also holds the user's data: that device is correct on screen
+ * from localStorage alone, and it is the one a morning cold start finds. The
+ * refresh, the journal read and the store binding follow behind the live app.
+ * Returns true when the app is showing from the stored session.
+ */
+function showStoredSession(): boolean {
+  if (user.value !== null) return false
+  const stored = readStoredSession()
+  if (!stored || !storesHoldLocalData()) return false
+  return restoreStoredSession(stored)
+}
+
+// Bumped by every init(), so a start deferred behind the SDK load can tell it
+// has been superseded by a destroy() and re-init() in the meantime.
+let _initRun = 0
+
+/**
+ * Start auth. `supabaseReady` is the pending SDK load (`initSupabase()`):
+ * passing it lets a device holding a stored session and the user's data render
+ * before the SDK chunk has been fetched (#1580); `getSession()` and the store
+ * binding start once it settles, in local-only mode if it rejected. Without
+ * it, auth starts synchronously against whatever client exists now.
+ */
+function init(supabaseReady?: Promise<void>): void {
   if (_initialized) return
   _initialized = true
 
-  // Dev mode or Supabase unavailable: fall back to local-only mode
-  if (import.meta.env.DEV || !supabase) {
+  // Dev mode: local-only. No session is ever stored here, because initSupabase
+  // creates no client in DEV.
+  if (import.meta.env.DEV) {
     restoreGuestIfFlagged()
+    loading.value = false
+    return
+  }
+
+  showStoredSession()
+
+  if (!supabaseReady) {
+    startAuth()
+    return
+  }
+  const run = ++_initRun
+  const start = (): void => {
+    if (_initialized && run === _initRun) startAuth()
+  }
+  supabaseReady.then(start, start)
+}
+
+function startAuth(): void {
+  // Supabase unavailable (the SDK failed to load, or no project is configured):
+  // local-only mode. A user already showing from the stored session stays, with
+  // nothing bound, exactly as while awaiting a refresh; a guest is restored
+  // only when nobody is showing.
+  if (!supabase) {
+    if (user.value === null) restoreGuestIfFlagged()
     loading.value = false
     return
   }
@@ -822,6 +889,7 @@ function destroy(): void {
   _authUnsubscribe = null
   for (const cleanup of _lifecycleCleanups) cleanup()
   _lifecycleCleanups = []
+  _initRun++
   cancelRestoreTimer()
   sessionAwaitingRefresh.value = false
   _initialized = false

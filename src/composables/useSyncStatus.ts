@@ -20,7 +20,7 @@
  * `lastSyncedAt` stamp has to survive the sheet unmounting. Pinia must be
  * active at that first call, which it is — App.vue's setup reaches it first.
  */
-import { computed, effectScope, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, effectScope, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { syncStatus } from '../lib/syncQueue'
 import { broadcastSyncStatus } from '../lib/crossTabSync'
 import { syncQueueStats, formatSyncAge } from '../lib/syncActivity'
@@ -34,6 +34,17 @@ import { useProgressionStore } from '../stores/progression'
 
 /** Outcome of a user-initiated "Try again". */
 export type ManualSyncResult = 'synced' | 'offline' | 'failed'
+
+/**
+ * How long a session restored from storage may await its refresh before the
+ * indicator reports it as offline (#1580). Every signed-in cold start on a
+ * device that holds the lifter's data passes through that state for as long
+ * as the token refresh takes, a few hundred milliseconds on a working
+ * connection, so reporting it at once would flash "Offline" on every launch.
+ * Matches useAuth's STORED_SESSION_GRACE_MS: long enough for a refresh on a
+ * slow but working connection.
+ */
+export const AWAITING_REFRESH_INDICATOR_DELAY_MS = 2000
 
 export interface UseSyncStatusReturn {
   /** The folded status the indicator renders. */
@@ -97,8 +108,35 @@ function create(): UseSyncStatusReturn {
   // binds no store, so the queue, the reads and the journal are all quiet and
   // would fold to "synced" while nothing reaches the account at all. On a
   // dead uplink `navigator.onLine` doesn't say so either, so this does.
+  //
+  // Not at once, though (#1580): a cold start on a device holding the lifter's
+  // data shows the app from the stored session before the refresh has gone
+  // out, so this state now lasts the length of a refresh on every such launch,
+  // and an indicator that lit (and announced itself to the live region) for
+  // those few hundred milliseconds would be noise. It is reported once it has
+  // outlasted what a refresh should take. A browser that knows it is offline
+  // still reads offline at once, through `syncStatus`.
+  const refreshOverdue = ref(false)
+  let overdueTimer: ReturnType<typeof setTimeout> | null = null
+  const cancelOverdueTimer = (): void => {
+    if (overdueTimer !== null) clearTimeout(overdueTimer)
+    overdueTimer = null
+  }
+  watch(sessionAwaitingRefresh, (awaiting) => {
+    cancelOverdueTimer()
+    if (!awaiting) {
+      refreshOverdue.value = false
+      return
+    }
+    overdueTimer = setTimeout(() => {
+      overdueTimer = null
+      refreshOverdue.value = true
+    }, AWAITING_REFRESH_INDICATOR_DELAY_MS)
+  }, { immediate: true })
+  onScopeDispose(cancelOverdueTimer)
+
   const status = computed<SyncStatus>(() =>
-    sessionAwaitingRefresh.value
+    refreshOverdue.value
       ? 'offline'
       : combineSyncStatus(syncStatus.value, readError.value, strandedChanges.value),
   )

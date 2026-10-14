@@ -24,6 +24,12 @@
  * through mid-session, after the stores are bound, must not raise App.vue's
  * "Session expired — sign in again" banner, and the TOKEN_REFRESHED that lands
  * once the network returns must still drive the recovery re-read.
+ *
+ * And #1580: a device that holds the lifter's data shows the app from the
+ * stored session synchronously inside init(), before the SDK has loaded and
+ * before the refresh has gone out, instead of after the grace period. Every
+ * fixture above has `exercises: []`, which is why that path is only visible
+ * once a test gives the stores local data.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -48,8 +54,8 @@ const { stores, migrate, queue, net } = vi.hoisted(() => {
     _fetchFromSupabase: vi.fn(async () => {}),
     $reset: vi.fn(),
     holdUntilRead: vi.fn(),
-    exercises: [],
-    entries: [],
+    exercises: [] as unknown[],
+    entries: [] as unknown[],
   })
   return {
     stores: {
@@ -133,19 +139,26 @@ type Booted = Awaited<ReturnType<typeof boot>>
 let booted: Booted | null = null
 
 /**
- * App.vue's start-up: `initSupabase().then(() => initAuth())`. `beforeInit`
- * gets the client between the two, for a test that needs to break it.
+ * App.vue's start-up, `initAuth(initSupabase())`, with the SDK load already
+ * settled unless `supabaseReady` stands in for it (the pending import, for a
+ * test of what renders before the chunk arrives) or `sdk: false` leaves no
+ * client at all (the import failed). `beforeInit` gets the client before auth
+ * starts, for a test that needs to break it.
  */
-async function boot(beforeInit?: (client: SupabaseClient) => void) {
+async function boot(
+  beforeInit?: (client: SupabaseClient) => void,
+  supabaseReady?: Promise<void>,
+  { sdk = true }: { sdk?: boolean } = {},
+) {
   vi.resetModules()
   const supabaseModule = await import('../../lib/supabase')
-  await supabaseModule.initSupabase()
-  beforeInit?.(supabaseModule.supabase!)
+  if (sdk) await supabaseModule.initSupabase()
+  if (supabaseModule.supabase) beforeInit?.(supabaseModule.supabase)
   const { useAuth, STORED_SESSION_GRACE_MS } = await import('../useAuth')
   const { sessionAwaitingRefresh } = await import('../../lib/sessionHealth')
   const auth = useAuth()
-  auth.init()
-  booted = { auth, client: supabaseModule.supabase!, sessionAwaitingRefresh, grace: STORED_SESSION_GRACE_MS }
+  auth.init(supabaseReady)
+  booted = { auth, supabaseModule, sessionAwaitingRefresh, grace: STORED_SESSION_GRACE_MS }
   return booted
 }
 
@@ -169,8 +182,10 @@ beforeEach(() => {
 
 afterEach(async () => {
   booted?.auth.destroy()
-  await booted?.client.auth.dispose()
+  await booted?.supabaseModule.supabase?.auth.dispose()
   booted = null
+  stores.workout.exercises.length = 0
+  stores.bodyweight.entries.length = 0
   vi.useRealTimers()
   vi.unstubAllEnvs()
   setOnline(true)
@@ -278,6 +293,148 @@ describe('an offline cold start with an expired access token (LIFT-1545)', () =>
     expect(stores.preferences.holdUntilRead).not.toHaveBeenCalled()
     expect(boundTo(stores.workout)).toContain('user-1')
     expect(auth.loading.value).toBe(false)
+  })
+})
+
+describe('a cold start on a device that holds the lifter\'s data (#1580)', () => {
+  beforeEach(() => {
+    stores.workout.exercises.push({ id: 'bench', name: 'Bench Press', sets: [] })
+  })
+
+  it('shows the app from the stored session before the refresh has gone out, and binds once it lands', async () => {
+    net.mode = 'online'
+    net.delayMs = 1500
+    storeSession(-7200)
+    const { auth, sessionAwaitingRefresh } = await boot()
+
+    // Synchronously inside init(): nothing waited for the network or the journal.
+    expect(auth.loading.value).toBe(false)
+    expect(userId()).toBe('user-1')
+    expect(auth.isGuest.value).toBe(false)
+    expect(sessionAwaitingRefresh.value).toBe(true)
+    // Still nothing bound: the session is not confirmed, and a request with no
+    // usable token would go out under the anon key.
+    expect(migrate).not.toHaveBeenCalled()
+    for (const store of Object.values(stores)) expect(boundTo(store)).toEqual([])
+    // Edits made meanwhile are held for the read that follows the refresh.
+    expect(stores.preferences.holdUntilRead).toHaveBeenCalledWith('user-1')
+    expect(stores.progression.holdUntilRead).toHaveBeenCalledWith('user-1')
+
+    await vi.advanceTimersByTimeAsync(1500)
+
+    expect(sessionAwaitingRefresh.value).toBe(false)
+    expect(userId()).toBe('user-1')
+    expect(migrate).toHaveBeenCalledWith('user-1')
+    for (const store of Object.values(stores)) expect(boundTo(store)).toContain('user-1')
+    expect(auth.loading.value).toBe(false)
+  })
+
+  // App.vue's real ordering: `initAuth(initSupabase())` renders inside initAuth
+  // while the SDK chunk is still in flight; the client (whose constructor
+  // starts the refresh) exists only once that import resolves.
+  it('shows the app before the Supabase SDK has even loaded', async () => {
+    net.mode = 'online'
+    storeSession(-7200)
+    let sdkLoaded!: () => void
+    const sdk = new Promise<void>((resolve) => { sdkLoaded = resolve })
+    const { auth, supabaseModule } = await boot(undefined, sdk, { sdk: false })
+
+    expect(auth.loading.value).toBe(false)
+    expect(userId()).toBe('user-1')
+    // No client yet, so no refresh has gone out and nothing is bound.
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+    for (const store of Object.values(stores)) expect(boundTo(store)).toEqual([])
+
+    await supabaseModule.initSupabase()
+    sdkLoaded()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(vi.mocked(fetch)).toHaveBeenCalled()
+    for (const store of Object.values(stores)) expect(boundTo(store)).toContain('user-1')
+  })
+
+  it('shows a session auth-js can answer from storage just as fast, and binds it at once', async () => {
+    storeSession(3000)
+    const { auth, sessionAwaitingRefresh } = await boot()
+
+    expect(auth.loading.value).toBe(false)
+    expect(userId()).toBe('user-1')
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sessionAwaitingRefresh.value).toBe(false)
+    expect(boundTo(stores.workout)).toContain('user-1')
+  })
+
+  it('shows the app from a session that turns out to be revoked, then drops to sign-in with the data left on the device', async () => {
+    net.mode = 'revoked'
+    // The refusal lands after init() has rendered, as it does in the app, where
+    // the client is created only once the SDK chunk has loaded. (With no delay
+    // this harness's client, created before init(), would have removed the
+    // stored session before init() could read it.)
+    net.delayMs = 500
+    storeSession(-7200)
+    const { auth, sessionAwaitingRefresh } = await boot()
+    expect(auth.loading.value).toBe(false)
+    expect(userId()).toBe('user-1')
+
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(auth.user.value).toBeNull()
+    expect(sessionAwaitingRefresh.value).toBe(false)
+    expect(auth.loading.value).toBe(false)
+    // No store was bound to this session, so there is nothing to tear down.
+    for (const store of Object.values(stores)) expect(store.$reset).not.toHaveBeenCalled()
+    expect(queue.clear).not.toHaveBeenCalled()
+  })
+
+  it('keeps showing the user when the SDK fails to load, bound to nothing', async () => {
+    storeSession(-7200)
+    let sdkFailed!: (reason: Error) => void
+    const sdk = new Promise<void>((_resolve, reject) => { sdkFailed = reject })
+    const { auth, sessionAwaitingRefresh } = await boot(undefined, sdk, { sdk: false })
+    expect(auth.loading.value).toBe(false)
+    expect(userId()).toBe('user-1')
+
+    sdkFailed(new Error('chunk failed'))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(userId()).toBe('user-1')
+    expect(auth.isGuest.value).toBe(false)
+    expect(auth.loading.value).toBe(false)
+    expect(sessionAwaitingRefresh.value).toBe(true)
+    for (const store of Object.values(stores)) expect(boundTo(store)).toEqual([])
+  })
+
+  it('still waits for the refresh on a device that holds nothing of the user\'s', async () => {
+    stores.workout.exercises.length = 0
+    storeSession(-7200)
+    const { auth, grace } = await boot()
+
+    // Only the first read can tell a returning lifter from a new one here
+    // (LIFT-1516), so the grace period still applies.
+    expect(auth.loading.value).toBe(true)
+    await vi.advanceTimersByTimeAsync(grace)
+    expect(auth.loading.value).toBe(false)
+    expect(userId()).toBe('user-1')
+  })
+
+  it('does not start auth once the module is torn down before the SDK settles', async () => {
+    net.mode = 'online'
+    storeSession(-7200)
+    let sdkLoaded!: () => void
+    const sdk = new Promise<void>((resolve) => { sdkLoaded = resolve })
+    const { auth, supabaseModule } = await boot(undefined, sdk, { sdk: false })
+
+    auth.destroy()
+    await supabaseModule.initSupabase()
+    sdkLoaded()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // auth-js refreshed on its own when the client was created, but a start
+    // that had run would have bound the stores off getSession()'s answer.
+    for (const store of Object.values(stores)) expect(boundTo(store)).toEqual([])
+    expect(migrate).not.toHaveBeenCalled()
   })
 })
 
