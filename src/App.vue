@@ -433,7 +433,9 @@ function onBadgeVisibilityChange() {
   }
 }
 
-// Dismiss splash screen once auth resolves
+// Dismiss the splash screen the moment auth lifts `loading` — synchronously
+// inside initAuth on a device that holds a stored session and the user's data
+// (#1580), otherwise once the session is confirmed and the stores are bound.
 watch(loading, (isLoading) => {
   if (!isLoading) {
     const splash = document.getElementById('splash')
@@ -840,12 +842,13 @@ onMounted(async () => {
   clearAppBadge()
   logEvent('session_start')
 
-  // Load Supabase SDK off the critical render path, then start auth.
-  // If the SDK fails to load (offline first visit, network error), fall
-  // back to local-only mode so the app still renders from localStorage.
-  initSupabase()
-    .then(() => initAuth())
-    .catch(() => initAuth())
+  // Start auth now and hand it the SDK load (#1580). A device holding a
+  // stored session and the user's data renders from them synchronously inside
+  // initAuth, before the Supabase chunk has even been fetched; getSession()
+  // and the store binding start once the SDK is up. If the SDK fails to load
+  // (offline first visit, network error), auth falls back to local-only mode
+  // so the app still renders from localStorage.
+  initAuth(initSupabase())
 
   // Request persistent storage to prevent browser eviction
   requestPersistentStorage()

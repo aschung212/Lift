@@ -10,7 +10,7 @@
  * report an honest outcome rather than optimistically claiming success.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { reactive, nextTick } from 'vue'
+import { reactive, nextTick, watch } from 'vue'
 
 // `reactive` (not a plain object) so `lastSyncError` invalidates the folded
 // status computed — the same mock-fidelity rule the WorkoutTracker harness
@@ -45,7 +45,7 @@ vi.mock('../../lib/durableStorage', () => ({
 import { syncStatus } from '../../lib/syncQueue'
 import { publishSyncQueueStats, resetSyncQueueStats } from '../../lib/syncActivity'
 import { authNeedsReauth, sessionAwaitingRefresh } from '../../lib/sessionHealth'
-import { useSyncStatus, _resetSyncStatus } from '../useSyncStatus'
+import { useSyncStatus, _resetSyncStatus, AWAITING_REFRESH_INDICATOR_DELAY_MS } from '../useSyncStatus'
 
 function setOnline(online: boolean) {
   Object.defineProperty(navigator, 'onLine', { value: online, configurable: true })
@@ -73,6 +73,7 @@ describe('useSyncStatus', () => {
   afterEach(() => {
     _resetSyncStatus()
     setOnline(true)
+    vi.useRealTimers()
   })
 
   describe('folded status', () => {
@@ -114,12 +115,18 @@ describe('useSyncStatus', () => {
     // and on a dead uplink `navigator.onLine` is true as well. Folded as
     // usual that reads "Everything is synced / backed up to your account"
     // while nothing has reached the account at all.
-    it('reports offline while the session restored from storage awaits its refresh', async () => {
+    it('reports offline once the session restored from storage has awaited its refresh too long', async () => {
+      vi.useFakeTimers()
       const sync = useSyncStatus()
       sessionAwaitingRefresh.value = true
       await nextTick()
 
+      // Every cold start on a device holding the lifter's data passes through
+      // this state for the length of a refresh (#1580), so it is not yet news.
       expect(syncStatus.value).toBe('synced')
+      expect(sync.status.value).toBe('synced')
+
+      await vi.advanceTimersByTimeAsync(AWAITING_REFRESH_INDICATOR_DELAY_MS)
       expect(sync.status.value).toBe('offline')
       expect(sync.headline.value).toBe('Offline')
       expect(sync.detail.value).toContain('saved on this device')
@@ -130,6 +137,34 @@ describe('useSyncStatus', () => {
       sessionAwaitingRefresh.value = false
       await nextTick()
       expect(sync.status.value).toBe('synced')
+    })
+
+    // #1580: the indicator (and the live region App.vue feeds from the same
+    // status) must not flash "Offline" on every launch for a refresh that lands
+    // in the time a refresh takes.
+    it('never reports a stored session whose refresh lands within the window', async () => {
+      vi.useFakeTimers()
+      const sync = useSyncStatus()
+      const seen: string[] = []
+      watch(sync.status, (s) => seen.push(s))
+
+      sessionAwaitingRefresh.value = true
+      await vi.advanceTimersByTimeAsync(AWAITING_REFRESH_INDICATOR_DELAY_MS - 1)
+      sessionAwaitingRefresh.value = false
+      await vi.advanceTimersByTimeAsync(AWAITING_REFRESH_INDICATOR_DELAY_MS)
+
+      expect(sync.status.value).toBe('synced')
+      expect(seen).toEqual([])
+    })
+
+    it('reads offline at once when the browser knows it is, awaiting refresh or not', async () => {
+      vi.useFakeTimers()
+      const sync = useSyncStatus()
+      syncStatus.value = 'offline'
+      sessionAwaitingRefresh.value = true
+      await nextTick()
+
+      expect(sync.status.value).toBe('offline')
     })
   })
 
