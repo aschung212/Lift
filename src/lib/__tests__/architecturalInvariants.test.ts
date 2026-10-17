@@ -497,10 +497,14 @@ describe('Invariant: every store read handles failure identically (LIFT-1179)', 
   })
 
   it.each(stores)('$name: every reported failure records a typed lastSyncError', ({ body }) => {
-    // `lastSyncError` is what App.vue folds into the sync indicator via
-    // `combineSyncStatus`, so a failure branch that reports but doesn't classify
-    // is a failure the user is never shown.
-    expect(count(body, /\bclassifySyncError\s*\(/g)).toBe(count(body, /\breportFetchError\s*\(/g))
+    // `lastSyncError` is what `useSyncStatus` folds into the sync indicator via
+    // `combineSyncStatus`, and since LIFT-1543 it is a read failure's ONLY
+    // route there: `reportFetchError` no longer writes the write queue's
+    // status. So the assignment itself is counted, not merely a classify call
+    // whose result could be dropped, and a failure branch that reports without
+    // recording is a failure the user is never shown.
+    expect(count(body, /\blastSyncError(?:\.value)?\s*=\s*classifySyncError\s*\(/g))
+      .toBe(count(body, /\breportFetchError\s*\(/g))
   })
 
   it.each(stores)('$name: the syncing flag is raised and cleared in a finally', ({ body }) => {
@@ -508,6 +512,76 @@ describe('Invariant: every store read handles failure identically (LIFT-1179)', 
     // In a `finally`, not on the success path: every failure branch returns
     // early, so a trailing assignment would strand the flag true forever.
     expect(body).toMatch(/finally\s*\{[^}]*syncing(?:\.value)?\s*=\s*false/)
+  })
+})
+
+// ── Invariant 3a′: only the write path writes the write-queue status (LIFT-1543) ──
+// Guard: `syncStatus` (syncQueue.ts) describes the WRITE queue's last batch,
+// and only a successful flush moves it back to 'synced'. A writer outside the
+// write path therefore leaves a label nothing on its own path can retire.
+// `reportFetchError` was that writer: an auth or server READ failure set it to
+// 'error' and broadcast it to every open tab, the store's next successful read
+// cleared its own `lastSyncError` but not this, and "Sync failed" stayed up
+// until some unrelated write happened to flush (never, where writes are
+// blocked: a preview deploy). A read failure's place is the store's
+// `lastSyncError`, which the rule above makes every failure branch record.
+//
+// Which writers belong is a judgement rather than something the sources can
+// answer, so this is an allowlist, and each entry carries its reason. Outside
+// the queue itself, an entry is pinned to the writes it was vetted for: App.vue
+// is exactly where the next "light the indicator when X" would be written, and
+// a file-wide exemption would wave it through.
+
+describe('Invariant: only the write path writes the write-queue status (LIFT-1543)', () => {
+  const OWNER = join('lib', 'syncQueue.ts')
+  const VETTED = new Map<string, { writes: number; why: string }>([
+    ['App.vue', {
+      writes: 3,
+      why: "device connectivity (offline, and back to 'synced' from 'offline'), and the mirror of another tab's queue",
+    }],
+    [join('composables', 'useSyncStatus.ts'), {
+      writes: 1,
+      why: 'a manual retry retiring a label it has just disproved',
+    }],
+  ])
+  // `=`, `||=`, `&&=` and `??=`; never `==` / `===` / `!==`.
+  const STATUS_WRITE = /\bsyncStatus\.value\s*(?:\|\||&&|\?\?)?=(?!=)/
+  const writesIn = (source: string): number =>
+    (stripComments(source).match(new RegExp(STATUS_WRITE.source, 'g')) ?? []).length
+
+  it('no other source file assigns syncStatus', () => {
+    const files = getSourceFiles()
+    // Non-vacuity: the walker must reach every sanctioned writer and the file
+    // that shipped the defect, or this scan proves nothing.
+    for (const path of [OWNER, ...VETTED.keys(), join('lib', 'fetchErrorClassifier.ts')]) {
+      expect(files.map(f => f.path)).toContain(path)
+    }
+
+    const violations = files
+      .filter(f => f.path !== OWNER && !VETTED.has(f.path))
+      .filter(f => writesIn(f.content) > 0)
+      .map(f =>
+        `${f.path} — assigns the write queue's syncStatus. Only a successful ` +
+        `flush sets it back to 'synced', so a label written from anywhere else ` +
+        `outlives its cause (LIFT-1543). Record a read failure in the store's ` +
+        `lastSyncError; anything else needs an entry, with its reason, in VETTED.`,
+      )
+    expect(violations).toEqual([])
+  })
+
+  it.each([...VETTED])('%s writes it exactly as many times as it was vetted for', (path, { writes }) => {
+    expect(writesIn(readFileSync(join(SRC_DIR, path), 'utf-8'))).toBe(writes)
+  })
+
+  it('the queue itself still writes it (non-vacuity)', () => {
+    expect(writesIn(readFileSync(join(SRC_DIR, OWNER), 'utf-8'))).toBeGreaterThan(0)
+  })
+
+  it('the scan counts assignments and skips comparisons and comments (self-test)', () => {
+    expect(writesIn("syncStatus.value = 'error'\nsyncStatus.value ??= 'error'")).toBe(2)
+    expect(writesIn("if (syncStatus.value === 'offline') reset()")).toBe(0)
+    expect(writesIn("if (syncStatus.value !== 'syncing') mark()")).toBe(0)
+    expect(writesIn("// syncStatus.value = 'error'")).toBe(0)
   })
 })
 

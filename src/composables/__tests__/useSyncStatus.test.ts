@@ -313,13 +313,14 @@ describe('useSyncStatus', () => {
     })
 
     /**
-     * `reportFetchError` writes a READ failure into the shared write-queue
-     * status ref, and only a successful FLUSH clears it — which returns early
-     * on an empty queue. So a user who only browses history could recover
-     * completely and keep a lit indicator forever. The manual pass verifies
-     * both halves, so it must not report a failure that no longer exists.
+     * Only a successful FLUSH moves the shared write-queue status back to
+     * 'synced', and flush returns early on an empty queue, so a label can
+     * outlive its cause with nothing left to send: here an 'error' mirrored
+     * from another tab's failed batch. (A read failure no longer lands there
+     * at all since LIFT-1543.) The manual pass verifies both halves, so it
+     * must not report a failure that no longer exists.
      */
-    it('retires a stale read-driven error once the retry proves reads are clean', async () => {
+    it('retires a stale write-queue error once the retry proves nothing is unsent and reads are clean', async () => {
       const sync = useSyncStatus()
       reactiveStores.workout.lastSyncError = 'unknown'
       syncStatus.value = 'error'

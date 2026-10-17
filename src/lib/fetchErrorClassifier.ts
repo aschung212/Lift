@@ -7,13 +7,12 @@
  * RLS policy — or an expired auth token — indistinguishable from being
  * offline: the app just quietly serves stale local data and never raises an
  * alarm. This helper separates the three cases so that only true offline
- * failures stay quiet, while auth and server/RLS regressions become
- * observable (Sentry) and visibly degrade the sync indicator.
+ * failures stay quiet in telemetry, while auth and server/RLS regressions
+ * reach Sentry. What the user SEES is the store's `lastSyncError`, recorded
+ * beside every call to this (LIFT-1179) — see `reportFetchError`.
  */
 
 import { logError, logWarn } from './logger'
-import { syncStatus } from './syncQueue'
-import { broadcastSyncStatus } from './crossTabSync'
 
 export type FetchErrorCategory = 'offline' | 'auth' | 'server'
 
@@ -82,13 +81,23 @@ export function classifyFetchError(error: unknown): FetchErrorCategory {
 }
 
 /**
- * Centralized handling for a store read failure: classify, route telemetry,
- * and reflect a degraded sync state.
+ * Centralized telemetry for a store read failure: classify it and route it.
  *
- * - offline → console-only `logWarn` (expected; no Sentry, no status change).
- * - auth / server → error-level `logError` (Sentry) AND flips the shared
- *   `syncStatus` indicator to `error` so the failure is visible instead of
- *   masquerading as offline.
+ * - offline → console-only `logWarn` (expected; no Sentry).
+ * - auth / server → error-level `logError` (Sentry), so the failure is
+ *   observable instead of masquerading as offline.
+ *
+ * It deliberately does NOT touch the sync indicator. Every caller records the
+ * same failure in its store's `lastSyncError` (enforced by
+ * architecturalInvariants.test.ts), `combineSyncStatus` shows that as "Sync
+ * failed", and the store's next successful read clears it. This used to also
+ * set the WRITE queue's shared `syncStatus` to 'error' (LIFT-786, written
+ * before the `lastSyncError` fold existed), and nothing on the read path can
+ * set that ref back — only a successful flush does. So a read that failed and
+ * then recovered kept "Sync failed" up until some unrelated write happened to
+ * flush (never, where writes are blocked: a preview deploy), and the 'error'
+ * was broadcast to every other open tab, whose own reads were fine
+ * (LIFT-1543).
  *
  * Returns the category so callers can branch further if needed.
  */
@@ -107,14 +116,5 @@ export function reportFetchError(
 
   // auth or server/RLS — observable and worth surfacing.
   logError(new Error(`Supabase ${category} read failure in ${storeName} store`), detail)
-
-  // Reflect a degraded sync state in the existing indicator. A successful
-  // write flush (syncStatus → 'synced') clears it. Guarded so the import is
-  // robust if syncStatus is unavailable (e.g. in a mocked test module).
-  if (syncStatus && syncStatus.value !== 'syncing') {
-    syncStatus.value = 'error'
-    broadcastSyncStatus('error')
-  }
-
   return category
 }

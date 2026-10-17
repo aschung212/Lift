@@ -1,7 +1,8 @@
 /**
  * LIFT-786: read failures must be distinguishable — offline (expected, quiet)
  * vs auth / server-RLS (observable). These tests pin the classification and
- * the telemetry + degraded-sync routing.
+ * the telemetry routing, and that a read failure stays out of the write
+ * queue's status (LIFT-1543): the store's `lastSyncError` is what shows it.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
@@ -94,7 +95,7 @@ describe('reportFetchError', () => {
     expect(broadcastSyncStatus).not.toHaveBeenCalled()
   })
 
-  it('server/RLS failures are observable: Sentry error + degraded sync status', () => {
+  it('server/RLS failures are observable: Sentry error', () => {
     const category = reportFetchError('workout', { code: '42501', message: 'permission denied' })
 
     expect(category).toBe('server')
@@ -102,11 +103,9 @@ describe('reportFetchError', () => {
       expect.any(Error),
       expect.objectContaining({ store: 'workout', category: 'server' }),
     )
-    expect(syncStatus.value).toBe('error')
-    expect(broadcastSyncStatus).toHaveBeenCalledWith('error')
   })
 
-  it('auth failures are observable and degrade sync status', () => {
+  it('auth failures are observable: Sentry error', () => {
     const category = reportFetchError('preferences', { code: 'PGRST301', message: 'JWT expired' })
 
     expect(category).toBe('auth')
@@ -114,12 +113,23 @@ describe('reportFetchError', () => {
       expect.any(Error),
       expect.objectContaining({ store: 'preferences', category: 'auth' }),
     )
-    expect(syncStatus.value).toBe('error')
   })
 
-  it('does not stomp an in-flight syncing status', () => {
-    syncStatus.value = 'syncing'
-    reportFetchError('bodyweight', { code: '42501', message: 'permission denied' })
-    expect(syncStatus.value).toBe('syncing')
+  // LIFT-1543. These two cases used to assert `syncStatus === 'error'` and an
+  // 'error' broadcast. Nothing on the read path can set that ref back (only a
+  // write flush does), so a read that failed and then recovered kept "Sync
+  // failed" up until some unrelated write flushed, and every other open tab
+  // was told the same about reads of its own that were fine. The store's
+  // `lastSyncError` carries the failure to the indicator instead.
+  it.each([
+    { category: 'server', error: { code: '42501', message: 'permission denied' } },
+    { category: 'auth', error: { code: 'PGRST301', message: 'JWT expired' } },
+  ])('leaves the write queue status alone for a $category failure, whatever it holds', ({ error }) => {
+    for (const held of ['synced', 'syncing', 'offline', 'error'] as const) {
+      syncStatus.value = held
+      reportFetchError('bodyweight', error)
+      expect(syncStatus.value).toBe(held)
+    }
+    expect(broadcastSyncStatus).not.toHaveBeenCalled()
   })
 })

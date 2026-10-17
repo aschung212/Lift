@@ -7,8 +7,11 @@
  * must check .error and bail out, preserving local state.
  *
  * LIFT-786: an RLS denial (Postgres 42501) is a SERVER error, not offline, so
- * it must now be observable — routed to logError (Sentry) and reflected as a
- * degraded sync status — rather than silently swallowed with a console warn.
+ * it must now be observable — routed to logError (Sentry) and recorded in the
+ * store's `lastSyncError`, which the indicator shows as "Sync failed" — rather
+ * than silently swallowed with a console warn. The write queue's `syncStatus`
+ * stays out of it (LIFT-1543): nothing on the read path can set it back, so a
+ * read failure written there outlived the read that recovered from it.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -49,6 +52,7 @@ import { useWorkoutStore } from '../workout'
 import { useBodyweightStore } from '../bodyweight'
 import { logError } from '../../lib/logger'
 import { syncStatus } from '../../lib/syncQueue'
+import { combineSyncStatus } from '../../lib/syncStatus'
 
 describe('Supabase API error resilience (#503)', () => {
   beforeEach(() => {
@@ -85,7 +89,10 @@ describe('Supabase API error resilience (#503)', () => {
       expect.any(Error),
       expect.objectContaining({ store: 'workout', category: 'server' }),
     )
-    expect(syncStatus.value).toBe('error')
+    expect(store.lastSyncError).toBe('unknown')
+    expect(combineSyncStatus(syncStatus.value, store.lastSyncError)).toBe('error')
+    // LIFT-1543: recorded on the store, not on the write queue
+    expect(syncStatus.value).toBe('synced')
   })
 
   it('bodyweight store preserves local data when Supabase returns API error', async () => {
@@ -109,6 +116,9 @@ describe('Supabase API error resilience (#503)', () => {
       expect.any(Error),
       expect.objectContaining({ store: 'bodyweight', category: 'server' }),
     )
-    expect(syncStatus.value).toBe('error')
+    expect(store.lastSyncError).toBe('unknown')
+    expect(combineSyncStatus(syncStatus.value, store.lastSyncError)).toBe('error')
+    // LIFT-1543: recorded on the store, not on the write queue
+    expect(syncStatus.value).toBe('synced')
   })
 })
