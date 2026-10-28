@@ -79,11 +79,12 @@ describe('usePreferencesStore', () => {
    * valid JSON in every case below; only its field types are corrupt, which is
    * exactly what the top-level `isPlainObject` guard on the read cannot see.
    *
-   * Both hydration paths are covered because they are separate copies of the
-   * same field list (`loadLocalSettings` in the state factory, and
-   * `_applyPreferences` for the cross-tab reload / init / remote adoption) —
-   * fixing one and not the other leaves the defect on whichever path the test
-   * didn't take. Consolidating those two copies is LIFT-1495.
+   * Both hydration paths are covered: they were separate copies of the same
+   * field list (`loadLocalSettings` in the state factory, and
+   * `_applyPreferences` for the cross-tab reload / init / remote adoption), so
+   * fixing one and not the other left the defect on whichever path the test
+   * didn't take. LIFT-1495 put both behind `parsePreferencesPayload`;
+   * `preferencesPayloadParser.test.ts` holds every field to that.
    */
   describe('corrupt-blob field types (LIFT-1493)', () => {
     const CORRUPT_BLOB = JSON.stringify({

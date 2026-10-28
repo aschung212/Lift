@@ -181,6 +181,61 @@ function initialPreferencesState() {
 type PreferencesState = ReturnType<typeof initialPreferencesState>
 
 /**
+ * Read a persisted preferences payload (the localStorage blob or the Supabase
+ * `preferences` row) into a partial state overlay: the read-side twin of
+ * `_buildPayload`, and the one place the blob's fields become state (LIFT-1495).
+ *
+ * Every field is independently conditional, so a partial payload overrides only
+ * the keys it carries, and each one crosses through its guard (LIFT-1493,
+ * LIFT-1494), so a wrong type degrades to its default instead of reaching state.
+ *
+ * The state factory and `_applyPreferences` each used to carry their own copy of
+ * this list. Both copies returned a `Partial<PreferencesState>`, so they compiled
+ * clean whatever they disagreed about: a synced preference added to
+ * `_buildPayload` and only one copy reached a signed-in user once `init()`
+ * resolved and hydrated its default for a local-only guest. Exported so the
+ * coverage test can derive its fields from `_buildPayload` rather than restate
+ * them.
+ */
+export function parsePreferencesPayload(parsed: Record<string, unknown>): Partial<PreferencesState> {
+  const out: Partial<PreferencesState> = {}
+  if (parsed.features) out.features = sanitizeFeatureFlags(parsed.features)
+  if (parsed.weightGoal) out.weightGoal = _migrateWeightGoal(parsed.weightGoal)
+  if (parsed.experience) out.experience = sanitizeExperienceFlags(parsed.experience)
+  if (parsed.filters) out.filters = sanitizeFilterSettings(parsed.filters)
+  if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
+    out.prBaselineDate = parsed.prBaselineDate
+  } else if (parsed.prBaselineDate === null) {
+    // An explicit null is a baseline cleared on another tab or device, so
+    // unlike an absent key it overrides.
+    out.prBaselineDate = null
+  }
+  if (parsed.strengthBaselineMode !== undefined) out.strengthBaselineMode = sanitizeStrengthBaselineMode(parsed.strengthBaselineMode)
+  if (parsed.recentBaselineWeeks !== undefined) out.recentBaselineWeeks = sanitizeRecentBaselineWeeks(parsed.recentBaselineWeeks)
+  if (parsed.theme !== undefined) out.theme = sanitizeThemeId(parsed.theme)
+  if (parsed.colorMode !== undefined) out.colorMode = sanitizeColorMode(parsed.colorMode)
+  if (parsed.weightUnit !== undefined) out.weightUnit = sanitizeWeightUnit(parsed.weightUnit)
+  if (typeof parsed.restTimerEnabled === 'boolean') out.restTimerEnabled = parsed.restTimerEnabled
+  if (typeof parsed.restTimerAutoStart === 'boolean') out.restTimerAutoStart = parsed.restTimerAutoStart
+  if (parsed.appIcon !== undefined) out.appIcon = sanitizeAppIconId(parsed.appIcon)
+  if (parsed.intensityPresets) out.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
+  if (parsed.coachProfile) out.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
+  if (parsed.gyms) out.gyms = sanitizeGymList(parsed.gyms)
+  return out
+}
+
+/**
+ * The persisted local blob, through the one guarded read all three local
+ * hydrations share: the state factory, `bindUser` and the cross-tab reload. A
+ * corrupt or non-object payload reads as absent, and is logged.
+ */
+function loadLocalPayload(): Record<string, unknown> | null {
+  return loadStoreData<Record<string, unknown> | null>(
+    'preferences', STORAGE_KEY, () => null, isPlainObject,
+  )
+}
+
+/**
  * Parse the persisted local settings blob (plus the legacy standalone keys)
  * into a partial state overlay applied at store INSTANTIATION (LIFT-1177).
  *
@@ -191,34 +246,22 @@ type PreferencesState = ReturnType<typeof initialPreferencesState>
  * calls init()), and the pre-login auth screen. Mirrors bodyweight/workout,
  * which likewise hydrate in their state factory. Fails safe to defaults on
  * corrupt/unavailable storage — never throws into store construction.
+ *
+ * The blob itself goes through `parsePreferencesPayload` like every other read
+ * (LIFT-1495). The legacy-key fallback below is all that is unique to this path.
  */
 function loadLocalSettings(): Partial<PreferencesState> {
-  const out: Partial<PreferencesState> = {}
+  let out: Partial<PreferencesState> = {}
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed.features) out.features = sanitizeFeatureFlags(parsed.features)
-      if (parsed.weightGoal) out.weightGoal = _migrateWeightGoal(parsed.weightGoal)
-      if (parsed.experience) out.experience = sanitizeExperienceFlags(parsed.experience)
-      if (parsed.filters) out.filters = sanitizeFilterSettings(parsed.filters)
-      if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) out.prBaselineDate = parsed.prBaselineDate
-      if (parsed.strengthBaselineMode !== undefined) out.strengthBaselineMode = sanitizeStrengthBaselineMode(parsed.strengthBaselineMode)
-      if (parsed.recentBaselineWeeks !== undefined) out.recentBaselineWeeks = sanitizeRecentBaselineWeeks(parsed.recentBaselineWeeks)
-      if (parsed.theme !== undefined) out.theme = sanitizeThemeId(parsed.theme)
-      if (parsed.colorMode !== undefined) out.colorMode = sanitizeColorMode(parsed.colorMode)
-      if (parsed.weightUnit !== undefined) out.weightUnit = sanitizeWeightUnit(parsed.weightUnit)
-      if (typeof parsed.restTimerEnabled === 'boolean') out.restTimerEnabled = parsed.restTimerEnabled
-      if (typeof parsed.restTimerAutoStart === 'boolean') out.restTimerAutoStart = parsed.restTimerAutoStart
-      if (parsed.appIcon !== undefined) out.appIcon = sanitizeAppIconId(parsed.appIcon)
-      if (parsed.intensityPresets) out.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
-      if (parsed.coachProfile) out.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
-      if (parsed.gyms) out.gyms = sanitizeGymList(parsed.gyms)
-    }
+    const stored = loadLocalPayload()
+    if (stored) out = parsePreferencesPayload(stored)
     // Legacy standalone keys (pre-preferences-store) as a fallback when the blob
-    // lacks them — so a guest who never logs in still gets their persisted
-    // appearance settings. init() performs the same fallback with a write-back;
-    // here we only read (no migration side effects in the state factory).
+    // lacks them, so a guest who never logs in still gets their persisted
+    // appearance settings. They are also the FOUC mirror `_persistLocal` writes,
+    // which `initTheme` paints from before Pinia exists, so a blob that is
+    // unreadable falls back to them too rather than resetting to defaults.
+    // `bindUser` repeats this fallback for a signed-in user; here we only read
+    // (no migration side effects in the state factory).
     if (out.theme === undefined) {
       const legacy = localStorage.getItem('app-theme')
       if (legacy) out.theme = sanitizeThemeId(legacy)
@@ -233,7 +276,7 @@ function loadLocalSettings(): Partial<PreferencesState> {
     }
     if (out.restTimerEnabled === undefined && localStorage.getItem('rest-timer') === 'off') out.restTimerEnabled = false
     if (out.restTimerAutoStart === undefined && localStorage.getItem('rest-timer-autostart') === 'off') out.restTimerAutoStart = false
-  } catch { /* corrupt / unavailable storage → defaults */ }
+  } catch { /* unavailable storage → defaults */ }
   return out
 }
 
@@ -252,7 +295,7 @@ export const usePreferencesStore = defineStore('preferences', {
      * the `init()` copy silently dropped the field from localStorage on any
      * launch where the remote row was adopted, invisible until the next cold
      * start read it back as its default. This is the write-side twin of
-     * `_applyPreferences`, the single read-side reconciliation point (LIFT-1178).
+     * `parsePreferencesPayload`, the single read-side definition (LIFT-1495).
      */
     _buildPayload() {
       return {
@@ -365,43 +408,26 @@ export const usePreferencesStore = defineStore('preferences', {
 
     /**
      * Apply a parsed preferences payload (from localStorage or Supabase) onto
-     * state. Every field is independently conditional, so a partial payload
-     * only overrides the keys it actually carries. Extracted (LIFT-1178) as the
-     * single reconciliation point for all three read paths — the localStorage
-     * hydrate (`init`), the cross-tab reload (`_reloadFromStorage`), and the
-     * Supabase override (`init`) — so they can't drift field-by-field. That
-     * drift had already happened: `_reloadFromStorage` silently dropped
-     * `prBaselineDate`, so a baseline-date change made in one tab never reached
-     * the others.
+     * state, through `parsePreferencesPayload`, so a partial payload only
+     * overrides the keys it actually carries. Extracted (LIFT-1178) as the
+     * single reconciliation point for the three read paths that run on a live
+     * store — the localStorage hydrate (`bindUser`), the cross-tab reload
+     * (`_reloadFromStorage`), and the Supabase override (`_fetchFromSupabase`)
+     * — so they can't drift field-by-field. That drift had already happened:
+     * `_reloadFromStorage` silently dropped `prBaselineDate`, so a baseline-date
+     * change made in one tab never reached the others. The state factory reads
+     * through the same parser (LIFT-1495).
      */
     _applyPreferences(parsed: Record<string, unknown>) {
-      if (parsed.features) this.features = sanitizeFeatureFlags(parsed.features)
-      if (parsed.weightGoal) this.weightGoal = _migrateWeightGoal(parsed.weightGoal)
-      if (parsed.experience) this.experience = sanitizeExperienceFlags(parsed.experience)
-      if (parsed.filters) this.filters = sanitizeFilterSettings(parsed.filters)
-      if (typeof parsed.prBaselineDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.prBaselineDate)) {
-        this.prBaselineDate = parsed.prBaselineDate
-      } else if ('prBaselineDate' in parsed && parsed.prBaselineDate === null) {
-        this.prBaselineDate = null
-      }
-      if (parsed.strengthBaselineMode !== undefined) this.strengthBaselineMode = sanitizeStrengthBaselineMode(parsed.strengthBaselineMode)
-      if (parsed.recentBaselineWeeks !== undefined) this.recentBaselineWeeks = sanitizeRecentBaselineWeeks(parsed.recentBaselineWeeks)
-      if (parsed.theme !== undefined) this.theme = sanitizeThemeId(parsed.theme)
-      if (parsed.colorMode !== undefined) this.colorMode = sanitizeColorMode(parsed.colorMode)
-      if (parsed.weightUnit !== undefined) this.weightUnit = sanitizeWeightUnit(parsed.weightUnit)
-      if (typeof parsed.restTimerEnabled === 'boolean') this.restTimerEnabled = parsed.restTimerEnabled
-      if (typeof parsed.restTimerAutoStart === 'boolean') this.restTimerAutoStart = parsed.restTimerAutoStart
-      if (parsed.appIcon !== undefined) this.appIcon = sanitizeAppIconId(parsed.appIcon)
-      if (parsed.intensityPresets) this.intensityPresets = sanitizeIntensityPresets(parsed.intensityPresets)
-      if (parsed.coachProfile) this.coachProfile = sanitizeCoachProfile(parsed.coachProfile)
-      if (parsed.gyms) this.gyms = sanitizeGymList(parsed.gyms)
+      const overlay = parsePreferencesPayload(parsed)
+      this.$patch((state) => {
+        Object.assign(state, overlay)
+      })
     },
 
     /** Re-read state from localStorage (called by cross-tab sync listener). */
     _reloadFromStorage() {
-      const parsed = loadStoreData<Record<string, unknown> | null>(
-        'preferences', STORAGE_KEY, () => null, isPlainObject,
-      )
+      const parsed = loadLocalPayload()
       if (parsed) this._applyPreferences(parsed)
       // Another tab may have read the account's row (LIFT-1515). The payload
       // just reloaded is what that tab adopted, with every held edit replayed —
@@ -461,9 +487,7 @@ export const usePreferencesStore = defineStore('preferences', {
 
       // Load from localStorage first (instant), through the same guarded read
       // + single apply point as the cross-tab reload path.
-      const local = loadStoreData<Record<string, unknown> | null>(
-        'preferences', STORAGE_KEY, () => null, isPlainObject,
-      )
+      const local = loadLocalPayload()
       if (local) this._applyPreferences(local)
 
       // Bind to the account before anything below can persist (LIFT-1515). A

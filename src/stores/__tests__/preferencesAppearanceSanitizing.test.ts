@@ -18,9 +18,10 @@
  *    `initTheme` applies `THEME_MIGRATION` to the standalone `app-theme` key
  *    only, and `applyTheme` then wrote the un-migrated id straight back over it.
  *
- * The blob is read back at four independent boundaries, so each one is exercised
- * here: the state factory (guest / pre-init), `_applyPreferences` (cross-tab
- * reload), `init()`'s legacy standalone keys, and the Supabase row.
+ * The blob is read back at four boundaries, so each one is exercised here: the
+ * state factory (guest / pre-init), `_applyPreferences` (cross-tab reload),
+ * `init()`'s legacy standalone keys, and the Supabase row. Three of them share
+ * one parser since LIFT-1495, but each still wraps it its own way.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'

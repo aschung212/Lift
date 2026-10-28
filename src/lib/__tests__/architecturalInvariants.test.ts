@@ -753,13 +753,13 @@ describe('Invariant: usePRBaseline is the only reader of the raw PR-baseline anc
 //
 // The narrowing now lives on the state, which means the STORE is the only thing
 // standing between a parsed blob and a value the app cannot render. The blob is
-// read back at four independent boundaries (state factory, _applyPreferences,
-// init()'s legacy standalone keys, the Supabase row) plus the setters, and a
-// fifth is exactly what LIFT-1495 says will be added — so the rule is that every
-// write to one of these fields goes through its sanitizer. TypeScript alone
-// does not enforce it: `parsed` is `Record<string, unknown>`, so a future
-// `as ThemeId` would compile, and the two `Partial<PreferencesState>` overlay
-// paths take any assignable value.
+// read back through one parser (LIFT-1495) that serves the state factory, the
+// cross-tab reload and the Supabase row; the legacy standalone keys are read in
+// two more places, and the setters write too — so the rule is that every write
+// to one of these fields goes through its sanitizer. TypeScript alone does not
+// enforce it: `parsed` is `Record<string, unknown>`, so a future `as ThemeId`
+// would compile, and the `Partial<PreferencesState>` overlay takes any
+// assignable value.
 
 describe('Invariant: union-typed preferences are assigned through a sanitizer (LIFT-1494)', () => {
   const SOURCE = readFileSync(join(STORES_DIR, 'preferences.ts'), 'utf-8')
@@ -786,17 +786,18 @@ describe('Invariant: union-typed preferences are assigned through a sanitizer (L
   })
 
   it.each(UNION_FIELDS)('$field is only ever assigned a sanitize…() result', ({ field }) => {
-    // Every assignment to the field on either an overlay object (`out.x = …`,
-    // loadLocalSettings) or the store instance (`this.x = …`), EXCEPT the state
-    // factory's own literal default — which is the sanitizer's fallback and so
-    // legal by construction.
+    // Every assignment to the field on either an overlay object (`out.x = …`:
+    // the shared blob parser, and the state factory's legacy-key fallback) or
+    // the store instance (`this.x = …`), EXCEPT the state factory's own literal
+    // default — which is the sanitizer's fallback and so legal by construction.
     // `(?<![=!<>])=(?!=)` keeps the comparisons out: `this.theme === DEFAULT_…`
-    // guards the legacy-key fallback in init() and is not a write.
+    // guards the legacy-key fallback in bindUser() and is not a write.
     const assignments = [...BODY.matchAll(new RegExp(`(?:this|out)\\.${field}\\s*(?<![=!<>])=(?!=)\\s*([^\\n]+)`, 'g'))]
 
-    // Non-vacuity: the field is written on at least the three read boundaries
-    // (factory overlay, _applyPreferences, init's legacy key) plus its setter.
-    expect(assignments.length).toBeGreaterThanOrEqual(3)
+    // Non-vacuity: the field is written by at least the shared blob parser,
+    // which every hydration path reads through (LIFT-1495), and its setter.
+    // `appIcon` has no legacy key, so two is its exact count.
+    expect(assignments.length).toBeGreaterThanOrEqual(2)
 
     const raw = assignments
       .map(m => m[1].trim())
