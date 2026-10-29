@@ -22,10 +22,7 @@ import { sanitizeExerciseEquipment } from './coachAnalytics'
 import { sanitizeExerciseGyms } from './gyms'
 import { sanitizeExerciseNotes } from './inputLimits'
 import { logWarn } from './logger'
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
+import { isPlainObject } from './storage'
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)

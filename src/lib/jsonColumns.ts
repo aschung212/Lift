@@ -10,6 +10,7 @@ import type { Json } from './database.types'
 import { resolveThemeId } from './themes'
 import type { StreakWeekEntry, SetXPEntry, ThemeUnlock } from '../stores/progression'
 import { logWarn } from './logger'
+import { isPlainObject } from './storage'
 
 // ── Write helpers (domain → Json) ─────────────────────────────────
 
@@ -251,8 +252,4 @@ function dedupeUnlocks(unlocks: ThemeUnlock[]): ThemeUnlock[] | null {
     if (!existing || unlock.unlockedAt < existing.unlockedAt) byId.set(unlock.id, unlock)
   }
   return byId.size > 0 ? Array.from(byId.values()) : null
-}
-
-function isPlainObject(v: unknown): v is { [key: string]: Json | undefined } {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
 }

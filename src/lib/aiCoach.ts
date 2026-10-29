@@ -22,6 +22,8 @@
  * forwarded — only the training data itself. See docs/ai-coach.md.
  */
 
+import { isPlainObject } from './storage'
+
 // ---- Tunable constants (defaults; the function may override cost ceiling via env) ----
 
 /** Bump only when the set of fields that leave the device expands or the provider changes. */
@@ -282,10 +284,6 @@ export type ValidationResult =
   | { ok: true; payload: CoachPayload }
   | { ok: false; status: 422 | 413; error: string }
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
 function asFiniteNumber(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
@@ -312,7 +310,7 @@ function optionalClampString(v: unknown, max: number): string | null | undefined
  * the primary signal; everything else is supporting context.
  */
 export function validateCoachPayload(raw: unknown): ValidationResult {
-  if (!isObject(raw)) return { ok: false, status: 422, error: 'payload_not_object' }
+  if (!isPlainObject(raw)) return { ok: false, status: 422, error: 'payload_not_object' }
 
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_TOP_LEVEL_KEYS.has(key)) {
@@ -327,7 +325,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
   if (raw.sets.length > MAX_SETS) return { ok: false, status: 413, error: 'too_many_sets' }
   const sets: SetRecord[] = []
   for (const item of raw.sets) {
-    if (!isObject(item)) return { ok: false, status: 422, error: 'set_invalid' }
+    if (!isPlainObject(item)) return { ok: false, status: 422, error: 'set_invalid' }
     const exerciseName = clampString(item.exerciseName, EXERCISE_NAME_MAX)
     const weight = asFiniteNumber(item.weight)
     const reps = asFiniteNumber(item.reps)
@@ -357,7 +355,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
     if (!Array.isArray(raw.personalRecords)) return { ok: false, status: 422, error: 'prs_not_array' }
     if (raw.personalRecords.length > MAX_PR_ITEMS) return { ok: false, status: 413, error: 'too_many_prs' }
     for (const item of raw.personalRecords) {
-      if (!isObject(item)) return { ok: false, status: 422, error: 'pr_invalid' }
+      if (!isPlainObject(item)) return { ok: false, status: 422, error: 'pr_invalid' }
       const exerciseName = clampString(item.exerciseName, EXERCISE_NAME_MAX)
       const bestE1rm = asFiniteNumber(item.bestE1rm)
       if (exerciseName === null || bestE1rm === null) return { ok: false, status: 422, error: 'pr_invalid' }
@@ -380,7 +378,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
     if (!Array.isArray(raw.volume)) return { ok: false, status: 422, error: 'volume_not_array' }
     if (raw.volume.length > MAX_VOLUME_ITEMS) return { ok: false, status: 422, error: 'volume_too_many' }
     for (const item of raw.volume) {
-      if (!isObject(item)) return { ok: false, status: 422, error: 'volume_item_invalid' }
+      if (!isPlainObject(item)) return { ok: false, status: 422, error: 'volume_item_invalid' }
       const name = clampString(item.tagName, EXERCISE_NAME_MAX)
       const weeklyVolume = asFiniteNumber(item.weeklyVolume)
       if (name === null || weeklyVolume === null) return { ok: false, status: 422, error: 'volume_item_invalid' }
@@ -391,7 +389,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
   let consistency: ConsistencyBlock | null = null
   if (raw.consistency !== undefined && raw.consistency !== null) {
     const c = raw.consistency
-    if (!isObject(c)) return { ok: false, status: 422, error: 'consistency_invalid' }
+    if (!isPlainObject(c)) return { ok: false, status: 422, error: 'consistency_invalid' }
     const workoutDaysThisWeek = asFiniteNumber(c.workoutDaysThisWeek)
     const weeklyTarget = asFiniteNumber(c.weeklyTarget)
     const streakWeeks = asFiniteNumber(c.streakWeeks)
@@ -406,7 +404,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
     if (!Array.isArray(raw.focus)) return { ok: false, status: 422, error: 'focus_not_array' }
     if (raw.focus.length > MAX_FOCUS_ITEMS) return { ok: false, status: 422, error: 'focus_too_many' }
     for (const item of raw.focus) {
-      if (!isObject(item)) return { ok: false, status: 422, error: 'focus_item_invalid' }
+      if (!isPlainObject(item)) return { ok: false, status: 422, error: 'focus_item_invalid' }
       const name = clampString(item.exerciseName, EXERCISE_NAME_MAX)
       const reason = clampString(item.reason, REASON_MAX)
       const suggestedWeight = asFiniteNumber(item.suggestedWeight)
@@ -422,7 +420,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
   let bodyweight: BodyweightBlock | null = null
   if (raw.bodyweight !== undefined && raw.bodyweight !== null) {
     const b = raw.bodyweight
-    if (!isObject(b)) return { ok: false, status: 422, error: 'bodyweight_invalid' }
+    if (!isPlainObject(b)) return { ok: false, status: 422, error: 'bodyweight_invalid' }
     const deltaLbs = asFiniteNumber(b.deltaLbs)
     const trendDirection =
       b.trendDirection === 'up' || b.trendDirection === 'down' || b.trendDirection === 'flat'
@@ -440,7 +438,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
     if (!Array.isArray(raw.sessions)) return { ok: false, status: 422, error: 'sessions_not_array' }
     if (raw.sessions.length > MAX_SESSION_ITEMS) return { ok: false, status: 413, error: 'too_many_sessions' }
     for (const item of raw.sessions) {
-      if (!isObject(item)) return { ok: false, status: 422, error: 'session_invalid' }
+      if (!isPlainObject(item)) return { ok: false, status: 422, error: 'session_invalid' }
       const date = clampString(item.date, DATE_MAX)
       const setCount = asFiniteNumber(item.setCount)
       if (date === null || setCount === null || !Array.isArray(item.tags)) {
@@ -461,7 +459,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
   let derived: DerivedAnalytics | null = null
   if (raw.derived !== undefined && raw.derived !== null) {
     const d = raw.derived
-    if (!isObject(d)) return { ok: false, status: 422, error: 'derived_invalid' }
+    if (!isPlainObject(d)) return { ok: false, status: 422, error: 'derived_invalid' }
 
     const perExerciseProgression: ProgressionItem[] = []
     if (d.perExerciseProgression !== undefined) {
@@ -469,7 +467,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
         return { ok: false, status: 422, error: 'derived_progression_invalid' }
       }
       for (const item of d.perExerciseProgression) {
-        if (!isObject(item)) return { ok: false, status: 422, error: 'derived_progression_invalid' }
+        if (!isPlainObject(item)) return { ok: false, status: 422, error: 'derived_progression_invalid' }
         const exerciseName = clampString(item.exerciseName, EXERCISE_NAME_MAX)
         const sessions = asFiniteNumber(item.sessions)
         const spanDays = asFiniteNumber(item.spanDays)
@@ -508,7 +506,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
         return { ok: false, status: 422, error: 'derived_reliable1rm_invalid' }
       }
       for (const item of d.reliable1RM) {
-        if (!isObject(item)) return { ok: false, status: 422, error: 'derived_reliable1rm_invalid' }
+        if (!isPlainObject(item)) return { ok: false, status: 422, error: 'derived_reliable1rm_invalid' }
         const exerciseName = clampString(item.exerciseName, EXERCISE_NAME_MAX)
         const e1rm = asFiniteNumber(item.e1rm)
         const weight = asFiniteNumber(item.weight)
@@ -529,7 +527,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
         return { ok: false, status: 422, error: 'derived_ramp_invalid' }
       }
       for (const item of d.warmupRamp) {
-        if (!isObject(item)) return { ok: false, status: 422, error: 'derived_ramp_invalid' }
+        if (!isPlainObject(item)) return { ok: false, status: 422, error: 'derived_ramp_invalid' }
         const exerciseName = clampString(item.exerciseName, EXERCISE_NAME_MAX)
         const sessions = asFiniteNumber(item.sessions)
         const medianRampSets = asFiniteNumber(item.medianRampSets)
@@ -544,7 +542,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
     let sessionShape: SessionShape | null = null
     if (d.sessionShape !== undefined && d.sessionShape !== null) {
       const s = d.sessionShape
-      if (!isObject(s)) return { ok: false, status: 422, error: 'derived_shape_invalid' }
+      if (!isPlainObject(s)) return { ok: false, status: 422, error: 'derived_shape_invalid' }
       const setsPerSessionMedian = asFiniteNumber(s.setsPerSessionMedian)
       const exercisesPerSessionMedian = asFiniteNumber(s.exercisesPerSessionMedian)
       const setsPerExerciseMedian = asFiniteNumber(s.setsPerExerciseMedian)
@@ -560,7 +558,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
         return { ok: false, status: 422, error: 'derived_volume_invalid' }
       }
       for (const item of d.weeklyVolumeByMuscle) {
-        if (!isObject(item)) return { ok: false, status: 422, error: 'derived_volume_invalid' }
+        if (!isPlainObject(item)) return { ok: false, status: 422, error: 'derived_volume_invalid' }
         const tagName = clampString(item.tagName, EXERCISE_NAME_MAX)
         const avgWeeklySets = asFiniteNumber(item.avgWeeklySets)
         if (tagName === null || avgWeeklySets === null) {
@@ -576,7 +574,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
         return { ok: false, status: 422, error: 'derived_frequency_invalid' }
       }
       for (const item of d.weeklyFrequencyByMuscle) {
-        if (!isObject(item)) return { ok: false, status: 422, error: 'derived_frequency_invalid' }
+        if (!isPlainObject(item)) return { ok: false, status: 422, error: 'derived_frequency_invalid' }
         const tagName = clampString(item.tagName, EXERCISE_NAME_MAX)
         const avgDaysPerWeek = asFiniteNumber(item.avgDaysPerWeek)
         const medianGapDays = item.medianGapDays === null ? null : asFiniteNumber(item.medianGapDays)
@@ -591,7 +589,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
     let intensityDistribution: IntensityDistribution | null = null
     if (d.intensityDistribution !== undefined && d.intensityDistribution !== null) {
       const s = d.intensityDistribution
-      if (!isObject(s)) return { ok: false, status: 422, error: 'derived_intensity_invalid' }
+      if (!isPlainObject(s)) return { ok: false, status: 422, error: 'derived_intensity_invalid' }
       const below60 = asFiniteNumber(s.below60)
       const from60to85 = asFiniteNumber(s.from60to85)
       const above85 = asFiniteNumber(s.above85)
@@ -604,7 +602,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
     let repRangeDistribution: RepRangeDistribution | null = null
     if (d.repRangeDistribution !== undefined && d.repRangeDistribution !== null) {
       const s = d.repRangeDistribution
-      if (!isObject(s)) return { ok: false, status: 422, error: 'derived_reprange_invalid' }
+      if (!isPlainObject(s)) return { ok: false, status: 422, error: 'derived_reprange_invalid' }
       const low = asFiniteNumber(s.low)
       const mid = asFiniteNumber(s.mid)
       const high = asFiniteNumber(s.high)
@@ -620,7 +618,7 @@ export function validateCoachPayload(raw: unknown): ValidationResult {
         return { ok: false, status: 422, error: 'derived_order_invalid' }
       }
       for (const item of d.exerciseOrder) {
-        if (!isObject(item)) return { ok: false, status: 422, error: 'derived_order_invalid' }
+        if (!isPlainObject(item)) return { ok: false, status: 422, error: 'derived_order_invalid' }
         const exerciseName = clampString(item.exerciseName, EXERCISE_NAME_MAX)
         const medianPosition = asFiniteNumber(item.medianPosition)
         const sessions = asFiniteNumber(item.sessions)
@@ -756,7 +754,7 @@ function metricEchoesPayload(value: string, known: Set<number>): boolean {
  * - blanks a metric whose number doesn't appear in the source payload (metric-echo)
  */
 export function sanitizeCoachOutput(raw: unknown, payload: CoachPayload): CoachReview {
-  if (!isObject(raw)) throw new Error('output_not_object')
+  if (!isPlainObject(raw)) throw new Error('output_not_object')
   const headline = clampString(raw.headline, HEADLINE_MAX)
   const focusNext = clampString(raw.focusNext, SECTION_BODY_MAX)
   if (headline === null || focusNext === null) throw new Error('output_missing_fields')
@@ -766,7 +764,7 @@ export function sanitizeCoachOutput(raw: unknown, payload: CoachPayload): CoachR
   const sections: CoachSection[] = []
 
   for (const item of raw.sections) {
-    if (!isObject(item)) continue
+    if (!isPlainObject(item)) continue
     const type = item.type
     if (type !== 'progress' && type !== 'volume' && type !== 'consistency' && type !== 'focus') continue
     const title = clampString(item.title, HEADLINE_MAX)
@@ -775,7 +773,7 @@ export function sanitizeCoachOutput(raw: unknown, payload: CoachPayload): CoachR
     if (containsUrl(body) || containsUrl(title)) continue
 
     const section: CoachSection = { type, title, body }
-    if (isObject(item.metric)) {
+    if (isPlainObject(item.metric)) {
       const label = clampString(item.metric.label, HEADLINE_MAX)
       const value = clampString(item.metric.value, HEADLINE_MAX)
       if (label !== null && value !== null && !containsUrl(value) && metricEchoesPayload(value, known)) {

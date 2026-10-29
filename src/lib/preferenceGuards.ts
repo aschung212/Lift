@@ -36,10 +36,7 @@
  * The store re-exports the three types so its public surface is unchanged.
  */
 import { logWarn } from './logger'
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
+import { isPlainObject } from './storage'
 
 // ── Feature flags (tab visibility) ────────────────────────────────
 

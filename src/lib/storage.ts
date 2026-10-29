@@ -19,7 +19,14 @@ export function loadJSON<T>(key: string, fallback: T, validate?: (parsed: unknow
   }
 }
 
-/** `validate` helper for plain-object payloads (rejects arrays and null). */
-export function isPlainObject(value: unknown): boolean {
+/**
+ * True for a non-null, non-array object (the shape of a parsed JSON object), and
+ * narrows to `Record<string, unknown>` so a caller reads fields without a cast.
+ * Also a `loadJSON` `validate` helper. The one definition of this check
+ * (LIFT-1599): import it rather than re-declaring it. `aiCoach.ts` imports it,
+ * which puts this module in the `api/coach.ts` function too, so keep it free of
+ * import-time browser access.
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
