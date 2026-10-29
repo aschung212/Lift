@@ -1,4 +1,13 @@
 /**
+ * Guarded localStorage reads, and the app's one plain-object guard.
+ *
+ * `api/coach.ts` runs on the server and imports `aiCoach.ts`, which imports
+ * `isPlainObject` from here. So this module must load in Node: nothing in it,
+ * or in anything it imports, may touch a browser API at load time.
+ * `localStorage` is read only when `loadJSON` is called.
+ */
+
+/**
  * Read and parse a JSON value from localStorage.
  *
  * Returns `fallback` when the key is absent, the value is unparseable, or
@@ -19,7 +28,13 @@ export function loadJSON<T>(key: string, fallback: T, validate?: (parsed: unknow
   }
 }
 
-/** `validate` helper for plain-object payloads (rejects arrays and null). */
-export function isPlainObject(value: unknown): boolean {
+/**
+ * True for a non-null, non-array object (the shape of a parsed JSON object), and
+ * narrows to `Record<string, unknown>` so a caller reads fields without a cast.
+ * It does not check the prototype (a `Date` passes), which is moot for parsed
+ * JSON. Also a `loadJSON` `validate` helper. The one definition of this check
+ * (LIFT-1599): import it rather than re-declaring it.
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
