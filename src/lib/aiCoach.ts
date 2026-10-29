@@ -7,6 +7,8 @@
  * same code runs in:
  *   - the Vercel function `api/coach.ts` (server-side enforcement), and
  *   - unit tests (`src/lib/__tests__/aiCoach.test.ts`).
+ * Its imports run in the function too, so they must be pure the same way;
+ * `./storage` is.
  *
  * DATA RICHNESS (decided 2026-06-27): the payload sends the FULL per-set training
  * log within a bounded window (the client windows to ~16 weeks), plus lifetime
