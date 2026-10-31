@@ -1,4 +1,4 @@
-import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import { usePreferencesStore } from '../stores/preferences'
 import { useNotification, useBackgroundTracker, REST_TIMER_NOTIFICATION_ACTIONS } from './useNotification'
 import { useRestTimer } from './useRestTimer'
@@ -21,26 +21,26 @@ export function formatDuration(s: number): string {
 }
 
 export interface RestTimerController {
-  // Reactive state
-  timerActive: Ref<boolean>
-  timerPaused: Ref<boolean>
-  timerSeconds: Ref<number>
-  timerStopping: Ref<boolean>
-  timerAnnouncement: Ref<string>
+  // Reactive state — read-only to every consumer (LIFT-1451). The controller
+  // is its only writer; a consumer changes it through the methods below.
+  timerActive: Readonly<Ref<boolean>>
+  timerPaused: Readonly<Ref<boolean>>
+  timerSeconds: Readonly<Ref<number>>
+  timerStopping: Readonly<Ref<boolean>>
+  timerAnnouncement: Readonly<Ref<string>>
   timerDisplay: ComputedRef<string>
   timerProgress: ComputedRef<number>
   timerUrgent: ComputedRef<boolean>
-  restDuration: Ref<number>
-  editingPresets: Ref<boolean>
-  editTab: Ref<'rest' | 'alerts'>
-  newPresetValue: Ref<number | null>
-  newWarningValue: Ref<number | null>
-  restPresets: Ref<number[]>
-  disabledPresets: Ref<number[]>
-  visiblePresets: ComputedRef<number[]>
-  warningOptions: Ref<number[]>
-  warningTimes: Ref<number[]>
-  presetInputEl: Ref<HTMLInputElement | null>
+  restDuration: Readonly<Ref<number>>
+  editingPresets: Readonly<Ref<boolean>>
+  editTab: Readonly<Ref<'rest' | 'alerts'>>
+  newPresetValue: Readonly<Ref<number | null>>
+  newWarningValue: Readonly<Ref<number | null>>
+  restPresets: Readonly<Ref<readonly number[]>>
+  disabledPresets: Readonly<Ref<readonly number[]>>
+  visiblePresets: ComputedRef<readonly number[]>
+  warningOptions: Readonly<Ref<readonly number[]>>
+  warningTimes: Readonly<Ref<readonly number[]>>
 
   // Methods
   startRestTimer: () => void
@@ -48,6 +48,11 @@ export interface RestTimerController {
   restartTimer: () => void
   togglePause: () => void
   setRestDuration: (val: number) => void
+  openPresetEditor: () => void
+  closePresetEditor: () => void
+  selectEditTab: (tab: 'rest' | 'alerts') => void
+  setNewPresetValue: (val: number | null) => void
+  setNewWarningValue: (val: number | null) => void
   addPreset: () => void
   removePreset: (val: number) => void
   togglePresetEnabled: (val: number) => void
@@ -65,8 +70,8 @@ export interface RestTimerController {
  * flow, and composes two single-responsibility helpers (LIFT-879):
  *   - useRestTimerPresets — duration presets + their persistence
  *   - useRestTimerAlerts  — warning-time state + Web Audio beeps
- * The public RestTimerController surface is unchanged; preset/alert fields are
- * re-exposed by delegation so RestTimerContent.vue consumes one controller.
+ * Preset/alert fields are re-exposed by delegation so RestTimerContent.vue
+ * consumes one controller.
  *
  * @param onComplete - Called when the timer reaches zero (e.g. to skip to next set)
  * @param showUndo - The undo toast function from the parent
@@ -97,8 +102,30 @@ export function useRestTimerController(
   let lastWarnedAt = -1
 
   // ── Edit-mode UI state ────────────────────────────────────────
+  // Focusing the "Add seconds" field as the editor opens is RestTimerContent's
+  // job (LIFT-1451): it owns that element.
   const editingPresets = ref(false)
   const editTab = ref<'rest' | 'alerts'>('rest')
+
+  function openPresetEditor() {
+    editingPresets.value = true
+  }
+
+  function closePresetEditor() {
+    editingPresets.value = false
+  }
+
+  function selectEditTab(tab: 'rest' | 'alerts') {
+    editTab.value = tab
+  }
+
+  function setNewPresetValue(val: number | null) {
+    presets.newPresetValue.value = val
+  }
+
+  function setNewWarningValue(val: number | null) {
+    alerts.newWarningValue.value = val
+  }
 
   // ── Computed ──────────────────────────────────────────────────
   const timerDisplay = computed(() => {
@@ -115,11 +142,6 @@ export function useRestTimerController(
   const timerUrgent = computed(() =>
     alerts.maxWarning.value > 0 && timerSeconds.value <= alerts.maxWarning.value && timerSeconds.value > 0
   )
-
-  // ── Watchers ──────────────────────────────────────────────────
-  watch(editingPresets, (v) => {
-    if (v) setTimeout(() => presets.presetInputEl.value?.focus(), 0)
-  })
 
   // ── Timer interval ────────────────────────────────────────────
   function startInterval() {
@@ -286,12 +308,16 @@ export function useRestTimerController(
     visiblePresets: presets.visiblePresets,
     warningOptions: alerts.warningOptions,
     warningTimes: alerts.warningTimes,
-    presetInputEl: presets.presetInputEl,
     startRestTimer,
     stopTimer,
     restartTimer,
     togglePause,
     setRestDuration,
+    openPresetEditor,
+    closePresetEditor,
+    selectEditTab,
+    setNewPresetValue,
+    setNewWarningValue,
     addPreset: presets.addPreset,
     removePreset,
     togglePresetEnabled: presets.togglePresetEnabled,

@@ -1,4 +1,3 @@
-<!-- eslint-disable vue/no-mutating-props -- ctrl is a controller object; its refs are designed to be mutated -->
 <template>
   <div v-if="ctrl.timerUrgent.value && !ctrl.timerPaused.value && !ctrl.editingPresets.value" class="wtTimerFlash"></div>
 
@@ -10,8 +9,8 @@
       <svg v-else-if="ctrl.timerPaused.value" class="wtTimerPauseIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
     </button>
     <div class="wtTimerEditTabs">
-      <button :class="['wtTimerEditTab', { wtTimerEditTabActive: ctrl.editTab.value === 'rest' }]" @click="ctrl.editTab.value = 'rest'">Rest Times</button>
-      <button :class="['wtTimerEditTab', { wtTimerEditTabActive: ctrl.editTab.value === 'alerts' }]" @click="ctrl.editTab.value = 'alerts'">Alerts</button>
+      <button :class="['wtTimerEditTab', { wtTimerEditTabActive: ctrl.editTab.value === 'rest' }]" @click="ctrl.selectEditTab('rest')">Rest Times</button>
+      <button :class="['wtTimerEditTab', { wtTimerEditTabActive: ctrl.editTab.value === 'alerts' }]" @click="ctrl.selectEditTab('alerts')">Alerts</button>
     </div>
     <div class="wtTimerEditListScroll">
       <template v-if="ctrl.editTab.value === 'rest'">
@@ -52,17 +51,17 @@
       </template>
     </div>
     <div v-if="ctrl.editTab.value === 'rest'" class="wtTimerEditRow" style="margin-top: var(--space-2)">
-      <input class="wtTimerEditInput" type="number" inputmode="numeric" enterkeyhint="done" autocomplete="off" v-model.number="ctrl.newPresetValue.value" placeholder="Add seconds" min="5" max="600" @keyup.enter="ctrl.addPreset()" :ref="(el: any) => { ctrl.presetInputEl.value = el }" aria-label="Timer preset seconds" />
+      <input class="wtTimerEditInput" type="number" inputmode="numeric" enterkeyhint="done" autocomplete="off" v-model.number="newPresetValue" placeholder="Add seconds" min="5" max="600" @keyup.enter="ctrl.addPreset()" ref="presetInputEl" aria-label="Timer preset seconds" />
       <button class="wtTimerEditAddBtn" :disabled="!ctrl.newPresetValue.value" @click="ctrl.addPreset()">Add</button>
     </div>
     <div v-else class="wtTimerEditRow" style="margin-top: var(--space-2)">
-      <input class="wtTimerEditInput" type="number" inputmode="numeric" enterkeyhint="done" autocomplete="off" v-model.number="ctrl.newWarningValue.value" placeholder="Add seconds" min="1" max="120" @keyup.enter="ctrl.addWarningOption()" aria-label="Warning alert seconds" />
+      <input class="wtTimerEditInput" type="number" inputmode="numeric" enterkeyhint="done" autocomplete="off" v-model.number="newWarningValue" placeholder="Add seconds" min="1" max="120" @keyup.enter="ctrl.addWarningOption()" aria-label="Warning alert seconds" />
       <button class="wtTimerEditAddBtn" :disabled="!ctrl.newWarningValue.value" @click="ctrl.addWarningOption()">Add</button>
     </div>
     <button class="wtTimerEditResetBtn" @click="ctrl.resetAllDefaults()">Reset to defaults</button>
     <button class="wtTimerEditResetBtn wtTimerDisableBtn" @click="onDisable">Disable Rest Timer</button>
     <div class="repMaxActions">
-      <button class="repMaxBtn repMaxBtnCalc" @click="ctrl.editingPresets.value = false">Done</button>
+      <button class="repMaxBtn repMaxBtnCalc" @click="ctrl.closePresetEditor()">Done</button>
     </div>
   </template>
 
@@ -116,7 +115,7 @@
       <button class="repMaxBtn repMaxBtnClose" @click="emit('close')">Done</button>
     </div>
     <div class="wtTimerFooter">
-      <button class="wtTimerFooterLink" @click="ctrl.editingPresets.value = true" aria-label="Timer settings">
+      <button class="wtTimerFooterLink" @click="ctrl.openPresetEditor()" aria-label="Timer settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
       <button class="wtTimerFooterLink wtTimerStopLink" @click="onDismiss">Stop</button>
@@ -125,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import type { RestTimerController } from '../composables/useRestTimerController'
 
 const props = defineProps<{
@@ -138,6 +138,25 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'restore'): void
 }>()
+
+// The controller's state is read-only here (LIFT-1451). These proxies keep
+// v-model's number casting on the two "Add seconds" fields while each edit
+// goes through the controller instead of being assigned to its refs.
+const newPresetValue = computed({
+  get: () => props.ctrl.newPresetValue.value,
+  set: (val) => props.ctrl.setNewPresetValue(val),
+})
+const newWarningValue = computed({
+  get: () => props.ctrl.newWarningValue.value,
+  set: (val) => props.ctrl.setNewWarningValue(val),
+})
+
+// Focus the "Add seconds" field as the editor opens. The element belongs to
+// this component, so the controller never holds it.
+const presetInputEl = ref<HTMLInputElement | null>(null)
+watch(() => props.ctrl.editingPresets.value, (open) => {
+  if (open) setTimeout(() => presetInputEl.value?.focus(), 0)
+})
 
 function onSkipToNext() {
   props.ctrl.stopTimer()

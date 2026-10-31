@@ -11,7 +11,7 @@
  * (no Pinia / Web Audio / notification plumbing required).
  */
 import { describe, it, expect, vi } from 'vitest'
-import { ref, computed } from 'vue'
+import { ref, computed, isRef, readonly } from 'vue'
 import { mount, VueWrapper } from '@vue/test-utils'
 import type { RestTimerController } from '../../composables/useRestTimerController'
 import { formatDuration } from '../../composables/useRestTimerController'
@@ -30,11 +30,18 @@ type MockController = RestTimerController & {
   removeWarningOption: ReturnType<typeof vi.fn>
   toggleWarningTime: ReturnType<typeof vi.fn>
   disableRestTimer: ReturnType<typeof vi.fn>
+  openPresetEditor: ReturnType<typeof vi.fn>
+  closePresetEditor: ReturnType<typeof vi.fn>
+  selectEditTab: ReturnType<typeof vi.fn>
+  setNewPresetValue: ReturnType<typeof vi.fn>
+  setNewWarningValue: ReturnType<typeof vi.fn>
 }
 
 /** A controller shaped exactly like the real one but backed by plain refs and
  *  spy methods. `visiblePresets` mirrors the real derivation (presets minus
- *  disabled) so the running-mode preset row reflects the enabled set. */
+ *  disabled) so the running-mode preset row reflects the enabled set. The
+ *  editor-state methods write the same ref their real twins do (LIFT-1451),
+ *  so tapping the gear still opens the editor. */
 function makeController(overrides: Partial<Record<string, unknown>> = {}): MockController {
   const restPresets = ref<number[]>([60, 90, 120, 180])
   const disabledPresets = ref<number[]>([])
@@ -60,7 +67,6 @@ function makeController(overrides: Partial<Record<string, unknown>> = {}): MockC
     visiblePresets: computed(() => restPresets.value.filter((s) => !disabledPresets.value.includes(s))),
     warningOptions,
     warningTimes,
-    presetInputEl: ref<HTMLInputElement | null>(null),
     startRestTimer: vi.fn(),
     stopTimer: vi.fn(),
     restartTimer: vi.fn(),
@@ -77,7 +83,24 @@ function makeController(overrides: Partial<Record<string, unknown>> = {}): MockC
     disableRestTimer: vi.fn(),
     ...overrides,
   }
-  return ctrl as unknown as MockController
+  return {
+    openPresetEditor: vi.fn(() => { ctrl.editingPresets.value = true }),
+    closePresetEditor: vi.fn(() => { ctrl.editingPresets.value = false }),
+    selectEditTab: vi.fn((tab: 'rest' | 'alerts') => { ctrl.editTab.value = tab }),
+    setNewPresetValue: vi.fn((val: number | null) => { ctrl.newPresetValue.value = val }),
+    setNewWarningValue: vi.fn((val: number | null) => { ctrl.newWarningValue.value = val }),
+    ...ctrl,
+  } as unknown as MockController
+}
+
+/** The controller as its type hands it to the component: every ref behind a
+ *  readonly view, every method intact. Vue refuses an assignment through a
+ *  view and warns, so a template that writes its prop cannot pass for one
+ *  that calls the controller. */
+function withReadonlyState(ctrl: MockController): MockController {
+  return Object.fromEntries(
+    Object.entries(ctrl).map(([key, value]) => [key, isRef(value) ? readonly(value) : value]),
+  ) as unknown as MockController
 }
 
 function mountContent(
@@ -321,5 +344,57 @@ describe('RestTimerContent — preset editor mode', () => {
     onRestore()
     expect(wrapper.emitted('dismiss')).toHaveLength(1)
     expect(wrapper.emitted('restore')).toHaveLength(1)
+  })
+})
+
+describe('RestTimerContent — controller ownership (LIFT-1451)', () => {
+  // The component used to assign the controller's refs from its own template,
+  // behind a file-wide `eslint-disable vue/no-mutating-props`. The suites above
+  // could not tell the difference: their mock refs are writable, so a direct
+  // write and a method call pass the same assertions. Here the state is
+  // read-only, as RestTimerController declares it, and only a method moves it.
+  it('edits the timer settings through controller methods alone', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const ctrl = makeController()
+      const wrapper = mountContent(withReadonlyState(ctrl))
+
+      await wrapper.find('[aria-label="Timer settings"]').trigger('click')
+      expect(ctrl.openPresetEditor).toHaveBeenCalledOnce()
+      expect(wrapper.find('.wtTimerEditTabs').exists()).toBe(true)
+
+      // v-model still casts to a number on its way through the controller.
+      await wrapper.find('.wtTimerEditInput').setValue('45')
+      expect(ctrl.setNewPresetValue).toHaveBeenLastCalledWith(45)
+      expect(wrapper.find('.wtTimerEditAddBtn').attributes('disabled')).toBeUndefined()
+
+      await wrapper.findAll('.wtTimerEditTab')[1].trigger('click')
+      expect(ctrl.selectEditTab).toHaveBeenLastCalledWith('alerts')
+      await wrapper.find('.wtTimerEditInput').setValue('20')
+      expect(ctrl.setNewWarningValue).toHaveBeenLastCalledWith(20)
+
+      await wrapper.find('.repMaxBtnCalc').trigger('click')
+      expect(ctrl.closePresetEditor).toHaveBeenCalledOnce()
+      expect(wrapper.find('.wtTimerEditTabs').exists()).toBe(false)
+
+      const refusedWrites = warn.mock.calls.filter(([msg]) => String(msg).includes('target is readonly'))
+      expect(refusedWrites).toEqual([])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('focuses the "Add seconds" field as the editor opens', async () => {
+    const wrapper = mount(RestTimerContent, {
+      props: { exerciseName: '', ctrl: makeController() },
+      attachTo: document.body,
+    })
+    try {
+      await wrapper.find('[aria-label="Timer settings"]').trigger('click')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(document.activeElement).toBe(wrapper.find('[aria-label="Timer preset seconds"]').element)
+    } finally {
+      wrapper.unmount()
+    }
   })
 })
