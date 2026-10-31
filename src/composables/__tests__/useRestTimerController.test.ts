@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { mount } from '@vue/test-utils'
 import { getLocalStorageMock } from '../../__tests__/helpers'
+import RestTimerContent from '../../components/RestTimerContent.vue'
 
 // ── useNotification is mocked so we can observe the notify / background-tracker
 //    side effects without touching the real Notification / ServiceWorker APIs.
@@ -554,6 +556,37 @@ describe('useRestTimerController', () => {
       } finally {
         vi.useRealTimers()
       }
+    })
+  })
+
+  describe('the preset editor, driven through RestTimerContent (LIFT-1451)', () => {
+    // RestTimerContent.test.ts pins the component against a hand-built mock;
+    // this is the same editor on the real controller, which is the only place
+    // the component's method calls and the methods themselves meet.
+    it('opens, edits and closes through the controller methods', async () => {
+      const { ctrl } = makeController()
+      const wrapper = mount(RestTimerContent, { props: { exerciseName: '', ctrl } })
+
+      await wrapper.find('[aria-label="Timer settings"]').trigger('click')
+      expect(ctrl.editingPresets.value).toBe(true)
+
+      const presetInput = wrapper.find('[aria-label="Timer preset seconds"]')
+      await presetInput.setValue('45')
+      expect(ctrl.newPresetValue.value).toBe(45)
+      await wrapper.find('.wtTimerEditAddBtn').trigger('click')
+      expect(ctrl.restPresets.value).toEqual([30, 45, 60, 90, 120, 180, 300])
+      expect((presetInput.element as HTMLInputElement).value).toBe('')
+
+      await wrapper.findAll('.wtTimerEditTab')[1].trigger('click')
+      expect(ctrl.editTab.value).toBe('alerts')
+      await wrapper.find('[aria-label="Warning alert seconds"]').setValue('20')
+      expect(ctrl.newWarningValue.value).toBe(20)
+      await wrapper.find('.wtTimerEditAddBtn').trigger('click')
+      expect(ctrl.warningOptions.value).toEqual([3, 5, 10, 15, 20, 30])
+
+      await wrapper.find('.repMaxBtnCalc').trigger('click')
+      expect(ctrl.editingPresets.value).toBe(false)
+      wrapper.unmount()
     })
   })
 

@@ -19,7 +19,6 @@ export interface RestTimerPresets {
   disabledPresets: Ref<number[]>
   visiblePresets: ComputedRef<number[]>
   newPresetValue: Ref<number | null>
-  presetInputEl: Ref<HTMLInputElement | null>
   addPreset: () => void
   /** Removes a preset. Returns the fallback preset to switch to when the
    *  removed value was the active duration, otherwise null. */
@@ -38,7 +37,6 @@ export function useRestTimerPresets(): RestTimerPresets {
   const restPresets = ref<number[]>(loadPresets())
   const disabledPresets = ref<number[]>(loadDisabledPresets())
   const newPresetValue = ref<number | null>(null)
-  const presetInputEl = ref<HTMLInputElement | null>(null)
 
   const visiblePresets = computed(() =>
     restPresets.value.filter(s => !disabledPresets.value.includes(s))
@@ -89,7 +87,6 @@ export function useRestTimerPresets(): RestTimerPresets {
     disabledPresets,
     visiblePresets,
     newPresetValue,
-    presetInputEl,
     addPreset,
     removePreset,
     togglePresetEnabled,

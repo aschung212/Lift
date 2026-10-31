@@ -301,7 +301,7 @@
   <!-- Log / Edit Set Modal -->
   <Teleport to="body">
     <div v-if="showModal" class="repMaxOverlay logSetOverlay" @click.self="onOverlayClick" @keydown.escape="closeModal">
-      <div ref="logSheetEl" class="repMaxModal logSetSheet" :class="{ logSetSheetForm: !timerCtrl.timerActive.value }" :style="logSwipe.dragStyle()" @click.self="timerCtrl.editingPresets.value = false" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+      <div ref="logSheetEl" class="repMaxModal logSetSheet" :class="{ logSetSheetForm: !timerCtrl.timerActive.value }" :style="logSwipe.dragStyle()" @click.self="timerCtrl.closePresetEditor()" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
         <div ref="logSheetHandleEl" class="logSetSheetHandle" aria-hidden="true"></div>
 
         <!-- Rest timer view -->
@@ -2721,7 +2721,7 @@ function closeModal() {
     lastLogDate.value = date.value
   }
   showModal.value = false
-  timerCtrl.editingPresets.value = false
+  timerCtrl.closePresetEditor()
   setLogAnnouncement.value = ''
   editingSet.value = null
   selectedExerciseId.value = ''
@@ -2759,7 +2759,7 @@ function skipToNextSet() {
 
 function onOverlayClick() {
   if (timerCtrl.editingPresets.value) {
-    timerCtrl.editingPresets.value = false
+    timerCtrl.closePresetEditor()
   } else {
     closeModal()
   }
