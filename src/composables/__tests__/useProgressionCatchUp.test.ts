@@ -3,14 +3,15 @@
  * run inline in onMounted, and the copy SettingsSheet carried for the moment
  * progression is switched on.
  *
- * Neither copy had a test. App.vue is impractical to mount, and SettingsSheet's
- * suite mocks the progression store with progression off, which is why the
- * streak-revert class (#1269) had to be pinned at the store instead. This drives
- * the composable against the REAL progression, workout, bodyweight and
- * preferences stores (Supabase is null under test, so nothing leaves the
- * device) and asserts what the lifter ends up with: the XP the migration
- * credits, the theme the lock falls back to, the streak the catch-up computes,
- * and the toast it schedules.
+ * Neither copy was tested where it ran. App.vue is impractical to mount, and
+ * SettingsSheet's suite replaces the progression store with a mock, so the XP
+ * the migration credits and the streak the catch-up computes were never
+ * observed; the streak-revert fix (#1269) is pinned at the store instead
+ * (progressionStreakMerge.test.ts). This drives the composable against the REAL
+ * progression, workout, bodyweight and preferences stores (Supabase is null
+ * under test, so nothing leaves the device) and asserts what the lifter ends up
+ * with: the XP the migration credits, the theme the lock falls back to, the
+ * streak the catch-up computes, and the toast it schedules.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -145,7 +146,7 @@ describe('useProgressionCatchUp (LIFT-1450)', () => {
     it('stays quiet when the weeks it evaluates leave the streak inside its tier', () => {
       logSetsOn(['2026-03-23', '2026-03-24', '2026-03-25'])
       const progression = enableProgression()
-      progression.streakHistory = [{ weekStart: '2026-03-16', streakCount: 4, weeklyTarget: 3, combinedMultiplier: 1.375 }]
+      progression.streakHistory = [{ weekStart: '2026-03-16', streakCount: 4, weeklyTarget: 3 }]
       progression.streakWeeks = 4
 
       useProgressionCatchUp().catchUpOnLaunch()
@@ -175,7 +176,7 @@ describe('useProgressionCatchUp (LIFT-1450)', () => {
       progression.weeklyTarget = 5
       progression.pendingTargetChange = 3
       progression.streakHistory = ['2026-03-02', '2026-03-09', '2026-03-16', '2026-03-23']
-        .map(weekStart => ({ weekStart, streakCount: 0, weeklyTarget: 5, combinedMultiplier: 1 }))
+        .map(weekStart => ({ weekStart, streakCount: 0, weeklyTarget: 5 }))
       progression.streakWeeks = 0
 
       useProgressionCatchUp().catchUpOnLaunch()
@@ -205,6 +206,8 @@ describe('useProgressionCatchUp (LIFT-1450)', () => {
     it('runs only the theme lock while progression is off', () => {
       logSetsOn(FOUR_MET_WEEKS)
       const progression = useProgressionStore()
+      const prefs = usePreferencesStore()
+      prefs.setTheme('amethyst')
 
       useProgressionCatchUp().catchUpOnLaunch()
 
@@ -212,8 +215,7 @@ describe('useProgressionCatchUp (LIFT-1450)', () => {
       expect(progression.totalXP).toBe(0)
       expect(progression.streakHistory).toEqual([])
       expect(localStorage.getItem(CORRECTION_KEY)).toBeNull()
-      // The default theme is not one a lifter without progression has unlocked.
-      expect(usePreferencesStore().theme).toBe('pearl')
+      expect(prefs.theme).toBe('pearl')
     })
   })
 

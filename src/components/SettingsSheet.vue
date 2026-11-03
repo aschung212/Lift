@@ -905,8 +905,9 @@ const {
   setRecentBaselineWeeks,
 } = usePRBaseline()
 const progressionStore = useProgressionStore()
-// Turning progression on, or settling a starter, owes the same catch-up a
-// launch runs: XP for the sets logged while it was off, and the missed weeks.
+// Turning progression on, or settling a starter, owes the catch-up a launch
+// runs: XP for the sets logged while it was off, and the weeks that ended
+// unevaluated. Turning it off only re-checks the theme lock.
 const { runMigrationIfNeeded, enforceThemeLock, catchUpStreaks } = useProgressionCatchUp()
 // A local-only guest (LIFT-1083) has no account, so every account-shaped string
 // in this sheet has to fork (LIFT-1310). `user` is TRUTHY for a guest — it holds

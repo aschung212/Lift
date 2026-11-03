@@ -2,9 +2,9 @@
  * useProgressionCatchUp — brings progression up to date with the training
  * history already on the device (LIFT-1450).
  *
- * Progression only accrues while it is on and the app is open, so it falls
- * behind the history two ways: weeks end while the app is closed, and sets are
- * logged while progression is off. That gives two moments that owe a catch-up:
+ * Progression falls behind the training history in two ways: a week that
+ * ends is not evaluated until something asks, and sets logged while
+ * progression is off earn nothing. Two moments therefore owe a catch-up:
  * every launch (App.vue), and the moment the lifter turns progression on or
  * settles their starter theme (SettingsSheet). Each carried its own
  * hand-written copy of the steps, down to a literal table of the duration
