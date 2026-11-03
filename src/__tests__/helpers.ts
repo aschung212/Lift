@@ -21,6 +21,29 @@ export function getLocalStorageMock() {
   } & Record<string, ReturnType<typeof vi.fn>>
 }
 
+// ── Timezone pinning ─────────────────────────────────────────────
+
+/**
+ * Run `fn` with `process.env.TZ` set to `tz` (Node honours a runtime
+ * reassignment), restoring the previous zone afterwards. CI runs in UTC, where
+ * the app's two set-date conventions agree, so a day-key or day-label test that
+ * does not pin a zone on each side of UTC cannot fail (#746).
+ *
+ * An unset zone is restored by deleting the key: assigning `undefined` to
+ * `process.env` stores the STRING "undefined", which ICU reads as an unknown
+ * zone and runs as UTC for the rest of the worker.
+ */
+export function withTZ(tz: string, fn: () => void) {
+  const prev = process.env.TZ
+  process.env.TZ = tz
+  try {
+    fn()
+  } finally {
+    if (prev === undefined) delete process.env.TZ
+    else process.env.TZ = prev
+  }
+}
+
 // ── Mock factories ───────────────────────────────────────────────
 
 /** Default useAnalytics mock — all methods are vi.fn() no-ops. */

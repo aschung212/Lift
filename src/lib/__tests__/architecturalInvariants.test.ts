@@ -2891,6 +2891,26 @@ describe('Invariant: the log sheet words an ADDED load through the formatter (LI
     ).toEqual([])
   })
 
+  // The session-plan card was carved out of this template (LIFT-1449). Its one
+  // load is the repeated session's top set, a read-back but an ADDED weight all
+  // the same, so the rule follows the markup into the card. The card is named
+  // rather than found by its use of the wrapper: a rewrite that printed the top
+  // set bare would drop that use, and with it the card from any derived scan.
+  it('words the session-plan card\'s top set through planTopSetLoad', () => {
+    const card = getSourceFiles()
+      .find(f => f.path === join('components', 'SessionPlanCard.vue'))
+    expect(card, 'SessionPlanCard.vue renders the session plan').toBeDefined()
+    const cardRendered = renderedTemplate(card!.content)
+    expect(cardRendered).toContain('planTopSetLoad(item)')
+
+    const violations = unworded(cardRendered)
+    expect(violations, violations.length === 0 ? '' :
+      `SessionPlanCard.vue renders ${violations.join(', ')} directly. The top ` +
+      'set is an ADDED weight, so on a bodyweightLoaded exercise it prints ' +
+      '"top 0 lbs × 12" for a plain pull-up. Word it through planTopSetLoad.',
+    ).toEqual([])
+  })
+
   /**
    * The source list is still a list, and LIFT-1566 is what a list costs. What
    * the six strings it missed had in common was a SHAPE: a number printed
