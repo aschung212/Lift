@@ -3747,7 +3747,7 @@ describe('Invariant: every weekly-target write goes through the range guard (LIF
     expect(found.length).toBeGreaterThanOrEqual(10)
     const files = [...new Set(found.map(a => a.path))].sort()
     expect(files).toContain(join('stores', 'progression.ts'))
-    expect(files).toContain('App.vue')
+    expect(files).toContain(join('composables', 'useProgressionCatchUp.ts'))
     // Both fields are in scope: the staged change is what `evaluateWeek` reads
     // as the anti-gaming target and then promotes into `weeklyTarget`.
     expect([...new Set(found.map(a => a.field))].sort())

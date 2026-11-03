@@ -332,9 +332,8 @@ import { coachReviewEligibility } from './lib/coachDigest'
 import { COACH_MODE } from './lib/coachExport'
 import { useTheme, connectProgressionStore, connectThemeStore } from './composables/useTheme'
 import { useProgressionStore } from './stores/progression'
-import { xpToast, unlockCelebration, dismissUnlockCelebration, showXPToast } from './composables/xpCeremonyUI'
-import { useXPCeremony } from './composables/useXPCeremony'
-import { isMigrated, markMigrated, computeRetroactiveXP } from './lib/xpMigration'
+import { xpToast, unlockCelebration, dismissUnlockCelebration } from './composables/xpCeremonyUI'
+import { useProgressionCatchUp } from './composables/useProgressionCatchUp'
 import { requestPersistentStorage, ensureLocalStorage } from './lib/durableStorage'
 import { guardedReload } from './lib/reloadGuard'
 import { useAuth } from './composables/useAuth'
@@ -364,7 +363,7 @@ import { onCrossTabMessage, type StoreKey } from './lib/crossTabSync'
 import { GUEST_BACKUP_PROMPT_DISMISSED_KEY } from './composables/useAuth'
 import { decideWelcomeBack, readWelcomeBackState, markWelcomedBack, type WelcomeBackDecision } from './lib/welcomeBack'
 
-const { currentTheme, THEME_PREVIEWS, resolvedMode, isThemeUnlocked } = useTheme()
+const { THEME_PREVIEWS, resolvedMode } = useTheme()
 // The preferences store is the single source of truth for theme/colorMode
 // (LIFT-1177); drive DOM application from it so cross-tab and Supabase updates
 // are always reflected. Idempotent — the connect is guarded against re-runs.
@@ -372,7 +371,6 @@ connectThemeStore()
 
 const progressionStore = useProgressionStore()
 connectProgressionStore(() => progressionStore)
-const { celebrateUnlocks } = useXPCeremony()
 
 const { user, loading, startupPath, isGuest, init: initAuth, signOut, exitGuestMode, passwordRecoveryPending, clearPasswordRecovery } = useAuth()
 const { logEvent, tabSwitch, flushEngagement } = useAnalytics()
@@ -384,6 +382,10 @@ const { toast: undoToast, performUndo } = useUndoToast()
 // hooks in scattered handlers was redundant noise.
 const workoutStore = useWorkoutStore()
 const bodyweightStore = useBodyweightStore()
+
+// Retroactive XP, the theme lock and the missed-week streak catch-up, run once
+// the app mounts (LIFT-1450).
+const { catchUpOnLaunch } = useProgressionCatchUp()
 
 // ── PWA install prompt ──────────────────────────────────────────
 const installWorkoutDays = computed(() => workoutStore.workoutDates.length)
@@ -892,68 +894,9 @@ onMounted(async () => {
   // so the banner never flashes ahead of a reload, and after stores hydrate.
   evaluateWelcomeBack()
 
-  // Startup migration and streak catch-up
-  if (progressionStore.progressionEnabled && !isMigrated()) {
-    const result = computeRetroactiveXP(workoutStore.exercises, bodyweightStore.entries)
-    if (result.totalXP > 0) {
-      progressionStore.totalXP = result.totalXP
-      progressionStore.xpPerSet = result.xpPerSet
-      progressionStore.bodyweightXPDates = result.bodyweightXPDates
-      const newUnlocks = progressionStore.checkUnlocks()
-      progressionStore._persist()
-      if (newUnlocks.length > 0) {
-        celebrateUnlocks(newUnlocks)
-      }
-    }
-    markMigrated()
-  }
-  if (!isThemeUnlocked(currentTheme.value)) {
-    currentTheme.value = 'pearl'
-  }
-
-  if (progressionStore.progressionEnabled) {
-    // One-time streak target correction
-    const MIGRATION_KEY = 'streak-target-correction-v1'
-    if (!localStorage.getItem(MIGRATION_KEY)) {
-      localStorage.setItem(MIGRATION_KEY, new Date().toISOString())
-      if (progressionStore.pendingTargetChange !== null) {
-        progressionStore.weeklyTarget = progressionStore.pendingTargetChange
-        progressionStore.pendingTargetChange = null
-        const setIdToDate: Record<string, string> = {}
-        for (const exercise of workoutStore.exercises) {
-          for (const set of exercise.sets) {
-            setIdToDate[set.id] = set.date.slice(0, 10)
-          }
-        }
-        progressionStore.reEvaluateStreaks(workoutStore.workoutDates, new Date(), setIdToDate)
-      }
-    }
-    // Evaluate missed weeks
-    const setIdToDate: Record<string, string> = {}
-    for (const exercise of workoutStore.exercises) {
-      for (const set of exercise.sets) {
-        setIdToDate[set.id] = set.date.slice(0, 10)
-      }
-    }
-    const streakBefore = progressionStore.streakWeeks
-    progressionStore.evaluatePendingWeeks(workoutStore.workoutDates, new Date(), setIdToDate)
-    const streakAfter = progressionStore.streakWeeks
-    if (progressionStore.showProgression && streakAfter > streakBefore) {
-      const MILESTONES = [12, 8, 4, 2] as const
-      for (const m of MILESTONES) {
-        if (streakAfter >= m && streakBefore < m) {
-          const mult = streakAfter >= 12 ? '1.75' : streakAfter >= 8 ? '1.5' : streakAfter >= 4 ? '1.25' : '1.1'
-          setTimeout(() => showXPToast(
-            `${streakAfter}-week streak! Duration bonus: ${mult}×`,
-            progressionStore.progressPercent,
-            progressionStore.totalXP,
-            progressionStore.nextUnlockThreshold
-          ), 1500)
-          break
-        }
-      }
-    }
-  }
+  // Against LOCAL state, without waiting for the store reads initAuth started;
+  // useProgressionCatchUp documents what that ordering asks of them (#1269).
+  catchUpOnLaunch()
 
   // Cross-tab sync: reload stores when another tab persists data
   const storeMap: Record<StoreKey, { _reloadFromStorage(): void }> = {

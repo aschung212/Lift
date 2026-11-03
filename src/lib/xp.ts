@@ -300,6 +300,26 @@ export function applyStreakMultiplier(
   return Math.round(baseXP * durationMult * targetMult)
 }
 
+/** The duration multiplier `weeks` consecutive met weeks earn. */
+export function streakDurationMultiplier(weeks: number): number {
+  return lookupTier(XP_CONFIG.streakDurationTiers, weeks)
+}
+
+/**
+ * The duration multiplier a streak moving from `before` to `after` weeks has
+ * just stepped up to, or null when it stayed inside one tier or went down.
+ *
+ * This is the "N-week streak! Duration bonus: X×" toast's decision (LIFT-1450).
+ * It is read off the tier table rather than a copy of it: App.vue and
+ * SettingsSheet each carried a literal '1.75'/'1.5'/'1.25'/'1.1' ladder, so a
+ * retuned multiplier would have been announced at its old value.
+ */
+export function durationTierReached(before: number, after: number): number | null {
+  if (!(after > before)) return null
+  const reached = streakDurationMultiplier(after)
+  return reached > streakDurationMultiplier(before) ? reached : null
+}
+
 // --- Helpers ---
 
 /**
