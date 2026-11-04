@@ -850,8 +850,8 @@ import { showXPToast } from '../composables/xpCeremonyUI'
 import { APP_ICONS, getAppIcon, isAppIconUnlocked, resolveAppIconId, type AppIconId } from '../lib/appIcons'
 import { setNativeAppIcon, isAppIconPluginAvailable } from '../lib/nativeAppIcon'
 import { computeThemeStats, type ThemeStats } from '../lib/themeStats'
-import { useXPCeremony } from '../composables/useXPCeremony'
-import { isMigrated, markMigrated, computeRetroactiveXP } from '../lib/xpMigration'
+import { useProgressionCatchUp } from '../composables/useProgressionCatchUp'
+import { markMigrated } from '../lib/xpMigration'
 import { useAuth } from '../composables/useAuth'
 import { useAnalytics } from '../composables/useAnalytics'
 import { hashUserId, buildJsonExport, buildCsvExport, downloadBlob } from '../lib/dataExport'
@@ -905,7 +905,10 @@ const {
   setRecentBaselineWeeks,
 } = usePRBaseline()
 const progressionStore = useProgressionStore()
-const { celebrateUnlocks } = useXPCeremony()
+// Turning progression on, or settling a starter, owes the catch-up a launch
+// runs: XP for the sets logged while it was off, and the weeks that ended
+// unevaluated. Turning it off only re-checks the theme lock.
+const { runMigrationIfNeeded, enforceThemeLock, catchUpStreaks } = useProgressionCatchUp()
 // A local-only guest (LIFT-1083) has no account, so every account-shaped string
 // in this sheet has to fork (LIFT-1310). `user` is TRUTHY for a guest — it holds
 // the `guest-local` sentinel — so `isGuest` is the only thing that distinguishes
@@ -1504,63 +1507,6 @@ function confirmDisableProgression() {
   progressionStore._persist()
   progressionStore._syncToSupabase()
   enforceThemeLock()
-}
-
-function enforceThemeLock() {
-  if (!isThemeUnlocked(currentTheme.value)) {
-    currentTheme.value = 'pearl'
-  }
-}
-
-function runMigrationIfNeeded() {
-  if (progressionStore.progressionEnabled && !isMigrated()) {
-    const result = computeRetroactiveXP(workoutStore.exercises, bodyweightStore.entries)
-    if (result.totalXP > 0) {
-      progressionStore.totalXP = result.totalXP
-      progressionStore.xpPerSet = result.xpPerSet
-      progressionStore.bodyweightXPDates = result.bodyweightXPDates
-      const newUnlocks = progressionStore.checkUnlocks()
-      progressionStore._persist()
-      if (newUnlocks.length > 0) {
-        celebrateUnlocks(newUnlocks)
-      }
-    }
-    markMigrated()
-  }
-}
-
-/** Build setId→date map from workout store for streak evaluation. */
-function buildSetIdToDate(): Record<string, string> {
-  const map: Record<string, string> = {}
-  for (const exercise of workoutStore.exercises) {
-    for (const set of exercise.sets) {
-      map[set.id] = set.date.slice(0, 10)
-    }
-  }
-  return map
-}
-
-function catchUpStreaks() {
-  const streakBefore = progressionStore.streakWeeks
-  const setIdToDate = buildSetIdToDate()
-  progressionStore.evaluatePendingWeeks(workoutStore.workoutDates, new Date(), setIdToDate)
-  const streakAfter = progressionStore.streakWeeks
-
-  if (progressionStore.showProgression && streakAfter > streakBefore) {
-    const MILESTONES = [12, 8, 4, 2] as const
-    for (const m of MILESTONES) {
-      if (streakAfter >= m && streakBefore < m) {
-        const mult = streakAfter >= 12 ? '1.75' : streakAfter >= 8 ? '1.5' : streakAfter >= 4 ? '1.25' : '1.1'
-        setTimeout(() => showXPToast(
-          `${streakAfter}-week streak! Duration bonus: ${mult}×`,
-          progressionStore.progressPercent,
-          progressionStore.totalXP,
-          progressionStore.nextUnlockThreshold
-        ), 1500)
-        break
-      }
-    }
-  }
 }
 
 // ── Starter picker (exposed for reset progress) ────────────────

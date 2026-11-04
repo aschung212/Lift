@@ -10,6 +10,8 @@ import {
   DEFAULT_WEEKLY_TARGET,
   sanitizeWeeklyTarget,
   sanitizePendingTargetChange,
+  streakDurationMultiplier,
+  durationTierReached,
   type StreakHistoryEntry,
 } from '../xp'
 import type { WorkoutSet } from '../../stores/workout'
@@ -471,6 +473,67 @@ describe('applyStreakMultiplier', () => {
     } finally {
       process.env.TZ = prev
     }
+  })
+})
+
+// --- durationTierReached (LIFT-1450) ---
+
+describe('durationTierReached', () => {
+  /**
+   * The streak toast's decision as App.vue and SettingsSheet both hardcoded it
+   * before LIFT-1450, kept as the reference the derivation has to reproduce.
+   */
+  function retiredLadder(before: number, after: number): string | null {
+    if (!(after > before)) return null
+    for (const m of [12, 8, 4, 2]) {
+      if (after >= m && before < m) {
+        return after >= 12 ? '1.75' : after >= 8 ? '1.5' : after >= 4 ? '1.25' : '1.1'
+      }
+    }
+    return null
+  }
+
+  it('steps up at every bonus tier, to that tier\'s multiplier', () => {
+    const bonusTiers = XP_CONFIG.streakDurationTiers.filter(([, multiplier]) => multiplier > 1)
+    expect(bonusTiers.length).toBeGreaterThan(0)
+    for (const [weeks, multiplier] of bonusTiers) {
+      expect(durationTierReached(weeks - 1, weeks)).toBe(multiplier)
+    }
+  })
+
+  it('is null inside a tier, on a drop, and when nothing moved', () => {
+    expect(durationTierReached(0, 1)).toBeNull()
+    expect(durationTierReached(2, 3)).toBeNull()
+    expect(durationTierReached(12, 20)).toBeNull()
+    expect(durationTierReached(9, 4)).toBeNull()
+    expect(durationTierReached(4, 4)).toBeNull()
+  })
+
+  it('reports the tier the streak lands in when one catch-up crosses several', () => {
+    expect(durationTierReached(0, 26)).toBe(streakDurationMultiplier(26))
+    expect(durationTierReached(3, 9)).toBe(streakDurationMultiplier(9))
+  })
+
+  it('says what the retired ladder said, for every move up to 30 weeks', () => {
+    // The ladder hardcoded this table. If the table was retuned this line
+    // fails, and the equivalence below stops meaning anything.
+    expect(XP_CONFIG.streakDurationTiers).toEqual([[12, 1.75], [8, 1.5], [4, 1.25], [2, 1.1], [1, 1.0]])
+    for (let before = 0; before <= 30; before++) {
+      for (let after = 0; after <= 30; after++) {
+        const reached = durationTierReached(before, after)
+        expect(reached === null ? null : `${reached}`, `${before} → ${after} weeks`)
+          .toBe(retiredLadder(before, after))
+      }
+    }
+  })
+
+  it('follows a retuned tier table, which the literal ladder could not', () => {
+    withConfig({ streakDurationTiers: [[6, 2], [3, 1.4], [1, 1.0]] }, () => {
+      expect(durationTierReached(2, 3)).toBe(1.4)
+      expect(durationTierReached(5, 6)).toBe(2)
+      // A boundary in today's table, and not in this one.
+      expect(durationTierReached(3, 4)).toBeNull()
+    })
   })
 })
 
