@@ -7,6 +7,7 @@ import { backupToIDB, restoreFromIDB } from './durableStorage'
 import { isAuthError, ensureFreshSession } from './sessionHealth'
 import { isRetryableSyncFailure } from './syncStatus'
 import { publishSyncQueueStats } from './syncActivity'
+import { isPlainObject } from './storage'
 
 type SyncOperation = () => PromiseLike<unknown>
 
@@ -193,7 +194,7 @@ const UPSERT_CONFLICT_TARGET: Record<string, string> = {
 
 /** True when `obj` is a non-empty plain map whose keys are all in `allowed`. */
 function isAllowedColumnMap(obj: unknown, allowed: ReadonlySet<string>): boolean {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false
+  if (!isPlainObject(obj)) return false
   const keys = Object.keys(obj)
   // Empty maps are rejected: an empty upsert row is meaningless, and an empty
   // update `match` would target EVERY row in the table — exactly the kind of

@@ -43,12 +43,12 @@ const SECTION_TYPES: readonly CoachSectionType[] = ['progress', 'volume', 'consi
 
 function isCoachSection(value: unknown): value is CoachSection {
   if (!isPlainObject(value)) return false
-  const s = value as Record<string, unknown>
+  const s = value
   if (typeof s.title !== 'string' || typeof s.body !== 'string') return false
   if (!SECTION_TYPES.includes(s.type as CoachSectionType)) return false
   if (s.metric !== undefined) {
     if (!isPlainObject(s.metric)) return false
-    const m = s.metric as Record<string, unknown>
+    const m = s.metric
     if (typeof m.label !== 'string' || typeof m.value !== 'string') return false
   }
   return true
@@ -56,7 +56,7 @@ function isCoachSection(value: unknown): value is CoachSection {
 
 function isCoachReview(value: unknown): value is CoachReview {
   if (!isPlainObject(value)) return false
-  const r = value as Record<string, unknown>
+  const r = value
   if (typeof r.headline !== 'string' || typeof r.focusNext !== 'string') return false
   if (!Array.isArray(r.sections)) return false
   return r.sections.every(isCoachSection)
@@ -64,7 +64,7 @@ function isCoachReview(value: unknown): value is CoachReview {
 
 function isStoredInsight(value: unknown): value is StoredCoachInsight {
   if (!isPlainObject(value)) return false
-  const e = value as Record<string, unknown>
+  const e = value
   return (
     typeof e.id === 'string' &&
     e.id.length > 0 &&

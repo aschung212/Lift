@@ -10,6 +10,7 @@ import type { Json } from './database.types'
 import { resolveThemeId } from './themes'
 import type { StreakWeekEntry, SetXPEntry, ThemeUnlock } from '../stores/progression'
 import { logWarn } from './logger'
+import { isPlainObject } from './storage'
 
 // ── Write helpers (domain → Json) ─────────────────────────────────
 
@@ -107,7 +108,7 @@ export function parseStreakHistory(value: Json | undefined, fallback: StreakWeek
       logWarn('Invalid streak history entry, skipping', { item })
       continue
     }
-    const obj = item as { [key: string]: Json | undefined }
+    const obj: { [key: string]: Json | undefined } = item
     if (typeof obj.weekStart !== 'string') {
       logWarn('Invalid streak history entry (missing weekStart), skipping', { item })
       continue
@@ -143,14 +144,14 @@ export function parseUnlockedThemes(value: Json | undefined): ThemeUnlock[] | nu
   if (value.length === 0) return null
 
   // Check if already new format (objects with id field)
-  if (isPlainObject(value[0]) && 'id' in (value[0] as Record<string, unknown>)) {
+  if (isPlainObject(value[0]) && 'id' in value[0]) {
     const result: ThemeUnlock[] = []
     for (const item of value) {
       if (!isPlainObject(item)) {
         logWarn('Invalid theme unlock entry, skipping', { item })
         continue
       }
-      const obj = item as { [key: string]: Json | undefined }
+      const obj: { [key: string]: Json | undefined } = item
       if (typeof obj.id !== 'string' || typeof obj.unlockedAt !== 'string') {
         logWarn('Invalid theme unlock entry, skipping', { item })
         continue
@@ -194,14 +195,14 @@ export function parseXpPerSet(
   fallback: Record<string, SetXPEntry | number>,
 ): Record<string, SetXPEntry | number> {
   if (!isPlainObject(value)) return fallback
-  const obj = value as { [key: string]: Json | undefined }
+  const obj: { [key: string]: Json | undefined } = value
   const result: Record<string, SetXPEntry | number> = {}
   for (const [key, entry] of Object.entries(obj)) {
     if (entry === undefined) continue
     if (typeof entry === 'number') {
       result[key] = entry
     } else if (isPlainObject(entry)) {
-      const e = entry as { [key: string]: Json | undefined }
+      const e: { [key: string]: Json | undefined } = entry
       // xp is the only required field; other fields may be absent in legacy data
       if (typeof e.xp !== 'number') {
         logWarn('Invalid xpPerSet entry (missing xp), skipping', { key, entry })
@@ -251,8 +252,4 @@ function dedupeUnlocks(unlocks: ThemeUnlock[]): ThemeUnlock[] | null {
     if (!existing || unlock.unlockedAt < existing.unlockedAt) byId.set(unlock.id, unlock)
   }
   return byId.size > 0 ? Array.from(byId.values()) : null
-}
-
-function isPlainObject(v: unknown): v is { [key: string]: Json | undefined } {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
 }

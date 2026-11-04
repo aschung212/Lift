@@ -20,6 +20,8 @@
  * imports it: this module must keep working wherever that one is mocked.
  */
 
+import { isPlainObject } from './storage'
+
 /**
  * The localStorage key auth-js keeps the session under, for a project URL.
  * Null when the URL does not parse.
@@ -52,10 +54,6 @@ export interface StoredSession {
   expiresAt: number
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 /**
  * The session stored under `key`, if it is one auth-js would load and could
  * refresh: an access token, a refresh token and an expiry (the fields auth-js
@@ -72,11 +70,11 @@ export function readStoredSession(key: string | null = AUTH_STORAGE_KEY): Stored
   } catch {
     return null
   }
-  if (!isRecord(parsed)) return null
+  if (!isPlainObject(parsed)) return null
   const { access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt, user } = parsed
   if (typeof accessToken !== 'string' || typeof refreshToken !== 'string' || refreshToken === '') return null
   if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) return null
-  if (!isRecord(user) || typeof user.id !== 'string' || user.id === '') return null
+  if (!isPlainObject(user) || typeof user.id !== 'string' || user.id === '') return null
   return {
     user: { id: user.id, email: typeof user.email === 'string' ? user.email : '' },
     expiresAt: expiresAt * 1000,

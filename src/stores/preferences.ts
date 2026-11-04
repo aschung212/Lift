@@ -90,12 +90,12 @@ export function _migrateWeightGoal(raw: unknown): WeightGoalConfig {
   }
 
   // Must be a non-null object for v2/v3 shapes
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (!isPlainObject(raw)) {
     logError(new Error(`_migrateWeightGoal: unexpected type ${raw === null ? 'null' : typeof raw}`), { source: 'preferences.migrate' })
     return { ...DEFAULT_WEIGHT_GOAL }
   }
 
-  const obj = raw as Record<string, unknown>
+  const obj = raw
 
   // Validate direction if present
   const direction: WeightGoalDirection =

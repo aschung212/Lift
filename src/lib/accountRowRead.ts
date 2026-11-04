@@ -40,6 +40,8 @@
  * anything, and the sign-out wipe forgets it before resetting the payload.
  */
 
+import { isPlainObject } from './storage'
+
 /** The stores that write their account's row whole. */
 export type WholeRowStore = 'preferences' | 'progression'
 
@@ -63,8 +65,8 @@ function readRecord(store: WholeRowStore): AccountRowRecord | null {
     const raw = localStorage.getItem(storageKey(store))
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-    const rec = parsed as Record<string, unknown>
+    if (!isPlainObject(parsed)) return null
+    const rec = parsed
     if (typeof rec.userId !== 'string' || typeof rec.read !== 'boolean') return null
     return {
       userId: rec.userId,
@@ -156,10 +158,6 @@ export function forgetAccountRow(store: WholeRowStore): void {
   } catch { /* unavailable storage has nothing to forget */ }
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
 function sameValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
@@ -175,7 +173,7 @@ function sameValue(a: unknown, b: unknown): boolean {
  * side is an edit at that key.
  */
 export function heldEditPaths(base: unknown, local: unknown, prefix: string[] = []): string[][] {
-  if (isPlainRecord(base) && isPlainRecord(local)) {
+  if (isPlainObject(base) && isPlainObject(local)) {
     const keys = new Set([...Object.keys(base), ...Object.keys(local)])
     const paths: string[][] = []
     for (const key of keys) paths.push(...heldEditPaths(base[key], local[key], [...prefix, key]))
@@ -202,13 +200,13 @@ export function heldEditsSince(heldBase: string | null, local: Record<string, un
   } catch {
     return []
   }
-  return isPlainRecord(base) ? heldEditPaths(base, local) : []
+  return isPlainObject(base) ? heldEditPaths(base, local) : []
 }
 
 function valueAt(tree: unknown, path: string[]): unknown {
   let node = tree
   for (const key of path) {
-    if (!isPlainRecord(node)) return undefined
+    if (!isPlainObject(node)) return undefined
     node = node[key]
   }
   return node
@@ -246,7 +244,7 @@ export function replayHeldEdits(
         break
       }
       const next = node[key]
-      if (!isPlainRecord(next)) {
+      if (!isPlainObject(next)) {
         const localSubtree = valueAt(local, path.slice(0, depth + 1))
         if (localSubtree === undefined) delete node[key]
         else node[key] = cloneJson(localSubtree)

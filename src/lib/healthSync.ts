@@ -70,7 +70,7 @@ export function defaultHealthSyncState(): HealthSyncState {
 
 function isHealthSyncState(value: unknown): value is HealthSyncState {
   if (!isPlainObject(value)) return false
-  const s = value as Record<string, unknown>
+  const s = value
   return (
     (s.ownerId === null || typeof s.ownerId === 'string') &&
     typeof s.enabled === 'boolean' &&
