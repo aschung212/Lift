@@ -552,7 +552,7 @@ jobs:
 
       - name: Coverage report
         if: always() && github.event_name == 'pull_request'
-        uses: davelosert/vitest-coverage-report-action@8f86cfb56ed6d5613ea8cdc5259f207fbfd51ece # v2
+        uses: davelosert/vitest-coverage-report-action@74c2d9210b4fc44c84d8213f61d7ec99837b7aa0 # v2
         with:
           json-summary-path: coverage/coverage-summary.json
           json-final-path: coverage/coverage-final.json
@@ -695,7 +695,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v2
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v2
         with:
           version: latest
 
